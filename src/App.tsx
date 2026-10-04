@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Building2, CalendarPlus, FileText, Hash, House, ListChecks, Mail, MessagesSquare, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
-import type { Account, AppId, Attachment, BlockRule, CalEvent, ChatMessage, Meeting, Notice, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChatFile, ChatMessage, Meeting, Notice, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS } from './data/calendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
@@ -35,10 +35,12 @@ import { Notifications } from './components/Notifications';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HomeView } from './components/HomeView';
 import { TaskDrawer } from './components/TaskDrawer';
-import { TasksView, dueLabel, type TaskScope } from './components/TasksView';
+import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import { BrainDump, type DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView } from './components/ChatApp';
+import { ChatSidebar, ChatView, type Presence, type SendPayload } from './components/ChatApp';
+import { ChannelDialog } from './components/ChannelDialog';
+import { celebrate } from './components/ui/confetti';
 import { MeetView } from './components/MeetView';
 import { Onboarding } from './components/Onboarding';
 import { textToHtml } from './sanitize';
@@ -165,7 +167,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Shell
   const [mode, setMode] = useState<Mode>(readRoute);
   const [lastMode, setLastMode] = useState<AppId>(() => (readRoute() === 'settings' ? 'home' : (readRoute() as AppId)));
-  useEffect(() => writeRoute(mode), [mode]);
+  useEffect(() => {
+    writeRoute(mode);
+  }, [mode]);
   useEffect(() => {
     const back = () => setMode(readRoute());
     addEventListener('popstate', back);
@@ -244,6 +248,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [taskScope, setTaskScope] = useState<TaskScope>({ kind: 'mine' });
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
   const [teams] = useStored('teams');
+  const [statuses, setStatuses] = useStored('statuses');
+  const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   const [meetId, setMeetId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -665,7 +671,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const wsClients = useMemo(() => clients.filter((c) => c.workspaceId === ws.id), [clients, ws.id]);
   const wsTeams = useMemo(() => teams.filter((t) => t.workspaceId === ws.id), [teams, ws.id]);
   const wsTasks = useMemo(() => todos.filter((t) => (t.workspaceId ?? 'pnp') === ws.id), [todos, ws.id]);
-  const wsChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && c.members.includes(user.id)), [channels, ws.id, user.id]);
+  const wsChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && c.members.includes(user.id) && !c.archived), [channels, ws.id, user.id]);
+  // Channels I can see in the sidebar: mine, plus public ones I could join.
+  const visibleChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && !c.archived && (c.members.includes(user.id) || (c.kind === 'channel' && !c.private))), [channels, ws.id, user.id]);
+  const myRole = ws.members.find((m) => m.userId === user.id)?.role ?? 'member';
   const myNotices = useMemo(() => notices.filter((n) => n.userId === user.id && n.workspaceId === ws.id), [notices, user.id, ws.id]);
   const wsMeetings = useMemo(() => meetings.filter((m) => m.workspaceId === ws.id), [meetings, ws.id]);
   const firstOf = (id?: string) => (allUsers.find((u) => u.id === id)?.name ?? 'Someone').split(' ')[0];
@@ -682,7 +691,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const fallback = new Date(Date.now() - 90 * 60_000).toISOString();
     for (const c of wsChannels) {
       const since = lastRead[c.id] ?? fallback;
-      const n = messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > since).length;
+      const n = messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > since && (!m.parentId || m.alsoInChannel)).length;
       if (n) out[c.id] = n;
     }
     return out;
@@ -794,6 +803,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const br = t.briefId ? todos.find((x) => x.id === t.briefId) : undefined;
       if (br && br.userId !== user.id && todos.filter((x) => x.briefId === br.id && x.id !== id).every((x) => x.done))
         notify(br.userId, 'done', `All tasks in the brief “${br.title}” are done`, { app: 'tasks', id: br.id });
+      // Celebrate in the client's (or team's) channel, and with a little confetti for the person who finished it.
+      if (ws.chat?.celebrations !== false && !isBrief(t)) {
+        const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && ((t.clientId && c.clientId === t.clientId) || (!t.clientId && t.teamId && c.teamId === t.teamId)));
+        if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `${myFirst} finished “${t.title}”`, at: nowIso(), kind: 'celebration', taskId: t.id }]);
+        if (!quiet) celebrate();
+      }
       if (!quiet)
         showToast({
           text: `Done: ${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}`,
@@ -854,25 +869,75 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return u;
   };
 
-  const sendChat = (text: string) => {
+  /** Who's around: in a meeting (from the calendar or their status), away, or active. */
+  const presence = (id: string): Presence => {
+    if (id === user.id) {
+      const now = new Date().toISOString();
+      return visibleEvents.some((e) => !e.allDay && e.start <= now && e.end > now) ? 'meeting' : 'active';
+    }
+    if (statuses[id]?.emoji === '🗓️') return 'meeting';
+    return id === 'u-dewi' || id === 'u-bayu' ? 'away' : 'active';
+  };
+
+  /** Files shared in chat are saved to Drive, filed under the channel's client. */
+  const saveChatFiles = (files: ChatFile[], ch: Channel): ChatFile[] =>
+    files.map((f) => {
+      const id = uid();
+      setDrive((d) => [...d, { id, name: f.name, kind: kindOf(f), parentId: null, size: f.size, modified: nowIso(), workspaceId: ws.id, clientId: ch.clientId, channelId: ch.id, thumb: f.type.startsWith('image') ? f.url : undefined }]);
+      return { ...f, driveId: id };
+    });
+
+  const sendChat = (pl: SendPayload) => {
     if (!chatId) return;
     const ch = channels.find((c) => c.id === chatId);
-    postChat(chatId, text);
     if (!ch) return;
+    const files = pl.files ? saveChatFiles(pl.files, ch) : undefined;
+    setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor }]);
+    const text = pl.text;
+    const where = ch.kind === 'dm' ? 'a message' : `#${ch.name}`;
+    if (pl.kind === 'kudos' && pl.kudosFor) notify(pl.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id });
+    if (pl.parentId) {
+      const root = messages.find((m) => m.id === pl.parentId);
+      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
+    }
     for (const id of ch.members) {
       if (id === user.id) continue;
       const fn = firstOf(id);
-      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
-      else if (new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
+      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || (pl.voice ? 'a voice note' : pl.files ? 'a file' : '')).slice(0, 80)}”`, { app: 'chat', id: ch.id });
+      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
     }
     // DEMO ONLY: the other person answers a DM a few seconds later, so the chat feels alive.
-    if (ch.kind === 'dm') {
+    if (ch.kind === 'dm' && !pl.parentId) {
       const other = ch.members.find((m) => m !== user.id)!;
       setTimeout(() => {
-        const reply = /\?/.test(text) ? 'Good question, let me check and get back to you shortly.' : /thank/i.test(text) ? 'Anytime! 🙌' : '👍 Got it, on it.';
+        const reply = pl.voice ? 'Got your voice note, will do 👍' : /\?/.test(text) ? 'Good question, let me check and get back to you shortly.' : /thank/i.test(text) ? 'Anytime! 🙌' : '👍 Got it, on it.';
         setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: other, text: reply, at: nowIso() }]);
       }, 3500);
     }
+  };
+
+  const reactTo = (id: string, emoji: string) =>
+    setMessages((ms) =>
+      ms.map((m) => {
+        if (m.id !== id) return m;
+        const r = { ...(m.reactions ?? {}) };
+        const who = r[emoji] ?? [];
+        r[emoji] = who.includes(user.id) ? who.filter((x) => x !== user.id) : [...who, user.id];
+        return { ...m, reactions: r };
+      }),
+    );
+  const votePoll = (id: string, option: number) =>
+    setMessages((ms) =>
+      ms.map((m) =>
+        m.id === id && m.poll
+          ? { ...m, poll: { ...m.poll, options: m.poll.options.map((o, i) => ({ ...o, votes: i === option ? (o.votes.includes(user.id) ? o.votes.filter((v) => v !== user.id) : [...o.votes, user.id]) : o.votes.filter((v) => v !== user.id) })) } }
+          : m,
+      ),
+    );
+  const deleteMessage = (id: string) => {
+    const snapshot = messages;
+    setMessages((ms) => ms.filter((m) => m.id !== id && m.parentId !== id));
+    showToast({ text: 'Message deleted', action: { label: 'Undo', run: () => setMessages(snapshot) } });
   };
 
   const makeTaskFromMessage = (m: ChatMessage) => {
@@ -1361,21 +1426,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
           ) : appMode === 'chat' ? (
           <ChatSidebar
-            channels={wsChannels}
+            channels={visibleChannels}
             users={members}
             me={user.id}
+            workspaceId={ws.id}
             current={chatId}
             unread={chatUnread}
+            statuses={statuses}
+            presence={presence}
             onOpen={(id) => {
               setChatId(id);
               setSidebarOpen(false);
             }}
-            onNewChannel={(name) => {
-              const id = uid();
-              setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'channel', name, members: members.map((m) => m.id) }]);
+            onJoin={(id) => {
+              setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...c.members, user.id] } : c)));
               setChatId(id);
+              setSidebarOpen(false);
             }}
+            onNewChannel={() => setChanDialog({})}
             onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+            onStatus={(st) =>
+              setStatuses((all) => {
+                const next = { ...all };
+                if (st) next[user.id] = st;
+                else delete next[user.id];
+                return next;
+              })
+            }
           />
           ) : null
         }
@@ -1498,12 +1575,36 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             messages={messages.filter((m) => m.channelId === chatId)}
             users={members}
             me={user.id}
+            myRole={myRole}
             clients={wsClients}
+            teams={wsTeams}
             tasks={wsTasks}
+            mail={wsThreads}
+            drive={(() => {
+              const ch = channels.find((c) => c.id === chatId);
+              const cl = wsClients.find((c) => c.id === ch?.clientId);
+              const word = cl?.name.split(' ')[0].toLowerCase();
+              return cl ? drive.filter((d) => !d.trashed && !d.channelId && (d.workspaceId ?? 'pnp') === ws.id && (d.clientId === cl.id || (!!word && d.name.toLowerCase().includes(word)))) : [];
+            })()}
+            statuses={statuses}
+            presence={presence}
+            gifs={ws.chat?.gifs !== false}
+            meetUrl={ws.meetUrl}
             onSend={sendChat}
+            onDelete={deleteMessage}
+            onReact={reactTo}
+            onVote={votePoll}
             onMakeTask={makeTaskFromMessage}
+            onCreateTask={(t) => {
+              const ch = channels.find((c) => c.id === chatId);
+              const task = createTask({ ...t, clientId: ch?.clientId, teamId: ch?.teamId, source: 'chat' }, { chat: false });
+              if (chatId) setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, text: `📌 New task${t.userId !== user.id ? ` for @${firstOf(t.userId)}` : ''}`, at: nowIso(), taskId: task.id }]);
+            }}
             onOpenTask={openTask}
             onOpenClient={openClient}
+            onOpenTeam={(id) => openTasks({ kind: 'team', id })}
+            onOpenMail={openThread}
+            onSettings={() => chatId && setChanDialog({ id: chatId })}
             onMenu={() => setSidebarOpen(true)}
           />
         )}
@@ -1840,6 +1941,44 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));
             else showToast({ text: 'This client has no channel yet' });
+          }}
+        />
+      )}
+      {chanDialog && (
+        <ChannelDialog
+          channel={chanDialog.id ? channels.find((c) => c.id === chanDialog.id) : undefined}
+          users={members}
+          clients={wsClients}
+          teams={wsTeams}
+          me={user.id}
+          canManage={myRole !== 'member' || !chanDialog.id || channels.find((c) => c.id === chanDialog.id)?.ownerId === user.id}
+          guestsAllowed={true}
+          onClose={() => setChanDialog(null)}
+          onArchive={() => {
+            const id = chanDialog.id!;
+            setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: true } : c)));
+            setChanDialog(null);
+            setChatId(null);
+            showToast({ text: 'Channel archived', action: { label: 'Undo', run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: false } : c))) } });
+          }}
+          onSave={(d) => {
+            if (chanDialog.id) {
+              const before = channels.find((c) => c.id === chanDialog.id);
+              setChannels((cs) => cs.map((c) => (c.id === chanDialog.id ? { ...c, ...d } : c)));
+              const added = d.members.filter((m) => !before?.members.includes(m));
+              added.forEach((m) => notify(m, 'mention', `${myFirst} added you to #${d.name}`, { app: 'chat', id: chanDialog.id }));
+              const newGuests = (d.guests ?? []).filter((g) => !before?.guests?.some((x) => x.email === g.email));
+              showToast({ text: newGuests.length ? `Saved. Invite sent to ${newGuests.map((g) => g.name).join(', ')}` : 'Channel saved' });
+            } else {
+              const id = uid();
+              setChannels((cs) => [...cs, { ...d, id, workspaceId: ws.id, kind: 'channel' }]);
+              d.members.forEach((m) => notify(m, 'mention', `${myFirst} added you to #${d.name}`, { app: 'chat', id }));
+              setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `created #${d.name}${d.topic ? `: ${d.topic}` : ''}`, at: nowIso(), kind: 'system' }]);
+              setChatId(id);
+              go('chat');
+              showToast({ text: `#${d.name} created${d.guests?.length ? `, invite sent to ${d.guests.length} guest${d.guests.length > 1 ? 's' : ''}` : ''}` });
+            }
+            setChanDialog(null);
           }}
         />
       )}

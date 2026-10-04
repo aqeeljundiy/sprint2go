@@ -42,6 +42,7 @@ export const ai = {
   rewrite: (text: string, style: RewriteStyle): Promise<string> => (URL ? call('rewrite', { text, style }) : demo.rewrite(text, style)),
   todos: (t: Thread, me: string): Promise<AITodo[]> => (URL ? call('todos', { thread: plain(t), me, today: today() }) : demo.todos(t, me)),
   braindump: (input: demo.DumpInput): Promise<demo.DumpPlan> => (URL ? call('braindump', { ...input, today: today() }) : demo.braindump(input)),
+  catchUp: (channel: string, messages: demo.CatchUpMessage[], me: string): Promise<string> => (URL ? call('catchup', { channel, messages, me }) : demo.catchUp(channel, messages, me)),
   assistant: (question: string, threads: Thread[], me: string): Promise<{ answer: string; threadIds: string[] }> =>
     URL ? call('assistant', { question, threads: threads.map(plain), me, today: today() }) : demo.assistant(question, threads, me),
 };

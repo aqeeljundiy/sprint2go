@@ -234,3 +234,18 @@ ${input.text}
     brief: out.brief ? { ...out.brief, clientId: okClient(out.brief.clientId), ownerId: people.has(out.brief.ownerId) ? out.brief.ownerId : input.meId } : null,
   };
 }
+
+/** "Catch me up" for a chat channel: a few plain lines, only on request. Uses the cheaper model setting (light job). */
+export async function catchUp(input: { channel: string; messages: { who: string; text: string; at: string; task?: string; files?: string[] }[]; me: string }) {
+  const out = JSON.parse(
+    await ask(
+      `Summarise what happened in the chat channel ${input.channel} for ${input.me}, who was away. At most 5 short lines: the main point or decision, open questions (who asked what), anything that mentions ${input.me}, files shared and tasks created. Plain sentences, no headings, no em dashes.
+
+<messages>
+${input.messages.map((m) => `[${m.at}] ${m.who}: ${m.text}${m.files?.length ? ` (files: ${m.files.join(', ')})` : ''}${m.task ? ` (task: ${m.task})` : ''}`).join('\n')}
+</messages>`,
+      { effort: 'low', schema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'], additionalProperties: false } },
+    ),
+  ) as { summary: string };
+  return out.summary;
+}

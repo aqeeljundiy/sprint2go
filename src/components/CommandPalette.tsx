@@ -31,7 +31,9 @@ export function CommandPalette({ items, onClose }: Props) {
     return pool.slice(0, 40);
   }, [q, items]);
 
-  useEffect(() => setHi(0), [q]);
+  useEffect(() => {
+    setHi(0);
+  }, [q]);
   useEffect(() => {
     list.current?.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
   }, [hi]);

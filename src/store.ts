@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { Status } from './types';
 import { THREADS } from './data/mock';
 import { EVENTS } from './data/calendar';
 import { DRIVE } from './data/drive';
@@ -16,6 +17,7 @@ const store = {
   channels: CHANNELS,
   messages: MESSAGES,
   notices: NOTICES,
+  statuses: { 'u-nanda': { emoji: '🎬', text: 'Editing, slow to reply' }, 'u-faisal': { emoji: '🗓️', text: 'In client meetings till 3pm' } } as Record<string, Status>,
   meetings: MEETINGS,
 };
 

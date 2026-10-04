@@ -361,3 +361,32 @@ export async function braindump(input: DumpInput): Promise<DumpPlan> {
       : null;
   return { tasks: out, brief };
 }
+
+/* ---------------- Chat: catch me up ---------------- */
+
+export interface CatchUpMessage {
+  who: string;
+  text: string;
+  at: string;
+  task?: string;
+  files?: string[];
+}
+
+/** What happened in a channel, in a few lines: decisions, asks, files, tasks. */
+export async function catchUp(channel: string, messages: CatchUpMessage[], me: string): Promise<string> {
+  await wait(900);
+  if (!messages.length) return `Nothing new in ${channel}.`;
+  const people = [...new Set(messages.map((m) => m.who))];
+  const asks = messages.filter((m) => /\?|please|can you|could you|need/i.test(m.text) && m.who !== me);
+  const mentionsMe = messages.filter((m) => new RegExp(`@${me}\\b`, 'i').test(m.text));
+  const files = messages.flatMap((m) => m.files ?? []);
+  const tasks = messages.filter((m) => m.task).map((m) => m.task!);
+  const lines = [`${messages.length} message${messages.length > 1 ? 's' : ''} from ${people.slice(0, 3).join(', ')}${people.length > 3 ? ` and ${people.length - 3} more` : ''}.`];
+  const main = [...messages].sort((a, b) => b.text.length - a.text.length)[0];
+  if (main?.text) lines.push(`Main point: ${main.who} said “${main.text.length > 140 ? main.text.slice(0, 137) + '…' : main.text}”`);
+  if (mentionsMe.length) lines.push(`You were mentioned ${mentionsMe.length} time${mentionsMe.length > 1 ? 's' : ''}.`);
+  if (asks.length) lines.push(`Open questions: ${asks.slice(0, 2).map((a) => `${a.who}: “${a.text.length > 80 ? a.text.slice(0, 77) + '…' : a.text}”`).join(' ')}`);
+  if (files.length) lines.push(`Files shared: ${files.slice(0, 3).join(', ')}.`);
+  if (tasks.length) lines.push(`Tasks created: ${tasks.slice(0, 3).join(', ')}.`);
+  return lines.join('\n');
+}

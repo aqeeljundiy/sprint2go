@@ -133,6 +133,8 @@ export interface DriveItem {
   duration?: string; // videos
   threadId?: string; // saved from an email
   workspaceId?: string; // defaults to the first workspace
+  clientId?: string; // filed under a client (e.g. shared in its chat channel)
+  channelId?: string; // shared in this chat channel
 }
 
 /** Which part of Drive is showing. */
@@ -161,6 +163,7 @@ export interface Workspace {
   emailSetup?: EmailSetup; // what the company chose at onboarding
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
+  chat?: { gifs: boolean; celebrations: boolean; whoCanCreate: Policy };
   aliases?: Record<string, string>; // learned names: "andi" -> user id, or "contact:<name>"
   teamHome?: Record<string, HomeTemplateId>; // default Home template per team
 }
@@ -231,6 +234,9 @@ export interface Client {
   ownerId: string;
 }
 
+export type ChannelCategory = 'client' | 'team' | 'project' | 'social';
+export type Policy = 'everyone' | 'admins';
+
 export interface Channel {
   id: string;
   workspaceId: string;
@@ -238,7 +244,34 @@ export interface Channel {
   name: string; // channel name, or '' for DMs
   members: string[]; // user ids
   clientId?: string;
-  topic?: string;
+  teamId?: string;
+  topic?: string; // purpose
+  category?: ChannelCategory;
+  private?: boolean;
+  ownerId?: string;
+  postPolicy?: Policy; // who can post ('admins' = announcements)
+  invitePolicy?: Policy; // who can add people
+  guests?: Guest[]; // people from outside the company (clients)
+  sharedWith?: { workspaceName: string; domain: string; status: 'pending' | 'connected' }; // shared channel with another Sprint2go company
+  archived?: boolean;
+  createdAt?: string;
+}
+
+/** Someone outside the company, invited by email into specific channels (and their client page). */
+export interface Guest {
+  email: string;
+  name: string;
+  status: 'invited' | 'joined';
+  invitedBy: string;
+  at: string;
+}
+
+export interface ChatFile {
+  name: string;
+  size: number; // bytes
+  type: string; // mime
+  driveId?: string; // saved to Drive under the client's folder
+  url?: string; // object URL in the prototype
 }
 
 export interface ChatMessage {
@@ -248,6 +281,22 @@ export interface ChatMessage {
   text: string;
   at: string;
   taskId?: string; // a task created from (or announced by) this message
+  parentId?: string; // a reply in a thread
+  alsoInChannel?: boolean; // a thread reply also shown in the channel
+  reactions?: Record<string, string[]>; // emoji -> user ids
+  voice?: { seconds: number; url?: string; transcript?: string };
+  poll?: { question: string; options: { text: string; votes: string[] }[] };
+  files?: ChatFile[];
+  kind?: 'message' | 'celebration' | 'kudos' | 'system';
+  kudosFor?: string; // user id
+  guestEmail?: string; // written by a guest
+  edited?: boolean;
+}
+
+export interface Status {
+  emoji: string;
+  text: string;
+  until?: string;
 }
 
 export interface Notice {

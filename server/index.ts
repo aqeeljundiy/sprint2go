@@ -16,6 +16,7 @@ const routes: Record<string, (b: any) => Promise<unknown>> = {
   todos: (b) => ai.todos(b.thread, b.me, b.today),
   assistant: (b) => ai.assistant(b.question, b.threads, b.me, b.today),
   braindump: (b) => ai.braindump(b),
+  catchup: (b) => ai.catchUp(b),
 };
 
 createServer(async (req, res) => {
