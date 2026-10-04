@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  ArrowLeft,
   ArrowUp,
   BarChart3,
   ChevronDown,
@@ -494,6 +495,7 @@ interface ViewProps {
   onOpenMail: (id: string) => void;
   onSettings: () => void;
   onMenu: () => void;
+  onBack?: () => void; // phones: back to the channel list
 }
 
 /** "@Rizky" → <b>@Rizky</b>; links clickable; keeps everything else as text. */
@@ -1016,6 +1018,11 @@ export function ChatView(p: ViewProps) {
           <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
             <Menu size={18} />
           </button>
+          {p.onBack && (
+            <button className="icon-btn back-btn" onClick={p.onBack} aria-label="Back to channels">
+              <ArrowLeft size={20} />
+            </button>
+          )}
           {other && (
             <span className="dm-av">
               <Avatar person={other} size={28} />

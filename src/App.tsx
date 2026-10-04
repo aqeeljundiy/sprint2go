@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, Building2, CalendarPlus, FileText, Hash, House, ListChecks, Mail, MessagesSquare, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
+import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
 import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
@@ -43,6 +43,7 @@ import { TasksSidebar } from './components/TasksSidebar';
 import { BrainDump, type DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog } from './components/ChannelDialog';
+import { MobileTop } from './components/MobileTop';
 import { ClientPortal } from './components/ClientPortal';
 import { celebrate } from './components/ui/confetti';
 import { MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetPage } from './components/MeetApp';
@@ -268,6 +269,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [shareFor, setShareFor] = useState<string | null>(null);
   const [sharedPreview, setSharedPreview] = useState<string | null>(null);
   const [askScope, setAskScope] = useState<AskScope | null>(null);
+  const [tabApps, setTabApps] = usePersisted<AppId[]>(`s2g-tabbar:${user.id}`, ['home', 'mail', 'chat', 'tasks']);
+  const [editingBar, setEditingBar] = useState(false);
   const [askChats, setAskChats] = usePersisted<AskChat[]>(`s2g-ask-chats:${user.id}`, []);
   const [joinOverrides, setJoinOverrides] = usePersisted<Record<string, boolean>>(`s2g-join:${user.id}`, {});
   const [sentEvents, setSentEvents] = useState<Record<string, string>>({});
@@ -768,7 +771,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // Chat always opens on a channel (the first one, usually #general), also after switching workspace.
   useEffect(() => {
-    if (mode === 'chat' && !wsChannels.some((c) => c.id === chatId) && wsChannels.length) setChatId(wsChannels[0].id);
+    if (mode === 'chat' && !mobile && !wsChannels.some((c) => c.id === chatId) && wsChannels.length) setChatId(wsChannels[0].id);
   }, [mode, chatId, wsChannels]);
 
   // "Since my last visit" needs the time I last read a channel, before opening it now marks it read.
@@ -1709,7 +1712,81 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           ? { icon: Upload, label: 'Upload', run: () => fileInput.current?.click() }
           : mode === 'tasks' || mode === 'home'
             ? { icon: Sparkles, label: 'Brain dump', run: () => setDump('') }
-            : null;
+            : mode === 'chat' && !chatId
+              ? { icon: Plus, label: 'New channel', run: () => setChanDialog({}) }
+              : mode === 'meet'
+                ? { icon: Video, label: 'Send bot to a meeting', run: () => setSendBotOpen(true) }
+                : null;
+
+  /** The phone's title switcher for each app. */
+  const mobileSwitcher = (() => {
+    if (mode === 'mail')
+      return {
+        label: 'Mailbox and folder',
+        value: view.kind === 'tracking' ? 'track' : view.kind === 'folder' ? `folder:${view.id}` : 'folder:inbox',
+        options: [
+          ...(Object.keys(FOLDER_TITLES) as FolderId[]).map((f) => ({ value: `folder:${f}`, label: FOLDER_TITLES[f], group: 'Folders' })),
+          { value: 'track', label: 'Waiting for reply', group: 'Folders' },
+          ...[{ id: 'all', email: 'All inboxes' }, ...myAccounts].map((a) => ({ value: `acct:${a.id}`, label: a.id === 'all' ? 'All inboxes' : a.email, group: 'Mailboxes' })),
+          ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: 'Clients' })),
+        ],
+        onChange: (v: string) => {
+          if (v === 'track') selectView({ kind: 'tracking', id: 'tracking' });
+          else if (v.startsWith('folder:')) selectView({ kind: 'folder', id: v.slice(7) as FolderId });
+          else if (v.startsWith('acct:')) (setActiveAccount(v.slice(5)), selectView({ kind: 'folder', id: 'inbox' }));
+          else openClient(v.slice(7), 'emails');
+        },
+      };
+    if (mode === 'tasks') {
+      const sc = taskScope;
+      return {
+        label: 'Which tasks',
+        value: sc.kind === 'client' ? `client:${sc.id}` : sc.kind === 'team' ? `team:${sc.id}` : sc.kind,
+        options: [
+          { value: 'mine', label: 'My tasks', group: 'Views' },
+          { value: 'supervising', label: 'Supervising', group: 'Views' },
+          { value: 'myteams', label: 'My teams', group: 'Views' },
+          { value: 'myclients', label: 'My clients', group: 'Views' },
+          { value: 'delegated', label: 'Assigned by me', group: 'Views' },
+          { value: 'briefs', label: 'Briefs', group: 'Views' },
+          ...(isAdmin ? [{ value: 'all', label: 'Everything', group: 'Views' }] : []),
+          ...wsTeams.filter((t) => isAdmin || myTeamIds.includes(t.id)).map((t) => ({ value: `team:${t.id}`, label: t.name, group: 'Teams' })),
+          ...wsClients.filter((c) => isAdmin || myClientIds.includes(c.id)).map((c) => ({ value: `client:${c.id}`, label: c.name, group: 'Clients' })),
+        ],
+        onChange: (v: string) => setTaskScope(v.startsWith('client:') ? { kind: 'client', id: v.slice(7) } : v.startsWith('team:') ? { kind: 'team', id: v.slice(5) } : ({ kind: v } as TaskScope)),
+      };
+    }
+    if (mode === 'meet')
+      return {
+        label: 'Meet',
+        value: meetPage.kind === 'folder' ? `folder:${meetPage.clientId}` : meetPage.kind === 'meeting' ? 'list' : meetPage.kind,
+        options: [
+          { value: 'list', label: 'Meetings', group: 'Meet' },
+          { value: 'upcoming', label: 'Upcoming', group: 'Meet' },
+          { value: 'tasks', label: 'Tasks from meetings', group: 'Meet' },
+          { value: 'unfiled', label: 'Unfiled', group: 'Meet' },
+          ...wsClients.map((c) => ({ value: `folder:${c.id}`, label: c.name, group: 'Clients' })),
+        ],
+        onChange: (v: string) => setMeetPage(v.startsWith('folder:') ? { kind: 'folder', clientId: v.slice(7) } : ({ kind: v } as MeetPage)),
+      };
+    if (mode === 'drive')
+      return {
+        label: 'Drive',
+        value: driveSection,
+        options: (
+          [
+            ['my', 'My Drive'],
+            ['recent', 'Recent'],
+            ['media', 'Photos & videos'],
+            ['email', 'From email'],
+            ['starred', 'Starred'],
+            ['trash', 'Trash'],
+          ] as const
+        ).map(([v, l]) => ({ value: v, label: l })),
+        onChange: (v: string) => (setDriveSection(v as DriveSection), setDriveFolder(null)),
+      };
+    return undefined;
+  })();
 
   // ⌘K: everything you can jump to
   const paletteItems: PaletteItem[] = [
@@ -1952,6 +2029,49 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       />
 
       <main className="main" key={`${ws.id}:${mode}`}>
+        {mobile && (
+          <MobileTop
+            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[mode]}
+            switcher={mobileSwitcher}
+            workspaces={workspaces}
+            current={ws}
+            unread={myNotices.filter((n) => !n.read).length}
+            onWorkspace={switchWorkspace}
+            onAddWorkspace={() => setNewWs(true)}
+            onSearch={() => setPaletteOpen(true)}
+            onBell={() => setNoticesOpen(true)}
+          />
+        )}
+        {mobile && mode === 'chat' && !chatId && (
+          <section className="mobile-list view-enter">
+            <ChatSidebar
+              channels={visibleChannels}
+              users={members}
+              me={user.id}
+              workspaceId={ws.id}
+              current={chatId}
+              unread={chatUnread}
+              lastAt={chatLastAt}
+              statuses={statuses}
+              presence={presence}
+              onOpen={setChatId}
+              onJoin={(id) => {
+                setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...c.members, user.id] } : c)));
+                setChatId(id);
+              }}
+              onNewChannel={() => setChanDialog({})}
+              onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+              onStatus={(st) =>
+                setStatuses((all) => {
+                  const next = { ...all };
+                  if (st) next[user.id] = st;
+                  else delete next[user.id];
+                  return next;
+                })
+              }
+            />
+          </section>
+        )}
         {mode === 'mail' && view.kind === 'tracking' && (
           <TrackingDashboard
             threads={scoped}
@@ -2057,7 +2177,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
         )}
 
-        {mode === 'chat' && (
+        {mode === 'chat' && (!mobile || chatId) && (
           <ChatView
             channel={wsChannels.find((c) => c.id === chatId) ?? null}
             messages={messages.filter((m) => m.channelId === chatId)}
@@ -2103,6 +2223,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenMail={openThread}
             onSettings={() => chatId && setChanDialog({ id: chatId })}
             onMenu={() => setSidebarOpen(true)}
+            onBack={mobile ? () => setChatId(null) : undefined}
           />
         )}
 
@@ -2344,15 +2465,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         </button>
       )}
       <nav className="tabbar">
-        {(
-          [
-            ['home', House, 'Home', 0],
-            ['mail', Mail, 'Mail', accountUnread.all ?? 0],
-            ['chat', MessagesSquare, 'Chat', chatUnreadTotal],
-            ['tasks', ListChecks, 'Tasks', 0],
-          ] as const
-        )
-          .filter(([id]) => enabled.has(id))
+        {tabApps
+          .filter((id) => enabled.has(id))
+          .slice(0, 4)
+          .map((id) => [id, APPS.find((a) => a.id === id)!.icon, APPS.find((a) => a.id === id)!.name, id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatUnreadTotal : 0] as const)
           .map(([id, Icon, label, badge]) => (
             <button key={id} className={mode === id ? 'on' : ''} onClick={() => go(id)}>
               <span className="tab-icon">
@@ -2362,10 +2478,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               {label}
             </button>
           ))}
-        <button className={moreOpen || ['calendar', 'drive', 'meet', 'settings'].includes(mode) ? 'on' : ''} onClick={() => setMoreOpen((o) => !o)}>
+        <button className={moreOpen || (!tabApps.includes(mode as AppId) && mode !== 'settings') || mode === 'settings' ? 'on' : ''} onClick={() => setMoreOpen((o) => !o)}>
           <span className="tab-icon">
             <MenuIcon size={21} />
-            {myNotices.some((n) => !n.read) && <i>{myNotices.filter((n) => !n.read).length}</i>}
           </span>
           More
         </button>
@@ -2373,17 +2488,43 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {moreOpen && (
         <div className="more-sheet" onClick={() => setMoreOpen(false)}>
           <div className="more-card" onClick={(e) => e.stopPropagation()}>
-            {APPS.filter((a) => enabled.has(a.id) && ['calendar', 'drive', 'meet'].includes(a.id)).map((a) => (
-              <button key={a.id} onClick={() => go(a.id)}>
-                <a.icon size={20} /> {a.name}
-              </button>
-            ))}
-            <button onClick={() => (setMoreOpen(false), setNoticesOpen(true))}>
-              <Hash size={20} /> Notifications {myNotices.some((n) => !n.read) && <b>{myNotices.filter((n) => !n.read).length}</b>}
-            </button>
-            <button onClick={() => (setMoreOpen(false), setPaletteOpen(true))}>
-              <Sparkles size={20} /> Search
-            </button>
+            {editingBar ? (
+              <div className="bar-edit">
+                <strong>Your bottom bar</strong>
+                <small className="muted">Pick up to 4 apps. The rest live here in More.</small>
+                {APPS.filter((a) => enabled.has(a.id)).map((a) => (
+                  <label key={a.id} className="check-row">
+                    <input
+                      type="checkbox"
+                      checked={tabApps.includes(a.id)}
+                      disabled={!tabApps.includes(a.id) && tabApps.length >= 4}
+                      onChange={() => setTabApps(tabApps.includes(a.id) ? tabApps.filter((x) => x !== a.id) : [...tabApps, a.id])}
+                    />
+                    <a.icon size={17} /> {a.name}
+                  </label>
+                ))}
+                <button className="primary-btn sm" onClick={() => setEditingBar(false)}>
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="more-apps">
+                  {APPS.filter((a) => enabled.has(a.id) && !tabApps.slice(0, 4).includes(a.id)).map((a) => (
+                    <button key={a.id} onClick={() => go(a.id)}>
+                      <a.icon size={22} />
+                      <span>{a.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => (setMoreOpen(false), toggleAsk())}>
+                  <Sparkles size={20} /> Ask AI
+                </button>
+                <button onClick={() => setEditingBar(true)}>
+                  <MenuIcon size={20} /> Edit the bottom bar
+                </button>
+              </>
+            )}
             <button onClick={() => go('settings')}>
               <UserIcon size={20} /> Account & settings
             </button>
