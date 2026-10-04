@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ImagePlus, Inbox, Shield, UserRound, Users, X } from 'lucide-react';
-import type { Account, Role, User, Workspace } from '../types';
+import type { Account, MailProvider, Role, User, Workspace } from '../types';
+import { PROVIDERS } from './Onboarding';
 import { WORKSPACE_COLORS } from '../data/workspaces';
 import { uid } from '../utils';
 import { readLogo, WorkspaceLogo } from './WorkspaceLogo';
@@ -136,11 +137,12 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
   const [email, setEmail] = useState(workspace.domains[0] ? `@${workspace.domains[0]}` : '');
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Account['kind']>('personal');
+  const [provider, setProvider] = useState<MailProvider>(workspace.emailSetup === 'keep' && workspace.emailProvider ? workspace.emailProvider : 'sprint2go');
   const taken = workspace.accounts.some((a) => a.email === email.trim().toLowerCase());
   const valid = isEmail(email) && !taken;
 
   const add = () =>
-    valid && onAdd({ id: uid(), email: email.trim().toLowerCase(), name: name.trim() || (kind === 'shared' ? workspace.name : email.split('@')[0]), kind, connected: false, users: [userId] });
+    valid && onAdd({ id: uid(), email: email.trim().toLowerCase(), name: name.trim() || (kind === 'shared' ? workspace.name : email.split('@')[0]), kind, connected: false, users: [userId], provider });
 
   return (
     <Modal title={`Add an account to ${workspace.name}`} onClose={onClose}>
@@ -156,6 +158,24 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
             <strong>Shared inbox</strong>
             <small>hello@, support@, sales@</small>
           </button>
+        </div>
+        <div className="field">
+          <label>Where does this mailbox live?</label>
+          <div className="aw-tones wrap">
+            <button className={provider === 'sprint2go' ? 'on' : ''} onClick={() => setProvider('sprint2go')}>
+              New Sprint2go mailbox
+            </button>
+            {PROVIDERS.map((p) => (
+              <button key={p.id} className={provider === p.id ? 'on' : ''} onClick={() => setProvider(p.id)}>
+                Connect {p.name}
+              </button>
+            ))}
+          </div>
+          <small>
+            {provider === 'sprint2go'
+              ? 'We create and host this mailbox.'
+              : 'Mail stays where it is and shows here too, in sync both ways. The owner signs in to connect it.'}
+          </small>
         </div>
         <div className="field">
           <label>Email address</label>
@@ -174,7 +194,7 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'shared' ? workspace.name : 'Your name'} />
         </div>
         <p className="modal-note">
-          <Inbox size={14} /> The account signs in once your mail server is connected. Until then it shows as “Not connected”.
+          <Inbox size={14} /> It shows as “Not connected” until it’s signed in.
         </p>
       </div>
       <footer className="modal-foot">

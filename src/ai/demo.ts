@@ -187,3 +187,89 @@ export async function assistant(question: string, threads: Thread[], me: string)
     threadIds: hits.map((t) => t.id),
   };
 }
+
+/* ---------------- Brain dump ---------------- */
+
+export interface DumpPerson {
+  id: string;
+  name: string;
+}
+export interface DumpClient {
+  id: string;
+  name: string;
+}
+export interface DumpTask {
+  title: string;
+  clientId: string | null;
+  assigneeId: string | null;
+  due: string | null; // YYYY-MM-DD
+  priority: 'high' | 'normal';
+}
+
+/**
+ * "KopiKita wants the concepts by Thursday. Rizky, do the ad structure. Dewi handle the invoice."
+ * → one task per instruction, with the client carried forward and names matched to people.
+ */
+export async function braindump(text: string, people: DumpPerson[], clients: DumpClient[], meId: string): Promise<DumpTask[]> {
+  await wait(1100);
+  const lower = (s: string) => s.toLowerCase();
+  const firstName = (p: DumpPerson) => lower(p.name.split(' ')[0]);
+  const clauses = text
+    .replace(/\n+/g, '. ')
+    .split(/(?<=[.!?;])\s+|\s+(?:and then|also|plus)\s+/i)
+    .map((s) => s.trim().replace(/^[-•*]\s*/, ''))
+    .filter((s) => s.length > 3);
+
+  let client: string | null = null;
+  const out: DumpTask[] = [];
+  for (const raw of clauses) {
+    const c = lower(raw);
+    // Client: a client name (or its first word) mentioned in this clause; otherwise keep the last one.
+    const hit = clients.find((cl) => c.includes(lower(cl.name)) || c.includes(lower(cl.name.split(' ')[0])));
+    if (hit) client = hit.id;
+    // Assignee: "Rizky, …", "Dewi handle …", "ask Faisal to …", "for Aditya"; "someone"/"anyone" = unassigned.
+    let assignee: string | null = null;
+    for (const p of people) {
+      const fn = firstName(p);
+      const re = new RegExp(`(^|\\b)(${fn})(,|\\s+(?:to|will|can|should|handle|please|needs? to|do|send|take|book|prepare|follow|build|check)\\b|\\s*$)|\\b(?:ask|tell|get|have|for|assign(?:ed)? to)\\s+${fn}\\b`, 'i');
+      if (re.test(raw)) {
+        assignee = p.id;
+        break;
+      }
+    }
+    const meRef = /^(i|i'll|i will|i need to|i should|let me|remind me to)\b/i.test(raw.trim());
+    if (!assignee && meRef) assignee = meId;
+    if (/\b(someone|anyone|somebody)\b/i.test(raw)) assignee = null;
+
+    // Title: strip names, filler and dates, keep the instruction.
+    let title = raw
+      .replace(/\b(also|and|so|ok|okay|hey|then)\b[,]?\s*/gi, '')
+      .replace(/\b(someone|somebody|anyone)\s+(should|needs? to|has to|must|can)?\s*/i, '')
+      .replace(/^(i|i'll|i will|i need to|i should|let me|remind me to)\s+/i, '');
+    for (const p of people) {
+      const fn = p.name.split(' ')[0];
+      title = title
+        .replace(new RegExp(`\\b(ask|tell|get|have|assign(?:ed)? to)\\s+${fn}\\s+(to\\s+)?`, 'i'), '')
+        .replace(new RegExp(`^${fn},?\\s*(please\\s+|can you\\s+|could you\\s+|will\\s+|to\\s+|should\\s+|needs? to\\s+)?`, 'i'), '')
+        .replace(new RegExp(`,?\\s*${fn}\\s+(handle|take|do)\\s+(that|this|it)\\b`, 'i'), '')
+        .replace(new RegExp(`\\s+for\\s+${fn}\\b`, 'i'), '');
+    }
+    title = title
+      .replace(/\s+(by|before|on|due)\s+(mon|tues|wednes|thurs|fri|satur|sun)day\b.*$/i, '')
+      .replace(/\s+(by|before)\s+(tomorrow|today|tonight|next week|end of (the )?week)\b.*$/i, '')
+      .replace(/\s+(next week|tomorrow|today)\b\.?$/i, '')
+      .replace(/[.!?;]+$/, '')
+      .trim();
+    // "KopiKita wants the Q4 concepts" reads better as "Deliver the Q4 concepts to KopiKita".
+    const wants = title.match(/^(.+?)\s+(wants?|needs?|asked for)\s+(.+)$/i);
+    if (wants && clients.some((cl) => lower(wants[1]).includes(lower(cl.name.split(' ')[0])))) {
+      title = `${/^wants?|asked/i.test(wants[2]) ? 'Deliver' : 'Prepare'} ${wants[3]} ${/^wants?|asked/i.test(wants[2]) ? 'to' : 'for'} ${wants[1]}`;
+    }
+    if (title.length < 3) continue;
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+
+    const due = dueFrom(raw);
+    out.push({ title, clientId: client, assigneeId: assignee, due, priority: /asap|urgent|today|tomorrow|!/.test(c) ? 'high' : 'normal' });
+  }
+  return out;
+}

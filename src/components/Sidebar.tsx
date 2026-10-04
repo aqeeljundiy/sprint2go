@@ -1,17 +1,11 @@
 import { useRef, type ReactNode } from 'react';
 import {
   Activity,
-  ListChecks,
-  Sparkles,
   Archive,
-  CalendarDays,
-  ChevronsUpDown,
   FileText,
-  HardDrive,
   Inbox,
   Layers,
   Users,
-  Mail,
   PanelLeftClose,
   PanelLeftOpen,
   PenLine,
@@ -21,8 +15,8 @@ import {
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
-import type { Account, FolderId, Label, Person, View } from '../types';
-import { Avatar } from './Avatar';
+import type { Account, AppId, FolderId, Label, View } from '../types';
+import { providerName } from './Onboarding';
 
 const FOLDERS: { id: FolderId; name: string; icon: LucideIcon }[] = [
   { id: 'inbox', name: 'Inbox', icon: Inbox },
@@ -34,40 +28,26 @@ const FOLDERS: { id: FolderId; name: string; icon: LucideIcon }[] = [
   { id: 'trash', name: 'Trash', icon: Trash2 },
 ];
 
-export type Mode = 'mail' | 'calendar' | 'drive' | 'settings';
-
-export const MODES: { id: Exclude<Mode, 'settings'>; name: string; icon: LucideIcon }[] = [
-  { id: 'mail', name: 'Mail', icon: Mail },
-  { id: 'calendar', name: 'Calendar', icon: CalendarDays },
-  { id: 'drive', name: 'Drive', icon: HardDrive },
-];
+export type Mode = AppId | 'settings';
 
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 360;
 
 interface Props {
   mode: Mode;
-  inSettings: boolean;
-  onMode: (m: Mode) => void;
+  title: string;
   collapsed: boolean;
   onCollapse: (c: boolean) => void;
   width: number;
   onWidth: (w: number) => void;
-  /** Sidebar contents for calendar and drive. */
-  calendarPanel: ReactNode;
-  drivePanel: ReactNode;
-  account: Person & { title: string; color?: string };
-  switcher: ReactNode;
+  /** Sidebar contents for every app except Mail. */
+  panel?: ReactNode;
+  /** Workspace switcher + account, shown in the phone drawer (the rail is hidden there). */
+  mobileTop?: ReactNode;
   accounts: Account[];
   activeAccount: string; // 'all' or an account id
   accountUnread: Record<string, number>;
   onAccountFilter: (id: string) => void;
-  todoCount: number;
-  onAskAI: () => void;
-  aiOpen: boolean;
-  accountMenu: ReactNode;
-  accountOpen: boolean;
-  onAccount: (open: boolean) => void;
   view: View;
   labels: Label[];
   counts: Partial<Record<FolderId, number>>;
@@ -78,8 +58,8 @@ interface Props {
 }
 
 export function Sidebar(props: Props) {
-  const { mode, collapsed, view, labels, counts, open, account } = props;
-  const isActive = (v: View) => mode === 'mail' && !props.inSettings && v.kind === view.kind && v.id === view.id;
+  const { mode, collapsed, view, labels, counts, open } = props;
+  const isActive = (v: View) => mode === 'mail' && v.kind === view.kind && v.id === view.id;
   const asideRef = useRef<HTMLElement>(null);
 
   /** Drag the right edge to resize; dragging far enough left collapses it. */
@@ -114,8 +94,9 @@ export function Sidebar(props: Props) {
         className={`sidebar ${open ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}
         style={{ ['--sb-w' as string]: `${collapsed ? 68 : props.width}px` }}
       >
+        {props.mobileTop && <div className="sb-mobile-top">{props.mobileTop}</div>}
         <div className="sb-top">
-          {props.switcher}
+          <h2 className="sb-title sb-label">{props.title}</h2>
           <button
             className="icon-btn sm collapse-btn"
             onClick={() => props.onCollapse(!collapsed)}
@@ -125,28 +106,11 @@ export function Sidebar(props: Props) {
           </button>
         </div>
 
-        <div className="mode-switch">
-          {MODES.map(({ id, name, icon: Icon }) => (
-            <button key={id} className={mode === id ? 'on' : ''} onClick={() => props.onMode(id)} title={name}>
-              <Icon size={15} />
-              <span className="sb-label">{name}</span>
-            </button>
-          ))}
-        </div>
-
-        <button className={`ask-ai ${props.aiOpen ? 'on' : ''}`} onClick={props.onAskAI} title="Ask AI (⌘J)">
-          <Sparkles size={15} />
-          <span className="sb-label">Ask AI</span>
-          <kbd className="sb-label">⌘J</kbd>
-        </button>
-
         <div className="sb-scroll">
           {/* keyed so the panel fades in when switching sections */}
           <div className="sb-panel" key={mode}>
-            {mode === 'calendar' ? (
-              props.calendarPanel
-            ) : mode === 'drive' ? (
-              props.drivePanel
+            {mode !== 'mail' ? (
+              props.panel
             ) : (
               <>
                 <button className="compose-btn" onClick={props.onCompose} title="Compose (C)">
@@ -169,7 +133,11 @@ export function Sidebar(props: Props) {
                           {a.kind === 'all' ? <Layers size={17} /> : a.kind === 'shared' ? <Users size={17} /> : <Inbox size={17} />}
                           <span className="sb-label acct-text">
                             <span>{a.kind === 'all' ? a.name : a.email.split('@')[0] + '@'}</span>
-                            {'connected' in a && !a.connected && <small>Not connected</small>}
+                            {'connected' in a && !a.connected ? (
+                              <small>Not connected</small>
+                            ) : 'provider' in a && a.provider && a.provider !== 'sprint2go' ? (
+                              <small className="via">via {providerName(a.provider)}</small>
+                            ) : null}
                           </span>
                           {props.accountUnread[a.id] ? <span className="count">{props.accountUnread[a.id]}</span> : null}
                         </button>
@@ -202,15 +170,7 @@ export function Sidebar(props: Props) {
                     <Activity size={17} />
                     <span className="sb-label">Tracking</span>
                   </button>
-                  <button
-                    className={`nav-item ${isActive({ kind: 'todos', id: 'todos' }) ? 'active' : ''}`}
-                    onClick={() => props.onSelect({ kind: 'todos', id: 'todos' })}
-                    title="To-do"
-                  >
-                    <ListChecks size={17} />
-                    <span className="sb-label">To-do</span>
-                    {props.todoCount ? <span className="count">{props.todoCount}</span> : null}
-                  </button>
+
                 </nav>
 
                 <div className="nav-heading sb-label">Labels</div>
@@ -230,22 +190,6 @@ export function Sidebar(props: Props) {
               </>
             )}
           </div>
-        </div>
-
-        <div className="account-wrap">
-          <button
-            className={`account-chip ${props.accountOpen || props.inSettings ? 'on' : ''}`}
-            onClick={() => props.onAccount(!props.accountOpen)}
-            title="Account & settings"
-          >
-            <Avatar person={account} size={32} />
-            <span className="sb-label account-text">
-              <strong>{account.name}</strong>
-              <small>{account.email}</small>
-            </span>
-            <ChevronsUpDown size={15} className="sb-label" />
-          </button>
-          {props.accountOpen && props.accountMenu}
         </div>
 
         <div className="sb-resize" onPointerDown={startResize} onDoubleClick={() => props.onCollapse(!collapsed)} title="Drag to resize · double-click to collapse" />

@@ -1,15 +1,15 @@
 import type { User, Workspace } from './types';
-import { USERS, WORKSPACES } from './data/workspaces';
+import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
 import { usePersisted } from './settings';
 import App from './App';
 import { SignIn } from './components/SignIn';
 
 /** Who is signed in on this device, and which of them is using the app right now. */
 export default function Root() {
-  const [users, setUsers] = usePersisted<User[]>('pm-users', USERS);
-  const [workspaces, setWorkspaces] = usePersisted<Workspace[]>('pm-workspaces-v3', WORKSPACES);
-  const [signedIn, setSignedIn] = usePersisted<string[]>('pm-signed-in', USERS.map((u) => u.id));
-  const [current, setCurrent] = usePersisted<string | null>('pm-user', USERS[0].id);
+  const [users, setUsers] = usePersisted<User[]>('s2g-users', USERS);
+  const [workspaces, setWorkspaces] = usePersisted<Workspace[]>('s2g-workspaces', WORKSPACES);
+  const [signedIn, setSignedIn] = usePersisted<string[]>('s2g-signed-in', SIGNED_IN_DEFAULT);
+  const [current, setCurrent] = usePersisted<string | null>('s2g-user', USERS[0].id);
 
   const user = users.find((u) => u.id === current && signedIn.includes(u.id));
   const signedInUsers = signedIn.map((id) => users.find((u) => u.id === id)).filter(Boolean) as User[];
@@ -23,7 +23,7 @@ export default function Root() {
         onForget={(id) => setSignedIn((s) => s.filter((x) => x !== id))}
         onSignIn={(email) => {
           const u = users.find((x) => x.email.toLowerCase() === email.toLowerCase());
-          if (!u) return 'No Elkiya Mail user with that email. Ask your workspace admin to invite you.';
+          if (!u) return 'No Sprint2go user with that email. Ask your company admin to invite you.';
           setSignedIn((s) => (s.includes(u.id) ? s : [...s, u.id]));
           setCurrent(u.id);
           return null;

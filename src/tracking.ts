@@ -55,7 +55,7 @@ export function lastTracked(t: Thread, _me?: Person): Message | undefined {
  *   https://track.<domain>/o/<token>.gif   → logs an open
  *   https://track.<domain>/c/<token>?u=…   → logs a click, then redirects
  */
-export function instrument(html: string, token: string, base = 'https://track.elkiyamail.com') {
+export function instrument(html: string, token: string, base = 'https://track.sprint2go.com') {
   const linked = html.replace(/href="(https?:[^"]+)"/g, (_, url) => `href="${base}/c/${token}?u=${encodeURIComponent(url)}"`);
   return `${linked}<img src="${base}/o/${token}.gif" width="1" height="1" alt="" style="display:none">`;
 }

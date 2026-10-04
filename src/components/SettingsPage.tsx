@@ -32,7 +32,10 @@ const SHORTCUTS: [string, string[]][] = [
   ['Send', ['⌘', '↵']],
   ['Collapse sidebar', ['[']],
   ['Switch workspace', ['⌥', '1–9']],
-  ['Go to Mail / Calendar / Drive', ['G', 'then M / C / D']],
+  ['Search everything', ['⌘', 'K']],
+  ['Ask AI', ['⌘', 'J']],
+  ['Go to Home / Mail / Chat / Tasks', ['G', 'then H / M / C / T']],
+  ['Go to Calendar / Drive / Meet', ['G', 'then L / D / E']],
   ['Calendar: today', ['T']],
   ['Calendar: day / week / month', ['D', 'W', 'M']],
 ];
@@ -308,7 +311,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
           {section === 'appearance' && (
             <>
               <h2>Appearance</h2>
-              <p className="set-intro">Make Elkiya Mail feel like yours.</p>
+              <p className="set-intro">Make Sprint2go feel like yours.</p>
               <h3>Theme</h3>
               <div className="theme-cards">
                 {(['light', 'dark', 'system'] as const).map((t) => (

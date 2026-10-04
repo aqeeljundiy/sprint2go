@@ -1,0 +1,132 @@
+{
+  "phase": "Phase 1: the whole product as a clickable prototype",
+  "now": "Phase 1 done. Waiting for Aqeel to try it before Phase 2 (real servers)",
+  "steps": [
+    [
+      "done",
+      "Project renamed to Sprint2go, saved with version history (git)"
+    ],
+    [
+      "done",
+      "Data model: clients, tasks, chat, notifications, meetings, team members, email providers"
+    ],
+    [
+      "done",
+      "Sample data: 6 clients, 12 tasks, 9 chat channels, 3 meetings, 7 team members"
+    ],
+    [
+      "done",
+      "Brain dump AI: demo parser + real Claude version on the server"
+    ],
+    [
+      "done",
+      "Sprint2go logo and brand"
+    ],
+    [
+      "done",
+      "App rail on the left (Home, Mail, Chat, Tasks, Calendar, Drive, Meet) with addresses like /mail"
+    ],
+    [
+      "done",
+      "Home: your day, tasks due, unread, meetings, AI briefing"
+    ],
+    [
+      "done",
+      "Tasks + Clients: list, board, client pages"
+    ],
+    [
+      "done",
+      "Brain dump: talk or type, preview, approve, assign and notify"
+    ],
+    [
+      "done",
+      "Chat: client channels, DMs, turn a message into a task"
+    ],
+    [
+      "done",
+      "Meet: meeting notes with action items that become tasks"
+    ],
+    [
+      "done",
+      "Notifications bell and ⌘K search across everything"
+    ],
+    [
+      "done",
+      "Onboarding: company sign-up with the 4 email options (keep, mix, hosted, none)"
+    ],
+    [
+      "done",
+      "Connect existing email per person (Google, Microsoft, Zoho, IMAP)"
+    ],
+    [
+      "done",
+      "Test everything in the side browser, desktop and phone"
+    ]
+  ],
+  "log": [
+    [
+      "01:49",
+      "Progress page created"
+    ],
+    [
+      "01:49",
+      "Brain dump AI ready (demo + Claude server version)"
+    ],
+    [
+      "02:12",
+      "Sprint2go logo done"
+    ],
+    [
+      "02:12",
+      "App rail, notifications bell and ⌘K search written"
+    ],
+    [
+      "02:12",
+      "Tasks + Clients written: list, board, client pages with emails and meetings"
+    ],
+    [
+      "02:24",
+      "Brain dump window: type or dictate, preview, edit, assign, notify"
+    ],
+    [
+      "02:24",
+      "Chat written: client channels, DMs, @mentions, turn any message into a task"
+    ],
+    [
+      "02:24",
+      "Meet written: notes and action items that become tasks"
+    ],
+    [
+      "02:24",
+      "Home written: your day, AI briefing, tasks, mail, meetings, clients"
+    ],
+    [
+      "02:24",
+      "Onboarding written: company, apps, 4 email options with DNS check, invite team"
+    ],
+    [
+      "02:24",
+      "Add account can now connect Google, Microsoft, Zoho or IMAP"
+    ],
+    [
+      "02:59",
+      "Everything wired together: rail, /mail /chat /tasks addresses, ⌘K search, notifications"
+    ],
+    [
+      "02:59",
+      "App renamed to Sprint2go with its own logo"
+    ],
+    [
+      "02:59",
+      "Build succeeds, now testing"
+    ],
+    [
+      "03:06",
+      "Tested every app on desktop and phone, fixed 5 small bugs"
+    ],
+    [
+      "03:06",
+      "Phase 1 saved (git)"
+    ]
+  ]
+}

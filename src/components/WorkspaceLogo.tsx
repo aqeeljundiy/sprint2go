@@ -42,7 +42,7 @@ export function readLogo(file: File): Promise<string> {
 
 /** Sets the browser tab title and icon to the workspace's brand. */
 export function applyBranding(ws: Workspace) {
-  document.title = `${ws.name} · Elkiya Mail`;
+  document.title = `${ws.name} · Sprint2go`;
   const icon =
     ws.logo ??
     `data:image/svg+xml;charset=utf-8,${encodeURIComponent(

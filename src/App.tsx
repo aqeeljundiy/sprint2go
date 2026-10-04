@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, HardDrive, Mail, PenLine, Plus, Undo2, Upload, UserRound } from 'lucide-react';
-import type { Account, Attachment, BlockRule, CalEvent, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import { Brain, Building2, CalendarPlus, FileText, Hash, House, ListChecks, Mail, MessagesSquare, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
+import type { Account, AppId, Attachment, BlockRule, CalEvent, ChatMessage, Meeting, Notice, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS } from './data/calendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
@@ -12,10 +12,9 @@ import { isMine, setIdentity } from './identity';
 import { scanned, useStored } from './store';
 import { ai } from './ai';
 import { AIAssistant } from './components/AIAssistant';
-import { TodosView } from './components/TodosView';
 import { BlockDialog } from './components/BlockDialog';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
-import { InviteMember, NewAccount, NewWorkspace } from './components/WorkspaceForms';
+import { InviteMember, NewAccount } from './components/WorkspaceForms';
 import { applyBranding } from './components/WorkspaceLogo';
 import { TrackingDashboard } from './components/TrackingDashboard';
 import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, type Mode } from './components/Sidebar';
@@ -30,6 +29,18 @@ import { SettingsPage } from './components/SettingsPage';
 import { DriveSidebar } from './components/DriveSidebar';
 import { DriveView } from './components/DriveView';
 import { DrivePreview } from './components/DrivePreview';
+import { AppRail, APPS } from './components/AppRail';
+import { Avatar } from './components/Avatar';
+import { Notifications } from './components/Notifications';
+import { CommandPalette, type PaletteItem } from './components/CommandPalette';
+import { HomeView } from './components/HomeView';
+import { TasksView, dueLabel, type TaskScope } from './components/TasksView';
+import { TasksSidebar } from './components/TasksSidebar';
+import { BrainDump, type DumpResult } from './components/BrainDump';
+import { ChatSidebar, ChatView } from './components/ChatApp';
+import { MeetView } from './components/MeetView';
+import { Onboarding } from './components/Onboarding';
+import { textToHtml } from './sanitize';
 
 const FOLDER_TITLES: Record<FolderId, string> = {
   inbox: 'Inbox',
@@ -40,6 +51,24 @@ const FOLDER_TITLES: Record<FolderId, string> = {
   spam: 'Spam',
   trash: 'Trash',
 };
+
+const APP_IDS = APPS.map((a) => a.id) as string[];
+// app.sprint2go.com/mail, /chat… on a real server; #/mail when opened as a local file.
+const hashRouting = !location.protocol.startsWith('http');
+function readRoute(): Mode {
+  const raw = hashRouting ? location.hash.replace(/^#\/?/, '') : location.pathname.replace(/^\//, '');
+  const first = raw.split('/')[0];
+  return APP_IDS.includes(first) ? (first as AppId) : first === 'settings' ? 'settings' : 'home';
+}
+function writeRoute(m: Mode) {
+  try {
+    if (hashRouting) {
+      if (location.hash !== `#/${m}`) history.replaceState(null, '', `#/${m}`);
+    } else if (location.pathname !== `/${m}`) history.pushState(null, '', `/${m}`);
+  } catch {
+    /* some previews forbid history changes */
+  }
+}
 
 const fromMe = (t: Thread) => t.messages.some((m) => isMine(m.from.email));
 
@@ -61,8 +90,13 @@ function useMedia(query: string) {
   useEffect(() => {
     const mq = matchMedia(query);
     const on = () => setMatch(mq.matches);
+    on();
     mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
+    window.addEventListener('resize', on);
+    return () => {
+      mq.removeEventListener('change', on);
+      window.removeEventListener('resize', on);
+    };
   }, [query]);
   return match;
 }
@@ -128,8 +162,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const mobile = useMedia('(max-width: 760px)');
 
   // Shell
-  const [mode, setMode] = useState<Mode>('mail');
-  const [lastMode, setLastMode] = useState<Exclude<Mode, 'settings'>>('mail');
+  const [mode, setMode] = useState<Mode>(readRoute);
+  const [lastMode, setLastMode] = useState<AppId>(() => (readRoute() === 'settings' ? 'home' : (readRoute() as AppId)));
+  useEffect(() => writeRoute(mode), [mode]);
+  useEffect(() => {
+    const back = () => setMode(readRoute());
+    addEventListener('popstate', back);
+    return () => removeEventListener('popstate', back);
+  }, []);
   const [collapsed, setCollapsed] = usePersisted('pm-sidebar-collapsed', false);
   const [sidebarW, setSidebarW] = usePersisted('pm-sidebar-w', 248);
   const [listW, setListW] = usePersisted('pm-list-w', 400);
@@ -163,7 +203,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const myTodos = useMemo(() => todos.filter((t) => t.userId === user.id), [todos, user.id]);
   const todosRef = useRef(todos);
   todosRef.current = todos;
-  const [scanning, setScanning] = useState(false);
+  const [, setScanning] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [blockTarget, setBlockTarget] = useState<Thread | null>(null);
   const [view, setView] = useState<View>({ kind: 'folder', id: 'inbox' });
@@ -194,6 +234,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [preview, setPreview] = useState<{ item: DriveItem; list: DriveItem[] } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Team: clients, chat, notifications, meetings
+  const [clients, setClients] = useStored('clients');
+  const [channels, setChannels] = useStored('channels');
+  const [messages, setMessages] = useStored('messages');
+  const [notices, setNotices] = useStored('notices');
+  const [meetings, setMeetings] = useStored('meetings');
+  const [taskScope, setTaskScope] = useState<TaskScope>({ kind: 'mine' });
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [meetId, setMeetId] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [noticesOpen, setNoticesOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [dump, setDump] = useState<string | null>(null); // null = closed
+  const [lastRead, setLastRead] = usePersisted<Record<string, string>>(`s2g-read:${user.id}`, {});
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), toast.ms ?? 5000);
@@ -205,6 +260,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setMode(m);
     setSidebarOpen(false);
     setAccountOpen(false);
+    setNoticesOpen(false);
+    setMoreOpen(false);
   };
 
   /* ---------------- Mail ---------------- */
@@ -368,8 +425,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ],
   });
 
-  const send = (m: Outgoing) => {
-    const draftId = compose?.draftId;
+  /** Files a sent copy and drops copies straight into any of our own recipients' inboxes. */
+  const deliver = (m: Outgoing, draftId?: string) => {
     const thread = toThread(m, 'archive');
     // Mail to one of our own mailboxes arrives straight in its inbox.
     const delivered: Thread[] = [...m.to, ...m.cc]
@@ -384,6 +441,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         messages: thread.messages.map((msg) => ({ ...msg, tracking: undefined, trackOptions: undefined })),
       }));
     setThreads((ts) => [thread, ...delivered, ...ts.filter((t) => t.id !== draftId)]);
+    return { thread, delivered };
+  };
+
+  const send = (m: Outgoing) => {
+    const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
     if (thread.messages[0].tracking) simulateOpen(thread);
     showToast({
@@ -474,7 +536,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const have = new Set(todosRef.current.filter((x) => x.userId === user.id && x.threadId === t.id).map((x) => x.title.toLowerCase()));
         const next = found
           .filter((f) => !have.has(f.title.toLowerCase()))
-          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, threadId: t.id, source: 'ai', userId: user.id, createdAt: new Date().toISOString() }));
+          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: 'todo', threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
         if (next.length) {
           todosRef.current = [...todosRef.current, ...next];
           setTodos((list) => [...list, ...next]);
@@ -490,7 +552,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (added)
         showToast({
           text: `✨ Found ${added} to-do${added > 1 ? 's' : ''} in your email`,
-          action: { label: 'View', run: () => selectView({ kind: 'todos', id: 'todos' }) },
+          action: { label: 'View', run: () => openTasks({ kind: 'mine' }) },
         });
       else if (force) showToast({ text: 'No new to-dos found' });
     });
@@ -500,7 +562,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     scan();
   }, [wsThreads]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleTodo = (id: string) => setTodos((list) => list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const toggleTodo = (id: string) => {
+    const t = todos.find((x) => x.id === id);
+    if (t) setTaskStatus(id, t.done ? 'todo' : 'done');
+  };
   const deleteTodo = (id: string) => {
     const snapshot = todos;
     setTodos((list) => list.filter((t) => t.id !== id));
@@ -582,6 +647,208 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         },
       },
     });
+  };
+
+
+  /* ---------------- Team: tasks, clients, chat, notifications ---------------- */
+
+  const enabledApps: AppId[] = ws.apps ?? APPS.map((a) => a.id);
+  const enabled = new Set<string>(enabledApps);
+  useEffect(() => {
+    if (mode !== 'settings' && !enabled.has(mode)) setMode('home');
+  }, [ws.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const members = useMemo(() => ws.members.map((m) => allUsers.find((u) => u.id === m.userId)).filter(Boolean) as User[], [ws.members, allUsers]);
+  const wsClients = useMemo(() => clients.filter((c) => c.workspaceId === ws.id), [clients, ws.id]);
+  const wsTasks = useMemo(() => todos.filter((t) => (t.workspaceId ?? 'pnp') === ws.id), [todos, ws.id]);
+  const wsChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && c.members.includes(user.id)), [channels, ws.id, user.id]);
+  const myNotices = useMemo(() => notices.filter((n) => n.userId === user.id && n.workspaceId === ws.id), [notices, user.id, ws.id]);
+  const wsMeetings = useMemo(() => meetings.filter((m) => m.workspaceId === ws.id), [meetings, ws.id]);
+  const firstOf = (id?: string) => (allUsers.find((u) => u.id === id)?.name ?? 'Someone').split(' ')[0];
+  const myFirst = (settings.name || user.name).split(' ')[0];
+  const nowIso = () => new Date().toISOString();
+
+  /** Which client an email belongs to, by the sender's domain. */
+  function clientForThread(t: Thread) {
+    return wsClients.find((c) => c.domain && t.messages.some((m) => [m.from, ...m.to].some((p) => p.email.toLowerCase().endsWith('@' + c.domain))));
+  }
+
+  const chatUnread = useMemo(() => {
+    const out: Record<string, number> = {};
+    const fallback = new Date(Date.now() - 90 * 60_000).toISOString();
+    for (const c of wsChannels) {
+      const since = lastRead[c.id] ?? fallback;
+      const n = messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > since).length;
+      if (n) out[c.id] = n;
+    }
+    return out;
+  }, [wsChannels, messages, lastRead, user.id]);
+  const chatUnreadTotal = Object.values(chatUnread).reduce((a, b) => a + b, 0);
+
+  // Chat always opens on a channel (the first one, usually #general), also after switching workspace.
+  useEffect(() => {
+    if (mode === 'chat' && !wsChannels.some((c) => c.id === chatId) && wsChannels.length) setChatId(wsChannels[0].id);
+  }, [mode, chatId, wsChannels]);
+
+  // Reading a channel marks it read.
+  useEffect(() => {
+    if (mode === 'chat' && chatId) setLastRead((r) => ({ ...r, [chatId]: nowIso() }));
+  }, [mode, chatId, messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const notify = (userId: string, kind: Notice['kind'], text: string, link?: Notice['link']) => {
+    if (userId === user.id) return;
+    setNotices((ns) => [{ id: uid(), userId, workspaceId: ws.id, kind, text, at: nowIso(), read: false, link }, ...ns]);
+  };
+
+  /** The DM channel between me and someone (created on first use). */
+  const dmWith = (otherId: string) => {
+    const found = channels.find((c) => c.workspaceId === ws.id && c.kind === 'dm' && c.members.includes(user.id) && c.members.includes(otherId));
+    if (found) return found.id;
+    const id = uid();
+    setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'dm', name: '', members: [user.id, otherId] }]);
+    return id;
+  };
+
+  const postChat = (channelId: string, text: string, taskId?: string, fromId = user.id) =>
+    setMessages((ms) => [...ms, { id: uid(), channelId, userId: fromId, text, at: nowIso(), taskId }]);
+
+  /** A short email from me to a teammate (used for task notifications). */
+  const emailTeammate = (toId: string, subject: string, text: string) => {
+    const to = allUsers.find((u) => u.id === toId);
+    const from = myAccounts.find((a) => a.kind === 'personal') ?? myAccounts[0];
+    if (!to || !from) return;
+    deliver({ to: [{ name: to.name, email: to.email }], cc: [], subject, html: textToHtml(text) + settings.signature, text, files: [], track: false, trackOptions: DEFAULT_TRACK_OPTIONS, fromId: from.id });
+  };
+
+  const describe = (t: Pick<Todo, 'title' | 'clientId' | 'due'>) => {
+    const c = wsClients.find((x) => x.id === t.clientId);
+    return `“${t.title}”${c ? ` for ${c.name}` : ''}${t.due ? `, due ${dueLabel(t.due).text.toLowerCase()}` : ''}`;
+  };
+
+  const createTask = (
+    t: { title: string; clientId?: string; userId: string; due?: string; priority?: 'high' | 'normal'; source: Todo['source']; threadId?: string },
+    tell: { chat?: boolean; email?: boolean } = {},
+  ) => {
+    const task: Todo = { id: uid(), title: t.title, clientId: t.clientId, userId: t.userId, due: t.due, priority: t.priority ?? 'normal', done: false, status: 'todo', source: t.source, createdBy: user.id, workspaceId: ws.id, threadId: t.threadId, createdAt: nowIso() };
+    setTodos((ts) => [...ts, task]);
+    if (t.userId !== user.id) {
+      notify(t.userId, 'task', `${myFirst} assigned you ${describe(task)}`, { app: 'tasks', id: task.id });
+      if (tell.chat) postChat(dmWith(t.userId), `📌 New task for you: ${describe(task)}`, task.id);
+      if (tell.email)
+        emailTeammate(t.userId, `New task: ${task.title}`, `Hi ${firstOf(t.userId)},\n\nI've assigned you a task: ${describe(task)}.\n\nYou'll find it in Sprint2go under Tasks.`);
+    }
+    return task;
+  };
+
+  function setTaskStatus(id: string, status: TaskStatus) {
+    const t = todos.find((x) => x.id === id);
+    if (!t) return;
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status, done: status === 'done' } : x)));
+    if (status === 'done' && !t.done && t.createdBy && t.createdBy !== user.id)
+      notify(t.createdBy, 'done', `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id });
+  }
+
+  const patchTask = (id: string, patch: Partial<Todo>) => {
+    const t = todos.find((x) => x.id === id);
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    if (t && patch.userId && patch.userId !== t.userId) {
+      notify(patch.userId, 'task', `${myFirst} assigned you ${describe(t)}`, { app: 'tasks', id });
+      showToast({ text: `Assigned to ${firstOf(patch.userId)}` });
+    }
+  };
+
+  const openTasks = (scope: TaskScope) => {
+    setTaskScope(scope);
+    go('tasks');
+  };
+  const openClient = (id: string) => openTasks({ kind: 'client', id });
+  const openChannel = (id: string) => {
+    setChatId(id);
+    go('chat');
+  };
+  const openMeeting = (id: string) => {
+    setMeetId(id);
+    go('meet');
+  };
+  const openTask = (id: string) => {
+    const t = todos.find((x) => x.id === id);
+    openTasks(t?.userId === user.id ? { kind: 'mine' } : t?.clientId ? { kind: 'client', id: t.clientId } : { kind: 'all' });
+  };
+
+  const createFromDump = (r: DumpResult) => {
+    const made = r.tasks.map((t) => createTask({ ...t, source: 'braindump' }, r.notify));
+    setDump(null);
+    const people = new Set(made.filter((t) => t.userId !== user.id).map((t) => t.userId));
+    showToast({
+      text: `Created ${made.length} task${made.length === 1 ? '' : 's'}${people.size ? `, ${people.size} ${people.size === 1 ? 'person' : 'people'} notified` : ''}`,
+      action: { label: 'View', run: () => openTasks({ kind: 'all' }) },
+    });
+  };
+
+  const sendChat = (text: string) => {
+    if (!chatId) return;
+    const ch = channels.find((c) => c.id === chatId);
+    postChat(chatId, text);
+    if (!ch) return;
+    for (const id of ch.members) {
+      if (id === user.id) continue;
+      const fn = firstOf(id);
+      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
+      else if (new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
+    }
+    // DEMO ONLY: the other person answers a DM a few seconds later, so the chat feels alive.
+    if (ch.kind === 'dm') {
+      const other = ch.members.find((m) => m !== user.id)!;
+      setTimeout(() => {
+        const reply = /\?/.test(text) ? 'Good question, let me check and get back to you shortly.' : /thank/i.test(text) ? 'Anytime! 🙌' : '👍 Got it, on it.';
+        setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: other, text: reply, at: nowIso() }]);
+      }, 3500);
+    }
+  };
+
+  const makeTaskFromMessage = (m: ChatMessage) => {
+    const ch = channels.find((c) => c.id === m.channelId);
+    const mentioned = members.find((u) => u.id !== m.userId && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(m.text));
+    const assignee = mentioned?.id ?? (m.userId === user.id ? user.id : user.id);
+    let title = m.text.replace(/@\w+\s*/g, '').replace(/^(can you|could you|please)\s+/i, '').replace(/[?!.]+$/, '').trim();
+    title = (title.charAt(0).toUpperCase() + title.slice(1)).slice(0, 90);
+    const task = createTask({ title, userId: assignee, clientId: ch?.clientId, source: 'chat' });
+    setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, taskId: task.id } : x)));
+    showToast({ text: `Task created for ${assignee === user.id ? 'you' : firstOf(assignee)}`, action: { label: 'View', run: () => openTask(task.id) } });
+  };
+
+  const DAY_WORDS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const dueFromWord = (w?: string) => {
+    if (!w) return undefined;
+    const l = w.toLowerCase();
+    const d = new Date();
+    if (l.startsWith('tomorrow')) d.setDate(d.getDate() + 1);
+    else if (l.startsWith('next week')) d.setDate(d.getDate() + 7);
+    else {
+      const i = DAY_WORDS.findIndex((x) => l.startsWith(x));
+      if (i < 0) return undefined;
+      d.setDate(d.getDate() + (((i - d.getDay() + 7) % 7) || 7));
+    }
+    return d.toISOString().slice(0, 10);
+  };
+
+  const meetingActionToTask = (m: Meeting, i: number, quiet = false) => {
+    const a = m.actions[i];
+    if (a.taskId) return;
+    const owner = members.find((u) => a.owner && u.name.toLowerCase().startsWith(a.owner.toLowerCase()));
+    const task = createTask({ title: a.title, userId: owner?.id ?? user.id, clientId: m.clientId, due: dueFromWord(a.due), source: 'meeting' }, { chat: true });
+    setMeetings((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y, j) => (j === i ? { ...y, taskId: task.id } : y)) } : x)));
+    if (!quiet) showToast({ text: `Task created for ${owner ? (owner.id === user.id ? 'you' : owner.name.split(' ')[0]) : 'you'}` });
+  };
+
+  const openNotice = (n: Notice) => {
+    setNotices((ns) => ns.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    setNoticesOpen(false);
+    if (!n.link) return;
+    if (n.link.app === 'tasks') return n.link.id ? openTask(n.link.id) : openTasks({ kind: 'mine' });
+    if (n.link.app === 'chat') return n.link.id ? openChannel(n.link.id) : go('chat');
+    if (n.link.app === 'meet') return n.link.id ? openMeeting(n.link.id) : go('meet');
+    go(n.link.app);
   };
 
   /* ---------------- Calendar ---------------- */
@@ -762,6 +1029,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
         e.preventDefault();
         setAiOpen((o) => !o);
@@ -780,7 +1052,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         if (e.key === 'Escape') (el as HTMLInputElement).blur?.();
         return;
       }
-      if (compose || newEventAt || preview) return;
+      if (compose || newEventAt || preview || dump !== null || paletteOpen || newWs) return;
 
       // "g" then m / c / d jumps between sections
       if (e.key === 'g') {
@@ -788,7 +1060,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         return;
       }
       if (Date.now() - gPressed.current < 1000) {
-        const target = { m: 'mail', c: 'calendar', d: 'drive' }[e.key] as Mode | undefined;
+        const target = ({ h: 'home', m: 'mail', c: 'chat', t: 'tasks', l: 'calendar', d: 'drive', e: 'meet' } as Record<string, Mode>)[e.key];
         gPressed.current = 0;
         if (target) {
           e.preventDefault();
@@ -866,20 +1138,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ? { icon: Plus, label: 'New event', run: () => openNewEvent() }
         : mode === 'drive'
           ? { icon: Upload, label: 'Upload', run: () => fileInput.current?.click() }
-          : null;
+          : mode === 'tasks' || mode === 'home'
+            ? { icon: Sparkles, label: 'Brain dump', run: () => setDump('') }
+            : null;
+
+  // ⌘K: everything you can jump to
+  const paletteItems: PaletteItem[] = [
+    { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, run: () => setDump('') },
+    ...(enabled.has('mail') ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, run: () => openCompose() }] : []),
+    { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, run: () => { openTasks({ kind: 'mine' }); setTimeout(() => document.getElementById('new-task')?.focus(), 200); } },
+    ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, run: () => { go('calendar'); openNewEvent(); } }] : []),
+    ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
+    ...wsClients.map((c) => ({ id: 'c-' + c.id, group: 'Clients', title: c.name, sub: c.domain, icon: Building2, run: () => openClient(c.id) })),
+    ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: firstOf(t.userId), icon: ListChecks, run: () => openTask(t.id) })),
+    ...members.filter((u) => u.id !== user.id).map((u) => ({ id: 'p-' + u.id, group: 'People', title: u.name, sub: u.title || u.email, icon: UserIcon, run: () => openChannel(dmWith(u.id)) })),
+    ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ id: 'ch-' + c.id, group: 'Channels', title: '#' + c.name, icon: Hash, run: () => openChannel(c.id) })),
+    ...wsThreads.slice(0, 60).map((t) => ({ id: 'm-' + t.id, group: 'Emails', title: t.subject, sub: t.messages[t.messages.length - 1].from.name, icon: Mail, run: () => openThread(t.id) })),
+    ...wsMeetings.map((m) => ({ id: 'mt-' + m.id, group: 'Meetings', title: m.title, icon: Video, run: () => openMeeting(m.id) })),
+    ...wsDrive.filter((i) => i.kind !== 'folder' && !i.trashed).map((i) => ({ id: 'f-' + i.id, group: 'Files', title: i.name, icon: FileText, run: () => { go('drive'); setPreview({ item: i, list: [i] }); } })),
+  ];
 
   return (
-    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''}`}>
-      <Sidebar
-        mode={appMode}
-        inSettings={mode === 'settings'}
-        onMode={go}
-        collapsed={collapsed && !mobile}
-        onCollapse={setCollapsed}
-        width={Math.min(Math.max(sidebarW, SIDEBAR_MIN), SIDEBAR_MAX)}
-        onWidth={setSidebarW}
-        account={{ ...ME, title: settings.title }}
-        switcher={
+    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'meet', 'settings'].includes(mode) ? 'no-sidebar' : ''}`}>
+      <AppRail
+        current={mode}
+        enabled={enabledApps}
+        badges={{ mail: accountUnread.all, chat: chatUnreadTotal, tasks: wsTasks.filter((t) => t.userId === user.id && !t.done && t.due && t.due <= new Date().toISOString().slice(0, 10)).length }}
+        workspace={
           <WorkspaceSwitcher
             workspaces={workspaces}
             current={ws}
@@ -892,23 +1177,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }}
           />
         }
-        todoCount={myTodos.filter((t) => !t.done).length}
-        onAskAI={() => setAiOpen((o) => !o)}
-        aiOpen={aiOpen}
-        accounts={myAccounts}
-        activeAccount={activeAccount}
-        accountUnread={accountUnread}
-        onAccountFilter={(id) => {
-          setActiveAccount(id);
-          setSelectedId(null);
-          setReaderOpen(false);
-          setSidebarOpen(false);
-          if (view.kind !== 'folder') setView({ kind: 'folder', id: 'inbox' });
-          if (mode !== 'mail') go('mail');
-        }}
-        accountOpen={accountOpen}
-        onAccount={setAccountOpen}
-        accountMenu={
+        account={
+          <div className="account-wrap">
+            <button className={`rail-avatar ${accountOpen || mode === 'settings' ? 'on' : ''}`} onClick={() => setAccountOpen((o) => !o)} title={`${ME.name} · account & settings`}>
+              <Avatar person={ME} size={32} />
+            </button>
+            {accountOpen && (
           <AccountMenu
             me={ME}
             settings={settings}
@@ -925,8 +1199,45 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onAddUser={onAddUser}
             onClose={() => setAccountOpen(false)}
           />
+            )}
+          </div>
         }
-        calendarPanel={
+        notifications={<Notifications notices={myNotices} onOpen={openNotice} onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))} onClose={() => setNoticesOpen(false)} />}
+        unreadNotices={myNotices.filter((n) => !n.read).length}
+        noticesOpen={noticesOpen}
+        aiOpen={aiOpen}
+        onApp={go}
+        onSearch={() => setPaletteOpen(true)}
+        onAskAI={() => setAiOpen((o) => !o)}
+        onNotices={() => setNoticesOpen((o) => !o)}
+      />
+      <Sidebar
+        mode={appMode}
+        title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[appMode]}
+        collapsed={collapsed && !mobile}
+        onCollapse={setCollapsed}
+        width={Math.min(Math.max(sidebarW, SIDEBAR_MIN), SIDEBAR_MAX)}
+        onWidth={setSidebarW}
+        mobileTop={
+          <div className="drawer-top">
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            current={ws}
+            unread={wsUnread}
+            onSwitch={switchWorkspace}
+            onAdd={() => setNewWs(true)}
+            onSettings={() => {
+              setSettingsSection('workspace');
+              go('settings');
+            }}
+          />
+            <button className="ghost-btn outline sm" onClick={() => go('settings')}>
+              Settings
+            </button>
+          </div>
+        }
+        panel={
+          appMode === 'calendar' ? (
           <CalendarSidebar
             cursor={calCursor}
             calendars={CALENDARS}
@@ -946,8 +1257,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             onNew={() => openNewEvent()}
           />
-        }
-        drivePanel={
+          ) : appMode === 'drive' ? (
           <DriveSidebar
             section={mode === 'drive' ? driveSection : null}
             used={usage.mail + usage.drive}
@@ -961,7 +1271,55 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onUpload={() => fileInput.current?.click()}
             onNewFolder={newFolder}
           />
+          ) : appMode === 'tasks' ? (
+          <TasksSidebar
+            scope={taskScope}
+            tasks={wsTasks}
+            clients={wsClients}
+            me={user.id}
+            onScope={(sc) => {
+              setTaskScope(sc);
+              setSidebarOpen(false);
+            }}
+            onBrainDump={() => setDump('')}
+            onAddClient={(name, domain) => {
+              const c = { id: uid(), workspaceId: ws.id, name, domain, color: ['#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444'][wsClients.length % 6], status: 'active' as const, ownerId: user.id };
+              setClients((cs) => [...cs, c]);
+              setTaskScope({ kind: 'client', id: c.id });
+              showToast({ text: `${name} added` });
+            }}
+          />
+          ) : appMode === 'chat' ? (
+          <ChatSidebar
+            channels={wsChannels}
+            users={members}
+            me={user.id}
+            current={chatId}
+            unread={chatUnread}
+            onOpen={(id) => {
+              setChatId(id);
+              setSidebarOpen(false);
+            }}
+            onNewChannel={(name) => {
+              const id = uid();
+              setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'channel', name, members: members.map((m) => m.id) }]);
+              setChatId(id);
+            }}
+            onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+          />
+          ) : null
         }
+        accounts={myAccounts}
+        activeAccount={activeAccount}
+        accountUnread={accountUnread}
+        onAccountFilter={(id) => {
+          setActiveAccount(id);
+          setSelectedId(null);
+          setReaderOpen(false);
+          setSidebarOpen(false);
+          if (view.kind !== 'folder') setView({ kind: 'folder', id: 'inbox' });
+          if (mode !== 'mail') go('mail');
+        }}
         view={view}
         labels={LABELS}
         counts={counts}
@@ -996,24 +1354,95 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
         )}
 
-        {mode === 'mail' && view.kind === 'todos' && (
-          <TodosView
-            todos={myTodos}
-            threads={wsThreads}
-            scanning={scanning}
-            onAdd={(title, due) =>
-              setTodos((list) => [...list, { id: uid(), title, due, done: false, priority: 'normal', source: 'manual', userId: user.id, createdAt: new Date().toISOString() }])
-            }
-            onToggle={toggleTodo}
-            onDelete={deleteTodo}
-            onToCalendar={todoToCalendar}
+        {mode === 'home' && (
+          <HomeView
+            me={user}
+            firstName={myFirst}
+            tasks={wsTasks}
+            clients={wsClients}
+            threads={scoped}
+            events={visibleEvents}
+            meetings={wsMeetings}
+            notices={myNotices}
+            enabled={enabled}
+            onDump={(text) => setDump(text ?? '')}
+            onToggleTask={toggleTodo}
+            onOpenTasks={() => openTasks({ kind: 'mine' })}
             onOpenThread={openThread}
-            onScan={() => scan(true)}
+            onOpenMail={() => go('mail')}
+            onOpenCalendar={(id) => {
+              go('calendar');
+              if (id) setSelectedEventId(id);
+            }}
+            onOpenClient={openClient}
+            onOpenMeeting={openMeeting}
+            onNotice={openNotice}
             onMenu={() => setSidebarOpen(true)}
           />
         )}
 
-        {mode === 'mail' && view.kind !== 'tracking' && view.kind !== 'todos' && (
+        {mode === 'tasks' && (
+          <TasksView
+            scope={taskScope}
+            tasks={wsTasks}
+            clients={wsClients}
+            users={members}
+            me={user.id}
+            threads={wsThreads}
+            channels={wsChannels}
+            meetings={wsMeetings}
+            onAdd={(t) => {
+              const task = createTask({ ...t, source: 'manual' }, { chat: true });
+              if (task.userId !== user.id) showToast({ text: `Assigned to ${firstOf(task.userId)}, they’ve been notified` });
+            }}
+            onStatus={setTaskStatus}
+            onPatch={patchTask}
+            onDelete={deleteTodo}
+            onToCalendar={todoToCalendar}
+            onOpenThread={openThread}
+            onOpenChannel={openChannel}
+            onOpenMeeting={openMeeting}
+            onBrainDump={() => setDump('')}
+            onMenu={() => setSidebarOpen(true)}
+          />
+        )}
+
+        {mode === 'chat' && (
+          <ChatView
+            channel={wsChannels.find((c) => c.id === chatId) ?? null}
+            messages={messages.filter((m) => m.channelId === chatId)}
+            users={members}
+            me={user.id}
+            clients={wsClients}
+            tasks={wsTasks}
+            onSend={sendChat}
+            onMakeTask={makeTaskFromMessage}
+            onOpenTask={openTask}
+            onOpenClient={openClient}
+            onMenu={() => setSidebarOpen(true)}
+          />
+        )}
+
+        {mode === 'meet' && (
+          <MeetView
+            meetings={wsMeetings}
+            clients={wsClients}
+            tasks={wsTasks}
+            selected={meetId}
+            meetUrl={ws.meetUrl}
+            onSelect={setMeetId}
+            onMakeTask={(m, i) => meetingActionToTask(m, i)}
+            onMakeAll={(m) => {
+              m.actions.forEach((a, i) => !a.taskId && meetingActionToTask(m, i, true));
+              showToast({ text: 'Action items are now tasks, owners notified' });
+            }}
+            onOpenTask={openTask}
+            onOpenClient={openClient}
+            onMenu={() => setSidebarOpen(true)}
+          />
+        )}
+
+        {mode === 'mail' && view.kind !== 'tracking' && (
           <div className="mail-view view-enter">
             <MessageList
               ref={searchRef}
@@ -1045,7 +1474,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               myName={settings.name || user.name}
               todos={selected ? myTodos.filter((t) => t.threadId === selected.id) : []}
               onToggleTodo={toggleTodo}
-              onOpenTodos={() => selectView({ kind: 'todos', id: 'todos' })}
+              onOpenTodos={() => openTasks({ kind: 'mine' })}
               unsubscribedAt={selected && incomingFrom(selected) ? unsubscribed[domainOf(incomingFrom(selected)!.email)] : undefined}
               onUnsubscribe={unsubscribe}
               onBlock={setBlockTarget}
@@ -1164,21 +1593,59 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         </button>
       )}
       <nav className="tabbar">
-        {([
-          ['mail', Mail, 'Mail', counts.inbox],
-          ['calendar', CalendarDays, 'Calendar', 0],
-          ['drive', HardDrive, 'Drive', 0],
-          ['settings', UserRound, 'Account', 0],
-        ] as const).map(([id, Icon, label, badge]) => (
-          <button key={id} className={mode === id ? 'on' : ''} onClick={() => go(id)}>
-            <span className="tab-icon">
-              <Icon size={21} />
-              {badge > 0 && <i>{badge}</i>}
-            </span>
-            {label}
-          </button>
-        ))}
+        {(
+          [
+            ['home', House, 'Home', 0],
+            ['mail', Mail, 'Mail', accountUnread.all ?? 0],
+            ['chat', MessagesSquare, 'Chat', chatUnreadTotal],
+            ['tasks', ListChecks, 'Tasks', 0],
+          ] as const
+        )
+          .filter(([id]) => enabled.has(id))
+          .map(([id, Icon, label, badge]) => (
+            <button key={id} className={mode === id ? 'on' : ''} onClick={() => go(id)}>
+              <span className="tab-icon">
+                <Icon size={21} />
+                {badge > 0 && <i>{badge}</i>}
+              </span>
+              {label}
+            </button>
+          ))}
+        <button className={moreOpen || ['calendar', 'drive', 'meet', 'settings'].includes(mode) ? 'on' : ''} onClick={() => setMoreOpen((o) => !o)}>
+          <span className="tab-icon">
+            <MenuIcon size={21} />
+            {myNotices.some((n) => !n.read) && <i>{myNotices.filter((n) => !n.read).length}</i>}
+          </span>
+          More
+        </button>
       </nav>
+      {moreOpen && (
+        <div className="more-sheet" onClick={() => setMoreOpen(false)}>
+          <div className="more-card" onClick={(e) => e.stopPropagation()}>
+            {APPS.filter((a) => enabled.has(a.id) && ['calendar', 'drive', 'meet'].includes(a.id)).map((a) => (
+              <button key={a.id} onClick={() => go(a.id)}>
+                <a.icon size={20} /> {a.name}
+              </button>
+            ))}
+            <button onClick={() => (setMoreOpen(false), setNoticesOpen(true))}>
+              <Hash size={20} /> Notifications {myNotices.some((n) => !n.read) && <b>{myNotices.filter((n) => !n.read).length}</b>}
+            </button>
+            <button onClick={() => (setMoreOpen(false), setPaletteOpen(true))}>
+              <Sparkles size={20} /> Search
+            </button>
+            <button onClick={() => go('settings')}>
+              <UserIcon size={20} /> Account & settings
+            </button>
+          </div>
+        </div>
+      )}
+      {noticesOpen && mobile && (
+        <div className="more-sheet" onClick={() => setNoticesOpen(false)}>
+          <div className="more-card notices-sheet" onClick={(e) => e.stopPropagation()}>
+            <Notifications notices={myNotices} onOpen={openNotice} onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))} onClose={() => setNoticesOpen(false)} />
+          </div>
+        </div>
+      )}
 
       <input
         ref={fileInput}
@@ -1205,19 +1672,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
       {newWs && (
-        <NewWorkspace
-          userId={user.id}
-          userName={settings.name || user.name}
+        <Onboarding
+          me={user}
+          existingEmails={allUsers.map((u) => u.email.toLowerCase())}
           onClose={() => setNewWs(false)}
-          onCreate={(w) => {
+          onCreate={(w, newUsers) => {
+            newUsers.forEach(onInvite);
             setWorkspaces((list) => [...list, w]);
+            // Every company starts with a #general channel for the whole team.
+            setChannels((cs) => [...cs, { id: uid(), workspaceId: w.id, kind: 'channel', name: 'general', members: w.members.map((m) => m.userId), topic: 'Everyone at ' + w.name }]);
             setNewWs(false);
             setWsId(w.id);
             setActiveAccount('all');
             setSelectedId(null);
             setView({ kind: 'folder', id: 'inbox' });
-            go('mail');
-            showToast({ text: `${w.name} is ready` });
+            go('home');
+            showToast({ text: `${w.name} is ready${newUsers.length ? `, ${newUsers.length} invite${newUsers.length > 1 ? 's' : ''} sent` : ''}` });
           }}
         />
       )}
@@ -1262,6 +1732,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
 
+      {dump !== null && <BrainDump users={members} clients={wsClients} me={user.id} initialText={dump} onCreate={createFromDump} onClose={() => setDump(null)} />}
+      {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
       <AIAssistant
         open={aiOpen}
         threads={scoped}

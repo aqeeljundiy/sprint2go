@@ -15,6 +15,7 @@ const routes: Record<string, (b: any) => Promise<unknown>> = {
   rewrite: (b) => ai.rewrite(b.text, b.style),
   todos: (b) => ai.todos(b.thread, b.me, b.today),
   assistant: (b) => ai.assistant(b.question, b.threads, b.me, b.today),
+  braindump: (b) => ai.braindump(b),
 };
 
 createServer(async (req, res) => {
@@ -43,4 +44,4 @@ createServer(async (req, res) => {
     res.end(JSON.stringify({ error: retryable ? 'AI is busy, try again shortly.' : 'AI request failed.' }));
     console.error(`[ai/${action}]`, err);
   }
-}).listen(PORT, () => console.log(`Elkiya Mail AI on :${PORT}`));
+}).listen(PORT, () => console.log(`Sprint2go AI on :${PORT}`));

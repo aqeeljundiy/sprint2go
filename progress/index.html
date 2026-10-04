@@ -1,0 +1,56 @@
+<title>Sprint2go Build Progress</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#0d0f14;--muted:#6c7180;--line:#e1e4ea;--blue:#2448ff;--soft:#e7ebff;--go:#12a36a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0d12;--card:#12151c;--ink:#eef0f5;--muted:#8a90a0;--line:#252a35;--blue:#7d93ff;--soft:#1c2346;--go:#3fd39a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b0d12;--card:#12151c;--ink:#eef0f5;--muted:#8a90a0;--line:#252a35;--blue:#7d93ff;--soft:#1c2346;--go:#3fd39a;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 "Plus Jakarta Sans",system-ui,sans-serif;padding:28px 16px}
+.w{max-width:640px;margin:0 auto}
+.brand{font-weight:800;font-size:20px;letter-spacing:-.04em} .brand b{color:var(--blue)}
+h1{font-size:24px;letter-spacing:-.02em;margin:18px 0 4px}
+.meta{color:var(--muted);font-size:13px}
+.bar{height:8px;border-radius:9px;background:var(--line);overflow:hidden;margin:16px 0 6px} .bar span{display:block;height:100%;background:var(--blue);width:100%}
+.now{background:var(--soft);border-radius:14px;padding:12px 14px;margin:16px 0;font-weight:600}
+.now small{display:block;color:var(--muted);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+ul{list-style:none;padding:0;margin:0;display:grid;gap:6px}
+li{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+.b{flex:none;width:20px;height:20px;border-radius:7px;border:2px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:800;margin-top:1px}
+li.done .b{background:var(--go);border-color:var(--go);color:#fff} li.done span:last-child{color:var(--muted)}
+li.doing{border-color:var(--blue)} li.doing .b{border-color:var(--blue);color:var(--blue);animation:p 1.4s infinite}
+@keyframes p{50%{opacity:.35}}
+h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:24px 0 8px}
+.log li{display:block;font-size:14px} .log time{color:var(--muted);font-size:12px;margin-right:8px}
+</style><div class="w">
+<div class="brand">sprint<b>2</b>go</div>
+<h1>Phase 1: the whole product as a clickable prototype</h1>
+<div class="meta">15 of 15 steps done · updated 05 Oct 2026, 03:06 · updates live while I work</div>
+<div class="bar"><span></span></div>
+<div class="now"><small>Working on now</small>Phase 1 done. Waiting for Aqeel to try it before Phase 2 (real servers)</div>
+<ul><li class="done"><span class="b">✓</span><span>Project renamed to Sprint2go, saved with version history (git)</span></li>
+<li class="done"><span class="b">✓</span><span>Data model: clients, tasks, chat, notifications, meetings, team members, email providers</span></li>
+<li class="done"><span class="b">✓</span><span>Sample data: 6 clients, 12 tasks, 9 chat channels, 3 meetings, 7 team members</span></li>
+<li class="done"><span class="b">✓</span><span>Brain dump AI: demo parser + real Claude version on the server</span></li>
+<li class="done"><span class="b">✓</span><span>Sprint2go logo and brand</span></li>
+<li class="done"><span class="b">✓</span><span>App rail on the left (Home, Mail, Chat, Tasks, Calendar, Drive, Meet) with addresses like /mail</span></li>
+<li class="done"><span class="b">✓</span><span>Home: your day, tasks due, unread, meetings, AI briefing</span></li>
+<li class="done"><span class="b">✓</span><span>Tasks + Clients: list, board, client pages</span></li>
+<li class="done"><span class="b">✓</span><span>Brain dump: talk or type, preview, approve, assign and notify</span></li>
+<li class="done"><span class="b">✓</span><span>Chat: client channels, DMs, turn a message into a task</span></li>
+<li class="done"><span class="b">✓</span><span>Meet: meeting notes with action items that become tasks</span></li>
+<li class="done"><span class="b">✓</span><span>Notifications bell and ⌘K search across everything</span></li>
+<li class="done"><span class="b">✓</span><span>Onboarding: company sign-up with the 4 email options (keep, mix, hosted, none)</span></li>
+<li class="done"><span class="b">✓</span><span>Connect existing email per person (Google, Microsoft, Zoho, IMAP)</span></li>
+<li class="done"><span class="b">✓</span><span>Test everything in the side browser, desktop and phone</span></li></ul>
+<h2>Latest</h2><ul class="log"><li><time>03:06</time>Phase 1 saved (git)</li>
+<li><time>03:06</time>Tested every app on desktop and phone, fixed 5 small bugs</li>
+<li><time>02:59</time>Build succeeds, now testing</li>
+<li><time>02:59</time>App renamed to Sprint2go with its own logo</li>
+<li><time>02:59</time>Everything wired together: rail, /mail /chat /tasks addresses, ⌘K search, notifications</li>
+<li><time>02:24</time>Add account can now connect Google, Microsoft, Zoho or IMAP</li>
+<li><time>02:24</time>Onboarding written: company, apps, 4 email options with DNS check, invite team</li>
+<li><time>02:24</time>Home written: your day, AI briefing, tasks, mail, meetings, clients</li>
+<li><time>02:24</time>Meet written: notes and action items that become tasks</li>
+<li><time>02:24</time>Chat written: client channels, DMs, @mentions, turn any message into a task</li>
+<li><time>02:24</time>Brain dump window: type or dictate, preview, edit, assign, notify</li>
+<li><time>02:12</time>Tasks + Clients written: list, board, client pages with emails and meetings</li></ul>
+</div>

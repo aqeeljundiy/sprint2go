@@ -1,7 +1,8 @@
 import type { Thread } from '../types';
 import * as demo from './demo';
+export type { DumpTask, DumpPerson, DumpClient } from './demo';
 
-// Elkiya Mail AI client. Talks to the AI service on your server (server/ai.ts → Claude) when VITE_AI_URL is set.
+// Sprint2go AI client. Talks to the AI service on your server (server/ai.ts → Claude) when VITE_AI_URL is set.
 // Without it, a small built-in demo stands in so every feature can be tried offline.
 
 const URL = (import.meta.env.VITE_AI_URL as string | undefined)?.replace(/\/$/, '');
@@ -39,6 +40,8 @@ export const ai = {
     URL ? call('draft', { ...p, thread: p.thread && plain(p.thread) }) : demo.draft(p),
   rewrite: (text: string, style: RewriteStyle): Promise<string> => (URL ? call('rewrite', { text, style }) : demo.rewrite(text, style)),
   todos: (t: Thread, me: string): Promise<AITodo[]> => (URL ? call('todos', { thread: plain(t), me, today: today() }) : demo.todos(t, me)),
+  braindump: (text: string, people: demo.DumpPerson[], clients: demo.DumpClient[], meId: string): Promise<demo.DumpTask[]> =>
+    URL ? call('braindump', { text, people, clients, meId, today: today() }) : demo.braindump(text, people, clients, meId),
   assistant: (question: string, threads: Thread[], me: string): Promise<{ answer: string; threadIds: string[] }> =>
     URL ? call('assistant', { question, threads: threads.map(plain), me, today: today() }) : demo.assistant(question, threads, me),
 };

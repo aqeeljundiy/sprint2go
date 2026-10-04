@@ -72,7 +72,7 @@ export function AIAssistant({ open, threads, me, onClose, onOpenThread }: Props)
           <Sparkles size={15} />
         </span>
         <div>
-          <strong>Ask Elkiya</strong>
+          <strong>Ask Sprint2go</strong>
           <small>{AI_LIVE ? 'Powered by Claude' : 'Demo mode. Connect Claude on the server'}</small>
         </div>
         <button className="icon-btn sm" onClick={onClose} title="Close (⌘J)">

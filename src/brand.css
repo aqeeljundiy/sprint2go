@@ -1,15 +1,15 @@
 /* ==========================================================================
-   Elkiya Mail — brand layer
-   The design language of elkiya.com and aqeeljundiy.com: Plus Jakarta Sans
-   everywhere, near-black ink, soft #EDEEF2 surfaces, hairline #E2E3E9 borders,
-   pill buttons with Elkiya blue, sky-gradient sign-in, small uppercase labels. Loaded last so it overrides the base styles.
+   Sprint2go brand layer.
+   Plus Jakarta Sans everywhere, near-black ink, soft #EDEEF2 surfaces,
+   hairline #E2E3E9 borders, pill buttons, sky-gradient sign-in.
+   The accent comes from each workspace's brand colour; Sprint2go blue is the default.
    ========================================================================== */
 
 :root {
   --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --accent: #0158cb;
-  --accent-hover: #0a3f8f;
-  --accent-soft: #e8f0fe;
+  --accent: #2448ff;
+  --accent-hover: #1834d6;
+  --accent-soft: #e7ebff;
   --bg: #f5f6f8;
   --surface: #ffffff;
   --surface-2: #f5f6f8;

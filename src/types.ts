@@ -144,6 +144,7 @@ export interface Account {
   name: string; // display name on outgoing mail
   kind: 'personal' | 'shared';
   connected: boolean; // false until the mail server is linked
+  provider?: MailProvider; // default: sprint2go
   users: string[]; // user ids who can open this mailbox
 }
 
@@ -156,6 +157,10 @@ export interface Workspace {
   domains: string[];
   accounts: Account[];
   members: Member[];
+  apps?: AppId[]; // switched-on apps (default: all)
+  emailSetup?: EmailSetup; // what the company chose at onboarding
+  emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
+  meetUrl?: string;
 }
 
 export type Role = 'owner' | 'admin' | 'member';
@@ -165,7 +170,7 @@ export interface Member {
   role: Role;
 }
 
-/** A person who signs in to Elkiya Mail. */
+/** A person who signs in to Sprint2go. */
 export interface User {
   id: string;
   name: string;
@@ -174,17 +179,83 @@ export interface User {
   color: string;
 }
 
+/** A task. `userId` is the person it's assigned to. */
 export interface Todo {
   id: string;
   title: string;
   due?: string; // YYYY-MM-DD
   done: boolean;
+  status?: TaskStatus; // board column; kept in step with `done`
   priority: 'high' | 'normal';
   threadId?: string; // the email it came from
-  source: 'ai' | 'manual';
-  userId: string;
+  source: 'ai' | 'manual' | 'braindump' | 'chat' | 'meeting';
+  userId: string; // assignee
+  createdBy?: string;
+  clientId?: string;
+  workspaceId?: string;
+  notes?: string;
   createdAt: string;
 }
+export type Task = Todo;
+export type TaskStatus = 'todo' | 'doing' | 'done';
+
+export interface Client {
+  id: string;
+  workspaceId: string;
+  name: string;
+  domain?: string; // their email domain, used to find their emails
+  color: string;
+  status: 'active' | 'lead' | 'paused';
+  ownerId: string;
+}
+
+export interface Channel {
+  id: string;
+  workspaceId: string;
+  kind: 'channel' | 'dm';
+  name: string; // channel name, or '' for DMs
+  members: string[]; // user ids
+  clientId?: string;
+  topic?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  channelId: string;
+  userId: string;
+  text: string;
+  at: string;
+  taskId?: string; // a task created from (or announced by) this message
+}
+
+export interface Notice {
+  id: string;
+  userId: string; // who receives it
+  workspaceId: string;
+  kind: 'task' | 'mention' | 'meeting' | 'mail' | 'done';
+  text: string;
+  at: string;
+  read: boolean;
+  link?: { app: AppId; id?: string };
+}
+
+export interface Meeting {
+  id: string;
+  workspaceId: string;
+  title: string;
+  at: string;
+  minutes: number;
+  clientId?: string;
+  attendees: string[]; // names
+  summary: string;
+  actions: { title: string; owner?: string; due?: string; taskId?: string }[];
+}
+
+export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'calendar' | 'drive' | 'meet';
+
+/** Where a mailbox actually lives. */
+export type MailProvider = 'sprint2go' | 'google' | 'microsoft' | 'zoho' | 'imap';
+export type EmailSetup = 'keep' | 'mix' | 'hosted' | 'none';
 
 /** Mail from these senders never reaches the inbox (a server-side rule later). */
 export interface BlockRule {

@@ -30,7 +30,7 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget }: Props) {
         <Wordmark height={30} />
         {adding ? (
           <>
-            <h1>Sign in to Elkiya Mail</h1>
+            <h1>Sign in to Sprint2go</h1>
             <p className="signin-sub">Use the email address your workspace gave you.</p>
             <form onSubmit={submit} className="signin-form">
               <div className="field">
@@ -84,7 +84,7 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget }: Props) {
         )}
       </div>
       <p className="signin-foot">
-        elkiyamail.com · part of <a href="https://elkiyagroup.com">Elkiya Group</a>
+        sprint2go.com · one app for your whole team
       </p>
     </div>
   );
