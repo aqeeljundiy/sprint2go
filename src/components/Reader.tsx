@@ -64,6 +64,11 @@ interface Props {
   onBlock: (t: Thread) => void;
 }
 
+/** AI results per message id, kept for the session (the backend stores them with the email). */
+const AI_CACHE = { summary: new Map<string, any>(), replies: new Map<string, string[]>() }; // eslint-disable-line @typescript-eslint/no-explicit-any
+/** Free reply templates: always there, no AI. */
+const TEMPLATES = ['Thanks, received!', 'Let me check and get back to you.', 'Sounds good, let’s do it.'];
+
 export function Reader(props: Props) {
   const { thread, labels } = props;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -72,6 +77,7 @@ export function Reader(props: Props) {
   const [replyInitial, setReplyInitial] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | 'loading' | null>(null);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
   const incoming = thread ? [...thread.messages].reverse().find((m) => !isMine(m.from.email)) : undefined;
   const isList = !!thread?.messages.some((m) => m.listUnsubscribe);
 
@@ -82,26 +88,37 @@ export function Reader(props: Props) {
     setReplyOpen(false);
     setReply({ html: '', text: '' });
     setReplyInitial(null);
-    setSummary(null);
-    setSuggestions(null);
-    // Suggested replies for real conversations (not newsletters, spam or your own last word)
-    const lastMsg = thread.messages[thread.messages.length - 1];
-    if (isMine(lastMsg.from.email) || isList || thread.location === 'spam' || /no-?reply|notifications/i.test(lastMsg.from.email)) return;
-    let live = true;
-    ai.replies(thread, props.myName)
-      .then((r) => live && setSuggestions(r))
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
+    // AI answers are saved per message: opening the email again never pays twice.
+    const key = thread.messages[thread.messages.length - 1].id;
+    setSummary(AI_CACHE.summary.get(key) ?? null);
+    setSuggestions(AI_CACHE.replies.get(key) ?? null);
+    setSuggesting(false);
   }, [thread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Suggested replies only when someone asks (AI never runs just because an email was opened).
+  const lastMsg = thread?.messages[thread.messages.length - 1];
+  const canReply = !!thread && !!lastMsg && !isMine(lastMsg.from.email) && !isList && thread.location !== 'spam' && !/no-?reply|notifications/i.test(lastMsg.from.email);
+  const suggest = async () => {
+    if (!thread || !lastMsg || suggesting) return;
+    setSuggesting(true);
+    try {
+      const r = await ai.replies(thread, props.myName);
+      AI_CACHE.replies.set(lastMsg.id, r);
+      setSuggestions(r);
+    } catch {
+      /* AI unavailable */
+    }
+    setSuggesting(false);
+  };
 
   const summarize = async () => {
     if (!thread || summary === 'loading') return;
     if (summary) return setSummary(null);
     setSummary('loading');
     try {
-      setSummary(await ai.summarize(thread));
+      const sum = await ai.summarize(thread);
+      AI_CACHE.summary.set(thread.messages[thread.messages.length - 1].id, sum);
+      setSummary(sum);
     } catch {
       setSummary(null);
     }
@@ -406,12 +423,31 @@ export function Reader(props: Props) {
           </div>
         ) : (
           <>
-          {suggestions && suggestions.length > 0 && (
+          {canReply && (
             <div className="smart-replies">
               <span>
                 <Sparkles size={13} /> Quick replies
               </span>
-              {suggestions.map((sug, i) => (
+              {!suggestions &&
+                TEMPLATES.map((sug, i) => (
+                  <button
+                    key={sug}
+                    className="tpl"
+                    style={{ ['--i' as string]: i }}
+                    onClick={() => {
+                      setReplyInitial(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''));
+                      setReplyOpen(true);
+                    }}
+                  >
+                    {sug}
+                  </button>
+                ))}
+              {!suggestions && (
+                <button className="ai-suggest" onClick={suggest} disabled={suggesting} title="Uses AI only when you click. Saved, so it’s free next time">
+                  <Sparkles size={13} /> {suggesting ? 'Thinking…' : 'Suggest replies'}
+                </button>
+              )}
+              {suggestions?.map((sug, i) => (
                 <button
                   key={i}
                   style={{ ['--i' as string]: i }}

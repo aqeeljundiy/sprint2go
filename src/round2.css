@@ -3012,3 +3012,15 @@ button.chat-members:hover {
   text-transform: none;
   letter-spacing: 0;
 }
+
+/* Mail: free templates, AI replies on click */
+.smart-replies .tpl {
+  background: var(--surface) !important;
+}
+.smart-replies .ai-suggest {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-style: dashed !important;
+  color: var(--accent) !important;
+}

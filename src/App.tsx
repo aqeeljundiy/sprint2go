@@ -533,10 +533,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** Reads new inbox mail and adds the tasks it asks of you. */
   const scan = async (force = false) => {
+    // Automatic, once, and only for real client mail: the admin can switch it off, and newsletters,
+    // receipts and no-reply senders never reach the AI.
+    if (!force && ws.ai?.auto.emailTodos === false) return;
+    const clientDomains = new Set(wsClients.map((c) => c.domain).filter(Boolean) as string[]);
+    const known = new Set(wsThreads.flatMap((t) => (t.messages.some((m) => isMine(m.from.email)) ? t.messages.flatMap((m) => m.to.map((p) => p.email.toLowerCase())) : [])));
     const fresh = wsThreads.filter((t) => {
       if (t.location !== 'inbox' || fromBlocked(t)) return false;
       const last = t.messages[t.messages.length - 1];
       if (isMine(last.from.email) || last.listUnsubscribe) return false;
+      const from = last.from.email.toLowerCase();
+      if (/no-?reply|notifications?@|billing@|receipts?@|invoice/i.test(from)) return false;
+      if (!force && !clientDomains.has(from.split('@')[1]) && !known.has(from) && !isTeam(from)) return false;
       return force || !scanned.has(`${user.id}:${t.id}:${last.id}`);
     });
     if (!fresh.length) return;
