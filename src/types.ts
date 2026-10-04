@@ -161,6 +161,8 @@ export interface Workspace {
   emailSetup?: EmailSetup; // what the company chose at onboarding
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
+  aliases?: Record<string, string>; // learned names: "andi" -> user id, or "contact:<name>"
+  teamHome?: Record<string, HomeTemplateId>; // default Home template per team
 }
 
 export type Role = 'owner' | 'admin' | 'member';
@@ -177,12 +179,19 @@ export interface User {
   email: string; // sign-in address
   title: string;
   color: string;
+  nicknames?: string[]; // "Kiki" for Rizky; used by the brain dump
 }
 
-/** A task. `userId` is the person it's assigned to. */
+/** A task. `userId` is the person it's assigned to ('' = not assigned yet, e.g. waiting in a team's queue). */
 export interface Todo {
   id: string;
+  kind?: 'task' | 'brief'; // a brief has an owner (userId), context and subtasks
   title: string;
+  teamId?: string;
+  briefId?: string; // the brief this task belongs to
+  context?: string; // a brief's goal, background, deliverables and links
+  doneAt?: string;
+  doneBy?: string;
   due?: string; // YYYY-MM-DD
   done: boolean;
   status?: TaskStatus; // board column; kept in step with `done`
@@ -198,6 +207,19 @@ export interface Todo {
 }
 export type Task = Todo;
 export type TaskStatus = 'todo' | 'doing' | 'done';
+
+/** A department: Video editing, Design, Performance, Finance… */
+export interface Team {
+  id: string;
+  workspaceId: string;
+  name: string;
+  color: string;
+  leadId?: string;
+  members: string[];
+  keywords?: string[]; // words that route brain-dump tasks to this team
+}
+
+export type HomeTemplateId = 'founder' | 'lead' | 'maker' | 'account' | 'finance';
 
 export interface Client {
   id: string;

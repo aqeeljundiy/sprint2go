@@ -1,4 +1,5 @@
 import type { Thread } from '../types';
+import { localDay } from '../utils';
 import { isMine } from '../identity';
 import type { AITodo, RewriteStyle, Summary } from './index';
 
@@ -28,7 +29,7 @@ function dueFrom(text: string): string | null {
     if (i < 0) return null;
     d.setDate(d.getDate() + (((i - d.getDay() + 7) % 7) || 7));
   }
-  return d.toISOString().slice(0, 10);
+  return localDay(d);
 }
 
 /** "Could you send the deck by Friday?" → "Send the deck" */
@@ -138,7 +139,7 @@ export async function todos(t: Thread, _me: string): Promise<AITodo[]> {
   if (/noreply|no-reply|notifications|billing|news|deals|digest|winner/i.test(m.from.email)) {
     // Bills still deserve a reminder
     const due = /due:?\s*(\d{1,2} \w+ \d{4})/i.exec(m.body)?.[1];
-    return due ? [{ title: `Pay: ${t.subject.replace(/ is available$/i, '')}`, due: new Date(due).toISOString().slice(0, 10), priority: 'normal' }] : [];
+    return due ? [{ title: `Pay: ${t.subject.replace(/ is available$/i, '')}`, due: localDay(new Date(due)), priority: 'normal' }] : [];
   }
   return sentences(m.body)
     .filter((s) => ASK.test(s) && !/\bthank/i.test(s))
@@ -193,66 +194,135 @@ export async function assistant(question: string, threads: Thread[], me: string)
 export interface DumpPerson {
   id: string;
   name: string;
+  nicknames?: string[];
+  teamIds?: string[];
 }
 export interface DumpClient {
   id: string;
   name: string;
 }
+export interface DumpTeam {
+  id: string;
+  name: string;
+  keywords?: string[];
+}
 export interface DumpTask {
   title: string;
   clientId: string | null;
+  teamId: string | null;
   assigneeId: string | null;
   due: string | null; // YYYY-MM-DD
   priority: 'high' | 'normal';
+  unknownName?: string | null; // a name in the "who" position that matches nobody: the UI asks "Who is Andi?"
+  contact?: string | null; // a client-side person mentioned ("Dimas at Arunika"), not the assignee
+}
+export interface DumpBrief {
+  title: string;
+  context: string;
+  clientId: string | null;
+  ownerId: string;
+  due: string | null;
+}
+export interface DumpPlan {
+  tasks: DumpTask[];
+  brief: DumpBrief | null; // suggested when the dump describes one bigger piece of work
+}
+export interface DumpInput {
+  text: string;
+  people: DumpPerson[];
+  clients: DumpClient[];
+  teams: DumpTeam[];
+  meId: string;
+  aliases?: Record<string, string>; // learned: "andi" -> user id, or "contact"
 }
 
+const NOT_NAMES = new Set(
+  'I Im The A An Also And Then So Ok Okay Hey Please Can Could Should Someone Somebody Anyone Everyone Let Maybe Just We Our They Q1 Q2 Q3 Q4 Monday Tuesday Wednesday Thursday Friday Saturday Sunday January February March April May June July August September October November December Next This Today Tomorrow Meta Google TikTok Instagram Facebook YouTube Drive WIB ROAS CEO It For With Make Do Send Get Book Prepare Finish Build Check Review Follow Call Edit Design Cut Write Draft Update Launch'.split(' '),
+);
+
 /**
- * "KopiKita wants the concepts by Thursday. Rizky, do the ad structure. Dewi handle the invoice."
- * → one task per instruction, with the client carried forward and names matched to people.
+ * "KopiKita wants the concepts by Thursday. Rizky, do the ad structure. Andi send the moodboard."
+ * One task per instruction; the client is carried forward; names go through nicknames and learned aliases;
+ * an unknown name where a person is expected is flagged (never guessed); teams come from keywords or the person.
  */
-export async function braindump(text: string, people: DumpPerson[], clients: DumpClient[], meId: string): Promise<DumpTask[]> {
+export async function braindump(input: DumpInput): Promise<DumpPlan> {
+  const { text, people, clients, teams, meId, aliases = {} } = input;
   await wait(1100);
   const lower = (s: string) => s.toLowerCase();
-  const firstName = (p: DumpPerson) => lower(p.name.split(' ')[0]);
+  const namesOf = (p: DumpPerson) => [p.name.split(' ')[0], ...(p.nicknames ?? [])].map(lower);
+  const byName = (word: string) => {
+    const w = lower(word);
+    const alias = aliases[w];
+    if (alias && alias !== 'contact') return people.find((p) => p.id === alias) ?? null;
+    return people.find((p) => namesOf(p).includes(w) || lower(p.name) === w) ?? null;
+  };
+  const clientWords = new Set(clients.flatMap((c) => c.name.split(/\s+/).map(lower)));
   const clauses = text
     .replace(/\n+/g, '. ')
     .split(/(?<=[.!?;])\s+|\s+(?:and then|also|plus)\s+/i)
     .map((s) => s.trim().replace(/^[-•*]\s*/, ''))
     .filter((s) => s.length > 3);
 
+  const VERBS = 'do|send|take|book|prepare|follow|build|check|edit|design|cut|make|write|draft|update|finish|review|set|setup|get|create|plan|shoot|post|schedule|call|email|reply|share|fix|ship|run|handle|deliver|pull|find|look|brief|order|pay|chase|confirm';
+  const WHO = `(,|\\s+(?:to|will|can|could|should|please|needs? to|has to|must|${VERBS})\\b|\\s*$)`;
+  const ACTION = new RegExp(`^(?:please\\s+)?(?:${VERBS}|someone|somebody|anyone|i\\b|i'll|let me|remind me|we need|need to)`, 'i');
+  const context: string[] = [];
+  let briefName: string | null = null;
   let client: string | null = null;
   const out: DumpTask[] = [];
   for (const raw of clauses) {
     const c = lower(raw);
-    // Client: a client name (or its first word) mentioned in this clause; otherwise keep the last one.
     const hit = clients.find((cl) => c.includes(lower(cl.name)) || c.includes(lower(cl.name.split(' ')[0])));
     if (hit) client = hit.id;
-    // Assignee: "Rizky, …", "Dewi handle …", "ask Faisal to …", "for Aditya"; "someone"/"anyone" = unassigned.
+
+    // Client contacts: "Dimas at Arunika", "Nadia from KopiKita".
+    let contact: string | null = null;
+    const atClient = raw.match(/\b([A-Z][a-z]+)\s+(?:at|from)\s+([A-Z][\w]+)/);
+    if (atClient && clientWords.has(lower(atClient[2]))) contact = atClient[1];
+
+    // Who: a name in the "who" position (start of the sentence, "ask X to", "X will…").
     let assignee: string | null = null;
-    for (const p of people) {
-      const fn = firstName(p);
-      const re = new RegExp(`(^|\\b)(${fn})(,|\\s+(?:to|will|can|should|handle|please|needs? to|do|send|take|book|prepare|follow|build|check)\\b|\\s*$)|\\b(?:ask|tell|get|have|for|assign(?:ed)? to)\\s+${fn}\\b`, 'i');
-      if (re.test(raw)) {
+    let unknownName: string | null = null;
+    const candidates = [...raw.matchAll(/\b([A-Z][a-z]{2,})\b/g)].map((m) => m[1]);
+    for (const word of candidates) {
+      if (word === contact) continue;
+      const re = new RegExp(`(^|\\b)${word}${WHO}|\\b(?:ask|tell|get|have|assign(?:ed)? to)\\s+${word}\\b`);
+      const p = byName(word);
+      // A known person at the start of a sentence is the "who"; an unknown word only counts in a clear "who" position.
+      if (p && (re.test(raw) || raw.startsWith(word))) {
         assignee = p.id;
         break;
       }
+      if (!re.test(raw) || p) continue;
+      if (aliases[lower(word)] === 'contact' || NOT_NAMES.has(word) || clientWords.has(lower(word))) continue;
+      unknownName = word;
+      break;
     }
     const meRef = /^(i|i'll|i will|i need to|i should|let me|remind me to)\b/i.test(raw.trim());
-    if (!assignee && meRef) assignee = meId;
+    if (!assignee && !unknownName && meRef) assignee = meId;
     if (/\b(someone|anyone|somebody)\b/i.test(raw)) assignee = null;
 
     // Title: strip names, filler and dates, keep the instruction.
+    // Sentences that aren't instructions (a goal, background, a campaign name) become the brief's context.
+    const clientAsks = clients.some((cl) => new RegExp(`^${cl.name.split(' ')[0]}\\b.*\\b(wants?|needs?|asked for)\\b`, 'i').test(raw.trim()));
+    const instruction = assignee || unknownName || ACTION.test(raw.trim()) || clientAsks || (dueFrom(raw) && !/^(goal|target|background|budget is|the goal)\b/i.test(raw.trim()));
+    if (!instruction) {
+      if (!briefName && raw.split(/\s+/).length <= 6 && hit) briefName = raw.replace(/[.!?;]+$/, '').trim();
+      else context.push(raw);
+      continue;
+    }
+
     let title = raw
-      .replace(/\b(also|and|so|ok|okay|hey|then)\b[,]?\s*/gi, '')
+      .replace(/^(?:(?:also|and|so|ok|okay|hey|then)\b[,]?\s*)+/i, '')
       .replace(/\b(someone|somebody|anyone)\s+(should|needs? to|has to|must|can)?\s*/i, '')
       .replace(/^(i|i'll|i will|i need to|i should|let me|remind me to)\s+/i, '');
-    for (const p of people) {
-      const fn = p.name.split(' ')[0];
+    const strip = [...people.flatMap((p) => [p.name.split(' ')[0], ...(p.nicknames ?? [])]), ...(unknownName ? [unknownName] : [])];
+    for (const fn of strip) {
       title = title
         .replace(new RegExp(`\\b(ask|tell|get|have|assign(?:ed)? to)\\s+${fn}\\s+(to\\s+)?`, 'i'), '')
         .replace(new RegExp(`^${fn},?\\s*(please\\s+|can you\\s+|could you\\s+|will\\s+|to\\s+|should\\s+|needs? to\\s+)?`, 'i'), '')
         .replace(new RegExp(`,?\\s*${fn}\\s+(handle|take|do)\\s+(that|this|it)\\b`, 'i'), '')
-        .replace(new RegExp(`\\s+for\\s+${fn}\\b`, 'i'), '');
+        .replace(new RegExp(`\\s+for\\s+${fn}\\b(?!\\s+at)`, 'i'), '');
     }
     title = title
       .replace(/\s+(by|before|on|due)\s+(mon|tues|wednes|thurs|fri|satur|sun)day\b.*$/i, '')
@@ -260,7 +330,6 @@ export async function braindump(text: string, people: DumpPerson[], clients: Dum
       .replace(/\s+(next week|tomorrow|today)\b\.?$/i, '')
       .replace(/[.!?;]+$/, '')
       .trim();
-    // "KopiKita wants the Q4 concepts" reads better as "Deliver the Q4 concepts to KopiKita".
     const wants = title.match(/^(.+?)\s+(wants?|needs?|asked for)\s+(.+)$/i);
     if (wants && clients.some((cl) => lower(wants[1]).includes(lower(cl.name.split(' ')[0])))) {
       title = `${/^wants?|asked/i.test(wants[2]) ? 'Deliver' : 'Prepare'} ${wants[3]} ${/^wants?|asked/i.test(wants[2]) ? 'to' : 'for'} ${wants[1]}`;
@@ -268,8 +337,27 @@ export async function braindump(text: string, people: DumpPerson[], clients: Dum
     if (title.length < 3) continue;
     title = title.charAt(0).toUpperCase() + title.slice(1);
 
-    const due = dueFrom(raw);
-    out.push({ title, clientId: client, assigneeId: assignee, due, priority: /asap|urgent|today|tomorrow|!/.test(c) ? 'high' : 'normal' });
+    // Team: keywords first, then the person's own team.
+    const tl = ' ' + lower(title) + ' ';
+    let teamId = teams.find((t) => t.keywords?.some((k) => tl.includes(k)))?.id ?? null;
+    if (!teamId && assignee) teamId = people.find((p) => p.id === assignee)?.teamIds?.[0] ?? null;
+
+    out.push({ title, clientId: client, teamId, assigneeId: assignee, due: dueFrom(raw), priority: /asap|urgent|today|tomorrow|!/.test(c) ? 'high' : 'normal', unknownName, contact });
   }
-  return out;
+
+  // A brief when it's one bigger job: long, or many tasks for one client, or brief-like words.
+  const mainClient = out.length ? [...out.map((t) => t.clientId)].sort((a, b) => out.filter((t) => t.clientId === b).length - out.filter((t) => t.clientId === a).length)[0] : null;
+  const sameClient = out.filter((t) => t.clientId && t.clientId === mainClient).length;
+  const briefy = /\b(brief|campaign|launch|project|goal|background|deliverables?|concepts?)\b/i.test(text);
+  const brief: DumpBrief | null =
+    out.length >= 2 && (context.length > 0 || !!briefName || (briefy && sameClient === out.length) || (sameClient >= 3 && sameClient === out.length))
+      ? {
+          title: briefName ?? `${clients.find((c) => c.id === mainClient)?.name ?? 'New'} ${/campaign/i.test(text) ? 'campaign' : /launch/i.test(text) ? 'launch' : 'project'}`,
+          context: context.length ? context.join(' ') : text.trim(),
+          clientId: mainClient ?? null,
+          ownerId: meId,
+          due: out.map((t) => t.due).filter(Boolean).sort().pop() ?? null,
+        }
+      : null;
+  return { tasks: out, brief };
 }

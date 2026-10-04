@@ -9,6 +9,7 @@ import { AIWriter } from './AIWriter';
 import { hasOwnText, htmlToText, textToHtml } from '../sanitize';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from '../tracking';
 import type { Account, TrackOptions } from '../types';
+import { Select } from './ui/Select';
 
 export interface OutgoingFile {
   name: string;
@@ -157,13 +158,14 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
           {accounts.length > 1 && (
             <label className="compose-field from-field">
               <span>From</span>
-              <select value={fromId} onChange={(e) => setFromId(e.target.value)}>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} &lt;{a.email}&gt;{a.kind === 'shared' ? ' · shared' : ''}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={fromId}
+                onChange={setFromId}
+                label="From"
+                className="sel-flat from-sel"
+                width={340}
+                options={accounts.map((a) => ({ value: a.id, label: `${a.name} <${a.email}>`, hint: a.kind === 'shared' ? 'Shared inbox' : undefined }))}
+              />
             </label>
           )}
           <RecipientInput

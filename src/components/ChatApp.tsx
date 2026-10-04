@@ -4,6 +4,7 @@ import type { Channel, ChatMessage, Client, Todo, User } from '../types';
 import { relative } from '../utils';
 import { Avatar } from './Avatar';
 import { statusOf } from './TasksView';
+import { Select } from './ui/Select';
 
 const dmName = (c: Channel, me: string, users: User[]) => users.find((u) => u.id === c.members.find((m) => m !== me))?.name ?? 'Direct message';
 
@@ -78,18 +79,14 @@ export function ChatSidebar({ channels, users, me, current, unread, onOpen, onNe
         })}
         {adding === 'dm' ? (
           <div className="add-client sb-label">
-            <select autoFocus defaultValue="" onChange={(e) => (onNewDm(e.target.value), setAdding(null))}>
-              <option value="" disabled>
-                Message someone…
-              </option>
-              {users
-                .filter((u) => u.id !== me && !dmWith.has(u.id))
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-            </select>
+            <Select
+              value={null}
+              placeholder="Message someone…"
+              label="Message someone"
+              searchable
+              onChange={(v) => (onNewDm(v), setAdding(null))}
+              options={users.filter((u) => u.id !== me && !dmWith.has(u.id)).map((u) => ({ value: u.id, label: u.name, hint: u.title, icon: <Avatar person={u} size={22} /> }))}
+            />
           </div>
         ) : (
           <button className="nav-item" onClick={() => setAdding('dm')} title="New message">

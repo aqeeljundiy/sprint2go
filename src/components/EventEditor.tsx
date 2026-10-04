@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { CalEvent, CalendarDef } from '../types';
 import { toDateInput, toTimeInput } from '../calendarUtils';
+import { Select } from './ui/Select';
+import { DatePicker, TIMES } from './ui/DatePicker';
 
 interface Props {
   start: Date;
@@ -72,12 +74,12 @@ export function EventEditor({ start, calendars, onSave, onClose }: Props) {
             placeholder="Add title"
           />
           <div className="field-row">
-            <input type="date" value={date} onChange={(ev) => setDate(ev.target.value)} />
+            <DatePicker value={date} onChange={(v) => v && setDate(v)} clearable={false} label="Date" />
             {!allDay && (
               <>
-                <input type="time" value={from} onChange={(ev) => setFrom(ev.target.value)} />
-                <span className="muted">–</span>
-                <input type="time" value={to} onChange={(ev) => setTo(ev.target.value)} />
+                <Select value={from} onChange={setFrom} label="Starts" options={TIMES.map((t) => ({ value: t, label: t }))} width={130} />
+                <span className="muted">to</span>
+                <Select value={to} onChange={setTo} label="Ends" options={TIMES.map((t) => ({ value: t, label: t }))} width={130} />
               </>
             )}
           </div>

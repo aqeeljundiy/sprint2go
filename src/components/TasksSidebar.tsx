@@ -1,24 +1,26 @@
 import { useState } from 'react';
-import { Inbox, Layers, Plus, Send, Sparkles } from 'lucide-react';
-import type { Client, Todo } from '../types';
-import type { TaskScope } from './TasksView';
+import { FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles } from 'lucide-react';
+import type { Client, Team, Todo } from '../types';
+import { isBrief, type TaskScope } from './TasksView';
 
 interface Props {
   scope: TaskScope;
   tasks: Todo[];
   clients: Client[];
+  teams: Team[];
   me: string;
   onScope: (s: TaskScope) => void;
   onBrainDump: () => void;
   onAddClient: (name: string, domain?: string) => void;
 }
 
-export function TasksSidebar({ scope, tasks, clients, me, onScope, onBrainDump, onAddClient }: Props) {
+export function TasksSidebar({ scope, tasks, clients, teams, me, onScope, onBrainDump, onAddClient }: Props) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
-  const open = tasks.filter((t) => !t.done);
-  const is = (s: TaskScope) => s.kind === scope.kind && (s.kind !== 'client' || (scope.kind === 'client' && scope.id === s.id));
+  const open = tasks.filter((t) => !t.done && !isBrief(t));
+  const openBriefs = tasks.filter((t) => !t.done && isBrief(t));
+  const is = (s: TaskScope) => s.kind === scope.kind && (!('id' in s) || ('id' in scope && scope.id === s.id));
 
   const save = () => {
     if (!name.trim()) return;
@@ -40,6 +42,8 @@ export function TasksSidebar({ scope, tasks, clients, me, onScope, onBrainDump, 
             [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => t.userId === me).length],
             [{ kind: 'delegated' }, Send, 'Assigned by me', open.filter((t) => t.createdBy === me && t.userId !== me).length],
             [{ kind: 'all' }, Layers, 'All tasks', open.length],
+            [{ kind: 'briefs' }, FileText, 'Briefs', openBriefs.length],
+            [{ kind: 'grid' }, LayoutGrid, 'Clients × teams', 0],
           ] as const
         ).map(([s, Icon, label, count]) => (
           <button key={label} className={`nav-item ${is(s) ? 'active' : ''}`} onClick={() => onScope(s)} title={label}>
@@ -49,6 +53,31 @@ export function TasksSidebar({ scope, tasks, clients, me, onScope, onBrainDump, 
           </button>
         ))}
       </nav>
+
+      {teams.length > 0 && (
+        <>
+          <div className="nav-heading sb-label">Teams</div>
+          <nav className="nav">
+            {teams.map((tm) => {
+              const mine = open.filter((t) => t.teamId === tm.id);
+              const waiting = mine.filter((t) => !t.userId).length;
+              return (
+                <button key={tm.id} className={`nav-item ${is({ kind: 'team', id: tm.id }) ? 'active' : ''}`} onClick={() => onScope({ kind: 'team', id: tm.id })} title={tm.name}>
+                  <span className="team-square" style={{ background: tm.color }} />
+                  <span className="sb-label">{tm.name}</span>
+                  {waiting ? (
+                    <span className="count warn-count" title={`${waiting} not assigned`}>
+                      {waiting}
+                    </span>
+                  ) : mine.length ? (
+                    <span className="count muted-count">{mine.length}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+        </>
+      )}
 
       <div className="nav-heading sb-label">Clients</div>
       <nav className="nav">

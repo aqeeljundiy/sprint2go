@@ -64,3 +64,6 @@ export function participants(t: Thread, me: Person) {
 
 /** Unique-enough id. (crypto.randomUUID only exists on HTTPS/localhost pages.) */
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+
+/** A date as YYYY-MM-DD in the user's own time zone (toISOString would give UTC, which is yesterday in Jakarta at night). */
+export const localDay = (d: Date = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

@@ -5,6 +5,7 @@ import { WORKSPACE_COLORS } from '../data/workspaces';
 import { uid } from '../utils';
 import { APPS } from './AppRail';
 import { BrandFields } from './WorkspaceForms';
+import { Select } from './ui/Select';
 
 export const PROVIDERS: { id: MailProvider; name: string }[] = [
   { id: 'google', name: 'Google Workspace' },
@@ -277,15 +278,25 @@ export function Onboarding({ me, existingEmails, onCreate, onClose }: Props) {
                       placeholder={d ? `name@${d}` : 'name@company.com'}
                       aria-label="Email"
                     />
-                    <select value={t.role} onChange={(e) => setTeam((ts) => ts.map((x) => (x.key === t.key ? { ...x, role: e.target.value as Invite['role'] } : x)))} aria-label="Role">
-                      <option value="member">Member</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                    <Select<Invite['role']>
+                      value={t.role}
+                      onChange={(v) => setTeam((ts) => ts.map((x) => (x.key === t.key ? { ...x, role: v } : x)))}
+                      label="Role"
+                      options={[
+                        { value: 'member', label: 'Member' },
+                        { value: 'admin', label: 'Admin' },
+                      ]}
+                    />
                     {setup === 'mix' && (
-                      <select value={t.where} onChange={(e) => setTeam((ts) => ts.map((x) => (x.key === t.key ? { ...x, where: e.target.value as Invite['where'] } : x)))} aria-label="Mailbox">
-                        <option value="sprint2go">Mailbox on Sprint2go</option>
-                        <option value="existing">Stays on {providerName(provider)}</option>
-                      </select>
+                      <Select<Invite['where']>
+                        value={t.where}
+                        onChange={(v) => setTeam((ts) => ts.map((x) => (x.key === t.key ? { ...x, where: v } : x)))}
+                        label="Mailbox"
+                        options={[
+                          { value: 'sprint2go', label: 'Mailbox on Sprint2go' },
+                          { value: 'existing', label: `Stays on ${providerName(provider)}` },
+                        ]}
+                      />
                     )}
                     <button className="icon-btn sm" onClick={() => setTeam((ts) => (ts.length > 1 ? ts.filter((x) => x.key !== t.key) : [{ ...ts[0], name: '', email: '' }]))} aria-label="Remove">
                       <X size={14} />

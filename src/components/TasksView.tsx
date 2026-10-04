@@ -1,27 +1,22 @@
 import { useMemo, useState } from 'react';
-import {
-  Brain,
-  CalendarPlus,
-  Columns3,
-  Hash,
-  List,
-  Mail,
-  Menu,
-  MessagesSquare,
-  Plus,
-  Sparkles,
-  Trash2,
-  Video,
-  type LucideIcon,
-} from 'lucide-react';
-import type { Channel, Client, Meeting, TaskStatus, Thread, Todo, User } from '../types';
+import { Brain, CalendarPlus, Columns3, FileText, Hash, LayoutGrid, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
+import type { Channel, Client, Meeting, TaskStatus, Team, Thread, Todo, User } from '../types';
 import { usePersisted } from '../settings';
-import { relative } from '../utils';
+import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
+import { Dot, Select, type Option } from './ui/Select';
+import { DatePicker } from './ui/DatePicker';
 
-export type TaskScope = { kind: 'mine' } | { kind: 'all' } | { kind: 'delegated' } | { kind: 'client'; id: string };
+export type TaskScope =
+  | { kind: 'mine' }
+  | { kind: 'all' }
+  | { kind: 'delegated' }
+  | { kind: 'briefs' }
+  | { kind: 'grid' }
+  | { kind: 'client'; id: string; teamId?: string }
+  | { kind: 'team'; id: string };
 
-const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }> = {
+export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }> = {
   ai: { icon: Mail, label: 'From email' },
   manual: { icon: Plus, label: 'Added by hand' },
   braindump: { icon: Brain, label: 'From a brain dump' },
@@ -35,8 +30,9 @@ const COLUMNS: { id: TaskStatus; name: string }[] = [
 ];
 
 export const statusOf = (t: Todo): TaskStatus => (t.done ? 'done' : t.status === 'doing' ? 'doing' : 'todo');
+export const isBrief = (t: Todo) => t.kind === 'brief';
 
-const dayStr = (d: Date) => d.toISOString().slice(0, 10);
+const dayStr = (d: Date) => localDay(d);
 export function dueLabel(due: string) {
   const today = dayStr(new Date());
   const tomorrow = dayStr(new Date(Date.now() + 86_400_000));
@@ -45,17 +41,38 @@ export function dueLabel(due: string) {
   if (due === tomorrow) return { text: 'Tomorrow', cls: 'soon' };
   return { text: new Date(due + 'T12:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }), cls: '' };
 }
+const late = (t: Todo) => !t.done && !!t.due && t.due < dayStr(new Date());
+const byDue = (a: Todo, b: Todo) => (a.due ?? '9999').localeCompare(b.due ?? '9999') || (a.priority === 'high' ? -1 : 0) - (b.priority === 'high' ? -1 : 0);
+
+/** Options for "who": teammates, plus "Not assigned" (the team's queue). */
+export function peopleOptions(users: User[], me: string, unassigned = true): Option[] {
+  return [
+    ...(unassigned ? [{ value: '', label: 'Not assigned', hint: 'Waits in the team’s queue', icon: <span className="avatar-empty sm">?</span> }] : []),
+    ...users.map((u) => ({ value: u.id, label: u.id === me ? `${u.name} (me)` : u.name, hint: u.title, icon: <Avatar person={u} size={22} /> })),
+  ];
+}
+export const teamOptions = (teams: Team[]): Option[] => [{ value: '', label: 'No team', icon: <Dot color="var(--text-3)" /> }, ...teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))];
+export const clientOptions = (clients: Client[]): Option[] => [
+  { value: '', label: 'No client (internal)', icon: <Dot color="var(--text-3)" /> },
+  ...clients.map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : undefined, icon: <Dot color={c.color} /> })),
+];
+
+type GroupBy = 'client' | 'team' | 'person' | 'none';
+type Filter = 'open' | 'done' | 'all';
 
 interface Props {
   scope: TaskScope;
-  tasks: Todo[]; // this workspace's tasks
+  tasks: Todo[]; // this workspace's tasks and briefs
   clients: Client[];
+  teams: Team[];
   users: User[]; // workspace members
   me: string;
   threads: Thread[];
   channels: Channel[];
   meetings: Meeting[];
-  onAdd: (t: { title: string; clientId?: string; userId: string; due?: string }) => void;
+  onScope: (s: TaskScope) => void;
+  onOpenTask: (id: string) => void;
+  onAdd: (t: { title: string; clientId?: string; teamId?: string; userId: string; due?: string }) => void;
   onStatus: (id: string, s: TaskStatus) => void;
   onPatch: (id: string, p: Partial<Todo>) => void;
   onDelete: (id: string) => void;
@@ -69,96 +86,179 @@ interface Props {
 
 export function TasksView(p: Props) {
   const [layout, setLayout] = usePersisted<'list' | 'board'>('s2g-task-layout', 'list');
-  const [showDone, setShowDone] = useState(false);
+  const [groupPref, setGroupBy] = usePersisted<GroupBy>('s2g-task-group', 'client');
+  const [filter, setFilter] = useState<Filter>('open');
+  const [showDone, setShowDone] = useState(true);
   const [title, setTitle] = useState('');
-  const [assignee, setAssignee] = useState(p.me);
+  const [assignee, setAssignee] = useState<string | null>(null);
+  const [teamPick, setTeamPick] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
   const [clientTab, setClientTab] = useState<'tasks' | 'emails' | 'meetings'>('tasks');
 
-  const client = p.scope.kind === 'client' ? p.clients.find((c) => c.id === (p.scope as { id: string }).id) : undefined;
+  const scope = p.scope;
+  const client = scope.kind === 'client' ? p.clients.find((c) => c.id === scope.id) : undefined;
+  const team = scope.kind === 'team' ? p.teams.find((t) => t.id === scope.id) : undefined;
+  const cellTeam = scope.kind === 'client' && scope.teamId ? p.teams.find((t) => t.id === scope.teamId) : undefined;
   const person = (id?: string) => p.users.find((u) => u.id === id);
   const clientOf = (id?: string) => p.clients.find((c) => c.id === id);
+  const teamOf = (id?: string) => p.teams.find((t) => t.id === id);
+  const briefOf = (id?: string) => p.tasks.find((t) => t.id === id && isBrief(t));
 
-  const shown = useMemo(() => {
-    switch (p.scope.kind) {
+  // What this page is about (briefs are shown as cards, not rows).
+  const inScope = useMemo(() => {
+    const work = p.tasks.filter((t) => !isBrief(t));
+    switch (scope.kind) {
       case 'mine':
-        return p.tasks.filter((t) => t.userId === p.me);
+        return work.filter((t) => t.userId === p.me);
       case 'delegated':
-        return p.tasks.filter((t) => t.createdBy === p.me && t.userId !== p.me);
+        return work.filter((t) => t.createdBy === p.me && t.userId !== p.me);
       case 'client':
-        return p.tasks.filter((t) => t.clientId === (p.scope as { id: string }).id);
+        return work.filter((t) => t.clientId === scope.id && (!scope.teamId || t.teamId === scope.teamId));
+      case 'team':
+        return work.filter((t) => t.teamId === scope.id);
       default:
-        return p.tasks;
+        return work;
     }
-  }, [p.tasks, p.scope, p.me]);
+  }, [p.tasks, scope, p.me]);
 
-  const open = shown.filter((t) => !t.done).sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'));
-  const done = shown.filter((t) => t.done);
-  const overdue = open.filter((t) => t.due && t.due < dayStr(new Date())).length;
+  const briefs = useMemo(() => {
+    const all = p.tasks.filter(isBrief);
+    switch (scope.kind) {
+      case 'mine':
+        return all.filter((b) => !b.done && (b.userId === p.me || inScope.some((t) => t.briefId === b.id)));
+      case 'delegated':
+        return all.filter((b) => !b.done && b.createdBy === p.me);
+      case 'client':
+        return all.filter((b) => b.clientId === scope.id);
+      case 'team':
+        return all.filter((b) => !b.done && inScope.some((t) => t.briefId === b.id));
+      case 'briefs':
+        return all;
+      default:
+        return all.filter((b) => !b.done);
+    }
+  }, [p.tasks, scope, p.me, inScope]);
+
+  const open = inScope.filter((t) => !t.done).sort(byDue);
+  const done = inScope.filter((t) => t.done).sort((a, b) => (b.doneAt ?? b.createdAt).localeCompare(a.doneAt ?? a.createdAt));
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const recentDone = done.filter((t) => (t.doneAt ?? t.createdAt) > weekAgo);
+  const overdue = open.filter(late).length;
+  const shown = filter === 'open' ? open : filter === 'done' ? done : [...open, ...done];
+
+  const groupBy: GroupBy = scope.kind === 'team' ? 'person' : scope.kind === 'client' ? (scope.teamId ? 'none' : 'team') : groupPref;
 
   const heading =
-    p.scope.kind === 'mine' ? 'My tasks' : p.scope.kind === 'delegated' ? 'Assigned by me' : p.scope.kind === 'all' ? 'All tasks' : client?.name ?? 'Client';
+    scope.kind === 'mine'
+      ? 'My tasks'
+      : scope.kind === 'delegated'
+        ? 'Assigned by me'
+        : scope.kind === 'all'
+          ? 'All tasks'
+          : scope.kind === 'briefs'
+            ? 'Briefs'
+            : scope.kind === 'grid'
+              ? 'Clients × teams'
+              : scope.kind === 'team'
+                ? (team?.name ?? 'Team')
+                : `${client?.name ?? 'Client'}${cellTeam ? ` · ${cellTeam.name}` : ''}`;
 
+  // Add-task defaults follow the page: a team page adds to that team's queue.
+  const defaultAssignee = scope.kind === 'team' ? '' : p.me;
+  const addAssignee = assignee ?? defaultAssignee;
+  const addTeam = teamPick ?? (scope.kind === 'team' ? scope.id : scope.kind === 'client' ? (scope.teamId ?? '') : '');
   const add = () => {
     if (!title.trim()) return;
-    p.onAdd({ title: title.trim(), clientId: client?.id, userId: assignee, due: due || undefined });
+    p.onAdd({ title: title.trim(), clientId: client?.id, teamId: addTeam || undefined, userId: addAssignee, due: due || undefined });
     setTitle('');
     setDue('');
   };
 
-  // Group by client in list view (except on a client page)
-  const groups: [string, Todo[]][] = useMemo(() => {
-    if (client) return [['', open]];
+  const groups: { key: string; label: React.ReactNode; items: Todo[]; extra?: React.ReactNode }[] = useMemo(() => {
+    if (groupBy === 'none') return [{ key: 'all', label: null, items: shown }];
     const map = new Map<string, Todo[]>();
-    for (const t of open) {
-      const k = t.clientId ?? '';
-      map.set(k, [...(map.get(k) ?? []), t]);
-    }
-    return [...map.entries()].sort(([a], [b]) => (a ? clientOf(a)!.name : 'zzz').localeCompare(b ? clientOf(b)!.name : 'zzz'));
-  }, [open, client]); // eslint-disable-line react-hooks/exhaustive-deps
+    const keyOf = (t: Todo) => (groupBy === 'client' ? (t.clientId ?? '') : groupBy === 'team' ? (t.teamId ?? '') : t.userId);
+    for (const t of shown) map.set(keyOf(t), [...(map.get(keyOf(t)) ?? []), t]);
+    const out = [...map.entries()].map(([k, items]) => {
+      if (groupBy === 'client') {
+        const c = clientOf(k);
+        return { key: k, sort: c ? c.name : '~', label: c ? <><span className="dot" style={{ background: c.color }} />{c.name}</> : 'Internal (no client)', items };
+      }
+      if (groupBy === 'team') {
+        const tm = teamOf(k);
+        return { key: k, sort: tm ? tm.name : '~', label: tm ? <><span className="dot" style={{ background: tm.color }} />{tm.name}</> : 'No team', items };
+      }
+      const u = person(k);
+      return { key: k, sort: u ? (u.id === p.me ? '!' : u.name) : ' ', label: u ? <><Avatar person={u} size={18} />{u.id === p.me ? 'You' : u.name}</> : <><span className="avatar-empty sm">?</span>Not assigned yet</>, items };
+    });
+    return out.sort((a, b) => a.sort.localeCompare(b.sort));
+  }, [shown, groupBy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const row = (t: Todo) => {
     const d = t.due ? dueLabel(t.due) : null;
     const src = SOURCE[t.source];
     const c = clientOf(t.clientId);
+    const tm = teamOf(t.teamId);
+    const br = briefOf(t.briefId);
     const owner = person(t.userId);
     return (
-      <div key={t.id} className={`task ${t.done ? 'done' : ''} ${t.priority === 'high' ? 'high' : ''} ${statusOf(t) === 'doing' ? 'doing' : ''}`}>
+      <div
+        key={t.id}
+        className={`task ${t.done ? 'done' : ''} ${t.priority === 'high' ? 'high' : ''} ${statusOf(t) === 'doing' ? 'doing' : ''}`}
+        onClick={(e) => !(e.target as HTMLElement).closest('button, input, .sel') && p.onOpenTask(t.id)}
+      >
         <button className="todo-check" onClick={() => p.onStatus(t.id, t.done ? 'todo' : 'done')} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
           {t.done && <span>✓</span>}
         </button>
         <div className="task-main">
-          <input className="task-title" value={t.title} onChange={(e) => p.onPatch(t.id, { title: e.target.value })} aria-label="Task title" />
+          <button className="task-title-btn" onClick={() => p.onOpenTask(t.id)}>
+            {t.title}
+          </button>
           <div className="task-meta">
             {statusOf(t) === 'doing' && <span className="due doing">In progress</span>}
-            {d && <span className={`due ${d.cls}`}>{d.text}</span>}
-            {c && !client && (
+            {d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
+            {t.done && (
+              <span className="done-info">
+                Done {t.doneBy ? `by ${t.doneBy === p.me ? 'you' : (person(t.doneBy)?.name.split(' ')[0] ?? 'someone')} ` : ''}
+                {t.doneAt ? relative(t.doneAt) : ''}
+              </span>
+            )}
+            {c && scope.kind !== 'client' && (
               <span className="client-chip" style={{ ['--c' as string]: c.color }}>
                 {c.name}
               </span>
             )}
+            {tm && groupBy !== 'team' && scope.kind !== 'team' && (
+              <span className="team-chip" style={{ ['--c' as string]: tm.color }}>
+                {tm.name}
+              </span>
+            )}
+            {br && (
+              <button className="brief-chip" onClick={() => p.onOpenTask(br.id)} title="Open the brief">
+                <FileText size={11} /> {br.title}
+              </button>
+            )}
             <span className="src" title={src.label}>
-              <src.icon size={12} /> {src.label}
+              <src.icon size={12} />
             </span>
             {t.threadId && (
               <button className="todo-src" onClick={() => p.onOpenThread(t.threadId!)}>
                 Open email
               </button>
             )}
-            {t.createdBy && t.createdBy !== t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : person(t.createdBy)?.name.split(' ')[0]}</span>}
+            {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : person(t.createdBy)?.name.split(' ')[0]}</span>}
           </div>
         </div>
-        <label className="assignee" title={`Assigned to ${owner?.name ?? 'nobody'}`}>
-          {owner ? <Avatar person={owner} size={26} /> : <span className="avatar-empty">?</span>}
-          <select value={t.userId} onChange={(e) => p.onPatch(t.id, { userId: e.target.value })} aria-label="Assignee">
-            {p.users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.id === p.me ? `${u.name} (me)` : u.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          compact
+          value={t.userId}
+          options={peopleOptions(p.users, p.me)}
+          onChange={(v) => p.onPatch(t.id, { userId: v })}
+          label="Assignee"
+          title="Assign to"
+          renderValue={() => (owner ? <Avatar person={owner} size={26} /> : <span className="avatar-empty">?</span>)}
+        />
         <div className="todo-actions">
           {!t.done && (
             <button className="icon-btn sm" title={statusOf(t) === 'doing' ? 'Move back to To do' : 'Start (In progress)'} onClick={() => p.onStatus(t.id, statusOf(t) === 'doing' ? 'todo' : 'doing')}>
@@ -178,13 +278,152 @@ export function TasksView(p: Props) {
     );
   };
 
+  const briefCard = (b: Todo) => {
+    const subs = p.tasks.filter((t) => t.briefId === b.id);
+    const doneN = subs.filter((t) => t.done).length;
+    const owner = person(b.userId);
+    const c = clientOf(b.clientId);
+    const pct = subs.length ? Math.round((doneN / subs.length) * 100) : 0;
+    const teamsIn = [...new Set(subs.map((s) => s.teamId).filter(Boolean))].map((id) => teamOf(id)!).filter(Boolean);
+    return (
+      <button key={b.id} className={`brief-card ${b.done ? 'done' : ''}`} onClick={() => p.onOpenTask(b.id)}>
+        <div className="bc-top">
+          <span className="brief-badge">
+            <FileText size={12} /> Brief
+          </span>
+          {c && scope.kind !== 'client' && (
+            <span className="client-chip" style={{ ['--c' as string]: c.color }}>
+              {c.name}
+            </span>
+          )}
+          {b.due && !b.done && <span className={`due ${dueLabel(b.due).cls}`}>{dueLabel(b.due).text}</span>}
+        </div>
+        <strong className="bc-title">{b.title}</strong>
+        {b.context && <p className="bc-context">{b.context.split('\n')[0]}</p>}
+        <div className="bc-foot">
+          {owner && (
+            <span className="bc-owner">
+              <Avatar person={owner} size={20} /> {owner.id === p.me ? 'You' : owner.name.split(' ')[0]} in charge
+            </span>
+          )}
+          <span className="bc-teams">
+            {teamsIn.map((tm) => (
+              <span key={tm.id} className="team-chip" style={{ ['--c' as string]: tm.color }}>
+                {tm.name}
+              </span>
+            ))}
+          </span>
+          <span className="bc-progress">
+            <span className="bar">
+              <span style={{ width: `${pct}%` }} />
+            </span>
+            {doneN}/{subs.length}
+          </span>
+        </div>
+      </button>
+    );
+  };
+
+  // ---------- Team page header: workload per person ----------
+  const workload = team
+    ? team.members
+        .map((id) => {
+          const u = person(id);
+          const mine = open.filter((t) => t.userId === id);
+          return u ? { u, open: mine.length, late: mine.filter(late).length, week: mine.filter((t) => t.due && t.due <= dayStr(new Date(Date.now() + 7 * 86_400_000))).length } : null;
+        })
+        .filter(Boolean) as { u: User; open: number; late: number; week: number }[]
+    : [];
+  const maxLoad = Math.max(1, ...workload.map((w) => w.open));
+
+  // ---------- Grid ----------
+  const gridView = () => {
+    const work = p.tasks.filter((t) => !isBrief(t) && !t.done);
+    const cols = [...p.teams, null];
+    const rows = [...p.clients, null];
+    const cell = (cid: string | null, tid: string | null) => work.filter((t) => (t.clientId ?? null) === cid && (t.teamId ?? null) === tid);
+    return (
+      <div className="grid-wrap">
+        <table className="cxt">
+          <thead>
+            <tr>
+              <th />
+              {cols.map((tm) => (
+                <th key={tm?.id ?? 'none'}>
+                  {tm ? (
+                    <button onClick={() => p.onScope({ kind: 'team', id: tm.id })}>
+                      <span className="dot" style={{ background: tm.color }} />
+                      {tm.name}
+                    </button>
+                  ) : (
+                    <span className="muted">No team</span>
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => {
+              const any = cols.some((tm) => cell(c?.id ?? null, tm?.id ?? null).length);
+              if (!c && !any) return null;
+              return (
+                <tr key={c?.id ?? 'internal'}>
+                  <th>
+                    {c ? (
+                      <button onClick={() => p.onScope({ kind: 'client', id: c.id })}>
+                        <span className="client-dot sm" style={{ background: c.color }}>
+                          {c.name.charAt(0)}
+                        </span>
+                        {c.name}
+                      </button>
+                    ) : (
+                      <span className="muted">Internal</span>
+                    )}
+                  </th>
+                  {cols.map((tm) => {
+                    const items = cell(c?.id ?? null, tm?.id ?? null);
+                    const l = items.filter(late).length;
+                    return (
+                      <td key={tm?.id ?? 'none'}>
+                        {items.length ? (
+                          <button className={`cell ${l ? 'has-late' : ''}`} onClick={() => c && p.onScope({ kind: 'client', id: c.id, teamId: tm?.id })} disabled={!c}>
+                            <b>{items.length}</b> open
+                            {l ? <em>{l} late</em> : null}
+                          </button>
+                        ) : (
+                          <span className="cell empty">·</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const clientThreads = client?.domain ? p.threads.filter((t) => t.messages.some((m) => [m.from, ...m.to].some((x) => x.email.endsWith('@' + client.domain)))) : [];
   const clientChannel = client ? p.channels.find((c) => c.clientId === client.id) : undefined;
   const clientMeetings = client ? p.meetings.filter((m) => m.clientId === client.id) : [];
+  const teamChannel = team ? p.channels.find((c) => c.name === team.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')) : undefined;
+
+  const showTaskList = scope.kind !== 'grid' && scope.kind !== 'briefs' && (!client || clientTab === 'tasks');
+  const subtitle = client
+    ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : 'Active client'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
+    : team
+      ? `Lead: ${person(team.leadId)?.name ?? 'not set'} · ${open.length} open${overdue ? ` · ${overdue} late` : ''} · ${open.filter((t) => !t.userId).length} not assigned`
+      : scope.kind === 'grid'
+        ? 'Open work for every client, split by team. Click a cell to open it.'
+        : scope.kind === 'briefs'
+          ? 'Bigger pieces of work with one person in charge and tasks for others'
+          : `${open.length} open${overdue ? ` · ${overdue} overdue` : ''} · ${recentDone.length} done this week`;
 
   return (
     <section className="tasks-pane view-enter">
-      <header className="tracking-head">
+      <header className="tracking-head tasks-head">
         <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
           <Menu size={18} />
         </button>
@@ -193,25 +432,33 @@ export function TasksView(p: Props) {
             {client.name.charAt(0)}
           </span>
         )}
+        {team && (
+          <span className="client-badge" style={{ background: team.color }}>
+            <Users size={16} />
+          </span>
+        )}
+        {scope.kind === 'grid' && (
+          <span className="client-badge" style={{ background: 'var(--accent)' }}>
+            <LayoutGrid size={16} />
+          </span>
+        )}
         <div className="th-text">
           <h1>{heading}</h1>
-          <p>
-            {client
-              ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : 'Active client'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
-              : `${open.length} open${overdue ? ` · ${overdue} overdue` : ''}`}
-          </p>
+          <p>{subtitle}</p>
         </div>
         <button className="primary-btn sm brain-btn" onClick={p.onBrainDump}>
           <Sparkles size={14} /> Brain dump
         </button>
-        <div className="segmented icon-seg">
-          <button className={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')} title="List">
-            <List size={15} />
-          </button>
-          <button className={layout === 'board' ? 'on' : ''} onClick={() => setLayout('board')} title="Board">
-            <Columns3 size={15} />
-          </button>
-        </div>
+        {showTaskList && (
+          <div className="segmented icon-seg">
+            <button className={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')} title="List">
+              <List size={15} />
+            </button>
+            <button className={layout === 'board' ? 'on' : ''} onClick={() => setLayout('board')} title="Board">
+              <Columns3 size={15} />
+            </button>
+          </div>
+        )}
       </header>
 
       {client && (
@@ -232,32 +479,113 @@ export function TasksView(p: Props) {
               <Hash size={13} /> {clientChannel.name}
             </button>
           )}
+          {cellTeam && (
+            <button className="on soft" onClick={() => p.onScope({ kind: 'client', id: client.id })}>
+              {cellTeam.name} only · show all teams
+            </button>
+          )}
         </div>
       )}
 
-      <div className="tracking-scroll" key={`${JSON.stringify(p.scope)}:${layout}:${clientTab}`}>
-        {(!client || clientTab === 'tasks') && (
+      <div className="tracking-scroll" key={`${JSON.stringify(scope)}:${layout}:${clientTab}`}>
+        {team && (
+          <div className="workload">
+            {workload.map((w) => (
+              <button key={w.u.id} className="wl" onClick={() => p.onScope({ kind: 'team', id: team.id })}>
+                <Avatar person={w.u} size={28} />
+                <span className="wl-text">
+                  <strong>
+                    {w.u.id === p.me ? 'You' : w.u.name.split(' ')[0]}
+                    {w.u.id === team.leadId && <em> lead</em>}
+                  </strong>
+                  <span className="bar">
+                    <span style={{ width: `${(w.open / maxLoad) * 100}%` }} className={w.late ? 'warn' : ''} />
+                  </span>
+                  <small>
+                    {w.open} open · {w.week} this week{w.late ? ` · ${w.late} late` : ''}
+                  </small>
+                </span>
+              </button>
+            ))}
+            {teamChannel && (
+              <button className="wl wl-chan" onClick={() => p.onOpenChannel(teamChannel.id)}>
+                <Hash size={16} /> {teamChannel.name}
+              </button>
+            )}
+          </div>
+        )}
+
+        {scope.kind === 'grid' && gridView()}
+
+        {briefs.length > 0 && (!client || clientTab === 'tasks') && scope.kind !== 'grid' && (
+          <div className="brief-list">{briefs.map(briefCard)}</div>
+        )}
+        {scope.kind === 'briefs' && briefs.length === 0 && (
+          <div className="empty">
+            <div className="empty-art">
+              <FileText size={22} />
+            </div>
+            <p className="empty-title">No briefs yet</p>
+            <p className="empty-sub">In a brain dump, choose “Brief” to turn a bigger job into a brief with tasks for each person.</p>
+          </div>
+        )}
+
+        {showTaskList && (
           <>
             <div className="todo-add task-add">
               <Plus size={16} />
-              <input id="new-task" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder={client ? `Add a task for ${client.name}…` : 'Add a task…'} />
-              <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label="Assign to">
-                {p.users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.id === p.me ? 'Me' : u.name.split(' ')[0]}
-                  </option>
-                ))}
-              </select>
-              <input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Due date" />
+              <input
+                id="new-task"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && add()}
+                placeholder={client ? `Add a task for ${client.name}…` : team ? `Add to ${team.name}’s queue…` : 'Add a task…'}
+              />
+              <Select value={addAssignee} options={peopleOptions(p.users, p.me)} onChange={setAssignee} label="Assign to" className="sel-flat" />
+              <Select value={addTeam} options={teamOptions(p.teams)} onChange={setTeamPick} label="Team" className="sel-flat hide-sm" />
+              <DatePicker value={due} onChange={setDue} label="Due date" placeholder="Due" className="sel-flat" />
               <button className="primary-btn sm" onClick={add} disabled={!title.trim()}>
                 Add
               </button>
             </div>
 
+            {layout === 'list' && (
+              <div className="list-tools">
+                <div className="segmented">
+                  {(
+                    [
+                      ['open', `Open ${open.length}`],
+                      ['done', `Done ${done.length}`],
+                      ['all', 'All'],
+                    ] as const
+                  ).map(([id, l]) => (
+                    <button key={id} className={filter === id ? 'on' : ''} onClick={() => setFilter(id)}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                {!['team', 'client'].includes(scope.kind) && (
+                  <Select<GroupBy>
+                    value={groupPref}
+                    onChange={setGroupBy}
+                    label="Group by"
+                    className="sel-flat"
+                    renderValue={(o) => <span className="sel-text">Group: {o?.label}</span>}
+                    options={[
+                      { value: 'client', label: 'Client' },
+                      { value: 'team', label: 'Team' },
+                      { value: 'person', label: 'Person' },
+                      { value: 'none', label: 'None' },
+                    ]}
+                  />
+                )}
+              </div>
+            )}
+
             {layout === 'board' ? (
               <div className="board">
                 {COLUMNS.map((col) => {
-                  const items = shown.filter((t) => statusOf(t) === col.id);
+                  const items = inScope.filter((t) => statusOf(t) === col.id).sort(byDue);
                   return (
                     <div
                       key={col.id}
@@ -273,20 +601,33 @@ export function TasksView(p: Props) {
                       </div>
                       {items.map((t) => {
                         const c = clientOf(t.clientId);
+                        const tm = teamOf(t.teamId);
                         const d = t.due ? dueLabel(t.due) : null;
                         const owner = person(t.userId);
                         return (
-                          <div key={t.id} className={`card-task ${t.priority === 'high' ? 'high' : ''}`} draggable onDragStart={() => setDragging(t.id)} onDragEnd={() => setDragging(null)}>
+                          <div
+                            key={t.id}
+                            className={`card-task ${t.priority === 'high' ? 'high' : ''}`}
+                            draggable
+                            onDragStart={() => setDragging(t.id)}
+                            onDragEnd={() => setDragging(null)}
+                            onClick={() => p.onOpenTask(t.id)}
+                          >
                             <div className="ct-title">{t.title}</div>
                             <div className="ct-meta">
-                              {c && !client && (
+                              {c && scope.kind !== 'client' && (
                                 <span className="client-chip" style={{ ['--c' as string]: c.color }}>
                                   {c.name}
                                 </span>
                               )}
+                              {tm && scope.kind !== 'team' && (
+                                <span className="team-chip" style={{ ['--c' as string]: tm.color }}>
+                                  {tm.name}
+                                </span>
+                              )}
                               {d && col.id !== 'done' && <span className={`due ${d.cls}`}>{d.text}</span>}
                               <span className="spacer" />
-                              {owner && <Avatar person={owner} size={22} />}
+                              {owner ? <Avatar person={owner} size={22} /> : <span className="avatar-empty sm">?</span>}
                             </div>
                           </div>
                         );
@@ -298,40 +639,29 @@ export function TasksView(p: Props) {
               </div>
             ) : (
               <>
-                {open.length === 0 && (
+                {shown.length === 0 && (
                   <div className="empty">
                     <div className="empty-art">✓</div>
-                    <p className="empty-title">Nothing open</p>
+                    <p className="empty-title">{filter === 'done' ? 'Nothing finished yet' : 'Nothing open'}</p>
                     <p className="empty-sub">Add a task above, or use Brain dump to turn your thoughts into tasks.</p>
                   </div>
                 )}
-                {groups.map(([cid, list]) => {
-                  const c = clientOf(cid);
-                  return (
-                    <div key={cid || 'none'} className="todo-group">
-                      {!client && (
-                        <div className="d-heading">
-                          {c ? (
-                            <>
-                              <span className="dot" style={{ background: c.color }} />
-                              {c.name}
-                            </>
-                          ) : (
-                            'No client'
-                          )}{' '}
-                          <span>{list.length}</span>
-                        </div>
-                      )}
-                      {list.map(row)}
-                    </div>
-                  );
-                })}
-                {done.length > 0 && (
-                  <div className="todo-group">
+                {groups.map((g) => (
+                  <div key={g.key || 'none'} className="todo-group">
+                    {g.label && (
+                      <div className="d-heading">
+                        {g.label} <span>{g.items.length}</span>
+                      </div>
+                    )}
+                    {g.items.map(row)}
+                  </div>
+                ))}
+                {filter === 'open' && recentDone.length > 0 && (
+                  <div className="todo-group done-group">
                     <button className="d-heading done-toggle" onClick={() => setShowDone((s) => !s)}>
-                      Done <span>{done.length}</span> {showDone ? '▾' : '▸'}
+                      Done this week <span>{recentDone.length}</span> {showDone ? '▾' : '▸'}
                     </button>
-                    {showDone && done.map(row)}
+                    {showDone && recentDone.map(row)}
                   </div>
                 )}
               </>

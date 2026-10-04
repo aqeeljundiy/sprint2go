@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { THREADS } from './data/mock';
 import { EVENTS } from './data/calendar';
 import { DRIVE } from './data/drive';
-import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS } from './data/team';
+import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './data/team';
 
 // Mail, calendar, drive, tasks, chat and notifications live here (outside React) so they survive switching users.
 // The real backend replaces this.
@@ -12,6 +12,7 @@ const store = {
   drive: DRIVE,
   todos: TASKS,
   clients: CLIENTS,
+  teams: TEAMS,
   channels: CHANNELS,
   messages: MESSAGES,
   notices: NOTICES,

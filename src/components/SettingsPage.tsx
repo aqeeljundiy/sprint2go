@@ -9,6 +9,7 @@ import { fmtSize } from '../data/drive';
 import { initials } from '../utils';
 import type { SettingsSection } from './AccountMenu';
 import { RichEditor } from './RichEditor';
+import { Select } from './ui/Select';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon }[] = [
   { id: 'workspace', name: 'Workspace', icon: Building2 },
@@ -159,11 +160,17 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
                         <small>{u.email}</small>
                       </span>
                       {canManage && m.userId !== me && !(m.role === 'owner' && owners === 1) ? (
-                        <select className="role-select" value={m.role} onChange={(e) => onRole(m.userId, e.target.value as Role)}>
-                          <option value="member">Member</option>
-                          <option value="admin">Admin</option>
-                          <option value="owner">Owner</option>
-                        </select>
+                        <Select<Role>
+                          value={m.role}
+                          onChange={(v) => onRole(m.userId, v)}
+                          label="Role"
+                          className="role-select"
+                          options={[
+                            { value: 'member', label: 'Member', hint: 'Uses the apps' },
+                            { value: 'admin', label: 'Admin', hint: 'Manages people, apps and settings' },
+                            { value: 'owner', label: 'Owner', hint: 'Everything, including billing' },
+                          ]}
+                        />
                       ) : (
                         <span className="role-tag">{m.role[0].toUpperCase() + m.role.slice(1)}</span>
                       )}

@@ -191,10 +191,9 @@ General · People and teams · Apps · Email · Calendars · Meetings (recording
 
 ## 9. Bigger revenue later
 1. Buy a domain during onboarding (resale margin, email set up automatically).
-2. Bill clients from the client page with payment links; about 1% fee on each payment.
-3. Quotes and contracts that turn into briefs and tasks when signed.
-4. White-label client portal for Business.
-5. Templates per industry, later a marketplace.
+2. Quotes and contracts that turn into briefs and tasks when signed.
+3. White-label client portal for Business.
+4. Templates per industry, later a marketplace.
 
 ## 10. Technology
 - Web app (installable on phones): the React prototype grown up.
@@ -232,9 +231,9 @@ General · People and teams · Apps · Email · Calendars · Meetings (recording
 - Data with providers clients wouldn't accept: data notes, admins can block providers.
 - Gmail approval (CASA), email landing in spam, scope of 8 apps, the "Sprint" trademark.
 
-## 14. Open decisions
-1. Add-ons available to free teams, or full plans only?
-2. Billing clients from the client page (about 1% fee) on the roadmap?
-3. Referral: 1 free month for both sides?
-4. Default recording rule: keep video for client meetings, notes only for internal ones?
-5. Company that bills customers; Paddle for international from day one?
+## 14. Decisions
+- Free teams can buy add-ons and full plans. (decided)
+- Referral: 1 free month for both sides. (decided)
+- Meet keeps every feature of the P&P meetings app; onboarding asks the default for what meetings keep (video, audio, notes only); admin can change it. (decided)
+- Dropped: billing clients from the client page. The billing menu is only for the company's own Sprint2go subscription (plan, invoice history, payment method, usage).
+- Open: which PT bills customers during the beta (recommend an existing PT for beta, PT Sprint2go before public launch); Paddle added when the first foreign customer appears.

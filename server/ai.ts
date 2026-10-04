@@ -143,23 +143,28 @@ export async function assistant(question: string, threads: MailThread[], me: str
 }
 
 /**
- * CEO brain dump → structured tasks. Names and clients are matched against the
- * company's real lists; anything ambiguous comes back null for the user to fill in.
+ * CEO brain dump → structured tasks, and a brief when it's one bigger job. Names, clients and teams are matched
+ * against the company's real lists; an unknown name where a person is expected comes back as unknownName.
  */
 export async function braindump(input: {
   text: string;
-  people: { id: string; name: string }[];
+  people: { id: string; name: string; nicknames?: string[]; teamIds?: string[] }[];
   clients: { id: string; name: string }[];
+  teams: { id: string; name: string; keywords?: string[] }[];
   meId: string;
+  aliases?: Record<string, string>;
   today: string;
 }) {
   const out = JSON.parse(
     await ask(
       `Today is ${input.today}. Turn this founder's brain dump into tasks.
-Rules: one task per piece of work; titles start with a verb and stay under 12 words; use the client the sentence is about (carry it forward when the next sentence clearly continues the same client); assign only when a person is named or "I/me" (that is ${input.meId}); "someone" means unassigned; resolve weekdays to the next such date (ISO); never invent people or clients.
+Rules: one task per piece of work; titles start with a verb and stay under 12 words; use the client the sentence is about (carry it forward when the next sentence clearly continues the same client); pick the team whose work it is (by the kind of work, else the assignee's team); assign only when a person is named (first name, full name, nickname or learned alias) or "I/me" (that is ${input.meId}); "someone" means unassigned; if a name in the "who should do it" position matches nobody, set assigneeId null and unknownName to that name (never guess); a person at a client ("Dimas at Arunika") is a contact, not an assignee; resolve weekdays to the next such date (ISO); never invent people, clients or teams.
+If the dump describes one bigger piece of work (a campaign, launch or project with several tasks for one client), also return a brief: a short title, the context (goal, background, deliverables, deadlines, in the founder's words, cleaned up), the client, owner ${input.meId} and the last due date. Otherwise brief is null.
 
 People: ${JSON.stringify(input.people)}
+Learned aliases (name -> person id, or "contact"): ${JSON.stringify(input.aliases ?? {})}
 Clients: ${JSON.stringify(input.clients)}
+Teams: ${JSON.stringify(input.teams)}
 
 <dump>
 ${input.text}
@@ -176,23 +181,56 @@ ${input.text}
                 properties: {
                   title: { type: 'string' },
                   clientId: { type: ['string', 'null'] },
+                  teamId: { type: ['string', 'null'] },
                   assigneeId: { type: ['string', 'null'] },
                   due: { type: ['string', 'null'] },
                   priority: { type: 'string', enum: ['high', 'normal'] },
+                  unknownName: { type: ['string', 'null'] },
+                  contact: { type: ['string', 'null'] },
                 },
-                required: ['title', 'clientId', 'assigneeId', 'due', 'priority'],
+                required: ['title', 'clientId', 'teamId', 'assigneeId', 'due', 'priority', 'unknownName', 'contact'],
                 additionalProperties: false,
               },
             },
+            brief: {
+              anyOf: [
+                { type: 'null' },
+                {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    context: { type: 'string' },
+                    clientId: { type: ['string', 'null'] },
+                    ownerId: { type: 'string' },
+                    due: { type: ['string', 'null'] },
+                  },
+                  required: ['title', 'context', 'clientId', 'ownerId', 'due'],
+                  additionalProperties: false,
+                },
+              ],
+            },
           },
-          required: ['tasks'],
+          required: ['tasks', 'brief'],
           additionalProperties: false,
         },
       },
     ),
-  ) as { tasks: { title: string; clientId: string | null; assigneeId: string | null; due: string | null; priority: 'high' | 'normal' }[] };
+  ) as {
+    tasks: { title: string; clientId: string | null; teamId: string | null; assigneeId: string | null; due: string | null; priority: 'high' | 'normal'; unknownName: string | null; contact: string | null }[];
+    brief: { title: string; context: string; clientId: string | null; ownerId: string; due: string | null } | null;
+  };
   // Only keep ids that really exist.
   const people = new Set(input.people.map((p) => p.id));
   const clients = new Set(input.clients.map((c) => c.id));
-  return out.tasks.map((t) => ({ ...t, assigneeId: t.assigneeId && people.has(t.assigneeId) ? t.assigneeId : null, clientId: t.clientId && clients.has(t.clientId) ? t.clientId : null }));
+  const teams = new Set(input.teams.map((t) => t.id));
+  const okClient = (id: string | null) => (id && clients.has(id) ? id : null);
+  return {
+    tasks: out.tasks.map((t) => ({
+      ...t,
+      assigneeId: t.assigneeId && people.has(t.assigneeId) ? t.assigneeId : null,
+      clientId: okClient(t.clientId),
+      teamId: t.teamId && teams.has(t.teamId) ? t.teamId : null,
+    })),
+    brief: out.brief ? { ...out.brief, clientId: okClient(out.brief.clientId), ownerId: people.has(out.brief.ownerId) ? out.brief.ownerId : input.meId } : null,
+  };
 }

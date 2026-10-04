@@ -4,7 +4,7 @@ import type { Account, AppId, Attachment, BlockRule, CalEvent, ChatMessage, Meet
 import { LABELS } from './data/mock';
 import { CALENDARS } from './data/calendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
-import { lastMessage, uid } from './utils';
+import { lastMessage, uid, localDay } from './utils';
 import { eventsOn } from './calendarUtils';
 import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
@@ -34,6 +34,7 @@ import { Avatar } from './components/Avatar';
 import { Notifications } from './components/Notifications';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HomeView } from './components/HomeView';
+import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import { BrainDump, type DumpResult } from './components/BrainDump';
@@ -241,6 +242,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [notices, setNotices] = useStored('notices');
   const [meetings, setMeetings] = useStored('meetings');
   const [taskScope, setTaskScope] = useState<TaskScope>({ kind: 'mine' });
+  const [taskOpen, setTaskOpen] = useState<string | null>(null);
+  const [teams] = useStored('teams');
   const [chatId, setChatId] = useState<string | null>(null);
   const [meetId, setMeetId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -572,7 +575,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast({ text: 'To-do deleted', action: { label: 'Undo', run: () => setTodos(snapshot) } });
   };
   const todoToCalendar = (t: Todo) => {
-    const start = new Date(`${t.due ?? new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}T09:00`);
+    const start = new Date(`${t.due ?? localDay(new Date(Date.now() + 86_400_000))}T09:00`);
     const ev: CalEvent = {
       id: uid(),
       title: t.title,
@@ -660,6 +663,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const members = useMemo(() => ws.members.map((m) => allUsers.find((u) => u.id === m.userId)).filter(Boolean) as User[], [ws.members, allUsers]);
   const wsClients = useMemo(() => clients.filter((c) => c.workspaceId === ws.id), [clients, ws.id]);
+  const wsTeams = useMemo(() => teams.filter((t) => t.workspaceId === ws.id), [teams, ws.id]);
   const wsTasks = useMemo(() => todos.filter((t) => (t.workspaceId ?? 'pnp') === ws.id), [todos, ws.id]);
   const wsChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && c.members.includes(user.id)), [channels, ws.id, user.id]);
   const myNotices = useMemo(() => notices.filter((n) => n.userId === user.id && n.workspaceId === ws.id), [notices, user.id, ws.id]);
@@ -726,12 +730,47 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   const createTask = (
-    t: { title: string; clientId?: string; userId: string; due?: string; priority?: 'high' | 'normal'; source: Todo['source']; threadId?: string },
+    t: {
+      title: string;
+      clientId?: string;
+      teamId?: string;
+      briefId?: string;
+      kind?: Todo['kind'];
+      context?: string;
+      userId: string;
+      due?: string;
+      priority?: 'high' | 'normal';
+      source: Todo['source'];
+      threadId?: string;
+    },
     tell: { chat?: boolean; email?: boolean } = {},
   ) => {
-    const task: Todo = { id: uid(), title: t.title, clientId: t.clientId, userId: t.userId, due: t.due, priority: t.priority ?? 'normal', done: false, status: 'todo', source: t.source, createdBy: user.id, workspaceId: ws.id, threadId: t.threadId, createdAt: nowIso() };
+    const task: Todo = {
+      id: uid(),
+      kind: t.kind,
+      title: t.title,
+      clientId: t.clientId,
+      teamId: t.teamId,
+      briefId: t.briefId,
+      context: t.context,
+      userId: t.userId,
+      due: t.due,
+      priority: t.priority ?? 'normal',
+      done: false,
+      status: t.kind === 'brief' ? 'doing' : 'todo',
+      source: t.source,
+      createdBy: user.id,
+      workspaceId: ws.id,
+      threadId: t.threadId,
+      createdAt: nowIso(),
+    };
     setTodos((ts) => [...ts, task]);
-    if (t.userId !== user.id) {
+    // Not assigned yet: tell the team lead it's waiting in their queue.
+    if (!t.userId && t.teamId) {
+      const tm = wsTeams.find((x) => x.id === t.teamId);
+      if (tm?.leadId && tm.leadId !== user.id) notify(tm.leadId, 'task', `New in ${tm.name}’s queue: ${describe(task)}. Pick someone for it.`, { app: 'tasks', id: task.id });
+    }
+    if (t.userId && t.userId !== user.id) {
       notify(t.userId, 'task', `${myFirst} assigned you ${describe(task)}`, { app: 'tasks', id: task.id });
       if (tell.chat) postChat(dmWith(t.userId), `📌 New task for you: ${describe(task)}`, task.id);
       if (tell.email)
@@ -740,18 +779,34 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return task;
   };
 
-  function setTaskStatus(id: string, status: TaskStatus) {
+  function setTaskStatus(id: string, status: TaskStatus, quiet = false) {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status, done: status === 'done' } : x)));
-    if (status === 'done' && !t.done && t.createdBy && t.createdBy !== user.id)
-      notify(t.createdBy, 'done', `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id });
+    const before = { status: t.status, done: t.done, doneAt: t.doneAt, doneBy: t.doneBy };
+    setTodos((ts) =>
+      ts.map((x) =>
+        x.id === id ? { ...x, status, done: status === 'done', doneAt: status === 'done' ? (x.done ? x.doneAt : nowIso()) : undefined, doneBy: status === 'done' ? (x.done ? x.doneBy : user.id) : undefined } : x,
+      ),
+    );
+    if (status === 'done' && !t.done) {
+      if (t.createdBy && t.createdBy !== user.id) notify(t.createdBy, 'done', `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id });
+      // Finishing the last task of a brief tells the person in charge.
+      const br = t.briefId ? todos.find((x) => x.id === t.briefId) : undefined;
+      if (br && br.userId !== user.id && todos.filter((x) => x.briefId === br.id && x.id !== id).every((x) => x.done))
+        notify(br.userId, 'done', `All tasks in the brief “${br.title}” are done`, { app: 'tasks', id: br.id });
+      if (!quiet)
+        showToast({
+          text: `Done: ${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}`,
+          action: { label: 'Undo', run: () => setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...before } : x))) },
+          ms: 6000,
+        });
+    }
   }
 
   const patchTask = (id: string, patch: Partial<Todo>) => {
     const t = todos.find((x) => x.id === id);
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-    if (t && patch.userId && patch.userId !== t.userId) {
+    if (t && patch.userId && patch.userId !== t.userId && patch.userId !== user.id) {
       notify(patch.userId, 'task', `${myFirst} assigned you ${describe(t)}`, { app: 'tasks', id });
       showToast({ text: `Assigned to ${firstOf(patch.userId)}` });
     }
@@ -770,19 +825,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setMeetId(id);
     go('meet');
   };
+  /** Opens a task or brief in the detail panel, on a task page where it shows up. */
   const openTask = (id: string) => {
     const t = todos.find((x) => x.id === id);
-    openTasks(t?.userId === user.id ? { kind: 'mine' } : t?.clientId ? { kind: 'client', id: t.clientId } : { kind: 'all' });
+    if (mode !== 'tasks' && mode !== 'home') openTasks(t?.userId === user.id ? { kind: 'mine' } : t?.clientId ? { kind: 'client', id: t.clientId } : { kind: 'all' });
+    setTaskOpen(id);
   };
 
   const createFromDump = (r: DumpResult) => {
-    const made = r.tasks.map((t) => createTask({ ...t, source: 'braindump' }, r.notify));
+    const br = r.brief ? createTask({ ...r.brief, kind: 'brief', priority: 'normal', source: 'braindump' }, r.notify) : null;
+    const made = r.tasks.map((t) => createTask({ ...t, briefId: br?.id, source: 'braindump' }, r.notify));
+    if (Object.keys(r.learned).length) patchWorkspace(ws.id, { aliases: { ...(ws.aliases ?? {}), ...r.learned } });
     setDump(null);
-    const people = new Set(made.filter((t) => t.userId !== user.id).map((t) => t.userId));
+    const people = new Set(made.filter((t) => t.userId && t.userId !== user.id).map((t) => t.userId));
     showToast({
-      text: `Created ${made.length} task${made.length === 1 ? '' : 's'}${people.size ? `, ${people.size} ${people.size === 1 ? 'person' : 'people'} notified` : ''}`,
-      action: { label: 'View', run: () => openTasks({ kind: 'all' }) },
+      text: `${br ? 'Brief and ' : 'Created '}${made.length} task${made.length === 1 ? '' : 's'}${br ? ' created' : ''}${people.size ? `, ${people.size} ${people.size === 1 ? 'person' : 'people'} notified` : ''}`,
+      action: br ? { label: 'Open brief', run: () => openTask(br.id) } : { label: 'View', run: () => openTasks({ kind: 'all' }) },
     });
+  };
+
+  /** Invite someone by name and email (from the brain dump's "Who is Andi?"). */
+  const inviteByName = (name: string, email: string): User => {
+    const existing = allUsers.find((u) => u.email.toLowerCase() === email);
+    const u: User = existing ?? { id: uid(), name: name.charAt(0).toUpperCase() + name.slice(1), email, title: 'Invited', color: ['#0ea5e9', '#f97316', '#8b5cf6', '#10b981'][allUsers.length % 4] };
+    if (!existing) onInvite(u);
+    if (!ws.members.some((m) => m.userId === u.id)) patchWorkspace(ws.id, { members: [...ws.members, { userId: u.id, role: 'member' }] });
+    showToast({ text: `Invited ${u.name} (${email})` });
+    return u;
   };
 
   const sendChat = (text: string) => {
@@ -829,7 +898,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (i < 0) return undefined;
       d.setDate(d.getDate() + (((i - d.getDay() + 7) % 7) || 7));
     }
-    return d.toISOString().slice(0, 10);
+    return localDay(d);
   };
 
   const meetingActionToTask = (m: Meeting, i: number, quiet = false) => {
@@ -1163,7 +1232,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       <AppRail
         current={mode}
         enabled={enabledApps}
-        badges={{ mail: accountUnread.all, chat: chatUnreadTotal, tasks: wsTasks.filter((t) => t.userId === user.id && !t.done && t.due && t.due <= new Date().toISOString().slice(0, 10)).length }}
+        badges={{ mail: accountUnread.all, chat: chatUnreadTotal, tasks: wsTasks.filter((t) => t.userId === user.id && !t.done && t.due && t.due <= localDay()).length }}
         workspace={
           <WorkspaceSwitcher
             workspaces={workspaces}
@@ -1276,6 +1345,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             scope={taskScope}
             tasks={wsTasks}
             clients={wsClients}
+            teams={wsTeams}
             me={user.id}
             onScope={(sc) => {
               setTaskScope(sc);
@@ -1356,10 +1426,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
         {mode === 'home' && (
           <HomeView
+            key={ws.id}
             me={user}
             firstName={myFirst}
+            isOwner={ws.members.some((m) => m.userId === user.id && m.role === 'owner')}
+            workspaceId={ws.id}
+            defaultTemplate={ws.teamHome?.[wsTeams.find((t) => t.members.includes(user.id))?.id ?? '']}
             tasks={wsTasks}
             clients={wsClients}
+            teams={wsTeams}
+            users={members}
+            onAssign={(id, uid2) => patchTask(id, { userId: uid2 })}
+            onOpenTask={openTask}
+            onOpenTeam={(id) => openTasks({ kind: 'team', id })}
+            onOpenBriefs={() => openTasks({ kind: 'briefs' })}
+            onOpenGrid={() => openTasks({ kind: 'grid' })}
             threads={scoped}
             events={visibleEvents}
             meetings={wsMeetings}
@@ -1386,6 +1467,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             scope={taskScope}
             tasks={wsTasks}
             clients={wsClients}
+            teams={wsTeams}
+            onScope={setTaskScope}
+            onOpenTask={setTaskOpen}
             users={members}
             me={user.id}
             threads={wsThreads}
@@ -1393,7 +1477,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             meetings={wsMeetings}
             onAdd={(t) => {
               const task = createTask({ ...t, source: 'manual' }, { chat: true });
-              if (task.userId !== user.id) showToast({ text: `Assigned to ${firstOf(task.userId)}, they’ve been notified` });
+              if (task.userId && task.userId !== user.id) showToast({ text: `Assigned to ${firstOf(task.userId)}, they’ve been notified` });
+              else if (!task.userId) showToast({ text: `Added to ${wsTeams.find((x) => x.id === task.teamId)?.name ?? 'the'} queue` });
             }}
             onStatus={setTaskStatus}
             onPatch={patchTask}
@@ -1732,7 +1817,45 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
 
-      {dump !== null && <BrainDump users={members} clients={wsClients} me={user.id} initialText={dump} onCreate={createFromDump} onClose={() => setDump(null)} />}
+      {taskOpen && wsTasks.some((t) => t.id === taskOpen) && (
+        <TaskDrawer
+          task={wsTasks.find((t) => t.id === taskOpen)!}
+          tasks={wsTasks}
+          clients={wsClients}
+          teams={wsTeams}
+          users={members}
+          me={user.id}
+          onClose={() => setTaskOpen(null)}
+          onOpen={setTaskOpen}
+          onPatch={patchTask}
+          onStatus={setTaskStatus}
+          onDelete={deleteTodo}
+          onToCalendar={todoToCalendar}
+          onAddSubtask={(briefId, t) => {
+            const br = wsTasks.find((x) => x.id === briefId);
+            createTask({ ...t, briefId, clientId: br?.clientId, source: 'manual' }, { chat: true });
+          }}
+          onOpenThread={(id) => (setTaskOpen(null), openThread(id))}
+          onOpenChannel={(clientId) => {
+            const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
+            if (ch) (setTaskOpen(null), openChannel(ch.id));
+            else showToast({ text: 'This client has no channel yet' });
+          }}
+        />
+      )}
+      {dump !== null && (
+        <BrainDump
+          users={members}
+          clients={wsClients}
+          teams={wsTeams}
+          me={user.id}
+          aliases={ws.aliases ?? {}}
+          initialText={dump}
+          onCreate={createFromDump}
+          onInvite={inviteByName}
+          onClose={() => setDump(null)}
+        />
+      )}
       {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
       <AIAssistant
         open={aiOpen}
