@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Brain, CalendarPlus, Columns3, FileText, Hash, LayoutGrid, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
-import type { Channel, Client, Meeting, TaskStatus, Team, Thread, Todo, User } from '../types';
+import { Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
+import type { Channel, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User } from '../types';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
@@ -70,6 +70,10 @@ interface Props {
   threads: Thread[];
   channels: Channel[];
   meetings: Meeting[];
+  files: DriveItem[];
+  onPreviewPortal: (clientId: string, guestEmail?: string) => void;
+  onShareMeeting: (id: string, shared: boolean) => void;
+  onShareFile: (id: string, shared: boolean) => void;
   onScope: (s: TaskScope) => void;
   onOpenTask: (id: string) => void;
   onAdd: (t: { title: string; clientId?: string; teamId?: string; userId: string; due?: string }) => void;
@@ -94,7 +98,8 @@ export function TasksView(p: Props) {
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'tasks' | 'emails' | 'meetings'>('tasks');
+  const [clientTab, setClientTab] = useState<'tasks' | 'emails' | 'meetings' | 'portal'>('tasks');
+  const [previewAs, setPreviewAs] = useState<string | null>(null);
 
   const scope = p.scope;
   const client = scope.kind === 'client' ? p.clients.find((c) => c.id === scope.id) : undefined;
@@ -468,6 +473,7 @@ export function TasksView(p: Props) {
               ['tasks', `Tasks · ${open.length}`],
               ['emails', `Emails · ${clientThreads.length}`],
               ['meetings', `Meetings · ${clientMeetings.length}`],
+              ['portal', 'Client portal'],
             ] as const
           ).map(([id, label]) => (
             <button key={id} className={clientTab === id ? 'on' : ''} onClick={() => setClientTab(id)}>
@@ -708,6 +714,99 @@ export function TasksView(p: Props) {
             ))}
           </div>
         )}
+        {client && clientTab === 'portal' && (() => {
+          const guests = [...new Map(p.channels.filter((c) => c.clientId === client.id).flatMap((c) => c.guests ?? []).map((g) => [g.email, g])).values()];
+          const visible = p.tasks.filter((t) => t.clientId === client.id && t.visibleToClient);
+          const waiting = visible.filter((t) => t.approval?.status === 'waiting');
+          const files = p.files.filter((f) => (f.clientId === client.id || f.parentId && p.files.find((x) => x.id === f.parentId)?.clientId === client.id) && f.kind !== 'folder' && !f.trashed);
+          const mts = p.meetings.filter((m) => m.clientId === client.id);
+          const candidates = p.tasks.filter((t) => t.clientId === client.id && !t.done).slice(0, 12);
+          return (
+            <div className="portal-admin">
+              <div className="pa-hero">
+                <div>
+                  <h3>What {client.name} sees</h3>
+                  <p className="muted">
+                    Everything is internal until you mark it visible. {visible.length} item{visible.length === 1 ? '' : 's'} shared, {waiting.length} waiting for approval.
+                  </p>
+                  <p className="muted small">
+                    Portal address: <b>portal.sprint2go.com/{client.name.toLowerCase().replace(/[^a-z0-9]+/g, '')}</b> · guests sign in with their email
+                  </p>
+                </div>
+                <div className="pa-preview">
+                  <Select
+                    value={previewAs ?? guests[0]?.email ?? ''}
+                    onChange={setPreviewAs}
+                    label="Preview as"
+                    options={guests.length ? guests.map((g) => ({ value: g.email, label: g.name, hint: g.email })) : [{ value: '', label: `Someone at ${client.name}` }]}
+                  />
+                  <button className="primary-btn sm" onClick={() => p.onPreviewPortal(client.id, (previewAs ?? guests[0]?.email) || undefined)}>
+                    <Eye size={14} /> Preview portal
+                  </button>
+                </div>
+              </div>
+
+              <div className="pa-grid">
+                <section>
+                  <h4>Tasks and briefs</h4>
+                  {candidates.map((t) => (
+                    <div key={t.id} className="pa-row">
+                      <button className={`eye ${t.visibleToClient ? 'on' : ''}`} onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })} title={t.visibleToClient ? 'Visible to client' : 'Internal only'}>
+                        {t.visibleToClient ? <Eye size={14} /> : <EyeOff size={14} />}
+                      </button>
+                      <button className="pa-title" onClick={() => p.onOpenTask(t.id)}>
+                        {isBrief(t) && <FileText size={12} />} {t.title}
+                      </button>
+                      {t.approval?.status === 'waiting' && (
+                        <span className="ap-tag waiting">
+                          <Clock size={11} /> Waiting
+                        </span>
+                      )}
+                      {t.approval?.status === 'approved' && (
+                        <span className="ap-tag approved">
+                          <CheckCircle2 size={11} /> Approved
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </section>
+                <section>
+                  <h4>Files</h4>
+                  {files.length === 0 && <p className="muted small">No files for {client.name} in Drive yet.</p>}
+                  {files.map((f) => (
+                    <div key={f.id} className="pa-row">
+                      <button className={`eye ${f.sharedWithClient ? 'on' : ''}`} onClick={() => p.onShareFile(f.id, !f.sharedWithClient)} title={f.sharedWithClient ? 'Visible to client' : 'Internal only'}>
+                        {f.sharedWithClient ? <Eye size={14} /> : <EyeOff size={14} />}
+                      </button>
+                      <span className="pa-title">{f.name}</span>
+                    </div>
+                  ))}
+                  <h4>Meeting notes</h4>
+                  {mts.length === 0 && <p className="muted small">No meetings with {client.name} yet.</p>}
+                  {mts.map((m) => (
+                    <div key={m.id} className="pa-row">
+                      <button className={`eye ${m.sharedWithClient ? 'on' : ''}`} onClick={() => p.onShareMeeting(m.id, !m.sharedWithClient)} title={m.sharedWithClient ? 'Visible to client' : 'Internal only'}>
+                        {m.sharedWithClient ? <Eye size={14} /> : <EyeOff size={14} />}
+                      </button>
+                      <span className="pa-title">{m.title}</span>
+                    </div>
+                  ))}
+                  <h4>People with access</h4>
+                  {guests.length === 0 && <p className="muted small">No client guests yet. Invite them from the client’s channel settings.</p>}
+                  {guests.map((g) => (
+                    <div key={g.email} className="pa-row">
+                      <span className="guest-av">{g.name.charAt(0)}</span>
+                      <span className="pa-title">
+                        {g.name} <small className="muted">{g.email}</small>
+                      </span>
+                      <span className={`guest-status ${g.status}`}>{g.status === 'joined' ? 'Joined' : 'Invited'}</span>
+                    </div>
+                  ))}
+                </section>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </section>
   );

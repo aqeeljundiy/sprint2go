@@ -831,6 +831,7 @@ export function ChatView(p: ViewProps) {
             <p>
               {other ? (p.statuses[other.id]?.text ?? other.title) : (channel.topic ?? (client ? `${client.name} client channel` : ''))}
               {channel.guests?.length ? ` · ${channel.guests.length} client guest${channel.guests.length > 1 ? 's' : ''}` : ''}
+              {channel.sharedWith ? ` · shared with ${channel.sharedWith.workspaceName}${channel.sharedWith.status === 'pending' ? ' (waiting)' : ''}` : ''}
             </p>
           </div>
           {channel.kind === 'channel' && (

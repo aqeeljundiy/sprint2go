@@ -40,6 +40,7 @@ import { TasksSidebar } from './components/TasksSidebar';
 import { BrainDump, type DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog } from './components/ChannelDialog';
+import { ClientPortal } from './components/ClientPortal';
 import { celebrate } from './components/ui/confetti';
 import { MeetView } from './components/MeetView';
 import { Onboarding } from './components/Onboarding';
@@ -250,6 +251,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [teams] = useStored('teams');
   const [statuses, setStatuses] = useStored('statuses');
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
+  const [portal, setPortal] = useState<{ clientId: string; guestEmail?: string } | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   const [meetId, setMeetId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -857,6 +859,31 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       text: `${br ? 'Brief and ' : 'Created '}${made.length} task${made.length === 1 ? '' : 's'}${br ? ' created' : ''}${people.size ? `, ${people.size} ${people.size === 1 ? 'person' : 'people'} notified` : ''}`,
       action: br ? { label: 'Open brief', run: () => openTask(br.id) } : { label: 'View', run: () => openTasks({ kind: 'all' }) },
     });
+  };
+
+  /** Ask the client to approve a task: it becomes visible in their portal and the guests are told in the client channel. */
+  const askApproval = (id: string) => {
+    const t = todos.find((x) => x.id === id);
+    if (!t) return;
+    patchTask(id, { visibleToClient: true, approval: { status: 'waiting', askedBy: user.id, askedAt: nowIso() } });
+    const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === t.clientId && c.guests?.length);
+    if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `Could you approve “${t.title}”? It’s waiting for you in your portal 🙏`, at: nowIso(), taskId: id }]);
+    showToast({ text: ch ? `Approval requested. ${ch.guests!.map((g) => g.name.split(' ')[0]).join(', ')} will see it in the portal` : 'Approval requested in the client portal' });
+  };
+
+  /** The client approves or asks for changes (from the portal). */
+  const clientDecision = (id: string, status: 'approved' | 'changes', note: string, by: string) => {
+    const t = todos.find((x) => x.id === id);
+    if (!t) return;
+    patchTask(id, { approval: { ...(t.approval ?? { askedBy: user.id, askedAt: nowIso() }), status, by, at: nowIso(), note: note || undefined } });
+    const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === t.clientId && c.guests?.some((g) => g.email === by));
+    const who = ch?.guests?.find((g) => g.email === by)?.name ?? by;
+    const text = status === 'approved' ? `✅ Approved “${t.title}”${note ? `: ${note}` : ''}` : `✏️ Asked for changes on “${t.title}”: ${note}`;
+    if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: 'guest', guestEmail: by, text, at: nowIso(), taskId: id }]);
+    const tellIds = new Set([t.approval?.askedBy, t.userId, t.createdBy].filter(Boolean) as string[]);
+    tellIds.forEach((uidX) => notify(uidX, 'task', `${who} ${status === 'approved' ? 'approved' : 'asked for changes on'} “${t.title}”`, { app: 'tasks', id }));
+    if (status === 'changes' && t.done) setTaskStatus(id, 'todo', true);
+    showToast({ text: status === 'approved' ? `${who} approved it` : `${who} asked for changes` });
   };
 
   /** Invite someone by name and email (from the brain dump's "Who is Andi?"). */
@@ -1547,6 +1574,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             teams={wsTeams}
             onScope={setTaskScope}
             onOpenTask={setTaskOpen}
+            files={drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id)}
+            onPreviewPortal={(clientId, guestEmail) => setPortal({ clientId, guestEmail })}
+            onShareMeeting={(id, shared) => setMeetings((ms) => ms.map((m) => (m.id === id ? { ...m, sharedWithClient: shared } : m)))}
+            onShareFile={(id, shared) => patchDrive(id, { sharedWithClient: shared })}
             users={members}
             me={user.id}
             threads={wsThreads}
@@ -1584,7 +1615,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               const ch = channels.find((c) => c.id === chatId);
               const cl = wsClients.find((c) => c.id === ch?.clientId);
               const word = cl?.name.split(' ')[0].toLowerCase();
-              return cl ? drive.filter((d) => !d.trashed && !d.channelId && (d.workspaceId ?? 'pnp') === ws.id && (d.clientId === cl.id || (!!word && d.name.toLowerCase().includes(word)))) : [];
+              return cl ? drive.filter((d) => !d.trashed && d.kind !== 'folder' && !d.channelId && (d.workspaceId ?? 'pnp') === ws.id && (d.clientId === cl.id || (!!word && d.name.toLowerCase().includes(word)))) : [];
             })()}
             statuses={statuses}
             presence={presence}
@@ -1937,11 +1968,28 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             createTask({ ...t, briefId, clientId: br?.clientId, source: 'manual' }, { chat: true });
           }}
           onOpenThread={(id) => (setTaskOpen(null), openThread(id))}
+          onAskApproval={askApproval}
           onOpenChannel={(clientId) => {
             const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));
             else showToast({ text: 'This client has no channel yet' });
           }}
+        />
+      )}
+      {portal && wsClients.some((c) => c.id === portal.clientId) && (
+        <ClientPortal
+          workspace={ws}
+          client={wsClients.find((c) => c.id === portal.clientId)!}
+          guest={channels.flatMap((c) => c.guests ?? []).find((g) => g.email === portal.guestEmail) ?? null}
+          tasks={wsTasks}
+          meetings={wsMeetings}
+          files={drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id && (d.clientId === portal.clientId || drive.find((x) => x.id === d.parentId)?.clientId === portal.clientId))}
+          channels={wsChannels}
+          users={members}
+          branded={false}
+          onApprove={clientDecision}
+          onOpenChannel={(id) => (setPortal(null), openChannel(id))}
+          onClose={() => setPortal(null)}
         />
       )}
       {chanDialog && (

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Archive, Globe, Hash, Lock, Mail, Megaphone, Plus, Users, X } from 'lucide-react';
+import { Archive, Building2, Globe, Hash, Lock, Mail, Megaphone, Plus, Users, X } from 'lucide-react';
 import type { Channel, ChannelCategory, Client, Guest, Policy, Team, User } from '../types';
 import { Avatar } from './Avatar';
 import { Dot, Select } from './ui/Select';
@@ -46,6 +46,8 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
   const [postPolicy, setPostPolicy] = useState<Policy>(channel?.postPolicy ?? 'everyone');
   const [invitePolicy, setInvitePolicy] = useState<Policy>(channel?.invitePolicy ?? 'everyone');
   const [q, setQ] = useState('');
+  const [shared, setShared] = useState(channel?.sharedWith ?? null);
+  const [shareDomain, setShareDomain] = useState('');
 
   const client = clients.find((c) => c.id === clientId);
   const pickCategory = (c: ChannelCategory) => {
@@ -88,6 +90,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
       guests,
       postPolicy,
       invitePolicy,
+      sharedWith: shared ?? undefined,
       ownerId: channel?.ownerId ?? me,
       createdAt: channel?.createdAt ?? new Date().toISOString(),
     });
@@ -270,6 +273,41 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                     { value: 'admins', label: 'Only admins and the owner' },
                   ]}
                 />
+              </div>
+              <div className="guest-box share-box">
+                <div className="gb-head">
+                  <Building2 size={15} />
+                  <strong>Share with another company</strong>
+                  <span className="muted small">If the client also uses Sprint2go, connect this channel to their workspace. Each company keeps its own members and settings.</span>
+                </div>
+                {shared ? (
+                  <div className="guest-row">
+                    <span className="guest-av">{shared.workspaceName.charAt(0)}</span>
+                    <span className="gr-text">
+                      <strong>{shared.workspaceName}</strong>
+                      <small>@{shared.domain}</small>
+                    </span>
+                    <span className={`guest-status ${shared.status === 'connected' ? 'joined' : ''}`}>{shared.status === 'connected' ? 'Connected' : 'Waiting for them to accept'}</span>
+                    <button type="button" className="icon-btn sm" onClick={() => setShared(null)} aria-label="Stop sharing">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="guest-add">
+                    <input value={shareDomain} onChange={(e) => setShareDomain(e.target.value)} placeholder={client?.domain ?? 'their-company.com'} />
+                    <button
+                      type="button"
+                      className="ghost-btn sm"
+                      onClick={() => {
+                        const d = (shareDomain.trim() || client?.domain || '').toLowerCase().replace(/^@/, '');
+                        if (!/\./.test(d)) return;
+                        setShared({ workspaceName: client?.name ?? d.split('.')[0], domain: d, status: 'pending' });
+                      }}
+                    >
+                      Send request
+                    </button>
+                  </div>
+                )}
               </div>
               <ul className="perm-notes">
                 <li>Client guests can read and post here, react and reply. They can’t see other channels, people’s profiles or your tasks unless you share them.</li>

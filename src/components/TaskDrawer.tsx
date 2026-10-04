@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarPlus, FileText, Hash, Plus, Trash2, X } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import type { Client, TaskStatus, Team, Todo, User } from '../types';
 import { relative } from '../utils';
 import { Avatar } from './Avatar';
@@ -23,6 +23,7 @@ interface Props {
   onAddSubtask: (briefId: string, t: { title: string; userId: string; teamId?: string; due?: string }) => void;
   onOpenThread: (id: string) => void;
   onOpenChannel?: (clientId: string) => void;
+  onAskApproval: (id: string) => void;
 }
 
 /** A task or brief, opened. A brief shows its context and its tasks; a task shows the brief it belongs to and who's in charge. */
@@ -112,6 +113,45 @@ export function TaskDrawer(p: Props) {
             </button>
           )}
 
+          {t.clientId && (
+            <div className={`client-vis ${t.visibleToClient ? 'on' : ''}`}>
+              <button className="cv-toggle" onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })}>
+                {t.visibleToClient ? <Eye size={15} /> : <EyeOff size={15} />}
+                <span>
+                  <strong>{t.visibleToClient ? 'Visible to client' : 'Internal only'}</strong>
+                  <small>{t.visibleToClient ? `${p.clients.find((c) => c.id === t.clientId)?.name} can see this in their portal` : 'Only your team can see this'}</small>
+                </span>
+              </button>
+              {!brief &&
+                (t.approval ? (
+                  <span className={`ap-tag ${t.approval.status}`}>
+                    {t.approval.status === 'waiting' ? (
+                      <>
+                        <Clock size={12} /> Waiting for client approval
+                      </>
+                    ) : t.approval.status === 'approved' ? (
+                      <>
+                        <CheckCircle2 size={12} /> Approved {t.approval.at ? relative(t.approval.at) : ''}
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw size={12} /> Changes asked: “{t.approval.note}”
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <button className="ghost-btn sm" onClick={() => p.onAskApproval(t.id)}>
+                    <CheckCircle2 size={13} /> Ask client to approve
+                  </button>
+                ))}
+              {t.approval && t.approval.status !== 'waiting' && (
+                <button className="link-btn small" onClick={() => p.onAskApproval(t.id)}>
+                  Ask again
+                </button>
+              )}
+            </div>
+          )}
+
           <dl className="fields">
             <dt>Status</dt>
             <dd>
@@ -120,9 +160,9 @@ export function TaskDrawer(p: Props) {
                 onChange={(v) => p.onStatus(t.id, v)}
                 label="Status"
                 options={[
-                  { value: 'todo', label: 'To do', icon: <span className="st-dot todo" /> },
-                  { value: 'doing', label: 'In progress', icon: <span className="st-dot doing" /> },
-                  { value: 'done', label: 'Done', icon: <span className="st-dot done" /> },
+                  { value: 'todo', label: 'To do', icon: <span className="st-dot st-todo" /> },
+                  { value: 'doing', label: 'In progress', icon: <span className="st-dot st-doing" /> },
+                  { value: 'done', label: 'Done', icon: <span className="st-dot st-done" /> },
                 ]}
               />
             </dd>
@@ -155,7 +195,7 @@ export function TaskDrawer(p: Props) {
                 label="Priority"
                 options={[
                   { value: 'normal', label: 'Normal' },
-                  { value: 'high', label: 'High', icon: <span className="st-dot high" /> },
+                  { value: 'high', label: 'High', icon: <span className="st-dot st-high" /> },
                 ]}
               />
             </dd>

@@ -135,6 +135,7 @@ export interface DriveItem {
   workspaceId?: string; // defaults to the first workspace
   clientId?: string; // filed under a client (e.g. shared in its chat channel)
   channelId?: string; // shared in this chat channel
+  sharedWithClient?: boolean; // visible in the client portal
 }
 
 /** Which part of Drive is showing. */
@@ -195,6 +196,8 @@ export interface Todo {
   context?: string; // a brief's goal, background, deliverables and links
   doneAt?: string;
   doneBy?: string;
+  visibleToClient?: boolean; // shows in the client portal
+  approval?: Approval; // the client is asked to approve this
   due?: string; // YYYY-MM-DD
   done: boolean;
   status?: TaskStatus; // board column; kept in step with `done`
@@ -210,6 +213,15 @@ export interface Todo {
 }
 export type Task = Todo;
 export type TaskStatus = 'todo' | 'doing' | 'done';
+
+export interface Approval {
+  status: 'waiting' | 'approved' | 'changes';
+  askedBy: string;
+  askedAt: string;
+  by?: string; // guest email
+  at?: string;
+  note?: string;
+}
 
 /** A department: Video editing, Design, Performance, Finance… */
 export interface Team {
@@ -320,6 +332,7 @@ export interface Meeting {
   attendees: string[]; // names
   summary: string;
   actions: { title: string; owner?: string; due?: string; taskId?: string }[];
+  sharedWithClient?: boolean; // notes visible in the client portal
 }
 
 export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'calendar' | 'drive' | 'meet';
