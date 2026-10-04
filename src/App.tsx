@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Building2, CalendarPlus, FileText, Hash, House, ListChecks, Mail, MessagesSquare, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
-import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChatFile, ChatMessage, Meeting, Notice, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -699,7 +699,41 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const members = useMemo(() => ws.members.map((m) => allUsers.find((u) => u.id === m.userId)).filter(Boolean) as User[], [ws.members, allUsers]);
   const wsClients = useMemo(() => clients.filter((c) => c.workspaceId === ws.id), [clients, ws.id]);
   const wsTeams = useMemo(() => teams.filter((t) => t.workspaceId === ws.id), [teams, ws.id]);
-  const wsTasks = useMemo(() => todos.filter((t) => (t.workspaceId ?? 'pnp') === ws.id), [todos, ws.id]);
+  const allWsTasks = useMemo(() => todos.filter((t) => (t.workspaceId ?? 'pnp') === ws.id), [todos, ws.id]);
+  // Who sees which tasks: owners and admins see everything; everyone else sees their own work,
+  // their teams' work, the clients they work on, and the channels they're in.
+  const isAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
+  const myTeamIds = useMemo(() => teams.filter((t) => t.workspaceId === ws.id && (t.members.includes(user.id) || t.leadId === user.id)).map((t) => t.id), [teams, ws.id, user.id]);
+  const myClientIds = useMemo(
+    () =>
+      clients
+        .filter(
+          (c) =>
+            c.workspaceId === ws.id &&
+            (c.ownerId === user.id ||
+              channels.some((ch) => ch.clientId === c.id && ch.members.includes(user.id)) ||
+              allWsTasks.some((t) => t.clientId === c.id && (t.userId === user.id || t.assignees?.includes(user.id) || t.supervisorId === user.id))),
+        )
+        .map((c) => c.id),
+    [clients, channels, allWsTasks, ws.id, user.id],
+  );
+  const wsTasks = useMemo(
+    () =>
+      isAdmin
+        ? allWsTasks
+        : allWsTasks.filter(
+            (t) =>
+              t.userId === user.id ||
+              t.assignees?.includes(user.id) ||
+              t.supervisorId === user.id ||
+              t.followers?.includes(user.id) ||
+              t.createdBy === user.id ||
+              (t.teamId && myTeamIds.includes(t.teamId)) ||
+              (t.clientId && myClientIds.includes(t.clientId)) ||
+              (t.channelId && channels.some((c) => c.id === t.channelId && c.members.includes(user.id))),
+          ),
+    [allWsTasks, isAdmin, user.id, myTeamIds, myClientIds, channels],
+  );
   const wsChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && c.members.includes(user.id) && !c.archived), [channels, ws.id, user.id]);
   // Channels I can see in the sidebar: mine, plus public ones I could join.
   const visibleChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && !c.archived && (c.members.includes(user.id) || (c.kind === 'channel' && !c.private))), [channels, ws.id, user.id]);
@@ -828,6 +862,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       workspaceId: ws.id,
       threadId: t.threadId,
       createdAt: nowIso(),
+      assignees: t.userId ? [t.userId] : [],
+      supervisorId: user.id, // whoever assigns it supervises it, unless someone changes it
+      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
     };
     setTodos((ts) => [...ts, task]);
     // Not assigned yet: tell the team lead it's waiting in their queue.
@@ -844,17 +881,44 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return task;
   };
 
-  function setTaskStatus(id: string, status: TaskStatus, quiet = false) {
+  function setTaskStatus(id: string, requested: TaskStatus, quiet = false) {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    const before = { status: t.status, done: t.done, doneAt: t.doneAt, doneBy: t.doneBy };
+    // The review step: when the team asks for it, finishing a task sends it to the supervisor first.
+    const team = teams.find((x) => x.id === t.teamId);
+    const needsReview = requested === 'done' && !!team?.review && !!t.supervisorId && t.supervisorId !== user.id && !doersOf(t).includes(t.supervisorId) && t.status !== 'review';
+    const status: TaskStatus = needsReview ? 'review' : requested;
+    const before = { status: t.status, done: t.done, doneAt: t.doneAt, doneBy: t.doneBy, history: t.history };
+    if (status !== (t.done ? 'done' : (t.status ?? 'todo'))) {
+      const text = needsReview
+        ? 'finished it and sent it for review'
+        : status === 'done'
+          ? t.status === 'review'
+            ? 'approved it'
+            : 'marked it done'
+          : status === 'waiting'
+            ? 'set it to Waiting on client'
+            : status === 'doing'
+              ? 'started it'
+              : t.done
+                ? 'reopened it'
+                : 'moved it back to To do';
+      logTask(id, needsReview || t.status === 'review' ? 'review' : 'status', text);
+    }
+    if (needsReview) {
+      setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status: 'review', done: false } : x)));
+      notify(t.supervisorId!, 'task', `${myFirst} finished ${describe(t)}. Ready for your review`, { app: 'tasks', id });
+      if (!quiet) showToast({ text: `Sent to ${firstOf(t.supervisorId)} for review` });
+      return;
+    }
     setTodos((ts) =>
       ts.map((x) =>
         x.id === id ? { ...x, status, done: status === 'done', doneAt: status === 'done' ? (x.done ? x.doneAt : nowIso()) : undefined, doneBy: status === 'done' ? (x.done ? x.doneBy : user.id) : undefined } : x,
       ),
     );
     if (status === 'done' && !t.done) {
-      if (t.createdBy && t.createdBy !== user.id) notify(t.createdBy, 'done', `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id });
+      const tell = new Set([t.supervisorId ?? t.createdBy, ...(t.followers ?? []), ...(t.status === 'review' ? doersOf(t) : [])].filter((x): x is string => !!x && x !== user.id));
+      tell.forEach((uid2) => notify(uid2, 'done', t.status === 'review' ? `${myFirst} approved ${describe(t)}` : `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id }));
       // Finishing the last task of a brief tells the person in charge.
       const br = t.briefId ? todos.find((x) => x.id === t.briefId) : undefined;
       if (br && br.userId !== user.id && todos.filter((x) => x.briefId === br.id && x.id !== id).every((x) => x.done))
@@ -874,13 +938,57 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
   }
 
+  const doersOf = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
+  /** Adds a line to a task's history. */
+  const logTask = (id: string, kind: TaskEvent['kind'], text: string, by = user.id) =>
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by, kind, text }] } : x)));
+
   const patchTask = (id: string, patch: Partial<Todo>) => {
     const t = todos.find((x) => x.id === id);
+    // Keep userId (first person doing it) and assignees in step.
+    if (patch.userId !== undefined && patch.assignees === undefined && t) patch = { ...patch, assignees: patch.userId ? [patch.userId, ...doersOf(t).filter((x) => x !== patch.userId && x !== t.userId)] : [] };
+    if (patch.assignees && patch.userId === undefined) patch = { ...patch, userId: patch.assignees[0] ?? '' };
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-    if (t && patch.userId && patch.userId !== t.userId && patch.userId !== user.id) {
-      notify(patch.userId, 'task', `${myFirst} assigned you ${describe(t)}`, { app: 'tasks', id });
-      showToast({ text: `Assigned to ${firstOf(patch.userId)}` });
+    if (!t) return;
+    const before = doersOf(t);
+    if (patch.assignees) {
+      const added = patch.assignees.filter((x) => !before.includes(x));
+      const removed = before.filter((x) => !patch.assignees!.includes(x));
+      if (added.length || removed.length)
+        logTask(id, 'assigned', [added.length ? `added ${added.map(firstOf).join(', ')}` : '', removed.length ? `removed ${removed.map(firstOf).join(', ')}` : ''].filter(Boolean).join(' and '));
+      added.filter((x) => x !== user.id).forEach((x) => notify(x, 'task', `${myFirst} assigned you ${describe(t)}`, { app: 'tasks', id }));
+      if (added.length === 1 && added[0] !== user.id) showToast({ text: `Assigned to ${firstOf(added[0])}` });
     }
+    if (patch.supervisorId && patch.supervisorId !== t.supervisorId) {
+      logTask(id, 'supervisor', `made ${patch.supervisorId === user.id ? 'themselves' : firstOf(patch.supervisorId)} the supervisor`);
+      if (patch.supervisorId !== user.id) notify(patch.supervisorId, 'task', `${myFirst} asked you to supervise ${describe(t)}`, { app: 'tasks', id });
+    }
+    if ('due' in patch && patch.due !== t.due) logTask(id, 'due', patch.due ? `moved the due date ${t.due ? `from ${dueLabel(t.due).text} ` : ''}to ${dueLabel(patch.due).text}` : 'removed the due date');
+    if (patch.followers) {
+      const added = patch.followers.filter((x) => !(t.followers ?? []).includes(x));
+      if (added.length) logTask(id, 'edit', `added ${added.map((x) => (x === user.id ? 'themselves' : firstOf(x))).join(', ')} as follower${added.length > 1 ? 's' : ''}`);
+    }
+  };
+
+  /** A comment on a task: everyone on it hears about it (mentions too). */
+  const commentTask = (id: string, text: string) => {
+    const t = todos.find((x) => x.id === id);
+    if (!t) return;
+    logTask(id, 'comment', text);
+    const tell = new Set([...doersOf(t), t.supervisorId, ...(t.followers ?? []), ...members.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id)].filter((x): x is string => !!x && x !== user.id));
+    tell.forEach((x) => notify(x, 'task', `${myFirst} commented on “${t.title}”: “${text.slice(0, 80)}”`, { app: 'tasks', id }));
+  };
+
+  /** The supervisor sends a finished task back with a note. */
+  const sendBack = (id: string, note: string) => {
+    const t = todos.find((x) => x.id === id);
+    if (!t) return;
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status: 'doing', done: false } : x)));
+    logTask(id, 'review', `sent it back: “${note}”`);
+    doersOf(t)
+      .filter((x) => x !== user.id)
+      .forEach((x) => notify(x, 'task', `${myFirst} sent back “${t.title}”: “${note.slice(0, 80)}”`, { app: 'tasks', id }));
+    showToast({ text: 'Sent back with your note' });
   };
 
   const openTasks = (scope: TaskScope) => {
@@ -1762,6 +1870,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             clients={wsClients}
             teams={wsTeams}
             me={user.id}
+            isAdmin={isAdmin}
+            myTeamIds={myTeamIds}
+            myClientIds={myClientIds}
             onScope={(sc) => {
               setTaskScope(sc);
               setSidebarOpen(false);
@@ -1915,6 +2026,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             teams={wsTeams}
             onScope={setTaskScope}
             onOpenTask={setTaskOpen}
+            myTeamIds={myTeamIds}
+            myClientIds={myClientIds}
             files={drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id)}
             onPreviewPortal={(clientId, guestEmail) => setPortal({ clientId, guestEmail })}
             messages={messages}
@@ -2403,6 +2516,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           }}
           onOpenThread={(id) => (setTaskOpen(null), openThread(id))}
           onAskApproval={askApproval}
+          onComment={commentTask}
+          onSendBack={sendBack}
           onOpenChannel={(clientId) => {
             const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));

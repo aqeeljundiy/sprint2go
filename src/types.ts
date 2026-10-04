@@ -222,7 +222,11 @@ export interface Todo {
   priority: 'high' | 'normal';
   threadId?: string; // the email it came from
   source: 'ai' | 'manual' | 'braindump' | 'chat' | 'meeting';
-  userId: string; // assignee
+  userId: string; // first person doing it ('' = waiting in a team queue); kept for older code
+  assignees?: string[]; // everyone doing it (userId is the first)
+  supervisorId?: string; // checks the work; by default whoever assigned it
+  followers?: string[]; // get updates, no responsibility
+  history?: TaskEvent[];
   createdBy?: string;
   clientId?: string;
   workspaceId?: string;
@@ -230,7 +234,16 @@ export interface Todo {
   createdAt: string;
 }
 export type Task = Todo;
-export type TaskStatus = 'todo' | 'doing' | 'done';
+export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'review' | 'done'; // waiting = on the client; review = waiting for the supervisor
+
+/** One line in a task's history: what changed, or a comment. */
+export interface TaskEvent {
+  id: string;
+  at: string;
+  by: string; // user id, or a guest email
+  kind: 'created' | 'assigned' | 'status' | 'due' | 'edit' | 'comment' | 'review' | 'supervisor';
+  text: string;
+}
 
 export interface Approval {
   status: 'waiting' | 'approved' | 'changes';
@@ -250,6 +263,7 @@ export interface Team {
   leadId?: string;
   members: string[];
   keywords?: string[]; // words that route brain-dump tasks to this team
+  review?: boolean; // finished tasks wait for the supervisor before they count as done
 }
 
 export type HomeTemplateId = 'founder' | 'lead' | 'maker' | 'account' | 'finance';

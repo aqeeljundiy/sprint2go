@@ -31,7 +31,7 @@ import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
-import { dueLabel, isBrief, peopleOptions } from './TasksView';
+import { doers, dueLabel, isBrief, peopleOptions } from './TasksView';
 
 type CardId =
   | 'briefing'
@@ -168,7 +168,7 @@ export function HomeView(p: Props) {
     const work = p.tasks.filter((t) => !isBrief(t));
     const open = work.filter((t) => !t.done);
     const late = (t: Todo) => !t.done && !!t.due && t.due < today;
-    const mine = open.filter((t) => t.userId === p.me.id).sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'));
+    const mine = open.filter((t) => doers(t).includes(p.me.id)).sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'));
     const myTeams = p.teams.filter((t) => t.leadId === p.me.id);
     const briefs = p.tasks.filter((t) => isBrief(t) && !t.done);
     const myBriefs = briefs.filter((b) => b.userId === p.me.id || work.some((t) => t.briefId === b.id && t.userId === p.me.id));

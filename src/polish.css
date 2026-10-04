@@ -501,3 +501,138 @@ details.advanced[open] summary h3::after {
     display: none;
   }
 }
+
+/* Tasks: people, review, history */
+.people-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.people-btn.compact {
+  padding: 2px;
+  border-radius: 999px;
+  flex: none;
+}
+.people-btn.compact:hover {
+  background: var(--hover);
+}
+.av-stack {
+  display: inline-flex;
+  align-items: center;
+}
+.av-stack .avatar + .avatar {
+  margin-left: -7px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.av-more {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.due.waiting {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.due.review {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.st-dot.st-waiting {
+  border-color: var(--warn-solid);
+  background: var(--warn-soft);
+}
+.st-dot.st-review {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.board {
+  grid-template-columns: repeat(5, minmax(200px, 1fr)) !important;
+}
+.review-banner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--accent-soft);
+}
+.review-banner > span:first-child {
+  flex: 1;
+  min-width: 200px;
+  display: grid;
+}
+.review-banner small {
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.rb-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rb-actions input {
+  padding: 6px 10px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  outline: none;
+  min-width: 180px;
+}
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  border-left: 2px solid var(--line);
+  margin-left: 10px;
+}
+.history li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 0 6px 0;
+  margin-left: -12px;
+}
+.h-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.h-body b {
+  color: var(--text);
+}
+.h-comment {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.h-body time {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.comment-box {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 8px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--border);
+}
+.comment-box textarea {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+}

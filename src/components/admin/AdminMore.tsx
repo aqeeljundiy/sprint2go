@@ -297,6 +297,10 @@ export function TeamsSection({ ws, teams, users, canManage, onTeams, onTeamHome,
               </div>
               <label>Home</label>
               <Select<HomeTemplateId> value={ws.teamHome?.[t.id] ?? null} onChange={(v) => onTeamHome(t.id, v)} placeholder="Guess from role" label="Default Home" options={(Object.keys(HOME_TEMPLATES) as HomeTemplateId[]).map((k) => ({ value: k, label: HOME_TEMPLATES[k].name, hint: HOME_TEMPLATES[k].hint }))} />
+              <label>Review</label>
+              <label className="check-row small">
+                <input type="checkbox" checked={!!t.review} onChange={(e) => patch(t.id, { review: e.target.checked })} /> Finished tasks wait for the supervisor before they count as done
+              </label>
               <label>Keywords</label>
               <input className="inline-input" value={(t.keywords ?? []).join(', ')} onChange={(e) => patch(t.id, { keywords: e.target.value.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean) })} placeholder="video, reel, edit (the brain dump uses these)" />
             </div>

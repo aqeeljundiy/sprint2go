@@ -5,7 +5,8 @@ import { relative } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
-import { SOURCE, clientOptions, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
+import { SOURCE, clientOptions, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
+import { PeoplePicker } from './ui/PeoplePicker';
 
 interface Props {
   task: Todo;
@@ -24,6 +25,8 @@ interface Props {
   onOpenThread: (id: string) => void;
   onOpenChannel?: (clientId: string) => void;
   onAskApproval: (id: string) => void;
+  onComment: (id: string, text: string) => void;
+  onSendBack: (id: string, note: string) => void;
 }
 
 /** A task or brief, opened. A brief shows its context and its tasks; a task shows the brief it belongs to and who's in charge. */
@@ -39,6 +42,9 @@ export function TaskDrawer(p: Props) {
   const [subTeam, setSubTeam] = useState('');
   const [subDue, setSubDue] = useState('');
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const [comment, setComment] = useState('');
+  const [sendingBack, setSendingBack] = useState(false);
+  const [backNote, setBackNote] = useState('');
   const src = SOURCE[t.source];
 
   useEffect(() => {
@@ -152,6 +158,36 @@ export function TaskDrawer(p: Props) {
             </div>
           )}
 
+          {statusOf(t) === 'review' && (
+            <div className="review-banner">
+              <span>
+                <strong>Waiting for review</strong>
+                <small>{t.supervisorId === p.me ? 'You supervise this. Approve it, or send it back with a note.' : `${p.users.find((u) => u.id === t.supervisorId)?.name.split(' ')[0] ?? 'The supervisor'} checks it before it counts as done.`}</small>
+              </span>
+              {t.supervisorId === p.me && (
+                <span className="rb-actions">
+                  {sendingBack ? (
+                    <>
+                      <input autoFocus value={backNote} onChange={(e) => setBackNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && backNote.trim() && (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))} placeholder="What needs to change?" />
+                      <button className="primary-btn sm" disabled={!backNote.trim()} onClick={() => (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))}>
+                        Send back
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="ghost-btn sm" onClick={() => setSendingBack(true)}>
+                        Send back
+                      </button>
+                      <button className="primary-btn sm" onClick={() => p.onStatus(t.id, 'done')}>
+                        Approve
+                      </button>
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
+
           <dl className="fields">
             <dt>Status</dt>
             <dd>
@@ -162,14 +198,40 @@ export function TaskDrawer(p: Props) {
                 options={[
                   { value: 'todo', label: 'To do', icon: <span className="st-dot st-todo" /> },
                   { value: 'doing', label: 'In progress', icon: <span className="st-dot st-doing" /> },
+                  { value: 'waiting', label: 'Waiting on client', hint: 'The next step is the client’s', icon: <span className="st-dot st-waiting" /> },
+                  ...(statusOf(t) === 'review' ? [{ value: 'review' as TaskStatus, label: 'Waiting for review', icon: <span className="st-dot st-review" /> }] : []),
                   { value: 'done', label: 'Done', icon: <span className="st-dot st-done" /> },
                 ]}
               />
             </dd>
-            <dt>{brief ? 'In charge' : 'Assignee'}</dt>
-            <dd>
-              <Select value={t.userId} options={peopleOptions(p.users, p.me, !brief)} onChange={(v) => p.onPatch(t.id, { userId: v })} label={brief ? 'In charge' : 'Assignee'} />
-            </dd>
+            {brief ? (
+              <>
+                <dt>In charge</dt>
+                <dd>
+                  <Select value={t.userId} options={peopleOptions(p.users, p.me, false)} onChange={(v) => p.onPatch(t.id, { userId: v })} label="In charge" />
+                </dd>
+              </>
+            ) : (
+              <>
+                <dt>Doing it</dt>
+                <dd>
+                  <PeoplePicker value={doers(t)} users={p.users} me={p.me} label="Doing it" emptyText="Waiting in the team queue" onChange={(ids) => p.onPatch(t.id, { assignees: ids })} />
+                </dd>
+                <dt>Supervisor</dt>
+                <dd>
+                  <Select
+                    value={t.supervisorId ?? ''}
+                    options={[{ value: '', label: 'Nobody' }, ...peopleOptions(p.users, p.me, false)]}
+                    onChange={(v) => p.onPatch(t.id, { supervisorId: v || undefined })}
+                    label="Supervisor"
+                  />
+                </dd>
+                <dt>Followers</dt>
+                <dd>
+                  <PeoplePicker value={t.followers ?? []} users={p.users} me={p.me} label="Followers" emptyText="Add people to keep informed" onChange={(ids) => p.onPatch(t.id, { followers: ids })} />
+                </dd>
+              </>
+            )}
             {!brief && (
               <>
                 <dt>Team</dt>
@@ -259,6 +321,37 @@ export function TaskDrawer(p: Props) {
               <textarea className="drawer-notes" value={t.notes ?? ''} onChange={(e) => p.onPatch(t.id, { notes: e.target.value })} placeholder="Details, links, what done looks like…" />
             </>
           )}
+
+          <label className="drawer-label">History</label>
+          <ol className="history">
+            {(t.history ?? []).map((h) => {
+              const who = p.users.find((u) => u.id === h.by);
+              return (
+                <li key={h.id} className={`h-${h.kind}`}>
+                  {who ? <Avatar person={who} size={22} /> : <span className="avatar-empty sm">?</span>}
+                  <span className="h-body">
+                    {h.kind === 'comment' ? (
+                      <>
+                        <b>{who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : 'Someone'}</b>
+                        <span className="h-comment">{h.text}</span>
+                      </>
+                    ) : (
+                      <span>
+                        <b>{who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : 'Someone'}</b> {h.text}
+                      </span>
+                    )}
+                    <time>{relative(h.at)}</time>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+          <div className="comment-box">
+            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(t.id, comment.trim()), setComment(''))} placeholder="Write a comment… @mention someone" />
+            <button className="primary-btn sm" disabled={!comment.trim()} onClick={() => (p.onComment(t.id, comment.trim()), setComment(''))}>
+              Comment
+            </button>
+          </div>
 
           <div className="drawer-meta">
             <span>

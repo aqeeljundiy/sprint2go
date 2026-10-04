@@ -6,9 +6,13 @@ import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
 import { Dot, Select, type Option } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
+import { PeoplePicker } from './ui/PeoplePicker';
 
 export type TaskScope =
   | { kind: 'mine' }
+  | { kind: 'supervising' }
+  | { kind: 'myteams' }
+  | { kind: 'myclients' }
   | { kind: 'all' }
   | { kind: 'delegated' }
   | { kind: 'briefs' }
@@ -26,10 +30,15 @@ export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }>
 const COLUMNS: { id: TaskStatus; name: string }[] = [
   { id: 'todo', name: 'To do' },
   { id: 'doing', name: 'In progress' },
+  { id: 'waiting', name: 'Waiting on client' },
+  { id: 'review', name: 'Review' },
   { id: 'done', name: 'Done' },
 ];
+export const STATUS_LABEL: Record<TaskStatus, string> = { todo: 'To do', doing: 'In progress', waiting: 'Waiting on client', review: 'Waiting for review', done: 'Done' };
 
-export const statusOf = (t: Todo): TaskStatus => (t.done ? 'done' : t.status === 'doing' ? 'doing' : 'todo');
+export const statusOf = (t: Todo): TaskStatus => (t.done ? 'done' : t.status && t.status !== 'done' ? t.status : 'todo');
+/** Everyone doing a task (older tasks only have userId). */
+export const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
 export const isBrief = (t: Todo) => t.kind === 'brief';
 
 const dayStr = (d: Date) => localDay(d);
@@ -76,6 +85,8 @@ interface Props {
   onShareFile: (id: string, shared: boolean) => void;
   onScope: (s: TaskScope) => void;
   onOpenTask: (id: string) => void;
+  myTeamIds: string[];
+  myClientIds: string[];
   onAdd: (t: { title: string; clientId?: string; teamId?: string; userId: string; due?: string }) => void;
   onStatus: (id: string, s: TaskStatus) => void;
   onPatch: (id: string, p: Partial<Todo>) => void;
@@ -123,7 +134,13 @@ export function TasksView(p: Props) {
     const work = p.tasks.filter((t) => !isBrief(t));
     switch (scope.kind) {
       case 'mine':
-        return work.filter((t) => t.userId === p.me);
+        return work.filter((t) => doers(t).includes(p.me));
+      case 'supervising':
+        return work.filter((t) => t.supervisorId === p.me && !doers(t).includes(p.me));
+      case 'myteams':
+        return work.filter((t) => t.teamId && p.myTeamIds.includes(t.teamId));
+      case 'myclients':
+        return work.filter((t) => t.clientId && p.myClientIds.includes(t.clientId));
       case 'delegated':
         return work.filter((t) => t.createdBy === p.me && t.userId !== p.me);
       case 'client':
@@ -153,7 +170,7 @@ export function TasksView(p: Props) {
     }
   }, [p.tasks, scope, p.me, inScope]);
 
-  const open = inScope.filter((t) => !t.done).sort(byDue);
+  const open = inScope.filter((t) => !t.done).sort((a, b) => (scope.kind === 'supervising' ? Number(statusOf(b) === 'review') - Number(statusOf(a) === 'review') : 0) || byDue(a, b));
   const done = inScope.filter((t) => t.done).sort((a, b) => (b.doneAt ?? b.createdAt).localeCompare(a.doneAt ?? a.createdAt));
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const recentDone = done.filter((t) => (t.doneAt ?? t.createdAt) > weekAgo);
@@ -163,7 +180,13 @@ export function TasksView(p: Props) {
   const groupBy: GroupBy = scope.kind === 'team' ? 'person' : scope.kind === 'client' ? (scope.teamId ? 'none' : 'team') : groupPref;
 
   const heading =
-    scope.kind === 'mine'
+    scope.kind === 'supervising'
+      ? 'Supervising'
+      : scope.kind === 'myteams'
+        ? 'My teams'
+        : scope.kind === 'myclients'
+          ? 'My clients'
+          : scope.kind === 'mine'
       ? 'My tasks'
       : scope.kind === 'delegated'
         ? 'Assigned by me'
@@ -214,7 +237,6 @@ export function TasksView(p: Props) {
     const c = clientOf(t.clientId);
     const tm = teamOf(t.teamId);
     const br = briefOf(t.briefId);
-    const owner = person(t.userId);
     return (
       <div
         key={t.id}
@@ -230,6 +252,8 @@ export function TasksView(p: Props) {
           </button>
           <div className="task-meta">
             {statusOf(t) === 'doing' && <span className="due doing">In progress</span>}
+            {statusOf(t) === 'waiting' && <span className="due waiting">Waiting on client</span>}
+            {statusOf(t) === 'review' && <span className="due review">Waiting for review</span>}
             {d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
             {t.done && (
               <span className="done-info">
@@ -263,15 +287,7 @@ export function TasksView(p: Props) {
             {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : person(t.createdBy)?.name.split(' ')[0]}</span>}
           </div>
         </div>
-        <Select
-          compact
-          value={t.userId}
-          options={peopleOptions(p.users, p.me)}
-          onChange={(v) => p.onPatch(t.id, { userId: v })}
-          label="Assignee"
-          title="Assign to"
-          renderValue={() => (owner ? <Avatar person={owner} size={26} /> : <span className="avatar-empty">?</span>)}
-        />
+        <PeoplePicker compact value={doers(t)} users={p.users} me={p.me} label="Doing it" onChange={(ids) => p.onPatch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />
         <div className="todo-actions">
           {!t.done && (
             <button className="icon-btn sm" title={statusOf(t) === 'doing' ? 'Move back to To do' : 'Start (In progress)'} onClick={() => p.onStatus(t.id, statusOf(t) === 'doing' ? 'todo' : 'doing')}>

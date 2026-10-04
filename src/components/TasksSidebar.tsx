@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles } from 'lucide-react';
+import { Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Users } from 'lucide-react';
 import type { Client, Team, Todo } from '../types';
-import { isBrief, type TaskScope } from './TasksView';
+import { doers, isBrief, statusOf, type TaskScope } from './TasksView';
 
 interface Props {
   scope: TaskScope;
@@ -9,12 +9,17 @@ interface Props {
   clients: Client[];
   teams: Team[];
   me: string;
+  isAdmin: boolean;
+  myTeamIds: string[];
+  myClientIds: string[];
   onScope: (s: TaskScope) => void;
   onBrainDump: () => void;
   onAddClient: (name: string, domain?: string) => void;
 }
 
-export function TasksSidebar({ scope, tasks, clients, teams, me, onScope, onBrainDump, onAddClient }: Props) {
+export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeams, me, isAdmin, myTeamIds, myClientIds, onScope, onBrainDump, onAddClient }: Props) {
+  const teams = isAdmin ? allTeams : allTeams.filter((t) => myTeamIds.includes(t.id));
+  const clients = isAdmin ? allClients : allClients.filter((c) => myClientIds.includes(c.id));
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -39,11 +44,18 @@ export function TasksSidebar({ scope, tasks, clients, teams, me, onScope, onBrai
       <nav className="nav">
         {(
           [
-            [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => t.userId === me).length],
-            [{ kind: 'delegated' }, Send, 'Assigned by me', open.filter((t) => t.createdBy === me && t.userId !== me).length],
-            [{ kind: 'all' }, Layers, 'All tasks', open.length],
+            [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => doers(t).includes(me)).length],
+            [{ kind: 'supervising' }, Eye, 'Supervising', open.filter((t) => t.supervisorId === me && statusOf(t) === 'review').length],
+            [{ kind: 'myteams' }, Users, 'My teams', open.filter((t) => t.teamId && myTeamIds.includes(t.teamId)).length],
+            [{ kind: 'myclients' }, Building2, 'My clients', open.filter((t) => t.clientId && myClientIds.includes(t.clientId)).length],
+            [{ kind: 'delegated' }, Send, 'Assigned by me', open.filter((t) => t.createdBy === me && !doers(t).includes(me)).length],
             [{ kind: 'briefs' }, FileText, 'Briefs', openBriefs.length],
-            [{ kind: 'grid' }, LayoutGrid, 'Clients × teams', 0],
+            ...(isAdmin
+              ? ([
+                  [{ kind: 'all' }, Layers, 'Everything', open.length],
+                  [{ kind: 'grid' }, LayoutGrid, 'Clients × teams', 0],
+                ] as const)
+              : []),
           ] as const
         ).map(([s, Icon, label, count]) => (
           <button key={label} className={`nav-item ${is(s) ? 'active' : ''}`} onClick={() => onScope(s)} title={label}>
