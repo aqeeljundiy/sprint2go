@@ -111,8 +111,8 @@
   border-color: var(--border);
 }
 .sel.missing {
-  border-color: #f59e0b;
-  background: color-mix(in srgb, #f59e0b 8%, var(--surface));
+  border-color: var(--warn-solid);
+  background: color-mix(in srgb, var(--warn-solid) 8%, var(--surface));
 }
 .sel-dot {
   width: 9px;
@@ -170,7 +170,7 @@
   font-weight: 600;
 }
 .sel-opt.danger {
-  color: #dc2626;
+  color: var(--danger);
 }
 .sel-icon {
   display: inline-flex;

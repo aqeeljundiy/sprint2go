@@ -8,6 +8,7 @@ import './brand.css';
 import './apps.css';
 import './ui.css';
 import './round2.css';
+import './polish.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

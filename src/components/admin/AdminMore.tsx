@@ -26,8 +26,9 @@ const Row = ({ title, hint, children }: { title: React.ReactNode; hint?: string;
 
 /* ---------------- Storage ---------------- */
 
-export function StorageSection({ ws, people, plan, drive, users, canManage, onStorage, onBilling, toast }: {
+export function StorageSection({ ws, people, plan, drive, users, byChannel, canManage, onStorage, onBilling, toast }: {
   ws: Workspace;
+  byChannel: { name: string; size: number }[];
   people: number;
   plan: Plan;
   drive: DriveItem[];
@@ -136,6 +137,16 @@ export function StorageSection({ ws, people, plan, drive, users, canManage, onSt
             <span className="cf-icon">{f.kind === 'video' ? <Video size={15} /> : <FileText size={15} />}</span>
             <span className="pa-title">{f.name}</span>
             <span className="muted small">{fmtSize(f.size)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="set-block">
+        <h3>By channel</h3>
+        {byChannel.length === 0 && <p className="muted small">No files shared in chat yet.</p>}
+        {byChannel.map((c) => (
+          <div key={c.name} className="pa-row">
+            <span className="pa-title"># {c.name}</span>
+            <span className="muted small">{fmtSize(c.size)}</span>
           </div>
         ))}
       </div>

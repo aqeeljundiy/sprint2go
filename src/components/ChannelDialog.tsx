@@ -22,6 +22,7 @@ interface Props {
   me: string;
   canManage: boolean; // owner/admin or the channel's owner
   guestsAllowed: boolean; // the plan allows more client guests
+  summaryCost: string; // what one AI summary costs this company, in plain words
   onSave: (c: ChannelDraft) => void;
   onArchive?: () => void;
   onClose: () => void;
@@ -30,7 +31,7 @@ interface Props {
 const slug = (s: string) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-');
 
 /** New channel, and later the same window as channel settings: about, people, permissions. */
-export function ChannelDialog({ channel, users, clients, teams, me, canManage, guestsAllowed, onSave, onArchive, onClose }: Props) {
+export function ChannelDialog({ channel, users, clients, teams, me, canManage, guestsAllowed, summaryCost, onSave, onArchive, onClose }: Props) {
   const editing = !!channel;
   const [tab, setTab] = useState<'about' | 'people' | 'permissions'>('about');
   const [name, setName] = useState(channel?.name ?? '');
@@ -47,7 +48,8 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
   const [invitePolicy, setInvitePolicy] = useState<Policy>(channel?.invitePolicy ?? 'everyone');
   const [q, setQ] = useState('');
   const [shared, setShared] = useState(channel?.sharedWith ?? null);
-  const [digest, setDigest] = useState(!!channel?.digest);
+  const [schedule, setSchedule] = useState<NonNullable<Channel['summary']>['schedule']>(channel?.summary?.schedule ?? (channel?.digest ? 'daily' : 'monthly'));
+  const [postSummary, setPostSummary] = useState(channel?.summary?.post ?? false);
   const [shareDomain, setShareDomain] = useState('');
 
   const client = clients.find((c) => c.id === clientId);
@@ -92,7 +94,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
       postPolicy,
       invitePolicy,
       sharedWith: shared ?? undefined,
-      digest,
+      summary: { schedule, post: postSummary, history: channel?.summary?.history ?? [] },
       ownerId: channel?.ownerId ?? me,
       createdAt: channel?.createdAt ?? new Date().toISOString(),
     });
@@ -164,15 +166,29 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                   <Select value={teamId} onChange={pickTeam} label="Team" placeholder="Pick a team (optional)" options={teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))} />
                 </div>
               )}
-              <label className="set-row toggle-row">
-                <span>
-                  <strong>Daily digest</strong>
-                  <small>Once a day, AI writes a few lines on what happened here, only on days with new messages</small>
-                </span>
-                <button type="button" role="switch" aria-checked={digest} className={`switch ${digest ? 'on' : ''}`} onClick={() => setDigest(!digest)}>
-                  <span />
-                </button>
-              </label>
+              <div className="field">
+                <span>AI summary of this channel</span>
+                <div className="summary-pick">
+                  <Select
+                    value={schedule}
+                    onChange={setSchedule}
+                    label="AI summary"
+                    width={300}
+                    options={[
+                      { value: 'monthly', label: 'Monthly (default)', hint: 'On the 1st, for the month before' },
+                      { value: 'weekly', label: 'Weekly', hint: 'Every Monday, for the week before' },
+                      { value: 'daily', label: 'Daily', hint: 'Only on days with new messages. For busy channels' },
+                      { value: 'off', label: 'Off', hint: 'People can still ask for one on the Summary tab' },
+                    ]}
+                  />
+                  <small className="muted">{schedule === 'off' ? 'No automatic summaries.' : `Each update uses ${summaryCost}. Skipped when nothing happened.`}</small>
+                </div>
+                {schedule !== 'off' && (
+                  <label className="check-row small">
+                    <input type="checkbox" checked={postSummary} onChange={(e) => setPostSummary(e.target.checked)} /> Also post each summary in the channel
+                  </label>
+                )}
+              </div>
               <div className="field">
                 <span>Who can find it</span>
                 <div className="segmented wide">

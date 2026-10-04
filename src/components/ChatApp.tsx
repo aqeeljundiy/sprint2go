@@ -20,6 +20,9 @@ import {
   Mic,
   MoreHorizontal,
   Paperclip,
+  Bookmark,
+  HardDrive,
+  Link2,
   Pin,
   Pause,
   Play,
@@ -483,6 +486,9 @@ interface ViewProps {
   onDelete: (id: string) => void;
   onPin: (id: string) => void;
   onToggleTask: (id: string) => void;
+  onChannel: (p: Partial<Channel>) => void; // bookmarks, summaries
+  summaryCost: string;
+  since: string; // when I last opened this channel, before now
   onReact: (id: string, emoji: string) => void;
   onVote: (id: string, option: number) => void;
   onMakeTask: (m: ChatMessage) => void;
@@ -552,7 +558,11 @@ export function ChatView(p: ViewProps) {
   const [text, setText] = useState('');
   const [mention, setMention] = useState<string | null>(null);
   const [panel, setPanel] = usePersisted<'info' | null>('s2g-chat-info', null);
-  const [tab, setTab] = useState<'messages' | 'files' | 'tasks' | 'pinned'>('messages');
+  const [tab, setTab] = useState<'messages' | 'files' | 'links' | 'tasks' | 'pinned' | 'summary'>('messages');
+  const [bmTitle, setBmTitle] = useState('');
+  const [bmUrl, setBmUrl] = useState('');
+  const [summarizing, setSummarizing] = useState<'period' | 'since' | null>(null);
+  const [sinceText, setSinceText] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskWho, setTaskWho] = useState('');
   const [taskDue, setTaskDue] = useState('');
@@ -589,6 +599,7 @@ export function ChatView(p: ViewProps) {
     setPollDraft(null);
     setKudos(null);
     setTab('messages');
+    setSinceText(null);
   }, [channel?.id]);
   useEffect(() => {
     if (!rec) return;
@@ -616,6 +627,49 @@ export function ChatView(p: ViewProps) {
   const chanFiles = p.messages.flatMap((m) => (m.files ?? []).map((f) => ({ f, m })));
   const chanTasks = p.tasks.filter((t) => t.kind !== 'brief' && (t.channelId === channel.id || (client && t.clientId === client.id) || (team && t.teamId === team.id)));
   const pinned = sorted.filter((m) => m.pinned);
+  const links = sorted.flatMap((m) =>
+    (m.text.match(/https?:\/\/[^\s)]+/g) ?? []).map((url, i) => ({
+      key: m.id + i,
+      url,
+      at: m.at,
+      who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
+    })),
+  ).reverse();
+  const addBookmark = () => {
+    const url = bmUrl.trim();
+    if (!/^https?:\/\/\S+\.\S+/.test(url)) return;
+    p.onChannel({ bookmarks: [...(channel.bookmarks ?? []), { id: Math.random().toString(36).slice(2), title: bmTitle.trim() || url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], url, addedBy: me, at: new Date().toISOString() }] });
+    setBmTitle('');
+    setBmUrl('');
+  };
+  const nextRun = (sch: string) => {
+    const d = new Date();
+    if (sch === 'monthly') d.setMonth(d.getMonth() + 1, 1);
+    else if (sch === 'weekly') d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+    else d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+  /** AI summary of a period (this month / week / day) or of what I missed. Only on click, or on the schedule. */
+  const summarize = async (kind: 'period' | 'since') => {
+    setSummarizing(kind);
+    const sch = channel.summary?.schedule ?? 'monthly';
+    const from = kind === 'since' ? p.since : new Date(Date.now() - (sch === 'daily' ? 1 : sch === 'weekly' ? 7 : 31) * 86_400_000).toISOString();
+    const msgs = sorted.filter((m) => m.at > from).map((m) => ({
+      who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
+      text: m.voice?.transcript ?? m.text,
+      at: m.at,
+      task: m.taskId ? p.tasks.find((t) => t.id === m.taskId)?.title : undefined,
+      files: m.files?.map((f) => f.name),
+    }));
+    const text = await ai.catchUp(title, msgs, person(me)?.name.split(' ')[0] ?? 'me');
+    if (kind === 'since') setSinceText(text);
+    else {
+      const period = sch === 'daily' ? 'Today' : sch === 'weekly' ? 'This week' : new Date().toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' so far';
+      p.onChannel({ summary: { schedule: sch, post: channel.summary?.post ?? false, history: [{ id: Math.random().toString(36).slice(2), text, period, at: new Date().toISOString(), auto: false, by: me }, ...(channel.summary?.history ?? [])] } });
+      if (channel.summary?.post) p.onSend({ text: `📝 Summary (${period}): ${text}` });
+    }
+    setSummarizing(null);
+  };
   const mentioned = (t: string) => users.find((u) => u.id !== me && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(t));
 
   /** Slash commands run here; everything else is a message. */
@@ -1034,8 +1088,10 @@ export function ChatView(p: ViewProps) {
             [
               ['messages', 'Messages', null],
               ['files', 'Files', chanFiles.length + p.drive.length],
+              ['links', 'Links', links.length + (channel.bookmarks?.length ?? 0)],
               ['tasks', 'Tasks', chanTasks.filter((t) => !t.done).length],
               ['pinned', 'Pinned', pinned.length],
+              ['summary', 'Summary', null],
             ] as const
           ).map(([id, l, n]) => (
             <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
@@ -1047,6 +1103,10 @@ export function ChatView(p: ViewProps) {
 
         {tab === 'files' && (
           <div className="chan-pane">
+            <p className="space-used">
+              <HardDrive size={14} /> {chanFiles.length ? <>This channel’s files use <b>{fmtSize(chanFiles.reduce((s2, x) => s2 + x.f.size, 0))}</b> of team storage</> : 'No files shared here yet'}
+              {p.drive.length ? <span className="muted"> · {fmtSize(p.drive.reduce((s2, d) => s2 + d.size, 0))} more in {client?.name}’s Drive folder</span> : null}
+            </p>
             <div className="segmented">
               {(
                 [
@@ -1122,6 +1182,109 @@ export function ChatView(p: ViewProps) {
               );
             })}
             {!chanTasks.length && <p className="te-empty">Nothing on this list yet.</p>}
+          </div>
+        )}
+
+        {tab === 'links' && (
+          <div className="chan-pane">
+            <div className="d-heading">Bookmarks</div>
+            {(channel.bookmarks ?? []).map((b) => (
+              <div key={b.id} className="link-row">
+                <span className="cf-icon">
+                  <Bookmark size={15} />
+                </span>
+                <a className="cf-text" href={b.url} target="_blank" rel="noreferrer">
+                  <strong>{b.title}</strong>
+                  <small>
+                    {b.url.replace(/^https?:\/\//, '').slice(0, 60)} · added by {person(b.addedBy)?.name.split(' ')[0] ?? 'someone'}
+                  </small>
+                </a>
+                <button className="icon-btn sm" onClick={() => p.onChannel({ bookmarks: (channel.bookmarks ?? []).filter((x) => x.id !== b.id) })} aria-label="Remove bookmark">
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+            <div className="todo-add task-add">
+              <Bookmark size={15} />
+              <input value={bmTitle} onChange={(e) => setBmTitle(e.target.value)} placeholder="Name, e.g. Q4 brief" />
+              <input value={bmUrl} onChange={(e) => setBmUrl(e.target.value)} placeholder="https://…" onKeyDown={(e) => e.key === 'Enter' && addBookmark()} />
+              <button className="primary-btn sm" disabled={!/^https?:\/\/\S+\.\S+/.test(bmUrl.trim())} onClick={addBookmark}>
+                Add
+              </button>
+            </div>
+            <div className="d-heading">
+              Shared in messages <span>{links.length}</span>
+            </div>
+            {links.map((l) => (
+              <div key={l.key} className="link-row">
+                <span className="cf-icon">
+                  <Link2 size={15} />
+                </span>
+                <a className="cf-text" href={l.url} target="_blank" rel="noreferrer">
+                  <strong>{l.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}</strong>
+                  <small>
+                    {l.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 70)} · {l.who} · {relative(l.at)}
+                  </small>
+                </a>
+                {!(channel.bookmarks ?? []).some((b) => b.url === l.url) && (
+                  <button className="link-btn small" onClick={() => p.onChannel({ bookmarks: [...(channel.bookmarks ?? []), { id: Math.random().toString(36).slice(2), title: l.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], url: l.url, addedBy: me, at: new Date().toISOString() }] })}>
+                    Bookmark
+                  </button>
+                )}
+              </div>
+            ))}
+            {!links.length && <p className="te-empty">No links shared yet.</p>}
+          </div>
+        )}
+
+        {tab === 'summary' && (
+          <div className="chan-pane">
+            <div className="sum-head">
+              <span>
+                <strong>{channel.summary?.schedule && channel.summary.schedule !== 'off' ? `Updated ${channel.summary.schedule === 'monthly' ? 'every month' : channel.summary.schedule === 'weekly' ? 'every week' : 'every day with new messages'}` : 'No automatic summary'}</strong>
+                <small className="muted">
+                  {channel.summary?.schedule && channel.summary.schedule !== 'off' ? `Next: ${nextRun(channel.summary.schedule)} · each update uses ${p.summaryCost}` : `Each summary uses ${p.summaryCost}`}
+                </small>
+              </span>
+              <Select
+                value={channel.summary?.schedule ?? 'monthly'}
+                onChange={(v) => p.onChannel({ summary: { schedule: v, post: channel.summary?.post ?? false, history: channel.summary?.history ?? [] } })}
+                label="Summary schedule"
+                className="sel-flat"
+                options={[
+                  { value: 'monthly', label: 'Monthly' },
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'daily', label: 'Daily' },
+                  { value: 'off', label: 'Off' },
+                ]}
+              />
+            </div>
+            <div className="sum-actions">
+              <button className="primary-btn sm" disabled={!!summarizing} onClick={() => summarize('period')}>
+                <Sparkles size={14} /> {summarizing === 'period' ? 'Writing…' : 'Update now'}
+              </button>
+              <button className="ghost-btn sm" disabled={!!summarizing} onClick={() => summarize('since')}>
+                {summarizing === 'since' ? 'Reading…' : `Since my last visit (${relative(p.since)})`}
+              </button>
+              <label className="check-row small">
+                <input type="checkbox" checked={channel.summary?.post ?? false} onChange={(e) => p.onChannel({ summary: { schedule: channel.summary?.schedule ?? 'monthly', post: e.target.checked, history: channel.summary?.history ?? [] } })} /> Post new summaries in the channel
+              </label>
+            </div>
+            {sinceText && (
+              <div className="sum-card since">
+                <div className="sum-meta">Since your last visit</div>
+                <p>{sinceText}</p>
+              </div>
+            )}
+            {(channel.summary?.history ?? []).map((h) => (
+              <div key={h.id} className="sum-card">
+                <div className="sum-meta">
+                  {h.period} · {h.auto ? 'scheduled' : `asked by ${person(h.by ?? '')?.name.split(' ')[0] ?? 'someone'}`} · {relative(h.at)}
+                </div>
+                <p>{h.text}</p>
+              </div>
+            ))}
+            {!(channel.summary?.history ?? []).length && !sinceText && <p className="te-empty">No summaries yet. Click “Update now” for the first one.</p>}
           </div>
         )}
 

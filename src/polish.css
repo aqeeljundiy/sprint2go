@@ -1,0 +1,442 @@
+/* ==========================================================================
+   Polish pass (BACKLOG.md). Loaded last.
+   1. One meaning per colour: red = late or danger, amber = waiting, green = done,
+      brand accent = actions, neutral = everything else.
+   2. A dark palette made for dark: soft surfaces, small elevation steps, calmer colours.
+   3. Fewer frames: one container per idea, no box inside a box, no grey header strips.
+   4. Stable layout: scroll areas reserve their scrollbar, panels overlay instead of squeezing.
+   5. One spacing scale (4/8/12/16/24) and two radii (cards 16px, controls 10px).
+   ========================================================================== */
+
+:root {
+  --brand: #2448ff;
+  --accent: var(--brand);
+  --accent-hover: color-mix(in oklab, var(--brand) 86%, black);
+  --accent-soft: color-mix(in oklab, var(--brand) 11%, transparent);
+  --accent-text: color-mix(in oklab, var(--brand) 88%, black);
+
+  --danger: #c93434;
+  --danger-soft: color-mix(in oklab, #c93434 10%, transparent);
+  --warn: #a8640c;
+  --warn-solid: #e39a26;
+  --warn-soft: color-mix(in oklab, #e39a26 14%, transparent);
+  --ok: #14845a;
+  --ok-solid: #22a06b;
+  --ok-soft: color-mix(in oklab, #22a06b 12%, transparent);
+
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f6f7f9;
+  --hover: #eff0f3;
+  --border: #e6e7ec;
+  --line: #eceef2; /* dividers inside a card: lighter than the card's own edge */
+  --text: #111318;
+  --text-2: #3d404a;
+  --text-3: #767a87;
+
+  --r-card: 16px;
+  --r-control: 10px;
+  --shadow: 0 1px 2px rgba(16, 18, 24, 0.04);
+  --shadow-lg: 0 24px 60px -24px rgba(16, 18, 24, 0.22), 0 2px 6px rgba(16, 18, 24, 0.05);
+}
+
+:root[data-theme='dark'] {
+  /* Accent: the brand lifted toward white and calmed, so coral or blue never glares on dark. */
+  --accent: color-mix(in oklab, var(--brand) 74%, #f2f2f2);
+  --accent-hover: color-mix(in oklab, var(--brand) 62%, #ffffff);
+  --accent-soft: color-mix(in oklab, var(--brand) 18%, transparent);
+  --accent-text: color-mix(in oklab, var(--brand) 60%, #ffffff);
+
+  --danger: #f08b8b;
+  --danger-soft: color-mix(in oklab, #e26d6d 16%, transparent);
+  --warn: #e8bb6a;
+  --warn-solid: #d9a248;
+  --warn-soft: color-mix(in oklab, #d9a248 16%, transparent);
+  --ok: #72cfa0;
+  --ok-solid: #4bb383;
+  --ok-soft: color-mix(in oklab, #4bb383 16%, transparent);
+
+  --bg: #0e1013;
+  --surface: #15171b;
+  --surface-2: #1a1c21;
+  --hover: #212329;
+  --border: #272a31;
+  --line: #22252b;
+  --text: #ebecef;
+  --text-2: #b3b6bf;
+  --text-3: #7f838e;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark'])[data-theme-auto] {
+    color-scheme: dark;
+  }
+}
+
+/* Client, team and avatar colours are people's choices; in dark mode tone them down a little. */
+:root[data-theme='dark'] :is(.client-dot, .client-badge, .team-square, .sel-dot, .avatar, .dot, .src-mark, .bar span) {
+  filter: saturate(0.82) brightness(0.92);
+}
+
+/* ---------- Status colours everywhere ---------- */
+.due.overdue,
+.late,
+.m-err,
+.err {
+  color: var(--danger);
+}
+.due.overdue {
+  background: var(--danger-soft);
+}
+.due.today {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.due.soon {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.mention {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.link-btn,
+.cite,
+.jump,
+.topic-chips b,
+.timeline time,
+.pc-kicker {
+  color: var(--accent-text);
+}
+
+/* ---------- 3. Fewer frames ---------- */
+
+/* Home is a page, not a panel: the cards are the only containers. */
+.home-pane {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.home-card,
+.home-grid .side-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow);
+}
+/* No grey header strip and no line under the title: type and spacing do the work. */
+.side-card h3,
+.home-card h3 {
+  background: none;
+  border-bottom: 0;
+  padding: 16px 18px 4px;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+.side-card h3 svg,
+.home-card h3 svg {
+  color: var(--text-3);
+}
+.home-card .card-body {
+  padding: 4px 8px 12px;
+}
+.home-card h3 .link-btn {
+  font-weight: 600;
+}
+/* Numbers stand on their own, no box around each one. */
+.pulse {
+  gap: 0;
+  padding: 6px 10px 14px;
+}
+.pulse-num {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 6px 12px;
+}
+.pulse-num + .pulse-num {
+  border-left: 1px solid var(--line);
+}
+.pulse-num b {
+  font-size: 26px;
+  font-weight: 750;
+}
+.pulse-num.warn b {
+  color: var(--danger);
+}
+.pulse-num.go b {
+  color: var(--ok);
+}
+/* Workload: plain rows inside the card. */
+.load {
+  background: none;
+  padding: 6px 8px;
+}
+.load-grid {
+  gap: 4px 16px;
+}
+/* The brain dump field is the card's content, not a second card. */
+.home-card .home-dump {
+  margin: 4px 10px 8px;
+  border: 0;
+  background: var(--surface-2);
+}
+.home-card .home-dump:focus-within {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.brief-text {
+  margin: 2px 10px 6px;
+  color: var(--text-2);
+}
+
+/* Smaller inner boxes elsewhere lose their outline and keep a soft fill. */
+.wl,
+.stat-cards > div,
+.prov,
+.source-card,
+.pa-hero,
+.allow-meter,
+.usage-grid div {
+  border-color: transparent;
+}
+.wl {
+  background: var(--surface-2);
+}
+.brief-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.brief-card:hover {
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--border));
+}
+
+/* ---------- 2. No field inside a field ---------- */
+/* Inputs that live inside a bordered wrapper drop their own border and fill. */
+.modal-body .chan-name input,
+.chan-name input,
+.task-add input,
+.todo-add input,
+.sub-add input,
+.sel-search input,
+.home-dump input,
+.status-custom input,
+.chat-compose textarea,
+.thread-compose textarea,
+.dump-input textarea {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.modal-body .chan-name input {
+  padding: 10px 0 !important;
+}
+.chan-name {
+  border-radius: var(--r-control);
+}
+
+/* ---------- 5. Radii ---------- */
+.side-card,
+.brief-card,
+.tier,
+.team-card,
+.portal-card,
+.plan-card,
+.drawer-notes,
+.sub-list,
+.jobs-table,
+.inv-table,
+.guest-box,
+.danger-zone,
+.dump-row,
+.dump-brief,
+.client-vis,
+.overview-card,
+.m-glance,
+.kudos-card,
+.poll,
+.voice,
+.chat-file {
+  border-radius: var(--r-card);
+}
+.sel,
+.inline-input,
+.due-input,
+.is-input,
+.add-prov input,
+.guest-add input,
+.field-grid input,
+.m-filters input,
+.share-link input {
+  border-radius: var(--r-control);
+}
+
+/* ---------- 4. Stable layout ---------- */
+.tracking-scroll,
+.chat-scroll,
+.home-scroll,
+.settings-content,
+.cs-body,
+.chan-pane,
+.drawer-body,
+.sb-panel,
+.message-list,
+.reader-scroll {
+  scrollbar-gutter: stable;
+}
+/* Thread and details panels float over the conversation on most screens instead of squeezing it.
+   On wide screens (where there's room) they dock beside it with a fixed width. */
+.chat-pane {
+  position: relative;
+}
+@media (max-width: 1439px) {
+  .chat-side {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(380px, 100%);
+    z-index: 5;
+    box-shadow: var(--shadow-lg);
+  }
+}
+/* Poll and kudos sheets sit above the composer instead of pushing the messages up. */
+.chat-main {
+  position: relative;
+}
+.inline-sheet {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 72px;
+  z-index: 4;
+  border-radius: var(--r-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+/* Tabs never change height when their counts appear or change. */
+.chan-tabs,
+.client-tabs,
+.cs-tabs {
+  min-height: 42px;
+  align-items: center;
+}
+/* The composer grows up to a limit; the message list keeps its place (see ChatView). */
+.chat-compose textarea {
+  max-height: 160px;
+}
+
+/* ---------- Dark mode details ---------- */
+:root[data-theme='dark'] .home-card,
+:root[data-theme='dark'] .home-grid .side-card,
+:root[data-theme='dark'] .tasks-pane,
+:root[data-theme='dark'] .chat-pane,
+:root[data-theme='dark'] .meet-pane,
+:root[data-theme='dark'] .settings-pane {
+  box-shadow: none;
+}
+:root[data-theme='dark'] .primary-btn,
+:root[data-theme='dark'] .compose-btn {
+  background: var(--accent);
+  color: #121317;
+  box-shadow: none;
+}
+:root[data-theme='dark'] .primary-btn:hover,
+:root[data-theme='dark'] .compose-btn:hover {
+  background: var(--accent-hover);
+}
+:root[data-theme='dark'] .ask-msg.user,
+:root[data-theme='dark'] .dp-day.on,
+:root[data-theme='dark'] .tier-name em,
+:root[data-theme='dark'] .customise-btn.on {
+  color: #121317;
+}
+:root[data-theme='dark'] .client-chip,
+:root[data-theme='dark'] .team-chip {
+  background: color-mix(in oklab, var(--c) 16%, transparent);
+  color: color-mix(in oklab, var(--c) 55%, #ffffff);
+}
+:root[data-theme='dark'] .m-player {
+  background: radial-gradient(circle at 30% 30%, #2a3354, #0f1218 70%);
+}
+:root[data-theme='dark'] .preview-bar {
+  background: #1f2229;
+}
+
+/* Channel extras: links, space used, AI summary */
+.space-used {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: var(--r-control);
+}
+.link-row:hover {
+  background: var(--hover);
+}
+.link-row .cf-text {
+  flex: 1;
+  color: var(--text);
+  text-decoration: none;
+}
+.chan-pane .d-heading {
+  margin-top: 8px;
+}
+.sum-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sum-head span {
+  display: grid;
+}
+.sum-head small {
+  font-size: 12px;
+}
+.sum-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sum-card {
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+}
+.sum-card.since {
+  background: var(--accent-soft);
+}
+.sum-card p {
+  margin: 4px 0 0;
+  white-space: pre-line;
+  line-height: 1.55;
+  font-size: 14px;
+}
+.sum-meta {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+}
+.summary-pick {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.summary-pick small {
+  font-size: 12px;
+}

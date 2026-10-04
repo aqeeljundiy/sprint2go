@@ -3,6 +3,8 @@ import { Brain, Building2, CalendarPlus, FileText, Hash, House, ListChecks, Mail
 import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChatFile, ChatMessage, Meeting, Notice, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
+import { JOBS, costPer100 } from './data/aiCatalog';
+import { rp } from './data/pricing';
 import { ConnectCalendar } from './components/ConnectCalendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { lastMessage, uid, localDay } from './utils';
@@ -160,9 +162,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   useEffect(() => {
     applyBranding(ws);
     const root = document.documentElement;
-    root.style.setProperty('--accent', ws.color);
-    root.style.setProperty('--accent-hover', `color-mix(in srgb, ${ws.color} 86%, #000)`);
-    root.style.setProperty('--accent-soft', `color-mix(in srgb, ${ws.color} 13%, transparent)`);
+    // The workspace colour is the brand; polish.css turns it into a light- or dark-friendly accent.
+    root.style.setProperty('--brand', ws.color);
+    root.style.removeProperty('--accent');
+    root.style.removeProperty('--accent-hover');
+    root.style.removeProperty('--accent-soft');
   }, [ws]);
 
   const patchWorkspace = (id: string, patch: Partial<Workspace>) => setWorkspaces((list) => list.map((w) => (w.id === id ? { ...w, ...patch } : w)));
@@ -732,6 +736,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   useEffect(() => {
     if (mode === 'chat' && !wsChannels.some((c) => c.id === chatId) && wsChannels.length) setChatId(wsChannels[0].id);
   }, [mode, chatId, wsChannels]);
+
+  // "Since my last visit" needs the time I last read a channel, before opening it now marks it read.
+  const [sinceRead, setSinceRead] = useState(() => new Date(Date.now() - 90 * 60_000).toISOString());
+  useEffect(() => {
+    if (chatId) setSinceRead(lastRead[chatId] ?? new Date(Date.now() - 90 * 60_000).toISOString());
+  }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** What one AI channel summary costs this company, said plainly. */
+  const summaryCost = (() => {
+    const included = ws.plan?.track === 'ai' && ws.plan.tier !== 'free' && ws.ai?.payer !== 'own';
+    if (ws.plan?.tier === 'free' && !ws.ai?.providers.length) return '1 of your free AI summaries this month';
+    if (included) return 'about 1 summary from your AI allowance';
+    const job = ws.ai?.jobs.digest ?? ws.ai?.jobs.summary;
+    const c = job ? costPer100(JOBS.find((j) => j.id === 'digest')!, job.provider, job.model) : null;
+    return c !== null && c !== undefined ? `about ${rp(c / 100)} on your own AI key` : 'a small amount on your own AI key';
+  })();
 
   // Reading a channel marks it read.
   useEffect(() => {
@@ -1895,6 +1915,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               showToast({ text: m?.pinned ? 'Unpinned' : 'Pinned to the channel' });
             }}
             onToggleTask={toggleTodo}
+            onChannel={(patch) => chatId && setChannels((cs) => cs.map((c) => (c.id === chatId ? { ...c, ...patch } : c)))}
+            summaryCost={summaryCost}
+            since={sinceRead}
             onReact={reactTo}
             onVote={votePoll}
             onMakeTask={makeTaskFromMessage}
@@ -2103,6 +2126,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               people: members.length,
               teams: wsTeams,
               drive: drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id),
+              byChannel: channels
+                .filter((c) => c.workspaceId === ws.id && c.kind === 'channel')
+                .map((c) => ({ name: c.name, size: messages.filter((m) => m.channelId === c.id).flatMap((m) => m.files ?? []).reduce((s2, f) => s2 + f.size, 0) }))
+                .filter((c) => c.size > 0)
+                .sort((a, b) => b.size - a.size),
               onTeams: (t) => {
                 // A new team gets its own channel, with the team in it.
                 const fresh = t.filter((x) => !wsTeams.some((y) => y.id === x.id));
@@ -2379,6 +2407,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           teams={wsTeams}
           me={user.id}
           canManage={myRole !== 'member' || !chanDialog.id || channels.find((c) => c.id === chanDialog.id)?.ownerId === user.id}
+          summaryCost={summaryCost}
           guestsAllowed={ws.plan?.tier !== 'free' || channels.filter((c) => c.workspaceId === ws.id).flatMap((c) => c.guests ?? []).length < 1}
           onClose={() => setChanDialog(null)}
           onArchive={() => {

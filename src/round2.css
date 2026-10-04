@@ -51,8 +51,8 @@
   margin: 0 2px;
 }
 .warn-count {
-  background: color-mix(in srgb, #f59e0b 18%, transparent) !important;
-  color: #b45309 !important;
+  background: color-mix(in srgb, var(--warn-solid) 18%, transparent) !important;
+  color: var(--warn) !important;
 }
 .avatar-empty.sm {
   width: 20px;
@@ -66,7 +66,7 @@
   font-size: 10px;
 }
 .done-info {
-  color: #059669;
+  color: var(--ok);
   font-weight: 600;
 }
 
@@ -198,11 +198,11 @@
   display: block;
   height: 100%;
   border-radius: 6px;
-  background: #10b981;
+  background: var(--ok-solid);
   transition: width 0.3s;
 }
 .bar span.warn {
-  background: #f59e0b;
+  background: var(--warn-solid);
 }
 
 /* team workload */
@@ -321,11 +321,11 @@
 }
 .cell em {
   font-style: normal;
-  color: #dc2626;
+  color: var(--danger);
   font-weight: 600;
 }
 .cell.has-late {
-  background: color-mix(in srgb, #dc2626 8%, var(--surface));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
 }
 button.cell:hover {
   background: var(--accent-soft);
@@ -393,8 +393,8 @@ button.cell:hover {
   margin-top: 4px;
 }
 .todo-check.on {
-  background: #10b981;
-  border-color: #10b981;
+  background: var(--ok-solid);
+  border-color: var(--ok-solid);
   color: #fff;
 }
 .drawer-title {
@@ -475,12 +475,12 @@ button.cell:hover {
   background: var(--accent-soft);
 }
 .st-dot.st-done {
-  border-color: #10b981;
-  background: #10b981;
+  border-color: var(--ok-solid);
+  background: var(--ok-solid);
 }
 .st-dot.st-high {
-  border-color: #ef4444;
-  background: #ef4444;
+  border-color: var(--danger);
+  background: var(--danger);
 }
 .drawer-label {
   font-size: 12px;
@@ -659,14 +659,14 @@ button.cell:hover {
   margin: 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: color-mix(in srgb, #f59e0b 12%, var(--surface));
-  color: color-mix(in srgb, #b45309 85%, var(--text));
+  background: color-mix(in srgb, var(--warn-solid) 12%, var(--surface));
+  color: color-mix(in srgb, var(--warn) 85%, var(--text));
   font-weight: 600;
   font-size: 13px;
 }
 .dump-row.asking {
-  border-color: #f59e0b;
-  background: color-mix(in srgb, #f59e0b 6%, var(--surface));
+  border-color: var(--warn-solid);
+  background: color-mix(in srgb, var(--warn-solid) 6%, var(--surface));
 }
 .who-is {
   display: flex;
@@ -676,7 +676,7 @@ button.cell:hover {
 }
 .who-q {
   font-weight: 700;
-  color: #b45309;
+  color: var(--warn);
   font-size: 13px;
 }
 .who-invite {
@@ -823,10 +823,10 @@ button.cell:hover {
   font-weight: 600;
 }
 .pulse-num.warn b {
-  color: #dc2626;
+  color: var(--danger);
 }
 .pulse-num.go b {
-  color: #059669;
+  color: var(--ok);
 }
 .risk-row,
 .team-row,
@@ -857,7 +857,7 @@ button.cell:hover {
   color: var(--text-3);
 }
 .late {
-  color: #dc2626;
+  color: var(--danger);
 }
 .tr-name {
   flex: 0 0 120px;
@@ -906,7 +906,7 @@ button.cell:hover {
   color: var(--text-3);
 }
 .home-notice.warn span {
-  color: #b91c1c;
+  color: var(--danger);
 }
 .queue-row {
   display: flex;
@@ -937,7 +937,7 @@ button.cell:hover {
   padding: 7px 10px;
 }
 .win-check {
-  color: #10b981;
+  color: var(--ok-solid);
   flex: none;
 }
 
@@ -1048,14 +1048,14 @@ button.chat-members:hover {
   height: 9px;
   border-radius: 50%;
   border: 2px solid var(--surface);
-  background: #10b981;
+  background: var(--ok-solid);
 }
 .presence.away {
   background: var(--surface);
   box-shadow: inset 0 0 0 1.5px var(--text-3);
 }
 .presence.meeting {
-  background: #f59e0b;
+  background: var(--warn-solid);
 }
 .st-emoji {
   margin-left: 5px;
@@ -1072,8 +1072,8 @@ button.chat-members:hover {
   margin-left: 6px;
   padding: 0 5px;
   border-radius: 5px;
-  background: color-mix(in srgb, #f59e0b 18%, transparent);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warn-solid) 18%, transparent);
+  color: var(--warn);
 }
 .status-btn {
   display: flex;
@@ -1170,8 +1170,8 @@ button.chat-members:hover {
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 5px;
-  background: color-mix(in srgb, #f59e0b 16%, transparent);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warn-solid) 16%, transparent);
+  color: var(--warn);
 }
 .reactions {
   display: flex;
@@ -1257,7 +1257,7 @@ button.chat-members:hover {
 .chat-celebration span {
   padding: 5px 14px;
   border-radius: 999px;
-  background: linear-gradient(90deg, color-mix(in srgb, #10b981 14%, var(--surface)), color-mix(in srgb, #f59e0b 12%, var(--surface)));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ok-solid) 14%, var(--surface)), color-mix(in srgb, var(--warn-solid) 12%, var(--surface)));
   font-weight: 600;
 }
 .chat-celebration.system span {
@@ -1276,8 +1276,8 @@ button.chat-members:hover {
   margin-top: 4px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: linear-gradient(135deg, color-mix(in srgb, #f59e0b 18%, var(--surface)), color-mix(in srgb, #ec4899 12%, var(--surface)));
-  border: 1px solid color-mix(in srgb, #f59e0b 30%, var(--border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--warn-solid) 18%, var(--surface)), color-mix(in srgb, #ec4899 12%, var(--surface)));
+  border: 1px solid color-mix(in srgb, var(--warn-solid) 30%, var(--border));
   font-size: 14px;
 }
 .kudos-emoji {
@@ -1472,7 +1472,7 @@ button.chat-members:hover {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--danger);
   animation: p 1s infinite;
 }
 @keyframes p {
@@ -1688,8 +1688,8 @@ button.chat-members:hover {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: color-mix(in srgb, #f59e0b 20%, var(--surface));
-  color: #b45309;
+  background: color-mix(in srgb, var(--warn-solid) 20%, var(--surface));
+  color: var(--warn);
   font-weight: 800;
   font-size: 12px;
   flex: none;
@@ -1844,8 +1844,8 @@ button.chat-members:hover {
   gap: 8px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px dashed color-mix(in srgb, #f59e0b 50%, var(--border));
-  background: color-mix(in srgb, #f59e0b 5%, var(--surface));
+  border: 1px dashed color-mix(in srgb, var(--warn-solid) 50%, var(--border));
+  background: color-mix(in srgb, var(--warn-solid) 5%, var(--surface));
 }
 .gb-head {
   display: flex;
@@ -1876,8 +1876,8 @@ button.chat-members:hover {
   color: var(--text-2);
 }
 .guest-status.joined {
-  background: color-mix(in srgb, #10b981 15%, transparent);
-  color: #047857;
+  background: color-mix(in srgb, var(--ok-solid) 15%, transparent);
+  color: var(--ok);
 }
 .guest-add {
   display: flex;
@@ -1909,7 +1909,7 @@ button.chat-members:hover {
   gap: 6px;
 }
 .danger-text {
-  color: #dc2626 !important;
+  color: var(--danger) !important;
 }
 
 @media (max-width: 1100px) {
@@ -1950,8 +1950,8 @@ button.chat-members:hover {
   background: var(--surface-2);
 }
 .client-vis.on {
-  border-color: color-mix(in srgb, #10b981 40%, var(--border));
-  background: color-mix(in srgb, #10b981 6%, var(--surface));
+  border-color: color-mix(in srgb, var(--ok-solid) 40%, var(--border));
+  background: color-mix(in srgb, var(--ok-solid) 6%, var(--surface));
 }
 .cv-toggle {
   display: flex;
@@ -1969,7 +1969,7 @@ button.chat-members:hover {
   color: var(--text-3);
 }
 .client-vis.on .cv-toggle svg {
-  color: #059669;
+  color: var(--ok);
 }
 .ap-tag {
   display: inline-flex;
@@ -1982,16 +1982,16 @@ button.chat-members:hover {
   white-space: nowrap;
 }
 .ap-tag.waiting {
-  background: color-mix(in srgb, #f59e0b 16%, transparent);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warn-solid) 16%, transparent);
+  color: var(--warn);
 }
 .ap-tag.approved {
-  background: color-mix(in srgb, #10b981 15%, transparent);
-  color: #047857;
+  background: color-mix(in srgb, var(--ok-solid) 15%, transparent);
+  color: var(--ok);
 }
 .ap-tag.changes {
-  background: color-mix(in srgb, #ef4444 12%, transparent);
-  color: #b91c1c;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
   white-space: normal;
 }
 .portal-admin {
@@ -2073,9 +2073,9 @@ button.chat-members:hover {
   flex: none;
 }
 .eye.on {
-  color: #059669;
-  border-color: color-mix(in srgb, #10b981 45%, var(--border));
-  background: color-mix(in srgb, #10b981 8%, var(--surface));
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok-solid) 45%, var(--border));
+  background: color-mix(in srgb, var(--ok-solid) 8%, var(--surface));
 }
 .portal-scrim {
   position: fixed;
@@ -2153,8 +2153,8 @@ button.chat-members:hover {
   color: var(--accent);
 }
 .portal-card.attention {
-  border-color: color-mix(in srgb, #f59e0b 50%, var(--border));
-  background: linear-gradient(180deg, color-mix(in srgb, #f59e0b 7%, var(--surface)), var(--surface));
+  border-color: color-mix(in srgb, var(--warn-solid) 50%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--warn-solid) 7%, var(--surface)), var(--surface));
 }
 .approval {
   display: flex;
@@ -2545,10 +2545,10 @@ button.chat-members:hover {
   font-size: 12px;
 }
 .ok {
-  color: #10b981;
+  color: var(--ok-solid);
 }
 .bad {
-  color: #dc2626;
+  color: var(--danger);
 }
 .prov-spend {
   display: flex;
@@ -2624,12 +2624,12 @@ button.chat-members:hover {
   margin: 0;
   padding: 10px 12px;
   border-radius: 10px;
-  background: color-mix(in srgb, #f59e0b 12%, var(--surface));
-  color: #92400e;
+  background: color-mix(in srgb, var(--warn-solid) 12%, var(--surface));
+  color: var(--warn);
   font-size: 13px;
 }
 .err {
-  color: #dc2626;
+  color: var(--danger);
   font-size: 12.5px;
   margin: 0;
 }
@@ -2669,7 +2669,7 @@ button.chat-members:hover {
 }
 .job-test {
   grid-column: 1 / -1;
-  color: #059669;
+  color: var(--ok);
   font-size: 12px;
 }
 .chip-pick {
@@ -2687,9 +2687,9 @@ button.chat-members:hover {
   font-size: 12.5px;
 }
 .chip-pick button.on {
-  border-color: #dc2626;
-  color: #b91c1c;
-  background: color-mix(in srgb, #dc2626 8%, var(--surface));
+  border-color: var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
 }
 .plan-card {
   display: flex;
@@ -2824,7 +2824,7 @@ button.chat-members:hover {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #059669;
+  color: var(--ok);
   font-weight: 700;
   font-size: 12.5px;
 }
@@ -2941,7 +2941,7 @@ button.chat-members:hover {
   margin-top: 10px;
   padding: 14px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, #dc2626 35%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
 }
 .danger-zone small {
   color: var(--text-3);
@@ -3035,8 +3035,8 @@ button.chat-members:hover {
   gap: 8px;
 }
 .live-count {
-  background: color-mix(in srgb, #ef4444 14%, transparent) !important;
-  color: #dc2626 !important;
+  background: color-mix(in srgb, var(--danger) 14%, transparent) !important;
+  color: var(--danger) !important;
 }
 .m-filters {
   display: flex;
@@ -3080,8 +3080,8 @@ button.chat-members:hover {
   font-size: 11px;
   font-weight: 800;
   flex: none;
-  background: color-mix(in srgb, #10b981 14%, transparent);
-  color: #047857;
+  background: color-mix(in srgb, var(--ok-solid) 14%, transparent);
+  color: var(--ok);
 }
 .plat.zoom {
   background: color-mix(in srgb, #2d8cff 14%, transparent);
@@ -3102,7 +3102,7 @@ button.chat-members:hover {
   font-size: 12px;
 }
 .m-err {
-  color: #dc2626;
+  color: var(--danger);
 }
 .m-status {
   display: inline-flex;
@@ -3124,27 +3124,27 @@ button.chat-members:hover {
   animation: p 1.2s infinite;
 }
 .m-status.s-recording {
-  background: color-mix(in srgb, #ef4444 13%, transparent);
-  color: #dc2626;
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  color: var(--danger);
 }
 .m-status.s-joining,
 .m-status.s-waiting_room,
 .m-status.s-queued,
 .m-status.s-stopping {
-  background: color-mix(in srgb, #f59e0b 15%, transparent);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warn-solid) 15%, transparent);
+  color: var(--warn);
 }
 .m-status.s-processing {
   background: var(--accent-soft);
   color: var(--accent);
 }
 .m-status.s-done {
-  background: color-mix(in srgb, #10b981 13%, transparent);
-  color: #047857;
+  background: color-mix(in srgb, var(--ok-solid) 13%, transparent);
+  color: var(--ok);
 }
 .m-status.s-failed {
-  background: color-mix(in srgb, #ef4444 13%, transparent);
-  color: #b91c1c;
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  color: var(--danger);
 }
 .m-head {
   flex-wrap: wrap;
@@ -3270,7 +3270,7 @@ button.chat-members:hover {
   font-size: 13px;
 }
 .remember.warn {
-  background: color-mix(in srgb, #f59e0b 12%, var(--surface));
+  background: color-mix(in srgb, var(--warn-solid) 12%, var(--surface));
 }
 .m-glance {
   padding: 14px 16px !important;

@@ -284,7 +284,9 @@ export interface Channel {
   invitePolicy?: Policy; // who can add people
   guests?: Guest[]; // people from outside the company (clients)
   sharedWith?: { workspaceName: string; domain: string; status: 'pending' | 'connected' }; // shared channel with another Sprint2go company
-  digest?: boolean; // daily AI digest of this channel (opt-in)
+  digest?: boolean; // old name for summary.schedule === 'daily'
+  summary?: ChannelSummary;
+  bookmarks?: { id: string; title: string; url: string; addedBy: string; at: string }[];
   archived?: boolean;
   createdAt?: string;
 }
@@ -482,4 +484,11 @@ export interface ChatView {
   name: string;
   sections: { id: string; name: string; channelIds: string[] }[];
   showRest: boolean; // channels not in any section go under "Other channels"
+}
+
+/** An AI summary of a channel, on a schedule. Uses the company's AI allowance or its own keys. */
+export interface ChannelSummary {
+  schedule: 'off' | 'daily' | 'weekly' | 'monthly';
+  post: boolean; // also post each new summary into the channel
+  history: { id: string; text: string; period: string; at: string; auto: boolean; by?: string }[];
 }

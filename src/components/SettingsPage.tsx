@@ -75,6 +75,7 @@ interface Props {
     people: number;
     teams: Team[];
     drive: DriveItem[];
+    byChannel: { name: string; size: number }[];
     onTeams: (t: Team[]) => void;
     onTeamHome: (teamId: string, t: HomeTemplateId) => void;
     onAI: (a: AISettings) => void;
@@ -463,7 +464,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             </>
           )}
 
-          {section === 'storage' && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
+          {section === 'storage' && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} byChannel={admin.byChannel} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'teams' && <TeamsSection ws={ws} teams={admin.teams} users={wsUsers} canManage={canManage} onTeams={admin.onTeams} onTeamHome={admin.onTeamHome} toast={admin.toast} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}

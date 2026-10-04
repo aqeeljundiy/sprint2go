@@ -1,6 +1,6 @@
 # Sprint2go backlog
 
-## UI polish pass (asked 5 Oct 2026, review one by one)
+## UI polish pass (asked 5 Oct 2026): first pass done 5 Oct, keep reviewing screen by screen
 
 **1. Fewer boxes, lines and grey**
 - Home cards have a grey header bar + a line + an outlined card, with outlined boxes inside (pulse numbers, workload tiles). Too many nested frames.
@@ -31,7 +31,7 @@
 - Tidy spacing scale (4/8/12/16/24), consistent radii (one for cards, one for controls, pills), consistent heading sizes.
 - Check every screen at phone, tablet and desktop after the pass.
 
-## Channel extras (asked 5 Oct 2026)
+## Channel extras (asked 5 Oct 2026): done 5 Oct
 - **Links tab** on every channel: every link shared in the messages, collected automatically, plus links you pin by hand (bookmarks like the brief, the Figma file, the client's Drive).
 - **Space used** per channel: how much storage its files take, shown on the Files tab and in Storage settings.
 - **AI summary tab** per channel, on a schedule: Off, Weekly or Monthly (default Monthly), or Daily for busy channels. Chosen when creating the channel and changeable in settings. It uses the company's AI allowance (or its own keys); the cost per update is shown when you pick.
