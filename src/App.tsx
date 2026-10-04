@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Building2, CalendarPlus, FileText, Hash, House, ListChecks, Mail, MessagesSquare, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
 import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChatFile, ChatMessage, Meeting, Notice, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
-import { CALENDARS } from './data/calendar';
+import { CALENDARS, externalEvents } from './data/calendar';
+import { ConnectCalendar } from './components/ConnectCalendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { lastMessage, uid, localDay } from './utils';
 import { eventsOn } from './calendarUtils';
@@ -227,6 +228,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Calendar
   const [events, setEvents] = useStored('events');
   const [hiddenCals, setHiddenCals] = useState<Set<string>>(new Set());
+  const [extCals, setExtCals] = useStored('calendars');
+  const [shownMates, setShownMates] = useState<Set<string>>(new Set());
+  const [connectCal, setConnectCal] = useState(false);
   const [calCursor, setCalCursor] = useState(new Date());
   const [calView, setCalView] = useState<CalView>(() => (matchMedia('(max-width: 760px)').matches ? 'day' : 'week'));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -900,7 +904,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const presence = (id: string): Presence => {
     if (id === user.id) {
       const now = new Date().toISOString();
-      return visibleEvents.some((e) => !e.allDay && e.start <= now && e.end > now) ? 'meeting' : 'active';
+      return myEvents.some((e) => !e.allDay && e.start <= now && e.end > now) ? 'meeting' : 'active';
     }
     if (statuses[id]?.emoji === '🗓️') return 'meeting';
     return id === 'u-dewi' || id === 'u-bayu' ? 'away' : 'active';
@@ -1014,8 +1018,27 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Calendar ---------------- */
 
-  const visibleEvents = useMemo(() => events.filter((e) => !hiddenCals.has(e.calendarId) && (e.workspaceId ?? 'pnp') === ws.id && (e.userId ?? 'u-aqeel') === user.id), [events, hiddenCals, ws.id, user.id]);
-  const busyDays = useMemo(() => new Set(visibleEvents.map((e) => new Date(e.start).toDateString())), [visibleEvents]);
+  // My outside calendars (personal: they show in every workspace) and teammates' availability on top.
+  const myExtCals = useMemo(() => extCals.filter((c) => c.ownerId === user.id), [extCals, user.id]);
+  const extIds = useMemo(() => new Set(extCals.map((c) => c.id)), [extCals]);
+  const mateCals = useMemo(() => members.filter((u) => shownMates.has(u.id)).map((u) => ({ id: `mate-${u.id}`, name: u.name, color: u.color })), [members, shownMates]);
+  const allCals = useMemo(() => [...CALENDARS, ...myExtCals, ...mateCals], [myExtCals, mateCals]);
+  const visibleEvents = useMemo(() => {
+    const mine = events.filter((e) => !hiddenCals.has(e.calendarId) && (e.userId ?? 'u-aqeel') === user.id && (extIds.has(e.calendarId) ? myExtCals.some((c) => c.id === e.calendarId) : (e.workspaceId ?? 'pnp') === ws.id));
+    const mates = events.flatMap((e) => {
+      const owner = e.userId ?? 'u-aqeel';
+      if (owner === user.id || !shownMates.has(owner)) return [];
+      const ext = extCals.find((c) => c.id === e.calendarId);
+      if (!ext && (e.workspaceId ?? 'pnp') !== ws.id) return [];
+      const share = ext ? (ext.share ?? 'busy') : 'details';
+      if (share === 'private') return [];
+      const first = (allUsers.find((u) => u.id === owner)?.name ?? 'Someone').split(' ')[0];
+      return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${share === 'busy' ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined }];
+    });
+    return [...mine, ...mates];
+  }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers]);
+  const myEvents = useMemo(() => visibleEvents.filter((e) => !e.calendarId.startsWith('mate-')), [visibleEvents]);
+  const busyDays = useMemo(() => new Set(myEvents.map((e) => new Date(e.start).toDateString())), [myEvents]);
   const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
 
   function openNewEvent(at?: Date) {
@@ -1042,7 +1065,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   const conflictsWith = (start: string, end: string) =>
-    eventsOn(visibleEvents, new Date(start)).filter((e) => !e.allDay && e.start < end && e.end > start);
+    eventsOn(myEvents, new Date(start)).filter((e) => !e.allDay && e.start < end && e.end > start);
 
   const addInvite = (threadId: string) => {
     const t = threads.find((x) => x.id === threadId);
@@ -1402,6 +1425,29 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <CalendarSidebar
             cursor={calCursor}
             calendars={CALENDARS}
+            external={myExtCals}
+            teammates={members.filter((u) => u.id !== user.id)}
+            shownMates={shownMates}
+            onToggleMate={(id) =>
+              setShownMates((m) => {
+                const n = new Set(m);
+                n.has(id) ? n.delete(id) : n.add(id);
+                return n;
+              })
+            }
+            onAddCalendar={() => setConnectCal(true)}
+            onShare={(id, share) => setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, share } : c)))}
+            onSync={(id) => {
+              setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, syncedAt: nowIso() } : c)));
+              showToast({ text: 'Synced' });
+            }}
+            onRemove={(id) => {
+              const cal = extCals.find((c) => c.id === id);
+              const snapshot = { extCals, events };
+              setExtCals((cs) => cs.filter((c) => c.id !== id));
+              setEvents((es) => es.filter((e) => e.calendarId !== id));
+              showToast({ text: `${cal?.name ?? 'Calendar'} removed`, action: { label: 'Undo', run: () => (setExtCals(snapshot.extCals), setEvents(snapshot.events)) } });
+            }}
             hidden={hiddenCals}
             busyDays={busyDays}
             onCursor={(d) => {
@@ -1546,7 +1592,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenBriefs={() => openTasks({ kind: 'briefs' })}
             onOpenGrid={() => openTasks({ kind: 'grid' })}
             threads={scoped}
-            events={visibleEvents}
+            events={myEvents}
             meetings={wsMeetings}
             notices={myNotices}
             enabled={enabled}
@@ -1715,7 +1761,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         {mode === 'calendar' && (
           <CalendarView
             events={visibleEvents}
-            calendars={CALENDARS}
+            calendars={allCals}
             cursor={calCursor}
             view={calView}
             selected={selectedEvent}
@@ -1936,7 +1982,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           }}
         />
       )}
-      {newEventAt && <EventEditor start={newEventAt} calendars={CALENDARS} onSave={saveEvent} onClose={() => setNewEventAt(null)} />}
+      {newEventAt && <EventEditor start={newEventAt} calendars={[...CALENDARS, ...myExtCals.filter((c) => !c.readOnly)]} onSave={saveEvent} onClose={() => setNewEventAt(null)} />}
+      {connectCal && (
+        <ConnectCalendar
+          me={{ id: user.id, email: user.email }}
+          existing={myExtCals}
+          onClose={() => setConnectCal(false)}
+          onConnect={(cals) => {
+            setExtCals((cs) => [...cs, ...cals]);
+            setEvents((es) => [...es, ...cals.flatMap(externalEvents)]);
+            setConnectCal(false);
+            showToast({ text: `${cals.length > 1 ? `${cals.length} calendars` : cals[0].name} connected` });
+          }}
+        />
+      )}
       {preview && (
         <DrivePreview
           item={allDrive.find((i) => i.id === preview.item.id) ?? preview.item}

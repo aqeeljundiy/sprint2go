@@ -90,10 +90,19 @@ export interface Invite {
   location?: string;
 }
 
+export type CalendarSource = 'sprint2go' | 'google' | 'microsoft' | 'icloud' | 'ics' | 'holidays';
+
 export interface CalendarDef {
   id: string;
   name: string;
   color: string;
+  source?: CalendarSource; // missing = a Sprint2go calendar
+  account?: string; // the connected account, e.g. aqeel@gmail.com
+  ownerId?: string; // whose connection it is (outside calendars are personal)
+  readOnly?: boolean; // calendar links and holidays
+  url?: string; // .ics address
+  share?: 'busy' | 'details' | 'private'; // what teammates see
+  syncedAt?: string;
 }
 
 export interface CalEvent {

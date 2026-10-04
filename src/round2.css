@@ -2293,3 +2293,97 @@ button.chat-members:hover {
 .st-dot {
   flex: none;
 }
+
+/* ---------- Outside calendars ---------- */
+.src-mark {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 28%;
+  color: #fff;
+  font-weight: 800;
+  flex: none;
+}
+.cal-acc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.cal-acc span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-share {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 6px;
+  color: var(--text-3);
+}
+.mate-on {
+  margin-left: auto;
+  color: var(--accent);
+}
+.connect-modal {
+  width: min(560px, 100%);
+}
+.source-grid {
+  display: grid;
+  gap: 8px;
+}
+.source-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.source-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.source-card span {
+  display: grid;
+}
+.source-card small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.connect-form {
+  display: grid;
+  gap: 14px;
+}
+.connect-form .field {
+  display: grid;
+  gap: 6px;
+}
+.connect-form .field > span {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.connect-form .field > input {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  outline: none;
+}
+.connect-form .field > input:focus {
+  border-color: var(--accent);
+}
+.sub-cals {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.connecting {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 30px 0;
+}

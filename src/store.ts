@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Status } from './types';
 import { THREADS } from './data/mock';
-import { EVENTS } from './data/calendar';
+import { EVENTS, EXTERNAL_CALENDARS, EXTERNAL_EVENTS } from './data/calendar';
 import { DRIVE } from './data/drive';
 import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './data/team';
 
@@ -9,7 +9,8 @@ import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './
 // The real backend replaces this.
 const store = {
   threads: THREADS,
-  events: EVENTS,
+  events: [...EVENTS, ...EXTERNAL_EVENTS],
+  calendars: EXTERNAL_CALENDARS,
   drive: DRIVE,
   todos: TASKS,
   clients: CLIENTS,
