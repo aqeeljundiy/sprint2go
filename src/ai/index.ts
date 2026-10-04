@@ -42,6 +42,11 @@ export const ai = {
   rewrite: (text: string, style: RewriteStyle): Promise<string> => (URL ? call('rewrite', { text, style }) : demo.rewrite(text, style)),
   todos: (t: Thread, me: string): Promise<AITodo[]> => (URL ? call('todos', { thread: plain(t), me, today: today() }) : demo.todos(t, me)),
   braindump: (input: demo.DumpInput): Promise<demo.DumpPlan> => (URL ? call('braindump', { ...input, today: today() }) : demo.braindump(input)),
+  meetingNotes: (title: string, transcript: { speaker: string; text: string; at: number }[], clientNames: string[], members: string[]): Promise<demo.MeetingNotes> =>
+    URL ? call('meetingnotes', { title, transcript, clientNames, members }) : demo.meetingNotes(title, transcript, clientNames, members),
+  folderOverview: (client: string, meetings: { title: string; summary: string; decisions: string[]; openQuestions: string[] }[], openTasks: string[], doneTasks: number): Promise<demo.FolderOverview> =>
+    URL ? call('folderoverview', { client, meetings, openTasks, doneTasks }) : demo.folderOverview(client, meetings, openTasks, doneTasks),
+  askMeetings: (question: string, sources: demo.MeetSource[]): Promise<string> => (URL ? call('askmeetings', { question, sources }) : demo.askMeetings(question, sources)),
   catchUp: (channel: string, messages: demo.CatchUpMessage[], me: string): Promise<string> => (URL ? call('catchup', { channel, messages, me }) : demo.catchUp(channel, messages, me)),
   assistant: (question: string, threads: Thread[], me: string): Promise<{ answer: string; threadIds: string[] }> =>
     URL ? call('assistant', { question, threads: threads.map(plain), me, today: today() }) : demo.assistant(question, threads, me),

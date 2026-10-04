@@ -43,7 +43,9 @@ import { ChatSidebar, ChatView, type Presence, type SendPayload } from './compon
 import { ChannelDialog } from './components/ChannelDialog';
 import { ClientPortal } from './components/ClientPortal';
 import { celebrate } from './components/ui/confetti';
-import { MeetView } from './components/MeetView';
+import { MeetAsk, MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetChat, type MeetPage } from './components/MeetApp';
+import { DEFAULT_MEETINGS } from './data/workspaces';
+import { DEMO_SCRIPT } from './data/team';
 import { Onboarding } from './components/Onboarding';
 import { textToHtml } from './sanitize';
 
@@ -257,7 +259,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
   const [portal, setPortal] = useState<{ clientId: string; guestEmail?: string } | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
-  const [meetId, setMeetId] = useState<string | null>(null);
+  const [meetPage, setMeetPage] = useState<MeetPage>({ kind: 'list' });
+  const [sendBotOpen, setSendBotOpen] = useState(false);
+  const [shareFor, setShareFor] = useState<string | null>(null);
+  const [sharedPreview, setSharedPreview] = useState<string | null>(null);
+  const [askMeet, setAskMeet] = useState<AskScope | null>(null);
+  const [meetChats, setMeetChats] = usePersisted<MeetChat[]>(`s2g-meet-chats:${user.id}`, []);
+  const [joinOverrides, setJoinOverrides] = usePersisted<Record<string, boolean>>(`s2g-join:${user.id}`, {});
+  const [sentEvents, setSentEvents] = useState<Record<string, string>>({});
+  const botTimers = useRef<Record<string, number[]>>({});
+  const meetingsRef = useRef<Meeting[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -758,6 +769,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       clientId?: string;
       teamId?: string;
       briefId?: string;
+      meetingId?: string;
+      saidAt?: number;
       kind?: Todo['kind'];
       context?: string;
       userId: string;
@@ -775,6 +788,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       clientId: t.clientId,
       teamId: t.teamId,
       briefId: t.briefId,
+      meetingId: t.meetingId,
+      saidAt: t.saidAt,
       context: t.context,
       userId: t.userId,
       due: t.due,
@@ -851,7 +866,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     go('chat');
   };
   const openMeeting = (id: string) => {
-    setMeetId(id);
+    setMeetPage({ kind: 'meeting', id });
     go('meet');
   };
   /** Opens a task or brief in the detail panel, on a task page where it shows up. */
@@ -1038,9 +1053,145 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const a = m.actions[i];
     if (a.taskId) return;
     const owner = members.find((u) => a.owner && u.name.toLowerCase().startsWith(a.owner.toLowerCase()));
-    const task = createTask({ title: a.title, userId: owner?.id ?? user.id, clientId: m.clientId, due: dueFromWord(a.due), source: 'meeting' }, { chat: true });
+    const task = createTask({ title: a.title, userId: owner?.id ?? '', clientId: m.clientId, due: dueFromWord(a.due), source: 'meeting', meetingId: m.id, saidAt: a.saidAt }, { chat: true });
     setMeetings((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y, j) => (j === i ? { ...y, taskId: task.id } : y)) } : x)));
-    if (!quiet) showToast({ text: `Task created for ${owner ? (owner.id === user.id ? 'you' : owner.name.split(' ')[0]) : 'you'}` });
+    if (!quiet) showToast({ text: owner ? `Task created for ${owner.id === user.id ? 'you' : owner.name.split(' ')[0]}` : 'Task created, not assigned yet' });
+  };
+
+  /* ---------------- Meet: the notetaker ---------------- */
+
+  meetingsRef.current = meetings;
+  const patchMeeting = (id: string, p: Partial<Meeting>) => setMeetings((ms) => ms.map((m) => (m.id === id ? { ...m, ...p } : m)));
+  const meetLog = (id: string, message: string, p: Partial<Meeting> = {}) =>
+    setMeetings((ms) => ms.map((m) => (m.id === id ? { ...m, ...p, log: [...(m.log ?? []), { message, at: nowIso() }] } : m)));
+  const later = (id: string, ms: number, fn: () => void) => {
+    const t = window.setTimeout(fn, ms);
+    botTimers.current[id] = [...(botTimers.current[id] ?? []), t];
+  };
+  const meetSettings = ws.meetings ?? DEFAULT_MEETINGS;
+
+  /** Which client a meeting belongs to: the first matching rule, else the AI's suggestion. */
+  const fileByRules = (m: Meeting, aiFolder: string) => {
+    const speakers = (m.transcript ?? []).map((l) => l.speaker.toLowerCase());
+    const text = `${m.title} ${m.summary}`.toLowerCase();
+    const rule = (ws.meetingRules ?? []).find((r) =>
+      r.kind === 'participant' ? speakers.includes(r.value.toLowerCase()) : r.kind === 'domain' ? (m.url ?? '').includes(r.value) || m.attendees.some((a) => a.toLowerCase().includes(r.value.split('.')[0])) : text.includes(r.value.toLowerCase()),
+    );
+    if (rule) return { clientId: rule.clientId, filedBy: 'rule' as const };
+    const c = wsClients.find((x) => x.name.toLowerCase() === aiFolder.toLowerCase());
+    return c ? { clientId: c.id, filedBy: 'ai' as const } : { clientId: undefined, filedBy: undefined };
+  };
+
+  /** After the bot leaves: write notes, file the meeting, make tasks. */
+  const finishMeeting = (id: string, regenerate = false) => {
+    const m = meetings.find((x) => x.id === id);
+    meetLog(id, regenerate ? 'Writing notes again' : 'Writing notes', { status: 'processing' });
+    later(id, 50, async () => {
+      const current = meetingsRef.current.find((x) => x.id === id) ?? m;
+      if (!current) return;
+      if (!current.transcript?.length) {
+        meetLog(id, 'No transcript, so no notes', { status: 'done' });
+        return;
+      }
+      const notes = await ai.meetingNotes(current.title, current.transcript, wsClients.map((c) => c.name), members.map((u) => u.name.split(' ')[0]));
+      const filed = current.filedBy === 'user' ? { clientId: current.clientId, filedBy: 'user' as const } : fileByRules({ ...current, summary: notes.summary }, notes.folder);
+      const actions = notes.actions.map((a) => ({ ...a, taskId: undefined as string | undefined }));
+      // Regenerating keeps tasks people edited; AI tasks nobody touched are replaced.
+      if (regenerate) setTodos((ts) => ts.filter((t) => !(t.meetingId === id && t.source === 'meeting' && !t.done && t.createdBy === user.id && !t.notes)));
+      const mins = Math.max(1, Math.round((current.transcript[current.transcript.length - 1].at + 60_000) / 60_000));
+      const keep = filed.clientId ? meetSettings.clientMeetings : meetSettings.internalMeetings;
+      const next: Meeting = {
+        ...current,
+        title: current.title || notes.title,
+        summary: notes.summary,
+        keyPoints: notes.keyPoints,
+        decisions: notes.decisions,
+        openQuestions: notes.openQuestions,
+        topics: notes.topics,
+        type: current.type ?? notes.type,
+        tags: notes.tags,
+        actions,
+        minutes: current.minutes || mins,
+        clientId: filed.clientId,
+        filedBy: filed.filedBy,
+        status: 'done',
+        recording: current.recording ?? { keep, sizeMb: keep === 'video' ? mins * 18.3 : keep === 'audio' ? mins * 0.8 : 0.4 },
+        sharedWithClient: current.sharedWithClient ?? (filed.clientId ? meetSettings.shareNotesWithClient : false),
+      };
+      setMeetings((ms) => ms.map((x) => (x.id === id ? { ...next, log: [...(x.log ?? []), ...(filed.filedBy === 'rule' ? [{ message: `Filed in ${wsClients.find((c) => c.id === filed.clientId)?.name} by rule`, at: nowIso() }] : filed.filedBy === 'ai' ? [{ message: `Filed in ${wsClients.find((c) => c.id === filed.clientId)?.name} by AI`, at: nowIso() }] : []), { message: `Kept: ${keep === 'video' ? 'video, audio and notes' : keep === 'audio' ? 'audio and notes' : 'notes and transcript only'}`, at: nowIso() }, { message: 'Done', at: nowIso() }] } : x)));
+      if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) later(id, 60, () => next.actions.forEach((_, i) => meetingActionToTask(next, i, true)));
+      notify(current.createdBy ?? user.id, 'meeting', `Notes are ready for “${next.title}” · ${actions.length} action item${actions.length === 1 ? '' : 's'}`, { app: 'meet', id });
+      if (current.createdBy !== user.id) return;
+      showToast({ text: `Notes ready for “${next.title}”`, action: { label: 'Open', run: () => openMeeting(id) } });
+    });
+  };
+
+  /** The demo bot: joins, waits to be let in, records a short sample conversation, leaves and writes notes. */
+  const sendBot = (d: { url: string; title: string; botName: string; clientId: string; attendees?: string[]; fromEvent?: string }) => {
+    const id = uid();
+    const zoom = /zoom/i.test(d.url);
+    const m: Meeting = { id, workspaceId: ws.id, title: d.title, at: nowIso(), minutes: 0, clientId: d.clientId || undefined, filedBy: d.clientId ? 'user' : undefined, attendees: d.attendees ?? [], summary: '', actions: [], status: 'queued', platform: zoom ? 'zoom' : 'meet', url: d.url, botName: d.botName, transcript: [], log: [{ message: d.fromEvent ? `Sent from calendar: ${d.title}` : 'Queued', at: nowIso() }], createdBy: user.id };
+    setMeetings((ms) => [m, ...ms]);
+    if (d.fromEvent) setSentEvents((s2) => ({ ...s2, [d.fromEvent!]: id }));
+    setSendBotOpen(false);
+    setMeetPage({ kind: 'meeting', id });
+    go('meet');
+    later(id, 1200, () => meetLog(id, `Joining ${zoom ? 'Zoom' : 'Google Meet'} as “${d.botName}”`, { status: 'joining' }));
+    later(id, 2800, () => meetLog(id, 'Waiting to be let in', { status: 'waiting_room' }));
+    later(id, 5000, () => meetLog(id, `Let in. Posted in the meeting chat: “Hi, I'm ${d.botName}. I'm recording this meeting and taking notes.”`, { status: meetSettings.announce ? 'recording' : 'recording' }));
+    DEMO_SCRIPT.forEach((line, i) =>
+      later(id, 6500 + i * 2200, () =>
+        setMeetings((ms) => ms.map((x) => (x.id === id && x.status === 'recording' ? { ...x, transcript: [...(x.transcript ?? []), { speaker: line.speaker === 'You' ? myFirst : line.speaker === 'Client' ? 'Guest' : line.speaker, text: line.text, at: 15_000 + i * 42_000 }] } : x))),
+      ),
+    );
+    later(id, 6500 + DEMO_SCRIPT.length * 2200 + 1500, () => {
+      if (meetingsRef.current.find((y) => y.id === id)?.status === 'recording') {
+        meetLog(id, 'Everyone else left');
+        finishMeeting(id);
+      }
+    });
+  };
+
+  const stopBot = (id: string) => {
+    const m = meetings.find((x) => x.id === id);
+    (botTimers.current[id] ?? []).forEach(clearTimeout);
+    botTimers.current[id] = [];
+    if (!m || m.status !== 'recording') {
+      meetLog(id, 'Stopped before recording began', { status: 'stopped' });
+      return;
+    }
+    meetLog(id, 'Asked to leave', { status: 'stopping' });
+    later(id, 900, () => finishMeeting(id));
+  };
+
+  const deleteMeeting = (id: string) => {
+    const snapshot = { meetings, todos };
+    (botTimers.current[id] ?? []).forEach(clearTimeout);
+    setMeetings((ms) => ms.filter((m) => m.id !== id));
+    setTodos((ts) => ts.filter((t) => t.meetingId !== id || t.done));
+    setMeetPage({ kind: 'list' });
+    showToast({ text: 'Meeting deleted', action: { label: 'Undo', run: () => (setMeetings(snapshot.meetings), setTodos(snapshot.todos)) } });
+  };
+
+  const setMeetingFolder = (id: string, clientId: string | null, remember: boolean) => {
+    const m = meetings.find((x) => x.id === id);
+    patchMeeting(id, { clientId: clientId ?? undefined, filedBy: 'user' });
+    if (remember && m && clientId) {
+      const outsiders = [...new Set((m.transcript ?? []).map((l) => l.speaker))].filter((sp) => !members.some((u) => u.name.split(' ')[0] === sp.split(' ')[0]) && sp !== 'Guest');
+      const rules = outsiders.map((v) => ({ id: uid(), kind: 'participant' as const, value: v, clientId }));
+      patchWorkspace(ws.id, { meetingRules: [...(ws.meetingRules ?? []), ...rules] });
+      showToast({ text: `Meetings with ${outsiders.join(', ')} will be filed here` });
+    }
+  };
+
+  const writeOverview = async (clientId: string) => {
+    const c = wsClients.find((x) => x.id === clientId);
+    const list = wsMeetings.filter((m) => m.clientId === clientId && m.summary);
+    if (!c) return;
+    const t = wsTasks.filter((x) => x.meetingId && list.some((m) => m.id === x.meetingId));
+    const o = await ai.folderOverview(c.name, list.map((m) => ({ title: m.title, summary: m.summary, decisions: m.decisions ?? [], openQuestions: m.openQuestions ?? [] })), t.filter((x) => !x.done).map((x) => x.title), t.filter((x) => x.done).length);
+    setClients((cs) => cs.map((x) => (x.id === clientId ? { ...x, overview: { ...o, at: nowIso(), from: list.length } } : x)));
+    showToast({ text: 'Overview updated' });
   };
 
   const openNotice = (n: Notice) => {
@@ -1380,7 +1531,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   ];
 
   return (
-    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'meet', 'settings'].includes(mode) ? 'no-sidebar' : ''}`}>
+    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''}`}>
       <AppRail
         current={mode}
         enabled={enabledApps}
@@ -1533,6 +1684,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setTaskScope({ kind: 'client', id: c.id });
               showToast({ text: `${name} added` });
             }}
+          />
+          ) : appMode === 'meet' ? (
+          <MeetSidebar
+            page={meetPage}
+            meetings={wsMeetings}
+            clients={wsClients}
+            canSend={meetSettings.whoCanRecord === 'everyone' || myRole !== 'member'}
+            onPage={(pg) => (setMeetPage(pg), setSidebarOpen(false))}
+            onSend={() => setSendBotOpen(true)}
+            onAsk={() => setAskMeet({ kind: 'all' })}
+            onSettings={() => (setSettingsSection('meetings'), go('settings'))}
           />
           ) : appMode === 'chat' ? (
           <ChatSidebar
@@ -1725,20 +1887,53 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
         {mode === 'meet' && (
           <MeetView
+            page={meetPage}
             meetings={wsMeetings}
             clients={wsClients}
             tasks={wsTasks}
-            selected={meetId}
-            meetUrl={ws.meetUrl}
-            onSelect={setMeetId}
-            onMakeTask={(m, i) => meetingActionToTask(m, i)}
-            onMakeAll={(m) => {
-              m.actions.forEach((a, i) => !a.taskId && meetingActionToTask(m, i, true));
-              showToast({ text: 'Action items are now tasks, owners notified' });
-            }}
+            users={members}
+            me={user.id}
+            myRole={myRole}
+            events={myEvents}
+            settings={meetSettings}
+            overrides={joinOverrides}
+            sentEvents={sentEvents}
+            onPage={setMeetPage}
+            onStop={stopBot}
+            onRegenerate={(id) => finishMeeting(id, true)}
+            onDelete={deleteMeeting}
+            onFolder={setMeetingFolder}
+            onPatch={patchMeeting}
+            onShare={setShareFor}
+            onToggleTask={toggleTodo}
+            onPatchTask={patchTask}
+            onBulk={(ids, action) =>
+              action === 'delete'
+                ? setTodos((ts) => ts.filter((t) => !ids.includes(t.id)))
+                : setTodos((ts) => ts.map((t) => (ids.includes(t.id) ? { ...t, done: action === 'done', status: action === 'done' ? 'done' : 'todo', doneAt: action === 'done' ? nowIso() : undefined, doneBy: action === 'done' ? user.id : undefined } : t)))
+            }
+            onAddTask={(t) => createTask({ ...t, source: t.meetingId ? 'meeting' : 'manual' }, { chat: true })}
             onOpenTask={openTask}
             onOpenClient={openClient}
+            onWriteOverview={writeOverview}
+            onJoinMode={(jm) => patchWorkspace(ws.id, { meetings: { ...meetSettings, joinMode: jm } })}
+            onOverride={(eid, join) =>
+              setJoinOverrides((o) => {
+                const n = { ...o };
+                if (join === null) delete n[eid];
+                else n[eid] = join;
+                return n;
+              })
+            }
+            onSendNow={(e) => {
+              const zoom = /zoom/i.test(e.location ?? '');
+              sendBot({ url: zoom ? 'https://zoom.us/j/1234567890' : 'https://meet.google.com/abc-defg-hij', title: e.title, botName: meetSettings.botName, clientId: '', attendees: (e.guests ?? []).map((g) => g.name), fromEvent: e.id });
+              setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
+            }}
+            onAsk={setAskMeet}
+            onSend={() => setSendBotOpen(true)}
             onMenu={() => setSidebarOpen(true)}
+            toast={(text) => showToast({ text })}
           />
         )}
 
@@ -2106,6 +2301,37 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onApprove={clientDecision}
           onOpenChannel={(id) => (setPortal(null), openChannel(id))}
           onClose={() => setPortal(null)}
+        />
+      )}
+      {sendBotOpen && <SendBotDialog clients={wsClients} botName={meetSettings.botName} onSend={sendBot} onClose={() => setSendBotOpen(false)} />}
+      {shareFor && meetings.some((m) => m.id === shareFor) && (
+        <ShareDialog
+          m={meetings.find((m) => m.id === shareFor)!}
+          toast={(text) => showToast({ text })}
+          onClose={() => setShareFor(null)}
+          onPreview={() => setSharedPreview(shareFor)}
+          onOff={() => (patchMeeting(shareFor, { share: undefined }), showToast({ text: 'Link turned off' }))}
+          onSave={(opts) => {
+            const m = meetings.find((x) => x.id === shareFor)!;
+            patchMeeting(shareFor, { share: { token: m.share?.token ?? Math.random().toString(36).slice(2, 10), ...opts } });
+            showToast({ text: 'Link ready' });
+          }}
+        />
+      )}
+      {sharedPreview && meetings.some((m) => m.id === sharedPreview) && (
+        <SharedPage m={meetings.find((m) => m.id === sharedPreview)!} brand={ws.name} tasks={wsTasks.filter((t) => t.meetingId === sharedPreview)} users={members} onClose={() => setSharedPreview(null)} />
+      )}
+      {askMeet && (
+        <MeetAsk
+          scope={askMeet}
+          setScope={setAskMeet}
+          meetings={wsMeetings.filter((m) => m.summary)}
+          clients={wsClients}
+          tasks={wsTasks}
+          chats={meetChats}
+          setChats={setMeetChats}
+          onOpenMeeting={(id) => (setMeetPage({ kind: 'meeting', id }), go('meet'))}
+          onClose={() => setAskMeet(null)}
         />
       )}
       {chanDialog && (

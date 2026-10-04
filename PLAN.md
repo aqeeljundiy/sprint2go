@@ -208,7 +208,7 @@ General · People and teams · Apps · Email · Calendars · Meetings (recording
 | Phase | Weeks | What | Done when |
 |---|---|---|---|
 | Phase 1 | done | Clickable prototype | Done 5 Oct |
-| Round 2 | 1 to 3 | Steps 1 to 6 above | You can demo teams, briefs, a client guest, AI settings, plans and recording choices |
+| Round 2 | done 5 Oct | Steps 1 to 6 above, built and tested on sample data | Ready to demo; UI polish pass is next (BACKLOG.md) |
 | Phase 2 | 3 to 9 | Real backend: accounts, teams, tasks, chat, AI router, cost log | Elkiya and P&P use tasks and chat daily |
 | Phase 3 | 9 to 13 | Real email: Google, Microsoft, Zoho, hosted mail, SES | One person per company runs only on Sprint2go mail |
 | Phase 4 | 13 to 18 | Calendars, Drive and own storage, the meetings app joined in | A client call ends and tasks, notes and recording land on the client page |

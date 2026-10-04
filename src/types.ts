@@ -173,6 +173,7 @@ export interface Workspace {
   emailSetup?: EmailSetup; // what the company chose at onboarding
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
+  meetingRules?: MeetingRule[];
   chat?: { gifs: boolean; celebrations: boolean; whoCanCreate: Policy; history?: 'forever' | '1y' | '90d' };
   plan?: Plan;
   ai?: AISettings;
@@ -212,6 +213,8 @@ export interface Todo {
   doneBy?: string;
   visibleToClient?: boolean; // shows in the client portal
   approval?: Approval; // the client is asked to approve this
+  meetingId?: string; // said in this meeting
+  saidAt?: number; // ms into the recording
   due?: string; // YYYY-MM-DD
   done: boolean;
   status?: TaskStatus; // board column; kept in step with `done`
@@ -258,6 +261,7 @@ export interface Client {
   color: string;
   status: 'active' | 'lead' | 'paused';
   ownerId: string;
+  overview?: { headline: string; summary: string; progress: string; wins: string[]; risks: string[]; next: string[]; at: string; from: number };
 }
 
 export type ChannelCategory = 'client' | 'team' | 'project' | 'social';
@@ -336,17 +340,46 @@ export interface Notice {
   link?: { app: AppId; id?: string };
 }
 
+export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';
+export type MeetingType = 'sales' | 'client' | 'internal' | 'hiring' | 'partner' | 'one_on_one' | 'other';
+
 export interface Meeting {
   id: string;
   workspaceId: string;
   title: string;
   at: string;
   minutes: number;
-  clientId?: string;
+  clientId?: string; // the folder (a client); empty = Unfiled
+  filedBy?: 'rule' | 'ai' | 'user';
   attendees: string[]; // names
   summary: string;
-  actions: { title: string; owner?: string; due?: string; taskId?: string }[];
+  actions: { title: string; owner?: string; due?: string; taskId?: string; saidAt?: number }[];
   sharedWithClient?: boolean; // notes visible in the client portal
+  // From the notetaker
+  status?: MeetingStatus;
+  error?: string;
+  platform?: 'meet' | 'zoom';
+  url?: string;
+  botName?: string;
+  type?: MeetingType;
+  tags?: string[];
+  keyPoints?: string[];
+  decisions?: string[];
+  openQuestions?: string[];
+  topics?: { name: string; at: number }[]; // ms
+  transcript?: { speaker: string; text: string; at: number }[]; // ms since start
+  log?: { message: string; at: string }[];
+  recording?: { keep: 'video' | 'audio' | 'notes'; sizeMb: number; downgradeOn?: string };
+  share?: { token: string; transcript: boolean; video: boolean };
+  access?: { watch: 'everyone' | 'attendees' | 'admins'; download: boolean; transcript: 'everyone' | 'attendees' };
+  createdBy?: string;
+}
+
+export interface MeetingRule {
+  id: string;
+  kind: 'participant' | 'domain' | 'keyword';
+  value: string;
+  clientId: string;
 }
 
 export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'calendar' | 'drive' | 'meet';
@@ -429,6 +462,8 @@ export interface MeetingSettings {
   whoCanRecord: 'everyone' | 'admins';
   shareNotesWithClient: boolean;
   autoJoin: boolean;
+  joinMode?: 'accepted' | 'organizer' | 'all' | 'off';
+  autoTasks?: boolean; // create tasks from action items
   botName: string;
   announce: boolean;
 }

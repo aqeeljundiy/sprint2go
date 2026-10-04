@@ -390,3 +390,116 @@ export async function catchUp(channel: string, messages: CatchUpMessage[], me: s
   if (tasks.length) lines.push(`Tasks created: ${tasks.slice(0, 3).join(', ')}.`);
   return lines.join('\n');
 }
+
+/* ---------------- Meetings: notes, folder overview, Ask AI ---------------- */
+
+export interface MeetingNotes {
+  title: string;
+  summary: string;
+  keyPoints: string[];
+  decisions: string[];
+  openQuestions: string[];
+  topics: { name: string; at: number }[];
+  type: 'sales' | 'client' | 'internal' | 'hiring' | 'partner' | 'one_on_one' | 'other';
+  tags: string[];
+  actions: { title: string; owner?: string; due?: string; saidAt?: number }[];
+  folder: string; // suggested client name, or ''
+}
+
+/** Notes from a transcript: what was decided, asked and promised, with the moment each promise was said. */
+export async function meetingNotes(title: string, transcript: { speaker: string; text: string; at: number }[], clientNames: string[], members: string[]): Promise<MeetingNotes> {
+  await wait(1400);
+  const text = transcript.map((l) => l.text).join(' ');
+  const promise = /\b(i'll|i will|we'll|can (?:edit|send|do|prepare)|let me|by (?:mon|tues|wednes|thurs|fri)day|next week)\b/i;
+  const actions = transcript
+    .filter((l) => promise.test(l.text))
+    .map((l) => {
+      const named = members.find((m) => new RegExp(`\\b${m}\\b`, 'i').test(l.text));
+      // The sentence with the promise, without "Yes, I'll" and without the deadline (that goes in the due date).
+      const said = l.text.replace(/[’‘]/g, "'");
+      const sentence = said.split(/(?<=[.!?])\s+/).find((x) => promise.test(x)) ?? said;
+      let t = sentence
+        .replace(/^(yes|sure|ok|okay|then|great)[,.!]?\s*/i, '')
+        .replace(/^(i'll|i will|we'll|we will|let me)\s+/i, '')
+        .replace(/^\w+ can\s+/i, '')
+        .replace(/\s+(by|on|before)\s+(next\s+)?(mon|tues|wednes|thurs|fri|satur|sun)day\b/i, '')
+        .replace(/\s+(by\s+)?next week\b/i, '')
+        .replace(/[.!]+$/, '');
+      // "Nanda can edit them": borrow what "them" is from the sentence before ("plan three short videos").
+      const parts = said.split(/(?<=[.!?])\s+/);
+      const prev = parts[parts.indexOf(sentence) - 1];
+      if (prev && /\s(them|it|those)$/i.test(t)) t = t.replace(/\s(them|it|those)$/i, ' ' + prev.replace(/[.!?]+$/, '').replace(/^(then\s+)?(let's|let us|we should|we'll)\s+\w+\s+/i, 'the '));
+      const due = /next friday|friday/i.test(l.text) ? 'Fri' : /wednesday/i.test(l.text) ? 'Wed' : /thursday/i.test(l.text) ? 'Thu' : /next week/i.test(l.text) ? 'Next week' : undefined;
+      return { title: t.charAt(0).toUpperCase() + t.slice(1), owner: named ?? (l.speaker === 'You' ? undefined : l.speaker), due, saidAt: l.at };
+    });
+  const asks = transcript.filter((l) => /\?$/.test(l.text.trim())).map((l) => l.text);
+  const folder = clientNames.find((c) => new RegExp(c.split(' ')[0], 'i').test(text + ' ' + title)) ?? '';
+  const type = folder ? 'client' : /interview|candidate/i.test(text) ? 'hiring' : /standup|team/i.test(title) ? 'internal' : 'other';
+  const longest = [...transcript].sort((a, b) => b.text.length - a.text.length).slice(0, 3).map((l) => l.text.replace(/[.!]+$/, ''));
+  return {
+    title: title || (folder ? `${folder} catch-up` : 'Team meeting'),
+    summary: `${transcript.length} things were discussed. ${longest[0] ?? ''}. ${actions.length ? `${actions.length} follow-up${actions.length > 1 ? 's were' : ' was'} agreed.` : 'No follow-ups were agreed.'}`,
+    keyPoints: longest,
+    decisions: transcript.filter((l) => /\b(let's|agreed|approved|perfect|sounds good)\b/i.test(l.text)).map((l) => l.text.replace(/[.!]+$/, '')).slice(0, 3),
+    openQuestions: asks.slice(0, 3),
+    topics: transcript.filter((_, i) => i % 3 === 0).map((l) => ({ name: l.text.split(' ').slice(0, 4).join(' ').replace(/[,.]$/, ''), at: l.at })),
+    type,
+    tags: [...new Set((text.toLowerCase().match(/\b(video|budget|proposal|campaign|launch|results|design)\b/g) ?? []))].slice(0, 4),
+    actions,
+    folder,
+  };
+}
+
+export interface FolderOverview {
+  headline: string;
+  summary: string;
+  progress: string;
+  wins: string[];
+  risks: string[];
+  next: string[];
+}
+
+/** One page on where a client stands, from every meeting filed under them. */
+export async function folderOverview(client: string, meetings: { title: string; summary: string; decisions: string[]; openQuestions: string[] }[], openTasks: string[], doneTasks: number): Promise<FolderOverview> {
+  await wait(1300);
+  const total = openTasks.length + doneTasks;
+  return {
+    headline: meetings.length ? `${client}: ${meetings[0].title.toLowerCase().includes('review') ? 'results are strong, next phase is planned' : 'work is moving, a few follow-ups open'}` : `${client}: no meetings yet`,
+    summary: meetings.map((m) => m.summary).filter(Boolean).slice(0, 2).join(' '),
+    progress: total ? `${doneTasks} of ${total} tasks done (${Math.round((doneTasks / total) * 100)}%).` : 'No tasks yet.',
+    wins: meetings.flatMap((m) => m.decisions).slice(0, 5),
+    risks: meetings.flatMap((m) => m.openQuestions).slice(0, 5),
+    next: openTasks.slice(0, 5),
+  };
+}
+
+export interface MeetSource {
+  id: string;
+  title: string;
+  summary: string;
+  transcript: { speaker: string; text: string; at: number }[];
+  actions: { title: string; owner?: string; done: boolean }[];
+}
+
+/** Ask AI over meetings. Answers cite meetings as [M:id] or [M:id@ms]. */
+export async function askMeetings(question: string, sources: MeetSource[]): Promise<string> {
+  await wait(1100);
+  const q = question.toLowerCase();
+  const words = q.split(/\W+/).filter((w) => w.length >= 4);
+  if (/summari[sz]e|bullets/.test(q) && sources.length === 1) {
+    const m = sources[0];
+    return `**${m.title}** [M:${m.id}]\n- ${m.summary.split('. ').slice(0, 3).join('\n- ')}`;
+  }
+  if (/promise|promised|owe|follow.?up|open|overdue|who owns/.test(q)) {
+    const open = sources.flatMap((m) => m.actions.filter((a) => !a.done).map((a) => ({ m, a })));
+    if (!open.length) return 'Nothing is open from these meetings.';
+    return `Open follow-ups:\n${open.slice(0, 8).map(({ m, a }) => `- **${a.title}**${a.owner ? ` (${a.owner})` : ''} [M:${m.id}]`).join('\n')}`;
+  }
+  if (/email|draft/.test(q) && sources.length) {
+    const m = sources[0];
+    return `Here’s a follow-up you can send:\n\nHi all,\n\nThanks for the time today. Quick recap: ${m.summary}\n\nNext steps:\n${m.actions.map((a) => `- ${a.title}${a.owner ? ` (${a.owner})` : ''}`).join('\n') || '- None yet'}\n\nBest,\n[M:${m.id}]`;
+  }
+  const hits = sources.flatMap((m) => m.transcript.filter((l) => words.some((w) => l.text.toLowerCase().includes(w))).map((l) => ({ m, l }))).slice(0, 4);
+  if (!hits.length) return 'I couldn’t find that in these meetings. Try a client name, a topic or a person.';
+  return `Here’s what was said:\n${hits.map(({ m, l }) => `- ${l.speaker}: “${l.text}” [M:${m.id}@${l.at}]`).join('\n')}`;
+}
