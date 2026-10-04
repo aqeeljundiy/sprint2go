@@ -1,36 +1,37 @@
 import { useEffect, useState } from 'react';
-import type { Status } from './types';
-import type { TaskTemplate } from './data/templates';
-import { THREADS } from './data/mock';
-import { EVENTS, EXTERNAL_CALENDARS, EXTERNAL_EVENTS } from './data/calendar';
-import { DRIVE } from './data/drive';
-import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './data/team';
+import { seed, type Collections, type CollectionKey } from './seed';
+import { pushChange } from './sync';
 
-// Mail, calendar, drive, tasks, chat and notifications live here (outside React) so they survive switching users.
-// The real backend replaces this.
-const store = {
-  threads: THREADS,
-  events: [...EVENTS, ...EXTERNAL_EVENTS],
-  calendars: EXTERNAL_CALENDARS,
-  drive: DRIVE,
-  todos: TASKS,
-  clients: CLIENTS,
-  teams: TEAMS,
-  channels: CHANNELS,
-  messages: MESSAGES,
-  notices: NOTICES,
-  statuses: { 'u-nanda': { emoji: '🎬', text: 'Editing, slow to reply' }, 'u-faisal': { emoji: '🗓️', text: 'In client meetings till 3pm' } } as Record<string, Status>,
-  meetings: MEETINGS,
-  templates: [] as TaskTemplate[], // templates a company saved for itself
-};
+// Mail, calendar, drive, tasks, chat, people and workspaces live here (outside React) so they survive switching users.
+// With the local server running, every change is saved there and other people's changes arrive live (see sync.ts).
+export const store: Collections = seed();
 
 /** Threads already scanned for to-dos (key: user:thread:lastMessage). */
 export const scanned = new Set<string>();
 
-export function useStored<K extends keyof typeof store>(key: K) {
-  const [value, setValue] = useState<(typeof store)[K]>(() => store[key]);
+const listeners: Partial<Record<CollectionKey, Set<(v: never) => void>>> = {};
+
+/** Replaces a collection with what the server sent (no echo back to the server). */
+export function applyRemote<K extends CollectionKey>(key: K, value: Collections[K]) {
+  store[key] = value;
+  listeners[key]?.forEach((fn) => (fn as (v: Collections[K]) => void)(value));
+}
+
+export function useStored<K extends CollectionKey>(key: K) {
+  const [value, setValue] = useState<Collections[K]>(() => store[key]);
   useEffect(() => {
+    const set = (listeners[key] ??= new Set());
+    set.add(setValue as (v: never) => void);
+    // A change may have arrived between the first render and now.
+    if (store[key] !== value) setValue(store[key]);
+    return () => void set.delete(setValue as (v: never) => void);
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (store[key] === value) return;
     store[key] = value;
+    // Other parts of the app showing the same collection see the change too.
+    listeners[key]?.forEach((fn) => fn !== (setValue as unknown) && (fn as (v: Collections[K]) => void)(value));
+    pushChange(key, value);
   }, [key, value]);
   return [value, setValue] as const;
 }

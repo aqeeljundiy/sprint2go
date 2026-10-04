@@ -902,3 +902,7 @@ details.advanced[open] summary h3::after {
 .checklist li:hover .icon-btn { opacity: 1; }
 .check-add { color: var(--muted); }
 .check-add input { flex: 1; border: 0; background: transparent; font: inherit; color: var(--text); outline: none; padding: 2px 0; }
+.pw-form { display: flex; flex-direction: column; gap: 10px; max-width: 360px; padding: 4px 0 16px; }
+.pw-form .field { margin: 0; }
+.pw-form .primary-btn { align-self: flex-start; }
+.boot { min-height: 100vh; background: var(--bg); }

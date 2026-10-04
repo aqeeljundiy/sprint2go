@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { server } from '../../sync';
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Play, Plus, ShieldOff, Sparkles, Trash2 } from 'lucide-react';
 import type { AIJobId, AISettings, ProviderConn, ProviderId, User, Workspace } from '../../types';
 import { JOBS, PROVIDERS, costPer100, presetJobs, providerOf } from '../../data/aiCatalog';
@@ -25,7 +26,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   const plan = ws.plan;
   const included = plan?.track === 'ai' && plan.tier !== 'free';
   const set = (p: Partial<AISettings>) => onAI({ ...ai, ...p });
-  const [adding, setAdding] = useState<{ id: ProviderId | null; key: string; url: string; state: 'idle' | 'testing' | 'error' } | null>(null);
+  const [adding, setAdding] = useState<{ id: ProviderId | null; key: string; url: string; state: 'idle' | 'testing' | 'error'; message?: string } | null>(null);
   const [testing, setTesting] = useState<AIJobId | null>(null);
   const [tested, setTested] = useState<Partial<Record<AIJobId, string>>>({});
   const connected = ai.providers.filter((p) => p.status === 'ok').map((p) => p.id);
@@ -45,14 +46,23 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
       return;
     }
     setAdding({ ...adding, state: 'testing' });
-    setTimeout(() => {
-      const conn: ProviderConn = { id: adding.id!, keyLast4: key.slice(-4), addedAt: new Date().toISOString(), addedBy: me, status: 'ok', baseUrl: adding.url.trim() || undefined, spentUsd: 0 };
+    const save = (keyLast4: string) => {
+      const conn: ProviderConn = { id: adding.id!, keyLast4, addedAt: new Date().toISOString(), addedBy: me, status: 'ok', baseUrl: adding.url.trim() || undefined, spentUsd: 0 };
       const providers = [...ai.providers.filter((p) => p.id !== conn.id), conn];
       const jobs = ai.preset === 'custom' ? ai.jobs : presetJobs(ai.preset === 'best' ? 'best' : ai.preset === 'cheap' ? 'cheap' : 'balanced', providers.map((p) => p.id), allowIncluded);
       onAI({ ...ai, providers, jobs, payer: ai.payer === 'sprint2go' ? 'both' : ai.payer });
       setAdding(null);
       toast(`${info.name} connected. The key is encrypted and only the last 4 characters are kept`);
-    }, 900);
+    };
+    // With the local server the key is tested with a tiny real request, then stored encrypted there.
+    if (!server.on) return void setTimeout(() => save(key.slice(-4)), 900);
+    void fetch('/api/ai/keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: adding.id, key, baseUrl: adding.url.trim() || undefined }) })
+      .then(async (r) => {
+        const d = (await r.json().catch(() => ({}))) as { keyLast4?: string; error?: string };
+        if (r.ok && d.keyLast4) save(d.keyLast4);
+        else setAdding((a) => a && { ...a, state: 'error', message: d.error });
+      })
+      .catch(() => setAdding((a) => a && { ...a, state: 'error', message: 'Could not reach the server.' }));
   };
 
   const jobOptions = (): Option[] => [
@@ -177,7 +187,11 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                     <label>Monthly cap US$</label>
                     <input type="number" min={0} value={c.capUsd ?? ''} placeholder="none" onChange={(e) => set({ providers: ai.providers.map((x) => (x.id === c.id ? { ...x, capUsd: e.target.value ? Number(e.target.value) : undefined } : x)) })} />
                   </span>
-                  <button type="button" className="icon-btn sm" title="Remove key" onClick={() => (set({ providers: ai.providers.filter((x) => x.id !== c.id) }), toast(`${info.name} key removed`))}>
+                  <button type="button" className="icon-btn sm" title="Remove key" onClick={() => {
+                      if (server.on) void fetch('/api/ai/keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: c.id }) });
+                      set({ providers: ai.providers.filter((x) => x.id !== c.id) });
+                      toast(`${info.name} key removed`);
+                    }}>
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -204,7 +218,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                 <>
                   {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : adding.id === 'bedrock' ? 'Region, e.g. ap-southeast-3' : 'Endpoint'} />}
                   <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} />
-                  {adding.state === 'error' && <p className="err">That doesn’t look like a valid key{providerOf(adding.id)!.needsUrl ? ' and address' : ''}.</p>}
+                  {adding.state === 'error' && <p className="err">{adding.message ?? `That doesn’t look like a valid key${providerOf(adding.id)!.needsUrl ? ' and address' : ''}.`}</p>}
                   <p className="muted small">Prototype: the key is only checked for its shape and is not saved anywhere. The real version tests it with the provider and stores it encrypted.</p>
                 </>
               )}

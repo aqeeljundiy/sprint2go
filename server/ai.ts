@@ -1,9 +1,6 @@
-// Sprint2go AI service — runs on your server, never in the browser (it holds the API key).
-// Every feature is one Claude call; structured features return JSON via output_config.format.
-import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic(); // reads ANTHROPIC_API_KEY (or an `ant auth login` profile)
-const MODEL = 'claude-opus-5-5';
+// Sprint2go AI service: runs on the server, never in the browser (it holds the keys).
+// Every feature is one call to the AI the company picked for that job (see llm.ts); structured features return JSON.
+import { complete } from './llm.ts';
 
 export interface MailMessage {
   from: string;
@@ -26,23 +23,8 @@ const threadText = (t: MailThread) =>
   t.messages.map((m) => `<message from="${m.from}" to="${m.to}" date="${m.date}">\n${m.body}\n</message>`).join('\n') +
   '\n</thread>';
 
-/** One request with a refusal fallback; returns the text, or throws if every model declined. */
-async function ask(prompt: string, opts: { effort?: 'low' | 'medium' | 'high'; schema?: Record<string, unknown> } = {}) {
-  const response = await client.beta.messages.create({
-    model: MODEL,
-    max_tokens: 16000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default', // if a safety classifier declines, Anthropic's recommended model answers instead
-    system: SYSTEM,
-    output_config: {
-      effort: opts.effort ?? 'low', // email tasks are routine; raise only where quality needs it
-      ...(opts.schema ? { format: { type: 'json_schema' as const, schema: opts.schema } } : {}),
-    },
-    messages: [{ role: 'user', content: prompt }],
-  });
-  if (response.stop_reason === 'refusal') throw new Error('The request was declined.');
-  return response.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-}
+/** One request to the AI picked for this job. */
+const ask = (prompt: string, opts: { effort?: 'low' | 'medium' | 'high'; schema?: Record<string, unknown> } = {}) => complete(prompt, { system: SYSTEM, ...opts });
 
 export async function summarize(thread: MailThread) {
   return JSON.parse(
@@ -248,4 +230,97 @@ ${input.messages.map((m) => `[${m.at}] ${m.who}: ${m.text}${m.files?.length ? ` 
     ),
   ) as { summary: string };
   return out.summary;
+}
+
+type Line = { speaker: string; text: string; at: number };
+const transcriptText = (lines: Line[]) => lines.map((l) => `[${Math.round(l.at / 1000)}s] ${l.speaker}: ${l.text}`).join('\n');
+
+/** Notes from a meeting transcript: decisions, questions and promises, each promise with the moment it was said. */
+export async function meetingNotes(input: { title: string; transcript: Line[]; clientNames: string[]; members: string[] }) {
+  const out = JSON.parse(
+    await ask(
+      `Write the notes for the meeting "${input.title}". Team members: ${input.members.join(', ')}. Known clients: ${input.clientNames.join(', ') || 'none'}.
+Rules: summary in 2 or 3 sentences; key points, decisions and open questions as short plain sentences; topics with the time they start (in ms); action items start with a verb, with the owner's first name when one was named, a due date (YYYY-MM-DD) only when one was said, and saidAt = the ms where it was promised; folder = the client this meeting is about, from the known clients, or "". No em dashes.
+
+<transcript>
+${transcriptText(input.transcript)}
+</transcript>`,
+      {
+        effort: 'medium',
+        schema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            summary: { type: 'string' },
+            keyPoints: { type: 'array', items: { type: 'string' } },
+            decisions: { type: 'array', items: { type: 'string' } },
+            openQuestions: { type: 'array', items: { type: 'string' } },
+            topics: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, at: { type: 'number' } }, required: ['name', 'at'], additionalProperties: false } },
+            type: { type: 'string', enum: ['sales', 'client', 'internal', 'hiring', 'partner', 'one_on_one', 'other'] },
+            tags: { type: 'array', items: { type: 'string' } },
+            actions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { title: { type: 'string' }, owner: { type: ['string', 'null'] }, due: { type: ['string', 'null'] }, saidAt: { type: ['number', 'null'] } },
+                required: ['title', 'owner', 'due', 'saidAt'],
+                additionalProperties: false,
+              },
+            },
+            folder: { type: 'string' },
+          },
+          required: ['title', 'summary', 'keyPoints', 'decisions', 'openQuestions', 'topics', 'type', 'tags', 'actions', 'folder'],
+          additionalProperties: false,
+        },
+      },
+    ),
+  );
+  out.actions = out.actions.map((a: { title: string; owner: string | null; due: string | null; saidAt: number | null }) => ({ title: a.title, owner: a.owner ?? undefined, due: a.due ?? undefined, saidAt: a.saidAt ?? undefined }));
+  out.folder = input.clientNames.includes(out.folder) ? out.folder : '';
+  return out;
+}
+
+/** One page on where a client stands, from every meeting filed under them and their tasks. */
+export async function folderOverview(input: { client: string; meetings: { title: string; summary: string; decisions: string[]; openQuestions: string[] }[]; openTasks: string[]; doneTasks: number }) {
+  return JSON.parse(
+    await ask(
+      `Write a one-page status for the client ${input.client}: a headline (one line), a short summary, progress in one sentence (mention ${input.doneTasks} tasks done and ${input.openTasks.length} open), wins, risks and next steps (short plain sentences, no em dashes).
+
+Meetings (newest first): ${JSON.stringify(input.meetings)}
+Open tasks: ${JSON.stringify(input.openTasks)}`,
+      {
+        schema: {
+          type: 'object',
+          properties: {
+            headline: { type: 'string' },
+            summary: { type: 'string' },
+            progress: { type: 'string' },
+            wins: { type: 'array', items: { type: 'string' } },
+            risks: { type: 'array', items: { type: 'string' } },
+            next: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['headline', 'summary', 'progress', 'wins', 'risks', 'next'],
+          additionalProperties: false,
+        },
+      },
+    ),
+  );
+}
+
+/** The assistant: answers across meetings, emails, chat and tasks, citing each source as [M:id], [M:id@ms], [E:id], [C:id] or [T:id]. */
+export async function askMeetings(input: { question: string; sources: { kind?: string; id: string; title: string; summary: string; transcript: Line[]; actions: { title: string; owner?: string; done: boolean }[] }[] }) {
+  const src = input.sources
+    .map(
+      (s) =>
+        `<source cite="${s.kind ?? 'M'}:${s.id}" title="${s.title}">\n${s.summary}${s.actions.length ? `\nTasks: ${s.actions.map((a) => `${a.done ? '[done] ' : ''}${a.title}${a.owner ? ` (${a.owner})` : ''}`).join('; ')}` : ''}${s.transcript.length ? `\n${transcriptText(s.transcript)}` : ''}\n</source>`,
+    )
+    .join('\n');
+  return ask(
+    `Answer the question using only these sources. Be brief: a short answer, then bullet points ("- ") if useful, bold (**like this**) only for the key fact. After each fact, cite its source exactly as written in cite, in square brackets, e.g. [M:abc]; for a moment in a meeting add @ and the ms, e.g. [M:abc@64000]. If the sources don't say, say so. No em dashes.
+
+${src}
+
+Question: ${input.question}`,
+    { effort: 'medium' },
+  );
 }

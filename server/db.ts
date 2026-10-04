@@ -1,0 +1,130 @@
+// The local database: one SQLite file in ./data. Every app collection (threads, todos, channels…) is stored as JSON documents.
+import { DatabaseSync } from 'node:sqlite';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const DIR = process.env.S2G_DATA ?? join(process.cwd(), 'data');
+mkdirSync(DIR, { recursive: true });
+
+export const db = new DatabaseSync(join(DIR, 'sprint2go.db'));
+db.exec(`
+  PRAGMA journal_mode = WAL;
+  CREATE TABLE IF NOT EXISTS docs (coll TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT, PRIMARY KEY (coll, id));
+  CREATE TABLE IF NOT EXISTS logins (user_id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, pw_hash TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS invites (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, email TEXT NOT NULL, expires_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS ai_keys (workspace_id TEXT NOT NULL, provider TEXT NOT NULL, sealed TEXT NOT NULL, base_url TEXT, added_by TEXT, added_at TEXT NOT NULL, PRIMARY KEY (workspace_id, provider));
+`);
+
+/* ---------- documents ---------- */
+
+export type Doc = { id: string; [k: string]: unknown };
+
+export function allDocs(coll: string): Doc[] {
+  return (db.prepare('SELECT data FROM docs WHERE coll = ? ORDER BY rowid').all(coll) as { data: string }[]).map((r) => JSON.parse(r.data));
+}
+export function getDoc(coll: string, id: string): Doc | undefined {
+  const r = db.prepare('SELECT data FROM docs WHERE coll = ? AND id = ?').get(coll, id) as { data: string } | undefined;
+  return r ? JSON.parse(r.data) : undefined;
+}
+const upsert = db.prepare('INSERT INTO docs (coll, id, data, updated_at, updated_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT (coll, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, updated_by = excluded.updated_by');
+const remove = db.prepare('DELETE FROM docs WHERE coll = ? AND id = ?');
+
+export function writeDocs(coll: string, upserts: Doc[], deletes: string[], by: string | null) {
+  const now = new Date().toISOString();
+  db.exec('BEGIN');
+  try {
+    for (const d of upserts) upsert.run(coll, String(d.id), JSON.stringify(d), now, by);
+    for (const id of deletes) remove.run(coll, id);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+export const isEmpty = () => !(db.prepare('SELECT 1 FROM docs LIMIT 1').get() as unknown);
+
+/* ---------- logins ---------- */
+
+export function hashPassword(pw: string) {
+  const salt = randomBytes(16);
+  return `${salt.toString('hex')}:${scryptSync(pw, salt, 64).toString('hex')}`;
+}
+export function checkPassword(pw: string, stored: string) {
+  const [salt, hash] = stored.split(':');
+  const got = scryptSync(pw, Buffer.from(salt, 'hex'), 64);
+  return timingSafeEqual(got, Buffer.from(hash, 'hex'));
+}
+export function setLogin(userId: string, email: string, pw: string) {
+  db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET email = excluded.email, pw_hash = excluded.pw_hash').run(userId, email, hashPassword(pw));
+}
+export function findLogin(email: string) {
+  return db.prepare('SELECT user_id, pw_hash FROM logins WHERE email = ?').get(email) as { user_id: string; pw_hash: string } | undefined;
+}
+
+const DAY = 86_400_000;
+export function newSession(userId: string) {
+  const token = randomBytes(32).toString('base64url');
+  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, new Date().toISOString(), new Date(Date.now() + 30 * DAY).toISOString());
+  return token;
+}
+export function sessionUser(token: string | undefined): string | null {
+  if (!token) return null;
+  const r = db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?').get(token) as { user_id: string; expires_at: string } | undefined;
+  if (!r || r.expires_at < new Date().toISOString()) return null;
+  return r.user_id;
+}
+export const endSession = (token: string) => db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+
+/** An invite link lets a new person pick their own password (valid 7 days, works once). */
+export function newInvite(userId: string, email: string) {
+  const token = randomBytes(24).toString('base64url');
+  db.prepare('INSERT INTO invites (token, user_id, email, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, email, new Date(Date.now() + 7 * DAY).toISOString());
+  return token;
+}
+export function claimInvite(token: string) {
+  const r = db.prepare('SELECT user_id, email, expires_at FROM invites WHERE token = ?').get(token) as { user_id: string; email: string; expires_at: string } | undefined;
+  if (!r || r.expires_at < new Date().toISOString()) return null;
+  db.prepare('DELETE FROM invites WHERE token = ?').run(token);
+  return r;
+}
+export const peekInvite = (token: string) => db.prepare('SELECT user_id, email FROM invites WHERE token = ? AND expires_at > ?').get(token, new Date().toISOString()) as { user_id: string; email: string } | undefined;
+
+/* ---------- AI keys, encrypted at rest ---------- */
+
+// The master key lives next to the database (or in S2G_SECRET). Losing it means re-entering the AI keys.
+const MASTER = (() => {
+  if (process.env.S2G_SECRET) return Buffer.from(process.env.S2G_SECRET, 'base64');
+  const file = join(DIR, 'secret.key');
+  if (!existsSync(file)) writeFileSync(file, randomBytes(32).toString('base64'), { mode: 0o600 });
+  return Buffer.from(readFileSync(file, 'utf8').trim(), 'base64');
+})();
+
+export function seal(plain: string) {
+  const iv = randomBytes(12);
+  const c = createCipheriv('aes-256-gcm', MASTER, iv);
+  const enc = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
+  return [iv, c.getAuthTag(), enc].map((b) => b.toString('base64')).join('.');
+}
+export function unseal(sealed: string) {
+  const [iv, tag, enc] = sealed.split('.').map((x) => Buffer.from(x, 'base64'));
+  const d = createDecipheriv('aes-256-gcm', MASTER, iv);
+  d.setAuthTag(tag);
+  return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+}
+export function saveKey(workspaceId: string, provider: string, key: string, baseUrl: string | undefined, by: string) {
+  db.prepare('INSERT INTO ai_keys (workspace_id, provider, sealed, base_url, added_by, added_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (workspace_id, provider) DO UPDATE SET sealed = excluded.sealed, base_url = excluded.base_url, added_by = excluded.added_by, added_at = excluded.added_at').run(
+    workspaceId,
+    provider,
+    seal(key),
+    baseUrl ?? null,
+    by,
+    new Date().toISOString(),
+  );
+}
+export function loadKey(workspaceId: string, provider: string): { key: string; baseUrl?: string } | null {
+  const r = db.prepare('SELECT sealed, base_url FROM ai_keys WHERE workspace_id = ? AND provider = ?').get(workspaceId, provider) as { sealed: string; base_url: string | null } | undefined;
+  return r ? { key: unseal(r.sealed), baseUrl: r.base_url ?? undefined } : null;
+}
+export const deleteKey = (workspaceId: string, provider: string) => db.prepare('DELETE FROM ai_keys WHERE workspace_id = ? AND provider = ?').run(workspaceId, provider);

@@ -40,3 +40,18 @@
   - "Since my last visit": an on-click summary of only what you missed.
   - Optionally post each new summary into the channel.
   - The daily digest becomes the "Daily" option of the same schedule (one setting, not two).
+
+## Done 5 Oct: agency essentials and the local server
+- Repeating tasks, reminders, checklists, brief templates (built-in and saved by the team).
+- Shared inbox assignment, internal notes, snooze, send later.
+- Local server: database, sign-in, invite links, password change, live updates, encrypted AI keys, AI router per job. Scheduled mail, snoozes and reminders run on the server.
+
+## Next, for the local server
+- Server-side permissions per person (today the server separates workspaces; finer rules like private channels and task visibility are applied in the app).
+- AI caps and a cost log per job.
+- Files: Drive uploads are kept in the database for now; move them to disk or object storage.
+
+## Later ideas (not now)
+- WhatsApp for clients.
+- Huddles (quick voice calls in a channel).
+- Smart search across everything.

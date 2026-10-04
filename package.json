@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "standalone": "vite build && node scripts/standalone.mjs",
-    "ai-server": "node --experimental-strip-types server/index.ts"
+    "server": "node --import ./server/register.mjs server/index.ts",
+    "start": "vite build && npm run server"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

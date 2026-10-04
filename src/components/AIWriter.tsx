@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Loader2, Sparkles, Wand2, X } from 'lucide-react';
-import { ai, AI_LIVE, type RewriteStyle } from '../ai';
+import { ai, aiLive, type RewriteStyle } from '../ai';
 
 interface Props {
   hasText: boolean;
@@ -44,7 +44,7 @@ export function AIWriter({ hasText, currentText, me, to, subject, onResult, onCl
       <div className="aw-head">
         <Sparkles size={15} />
         <strong>Write with AI</strong>
-        {!AI_LIVE && <span className="demo-tag">Demo</span>}
+        {!aiLive() && <span className="demo-tag">Demo</span>}
         <button className="icon-btn sm" onClick={onClose} aria-label="Close">
           <X size={14} />
         </button>

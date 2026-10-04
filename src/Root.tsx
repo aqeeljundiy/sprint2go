@@ -1,11 +1,84 @@
+import { useEffect, useState } from 'react';
 import type { User, Workspace } from './types';
 import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
 import { usePersisted } from './settings';
+import { applyRemote, useStored } from './store';
+import { connect, probe, signIn, signOut } from './sync';
+import { setAIWorkspace } from './ai';
 import App from './App';
-import { SignIn } from './components/SignIn';
+import { AcceptInvite, SignIn } from './components/SignIn';
 
-/** Who is signed in on this device, and which of them is using the app right now. */
+/**
+ * With the local server: real sign-in, data from the database, live updates.
+ * Without it (the standalone demo file): pick any demo person, data stays in this tab.
+ */
 export default function Root() {
+  const [mode, setMode] = useState<'probing' | 'demo' | 'signed-out' | 'ready'>('probing');
+  const [me, setMe] = useState<string | null>(null);
+  const invite = new URLSearchParams(location.search).get('invite');
+
+  useEffect(() => {
+    if (invite) return;
+    void probe().then(async (r) => {
+      if (r === 'none') return setMode('demo');
+      if (r === 'signed-out') return setMode('signed-out');
+      await connect(applyRemote);
+      setMe(r.me);
+      setMode('ready');
+    });
+  }, [invite]);
+
+  if (invite) return <AcceptInvite token={invite} onDone={() => location.replace('/')} />;
+  if (mode === 'probing') return <div className="boot" />;
+  if (mode === 'signed-out')
+    return (
+      <SignIn
+        users={[]}
+        signedIn={[]}
+        realPasswords
+        onPick={() => {}}
+        onForget={() => {}}
+        onSignIn={async (email, password) => {
+          const err = await signIn(email, password);
+          if (!err) location.reload();
+          return err;
+        }}
+      />
+    );
+  if (mode === 'ready' && me) return <ServerRoot me={me} />;
+  return <DemoRoot />;
+}
+
+/** Signed in to the local server: one person per browser, everything saved in the database. */
+function ServerRoot({ me }: { me: string }) {
+  const [users, setUsers] = useStored('users');
+  const [workspaces, setWorkspaces] = useStored('workspaces');
+  const user = users.find((u) => u.id === me);
+  if (!user || !workspaces.some((w) => w.members.some((m) => m.userId === me))) return <NoWorkspace email={user?.email ?? ''} onBack={() => void signOut()} />;
+  return (
+    <App
+      key={user.id}
+      user={user}
+      signedInUsers={[user]}
+      allUsers={users}
+      workspaces={workspaces}
+      setWorkspaces={setWorkspaces}
+      onWorkspace={setAIWorkspace}
+      onSwitchUser={() => {}}
+      onAddUser={() => void signOut()}
+      onSignOut={() => void signOut()}
+      onInvite={async (u) => {
+        setUsers((list) => (list.some((x) => x.id === u.id) ? list : [...list, u]));
+        const r = await fetch('/api/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: u.id, email: u.email }) });
+        return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+      }}
+      onUpdateUser={(patch) => setUsers((list) => list.map((x) => (x.id === user.id ? { ...x, ...patch } : x)))}
+    />
+  );
+}
+
+/** The demo: several people signed in on one device, switch between them freely. */
+function DemoRoot() {
   const [users, setUsers] = usePersisted<User[]>('s2g-users', USERS);
   const [workspaces, setWorkspaces] = usePersisted<Workspace[]>('s2g-workspaces', WORKSPACES);
   const [signedIn, setSignedIn] = usePersisted<string[]>('s2g-signed-in', SIGNED_IN_DEFAULT);
@@ -31,18 +104,7 @@ export default function Root() {
       />
     );
 
-  if (!workspaces.some((w) => w.members.some((m) => m.userId === user.id)))
-    return (
-      <div className="signin">
-        <div className="signin-card">
-          <h1>No workspace yet</h1>
-          <p className="signin-sub">{user.email} isn’t in any workspace. Ask an admin to invite you.</p>
-          <button className="primary-btn signin-btn" onClick={() => setCurrent(null)}>
-            Back to accounts
-          </button>
-        </div>
-      </div>
-    );
+  if (!workspaces.some((w) => w.members.some((m) => m.userId === user.id))) return <NoWorkspace email={user.email} onBack={() => setCurrent(null)} />;
 
   return (
     <App
@@ -58,8 +120,25 @@ export default function Root() {
         setSignedIn((s) => s.filter((x) => x !== user.id));
         setCurrent(null);
       }}
-      onInvite={(u) => setUsers((list) => [...list, u])}
+      onInvite={(u) => {
+        setUsers((list) => [...list, u]);
+        return Promise.resolve(null);
+      }}
       onUpdateUser={(patch) => setUsers((list) => list.map((x) => (x.id === user.id ? { ...x, ...patch } : x)))}
     />
+  );
+}
+
+function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
+  return (
+    <div className="signin">
+      <div className="signin-card">
+        <h1>No workspace yet</h1>
+        <p className="signin-sub">{email} isn’t in any workspace. Ask an admin to invite you.</p>
+        <button className="primary-btn signin-btn" onClick={onBack}>
+          Back
+        </button>
+      </div>
+    </div>
   );
 }

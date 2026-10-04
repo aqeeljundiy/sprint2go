@@ -13,6 +13,7 @@ import { initials } from '../utils';
 import type { SettingsSection } from './AccountMenu';
 import { RichEditor } from './RichEditor';
 import { Select } from './ui/Select';
+import { changePassword, server } from '../sync';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -321,15 +322,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               </div>
 
               <h3>Security</h3>
-              <div className="set-row">
-                <span>
-                  <strong>Password</strong>
-                  <small>Change it once the real mail server is connected.</small>
-                </span>
-                <button className="ghost-btn outline" disabled>
-                  Change password
-                </button>
-              </div>
+              <PasswordRow />
               <div className="set-row">
                 <span>
                   <strong>Two-step verification</strong>
@@ -474,5 +467,47 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
         </div>
       </div>
     </section>
+  );
+}
+
+/** Change your sign-in password (the local server checks it). */
+function PasswordRow() {
+  const [open, setOpen] = useState(false);
+  const [cur, setCur] = useState('');
+  const [next, setNext] = useState('');
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const save = async () => {
+    const err = await changePassword(cur, next);
+    setMsg(err ? { ok: false, text: err } : { ok: true, text: 'Password changed.' });
+    if (!err) (setOpen(false), setCur(''), setNext(''));
+  };
+  return (
+    <>
+      <div className="set-row">
+        <span>
+          <strong>Password</strong>
+          <small>{server.on ? (msg?.ok ? msg.text : 'Used to sign in to Sprint2go.') : 'Passwords are checked when the local server runs.'}</small>
+        </span>
+        <button className="ghost-btn outline" disabled={!server.on} onClick={() => (setOpen((o) => !o), setMsg(null))}>
+          Change password
+        </button>
+      </div>
+      {open && (
+        <div className="pw-form">
+          <div className="field">
+            <label>Current password</label>
+            <input type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" />
+          </div>
+          <div className="field">
+            <label>New password</label>
+            <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" placeholder="At least 8 characters" />
+          </div>
+          {msg && !msg.ok && <p className="err">{msg.text}</p>}
+          <button className="primary-btn sm" disabled={!cur || next.length < 8} onClick={() => void save()}>
+            Save new password
+          </button>
+        </div>
+      )}
+    </>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Bell, FileText, ListChecks, Loader2, Mail, MessagesSquare, Mic, MicOff, Plus, Sparkles, UserPlus, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
-import { ai, AI_LIVE, type DumpBrief, type DumpTask } from '../ai';
+import { ai, aiLive, type DumpBrief, type DumpTask } from '../ai';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
@@ -163,7 +163,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
       <div className="modal dump-modal" role="dialog" aria-label="Brain dump" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Sparkles size={15} /> Brain dump {!AI_LIVE && <span className="demo-tag">Demo AI</span>}
+            <Sparkles size={15} /> Brain dump {!aiLive() && <span className="demo-tag">Demo AI</span>}
           </span>
           <button className="icon-btn sm" onClick={onClose} aria-label="Close">
             <X size={15} />

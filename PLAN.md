@@ -4,7 +4,14 @@ Updated 5 October 2026. One app for a team's whole workday (mail, chat, tasks, c
 
 ## 1. Where we are
 - **Phase 1 done:** clickable prototype (Home, Mail, Chat, Tasks + Clients, brain dump, Meet, notifications, ⌘K, onboarding, phone layout), sample data only.
-- **Next:** Round 2 of the prototype, then the real backend.
+- **Round 2 done (5 Oct):** everything in section 2, plus the cut-and-merge pass, the tasks people model, the phone redesign and the agency essentials below.
+- **Runs locally for real (5 Oct):** local server with a SQLite database, email and password sign-in, invite links, live updates between windows, AI keys stored encrypted with a per-job AI router. See README.md.
+- **Next:** keep polishing screen by screen (BACKLOG.md), then real email (phase 3).
+
+**Agency essentials (done 5 Oct)**
+- Tasks: repeating tasks (daily, weekdays, weekly, monthly), reminders, checklists, "Waiting on client", brief templates (New client onboarding, Campaign launch, Monthly client report) and "Save as template" from any brief.
+- Shared inbox: assign an email to a teammate, internal notes the sender never sees, "Assigned to me".
+- Snooze an email, send later (Scheduled folder), follow-up reminders ("Waiting for reply").
 
 ## 2. Round 2 build (prototype, in order)
 
@@ -209,7 +216,8 @@ General · People and teams · Apps · Email · Calendars · Meetings (recording
 |---|---|---|---|
 | Phase 1 | done | Clickable prototype | Done 5 Oct |
 | Round 2 | done 5 Oct | Steps 1 to 6 above, built and tested on sample data | Ready to demo; UI polish pass is next (BACKLOG.md) |
-| Phase 2 | 3 to 9 | Real backend: accounts, teams, tasks, chat, AI router, cost log | Elkiya and P&P use tasks and chat daily |
+| Local server | done 5 Oct | SQLite, sign-in, invites, live updates, encrypted AI keys, AI router per job | Two windows stay in sync; a pasted key answers |
+| Phase 2 | 3 to 9 | Hosted backend: Postgres, per-company separation, server-side permissions, AI caps and cost log | Elkiya and P&P use tasks and chat daily |
 | Phase 3 | 9 to 13 | Real email: Google, Microsoft, Zoho, hosted mail, SES | One person per company runs only on Sprint2go mail |
 | Phase 4 | 13 to 18 | Calendars, Drive and own storage, the meetings app joined in | A client call ends and tasks, notes and recording land on the client page |
 | Phase 5 | 18 to 22 | Billing, gates, trial, security pass, beta with 5 to 10 companies | A company you don't know signs up and pays alone |

@@ -15,7 +15,8 @@ import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, useStored } from './store';
-import { ai, AI_LIVE } from './ai';
+import { server } from './sync';
+import { ai, aiLive } from './ai';
 import { Assistant, type AskChat } from './components/Assistant';
 import { BlockDialog } from './components/BlockDialog';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
@@ -145,11 +146,12 @@ interface AppProps {
   onSwitchUser: (id: string) => void;
   onAddUser: () => void;
   onSignOut: () => void;
-  onInvite: (u: User) => void;
+  onInvite: (u: User) => Promise<string | null>; // the invite link, when the local server makes one
+  onWorkspace?: (id: string) => void;
   onUpdateUser: (patch: Partial<User>) => void;
 }
 
-export default function App({ user, signedInUsers, allUsers, workspaces: allWorkspaces, setWorkspaces, onSwitchUser, onAddUser, onSignOut, onInvite, onUpdateUser }: AppProps) {
+export default function App({ user, signedInUsers, allUsers, workspaces: allWorkspaces, setWorkspaces, onSwitchUser, onAddUser, onSignOut, onInvite: inviteUser, onWorkspace, onUpdateUser }: AppProps) {
   const [settings, updateSettings] = useSettings(user);
 
   // Keep the user's profile in step with their settings.
@@ -163,6 +165,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const workspaces = allWorkspaces.filter((w) => w.members.some((m) => m.userId === user.id));
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
+  useEffect(() => onWorkspace?.(ws.id), [ws.id, ws.ai]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Adds the person; with the local server, also makes a link where they set their password. */
+  const onInvite = (u: User) =>
+    void inviteUser(u).then(
+      (link) =>
+        link &&
+        showToast({
+          text: `${u.name.split(' ')[0]} can join with their invite link`,
+          action: { label: 'Copy link', run: () => void navigator.clipboard?.writeText(link) },
+          ms: 20000,
+        }),
+    );
   const role = ws.members.find((m) => m.userId === user.id)?.role ?? 'member';
   // Your personal mailbox first, then shared inboxes.
   const myAccounts = useMemo(
@@ -583,6 +597,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // Scheduled mail goes out on time; snoozed mail comes back to the inbox (the backend does both on the server).
   useEffect(() => {
+    if (server.on) return; // the local server does this for everyone
     const tick = () => {
       const now = new Date().toISOString();
       setThreads((ts) =>
@@ -599,6 +614,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // Task reminders: ping everyone doing the task when its time comes (the backend sends these as push and email too).
   useEffect(() => {
+    if (server.on) return; // the local server does this for everyone
     const tick = () => {
       const now = new Date().toISOString();
       const due = todosRef.current.filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
@@ -2873,7 +2889,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           chats={askChats}
           setChats={setAskChats}
           ask={askAnything}
-          live={AI_LIVE}
+          live={aiLive()}
           citeLabel={(k, id) =>
             k === 'M' ? (meetings.find((m) => m.id === id)?.title ?? 'meeting') : k === 'E' ? (threads.find((t) => t.id === id)?.subject ?? 'email') : k === 'C' ? `#${channels.find((c) => c.id === id)?.name ?? 'channel'}` : 'Tasks'
           }
