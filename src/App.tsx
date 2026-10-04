@@ -60,6 +60,9 @@ const FOLDER_TITLES: Record<FolderId, string> = {
   archive: 'Archive',
   spam: 'Spam',
   trash: 'Trash',
+  snoozed: 'Snoozed',
+  scheduled: 'Scheduled',
+  assigned: 'Assigned to me',
 };
 
 const APP_IDS = APPS.map((a) => a.id) as string[];
@@ -82,10 +85,21 @@ function writeRoute(m: Mode) {
 
 const fromMe = (t: Thread) => t.messages.some((m) => isMine(m.from.email));
 
-function inView(t: Thread, v: View) {
+function inView(t: Thread, v: View, me = '') {
   if (v.kind === 'tracking' || v.kind === 'todos') return false;
   if (v.kind === 'label') return t.labels.includes(v.id) && t.location !== 'trash' && t.location !== 'spam';
+  const snoozed = !!t.snoozedUntil && t.snoozedUntil > new Date().toISOString();
   switch (v.id) {
+    case 'inbox':
+      return t.location === 'inbox' && !snoozed;
+    case 'snoozed':
+      return snoozed && t.location !== 'trash';
+    case 'scheduled':
+      return !!t.sendAt;
+    case 'assigned':
+      return t.assignee === me && t.location !== 'trash';
+    case 'drafts':
+      return t.location === 'drafts' && !t.sendAt;
     case 'starred':
       return t.starred && t.location !== 'trash';
     case 'sent':
@@ -302,7 +316,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return scoped
-      .filter((t) => inView(t, view))
+      .filter((t) => inView(t, view, user.id))
       .filter((t) => filter === 'all' || t.unread)
       .filter(
         (t) =>
@@ -315,8 +329,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const counts = useMemo(
     () => ({
-      inbox: scoped.filter((t) => t.location === 'inbox' && t.unread).length,
-      drafts: scoped.filter((t) => t.location === 'drafts').length,
+      inbox: scoped.filter((t) => inView(t, { kind: 'folder', id: 'inbox' }) && t.unread).length,
+      drafts: scoped.filter((t) => t.location === 'drafts' && !t.sendAt).length,
+      scheduled: scoped.filter((t) => t.sendAt).length,
+      assigned: scoped.filter((t) => t.assignee === user.id && t.location === 'inbox').length,
       spam: scoped.filter((t) => t.location === 'spam' && t.unread).length,
     }),
     [scoped],
@@ -478,6 +494,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   const send = (m: Outgoing) => {
+    if (m.sendAt) {
+      // Send later: kept as a scheduled draft until its time (the server does this for real).
+      const t = { ...toThread(m, 'drafts'), sendAt: m.sendAt };
+      setThreads((ts) => [t, ...ts.filter((x) => x.id !== compose?.draftId)]);
+      setCompose(null);
+      showToast({ text: `Scheduled for ${new Date(m.sendAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`, action: { label: 'Undo', run: () => setThreads((ts) => ts.filter((x) => x.id !== t.id)) } });
+      return;
+    }
     const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
     if (thread.messages[0].tracking) simulateOpen(thread);
@@ -546,6 +570,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setQuery('');
     if (mode !== 'mail') go('mail');
   };
+
+  // Scheduled mail goes out on time; snoozed mail comes back to the inbox (the backend does both on the server).
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date().toISOString();
+      setThreads((ts) =>
+        ts.map((t) => {
+          if (t.sendAt && t.sendAt <= now) return { ...t, sendAt: undefined, location: 'archive', messages: t.messages.map((m) => ({ ...m, date: now })) };
+          if (t.snoozedUntil && t.snoozedUntil <= now) return { ...t, snoozedUntil: undefined, unread: true };
+          return t;
+        }),
+      );
+    };
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const patchThread = (id: string, patch: Partial<Thread>) => setThreads((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   /* ---------------- AI to-dos ---------------- */
 
@@ -2304,6 +2346,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             />
             <Reader
               thread={selected}
+              teammates={selected ? members.filter((u) => ws.accounts.find((a) => a.id === selected.accountId)?.users.includes(u.id)) : []}
+              shared={!!selected && ws.accounts.find((a) => a.id === selected.accountId)?.kind === 'shared'}
+              onAssign={(id, who) => {
+                patchThread(id, { assignee: who || undefined });
+                const t = threads.find((x) => x.id === id);
+                if (who && who !== user.id) notify(who, 'mail', `${myFirst} asked you to handle “${t?.subject}”`, { app: 'mail', id });
+                showToast({ text: who ? `${who === user.id ? 'You’re' : `${firstOf(who)} is`} handling this one` : 'Unassigned' });
+              }}
+              onSnooze={(id, until) => {
+                patchThread(id, { snoozedUntil: until });
+                setSelectedId(null);
+                setReaderOpen(false);
+                showToast({ text: `Snoozed until ${new Date(until).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`, action: { label: 'Undo', run: () => patchThread(id, { snoozedUntil: undefined }) } });
+              }}
+              onNote={(id, text) => {
+                const t = threads.find((x) => x.id === id);
+                patchThread(id, { notes: [...(t?.notes ?? []), { id: uid(), by: user.id, text, at: nowIso() }] });
+                members.filter((u) => u.id !== user.id && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).forEach((u) => notify(u.id, 'mention', `${myFirst} mentioned you in a note on “${t?.subject}”`, { app: 'mail', id }));
+              }}
               labels={LABELS}
               me={ME}
               signature={settings.signature}

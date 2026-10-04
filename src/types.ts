@@ -1,4 +1,4 @@
-export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash';
+export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed' | 'scheduled' | 'assigned';
 
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
 export type Location = 'inbox' | 'drafts' | 'archive' | 'spam' | 'trash';
@@ -80,6 +80,10 @@ export interface Thread {
   labels: string[];
   messages: Message[];
   invite?: Invite;
+  assignee?: string; // shared inboxes: who is handling it
+  notes?: { id: string; by: string; text: string; at: string }[]; // internal notes, only the team sees them
+  snoozedUntil?: string; // hidden from the inbox until then
+  sendAt?: string; // scheduled to send
 }
 
 /** A meeting proposed inside an email, offered as "Add to calendar". */

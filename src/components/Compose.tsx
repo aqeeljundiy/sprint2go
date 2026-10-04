@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Bell, ChevronUp, Sparkles, Eye, EyeOff, FileText, Maximize2, MousePointerClick, Minimize2, Minus, Paperclip, Send, Trash2, X } from 'lucide-react';
+import { Bell, ChevronUp, Clock, Sparkles, Eye, EyeOff, FileText, Maximize2, MousePointerClick, Minimize2, Minus, Paperclip, Send, Trash2, X } from 'lucide-react';
 import type { Person } from '../types';
 import { fmtSize } from '../data/drive';
 import { usePersisted } from '../settings';
@@ -28,6 +28,7 @@ export interface Outgoing {
   track: boolean;
   trackOptions: TrackOptions;
   fromId: string;
+  sendAt?: string; // send later
 }
 
 interface Props {
@@ -76,11 +77,24 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
   const hasContent = to.length > 0 || subject.trim() || typed || files.length > 0;
   const valid = to.length > 0 && (typed || files.length > 0);
 
-  const close = (sent?: boolean) => {
+  const close = (sent?: boolean, sendAt?: string) => {
     setClosing(true);
-    setTimeout(() => (sent ? onSend(message()) : onClose(hasContent ? message() : null)), 160);
+    setTimeout(() => (sent ? onSend({ ...message(), sendAt }) : onClose(hasContent ? message() : null)), 160);
   };
   const send = () => valid && close(true);
+  const [laterOpen, setLaterOpen] = useState(false);
+  const at = (days: number, h: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    d.setHours(h, 0, 0, 0);
+    return d;
+  };
+  const monday = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+    d.setHours(9, 0, 0, 0);
+    return d;
+  };
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
@@ -228,6 +242,27 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
           />
         )}
         <footer className="compose-foot">
+          <span className="later-wrap">
+            <button className="ghost-btn sm" disabled={!valid} onClick={() => setLaterOpen((o) => !o)} title="Send later">
+              <Clock size={14} /> Later
+            </button>
+            {laterOpen && (
+              <span className="later-menu">
+                {(
+                  [
+                    ['In 1 hour', new Date(Date.now() + 3_600_000)],
+                    ['Tomorrow 9:00', at(1, 9)],
+                    ['Monday 9:00', monday()],
+                  ] as const
+                ).map(([l, d]) => (
+                  <button key={l} onClick={() => (setLaterOpen(false), close(true, d.toISOString()))}>
+                    {l}
+                    <small>{d.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</small>
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
           <button className="primary-btn" onClick={send} disabled={!valid}>
             <Send size={15} /> Send <kbd>⌘↵</kbd>
           </button>

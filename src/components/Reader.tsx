@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -22,8 +22,13 @@ import {
   ShieldCheck,
   Star,
   Trash2,
+  Clock,
+  StickyNote,
+  UserCheck,
 } from 'lucide-react';
-import type { CalEvent, Label, Person, Thread } from '../types';
+import type { CalEvent, Label, Person, Thread, User } from '../types';
+import { Popover } from './ui/Popover';
+import { Select } from './ui/Select';
 import { fmtTime } from '../calendarUtils';
 import { fullDate, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
@@ -62,10 +67,35 @@ interface Props {
   unsubscribedAt?: string;
   onUnsubscribe: (t: Thread) => void;
   onBlock: (t: Thread) => void;
+  teammates: User[]; // people with access to this mailbox
+  shared: boolean;
+  onAssign: (threadId: string, userId: string) => void;
+  onSnooze: (threadId: string, until: string) => void;
+  onNote: (threadId: string, text: string) => void;
 }
 
 /** AI results per message id, kept for the session (the backend stores them with the email). */
 const AI_CACHE = { summary: new Map<string, any>(), replies: new Map<string, string[]>() }; // eslint-disable-line @typescript-eslint/no-explicit-any
+/** Snooze options: later today, tomorrow morning, next Monday. */
+const snoozeTimes = (): [string, Date][] => {
+  const at = (days: number, h: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    d.setHours(h, 0, 0, 0);
+    return d;
+  };
+  const mon = new Date();
+  mon.setDate(mon.getDate() + (((8 - mon.getDay()) % 7) || 7));
+  mon.setHours(9, 0, 0, 0);
+  const later = new Date(Date.now() + 3 * 3_600_000);
+  return [
+    ['In 3 hours', later],
+    ['Tomorrow morning', at(1, 9)],
+    ['Next Monday', mon],
+    ['In a week', at(7, 9)],
+  ];
+};
+
 /** Free reply templates: always there, no AI. */
 const TEMPLATES = ['Thanks, received!', 'Let me check and get back to you.', 'Sounds good, let’s do it.'];
 
@@ -78,6 +108,10 @@ export function Reader(props: Props) {
   const [summary, setSummary] = useState<Summary | 'loading' | null>(null);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const snoozeBtn = useRef<HTMLButtonElement>(null);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState('');
   const incoming = thread ? [...thread.messages].reverse().find((m) => !isMine(m.from.email)) : undefined;
   const isList = !!thread?.messages.some((m) => m.listUnsubscribe);
 
@@ -194,6 +228,37 @@ export function Reader(props: Props) {
             </button>
           )}
           <span className="divider" />
+          <button ref={snoozeBtn} className="icon-btn" onClick={() => setSnoozeOpen(true)} title="Snooze">
+            <Clock size={17} />
+          </button>
+          <Popover anchor={snoozeBtn} open={snoozeOpen} onClose={() => setSnoozeOpen(false)} width={240} title="Snooze until">
+            <div className="sel-pop">
+              {snoozeTimes().map(([l, d]) => (
+                <button key={l} className="sel-opt" onClick={() => (setSnoozeOpen(false), props.onSnooze(thread.id, d.toISOString()))}>
+                  <span className="sel-label">
+                    {l}
+                    <small>{d.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Popover>
+          {props.shared && (
+            <Select
+              value={thread.assignee ?? ''}
+              onChange={(v) => props.onAssign(thread.id, v)}
+              label="Who handles this"
+              className="sel-flat assign-sel"
+              width={240}
+              options={[{ value: '', label: 'Nobody yet' }, ...props.teammates.map((u) => ({ value: u.id, label: u.name, icon: <Avatar person={u} size={20} /> }))]}
+              renderValue={(o) => (
+                <>
+                  <UserCheck size={14} />
+                  <span className="sel-text">{o?.value ? o.label.split(' ')[0] : 'Assign'}</span>
+                </>
+              )}
+            />
+          )}
           <button className="icon-btn" onClick={() => props.onMarkUnread(thread.id)} title="Mark unread (U)">
             <Mail size={17} />
           </button>
@@ -461,9 +526,37 @@ export function Reader(props: Props) {
               ))}
             </div>
           )}
+          {!!thread.notes?.length && (
+            <div className="team-notes">
+              {thread.notes.map((n) => {
+                const u = props.teammates.find((x) => x.id === n.by);
+                return (
+                  <div key={n.id} className="team-note">
+                    <StickyNote size={14} />
+                    <span>
+                      <b>{u?.name.split(' ')[0] ?? 'Someone'}</b> {n.text}
+                    </span>
+                    <time>{new Date(n.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {noteOpen && (
+            <div className="note-compose">
+              <StickyNote size={15} />
+              <textarea autoFocus rows={2} value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && note.trim() && (e.preventDefault(), props.onNote(thread.id, note.trim()), setNote(''), setNoteOpen(false))} placeholder="Note for your team. The sender never sees this. @mention someone" />
+              <button className="primary-btn sm" disabled={!note.trim()} onClick={() => (props.onNote(thread.id, note.trim()), setNote(''), setNoteOpen(false))}>
+                Add note
+              </button>
+            </div>
+          )}
           <div className="reply-buttons">
             <button className="ghost-btn outline" onClick={() => setReplyOpen(true)}>
               <Reply size={15} /> Reply <kbd>R</kbd>
+            </button>
+            <button className="ghost-btn outline" onClick={() => setNoteOpen((o) => !o)}>
+              <StickyNote size={15} /> Internal note
             </button>
             <button className="ghost-btn outline" onClick={() => setReplyOpen(true)}>
               <Forward size={15} /> Forward

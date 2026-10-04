@@ -13,8 +13,7 @@ import {
   ShieldAlert,
   Star,
   Trash2,
-  type LucideIcon,
-} from 'lucide-react';
+  type LucideIcon, Clock, CalendarClock, UserCheck } from 'lucide-react';
 import type { Account, AppId, FolderId, Label, View } from '../types';
 import { providerName } from './Onboarding';
 
@@ -26,6 +25,9 @@ const FOLDERS: { id: FolderId; name: string; icon: LucideIcon }[] = [
   { id: 'archive', name: 'Archive', icon: Archive },
   { id: 'spam', name: 'Spam', icon: ShieldAlert },
   { id: 'trash', name: 'Trash', icon: Trash2 },
+  { id: 'snoozed', name: 'Snoozed', icon: Clock },
+  { id: 'scheduled', name: 'Scheduled', icon: CalendarClock },
+  { id: 'assigned', name: 'Assigned to me', icon: UserCheck },
 ];
 
 export type Mode = AppId | 'settings';

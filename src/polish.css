@@ -828,3 +828,33 @@ details.advanced[open] summary h3::after {
     border-left: 0;
   }
 }
+
+/* ---------- Mail: send later, internal notes, assignment ---------- */
+.later-wrap { position: relative; display: inline-flex; }
+.later-menu {
+  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 30;
+  display: flex; flex-direction: column; min-width: 200px; padding: 6px;
+  background: var(--surface, var(--bg)); border-radius: var(--r-control);
+  box-shadow: 0 10px 30px rgba(0,0,0,.16), 0 0 0 1px var(--line);
+}
+.later-menu button {
+  display: flex; justify-content: space-between; gap: 12px; align-items: center;
+  padding: 8px 10px; border-radius: 8px; text-align: left; font-size: 13px;
+}
+.later-menu button:hover { background: var(--hover, rgba(0,0,0,.05)); }
+.later-menu small { color: var(--muted); font-size: 12px; }
+.team-notes { display: flex; flex-direction: column; gap: 6px; margin: 16px 0 4px; }
+.team-note {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start;
+  padding: 10px 12px; border-radius: var(--r-control);
+  background: var(--warn-soft); color: var(--text); font-size: 13px; line-height: 1.45;
+}
+.team-note svg { color: var(--warn); margin-top: 2px; }
+.team-note time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.note-compose {
+  display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 4px;
+  padding: 10px 12px; border-radius: var(--r-control); background: var(--warn-soft);
+}
+.note-compose svg { color: var(--warn); margin-top: 6px; flex: none; }
+.note-compose textarea { flex: 1; border: 0; background: transparent; resize: none; font: inherit; color: var(--text); outline: none; }
+.assign-sel { max-width: 180px; }
