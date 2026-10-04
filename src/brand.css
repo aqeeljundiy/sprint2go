@@ -1,0 +1,341 @@
+/* ==========================================================================
+   Elkiya Mail — brand layer
+   The design language of elkiya.com and aqeeljundiy.com: Plus Jakarta Sans
+   everywhere, near-black ink, soft #EDEEF2 surfaces, hairline #E2E3E9 borders,
+   pill buttons with Elkiya blue, sky-gradient sign-in, small uppercase labels. Loaded last so it overrides the base styles.
+   ========================================================================== */
+
+:root {
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --accent: #0158cb;
+  --accent-hover: #0a3f8f;
+  --accent-soft: #e8f0fe;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f5f6f8;
+  --hover: #edeef2;
+  --border: #e2e3e9;
+  --text: #0b0c10;
+  --text-2: #2e3038;
+  --text-3: #777a88;
+  --radius: 20px;
+  --shadow: 0 1px 2px rgba(11, 12, 16, 0.04), 0 12px 40px -24px rgba(11, 12, 16, 0.18);
+  --shadow-lg: 0 30px 80px -30px rgba(1, 88, 203, 0.28), 0 2px 6px rgba(11, 12, 16, 0.06);
+  --shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+:root[data-theme='dark'] {
+  --bg: #08090c;
+  --surface: #111217;
+  --surface-2: #16171d;
+  --hover: #1d1f26;
+  --border: #252731;
+  --text: #f2f3f5;
+  --text-2: #b7b9c3;
+  --text-3: #7c7f8c;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 40px -24px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 30px 80px -30px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+body,
+kbd,
+button,
+input,
+textarea,
+select {
+  font-family: var(--font);
+}
+body {
+  letter-spacing: -0.005em;
+}
+
+/* Headings: the sites' tight, confident sans */
+.list-title h1,
+.cal-header h1,
+.settings-head h1,
+.tracking-head h1,
+.crumbs h1,
+.crumb,
+.thread-head h2,
+.settings-content h2,
+.signin-card h1 {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.thread-head h2 {
+  font-size: 24px;
+}
+
+/* ---------- Pill buttons (elkiya.com) ---------- */
+
+.primary-btn,
+.compose-btn {
+  border-radius: 9999px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 72%, #fff) 0%, var(--accent) 100%);
+  box-shadow: var(--shadow-btn), 0 8px 24px -10px color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: box-shadow 0.15s, transform 0.15s, opacity 0.15s;
+}
+.primary-btn:hover,
+.compose-btn:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 72%, #fff) 0%, var(--accent) 100%);
+  box-shadow: var(--shadow-btn), 0 12px 28px -10px color-mix(in srgb, var(--accent) 70%, transparent);
+  transform: translateY(-1px);
+}
+.primary-btn:disabled {
+  box-shadow: none;
+  transform: none;
+}
+.compose-btn {
+  padding: 12px 18px;
+}
+.ghost-btn,
+.ghost-btn.outline,
+.track-toggle,
+.cc-toggle,
+.access-btn,
+.signin-back {
+  border-radius: 9999px;
+}
+.ghost-btn.outline {
+  border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(11, 12, 16, 0.05);
+}
+.ghost-btn.outline:hover {
+  border-color: color-mix(in srgb, var(--text) 18%, var(--border));
+}
+.danger-btn,
+.list-banner.warn .primary-btn {
+  background: linear-gradient(180deg, #f87171, #dc2626);
+  box-shadow: var(--shadow-btn), 0 8px 24px -10px rgba(220, 38, 38, 0.55);
+}
+.track-split .track-toggle.on {
+  border-radius: 9999px 0 0 9999px;
+}
+.track-more {
+  border-radius: 0 9999px 9999px 0;
+}
+
+/* Segmented controls & search: pills */
+.segmented,
+.mode-switch,
+.am-theme {
+  border-radius: 9999px;
+  background: var(--hover);
+  border-color: transparent;
+}
+.segmented button,
+.mode-switch button,
+.am-theme button {
+  border-radius: 9999px;
+}
+.mode-switch {
+  padding: 4px;
+}
+.mode-switch button {
+  padding: 7px 4px;
+}
+.sidebar.collapsed .mode-switch {
+  border-radius: 18px;
+}
+.search {
+  border-radius: 9999px;
+  background: var(--surface-2);
+  padding: 0 14px;
+}
+.drive-search {
+  border-radius: 9999px;
+}
+
+/* ---------- Surfaces ---------- */
+
+.list-pane,
+.reader,
+.cal-pane,
+.drive-pane,
+.settings-pane,
+.tracking-pane,
+.todos-pane {
+  border-radius: var(--radius);
+}
+.message,
+.track-panel,
+.ai-summary,
+.list-banner,
+.invite,
+.drive-note,
+.d-table,
+.te-list,
+.side-card,
+.acct-list,
+.shortcut-list,
+.kpi {
+  border-radius: 16px;
+}
+.modal,
+.account-menu,
+.ws-menu,
+.track-menu,
+.tb-popup,
+.recip-suggest,
+.ev-detail {
+  border-radius: 20px;
+}
+.kpi {
+  background: var(--surface-2);
+  border-color: transparent;
+}
+.card-flat,
+.folder-card {
+  background: var(--hover);
+  border-color: transparent;
+}
+.chip,
+.seen-chip,
+.pill,
+.tp-tag,
+.due,
+.ai-tag,
+.te-status,
+.acct-status,
+.role-tag {
+  border-radius: 9999px;
+}
+
+/* Sidebar: soft, airy, pill items */
+.nav-item {
+  border-radius: 9999px;
+  padding-left: 14px;
+}
+.nav-item.active {
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(11, 12, 16, 0.06), 0 6px 16px -10px rgba(11, 12, 16, 0.25);
+}
+.sidebar.collapsed .nav-item {
+  padding-left: 0;
+}
+.ask-ai {
+  border-radius: 9999px;
+}
+.account-chip,
+.ws-current {
+  border-radius: 14px;
+}
+
+/* aqeeljundiy.com labels: small uppercase */
+.nav-heading,
+.settings-content h3,
+.d-heading,
+.ws-menu-title,
+.am-label,
+.tm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* List rows: calmer selection in Elkiya blue */
+.row {
+  border-radius: 14px;
+}
+.row.selected {
+  background: var(--accent-soft);
+}
+:root[data-theme='dark'] .row.selected {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Toast: ink pill */
+.toast {
+  border-radius: 9999px;
+  padding: 8px 8px 8px 18px;
+  background: #0b0c10;
+}
+.toast button {
+  border-radius: 9999px;
+  color: #8fb8ff;
+}
+
+/* ---------- Wordmark ---------- */
+
+.elk-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  line-height: 1;
+}
+.elk-wordmark svg {
+  display: block;
+  width: auto;
+}
+.elk-wordmark-mail {
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  color: #0158cb; /* the product brand stays Elkiya blue in every workspace */
+  transform: translateY(-1px);
+}
+
+/* Empty reader */
+.reader-empty .elk-wordmark {
+  margin-bottom: 14px;
+  opacity: 0.9;
+}
+
+/* ---------- Sign-in: elkiya.com sky ---------- */
+
+.signin {
+  background:
+    radial-gradient(70% 60% at 50% 0%, #cfe1fb 0%, rgba(207, 225, 251, 0) 70%),
+    linear-gradient(180deg, #eaf2ff 0%, #ffffff 55%);
+}
+:root[data-theme='dark'] .signin {
+  background:
+    radial-gradient(70% 60% at 50% 0%, rgba(1, 88, 203, 0.35) 0%, rgba(1, 88, 203, 0) 70%),
+    var(--bg);
+}
+.signin-card {
+  border-radius: 24px;
+  padding: 40px 32px 30px;
+  box-shadow: 0 30px 80px -30px rgba(1, 88, 203, 0.35), 0 2px 6px rgba(11, 12, 16, 0.06);
+}
+.signin-card .elk-wordmark {
+  margin-bottom: 6px;
+}
+.signin-user,
+.signin-add {
+  border-radius: 16px;
+}
+.signin-btn {
+  padding: 13px;
+}
+.signin-foot {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.signin-foot a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Inputs: softer, rounder */
+.field input,
+.modal-body input:not([type='checkbox']):not(.title-input),
+.modal-body textarea,
+.ai-writer textarea,
+.todo-add {
+  border-radius: 12px;
+}
+.signin {
+  align-content: center;
+  gap: 0;
+}
+
+:root[data-theme='dark'] .elk-wordmark-mail {
+  color: #5b9bff;
+}

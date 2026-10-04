@@ -1,0 +1,441 @@
+import { useEffect, useState } from 'react';
+import {
+  Archive,
+  ArrowLeft,
+  CalendarCheck,
+  CalendarPlus,
+  Eye,
+  FileText,
+  HardDriveUpload,
+  Check,
+  Forward,
+  Inbox,
+  Mail,
+  Reply,
+  Send,
+  ShieldAlert,
+  Ban,
+  ListChecks,
+  MailMinus,
+  Sparkles,
+  Loader2,
+  ShieldCheck,
+  Star,
+  Trash2,
+} from 'lucide-react';
+import type { CalEvent, Label, Person, Thread } from '../types';
+import { fmtTime } from '../calendarUtils';
+import { fullDate, relative, snippet } from '../utils';
+import { Avatar } from './Avatar';
+import { Wordmark } from './Logo';
+import { RichEditor } from './RichEditor';
+import { TrackingPanel } from './TrackingPanel';
+import { isMine } from '../identity';
+import { hasOwnText, sanitize, textToHtml } from '../sanitize';
+import { ai, type Summary } from '../ai';
+import type { Todo } from '../types';
+import type { Attachment } from '../types';
+
+interface Props {
+  thread: Thread | null;
+  labels: Label[];
+  me: Person;
+  inviteAdded: boolean;
+  inviteConflicts: CalEvent[];
+  onAddInvite: (threadId: string) => void;
+  onBack: () => void;
+  onArchive: (id: string) => void;
+  onTrash: (id: string) => void;
+  onSpam: (id: string) => void;
+  onMoveToInbox: (id: string) => void;
+  onStar: (id: string) => void;
+  onMarkUnread: (id: string) => void;
+  onReply: (id: string, html: string, text: string) => void;
+  signature: string;
+  blockTrackers: boolean;
+  savedToDrive: (name: string) => boolean;
+  onSaveToDrive: (threadId: string, a: Attachment) => void;
+  myName: string;
+  todos: Todo[]; // to-dos that came from this thread
+  onToggleTodo: (id: string) => void;
+  onOpenTodos: () => void;
+  unsubscribedAt?: string;
+  onUnsubscribe: (t: Thread) => void;
+  onBlock: (t: Thread) => void;
+}
+
+export function Reader(props: Props) {
+  const { thread, labels } = props;
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [reply, setReply] = useState({ html: '', text: '' });
+  const [replyInitial, setReplyInitial] = useState<string | null>(null);
+  const [summary, setSummary] = useState<Summary | 'loading' | null>(null);
+  const [suggestions, setSuggestions] = useState<string[] | null>(null);
+  const incoming = thread ? [...thread.messages].reverse().find((m) => !isMine(m.from.email)) : undefined;
+  const isList = !!thread?.messages.some((m) => m.listUnsubscribe);
+
+  // Reset per thread: only the latest message starts expanded.
+  useEffect(() => {
+    if (!thread) return;
+    setExpanded(new Set([thread.messages[thread.messages.length - 1].id]));
+    setReplyOpen(false);
+    setReply({ html: '', text: '' });
+    setReplyInitial(null);
+    setSummary(null);
+    setSuggestions(null);
+    // Suggested replies for real conversations (not newsletters, spam or your own last word)
+    const lastMsg = thread.messages[thread.messages.length - 1];
+    if (isMine(lastMsg.from.email) || isList || thread.location === 'spam' || /no-?reply|notifications/i.test(lastMsg.from.email)) return;
+    let live = true;
+    ai.replies(thread, props.myName)
+      .then((r) => live && setSuggestions(r))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [thread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const summarize = async () => {
+    if (!thread || summary === 'loading') return;
+    if (summary) return setSummary(null);
+    setSummary('loading');
+    try {
+      setSummary(await ai.summarize(thread));
+    } catch {
+      setSummary(null);
+    }
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'r' || !thread || e.metaKey || e.ctrlKey) return;
+      if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable]')) return;
+      e.preventDefault();
+      setReplyOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [thread]);
+
+  if (!thread) {
+    return (
+      <section className="reader reader-empty">
+        <Wordmark height={30} />
+        <p className="empty-title">Select a conversation</p>
+        <p className="empty-sub">
+          Use <kbd>J</kbd> <kbd>K</kbd> to move, <kbd>E</kbd> to archive, <kbd>C</kbd> to compose.
+        </p>
+      </section>
+    );
+  }
+
+  const last = thread.messages[thread.messages.length - 1];
+  const replyTo = isMine(last.from.email) ? last.to[0] : last.from;
+  const inbox = thread.location === 'inbox';
+
+  const toggle = (id: string) =>
+    setExpanded((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const send = () => {
+    if (!hasOwnText(reply.text, props.signature)) return;
+    props.onReply(thread.id, reply.html, reply.text);
+    setReply({ html: '', text: '' });
+    setReplyOpen(false);
+    setReplyInitial(null);
+  };
+
+  return (
+    <section className="reader">
+      <header className="reader-bar">
+        <button className="icon-btn back-btn" onClick={props.onBack} aria-label="Back">
+          <ArrowLeft size={18} />
+        </button>
+        <div className="toolbar">
+          {inbox ? (
+            <button className="icon-btn" onClick={() => props.onArchive(thread.id)} title="Archive (E)">
+              <Archive size={17} />
+            </button>
+          ) : (
+            <button className="icon-btn" onClick={() => props.onMoveToInbox(thread.id)} title="Move to inbox">
+              <Inbox size={17} />
+            </button>
+          )}
+          <button className="icon-btn" onClick={() => props.onSpam(thread.id)} title="Report spam">
+            <ShieldAlert size={17} />
+          </button>
+          <button className="icon-btn" onClick={() => props.onTrash(thread.id)} title="Delete (#)">
+            <Trash2 size={17} />
+          </button>
+          {incoming && (
+            <button className="icon-btn" onClick={() => props.onBlock(thread)} title={`Block ${incoming.from.email}`}>
+              <Ban size={17} />
+            </button>
+          )}
+          <span className="divider" />
+          <button className="icon-btn" onClick={() => props.onMarkUnread(thread.id)} title="Mark unread (U)">
+            <Mail size={17} />
+          </button>
+          <button
+            className={`icon-btn ${thread.starred ? 'starred' : ''}`}
+            onClick={() => props.onStar(thread.id)}
+            title="Star (S)"
+          >
+            <Star size={17} />
+          </button>
+        </div>
+      </header>
+
+      <div className="reader-scroll" key={thread.id}>
+        <div className="thread-head">
+          <h2>{thread.subject}</h2>
+          <div className="thread-labels">
+            {thread.labels.map((id) => {
+              const l = labels.find((x) => x.id === id);
+              return l ? (
+                <span key={id} className="chip" style={{ ['--c' as string]: l.color }}>
+                  {l.name}
+                </span>
+              ) : null;
+            })}
+            <span className="thread-count">
+              {thread.messages.length} message{thread.messages.length > 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+
+        <div className="ai-bar">
+          <button className={`ai-chip ${summary && summary !== 'loading' ? 'on' : ''}`} onClick={summarize}>
+            {summary === 'loading' ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+            {summary === 'loading' ? 'Reading…' : summary ? 'Hide summary' : 'Summarize'}
+          </button>
+          {props.todos.length > 0 && (
+            <button className="ai-chip todo" onClick={props.onOpenTodos}>
+              <ListChecks size={13} /> {props.todos.filter((t) => !t.done).length || '✓'} to-do{props.todos.length > 1 ? 's' : ''} from this email
+            </button>
+          )}
+        </div>
+
+        {summary && summary !== 'loading' && (
+          <div className="ai-summary">
+            <div className="ais-label">
+              <Sparkles size={13} /> Summary
+            </div>
+            <p>{summary.summary}</p>
+            {summary.asks.length > 0 && (
+              <>
+                <div className="ais-label">They’re asking you to</div>
+                <ul>
+                  {summary.asks.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {props.todos.length > 0 && (
+              <>
+                <div className="ais-label">Your to-dos</div>
+                {props.todos.map((t) => (
+                  <label key={t.id} className={`ais-todo ${t.done ? 'done' : ''}`}>
+                    <input type="checkbox" checked={t.done} onChange={() => props.onToggleTodo(t.id)} />
+                    {t.title}
+                  </label>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {isList && incoming && (() => {
+          const stillSending = props.unsubscribedAt && incoming.date > props.unsubscribedAt;
+          return (
+            <div className={`list-banner ${stillSending ? 'warn' : ''}`}>
+              <MailMinus size={16} />
+              <span>
+                {stillSending
+                  ? `${incoming.from.name} is still emailing you after you unsubscribed.`
+                  : props.unsubscribedAt
+                    ? `You unsubscribed from ${incoming.from.name} ${relative(props.unsubscribedAt)}.`
+                    : `Mailing list from ${incoming.from.name}`}
+              </span>
+              {!props.unsubscribedAt && (
+                <button className="ghost-btn outline sm" onClick={() => props.onUnsubscribe(thread)}>
+                  Unsubscribe
+                </button>
+              )}
+              <button className={stillSending ? 'primary-btn sm' : 'ghost-btn sm'} onClick={() => props.onBlock(thread)}>
+                <Ban size={13} /> Block
+              </button>
+            </div>
+          );
+        })()}
+
+        {thread.invite && (
+          <div className={`invite ${props.inviteAdded ? 'added' : ''}`}>
+            <div className="invite-date">
+              <span>{new Date(thread.invite.start).toLocaleDateString([], { month: 'short' })}</span>
+              <strong>{new Date(thread.invite.start).getDate()}</strong>
+            </div>
+            <div className="invite-info">
+              <div className="invite-kicker">Meeting proposed in this email</div>
+              <div className="invite-title">{thread.invite.title}</div>
+              <div className="invite-when">
+                {new Date(thread.invite.start).toLocaleDateString([], { weekday: 'long' })} ·{' '}
+                {fmtTime(thread.invite.start)} – {fmtTime(thread.invite.end)}
+                {thread.invite.location && ` · ${thread.invite.location}`}
+              </div>
+              <div className={`invite-status ${props.inviteConflicts.length && !props.inviteAdded ? 'warn' : ''}`}>
+                {props.inviteAdded
+                  ? 'On your calendar'
+                  : props.inviteConflicts.length
+                    ? `Overlaps with “${props.inviteConflicts[0].title}”`
+                    : 'You’re free at this time'}
+              </div>
+            </div>
+            {props.inviteAdded ? (
+              <span className="invite-done">
+                <CalendarCheck size={16} /> Added
+              </span>
+            ) : (
+              <button className="primary-btn" onClick={() => props.onAddInvite(thread.id)}>
+                <CalendarPlus size={15} /> Add to calendar
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="messages">
+          {thread.messages.map((m) => {
+            const open = expanded.has(m.id);
+            return (
+              <article key={m.id} className={`message ${open ? 'open' : ''}`}>
+                <button className="message-head" onClick={() => toggle(m.id)}>
+                  <Avatar person={m.from} size={38} />
+                  <div className="message-who">
+                    <div className="message-from">
+                      <strong>{isMine(m.from.email) ? 'You' : m.from.name}</strong>
+                      {open && <span className="email">&lt;{m.from.email}&gt;</span>}
+                    </div>
+                    <div className="message-to">
+                      {open ? `to ${m.to.map((p) => (isMine(p.email) ? 'me' : p.name)).join(', ')}` : snippet(m.body)}
+                    </div>
+                  </div>
+                  <time title={fullDate(m.date)}>
+                    {fullDate(m.date)} <span className="rel">({relative(m.date)})</span>
+                  </time>
+                  {!open && m.tracking && <Eye size={14} className="head-eye" />}
+                </button>
+                {open && props.blockTrackers && m.trackersBlocked ? (
+                  <div className="blocked-note">
+                    <ShieldCheck size={14} /> Blocked {m.trackersBlocked} tracker{m.trackersBlocked > 1 ? 's' : ''}, so the sender can’t see when you read this
+                  </div>
+                ) : null}
+                {open && (
+                  <div className="message-body">
+                    {m.html ? (
+                      <div className="prose" dangerouslySetInnerHTML={{ __html: sanitize(m.html) }} />
+                    ) : (
+                      m.body.split('\n\n').map((para, i) => <p key={i}>{para}</p>)
+                    )}
+                    {m.attachments && (
+                      <div className="attachments">
+                        {m.attachments.map((a) => {
+                          const saved = props.savedToDrive(a.name);
+                          return (
+                            <div key={a.name} className="attachment">
+                              <span className="file-icon">
+                                <FileText size={18} />
+                              </span>
+                              <div>
+                                <div className="file-name">{a.name}</div>
+                                <div className="file-size">{a.size}</div>
+                              </div>
+                              <button
+                                className={`att-save ${saved ? 'saved' : ''}`}
+                                disabled={saved}
+                                onClick={() => props.onSaveToDrive(thread.id, a)}
+                                title={saved ? 'Saved to Drive' : 'Save to Drive'}
+                              >
+                                {saved ? <Check size={14} /> : <HardDriveUpload size={14} />}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {m.tracking && <TrackingPanel thread={thread} message={m} />}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+
+        {replyOpen ? (
+          <div className="reply-box">
+            <div className="reply-to">
+              <Reply size={14} /> Replying to <strong>{replyTo.name}</strong>
+            </div>
+            <div onKeyDown={(e) => e.key === 'Escape' && !(e.target as HTMLElement).closest('.tb-popup') && setReplyOpen(false)}>
+              <RichEditor
+                autoFocus
+                initialHtml={replyInitial ?? (props.signature ? `<p><br></p>${props.signature}` : '')}
+                placeholder="Write your reply…"
+                onChange={(html, text) => setReply({ html, text })}
+                onSubmit={send}
+              />
+            </div>
+            <div className="reply-actions">
+              <button
+                className="ghost-btn"
+                onClick={() => {
+                  setReplyOpen(false);
+                  setReplyInitial(null);
+                }}
+              >
+                Discard
+              </button>
+              <button className="primary-btn" onClick={send} disabled={!hasOwnText(reply.text, props.signature)}>
+                <Send size={15} /> Send <kbd>⌘↵</kbd>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+          {suggestions && suggestions.length > 0 && (
+            <div className="smart-replies">
+              <span>
+                <Sparkles size={13} /> Quick replies
+              </span>
+              {suggestions.map((sug, i) => (
+                <button
+                  key={i}
+                  style={{ ['--i' as string]: i }}
+                  onClick={() => {
+                    setReplyInitial(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''));
+                    setReplyOpen(true);
+                  }}
+                >
+                  {sug.split('\n')[0]}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="reply-buttons">
+            <button className="ghost-btn outline" onClick={() => setReplyOpen(true)}>
+              <Reply size={15} /> Reply <kbd>R</kbd>
+            </button>
+            <button className="ghost-btn outline" onClick={() => setReplyOpen(true)}>
+              <Forward size={15} /> Forward
+            </button>
+          </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
