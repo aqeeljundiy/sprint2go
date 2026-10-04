@@ -5,7 +5,7 @@ import type { Settings, ThemePref } from '../settings';
 import { fmtSize } from '../data/drive';
 import { Avatar } from './Avatar';
 
-export type SettingsSection = 'workspace' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'storage';
+export type SettingsSection = 'workspace' | 'teams' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts';
 
 interface Props {
   me: Person & { color?: string };

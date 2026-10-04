@@ -173,7 +173,12 @@ export interface Workspace {
   emailSetup?: EmailSetup; // what the company chose at onboarding
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
-  chat?: { gifs: boolean; celebrations: boolean; whoCanCreate: Policy };
+  chat?: { gifs: boolean; celebrations: boolean; whoCanCreate: Policy; history?: 'forever' | '1y' | '90d' };
+  plan?: Plan;
+  ai?: AISettings;
+  meetings?: MeetingSettings;
+  storage?: StorageSettings;
+  security?: { twoStep: boolean; google: boolean; microsoft: boolean; sso: boolean };
   aliases?: Record<string, string>; // learned names: "andi" -> user id, or "contact:<name>"
   teamHome?: Record<string, HomeTemplateId>; // default Home template per team
 }
@@ -356,4 +361,79 @@ export interface BlockRule {
   value: string; // an address, or a domain
   kind: 'address' | 'domain';
   at: string;
+}
+
+/* ---------- Plans, billing, AI and storage (workspace admin) ---------- */
+
+export type Track = 'own' | 'ai'; // bring your own AI keys, or AI included
+export type Tier = 'free' | 'small' | 'studio' | 'agency' | 'business';
+
+export interface Plan {
+  track: Track;
+  tier: Tier;
+  cycle: 'monthly' | 'yearly';
+  trialEnds?: string; // reverse trial of Studio AI
+  paused?: boolean;
+  addons: { mailboxes: number; storage50: number; meetHours10: number; branding: boolean };
+  autoTopUp?: { on: boolean; limit: number }; // rupiah per month
+  topUps?: number; // bought this month
+  payment?: { method: 'qris' | 'va' | 'card' | 'ewallet'; label: string };
+  billing: { company: string; npwp?: string; address?: string; emails: string[] };
+  since: string;
+}
+
+export type ProviderId =
+  | 'anthropic'
+  | 'openai'
+  | 'google'
+  | 'deepseek'
+  | 'qwen'
+  | 'mistral'
+  | 'sumopod'
+  | 'openrouter'
+  | 'bedrock'
+  | 'vertex'
+  | 'azure'
+  | 'custom'
+  | 'deepgram'
+  | 'groq';
+
+export type AIJobId = 'braindump' | 'ask' | 'meeting' | 'draft' | 'summary' | 'digest' | 'replies' | 'todos' | 'sorting' | 'translate' | 'speech';
+
+export interface ProviderConn {
+  id: ProviderId;
+  keyLast4: string; // the full key never comes back to the browser
+  addedAt: string;
+  addedBy: string;
+  status: 'ok' | 'error';
+  baseUrl?: string; // custom / Azure / Bedrock region
+  capUsd?: number; // monthly cap (estimated spend)
+  spentUsd: number; // this month, estimated from the cost log
+}
+
+export interface AISettings {
+  payer: 'sprint2go' | 'own' | 'both';
+  providers: ProviderConn[];
+  preset: 'best' | 'balanced' | 'cheap' | 'custom';
+  jobs: Partial<Record<AIJobId, { provider: ProviderId | 'included'; model: string; fallback?: ProviderId }>>;
+  auto: { meetingNotes: boolean; emailTodos: boolean; digests: boolean };
+  blocked: ProviderId[];
+  alerts: boolean;
+}
+
+export interface MeetingSettings {
+  keep: 'video' | 'audio' | 'notes'; // default
+  clientMeetings: 'video' | 'audio' | 'notes';
+  internalMeetings: 'video' | 'audio' | 'notes';
+  downgradeAfter: 0 | 30 | 60 | 90; // days until video becomes audio (0 = never)
+  whoCanRecord: 'everyone' | 'admins';
+  shareNotesWithClient: boolean;
+  autoJoin: boolean;
+  botName: string;
+  announce: boolean;
+}
+
+export interface StorageSettings {
+  own?: { provider: 'gdrive' | 'dropbox' | 'b2'; account: string; forFilesOver: number }; // MB
+  askOver: 0 | 200 | 500 | 1000; // MB, 0 = never ask
 }

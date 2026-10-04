@@ -1,24 +1,33 @@
 import { useState } from 'react';
-import { Ban, Bell, Building2, ChevronDown, HardDrive, KeyRound, UserPlus, Inbox, Plus, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, type LucideIcon } from 'lucide-react';
+import { Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
-import type { BlockRule, Role, User, Workspace } from '../types';
+import type { AISettings, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
+import { AISection } from './admin/AISection';
+import { BillingSection } from './admin/BillingSection';
+import { AppsSection, MeetingsSection, SecuritySection, StorageSection, TeamsSection } from './admin/AdminMore';
+import { trialPlan } from '../data/workspaces';
 import { Avatar } from './Avatar';
 import { BrandFields } from './WorkspaceForms';
 import { WorkspaceLogo } from './WorkspaceLogo';
-import { fmtSize } from '../data/drive';
 import { initials } from '../utils';
 import type { SettingsSection } from './AccountMenu';
 import { RichEditor } from './RichEditor';
 import { Select } from './ui/Select';
 
-const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon }[] = [
-  { id: 'workspace', name: 'Workspace', icon: Building2 },
-  { id: 'account', name: 'Account', icon: UserRound },
-  { id: 'appearance', name: 'Appearance', icon: Palette },
-  { id: 'mail', name: 'Mail & signature', icon: PenLine },
-  { id: 'notifications', name: 'Notifications', icon: Bell },
-  { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard },
-  { id: 'storage', name: 'Storage', icon: HardDrive },
+const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
+  { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
+  { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
+  { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
+  { id: 'meetings', name: 'Meetings', icon: Video, group: 'Company' },
+  { id: 'ai', name: 'AI', icon: Sparkles, group: 'Company' },
+  { id: 'billing', name: 'Plan & billing', icon: CreditCard, group: 'Company' },
+  { id: 'storage', name: 'Storage', icon: HardDrive, group: 'Company' },
+  { id: 'security', name: 'Security & data', icon: ShieldCheck, group: 'Company' },
+  { id: 'account', name: 'Account', icon: UserRound, group: 'You' },
+  { id: 'appearance', name: 'Appearance', icon: Palette, group: 'You' },
+  { id: 'mail', name: 'Mail & signature', icon: PenLine, group: 'You' },
+  { id: 'notifications', name: 'Notifications', icon: Bell, group: 'You' },
+  { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard, group: 'You' },
 ];
 
 const SHORTCUTS: [string, string[]][] = [
@@ -47,7 +56,7 @@ interface Props {
   update: (p: Partial<Settings>) => void;
   section: SettingsSection;
   onSection: (s: SettingsSection) => void;
-  usage: { mail: number; drive: number; media: number; quota: number };
+  usage?: { mail: number; drive: number; media: number; quota: number };
   onMenu: () => void;
   workspace: Workspace;
   onWorkspace: (p: Partial<Workspace>) => void;
@@ -62,6 +71,20 @@ interface Props {
   onAccess: (accountId: string, users: string[]) => void;
   blocked: BlockRule[];
   onUnblock: (id: string) => void;
+  admin: {
+    people: number;
+    teams: Team[];
+    drive: DriveItem[];
+    onTeams: (t: Team[]) => void;
+    onTeamHome: (teamId: string, t: HomeTemplateId) => void;
+    onAI: (a: AISettings) => void;
+    onPlan: (p: Plan) => void;
+    onMeetings: (m: MeetingSettings) => void;
+    onStorage: (s: StorageSettings) => void;
+    onExport: () => void;
+    onDelete: () => void;
+    toast: (t: string) => void;
+  };
 }
 
 function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
@@ -78,12 +101,12 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, usage, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, users, me, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock }: Props) {
+export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, users, me, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
+  const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
+  const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
   const canManage = myRole !== 'member';
   const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
-  const used = usage.mail + usage.drive;
-  const pct = (n: number) => `${Math.max(0.6, (n / usage.quota) * 100)}%`;
 
   return (
     <section className="settings-pane view-enter">
@@ -95,10 +118,13 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
       </header>
       <div className="settings-body">
         <nav className="settings-nav">
-          {SECTIONS.map(({ id, name, icon: Icon }) => (
-            <button key={id} className={section === id ? 'on' : ''} onClick={() => onSection(id)}>
-              <Icon size={16} /> {name}
-            </button>
+          {SECTIONS.map(({ id, name, icon: Icon, group }, i) => (
+            <span key={id} className="settings-nav-item">
+              {(i === 0 || SECTIONS[i - 1].group !== group) && <span className="settings-group">{group === 'Company' ? ws.name || 'Company' : 'You'}</span>}
+              <button className={section === id ? 'on' : ''} onClick={() => onSection(id)}>
+                <Icon size={16} /> {name}
+              </button>
+            </span>
           ))}
         </nav>
 
@@ -437,31 +463,13 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
             </>
           )}
 
-          {section === 'storage' && (
-            <>
-              <h2>Storage</h2>
-              <p className="set-intro">
-                {fmtSize(used)} of {fmtSize(usage.quota)} used
-              </p>
-              <div className="stack-bar">
-                <span style={{ width: pct(usage.mail), background: 'var(--accent)' }} />
-                <span style={{ width: pct(usage.drive - usage.media), background: '#10b981' }} />
-                <span style={{ width: pct(usage.media), background: '#f59e0b' }} />
-              </div>
-              <div className="legend">
-                <span>
-                  <i style={{ background: 'var(--accent)' }} /> Mail · {fmtSize(usage.mail)}
-                </span>
-                <span>
-                  <i style={{ background: '#10b981' }} /> Files · {fmtSize(usage.drive - usage.media)}
-                </span>
-                <span>
-                  <i style={{ background: '#f59e0b' }} /> Photos & videos · {fmtSize(usage.media)}
-                </span>
-              </div>
-              <small className="set-hint">Everything is stored on your own server, so there are no per-GB fees.</small>
-            </>
-          )}
+          {section === 'storage' && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
+          {section === 'teams' && <TeamsSection ws={ws} teams={admin.teams} users={wsUsers} canManage={canManage} onTeams={admin.onTeams} onTeamHome={admin.onTeamHome} toast={admin.toast} />}
+          {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
+          {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}
+          {section === 'ai' && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
+          {section === 'billing' && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
+          {section === 'security' && <SecuritySection ws={ws} isOwner={myRole === 'owner'} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} users={wsUsers} />}
         </div>
       </div>
     </section>

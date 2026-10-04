@@ -252,7 +252,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [meetings, setMeetings] = useStored('meetings');
   const [taskScope, setTaskScope] = useState<TaskScope>({ kind: 'mine' });
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
-  const [teams] = useStored('teams');
+  const [teams, setTeams] = useStored('teams');
   const [statuses, setStatuses] = useStored('statuses');
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
   const [portal, setPortal] = useState<{ clientId: string; guestEmail?: string } | null>(null);
@@ -888,6 +888,35 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     tellIds.forEach((uidX) => notify(uidX, 'task', `${who} ${status === 'approved' ? 'approved' : 'asked for changes on'} “${t.title}”`, { app: 'tasks', id }));
     if (status === 'changes' && t.done) setTaskStatus(id, 'todo', true);
     showToast({ text: status === 'approved' ? `${who} approved it` : `${who} asked for changes` });
+  };
+
+  /** Everything this company has, as one JSON file. Always free, on every plan. */
+  const exportEverything = () => {
+    const data = {
+      exportedAt: nowIso(),
+      workspace: { ...ws, ai: ws.ai && { ...ws.ai, providers: ws.ai.providers.map((p) => ({ ...p, keyLast4: '••••' })) } },
+      people: members,
+      teams: wsTeams,
+      clients: wsClients,
+      tasks: wsTasks,
+      channels: channels.filter((c) => c.workspaceId === ws.id),
+      messages: messages.filter((m) => channels.some((c) => c.id === m.channelId && c.workspaceId === ws.id)),
+      meetings: wsMeetings,
+      mail: wsThreads,
+      events: events.filter((e) => (e.workspaceId ?? 'pnp') === ws.id),
+      files: drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id).map((d) => ({ ...d, thumb: undefined })),
+    };
+    try {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${ws.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-export-${nowIso().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      showToast({ text: 'Export downloaded' });
+    } catch {
+      showToast({ text: 'Your browser blocked the download' });
+    }
   };
 
   /** Invite someone by name and email (from the brain dump's "Who is Andi?"). */
@@ -1839,6 +1868,26 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               const added = users.find((x) => !before.includes(x));
               const name = (id: string) => allUsers.find((u) => u.id === id)?.name.split(' ')[0] ?? 'They';
               showToast({ text: added ? `${name(added)} can now open this inbox` : `${name(before.find((x) => !users.includes(x))!)} no longer has access` });
+            }}
+            admin={{
+              people: members.length,
+              teams: wsTeams,
+              drive: drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id),
+              onTeams: (t) => setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...t]),
+              onTeamHome: (teamId, t) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [teamId]: t } }),
+              onAI: (ai) => patchWorkspace(ws.id, { ai }),
+              onPlan: (plan) => patchWorkspace(ws.id, { plan }),
+              onMeetings: (m) => patchWorkspace(ws.id, { meetings: m }),
+              onStorage: (st) => patchWorkspace(ws.id, { storage: st }),
+              onExport: exportEverything,
+              onDelete: () => {
+                const rest = workspaces.filter((w) => w.id !== ws.id);
+                setWorkspaces((list) => list.filter((w) => w.id !== ws.id));
+                if (rest[0]) setWsId(rest[0].id);
+                go('home');
+                showToast({ text: `${ws.name} deleted` });
+              },
+              toast: (text) => showToast({ text }),
             }}
             onRemoveAccount={(id) => {
               patchWorkspace(ws.id, { accounts: ws.accounts.filter((a) => a.id !== id) });

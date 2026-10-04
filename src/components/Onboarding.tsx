@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Cloud, Copy, Loader2, Mail, MailX, Server, Shuffle, X, type LucideIcon } from 'lucide-react';
-import type { Account, AppId, EmailSetup, MailProvider, User, Workspace } from '../types';
-import { WORKSPACE_COLORS } from '../data/workspaces';
+import type { Account, AppId, EmailSetup, MailProvider, MeetingSettings, User, Workspace } from '../types';
+import { DEFAULT_MEETINGS, WORKSPACE_COLORS, defaultAI, trialPlan } from '../data/workspaces';
 import { uid } from '../utils';
 import { APPS } from './AppRail';
 import { BrandFields } from './WorkspaceForms';
@@ -48,6 +48,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose }: Props) {
   const [setup, setSetup] = useState<EmailSetup>('keep');
   const [provider, setProvider] = useState<MailProvider>('google');
   const [emailInput, setMyEmail] = useState('');
+  const [keep, setKeep] = useState<MeetingSettings['keep']>('video');
   const [dns, setDns] = useState<'idle' | 'checking' | 'ok'>('idle');
   const [team, setTeam] = useState<Invite[]>([{ key: 1, name: '', email: '', role: 'member', where: 'sprint2go' }]);
   const [copied, setCopied] = useState<string | null>(null);
@@ -111,6 +112,9 @@ export function Onboarding({ me, existingEmails, onCreate, onClose }: Props) {
         apps: mailOn ? apps : apps.filter((a) => a !== 'mail'),
         emailSetup: setup,
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,
+        plan: trialPlan(brand.name.trim(), myEmail),
+        ai: defaultAI(false),
+        meetings: { ...DEFAULT_MEETINGS, keep, clientMeetings: keep, internalMeetings: keep === 'video' ? 'audio' : keep },
       },
       newUsers,
     );
@@ -171,6 +175,27 @@ export function Onboarding({ me, existingEmails, onCreate, onClose }: Props) {
                   );
                 })}
               </div>
+              {apps.includes('meet') && (
+                <div className="ob-keep">
+                  <strong>What should meetings keep by default?</strong>
+                  <p className="muted small">The notetaker records the whole meeting for accurate notes, then keeps only this. People can change it per meeting.</p>
+                  <div className="cat-pick three">
+                    {(
+                      [
+                        ['video', 'Video, audio and notes', 'About 1.1 GB per hour'],
+                        ['audio', 'Audio and notes', 'About 50 MB per hour'],
+                        ['notes', 'Notes and transcript only', 'Almost no space'],
+                      ] as const
+                    ).map(([v, l, h]) => (
+                      <button key={v} type="button" className={keep === v ? 'on' : ''} onClick={() => setKeep(v)}>
+                        <strong>{l}</strong>
+                        <small>{h}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="trial-note">Your first 14 days are on Studio AI with every feature. No card needed.</p>
             </>
           )}
 
