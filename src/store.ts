@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Status } from './types';
+import type { TaskTemplate } from './data/templates';
 import { THREADS } from './data/mock';
 import { EVENTS, EXTERNAL_CALENDARS, EXTERNAL_EVENTS } from './data/calendar';
 import { DRIVE } from './data/drive';
@@ -20,6 +21,7 @@ const store = {
   notices: NOTICES,
   statuses: { 'u-nanda': { emoji: '🎬', text: 'Editing, slow to reply' }, 'u-faisal': { emoji: '🗓️', text: 'In client meetings till 3pm' } } as Record<string, Status>,
   meetings: MEETINGS,
+  templates: [] as TaskTemplate[], // templates a company saved for itself
 };
 
 /** Threads already scanned for to-dos (key: user:thread:lastMessage). */

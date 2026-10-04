@@ -7,7 +7,9 @@ import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp } from './data/pricing';
 import { ConnectCalendar } from './components/ConnectCalendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
-import { lastMessage, uid, localDay } from './utils';
+import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
+import { BUILT_IN_TEMPLATES, type TaskTemplate } from './data/templates';
+import { TemplateDialog } from './components/TemplateDialog';
 import { eventsOn } from './calendarUtils';
 import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
@@ -51,6 +53,12 @@ import { DEFAULT_MEETINGS } from './data/workspaces';
 import { DEMO_SCRIPT } from './data/team';
 import { Onboarding } from './components/Onboarding';
 import { textToHtml } from './sanitize';
+
+/** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
+const dueWords = (d: string) => {
+  const t = dueLabel(d).text;
+  return /^[A-Z][a-z]{2},/.test(t) ? t : t.toLowerCase();
+};
 
 const FOLDER_TITLES: Record<FolderId, string> = {
   inbox: 'Inbox',
@@ -275,6 +283,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'portal' | undefined>(undefined);
   const [teams, setTeams] = useStored('teams');
   const [statuses, setStatuses] = useStored('statuses');
+  const [savedTemplates, setSavedTemplates] = useStored('templates');
+  const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
   const [portal, setPortal] = useState<{ clientId: string; guestEmail?: string } | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -587,6 +597,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return () => clearInterval(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Task reminders: ping everyone doing the task when its time comes (the backend sends these as push and email too).
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date().toISOString();
+      const due = todosRef.current.filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
+      if (!due.length) return;
+      setTodos((ts) => ts.map((t) => (due.some((d) => d.id === t.id) ? { ...t, reminded: true } : t)));
+      setNotices((ns) => [
+        ...due.flatMap((t) =>
+          (t.assignees?.length ? t.assignees : [t.userId || t.createdBy || '']).filter(Boolean).map((who) => ({ id: uid(), userId: who, workspaceId: t.workspaceId ?? '', kind: 'task' as const, text: `Reminder: “${t.title}”${t.due ? `, due ${dueWords(t.due)}` : ''}`, at: now, read: false, link: { app: 'tasks' as const, id: t.id } })),
+        ),
+        ...ns,
+      ]);
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const patchThread = (id: string, patch: Partial<Thread>) => setThreads((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   /* ---------------- AI to-dos ---------------- */
@@ -864,7 +893,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const describe = (t: Pick<Todo, 'title' | 'clientId' | 'due'>) => {
     const c = wsClients.find((x) => x.id === t.clientId);
-    return `“${t.title}”${c ? ` for ${c.name}` : ''}${t.due ? `, due ${dueLabel(t.due).text.toLowerCase()}` : ''}`;
+    return `“${t.title}”${c ? ` for ${c.name}` : ''}${t.due ? `, due ${dueWords(t.due)}` : ''}`;
   };
 
   const createTask = (
@@ -883,6 +912,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       priority?: 'high' | 'normal';
       source: Todo['source'];
       threadId?: string;
+      checklist?: Todo['checklist'];
+      repeat?: Todo['repeat'];
     },
     tell: { chat?: boolean; email?: boolean } = {},
   ) => {
@@ -906,6 +937,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       createdBy: user.id,
       workspaceId: ws.id,
       threadId: t.threadId,
+      checklist: t.checklist,
+      repeat: t.repeat,
       createdAt: nowIso(),
       assignees: t.userId ? [t.userId] : [],
       supervisorId: user.id, // whoever assigns it supervises it, unless someone changes it
@@ -956,6 +989,26 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (!quiet) showToast({ text: `Sent to ${firstOf(t.supervisorId)} for review` });
       return;
     }
+    // A repeating task: finishing it creates the next one.
+    const next: Todo | undefined =
+      status === 'done' && !t.done && t.repeat
+        ? {
+            ...t,
+            id: uid(),
+            status: 'todo',
+            done: false,
+            doneAt: undefined,
+            doneBy: undefined,
+            due: nextDue(t.due, t.repeat),
+            remindAt: t.remindAt && t.due ? new Date(new Date(t.remindAt).getTime() + (new Date(nextDue(t.due, t.repeat)).getTime() - new Date(t.due).getTime())).toISOString() : undefined,
+            reminded: false,
+            checklist: t.checklist?.map((c) => ({ ...c, done: false })),
+            approval: undefined,
+            createdAt: nowIso(),
+            history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this (repeats ${t.repeat === 'weekdays' ? 'every weekday' : t.repeat})` }],
+          }
+        : undefined;
+    if (next) setTodos((ts) => [...ts, next]);
     setTodos((ts) =>
       ts.map((x) =>
         x.id === id ? { ...x, status, done: status === 'done', doneAt: status === 'done' ? (x.done ? x.doneAt : nowIso()) : undefined, doneBy: status === 'done' ? (x.done ? x.doneBy : user.id) : undefined } : x,
@@ -976,8 +1029,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       }
       if (!quiet)
         showToast({
-          text: `Done: ${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}`,
-          action: { label: 'Undo', run: () => setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...before } : x))) },
+          text: next ? `Done. The next one is due ${dueWords(next.due!)}` : `Done: ${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}`,
+          action: { label: 'Undo', run: () => setTodos((ts) => ts.filter((x) => x.id !== next?.id).map((x) => (x.id === id ? { ...x, ...before } : x))) },
           ms: 6000,
         });
     }
@@ -1008,6 +1061,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       logTask(id, 'supervisor', `made ${patch.supervisorId === user.id ? 'themselves' : firstOf(patch.supervisorId)} the supervisor`);
       if (patch.supervisorId !== user.id) notify(patch.supervisorId, 'task', `${myFirst} asked you to supervise ${describe(t)}`, { app: 'tasks', id });
     }
+    if ('repeat' in patch && patch.repeat !== t.repeat) logTask(id, 'edit', patch.repeat ? `set it to repeat ${patch.repeat === 'weekdays' ? 'every weekday' : patch.repeat}` : 'stopped it repeating');
     if ('due' in patch && patch.due !== t.due) logTask(id, 'due', patch.due ? `moved the due date ${t.due ? `from ${dueLabel(t.due).text} ` : ''}to ${dueLabel(patch.due).text}` : 'removed the due date');
     if (patch.followers) {
       const added = patch.followers.filter((x) => !(t.followers ?? []).includes(x));
@@ -1034,6 +1088,54 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       .filter((x) => x !== user.id)
       .forEach((x) => notify(x, 'task', `${myFirst} sent back “${t.title}”: “${note.slice(0, 80)}”`, { app: 'tasks', id }));
     showToast({ text: 'Sent back with your note' });
+  };
+
+  /** Creates a brief and its tasks from a template, spaced out in working days. Tasks go to the matching team's queue. */
+  const fromTemplate = (tpl: TaskTemplate, o: { clientId?: string; start: string; ownerId: string; skip: number[] }) => {
+    const client = wsClients.find((c) => c.id === o.clientId);
+    const brief = createTask({ kind: 'brief', title: client ? `${tpl.name}: ${client.name}` : tpl.name, context: tpl.description, clientId: o.clientId, userId: o.ownerId, due: addWorkdays(o.start, Math.max(0, ...tpl.tasks.map((x) => x.days))), source: 'manual' });
+    tpl.tasks.forEach((x, i) => {
+      if (o.skip.includes(i)) return;
+      const tl = x.title.toLowerCase();
+      // The team whose keywords match the most (longer matches win ties).
+      const team = wsTeams
+        .map((tm) => ({ tm, hits: (tm.keywords ?? []).filter((k) => tl.includes(k)) }))
+        .filter((x) => x.hits.length)
+        .sort((a, b) => b.hits.length - a.hits.length || Math.max(...b.hits.map((k) => k.length)) - Math.max(...a.hits.map((k) => k.length)))[0]?.tm;
+      createTask({
+        title: x.title,
+        briefId: brief.id,
+        clientId: o.clientId,
+        teamId: team?.id,
+        userId: team ? '' : o.ownerId,
+        due: addWorkdays(o.start, x.days),
+        source: 'manual',
+        checklist: x.checklist?.map((text) => ({ id: uid(), text, done: false })),
+        repeat: x.repeat,
+      });
+    });
+    setTplOpen(null);
+    setTaskOpen(brief.id);
+    showToast({ text: `Brief created with ${tpl.tasks.length - o.skip.length} tasks` });
+  };
+  /** Saves a brief and its tasks as a template the whole company can reuse. */
+  const saveTemplate = (briefId: string) => {
+    const br = todos.find((x) => x.id === briefId);
+    if (!br) return;
+    const subs = todos.filter((x) => x.briefId === briefId);
+    const start = subs.map((x) => x.due).filter(Boolean).sort()[0] ?? localDay();
+    const workdaysBetween = (a: string, b: string) => {
+      let n = 0;
+      while (a < b && n < 200) ((a = addWorkdays(a, 1)), n++);
+      return n;
+    };
+    const client = wsClients.find((c) => c.id === br.clientId);
+    const name = client ? br.title.replace(new RegExp(`[:\\s-]*${client.name}`, 'i'), '').trim() || br.title : br.title;
+    setSavedTemplates((ts) => [
+      { id: uid(), name, description: br.context ?? '', workspaceId: ws.id, tasks: subs.map((x) => ({ title: x.title, days: x.due ? workdaysBetween(start, x.due) : 0, checklist: x.checklist?.map((c) => c.text), repeat: x.repeat })) },
+      ...ts,
+    ]);
+    showToast({ text: `Saved “${name}” as a template` });
   };
 
   const openTasks = (scope: TaskScope) => {
@@ -2215,6 +2317,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenChannel={openChannel}
             onOpenMeeting={openMeeting}
             onBrainDump={() => setDump('')}
+            onTemplate={() => setTplOpen({ clientId: taskScope.kind === 'client' ? taskScope.id : undefined })}
             onMenu={() => setSidebarOpen(true)}
           />
         )}
@@ -2720,6 +2823,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onAskApproval={askApproval}
           onComment={commentTask}
           onSendBack={sendBack}
+          onSaveTemplate={saveTemplate}
           onOpenChannel={(clientId) => {
             const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));
@@ -2821,6 +2925,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             setChanDialog(null);
           }}
+        />
+      )}
+      {tplOpen && (
+        <TemplateDialog
+          templates={[...savedTemplates.filter((t) => t.workspaceId === ws.id), ...BUILT_IN_TEMPLATES]}
+          clients={wsClients}
+          users={members}
+          me={user.id}
+          clientId={tplOpen.clientId}
+          onCreate={fromTemplate}
+          onDelete={(id) => setSavedTemplates((ts) => ts.filter((t) => t.id !== id))}
+          onClose={() => setTplOpen(null)}
         />
       )}
       {dump !== null && (

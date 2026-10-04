@@ -235,9 +235,14 @@ export interface Todo {
   clientId?: string;
   workspaceId?: string;
   notes?: string;
+  repeat?: Repeat; // when done, the next one is created
+  remindAt?: string; // ISO time to ping the doers
+  reminded?: boolean;
+  checklist?: { id: string; text: string; done: boolean }[];
   createdAt: string;
 }
 export type Task = Todo;
+export type Repeat = 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'review' | 'done'; // waiting = on the client; review = waiting for the supervisor
 
 /** One line in a task's history: what changed, or a comment. */

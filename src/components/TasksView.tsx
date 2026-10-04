@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
+import { Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User } from '../types';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
@@ -99,6 +99,7 @@ interface Props {
   onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
+  onTemplate: () => void;
   onMenu: () => void;
 }
 
@@ -477,6 +478,9 @@ export function TasksView(p: Props) {
           <h1>{heading}</h1>
           <p>{subtitle}</p>
         </div>
+        <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
+          <LayoutTemplate size={14} /> <span>Template</span>
+        </button>
         <button className="primary-btn sm brain-btn" onClick={p.onBrainDump}>
           <Sparkles size={14} /> Brain dump
         </button>

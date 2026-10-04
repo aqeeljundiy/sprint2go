@@ -67,3 +67,29 @@ export const uid = () => Date.now().toString(36) + Math.random().toString(36).sl
 
 /** A date as YYYY-MM-DD in the user's own time zone (toISOString would give UTC, which is yesterday in Jakarta at night). */
 export const localDay = (d: Date = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** The next due date for a repeating task (from its due date, or today). */
+export function nextDue(due: string | undefined, repeat: 'daily' | 'weekdays' | 'weekly' | 'monthly'): string {
+  const d = due ? new Date(due + 'T12:00:00') : new Date();
+  if (repeat === 'daily') d.setDate(d.getDate() + 1);
+  if (repeat === 'weekdays') do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6);
+  if (repeat === 'weekly') d.setDate(d.getDate() + 7);
+  if (repeat === 'monthly') {
+    const day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + 1);
+    d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  }
+  return localDay(d);
+}
+
+/** Adds working days (skips weekends) to a YYYY-MM-DD date. */
+export function addWorkdays(day: string, n: number): string {
+  const d = new Date(day + 'T12:00:00');
+  let left = n;
+  while (left > 0) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) left--;
+  }
+  return localDay(d);
+}

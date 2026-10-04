@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarPlus, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, Plus, RotateCcw, Trash2, X } from 'lucide-react';
-import type { Client, TaskStatus, Team, Todo, User } from '../types';
-import { relative } from '../utils';
+import { Bell, CalendarPlus, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, LayoutTemplate, Plus, Repeat as RepeatIcon, RotateCcw, Trash2, X } from 'lucide-react';
+import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../types';
+import { localDay, relative } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
@@ -27,6 +27,7 @@ interface Props {
   onAskApproval: (id: string) => void;
   onComment: (id: string, text: string) => void;
   onSendBack: (id: string, note: string) => void;
+  onSaveTemplate?: (briefId: string) => void;
 }
 
 /** A task or brief, opened. A brief shows its context and its tasks; a task shows the brief it belongs to and who's in charge. */
@@ -69,6 +70,25 @@ export function TaskDrawer(p: Props) {
   };
 
   const doneN = subs.filter((s) => s.done).length;
+  const [checkText, setCheckText] = useState('');
+  const checklist = t.checklist ?? [];
+  const addCheck = () => {
+    if (!checkText.trim()) return;
+    p.onPatch(t.id, { checklist: [...checklist, { id: Math.random().toString(36).slice(2), text: checkText.trim(), done: false }] });
+    setCheckText('');
+  };
+  const at9 = (day: string) => new Date(day + 'T09:00:00').toISOString();
+  const dayBefore = (day: string) => {
+    const d = new Date(day + 'T09:00:00');
+    d.setDate(d.getDate() - 1);
+    return d.toISOString();
+  };
+  const remindChoices: [string, string][] = [
+    ['In 1 hour', new Date(Date.now() + 3_600_000).toISOString()],
+    ['Tomorrow 9:00', (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d.toISOString(); })()],
+    ...(t.due ? ([['Day before it’s due, 9:00', dayBefore(t.due)], ['On the due date, 9:00', at9(t.due)]] as [string, string][]) : []),
+  ].filter(([, v]) => v > new Date().toISOString()) as [string, string][];
+  const remindLabel = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && p.onClose()}>
@@ -82,6 +102,11 @@ export function TaskDrawer(p: Props) {
             <span className="drawer-kind">Task</span>
           )}
           <span className="spacer" />
+          {brief && p.onSaveTemplate && (
+            <button className="icon-btn sm" title="Save as a template" onClick={() => p.onSaveTemplate!(t.id)}>
+              <LayoutTemplate size={16} />
+            </button>
+          )}
           {!brief && !t.done && (
             <button className="icon-btn sm" title="Add to calendar" onClick={() => p.onToCalendar(t)}>
               <CalendarPlus size={16} />
@@ -249,6 +274,39 @@ export function TaskDrawer(p: Props) {
               <DatePicker value={t.due ?? ''} onChange={(v) => p.onPatch(t.id, { due: v || undefined })} label="Due date" placeholder="No date" />
               {t.due && !t.done && <span className={`due ${dueLabel(t.due).cls}`}>{dueLabel(t.due).text}</span>}
             </dd>
+            {!brief && (
+              <>
+                <dt>Repeats</dt>
+                <dd>
+                  <Select<Repeat | ''>
+                    value={t.repeat ?? ''}
+                    onChange={(v) => p.onPatch(t.id, { repeat: v || undefined, ...(v && !t.due ? { due: localDay() } : {}) })}
+                    label="Repeats"
+                    options={[
+                      { value: '', label: 'Never' },
+                      { value: 'daily', label: 'Every day', icon: <RepeatIcon size={14} /> },
+                      { value: 'weekdays', label: 'Every weekday', icon: <RepeatIcon size={14} /> },
+                      { value: 'weekly', label: 'Every week', icon: <RepeatIcon size={14} /> },
+                      { value: 'monthly', label: 'Every month', icon: <RepeatIcon size={14} /> },
+                    ]}
+                  />
+                  {t.repeat && <span className="muted small">When it’s done, the next one appears</span>}
+                </dd>
+                <dt>Reminder</dt>
+                <dd>
+                  <Select
+                    value={t.remindAt && !t.reminded ? t.remindAt : ''}
+                    onChange={(v) => p.onPatch(t.id, { remindAt: v || undefined, reminded: false })}
+                    label="Reminder"
+                    options={[
+                      { value: '', label: 'No reminder' },
+                      ...(t.remindAt && !t.reminded && !remindChoices.some(([, v]) => v === t.remindAt) ? [{ value: t.remindAt, label: remindLabel(t.remindAt), icon: <Bell size={14} /> }] : []),
+                      ...remindChoices.map(([l, v]) => ({ value: v, label: l, hint: remindLabel(v), icon: <Bell size={14} /> })),
+                    ]}
+                  />
+                </dd>
+              </>
+            )}
             <dt>Priority</dt>
             <dd>
               <Select<'normal' | 'high'>
@@ -319,6 +377,31 @@ export function TaskDrawer(p: Props) {
             <>
               <label className="drawer-label">Notes</label>
               <textarea className="drawer-notes" value={t.notes ?? ''} onChange={(e) => p.onPatch(t.id, { notes: e.target.value })} placeholder="Details, links, what done looks like…" />
+              <div className="drawer-label row">
+                Checklist
+                {checklist.length > 0 && (
+                  <span className="bc-progress">
+                    {checklist.filter((c) => c.done).length}/{checklist.length}
+                  </span>
+                )}
+              </div>
+              <ul className="checklist">
+                {checklist.map((c) => (
+                  <li key={c.id} className={c.done ? 'done' : ''}>
+                    <label>
+                      <input type="checkbox" checked={c.done} onChange={() => p.onPatch(t.id, { checklist: checklist.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)) })} />
+                      <span>{c.text}</span>
+                    </label>
+                    <button className="icon-btn sm" aria-label="Remove" onClick={() => p.onPatch(t.id, { checklist: checklist.filter((x) => x.id !== c.id) })}>
+                      <X size={13} />
+                    </button>
+                  </li>
+                ))}
+                <li className="check-add">
+                  <Plus size={14} />
+                  <input value={checkText} onChange={(e) => setCheckText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCheck()} placeholder="Add a step…" />
+                </li>
+              </ul>
             </>
           )}
 
