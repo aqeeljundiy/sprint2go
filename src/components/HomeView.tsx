@@ -120,6 +120,7 @@ interface Props {
   events: CalEvent[]; // my calendar
   meetings: Meeting[];
   notices: Notice[];
+  kudos: { id: string; to: string; from: string; text: string; at: string }[]; // this week
   enabled: Set<string>;
   onDump: (text?: string) => void;
   onToggleTask: (id: string) => void;
@@ -572,10 +573,25 @@ export function HomeView(p: Props) {
     wins: {
       icon: <PartyPopper size={15} />,
       body: () =>
-        d.doneWeek.length === 0 ? (
+        d.doneWeek.length === 0 && p.kudos.length === 0 ? (
           empty('Nothing finished yet this week.')
         ) : (
           <ul className="home-list">
+            {p.kudos.slice(0, 3).map((k) => {
+              const to = p.users.find((u) => u.id === k.to);
+              const from = p.users.find((u) => u.id === k.from);
+              return (
+                <li key={k.id} className="win kudos-win">
+                  <span className="kudos-emoji sm">🙌</span>
+                  <span className="ht-title">
+                    Kudos to {to ? (to.id === p.me.id ? 'you' : to.name.split(' ')[0]) : 'someone'}
+                    <small className="ht-brief">
+                      {k.text ? `“${k.text}” · ` : ''}from {from ? (from.id === p.me.id ? 'you' : from.name.split(' ')[0]) : 'someone'} · {relative(k.at)}
+                    </small>
+                  </span>
+                </li>
+              );
+            })}
             {d.doneWeek.slice(0, 5).map((t) => {
               const who = p.users.find((u) => u.id === (t.doneBy ?? t.userId));
               return (

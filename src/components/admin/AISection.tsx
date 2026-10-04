@@ -107,6 +107,23 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           )}
         </div>
 
+        {plan?.tier === 'free' && (
+          <div className="set-block">
+            <h3>Free AI this month</h3>
+            <div className="allow-meter">
+              <span className="bar wide">
+                <span style={{ width: '40%' }} />
+              </span>
+              <p>
+                Left: <b>3 brain dumps</b>, <b>6 Ask AI questions</b>, <b>1 meeting hour</b>, <b>12 summaries</b>. Add your own key above for unlimited AI, or{' '}
+                <button type="button" className="link-btn" onClick={onBilling}>
+                  pick a plan
+                </button>
+                .
+              </p>
+            </div>
+          </div>
+        )}
         {included && ai.payer !== 'own' && (
           <div className="set-block">
             <h3>Left this month</h3>

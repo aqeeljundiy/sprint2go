@@ -47,6 +47,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
   const [invitePolicy, setInvitePolicy] = useState<Policy>(channel?.invitePolicy ?? 'everyone');
   const [q, setQ] = useState('');
   const [shared, setShared] = useState(channel?.sharedWith ?? null);
+  const [digest, setDigest] = useState(!!channel?.digest);
   const [shareDomain, setShareDomain] = useState('');
 
   const client = clients.find((c) => c.id === clientId);
@@ -91,6 +92,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
       postPolicy,
       invitePolicy,
       sharedWith: shared ?? undefined,
+      digest,
       ownerId: channel?.ownerId ?? me,
       createdAt: channel?.createdAt ?? new Date().toISOString(),
     });
@@ -162,6 +164,15 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                   <Select value={teamId} onChange={pickTeam} label="Team" placeholder="Pick a team (optional)" options={teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))} />
                 </div>
               )}
+              <label className="set-row toggle-row">
+                <span>
+                  <strong>Daily digest</strong>
+                  <small>Once a day, AI writes a few lines on what happened here, only on days with new messages</small>
+                </span>
+                <button type="button" role="switch" aria-checked={digest} className={`switch ${digest ? 'on' : ''}`} onClick={() => setDigest(!digest)}>
+                  <span />
+                </button>
+              </label>
               <div className="field">
                 <span>Who can find it</span>
                 <div className="segmented wide">

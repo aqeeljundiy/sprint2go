@@ -721,6 +721,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     return out;
   }, [wsChannels, messages, lastRead, user.id]);
+  const chatLastAt = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const m of messages) if (!out[m.channelId] || m.at > out[m.channelId]) out[m.channelId] = m.at;
+    return out;
+  }, [messages]);
   const chatUnreadTotal = Object.values(chatUnread).reduce((a, b) => a + b, 0);
 
   // Chat always opens on a channel (the first one, usually #general), also after switching workspace.
@@ -771,6 +776,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       briefId?: string;
       meetingId?: string;
       saidAt?: number;
+      channelId?: string;
       kind?: Todo['kind'];
       context?: string;
       userId: string;
@@ -790,6 +796,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       briefId: t.briefId,
       meetingId: t.meetingId,
       saidAt: t.saidAt,
+      channelId: t.channelId,
       context: t.context,
       userId: t.userId,
       due: t.due,
@@ -911,6 +918,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     tellIds.forEach((uidX) => notify(uidX, 'task', `${who} ${status === 'approved' ? 'approved' : 'asked for changes on'} “${t.title}”`, { app: 'tasks', id }));
     if (status === 'changes' && t.done) setTaskStatus(id, 'todo', true);
     showToast({ text: status === 'approved' ? `${who} approved it` : `${who} asked for changes` });
+  };
+
+  /** Free covers 5 people: the 6th invite shows the price at that moment instead of a wall. */
+  const openInvite = () => {
+    if (ws.plan?.tier === 'free' && members.length >= 5) {
+      showToast({ text: 'Free covers 5 people. Add more on Small for Rp 39.000 per person a month', action: { label: 'See plans', run: () => (setSettingsSection('billing'), go('settings')) }, ms: 8000 });
+      return;
+    }
+    setInviting(true);
   };
 
   /** Everything this company has, as one JSON file. Always free, on every plan. */
@@ -1704,6 +1720,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             workspaceId={ws.id}
             current={chatId}
             unread={chatUnread}
+            lastAt={chatLastAt}
             statuses={statuses}
             presence={presence}
             onOpen={(id) => {
@@ -1794,6 +1811,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             events={myEvents}
             meetings={wsMeetings}
             notices={myNotices}
+            kudos={messages
+              .filter((m) => m.kind === 'kudos' && m.kudosFor && channels.some((c) => c.id === m.channelId && c.workspaceId === ws.id) && m.at > new Date(Date.now() - 7 * 86_400_000).toISOString())
+              .sort((a, b) => b.at.localeCompare(a.at))
+              .map((m) => ({ id: m.id, to: m.kudosFor!, from: m.userId, text: m.text, at: m.at }))}
             enabled={enabled}
             onDump={(text) => setDump(text ?? '')}
             onToggleTask={toggleTodo}
@@ -1868,12 +1889,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             meetUrl={ws.meetUrl}
             onSend={sendChat}
             onDelete={deleteMessage}
+            onPin={(id) => {
+              const m = messages.find((x) => x.id === id);
+              setMessages((ms) => ms.map((x) => (x.id === id ? { ...x, pinned: !x.pinned } : x)));
+              showToast({ text: m?.pinned ? 'Unpinned' : 'Pinned to the channel' });
+            }}
+            onToggleTask={toggleTodo}
             onReact={reactTo}
             onVote={votePoll}
             onMakeTask={makeTaskFromMessage}
             onCreateTask={(t) => {
               const ch = channels.find((c) => c.id === chatId);
-              const task = createTask({ ...t, clientId: ch?.clientId, teamId: ch?.teamId, source: 'chat' }, { chat: false });
+              const task = createTask({ ...t, clientId: ch?.clientId, teamId: ch?.teamId, channelId: chatId ?? undefined, source: 'chat' }, { chat: false });
               if (chatId) setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, text: `📌 New task${t.userId !== user.id ? ` for @${firstOf(t.userId)}` : ''}`, at: nowIso(), taskId: task.id }]);
             }}
             onOpenTask={openTask}
@@ -2051,7 +2078,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             users={allUsers}
             me={user.id}
             myRole={role}
-            onInvite={() => setInviting(true)}
+            onInvite={() => openInvite()}
             onRole={(uid2, r) => patchWorkspace(ws.id, { members: ws.members.map((m) => (m.userId === uid2 ? { ...m, role: r } : m)) })}
             onRemoveMember={(uid2) => {
               patchWorkspace(ws.id, {
@@ -2076,7 +2103,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               people: members.length,
               teams: wsTeams,
               drive: drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id),
-              onTeams: (t) => setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...t]),
+              onTeams: (t) => {
+                // A new team gets its own channel, with the team in it.
+                const fresh = t.filter((x) => !wsTeams.some((y) => y.id === x.id));
+                fresh.forEach((tm) => {
+                  const id = uid();
+                  setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'channel', name: tm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), members: [...new Set([user.id, ...tm.members])], teamId: tm.id, topic: `${tm.name} team`, category: 'team', ownerId: user.id, createdAt: nowIso() }]);
+                });
+                // People added to a team join its channel.
+                t.forEach((tm) => setChannels((cs) => cs.map((c) => (c.teamId === tm.id ? { ...c, members: [...new Set([...c.members, ...tm.members])] } : c))));
+                setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...t]);
+              },
               onTeamHome: (teamId, t) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [teamId]: t } }),
               onAI: (ai) => patchWorkspace(ws.id, { ai }),
               onPlan: (plan) => patchWorkspace(ws.id, { plan }),
@@ -2342,7 +2379,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           teams={wsTeams}
           me={user.id}
           canManage={myRole !== 'member' || !chanDialog.id || channels.find((c) => c.id === chanDialog.id)?.ownerId === user.id}
-          guestsAllowed={true}
+          guestsAllowed={ws.plan?.tier !== 'free' || channels.filter((c) => c.workspaceId === ws.id).flatMap((c) => c.guests ?? []).length < 1}
           onClose={() => setChanDialog(null)}
           onArchive={() => {
             const id = chanDialog.id!;

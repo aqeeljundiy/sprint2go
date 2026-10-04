@@ -223,6 +223,10 @@ export function ClientPortal(p: Props) {
             </section>
           )}
         </div>
+        <div className="portal-referral">
+          <span>Your team could run on Sprint2go too: tasks, chat, mail and meeting notes in one app.</span>
+          <span className="muted small">Sign up from here and both {p.client.name} and {p.workspace.name} get a month free.</span>
+        </div>
         {!p.branded && (
           <footer className="portal-foot">
             Made with <Logo size={14} /> Sprint2go

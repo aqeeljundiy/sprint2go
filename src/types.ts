@@ -214,6 +214,7 @@ export interface Todo {
   visibleToClient?: boolean; // shows in the client portal
   approval?: Approval; // the client is asked to approve this
   meetingId?: string; // said in this meeting
+  channelId?: string; // on this chat channel's to-do list
   saidAt?: number; // ms into the recording
   due?: string; // YYYY-MM-DD
   done: boolean;
@@ -283,6 +284,7 @@ export interface Channel {
   invitePolicy?: Policy; // who can add people
   guests?: Guest[]; // people from outside the company (clients)
   sharedWith?: { workspaceName: string; domain: string; status: 'pending' | 'connected' }; // shared channel with another Sprint2go company
+  digest?: boolean; // daily AI digest of this channel (opt-in)
   archived?: boolean;
   createdAt?: string;
 }
@@ -321,6 +323,7 @@ export interface ChatMessage {
   kudosFor?: string; // user id
   guestEmail?: string; // written by a guest
   edited?: boolean;
+  pinned?: boolean;
 }
 
 export interface Status {
@@ -471,4 +474,12 @@ export interface MeetingSettings {
 export interface StorageSettings {
   own?: { provider: 'gdrive' | 'dropbox' | 'b2'; account: string; forFilesOver: number }; // MB
   askOver: 0 | 200 | 500 | 1000; // MB, 0 = never ask
+}
+
+/** A way to arrange the chat sidebar. Built-in views, or one a person makes. */
+export interface ChatView {
+  id: string;
+  name: string;
+  sections: { id: string; name: string; channelIds: string[] }[];
+  showRest: boolean; // channels not in any section go under "Other channels"
 }
