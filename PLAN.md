@@ -214,6 +214,9 @@ General · People and teams · Apps · Email · Calendars · Meetings (recording
 | Phase 4 | 13 to 18 | Calendars, Drive and own storage, the meetings app joined in | A client call ends and tasks, notes and recording land on the client page |
 | Phase 5 | 18 to 22 | Billing, gates, trial, security pass, beta with 5 to 10 companies | A company you don't know signs up and pays alone |
 
+## 11b. Backlog
+See BACKLOG.md: UI polish pass (fewer boxes and grey, no nested inputs, a deliberate dark palette with colour meanings, layout stability when panels open, spacing and radius system).
+
 ## 12. Assumptions behind the numbers
 - US$1 = Rp 17.500 (forecast; recheck at launch).
 - Claude Sonnet 5.5 US$2 / 10, Haiku 4.5 US$1 / 5, Opus 5.5 US$4 / 20 per million tokens in / out; DeepSeek V4 Flash US$0.14 / 0.28.
