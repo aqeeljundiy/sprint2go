@@ -474,6 +474,7 @@ export async function folderOverview(client: string, meetings: { title: string; 
 }
 
 export interface MeetSource {
+  kind?: 'M' | 'E' | 'C' | 'T'; // meeting, email, chat channel, task list
   id: string;
   title: string;
   summary: string;
@@ -488,18 +489,18 @@ export async function askMeetings(question: string, sources: MeetSource[]): Prom
   const words = q.split(/\W+/).filter((w) => w.length >= 4);
   if (/summari[sz]e|bullets/.test(q) && sources.length === 1) {
     const m = sources[0];
-    return `**${m.title}** [M:${m.id}]\n- ${m.summary.split('. ').slice(0, 3).join('\n- ')}`;
+    return `**${m.title}** [${m.kind ?? 'M'}:${m.id}]\n- ${m.summary.split('. ').slice(0, 3).join('\n- ')}`;
   }
   if (/promise|promised|owe|follow.?up|open|overdue|who owns/.test(q)) {
     const open = sources.flatMap((m) => m.actions.filter((a) => !a.done).map((a) => ({ m, a })));
     if (!open.length) return 'Nothing is open from these meetings.';
-    return `Open follow-ups:\n${open.slice(0, 8).map(({ m, a }) => `- **${a.title}**${a.owner ? ` (${a.owner})` : ''} [M:${m.id}]`).join('\n')}`;
+    return `Open follow-ups:\n${open.slice(0, 8).map(({ m, a }) => `- **${a.title}**${a.owner ? ` (${a.owner})` : ''} [${m.kind ?? 'M'}:${m.id}]`).join('\n')}`;
   }
   if (/email|draft/.test(q) && sources.length) {
     const m = sources[0];
-    return `Here’s a follow-up you can send:\n\nHi all,\n\nThanks for the time today. Quick recap: ${m.summary}\n\nNext steps:\n${m.actions.map((a) => `- ${a.title}${a.owner ? ` (${a.owner})` : ''}`).join('\n') || '- None yet'}\n\nBest,\n[M:${m.id}]`;
+    return `Here’s a follow-up you can send:\n\nHi all,\n\nThanks for the time today. Quick recap: ${m.summary}\n\nNext steps:\n${m.actions.map((a) => `- ${a.title}${a.owner ? ` (${a.owner})` : ''}`).join('\n') || '- None yet'}\n\nBest,\n[${m.kind ?? 'M'}:${m.id}]`;
   }
   const hits = sources.flatMap((m) => m.transcript.filter((l) => words.some((w) => l.text.toLowerCase().includes(w))).map((l) => ({ m, l }))).slice(0, 4);
   if (!hits.length) return 'I couldn’t find that in these meetings. Try a client name, a topic or a person.';
-  return `Here’s what was said:\n${hits.map(({ m, l }) => `- ${l.speaker}: “${l.text}” [M:${m.id}@${l.at}]`).join('\n')}`;
+  return `Here’s what was said:\n${hits.map(({ m, l }) => `- ${l.speaker}: “${l.text}” [${m.kind ?? 'M'}:${m.id}${(m.kind ?? 'M') === 'M' ? `@${l.at}` : ''}]`).join('\n')}`;
 }

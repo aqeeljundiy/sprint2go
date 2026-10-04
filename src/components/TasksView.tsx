@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
-import type { Channel, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User } from '../types';
+import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User } from '../types';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
@@ -83,6 +83,9 @@ interface Props {
   onToCalendar: (t: Todo) => void;
   onOpenThread: (id: string) => void;
   onOpenChannel: (id: string) => void;
+  messages: ChatMessage[]; // this workspace's chat, for the client page's Chat tab
+  clientTab?: 'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'portal';
+  onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
   onMenu: () => void;
@@ -98,7 +101,12 @@ export function TasksView(p: Props) {
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'tasks' | 'emails' | 'meetings' | 'portal'>('tasks');
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'portal'>('overview');
+  const [writingOv, setWritingOv] = useState(false);
+  const scopeId = 'id' in p.scope ? p.scope.id : '';
+  useEffect(() => {
+    if (p.scope.kind === 'client') setClientTab(p.scope.teamId ? 'tasks' : (p.clientTab ?? 'overview'));
+  }, [scopeId, p.clientTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [previewAs, setPreviewAs] = useState<string | null>(null);
 
   const scope = p.scope;
@@ -412,7 +420,9 @@ export function TasksView(p: Props) {
 
   const clientThreads = client?.domain ? p.threads.filter((t) => t.messages.some((m) => [m.from, ...m.to].some((x) => x.email.endsWith('@' + client.domain)))) : [];
   const clientChannel = client ? p.channels.find((c) => c.clientId === client.id) : undefined;
-  const clientMeetings = client ? p.meetings.filter((m) => m.clientId === client.id) : [];
+  const clientMeetings = client ? p.meetings.filter((m) => m.clientId === client.id).sort((a, b) => b.at.localeCompare(a.at)) : [];
+  const clientMsgs = clientChannel ? p.messages.filter((m) => m.channelId === clientChannel.id && !m.parentId).sort((a, b) => a.at.localeCompare(b.at)) : [];
+  const clientFiles = client ? p.files.filter((f) => f.kind !== 'folder' && !f.trashed && (f.clientId === client.id || (!!f.parentId && p.files.find((x) => x.id === f.parentId)?.clientId === client.id))) : [];
   const teamChannel = team ? p.channels.find((c) => c.name === team.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')) : undefined;
 
   const showTaskList = scope.kind !== 'grid' && scope.kind !== 'briefs' && (!client || clientTab === 'tasks');
@@ -470,21 +480,19 @@ export function TasksView(p: Props) {
         <div className="client-tabs">
           {(
             [
+              ['overview', 'Overview'],
               ['tasks', `Tasks · ${open.length}`],
-              ['emails', `Emails · ${clientThreads.length}`],
+              ['chat', 'Chat'],
+              ['emails', `Mail · ${clientThreads.length}`],
               ['meetings', `Meetings · ${clientMeetings.length}`],
-              ['portal', 'Client portal'],
+              ['files', `Files · ${clientFiles.length}`],
+              ['portal', 'Portal'],
             ] as const
           ).map(([id, label]) => (
             <button key={id} className={clientTab === id ? 'on' : ''} onClick={() => setClientTab(id)}>
               {label}
             </button>
           ))}
-          {clientChannel && (
-            <button onClick={() => p.onOpenChannel(clientChannel.id)}>
-              <Hash size={13} /> {clientChannel.name}
-            </button>
-          )}
           {cellTeam && (
             <button className="on soft" onClick={() => p.onScope({ kind: 'client', id: client.id })}>
               {cellTeam.name} only · show all teams
@@ -673,6 +681,145 @@ export function TasksView(p: Props) {
               </>
             )}
           </>
+        )}
+
+        {client && clientTab === 'overview' && (
+          <div className="hub-overview">
+            <div className="stat-cards">
+              <div>
+                <b>{open.length}</b>
+                <span>Open tasks{overdue ? ` · ${overdue} late` : ''}</span>
+              </div>
+              <div>
+                <b>{briefs.filter((b) => !b.done).length}</b>
+                <span>Active briefs</span>
+              </div>
+              <div>
+                <b>{clientMeetings.length}</b>
+                <span>Meetings{clientMeetings[0] ? ` · last ${relative(clientMeetings[0].at)}` : ''}</span>
+              </div>
+              <div>
+                <b>{clientThreads.filter((t) => t.unread).length}</b>
+                <span>Unread emails</span>
+              </div>
+            </div>
+            <div className="side-card overview-card">
+              <h3>
+                {client.overview?.headline ?? 'Where things stand'}
+                <button className="ghost-btn sm" disabled={writingOv || (!clientMeetings.length && !open.length)} onClick={async () => (setWritingOv(true), await p.onWriteOverview(client.id), setWritingOv(false))}>
+                  <Sparkles size={13} /> {writingOv ? 'Writing…' : client.overview ? 'Refresh' : 'Write overview'}
+                </button>
+              </h3>
+              {client.overview ? (
+                <>
+                  <p className="muted small">Written by AI from {client.overview.from} meeting{client.overview.from === 1 ? '' : 's'} · {relative(client.overview.at)}</p>
+                  <p>{client.overview.summary}</p>
+                  <p>
+                    <b>Progress:</b> {client.overview.progress}
+                  </p>
+                  <div className="ov-cols">
+                    {(
+                      [
+                        ['Wins', client.overview.wins, 'Nothing yet'],
+                        ['Risks', client.overview.risks, 'None flagged'],
+                        ['Next steps', client.overview.next, 'None'],
+                      ] as const
+                    ).map(([h, l, e]) => (
+                      <div key={h}>
+                        <h4>{h}</h4>
+                        {l.length ? (
+                          <ul>
+                            {l.map((x) => (
+                              <li key={x}>{x}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="muted small">{e}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="muted small">AI writes a one-page view of this client from its meetings, tasks and emails. Only when you click.</p>
+              )}
+            </div>
+            <div className="hub-two">
+              <div className="side-card">
+                <h3>Next up</h3>
+                <ul className="home-list">
+                  {open.slice(0, 5).map((t) => (
+                    <li key={t.id}>
+                      <button className="home-notice" onClick={() => p.onOpenTask(t.id)}>
+                        <span>{t.title}</span>
+                        <time>{t.due ? dueLabel(t.due).text : ''}</time>
+                      </button>
+                    </li>
+                  ))}
+                  {!open.length && <p className="te-empty">Nothing open.</p>}
+                </ul>
+              </div>
+              <div className="side-card">
+                <h3>Recent</h3>
+                <ul className="home-list">
+                  {[
+                    ...clientThreads.slice(0, 3).map((t) => ({ k: 'e' + t.id, text: `Email: ${t.subject}`, at: t.messages[t.messages.length - 1].date, run: () => p.onOpenThread(t.id) })),
+                    ...clientMeetings.slice(0, 2).map((m) => ({ k: 'm' + m.id, text: `Meeting: ${m.title}`, at: m.at, run: () => p.onOpenMeeting(m.id) })),
+                    ...clientMsgs.slice(-3).map((m) => ({ k: 'c' + m.id, text: `Chat: ${m.text.slice(0, 70)}`, at: m.at, run: () => clientChannel && p.onOpenChannel(clientChannel.id) })),
+                  ]
+                    .sort((a, b) => b.at.localeCompare(a.at))
+                    .slice(0, 6)
+                    .map((r) => (
+                      <li key={r.k}>
+                        <button className="home-notice" onClick={r.run}>
+                          <span>{r.text}</span>
+                          <time>{relative(r.at)}</time>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {client && clientTab === 'chat' && (
+          <div className="te-list hub-chat">
+            {clientChannel ? (
+              <>
+                {clientMsgs.slice(-12).map((m) => (
+                  <div key={m.id} className="hub-msg">
+                    <b>{m.guestEmail ? (clientChannel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone')}</b>
+                    <span>{m.text || (m.voice ? 'Voice note' : m.files ? m.files.map((f) => f.name).join(', ') : '')}</span>
+                    <time>{relative(m.at)}</time>
+                  </div>
+                ))}
+                <button className="primary-btn sm" onClick={() => p.onOpenChannel(clientChannel.id)}>
+                  <Hash size={13} /> Open #{clientChannel.name}
+                </button>
+              </>
+            ) : (
+              <p className="te-empty">{client.name} has no channel yet. Create one in Chat and pick “Client”.</p>
+            )}
+          </div>
+        )}
+
+        {client && clientTab === 'files' && (
+          <div className="te-list">
+            {clientFiles.map((f) => (
+              <div key={f.id} className="chat-file flat">
+                <span className="cf-icon">{f.kind === 'video' ? <Video size={16} /> : <FileText size={16} />}</span>
+                <span className="cf-text">
+                  <strong>{f.name}</strong>
+                  <small>
+                    {(f.size / 1e6).toFixed(1)} MB · {relative(f.modified)}
+                    {f.sharedWithClient ? ' · visible to client' : ''}
+                  </small>
+                </span>
+              </div>
+            ))}
+            {!clientFiles.length && <p className="te-empty">No files for {client.name} yet. Files shared in its channel and saved in its Drive folder show here.</p>}
+          </div>
         )}
 
         {client && clientTab === 'emails' && (

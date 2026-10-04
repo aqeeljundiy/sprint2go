@@ -79,12 +79,12 @@ const TEMPLATES: Record<HomeTemplateId, { name: string; hint: string; cards: [Ca
   founder: {
     name: 'Founder / C-level',
     hint: 'What’s happening across the whole company',
-    cards: [['pulse', 'l'], ['briefing', 'm'], ['risk', 'm'], ['lateByTeam', 'm'], ['waiting', 'm'], ['workload', 'l'], ['briefs', 'm'], ['wins', 'm'], ['today', 'm'], ['dump', 'l']],
+    cards: [['pulse', 'l'], ['briefing', 'm'], ['waiting', 'm'], ['risk', 'm'], ['workload', 'm']],
   },
   lead: {
     name: 'Team lead',
     hint: 'Your team’s queue and who is busy',
-    cards: [['briefing', 'l'], ['teamQueue', 'm'], ['workload', 'm'], ['mytasks', 'm'], ['briefs', 'm'], ['today', 'm'], ['foryou', 'm'], ['wins', 'm']],
+    cards: [['briefing', 'l'], ['teamQueue', 'm'], ['workload', 'm'], ['mytasks', 'm'], ['today', 'm']],
   },
   maker: {
     name: 'Designer / Editor',
@@ -94,7 +94,7 @@ const TEMPLATES: Record<HomeTemplateId, { name: string; hint: string; cards: [Ca
   account: {
     name: 'Account manager',
     hint: 'Your clients, their emails and meetings',
-    cards: [['briefing', 'l'], ['clients', 'l'], ['unread', 'm'], ['mytasks', 'm'], ['risk', 'm'], ['meetings', 'm'], ['today', 'm']],
+    cards: [['briefing', 'l'], ['clients', 'l'], ['unread', 'm'], ['mytasks', 'm'], ['meetings', 'm']],
   },
   finance: {
     name: 'Finance / Admin',

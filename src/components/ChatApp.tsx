@@ -11,7 +11,6 @@ import {
   FileText,
   Hash,
   Image as ImageIcon,
-  Info,
   ListChecks,
   Lock,
   Mail,
@@ -50,14 +49,10 @@ import { CATEGORY_NAME } from './ChannelDialog';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
-const STICKERS = ['🎉', '🚀', '🙌', '🔥', '💯', '☕️', '🤝', '👏', '😎', '🥳', '🫡', '💪'];
+// "In a meeting" comes from the calendar on its own; people only set Focus, Away or their own words.
 const STATUS_PRESETS: Status[] = [
   { emoji: '🎯', text: 'Focusing, slow to reply' },
-  { emoji: '🗓️', text: 'In meetings' },
-  { emoji: '🎬', text: 'Editing' },
-  { emoji: '🚗', text: 'Commuting' },
-  { emoji: '🤒', text: 'Out sick' },
-  { emoji: '🌴', text: 'On leave' },
+  { emoji: '🌴', text: 'Away' },
 ];
 const fmtSize = (b: number) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 const fmtSecs = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -527,10 +522,7 @@ function Text({ text, users }: { text: string; users: User[] }) {
 
 const COMMANDS = [
   { cmd: '/task', hint: 'Make a task: /task Send the deck @Rizky friday' },
-  { cmd: '/poll', hint: 'Quick vote: /poll Lunch? | Bakmi | Sate' },
   { cmd: '/remind', hint: 'Remind yourself: /remind call Nadia tomorrow' },
-  { cmd: '/kudos', hint: 'Thank someone: /kudos @Dewi for saving the invoice' },
-  { cmd: '/meet', hint: 'Share the meeting link' },
 ];
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -557,8 +549,7 @@ export function ChatView(p: ViewProps) {
   const { channel, users, me } = p;
   const [text, setText] = useState('');
   const [mention, setMention] = useState<string | null>(null);
-  const [panel, setPanel] = usePersisted<'info' | null>('s2g-chat-info', null);
-  const [tab, setTab] = useState<'messages' | 'files' | 'links' | 'tasks' | 'pinned' | 'summary'>('messages');
+  const [tab, setTab] = useState<'messages' | 'files' | 'links' | 'tasks' | 'pinned' | 'summary' | 'about'>('messages');
   const [bmTitle, setBmTitle] = useState('');
   const [bmUrl, setBmUrl] = useState('');
   const [summarizing, setSummarizing] = useState<'period' | 'since' | null>(null);
@@ -569,8 +560,6 @@ export function ChatView(p: ViewProps) {
   const [fileKind, setFileKind] = useState<'all' | 'images' | 'videos' | 'docs'>('all');
   const [threadId, setThreadId] = useState<string | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
-  const [stickerOpen, setStickerOpen] = useState(false);
-  const [pollDraft, setPollDraft] = useState<{ q: string; opts: string[] } | null>(null);
   const [kudos, setKudos] = useState<{ who: string; text: string } | null>(null);
   const [rec, setRec] = useState<{ start: number; secs: number; stream?: MediaStream; recorder?: MediaRecorder; chunks: Blob[] } | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
@@ -579,7 +568,6 @@ export function ChatView(p: ViewProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const plusBtn = useRef<HTMLButtonElement>(null);
-  const stickerBtn = useRef<HTMLButtonElement>(null);
   const person = (id: string) => users.find((u) => u.id === id);
   const client = channel?.clientId ? p.clients.find((c) => c.id === channel.clientId) : undefined;
   const team = channel?.teamId ? p.teams.find((t) => t.id === channel.teamId) : undefined;
@@ -596,7 +584,6 @@ export function ChatView(p: ViewProps) {
     input.current?.focus();
     setText('');
     setThreadId(null);
-    setPollDraft(null);
     setKudos(null);
     setTab('messages');
     setSinceText(null);
@@ -688,12 +675,6 @@ export function ChatView(p: ViewProps) {
         if (!arg) return true;
         const { due, rest: t } = dueIn(arg);
         p.onCreateTask({ title: t.charAt(0).toUpperCase() + t.slice(1), userId: me, due: due ?? undefined });
-        return true;
-      }
-      case '/poll': {
-        const [q, ...opts] = arg.split('|').map((s) => s.trim()).filter(Boolean);
-        if (q && opts.length >= 2) p.onSend({ text: '', poll: { question: q, options: opts.map((o) => ({ text: o, votes: [] })) } });
-        else setPollDraft({ q: q ?? '', opts: opts.length ? opts : ['', ''] });
         return true;
       }
       case '/kudos': {
@@ -990,11 +971,7 @@ export function ChatView(p: ViewProps) {
             }}
             placeholder={`Message ${title}  ·  type / for commands`}
           />
-          {p.gifs && (
-            <button ref={stickerBtn} className="icon-btn" onClick={() => setStickerOpen((o) => !o)} aria-label="Stickers">
-              <span className="gif-tag">GIF</span>
-            </button>
-          )}
+
           {text.trim() ? (
             <button className="ai-send chat-send" onClick={send} aria-label="Send">
               <ArrowUp size={16} />
@@ -1015,9 +992,7 @@ export function ChatView(p: ViewProps) {
           <button className="sel-opt" onClick={startRec}>
             <Mic size={15} /> Record a voice note
           </button>
-          <button className="sel-opt" onClick={() => (setPlusOpen(false), setPollDraft({ q: '', opts: ['', ''] }))}>
-            <BarChart3 size={15} /> Create a poll
-          </button>
+
           <button className="sel-opt" onClick={() => (setPlusOpen(false), setKudos({ who: '', text: '' }))}>
             <span>🙌</span> Give kudos
           </button>
@@ -1026,16 +1001,7 @@ export function ChatView(p: ViewProps) {
           </button>
         </div>
       </Popover>
-      <Popover anchor={stickerBtn} open={stickerOpen} onClose={() => setStickerOpen(false)} width={260} title="Stickers">
-        <div className="sticker-grid">
-          {STICKERS.map((s) => (
-            <button key={s} onClick={() => (p.onSend({ text: s }), setStickerOpen(false))}>
-              {s}
-            </button>
-          ))}
-          <p className="muted small">GIF search connects with Tenor or Giphy when the backend is live.</p>
-        </div>
-      </Popover>
+
     </div>
   ) : (
     <div className="chat-locked">
@@ -1044,7 +1010,7 @@ export function ChatView(p: ViewProps) {
   );
 
   return (
-    <section className={`chat-pane view-enter ${panel || thread ? 'with-panel' : ''}`}>
+    <section className={`chat-pane view-enter ${thread ? 'with-panel' : ''}`}>
       <div className="chat-main">
         <header className="chat-head">
           <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
@@ -1078,9 +1044,7 @@ export function ChatView(p: ViewProps) {
               <Settings size={16} />
             </button>
           )}
-          <button className={`icon-btn sm ${panel ? 'on' : ''}`} onClick={() => (setThreadId(null), setPanel(panel ? null : 'info'))} title="Details: files, emails, people, tasks">
-            <Info size={17} />
-          </button>
+
         </header>
 
         <div className="chan-tabs" role="tablist">
@@ -1092,6 +1056,7 @@ export function ChatView(p: ViewProps) {
               ['tasks', 'Tasks', chanTasks.filter((t) => !t.done).length],
               ['pinned', 'Pinned', pinned.length],
               ['summary', 'Summary', null],
+              ['about', other ? 'Profile' : 'About', null],
             ] as const
           ).map(([id, l, n]) => (
             <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
@@ -1288,6 +1253,8 @@ export function ChatView(p: ViewProps) {
           </div>
         )}
 
+        {tab === 'about' && <ChannelAbout {...p} channel={channel} client={client} team={team} other={other} />}
+
         {tab === 'pinned' && (
           <div className="chan-pane">
             {pinned.map((m) => message(m, false))}
@@ -1317,38 +1284,6 @@ export function ChatView(p: ViewProps) {
           {top.length === 0 && <p className="chat-start">This is the start of {title}. Say hello 👋</p>}
         </div>
 
-        )}
-        {tab === 'messages' && pollDraft && (
-          <div className="inline-sheet">
-            <div className="is-head">
-              <BarChart3 size={15} /> New poll
-              <button className="icon-btn sm" onClick={() => setPollDraft(null)} aria-label="Close">
-                <X size={14} />
-              </button>
-            </div>
-            <input autoFocus className="is-input" value={pollDraft.q} onChange={(e) => setPollDraft({ ...pollDraft, q: e.target.value })} placeholder="Ask a question" />
-            {pollDraft.opts.map((o, i) => (
-              <input key={i} className="is-input" value={o} onChange={(e) => setPollDraft({ ...pollDraft, opts: pollDraft.opts.map((x, j) => (j === i ? e.target.value : x)) })} placeholder={`Option ${i + 1}`} />
-            ))}
-            <div className="is-foot">
-              {pollDraft.opts.length < 6 && (
-                <button className="link-btn" onClick={() => setPollDraft({ ...pollDraft, opts: [...pollDraft.opts, ''] })}>
-                  + Add option
-                </button>
-              )}
-              <span className="spacer" />
-              <button
-                className="primary-btn sm"
-                disabled={!pollDraft.q.trim() || pollDraft.opts.filter((o) => o.trim()).length < 2}
-                onClick={() => {
-                  p.onSend({ text: '', poll: { question: pollDraft.q.trim(), options: pollDraft.opts.filter((o) => o.trim()).map((o) => ({ text: o.trim(), votes: [] })) } });
-                  setPollDraft(null);
-                }}
-              >
-                Post poll
-              </button>
-            </div>
-          </div>
         )}
         {tab === 'messages' && kudos && (
           <div className="inline-sheet">
@@ -1383,7 +1318,6 @@ export function ChatView(p: ViewProps) {
           onSend={(t, also) => p.onSend({ text: t, parentId: thread.id, alsoInChannel: also })}
         />
       )}
-      {!thread && panel === 'info' && <InfoPanel {...p} channel={channel} client={client} team={team} other={other} onClose={() => setPanel(null)} />}
 
       <Popover anchor={reactAnchor} open={!!reactFor} onClose={() => setReactFor(null)} width={292} title="React">
         <div className="react-grid">
@@ -1519,14 +1453,11 @@ function ThreadPanel({
 
 /* ---------------- Info panel: everything about this channel's client or team ---------------- */
 
-function InfoPanel(p: ViewProps & { channel: Channel; client?: Client; team?: Team; other?: User; onClose: () => void }) {
+/** The About tab: purpose, client, team, owner, access, briefs, people, client contacts and client emails. */
+function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?: Team; other?: User }) {
   const { channel, client, team, other } = p;
-  const [tab, setTab] = useState<'about' | 'files' | 'emails' | 'people' | 'tasks' | 'summary'>('about');
-  const [summary, setSummary] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const person = (id: string) => p.users.find((u) => u.id === id);
 
-  const chatFiles = p.messages.flatMap((m) => (m.files ?? []).map((f) => ({ f, m })));
   const emails = client?.domain ? p.mail.filter((t) => t.messages.some((m) => [m.from, ...m.to].some((x) => x.email.toLowerCase().endsWith('@' + client.domain)))) : [];
   const contacts = client?.domain
     ? [...new Map(p.mail.flatMap((t) => t.messages.flatMap((m) => [m.from, ...m.to])).filter((x) => x.email.toLowerCase().endsWith('@' + client.domain)).map((x) => [x.email.toLowerCase(), x])).values()]
@@ -1538,55 +1469,11 @@ function InfoPanel(p: ViewProps & { channel: Channel; client?: Client; team?: Te
       .map((m) => m.date)
       .sort()
       .pop();
-  const tasks = p.tasks.filter((t) => !t.done && t.kind !== 'brief' && (client ? t.clientId === client.id : team ? t.teamId === team.id : false));
   const briefs = p.tasks.filter((t) => t.kind === 'brief' && !t.done && client && t.clientId === client.id);
 
-  const catchUp = async () => {
-    setLoading(true);
-    const recent = p.messages.slice(-40).map((m) => ({
-      who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? m.guestEmail) : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
-      text: m.voice?.transcript ?? m.text,
-      at: m.at,
-      task: m.taskId ? p.tasks.find((t) => t.id === m.taskId)?.title : undefined,
-      files: m.files?.map((f) => f.name),
-    }));
-    setSummary(await ai.catchUp(other ? other.name : `#${channel.name}`, recent, person(p.me)?.name.split(' ')[0] ?? 'me'));
-    setLoading(false);
-  };
-
-  const tabs = (
-    other
-      ? [
-          ['about', 'Profile'],
-          ['files', `Files · ${chatFiles.length}`],
-          ['summary', 'Catch me up'],
-        ]
-      : [
-          ['about', 'About'],
-          ...(client ? [['emails', `Emails · ${emails.length}`]] : []),
-          ['people', `People · ${channel.members.length + (channel.guests?.length ?? 0) + contacts.length}`],
-          ['summary', 'Catch me up'],
-        ]
-  ) as [typeof tab, string][];
-
   return (
-    <aside className="chat-side">
-      <header className="cs-head">
-        <strong>{other ? other.name : `#${channel.name}`}</strong>
-        <span className="spacer" />
-        <button className="icon-btn sm" onClick={p.onClose} aria-label="Close details">
-          <X size={16} />
-        </button>
-      </header>
-      <div className="cs-tabs">
-        {tabs.map(([id, l]) => (
-          <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
-            {l}
-          </button>
-        ))}
-      </div>
-      <div className="cs-body">
-        {tab === 'about' &&
+    <div className="chan-pane about-pane">
+        {
           (other ? (
             <div className="profile">
               <Avatar person={other} size={64} />
@@ -1653,39 +1540,9 @@ function InfoPanel(p: ViewProps & { channel: Channel; client?: Client; team?: Te
             </dl>
           ))}
 
-        {tab === 'files' && (
-          <div className="file-list">
-            {chatFiles.length === 0 && p.drive.length === 0 && <p className="te-empty">No files yet. Anything shared here is saved to Drive automatically.</p>}
-            {chatFiles.map(({ f, m }) => (
-              <a key={m.id + f.name} className="chat-file flat" href={f.url} target="_blank" rel="noreferrer" onClick={(e) => !f.url && e.preventDefault()}>
-                <span className="cf-icon">{f.type.startsWith('video') ? <Video size={16} /> : f.type.startsWith('image') ? <ImageIcon size={16} /> : <FileText size={16} />}</span>
-                <span className="cf-text">
-                  <strong>{f.name}</strong>
-                  <small>
-                    {fmtSize(f.size)} · {person(m.userId)?.name.split(' ')[0] ?? 'Guest'} · {relative(m.at)}
-                  </small>
-                </span>
-              </a>
-            ))}
-            {p.drive.length > 0 && <div className="sel-group">In Drive{client ? ` › ${client.name}` : ''}</div>}
-            {p.drive.map((d) => (
-              <div key={d.id} className="chat-file flat">
-                <span className="cf-icon">
-                  <FileText size={16} />
-                </span>
-                <span className="cf-text">
-                  <strong>{d.name}</strong>
-                  <small>
-                    {d.size ? fmtSize(d.size) : 'Folder'} · {relative(d.modified)}
-                  </small>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === 'emails' && (
+        {client && (
           <div className="te-list">
+            <div className="d-heading">Emails with {client.name}</div>
             {emails.length === 0 && <p className="te-empty">No emails with @{client?.domain} in inboxes you can open.</p>}
             {emails.map((t) => {
               const last = t.messages[t.messages.length - 1];
@@ -1705,8 +1562,9 @@ function InfoPanel(p: ViewProps & { channel: Channel; client?: Client; team?: Te
           </div>
         )}
 
-        {tab === 'people' && (
+        {!other && (
           <div className="people-list">
+            <div className="d-heading">People</div>
             <div className="sel-group">Team · {channel.members.length}</div>
             {channel.members.map((id) => {
               const u = person(id);
@@ -1764,50 +1622,6 @@ function InfoPanel(p: ViewProps & { channel: Channel; client?: Client; team?: Te
           </div>
         )}
 
-        {tab === 'tasks' && (
-          <div className="te-list">
-            {tasks.length === 0 && <p className="te-empty">No open tasks for {client?.name ?? team?.name}.</p>}
-            {tasks.map((t) => (
-              <button key={t.id} className="te-row simple" onClick={() => p.onOpenTask(t.id)}>
-                <SquareCheck size={16} className="muted" />
-                <div className="te-main">
-                  <strong>{t.title}</strong>
-                  <small>
-                    {person(t.userId)?.name.split(' ')[0] ?? 'Not assigned'}
-                    {t.due ? ` · ${dueLabel(t.due).text}` : ''}
-                  </small>
-                </div>
-              </button>
-            ))}
-            {client && (
-              <button className="link-btn" onClick={() => p.onOpenClient(client.id)}>
-                Open {client.name}’s page
-              </button>
-            )}
-          </div>
-        )}
-
-        {tab === 'summary' && (
-          <div className="catchup">
-            {summary ? (
-              <>
-                <p className="catchup-text">{summary}</p>
-                <button className="link-btn" onClick={catchUp}>
-                  Refresh
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="muted">A few lines on what you missed: decisions, questions, files and tasks.</p>
-                <button className="primary-btn sm" onClick={catchUp} disabled={loading}>
-                  <Sparkles size={14} /> {loading ? 'Reading…' : 'Catch me up'}
-                </button>
-                <p className="muted small">Uses AI only when you click. About 1 summary from your monthly allowance.</p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </aside>
+    </div>
   );
 }

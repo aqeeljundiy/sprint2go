@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Bell, ChevronUp, Sparkles, Eye, EyeOff, FileSearch, FileText, MapPin, Maximize2, MousePointerClick, Minimize2, Minus, Paperclip, Send, Trash2, X } from 'lucide-react';
+import { Bell, ChevronUp, Sparkles, Eye, EyeOff, FileText, Maximize2, MousePointerClick, Minimize2, Minus, Paperclip, Send, Trash2, X } from 'lucide-react';
 import type { Person } from '../types';
 import { fmtSize } from '../data/drive';
 import { usePersisted } from '../settings';
@@ -266,8 +266,6 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
                   [
                     ['opens', Eye, 'Opens', 'When and how often they open it'],
                     ['clicks', MousePointerClick, 'Link clicks', 'Which links they click'],
-                    ['attachments', FileSearch, 'Attachment views', 'Who views your files, and for how long'],
-                    ['details', MapPin, 'Device & location', 'Their device, email app and rough city'],
                     ['notify', Bell, 'Notify me', 'A pop-up the moment it happens'],
                   ] as const
                 ).map(([key, Icon, label, hint]) => (
@@ -293,7 +291,7 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
                     ))}
                   </div>
                 </div>
-                <div className="tm-foot">Tracking {external.map((p) => p.name.split(' ')[0]).join(', ')} · teammates are never tracked</div>
+                <div className="tm-foot">Tracking {external.map((p) => p.name.split(' ')[0]).join(', ')} · teammates are never tracked. Apple Mail can show opens that didn’t happen, so treat opens as a hint.</div>
               </div>
             )}
           </div>

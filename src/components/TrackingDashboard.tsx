@@ -108,7 +108,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
           <Menu size={18} />
         </button>
         <div>
-          <h1>Tracking</h1>
+          <h1>Waiting for reply</h1>
           <p>Who opened, clicked and replied to the emails you tracked</p>
         </div>
       </header>

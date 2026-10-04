@@ -50,6 +50,8 @@ interface Props {
   onAccountFilter: (id: string) => void;
   view: View;
   labels: Label[];
+  clients?: { id: string; name: string; color: string }[];
+  onClient?: (id: string) => void;
   counts: Partial<Record<FolderId, number>>;
   open: boolean; // mobile drawer
   onSelect: (v: View) => void;
@@ -58,7 +60,7 @@ interface Props {
 }
 
 export function Sidebar(props: Props) {
-  const { mode, collapsed, view, labels, counts, open } = props;
+  const { mode, collapsed, view, counts, open } = props;
   const isActive = (v: View) => mode === 'mail' && v.kind === view.kind && v.id === view.id;
   const asideRef = useRef<HTMLElement>(null);
 
@@ -165,28 +167,27 @@ export function Sidebar(props: Props) {
                   <button
                     className={`nav-item ${isActive({ kind: 'tracking', id: 'tracking' }) ? 'active' : ''}`}
                     onClick={() => props.onSelect({ kind: 'tracking', id: 'tracking' })}
-                    title="Tracking"
+                    title="Waiting for reply"
                   >
                     <Activity size={17} />
-                    <span className="sb-label">Tracking</span>
+                    <span className="sb-label">Waiting for reply</span>
                   </button>
 
                 </nav>
 
-                <div className="nav-heading sb-label">Labels</div>
-                <nav className="nav">
-                  {labels.map((l) => (
-                    <button
-                      key={l.id}
-                      className={`nav-item ${isActive({ kind: 'label', id: l.id }) ? 'active' : ''}`}
-                      onClick={() => props.onSelect({ kind: 'label', id: l.id })}
-                      title={l.name}
-                    >
-                      <span className="dot" style={{ background: l.color }} />
-                      <span className="sb-label">{l.name}</span>
-                    </button>
-                  ))}
-                </nav>
+                {!!props.clients?.length && (
+                  <>
+                    <div className="nav-heading sb-label">Clients</div>
+                    <nav className="nav">
+                      {props.clients.map((c) => (
+                        <button key={c.id} className="nav-item" onClick={() => props.onClient?.(c.id)} title={`${c.name}: emails on the client page`}>
+                          <span className="dot" style={{ background: c.color }} />
+                          <span className="sb-label">{c.name}</span>
+                        </button>
+                      ))}
+                    </nav>
+                  </>
+                )}
               </>
             )}
           </div>

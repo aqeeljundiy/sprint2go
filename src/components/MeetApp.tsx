@@ -8,7 +8,6 @@ import {
   Eye,
   FileText,
   Folder,
-  History,
   Inbox,
   Link2,
   ListChecks,
@@ -30,7 +29,6 @@ import {
 } from 'lucide-react';
 import type { CalEvent, Client, Meeting, MeetingSettings, MeetingType, Role, Todo, User } from '../types';
 import { relative, fullDate } from '../utils';
-import { ai } from '../ai';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { Popover } from './ui/Popover';
@@ -161,7 +159,8 @@ export interface MeetProps {
   toast: (t: string) => void;
 }
 
-export type AskScope = { kind: 'meeting'; id: string } | { kind: 'folder'; clientId: string } | { kind: 'all' };
+export type { AskScope } from './Assistant';
+import type { AskScope } from './Assistant';
 
 export function MeetView(p: MeetProps) {
   const pg = p.page;
@@ -815,15 +814,12 @@ function MeetTasks(p: MeetProps) {
 
 function FolderPage(p: MeetProps & { clientId: string }) {
   const c = p.clients.find((x) => x.id === p.clientId);
-  const [tab, setTab] = useState<'overview' | 'meetings' | 'tasks'>('overview');
-  const [writing, setWriting] = useState(false);
+  const [tab, setTab] = useState<'meetings' | 'tasks'>('meetings');
   const list = p.meetings.filter((m) => m.clientId === p.clientId).sort((a, b) => b.at.localeCompare(a.at));
   const { shown, bar, filtering } = useFilter(list);
   const tasks = p.tasks.filter((t) => t.meetingId && list.some((m) => m.id === t.meetingId));
   const open = tasks.filter((t) => !t.done).length;
-  const done = tasks.length - open;
   if (!c) return null;
-  const o = c.overview;
   return (
     <section className="meet-pane view-enter">
       <Head
@@ -839,16 +835,15 @@ function FolderPage(p: MeetProps & { clientId: string }) {
         onMenu={p.onMenu}
       >
         <button className="ghost-btn sm" onClick={() => p.onOpenClient(c.id)}>
-          Client page
+          Client page: overview, mail, files
         </button>
-        <button className="ghost-btn sm" onClick={() => p.onAsk({ kind: 'folder', clientId: c.id })}>
+        <button className="ghost-btn sm" onClick={() => p.onAsk({ kind: 'client', id: c.id })}>
           <Sparkles size={13} /> Ask AI
         </button>
       </Head>
       <div className="client-tabs">
         {(
           [
-            ['overview', 'Overview'],
             ['meetings', `Meetings ${list.length}`],
             ['tasks', `Tasks ${open}`],
           ] as const
@@ -859,85 +854,6 @@ function FolderPage(p: MeetProps & { clientId: string }) {
         ))}
       </div>
       <div className="tracking-scroll">
-        {tab === 'overview' && (
-          <>
-            <div className="stat-cards">
-              <div>
-                <b>{list.length}</b>
-                <span>Meetings{list.length ? ` · since ${new Date(list[list.length - 1].at).toLocaleDateString([], { day: 'numeric', month: 'short' })}` : ''}</span>
-              </div>
-              <div>
-                <b>{open}</b>
-                <span>Open tasks · {done} done</span>
-              </div>
-              <div>
-                <b>{tasks.length ? Math.round((done / tasks.length) * 100) : 0}%</b>
-                <span>
-                  Progress
-                  <span className="bar wide">
-                    <span style={{ width: `${tasks.length ? (done / tasks.length) * 100 : 0}%` }} />
-                  </span>
-                </span>
-              </div>
-              <div>
-                <b>{list[0] ? relative(list[0].at) : 'none'}</b>
-                <span>Last meeting</span>
-              </div>
-            </div>
-            <div className="side-card overview-card">
-              <h3>
-                {o?.headline ?? 'Account overview'}
-                <button className="ghost-btn sm" disabled={writing || !list.length} onClick={async () => (setWriting(true), await p.onWriteOverview(c.id), setWriting(false))}>
-                  <Sparkles size={13} /> {writing ? 'Writing…' : o ? 'Refresh overview' : 'Write overview'}
-                </button>
-              </h3>
-              <p className="muted small">{o ? `Written by AI from ${o.from} meeting${o.from === 1 ? "" : "s"} · updated ${relative(o.at)}` : 'AI writes this from all meetings with this client. Only when you click.'}</p>
-              {o ? (
-                <>
-                  <p>{o.summary}</p>
-                  <p>
-                    <b>Progress:</b> {o.progress}
-                  </p>
-                  <div className="ov-cols">
-                    {(
-                      [
-                        ['Wins', o.wins, 'Nothing yet'],
-                        ['Risks', o.risks, 'None flagged'],
-                        ['Next steps', o.next, 'None'],
-                      ] as const
-                    ).map(([h, l, e]) => (
-                      <div key={h}>
-                        <h4>{h}</h4>
-                        {l.length ? (
-                          <ul>
-                            {l.map((x) => (
-                              <li key={x}>{x}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="muted small">{e}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="te-empty">{list.length ? 'No overview yet.' : 'No meetings with this client yet.'}</p>
-              )}
-            </div>
-            <h4 className="tl-head">Timeline</h4>
-            <div className="timeline">
-              {list.map((m) => (
-                <button key={m.id} onClick={() => p.onPage({ kind: 'meeting', id: m.id })}>
-                  <time>{new Date(m.at).toLocaleDateString([], { day: 'numeric', month: 'short' })}</time>
-                  <strong>{m.title}</strong>
-                  <span>{m.summary.length > 180 ? m.summary.slice(0, 180) + '…' : m.summary || STATUS_LABEL[m.status ?? 'done']}</span>
-                </button>
-              ))}
-              {!list.length && <p className="te-empty">No meetings yet.</p>}
-            </div>
-          </>
-        )}
         {tab === 'meetings' && (
           <>
             {bar('Search this client’s meetings')}
@@ -1263,189 +1179,4 @@ export function SharedPage({ m, brand, tasks, users, onClose }: { m: Meeting; br
   );
 }
 
-/* ---------------- Ask AI about meetings ---------------- */
-
-interface Chat {
-  id: string;
-  title: string;
-  scope: AskScope;
-  messages: { role: 'user' | 'ai'; text: string }[];
-  at: string;
-}
-
-export function MeetAsk({ scope, setScope, meetings, clients, tasks, chats, setChats, onOpenMeeting, onClose }: {
-  scope: AskScope;
-  setScope: (s: AskScope) => void;
-  meetings: Meeting[];
-  clients: Client[];
-  tasks: Todo[];
-  chats: Chat[];
-  setChats: (c: Chat[]) => void;
-  onOpenMeeting: (id: string, at?: number) => void;
-  onClose: () => void;
-}) {
-  const [chatId, setChatId] = useState<string | null>(null);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [history, setHistory] = useState(false);
-  const chat = chats.find((c) => c.id === chatId);
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: 'end' });
-  }, [chat?.messages.length, busy]);
-
-  const inScope = scope.kind === 'meeting' ? meetings.filter((m) => m.id === scope.id) : scope.kind === 'folder' ? meetings.filter((m) => m.clientId === scope.clientId) : meetings.slice(0, 25);
-  const scopeName = scope.kind === 'meeting' ? `This meeting: ${meetings.find((m) => m.id === scope.id)?.title}` : scope.kind === 'folder' ? `Folder: ${clients.find((c) => c.id === scope.clientId)?.name}` : 'All meetings';
-  const chips =
-    scope.kind === 'meeting'
-      ? ['Summarize this meeting in 3 bullets', 'What did we promise the client?', 'Draft a follow-up email']
-      : scope.kind === 'folder'
-        ? ['Where do things stand with this client?', 'What is still open, and who owns it?', 'What are the biggest risks right now?']
-        : ['What did we promise clients this week?', 'Which tasks are overdue?', 'Which meetings talked about budget?'];
-
-  const ask = async (q: string) => {
-    if (!q.trim() || busy) return;
-    const id = chat?.id ?? Math.random().toString(36).slice(2);
-    const base: Chat = chat ?? { id, title: q.slice(0, 80), scope, messages: [], at: new Date().toISOString() };
-    const next = { ...base, messages: [...base.messages, { role: 'user' as const, text: q }], at: new Date().toISOString() };
-    setChats([next, ...chats.filter((c) => c.id !== id)].slice(0, 50));
-    setChatId(id);
-    setText('');
-    setBusy(true);
-    let answer: string;
-    try {
-      answer = await ai.askMeetings(
-        q,
-        inScope.map((m) => ({ id: m.id, title: m.title, summary: m.summary, transcript: m.transcript ?? [], actions: m.actions.map((a) => ({ title: a.title, owner: a.owner, done: !!tasks.find((t) => t.id === a.taskId)?.done })) })),
-      );
-    } catch (e) {
-      answer = `**Couldn't answer:** ${(e as Error).message}`;
-    }
-    setChats([{ ...next, messages: [...next.messages, { role: 'ai' as const, text: answer }] }, ...chats.filter((c) => c.id !== id)].slice(0, 50));
-    setBusy(false);
-  };
-
-  /** Light markdown plus citations: [M:id] and [M:id@ms] become links to the meeting moment. */
-  const render = (t: string) =>
-    t.split('\n').map((line, i) => {
-      const parts = line.split(/(\*\*[^*]+\*\*|\[M:[\w-]+(?:@\d+)?\])/g);
-      const body = parts.map((part, j) => {
-        const cite = part.match(/^\[M:([\w-]+)(?:@(\d+))?\]$/);
-        if (cite) {
-          const mt = meetings.find((m) => m.id === cite[1]);
-          return (
-            <button key={j} className="cite" onClick={() => onOpenMeeting(cite[1], cite[2] ? Number(cite[2]) : undefined)}>
-              {mt?.title ?? 'meeting'}
-              {cite[2] ? ` · ${mmss(Number(cite[2]))}` : ''}
-            </button>
-          );
-        }
-        return part.startsWith('**') ? <b key={j}>{part.slice(2, -2)}</b> : part;
-      });
-      return line.startsWith('- ') ? (
-        <li key={i}>{body.map((b, k) => (k === 0 && typeof b === 'string' ? b.slice(2) : b))}</li>
-      ) : (
-        <p key={i}>{body}</p>
-      );
-    });
-
-  return (
-    <aside className="ask-drawer">
-      <header className="cs-head">
-        <Sparkles size={15} />
-        <strong>Ask AI</strong>
-        <span className="spacer" />
-        <button className="icon-btn sm" title="Past chats" onClick={() => setHistory((h) => !h)}>
-          <History size={15} />
-        </button>
-        <button className="icon-btn sm" title="New chat" onClick={() => (setChatId(null), setHistory(false))}>
-          <Plus size={15} />
-        </button>
-        <button className="icon-btn sm" onClick={onClose} aria-label="Close">
-          <X size={16} />
-        </button>
-      </header>
-      <div className="ask-scope">
-        <span className="muted small">Looking at</span>
-        <Select
-          value={scope.kind === 'meeting' ? `m:${scope.id}` : scope.kind === 'folder' ? `f:${scope.clientId}` : 'all'}
-          onChange={(v) => setScope(v === 'all' ? { kind: 'all' } : v.startsWith('m:') ? { kind: 'meeting', id: v.slice(2) } : { kind: 'folder', clientId: v.slice(2) })}
-          label="Looking at"
-          className="sel-flat"
-          width={300}
-          options={[
-            ...(scope.kind === 'meeting' ? [{ value: `m:${scope.id}`, label: scopeName }] : []),
-            ...clients.map((c) => ({ value: `f:${c.id}`, label: `Folder: ${c.name}` })),
-            { value: 'all', label: 'All meetings' },
-          ]}
-        />
-      </div>
-      <div className="cs-body">
-        {history ? (
-          <div className="people-list">
-            {chats.length === 0 && <p className="te-empty">No chats yet.</p>}
-            {chats.map((c) => (
-              <div key={c.id} className="pl-row">
-                <button className="pl-text" onClick={() => (setChatId(c.id), setScope(c.scope), setHistory(false))}>
-                  <strong>{c.title}</strong>
-                  <small>
-                    {relative(c.at)}
-                    {c.scope.kind !== 'all' ? ` · ${c.scope.kind}` : ''}
-                  </small>
-                </button>
-                <button className="icon-btn sm" onClick={() => setChats(chats.filter((x) => x.id !== c.id))} aria-label="Delete chat">
-                  <X size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : !chat ? (
-          <div className="ask-empty">
-            <Sparkles size={22} />
-            <strong>Ask anything about your meetings</strong>
-            <p className="muted small">Answers come from your notes, tasks and transcripts, with links to the source.</p>
-            {chips.map((c) => (
-              <button key={c} className="ask-chip" onClick={() => ask(c)}>
-                {c}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="ask-msgs">
-            {chat.messages.map((msg, i) => (
-              <div key={i} className={`ask-msg ${msg.role}`}>
-                {msg.role === 'ai' ? render(msg.text) : msg.text}
-              </div>
-            ))}
-            {busy && (
-              <div className="ask-msg ai typing">
-                <i />
-                <i />
-                <i />
-              </div>
-            )}
-            <div ref={end} />
-          </div>
-        )}
-      </div>
-      <div className="thread-compose">
-        <textarea
-          rows={2}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), ask(text))}
-          placeholder="Ask about a client, a meeting, open tasks…"
-        />
-        <div className="tc-foot">
-          <span className="muted small">Uses AI when you send</span>
-          <button className="ai-send chat-send" onClick={() => ask(text)} disabled={!text.trim() || busy} aria-label="Ask">
-            <Send size={15} />
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-export type { Chat as MeetChat };
 export { Mic as MeetIcon };

@@ -13,8 +13,8 @@ import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, useStored } from './store';
-import { ai } from './ai';
-import { AIAssistant } from './components/AIAssistant';
+import { ai, AI_LIVE } from './ai';
+import { Assistant, type AskChat } from './components/Assistant';
 import { BlockDialog } from './components/BlockDialog';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { InviteMember, NewAccount } from './components/WorkspaceForms';
@@ -45,7 +45,7 @@ import { ChatSidebar, ChatView, type Presence, type SendPayload } from './compon
 import { ChannelDialog } from './components/ChannelDialog';
 import { ClientPortal } from './components/ClientPortal';
 import { celebrate } from './components/ui/confetti';
-import { MeetAsk, MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetChat, type MeetPage } from './components/MeetApp';
+import { MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS } from './data/workspaces';
 import { DEMO_SCRIPT } from './data/team';
 import { Onboarding } from './components/Onboarding';
@@ -217,7 +217,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const todosRef = useRef(todos);
   todosRef.current = todos;
   const [, setScanning] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
   const [blockTarget, setBlockTarget] = useState<Thread | null>(null);
   const [view, setView] = useState<View>({ kind: 'folder', id: 'inbox' });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -258,6 +257,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [meetings, setMeetings] = useStored('meetings');
   const [taskScope, setTaskScope] = useState<TaskScope>({ kind: 'mine' });
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'portal' | undefined>(undefined);
   const [teams, setTeams] = useStored('teams');
   const [statuses, setStatuses] = useStored('statuses');
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
@@ -267,8 +267,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [sendBotOpen, setSendBotOpen] = useState(false);
   const [shareFor, setShareFor] = useState<string | null>(null);
   const [sharedPreview, setSharedPreview] = useState<string | null>(null);
-  const [askMeet, setAskMeet] = useState<AskScope | null>(null);
-  const [meetChats, setMeetChats] = usePersisted<MeetChat[]>(`s2g-meet-chats:${user.id}`, []);
+  const [askScope, setAskScope] = useState<AskScope | null>(null);
+  const [askChats, setAskChats] = usePersisted<AskChat[]>(`s2g-ask-chats:${user.id}`, []);
   const [joinOverrides, setJoinOverrides] = usePersisted<Record<string, boolean>>(`s2g-join:${user.id}`, {});
   const [sentEvents, setSentEvents] = useState<Record<string, string>>({});
   const botTimers = useRef<Record<string, number[]>>({});
@@ -887,7 +887,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setTaskScope(scope);
     go('tasks');
   };
-  const openClient = (id: string) => openTasks({ kind: 'client', id });
+  /** The client page is the hub: overview, tasks, chat, mail, meetings, files, portal. */
+  const openClient = (id: string, tab?: typeof clientTab) => {
+    setClientTab(tab);
+    openTasks({ kind: 'client', id });
+  };
   const openChannel = (id: string) => {
     setChatId(id);
     go('chat');
@@ -947,6 +951,55 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return;
     }
     setInviting(true);
+  };
+
+  /* ---------------- The one assistant ---------------- */
+
+  /** Ask AI starts where you are: this meeting, this channel, this client, or everything. */
+  const contextScope = (): AskScope =>
+    mode === 'meet' && meetPage.kind === 'meeting'
+      ? { kind: 'meeting', id: meetPage.id }
+      : mode === 'meet' && meetPage.kind === 'folder'
+        ? { kind: 'client', id: meetPage.clientId }
+        : mode === 'chat' && chatId
+          ? { kind: 'channel', id: chatId }
+          : mode === 'tasks' && taskScope.kind === 'client'
+            ? { kind: 'client', id: taskScope.id }
+            : { kind: 'all' };
+  const toggleAsk = () => setAskScope((s2) => (s2 ? null : contextScope()));
+  const askOptions = [
+    { value: 'all', label: 'Everything', group: 'Everywhere' },
+    ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: 'Clients' })),
+    ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ value: `channel:${c.id}`, label: `#${c.name}`, group: 'Channels' })),
+    ...[...wsMeetings].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12).map((m) => ({ value: `meeting:${m.id}`, label: m.title, group: 'Meetings' })),
+  ];
+
+  /** Sources for a scope: meetings, emails, chat and tasks, shaped the same way for the AI. */
+  const askAnything = async (q: string, scope: AskScope) => {
+    const client = scope.kind === 'client' ? wsClients.find((c) => c.id === scope.id) : undefined;
+    const meetSrc = (m: Meeting) => ({ kind: 'M' as const, id: m.id, title: m.title, summary: m.summary, transcript: m.transcript ?? [], actions: m.actions.map((a) => ({ title: a.title, owner: a.owner, done: !!todos.find((t) => t.id === a.taskId)?.done })) });
+    const mailSrc = (t: Thread) => ({ kind: 'E' as const, id: t.id, title: t.subject, summary: t.messages[t.messages.length - 1].body.slice(0, 300), transcript: t.messages.map((m, i) => ({ speaker: m.from.name, text: m.body.slice(0, 400), at: i })), actions: [] });
+    const chanSrc = (c: Channel) => ({ kind: 'C' as const, id: c.id, title: `#${c.name}`, summary: c.topic ?? '', transcript: messages.filter((m) => m.channelId === c.id && m.text).slice(-60).map((m, i) => ({ speaker: allUsers.find((u) => u.id === m.userId)?.name.split(' ')[0] ?? 'Guest', text: m.text, at: i })), actions: [] });
+    const taskSrc = (id: string, list: Todo[]) => ({ kind: 'T' as const, id, title: 'Tasks', summary: '', transcript: [], actions: list.filter((t) => t.kind !== 'brief').map((t) => ({ title: t.title + (t.due && t.due < localDay() && !t.done ? ' (overdue)' : ''), owner: allUsers.find((u) => u.id === t.userId)?.name.split(' ')[0], done: t.done })) });
+    // Mail questions in the "everything" view use the inbox assistant.
+    if (scope.kind === 'all' && /urgent|unread|inbox|email|mail|invoice/i.test(q)) {
+      const r = await ai.assistant(q, scoped, settings.name || user.name);
+      return r.answer + (r.threadIds.length ? '\n' + r.threadIds.map((id) => `[E:${id}]`).join(' ') : '');
+    }
+    const sources =
+      scope.kind === 'meeting'
+        ? wsMeetings.filter((m) => m.id === scope.id).map(meetSrc)
+        : scope.kind === 'channel'
+          ? wsChannels.filter((c) => c.id === scope.id).map(chanSrc)
+          : scope.kind === 'client' && client
+            ? [
+                ...wsMeetings.filter((m) => m.clientId === client.id && m.summary).map(meetSrc),
+                ...(client.domain ? wsThreads.filter((t) => t.messages.some((m) => [m.from, ...m.to].some((x) => x.email.endsWith('@' + client.domain)))).map(mailSrc) : []),
+                ...wsChannels.filter((c) => c.clientId === client.id).map(chanSrc),
+                taskSrc(client.id, wsTasks.filter((t) => t.clientId === client.id)),
+              ]
+            : [...wsMeetings.filter((m) => m.summary).slice(0, 25).map(meetSrc), ...wsChannels.filter((c) => c.kind === 'channel').map(chanSrc), taskSrc('all', wsTasks)];
+    return ai.askMeetings(q, sources);
   };
 
   /** Everything this company has, as one JSON file. Always free, on every plan. */
@@ -1444,7 +1497,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
         e.preventDefault();
-        setAiOpen((o) => !o);
+        toggleAsk();
         return;
       }
       // ⌥1–9 switches workspace (works everywhere)
@@ -1613,10 +1666,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         notifications={<Notifications notices={myNotices} onOpen={openNotice} onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))} onClose={() => setNoticesOpen(false)} />}
         unreadNotices={myNotices.filter((n) => !n.read).length}
         noticesOpen={noticesOpen}
-        aiOpen={aiOpen}
+        aiOpen={!!askScope}
         onApp={go}
         onSearch={() => setPaletteOpen(true)}
-        onAskAI={() => setAiOpen((o) => !o)}
+        onAskAI={toggleAsk}
         onNotices={() => setNoticesOpen((o) => !o)}
       />
       <Sidebar
@@ -1729,7 +1782,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             canSend={meetSettings.whoCanRecord === 'everyone' || myRole !== 'member'}
             onPage={(pg) => (setMeetPage(pg), setSidebarOpen(false))}
             onSend={() => setSendBotOpen(true)}
-            onAsk={() => setAskMeet({ kind: 'all' })}
+            onAsk={() => setAskScope({ kind: 'all' })}
             onSettings={() => (setSettingsSection('meetings'), go('settings'))}
           />
           ) : appMode === 'chat' ? (
@@ -1778,6 +1831,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         }}
         view={view}
         labels={LABELS}
+        clients={wsClients}
+        onClient={(id) => (openClient(id, 'emails'), setSidebarOpen(false))}
         counts={counts}
         open={sidebarOpen}
         onSelect={selectView}
@@ -1862,6 +1917,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenTask={setTaskOpen}
             files={drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id)}
             onPreviewPortal={(clientId, guestEmail) => setPortal({ clientId, guestEmail })}
+            messages={messages}
+            clientTab={clientTab}
+            onWriteOverview={writeOverview}
             onShareMeeting={(id, shared) => setMeetings((ms) => ms.map((m) => (m.id === id ? { ...m, sharedWithClient: shared } : m)))}
             onShareFile={(id, shared) => patchDrive(id, { sharedWithClient: shared })}
             users={members}
@@ -1980,7 +2038,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               sendBot({ url: zoom ? 'https://zoom.us/j/1234567890' : 'https://meet.google.com/abc-defg-hij', title: e.title, botName: meetSettings.botName, clientId: '', attendees: (e.guests ?? []).map((g) => g.name), fromEvent: e.id });
               setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
             }}
-            onAsk={setAskMeet}
+            onAsk={setAskScope}
             onSend={() => setSendBotOpen(true)}
             onMenu={() => setSidebarOpen(true)}
             toast={(text) => showToast({ text })}
@@ -2386,17 +2444,27 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {sharedPreview && meetings.some((m) => m.id === sharedPreview) && (
         <SharedPage m={meetings.find((m) => m.id === sharedPreview)!} brand={ws.name} tasks={wsTasks.filter((t) => t.meetingId === sharedPreview)} users={members} onClose={() => setSharedPreview(null)} />
       )}
-      {askMeet && (
-        <MeetAsk
-          scope={askMeet}
-          setScope={setAskMeet}
-          meetings={wsMeetings.filter((m) => m.summary)}
-          clients={wsClients}
-          tasks={wsTasks}
-          chats={meetChats}
-          setChats={setMeetChats}
-          onOpenMeeting={(id) => (setMeetPage({ kind: 'meeting', id }), go('meet'))}
-          onClose={() => setAskMeet(null)}
+      {askScope && (
+        <Assistant
+          scope={askScope}
+          setScope={setAskScope}
+          scopeOptions={askOptions}
+          chats={askChats}
+          setChats={setAskChats}
+          ask={askAnything}
+          live={AI_LIVE}
+          citeLabel={(k, id) =>
+            k === 'M' ? (meetings.find((m) => m.id === id)?.title ?? 'meeting') : k === 'E' ? (threads.find((t) => t.id === id)?.subject ?? 'email') : k === 'C' ? `#${channels.find((c) => c.id === id)?.name ?? 'channel'}` : 'Tasks'
+          }
+          onCite={(k, id, at) => {
+            if (k === 'M') (setMeetPage({ kind: 'meeting', id }), go('meet'));
+            else if (k === 'E') openThread(id);
+            else if (k === 'C') openChannel(id);
+            else openTasks(id === 'all' ? { kind: 'mine' } : { kind: 'client', id });
+            void at;
+            if (mobile) setAskScope(null);
+          }}
+          onClose={() => setAskScope(null)}
         />
       )}
       {chanDialog && (
@@ -2452,16 +2520,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
       {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
-      <AIAssistant
-        open={aiOpen}
-        threads={scoped}
-        me={settings.name || user.name}
-        onClose={() => setAiOpen(false)}
-        onOpenThread={(id) => {
-          openThread(id);
-          if (mobile) setAiOpen(false);
-        }}
-      />
+
       {blockTarget && incomingFrom(blockTarget) && (
         <BlockDialog
           sender={incomingFrom(blockTarget)!}

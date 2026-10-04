@@ -6,8 +6,8 @@ export { isTeam } from './identity';
 export const DEFAULT_TRACK_OPTIONS: TrackOptions = {
   opens: true,
   clicks: true,
-  attachments: true,
-  details: true,
+  attachments: false, // not offered: misleading and invasive
+  details: false, // device and location: not offered (privacy)
   remindDays: 3,
   notify: true,
 };

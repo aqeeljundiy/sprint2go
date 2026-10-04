@@ -243,8 +243,11 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           {ai.preset === 'custom' && <p className="muted small">Custom: you picked models per job below.</p>}
         </div>
 
-        <div className="set-block">
-          <h3>Each AI job</h3>
+        <details className="set-block advanced">
+          <summary>
+            <h3>Advanced: choose the AI for each job</h3>
+            <small className="muted">Most companies never need this. The setup above fills it in for you.</small>
+          </summary>
           <p className="muted small">Rule of thumb: spend on the jobs that assign people and talk to clients, save on the jobs nobody reads twice.</p>
           <div className="jobs-table">
             {JOBS.map((job) => {
@@ -299,7 +302,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               );
             })}
           </div>
-        </div>
+        </details>
 
         <div className="set-block">
           <h3>Automatic jobs</h3>

@@ -440,3 +440,64 @@
 .summary-pick small {
   font-size: 12px;
 }
+
+details.advanced summary {
+  cursor: pointer;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+}
+details.advanced summary::-webkit-details-marker {
+  display: none;
+}
+details.advanced summary h3::after {
+  content: ' ▸';
+  color: var(--text-3);
+}
+details.advanced[open] summary h3::after {
+  content: ' ▾';
+}
+.about-pane .d-heading {
+  margin-top: 14px;
+}
+.hub-overview {
+  display: grid;
+  gap: 14px;
+}
+.hub-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.hub-chat {
+  gap: 4px;
+}
+.hub-msg {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: 13.5px;
+}
+.hub-msg time {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.hub-chat .primary-btn {
+  justify-self: start;
+  margin-top: 8px;
+}
+@media (max-width: 760px) {
+  .hub-two {
+    grid-template-columns: 1fr;
+  }
+  .hub-msg {
+    grid-template-columns: 70px 1fr;
+  }
+  .hub-msg time {
+    display: none;
+  }
+}
