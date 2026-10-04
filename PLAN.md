@@ -239,4 +239,5 @@ See BACKLOG.md: UI polish pass (fewer boxes and grey, no nested inputs, a delibe
 - Referral: 1 free month for both sides. (decided)
 - Meet keeps every feature of the P&P meetings app; onboarding asks the default for what meetings keep (video, audio, notes only); admin can change it. (decided)
 - Dropped: billing clients from the client page. The billing menu is only for the company's own Sprint2go subscription (plan, invoice history, payment method, usage).
-- Open: which PT bills customers during the beta (recommend an existing PT for beta, PT Sprint2go before public launch); Paddle added when the first foreign customer appears.
+- Parked until real customers pay: which company receives subscription payments (Xendit needs one). Not needed for local development.
+- Focus (5 Oct): the product working well locally first. No domain, DNS or servers until Aqeel asks.
