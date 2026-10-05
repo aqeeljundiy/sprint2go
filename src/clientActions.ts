@@ -67,10 +67,11 @@ export function clientActions(c: ClientCtx) {
 
   return {
     /** A message in a shared channel. */
-    send(channelId: string, text: string) {
+    send(channelId: string, pl: { text: string; files?: ChatMessage['files']; parentId?: string; alsoInChannel?: boolean }) {
       const ch = c.channels.find((x) => x.id === channelId);
-      if (!ch || !text.trim()) return;
-      c.setMessages((ms) => [...ms, { id: uid(), channelId, userId: 'guest', guestEmail: c.person.email, text: text.trim(), at: now() }]);
+      const text = pl.text ?? '';
+      if (!ch || (!text.trim() && !pl.files?.length)) return;
+      c.setMessages((ms) => [...ms, { id: uid(), channelId, userId: 'guest', guestEmail: c.person.email, text: text.trim(), at: now(), files: pl.files, parentId: pl.parentId, alsoInChannel: pl.alsoInChannel }]);
       const mentioned = c.team.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id);
       tell(mentioned, `${c.person.name} (${c.client.name}) mentioned you in #${ch.name}`, { app: 'chat', id: channelId });
     },

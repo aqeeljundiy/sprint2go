@@ -728,6 +728,8 @@ interface ViewProps {
   onSettings: () => void;
   onMenu: () => void;
   onBack?: () => void; // phones: back to the channel list
+  /** Someone at a client (their portal): messages and materials only, none of the team's tools. */
+  guest?: { canPost: boolean };
 }
 
 /** "@Rizky" → <b>@Rizky</b>; links clickable; keeps everything else as text. */
@@ -805,7 +807,8 @@ export function ChatView(p: ViewProps) {
   const sorted = useMemo(() => [...p.messages].sort((a, b) => a.at.localeCompare(b.at)), [p.messages]);
   const top = sorted.filter((m) => !m.parentId || m.alsoInChannel);
   const replies = (id: string) => sorted.filter((m) => m.parentId === id);
-  const canPost = !channel || channel.postPolicy !== 'admins' || p.myRole !== 'member' || channel.ownerId === me;
+  const guest = p.guest;
+  const canPost = guest ? guest.canPost : !channel || channel.postPolicy !== 'admins' || p.myRole !== 'member' || channel.ownerId === me;
   const thread = threadId ? p.messages.find((m) => m.id === threadId) : undefined;
 
   useEffect(() => {
@@ -829,7 +832,7 @@ export function ChatView(p: ViewProps) {
     () => (mention === null ? [] : users.filter((u) => u.id !== me && u.name.toLowerCase().startsWith(mention.toLowerCase())).slice(0, 5)),
     [mention, users, me],
   );
-  const slash = text.startsWith('/') && !text.includes(' ') ? COMMANDS.filter((c) => c.cmd.startsWith(text.toLowerCase())) : [];
+  const slash = !guest && text.startsWith('/') && !text.includes(' ') ? COMMANDS.filter((c) => c.cmd.startsWith(text.toLowerCase())) : [];
 
   if (!channel)
     return (
@@ -886,6 +889,7 @@ export function ChatView(p: ViewProps) {
 
   /** Slash commands run here; everything else is a message. */
   const runCommand = (raw: string): boolean => {
+    if (guest) return false;
     const [cmd, ...rest] = raw.split(' ');
     const arg = rest.join(' ').trim();
     switch (cmd.toLowerCase()) {
@@ -1099,31 +1103,33 @@ export function ChatView(p: ViewProps) {
           )}
         </div>
         <div className="cm-tools">
-          <button
-            title="React"
-            onClick={(e) => {
-              reactAnchor.current = e.currentTarget;
-              setReactFor(m.id);
-            }}
-          >
-            <SmilePlus size={15} />
-          </button>
+          {!guest && (
+            <button
+              title="React"
+              onClick={(e) => {
+                reactAnchor.current = e.currentTarget;
+                setReactFor(m.id);
+              }}
+            >
+              <SmilePlus size={15} />
+            </button>
+          )}
           {!inThread && (
             <button title="Reply in thread" onClick={() => setThreadId(m.id)}>
               <MessageSquareReply size={15} />
             </button>
           )}
-          {!inThread && (
+          {!inThread && !guest && (
             <button title={m.pinned ? 'Unpin' : 'Pin to the channel'} onClick={() => p.onPin(m.id)}>
               <Pin size={15} className={m.pinned ? 'pinned' : ''} />
             </button>
           )}
-          {!task && m.kind !== 'kudos' && m.text && (
+          {!guest && !task && m.kind !== 'kudos' && m.text && (
             <button title="Turn into a task" onClick={() => p.onMakeTask(m)}>
               <ListChecks size={15} />
             </button>
           )}
-          {m.userId === me && !m.guestEmail && (
+          {!guest && m.userId === me && !m.guestEmail && (
             <button title="Delete" onClick={() => p.onDelete(m.id)}>
               <Trash2 size={15} />
             </button>
@@ -1194,11 +1200,11 @@ export function ChatView(p: ViewProps) {
               }
               if (e.key === 'Escape') setMention(null);
             }}
-            placeholder={`Message ${title}  ·  type / for commands`}
+            placeholder={guest ? `Message ${title}` : `Message ${title}  ·  type / for commands`}
           />
 
-          {text.trim() ? (
-            <button className="ai-send chat-send" onClick={send} aria-label="Send">
+          {text.trim() || guest ? (
+            <button className="ai-send chat-send" onClick={send} aria-label="Send" disabled={!text.trim()}>
               <ArrowUp size={16} />
             </button>
           ) : (
@@ -1214,16 +1220,19 @@ export function ChatView(p: ViewProps) {
           <button className="sel-opt" onClick={() => (setPlusOpen(false), fileInput.current?.click())}>
             <Paperclip size={15} /> Upload a file
           </button>
-          <button className="sel-opt" onClick={startRec}>
-            <Mic size={15} /> Record a voice note
-          </button>
-
-          <button className="sel-opt" onClick={() => (setPlusOpen(false), setKudos({ who: '', text: '' }))}>
-            <span>🙌</span> Give kudos
-          </button>
-          <button className="sel-opt" onClick={() => (setPlusOpen(false), runCommand('/meet'))}>
-            <Video size={15} /> Share the meeting link
-          </button>
+          {!guest && (
+            <>
+              <button className="sel-opt" onClick={startRec}>
+                <Mic size={15} /> Record a voice note
+              </button>
+              <button className="sel-opt" onClick={() => (setPlusOpen(false), setKudos({ who: '', text: '' }))}>
+                <span>🙌</span> Give kudos
+              </button>
+              <button className="sel-opt" onClick={() => (setPlusOpen(false), runCommand('/meet'))}>
+                <Video size={15} /> Share the meeting link
+              </button>
+            </>
+          )}
         </div>
       </Popover>
 
@@ -1263,13 +1272,13 @@ export function ChatView(p: ViewProps) {
               {channel.sharedWith ? ` · shared with ${channel.sharedWith.workspaceName}${channel.sharedWith.status === 'pending' ? ' (waiting)' : ''}` : ''}
             </p>
           </div>
-          {channel.kind === 'channel' && (
+          {channel.kind === 'channel' && !guest && (
             <button className="chat-members" onClick={p.onSettings} title="People and settings">
               {channel.members.slice(0, 4).map((id) => person(id) && <Avatar key={id} person={person(id)!} size={24} />)}
               <span>{channel.members.length + (channel.guests?.length ?? 0)}</span>
             </button>
           )}
-          {channel.kind === 'channel' && (
+          {channel.kind === 'channel' && !guest && (
             <button className="icon-btn sm" onClick={p.onSettings} title="Channel settings">
               <Settings size={16} />
             </button>
@@ -1287,7 +1296,7 @@ export function ChatView(p: ViewProps) {
               ['summary', 'Summary', null],
               ['about', other ? 'Profile' : 'About', null],
             ] as const
-          ).map(([id, l, n]) => (
+          ).filter(([id]) => !guest || id === 'messages' || id === 'materials').map(([id, l, n]) => (
             <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
               {l}
               {n ? <span>{n}</span> : null}
@@ -1311,6 +1320,7 @@ export function ChatView(p: ViewProps) {
               ]}
               chatLinks={links}
               onChannel={p.onChannel}
+              readOnly={!!guest}
             />
           </>
         )}
@@ -1463,7 +1473,7 @@ export function ChatView(p: ViewProps) {
             </div>
           </div>
         )}
-        {tab === 'messages' && channel.category === 'shared' && (
+        {tab === 'messages' && channel.category === 'shared' && !guest && (
           <div className="shared-note">
             <Handshake size={14} />
             <span>

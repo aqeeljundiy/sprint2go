@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, FileText, Folder, FolderInput, FolderPlus, Image as ImageIcon, Link2, MoreHorizontal, NotebookPen, Pencil, Plus, Trash2, Upload, Video, X } from 'lucide-react';
 import type { Channel, Material, Materials, User } from '../types';
 import { relative } from '../utils';
-import { htmlToText } from '../sanitize';
+import { htmlToText, sanitize } from '../sanitize';
 import { Popover } from './ui/Popover';
 import { RichEditor } from './RichEditor';
 
@@ -28,6 +28,7 @@ interface Props {
   chatFiles: { key: string; name: string; type: string; size: number; url?: string; who: string; at: string; where: string }[];
   chatLinks: { url: string; who: string; at: string }[];
   onChannel: (patch: Partial<Channel>) => void;
+  readOnly?: boolean; // clients: open and download, no changes
 }
 
 const fmtSize = (b: number) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
@@ -36,7 +37,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const MAX_UPLOAD = 8_000_000; // stored with the channel for now; big files belong in Drive
 
 /** The channel's Materials: folders like "Project A" holding files, links and docs, plus everything shared in chat. */
-export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onChannel }: Props) {
+export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onChannel, readOnly }: Props) {
   // Older channels kept links as "bookmarks": they show here as links until the first change saves them as materials.
   const mats: Materials = channel.materials ?? {
     folders: [],
@@ -159,6 +160,20 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
     if (folder === id) setFolder(null);
   };
 
+  /* ---------- a doc, read only (clients) ---------- */
+  if (doc && readOnly)
+    return (
+      <div className="chan-pane mat-doc">
+        <div className="mat-bar">
+          <button className="ghost-btn sm" onClick={() => setDoc(null)}>
+            <ArrowLeft size={14} /> Back
+          </button>
+        </div>
+        <h2 className="mat-doc-title">{doc.title}</h2>
+        <div className="mat-doc-read" dangerouslySetInnerHTML={{ __html: sanitize(doc.html) }} />
+      </div>
+    );
+
   /* ---------- the doc editor ---------- */
   if (doc)
     return (
@@ -198,7 +213,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
           {e.kind === 'doc' && e.material?.html && <span className="mat-doc-peek">{htmlToText(e.material.html).slice(0, 140)}</span>}
         </button>
       )}
-      <button
+      {!readOnly && <button
         className="icon-btn sm mat-more"
         aria-label="More"
         onClick={(ev) => {
@@ -207,7 +222,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
         }}
       >
         <MoreHorizontal size={15} />
-      </button>
+      </button>}
     </div>
   );
   const menuEntry = [...own, ...shared].find((e) => e.key === menu);
@@ -241,14 +256,16 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
           </div>
         )}
         <span className="spacer" />
-        {!current && (
+        {!current && !readOnly && (
           <button className="ghost-btn sm" onClick={() => (setAdding('folder'), setName(''))}>
             <FolderPlus size={14} /> New folder
           </button>
         )}
-        <button ref={addAnchor} className="primary-btn sm" onClick={() => setAddOpen(true)}>
-          <Plus size={14} /> Add
-        </button>
+        {!readOnly && (
+          <button ref={addAnchor} className="primary-btn sm" onClick={() => setAddOpen(true)}>
+            <Plus size={14} /> Add
+          </button>
+        )}
         <input ref={fileInput} type="file" multiple hidden onChange={(e) => (upload(e.target.files), (e.target.value = ''))} />
       </div>
 
@@ -316,7 +333,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
                         <small>{items.length ? [n('file') && `${n('file')} file${n('file') > 1 ? 's' : ''}`, n('link') && `${n('link')} link${n('link') > 1 ? 's' : ''}`, n('doc') && `${n('doc')} doc${n('doc') > 1 ? 's' : ''}`].filter(Boolean).join(' · ') : 'Empty'}</small>
                       </button>
                     )}
-                    <button
+                    {!readOnly && <button
                       className="icon-btn sm mat-more"
                       aria-label="Folder options"
                       onClick={(ev) => {
@@ -325,7 +342,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
                       }}
                     >
                       <MoreHorizontal size={15} />
-                    </button>
+                    </button>}
                   </div>
                 );
               })}

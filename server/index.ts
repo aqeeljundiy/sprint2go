@@ -112,7 +112,7 @@ function clientLens(me: Person) {
       case 'teams':
         return d.workspaceId === workspaceId ? { id: d.id, workspaceId: d.workspaceId, name: d.name, color: d.color, leadId: d.leadId, members: d.members } : null;
       case 'channels':
-        return myChannels.has(d.id) ? { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests } : null;
+        return myChannels.has(d.id) ? { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests, materials: d.materials, bookmarks: d.bookmarks } : null;
       case 'messages':
         return myChannels.has(d.channelId) ? d : null;
       case 'todos': {
@@ -464,8 +464,9 @@ createServer(async (req, res) => {
     }
     if (p === '/api/ai/status') {
       const wsId = url.searchParams.get('ws') ?? '';
-      if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
-      return json(res, 200, { live: Object.values(JOB_OF).some((j) => !!aiFor(wsId, j)) });
+      const asClient = personOf(me)?.clientOf;
+      if (asClient ? asClient.workspaceId !== wsId : !memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
+      return json(res, 200, { live: asClient ? !!aiFor(wsId, 'ask') : Object.values(JOB_OF).some((j) => !!aiFor(wsId, j)) });
     }
     const action = p.match(/^\/api\/ai\/(\w+)$/)?.[1];
     if (action && routes[action] && req.method === 'POST') {

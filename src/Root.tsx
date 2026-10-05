@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { User, Workspace } from './types';
 import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
-import { usePersisted } from './settings';
+import { usePersisted, useSettings } from './settings';
 import { applyRemote, useStored } from './store';
 import { connect, probe, signIn, signOut } from './sync';
 import { setAIWorkspace } from './ai';
@@ -149,6 +149,7 @@ function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
 
 /** Someone at a client, signed in: their portal, with only what the company shares (the server enforces it). */
 function ClientRoot({ me }: { me: User }) {
+  useSettings(me); // light or dark, like the team app
   const [users] = useStored('users');
   const [workspaces] = useStored('workspaces');
   const [clients, setClients] = useStored('clients');
