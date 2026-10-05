@@ -83,6 +83,7 @@ export interface Thread {
   assignee?: string; // shared inboxes: who is handling it
   notes?: { id: string; by: string; text: string; at: string }[]; // internal notes, only the team sees them
   snoozedUntil?: string; // hidden from the inbox until then
+  scannedFor?: string[]; // `${userId}:${lastMessageId}`: already read for to-dos (so the AI reads each email once)
   sendAt?: string; // scheduled to send
 }
 

@@ -614,7 +614,7 @@ export function ChatView(p: ViewProps) {
     );
 
   const other = channel.kind === 'dm' ? person(dmOther(channel, me)) : undefined;
-  const title = other ? other.name : `#${channel.name}`;
+  const title = other ? other.name : channel.category === 'shared' ? channel.name : `#${channel.name}`;
   const chanFiles = p.messages.flatMap((m) => (m.files ?? []).map((f) => ({ f, m })));
   const chanTasks = p.tasks.filter((t) => t.kind !== 'brief' && (t.channelId === channel.id || (client && t.clientId === client.id) || (team && t.teamId === team.id)));
   const pinned = sorted.filter((m) => m.pinned);
@@ -1033,7 +1033,7 @@ export function ChatView(p: ViewProps) {
           )}
           <div className="th-text">
             <h1>
-              {channel.private && !other && <Lock size={15} />} {title}
+              {channel.category === 'shared' && !other ? <Handshake size={16} /> : channel.private && !other && <Lock size={15} />} {title}
               {other && p.statuses[other.id] && <span className="st-emoji">{p.statuses[other.id].emoji}</span>}
             </h1>
             <p>

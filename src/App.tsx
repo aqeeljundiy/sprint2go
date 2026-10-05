@@ -650,7 +650,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const from = last.from.email.toLowerCase();
       if (/no-?reply|notifications?@|billing@|receipts?@|invoice/i.test(from)) return false;
       if (!force && !clientDomains.has(from.split('@')[1]) && !known.has(from) && !isTeam(from)) return false;
-      return force || !scanned.has(`${user.id}:${t.id}:${last.id}`);
+      return force || (!scanned.has(`${user.id}:${t.id}:${last.id}`) && !t.scannedFor?.includes(`${user.id}:${last.id}`));
     });
     if (!fresh.length) return;
     // Claim every thread up front so overlapping scans never read the same email twice.
@@ -665,6 +665,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const next = found
           .filter((f) => !have.has(f.title.toLowerCase()))
           .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: 'todo', threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
+        // Remember it on the email itself, so no reload or other device reads it again.
+        const mark = `${user.id}:${last.id}`;
+        setThreads((ts) => ts.map((x) => (x.id === t.id && !x.scannedFor?.includes(mark) ? { ...x, scannedFor: [...(x.scannedFor ?? []), mark].slice(-20) } : x)));
         if (next.length) {
           todosRef.current = [...todosRef.current, ...next];
           setTodos((list) => [...list, ...next]);

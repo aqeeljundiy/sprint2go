@@ -111,7 +111,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
                       {participants(t, me)}
                       {t.messages.length > 1 && <span className="row-count">{t.messages.length}</span>}
                     </span>
-                    <span className="row-date">{listDate(last.date)}</span>
+                    <span className="row-date">{t.sendAt ? `Sends ${listDate(t.sendAt)}` : t.snoozedUntil ? `Back ${listDate(t.snoozedUntil)}` : listDate(last.date)}</span>
                   </div>
                   <div className="row-subject">{t.subject}</div>
                   {props.showSnippets && <div className="row-snippet">{snippet(last.body)}</div>}

@@ -38,25 +38,41 @@ const workspaces = () => db.allDocs('workspaces') as unknown as Ws[];
 const memberOf = (userId: string) => workspaces().filter((w) => w.members.some((m) => m.userId === userId));
 const isAdminOf = (userId: string, wsId: string) => workspaces().some((w) => w.id === wsId && w.members.some((m) => m.userId === userId && m.role !== 'member'));
 
-/** Which workspace a document belongs to (null = shared, e.g. people). */
-function wsOf(coll: string, d: db.Doc, accounts: Map<string, string>, channels: Map<string, string>): string | null {
-  if (typeof d.workspaceId === 'string') return d.workspaceId;
-  if (coll === 'threads' && typeof d.accountId === 'string') return accounts.get(d.accountId) ?? null;
-  if (coll === 'messages' && typeof d.channelId === 'string') return channels.get(d.channelId) ?? null;
-  return null;
+/**
+ * What one person may see. Workspaces they're not in, mailboxes they're not on, private channels and DMs they're
+ * not in (and those messages), and other people's notifications stay on the server.
+ */
+function viewer(userId: string) {
+  const ws = workspaces();
+  const mine = new Set(ws.filter((w) => w.members.some((m) => m.userId === userId)).map((w) => w.id));
+  const accounts = new Map(ws.flatMap((w) => ((w.accounts ?? []) as { id: string; users?: string[] }[]).map((a) => [a.id, { ws: w.id, users: a.users ?? [] }] as const)));
+  const channels = new Map((db.allDocs('channels') as any[]).map((c) => [String(c.id), c]));
+  const channelOk = (c: any) => !!c && mine.has(c.workspaceId) && (!(c.private || c.kind === 'dm') || (c.members ?? []).includes(userId));
+  return (coll: string, d: any): boolean => {
+    switch (coll) {
+      case 'users':
+        return true;
+      case 'workspaces':
+        return mine.has(d.id);
+      case 'channels':
+        return channelOk(d);
+      case 'messages':
+        return channelOk(channels.get(d.channelId));
+      case 'notices':
+        return d.userId === userId;
+      case 'threads': {
+        const a = accounts.get(d.accountId);
+        return !!a && mine.has(a.ws) && a.users.includes(userId);
+      }
+      default:
+        return typeof d.workspaceId !== 'string' || mine.has(d.workspaceId);
+    }
+  };
 }
 function visibleState(userId: string) {
-  const mine = new Set(memberOf(userId).map((w) => w.id));
-  const accounts = new Map(workspaces().flatMap((w) => (w.accounts ?? []).map((a) => [a.id, w.id] as [string, string])));
-  const channels = new Map(db.allDocs('channels').map((c) => [String(c.id), String(c.workspaceId)] as [string, string]));
+  const canSee = viewer(userId);
   const out: Record<string, db.Doc[]> = {};
-  for (const k of COLLS) {
-    const docs = db.allDocs(k);
-    out[k] = k === 'workspaces' ? docs.filter((w) => mine.has(String(w.id))) : docs.filter((d) => {
-      const w = wsOf(k, d, accounts, channels);
-      return !w || mine.has(w);
-    });
-  }
+  for (const k of COLLS) out[k] = db.allDocs(k).filter((d) => canSee(k, d));
   return out;
 }
 
@@ -78,10 +94,17 @@ const json = (res: ServerResponse, status: number, data: unknown) => {
 /* ---------- live updates (server-sent events) ---------- */
 
 const clients = new Map<string, { res: ServerResponse; userId: string }>();
+/** Sends a change to every open window, each getting only what that person may see. */
 function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: string) {
   if (!upserts.length && !deletes.length) return;
-  const msg = `event: change\ndata: ${JSON.stringify({ coll, upserts, deletes })}\n\n`;
-  for (const [id, c] of clients) if (id !== except) c.res.write(msg);
+  const views = new Map<string, ReturnType<typeof viewer>>();
+  for (const [id, c] of clients) {
+    if (id === except) continue;
+    if (!views.has(c.userId)) views.set(c.userId, viewer(c.userId));
+    const canSee = views.get(c.userId)!;
+    const mine = upserts.filter((d) => canSee(coll, d));
+    if (mine.length || deletes.length) c.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: mine, deletes })}\n\n`);
+  }
 }
 setInterval(() => clients.forEach((c) => c.res.write(': ping\n\n')), 25_000);
 
@@ -219,10 +242,20 @@ createServer(async (req, res) => {
       const { coll, upserts = [], deletes = [] } = await body(req);
       if (!COLLS.includes(coll)) return json(res, 400, { error: 'Unknown collection' });
       const mine = new Set(memberOf(me).map((w) => w.id));
-      // Nobody can write into a workspace they're not in.
-      const ok = (upserts as db.Doc[]).filter((d) => d && typeof d.id === 'string' && (coll !== 'workspaces' ? typeof d.workspaceId !== 'string' || mine.has(d.workspaceId) : mine.has(d.id) || !db.getDoc('workspaces', d.id)));
-      db.writeDocs(coll, ok, deletes as string[], me);
-      broadcast(coll, ok, deletes, req.headers['x-conn'] as string | undefined);
+      const canSee = viewer(me);
+      // Nobody can write into a workspace they're not in, or change or delete something they can't see.
+      const ok = (upserts as db.Doc[]).filter((d) => {
+        if (!d || typeof d.id !== 'string') return false;
+        const before = db.getDoc(coll, d.id);
+        if (before && !canSee(coll, before)) return false;
+        return coll !== 'workspaces' ? typeof d.workspaceId !== 'string' || mine.has(d.workspaceId) : mine.has(d.id) || !before;
+      });
+      const dels = (deletes as string[]).filter((id) => {
+        const before = db.getDoc(coll, id);
+        return !before || canSee(coll, before);
+      });
+      db.writeDocs(coll, ok, dels, me);
+      broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);
       return json(res, 200, { saved: ok.length });
     }
 
