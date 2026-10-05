@@ -13,23 +13,66 @@ export interface PaletteItem {
 interface Props {
   items: PaletteItem[];
   onClose: () => void;
+  /** Things to do with whatever was typed (e.g. "Create task", "Ask AI"). */
+  queryActions?: (q: string) => PaletteItem[];
+  /** Where to remember recent places (per person). */
+  recentKey?: string;
+}
+
+// Recent places: saved right away (the palette closes as soon as you pick something).
+const recentMem = new Map<string, string[]>();
+function loadRecent(key: string): string[] {
+  if (recentMem.has(key)) return recentMem.get(key)!;
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+}
+function saveRecent(key: string, ids: string[]) {
+  recentMem.set(key, ids);
+  try {
+    localStorage.setItem(key, JSON.stringify(ids));
+  } catch {}
 }
 
 export const PALETTE_ICONS = { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, PenLine, User };
 
 /** ⌘K: jump to anything (clients, tasks, emails, channels, people, files) or run an action. */
-export function CommandPalette({ items, onClose }: Props) {
+export function CommandPalette({ items, onClose, queryActions, recentKey = 's2g-palette-recent' }: Props) {
   const [q, setQ] = useState('');
+  const [recent] = useState<string[]>(() => loadRecent(recentKey));
   const [hi, setHi] = useState(0);
   const list = useRef<HTMLUListElement>(null);
 
   const results = useMemo(() => {
     const t = q.trim().toLowerCase();
-    const pool = t
-      ? items.filter((i) => (i.title + ' ' + (i.sub ?? '') + ' ' + i.group).toLowerCase().includes(t))
-      : items.filter((i) => i.group === 'Actions' || i.group === 'Go to');
-    return pool.slice(0, 40);
-  }, [q, items]);
+    if (!t) {
+      // Nothing typed: what needs you, where you were recently, and the common actions.
+      const needs = items.filter((i) => i.group === 'Needs you').slice(0, 5);
+      const recents = recent.map((id) => items.find((i) => i.id === id && i.group !== 'Needs you')).filter((i): i is PaletteItem => !!i).slice(0, 6).map((i) => ({ ...i, group: 'Recent' }));
+      return [...needs, ...recents, ...items.filter((i) => i.group === 'Actions')];
+    }
+    // Every word must match somewhere; titles that start with what you typed come first.
+    const words = t.split(/\s+/).filter(Boolean);
+    const scored = items
+      .filter((i) => i.group !== 'Needs you')
+      .map((i) => {
+        const title = i.title.toLowerCase().replace(/^#/, '');
+        const hay = `${title} ${(i.sub ?? '').toLowerCase()} ${i.group.toLowerCase()}`;
+        if (!words.every((w) => hay.includes(w))) return null;
+        const score = (title.startsWith(t) ? 100 : 0) + (title.split(/[\s:·-]+/).some((x) => x.startsWith(words[0])) ? 40 : 0) + (title.includes(t) ? 20 : 0) + (recent.includes(i.id) ? 15 : 0) - Math.min(title.length, 60) / 10;
+        return { i, score };
+      })
+      .filter((x): x is { i: PaletteItem; score: number } => !!x)
+      .sort((a, b) => b.score - a.score)
+      .map((x) => x.i);
+    // Group by kind, best match first, so the top result is the one Enter opens.
+    const order: string[] = [];
+    for (const r of scored) if (!order.includes(r.group)) order.push(r.group);
+    const grouped = order.flatMap((g) => scored.filter((r) => r.group === g).slice(0, 6));
+    return [...grouped.slice(0, 40), ...(queryActions?.(q.trim()) ?? [])];
+  }, [q, items, recent, queryActions]);
 
   useEffect(() => {
     setHi(0);
@@ -39,6 +82,7 @@ export function CommandPalette({ items, onClose }: Props) {
   }, [hi]);
 
   const run = (i: PaletteItem) => {
+    if (!i.id.startsWith('q-') && i.group !== 'Actions') saveRecent(recentKey, [i.id.replace(/^n-/, 't-'), ...recent.filter((x) => x !== i.id)].slice(0, 12));
     onClose();
     i.run();
   };
@@ -53,7 +97,7 @@ export function CommandPalette({ items, onClose }: Props) {
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search clients, tasks, emails, people, channels, files…"
+            placeholder="Jump to a client, task, person, channel, email or file…"
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
@@ -69,7 +113,7 @@ export function CommandPalette({ items, onClose }: Props) {
           <kbd>esc</kbd>
         </label>
         <ul ref={list}>
-          {results.length === 0 && <li className="palette-empty">Nothing matches “{q}”.</li>}
+          {results.length === 0 && <li className="palette-empty">Nothing matches “{q}”. Try a client, a person or a few words from a task.</li>}
           {results.map((r, idx) => {
             const head = r.group !== lastGroup ? (lastGroup = r.group) : null;
             return (

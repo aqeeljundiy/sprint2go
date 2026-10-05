@@ -305,6 +305,29 @@ export function TasksView(p: Props) {
             {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : t.createdBy.includes('@') ? (p.clients.flatMap((c) => c.people ?? []).find((x) => x.email === t.createdBy)?.name.split(' ')[0] ?? 'the client') : person(t.createdBy)?.name.split(' ')[0]}</span>}
           </div>
         </div>
+        {(() => {
+          // The one thing this row needs, right on it.
+          if (t.done) return null;
+          if (statusOf(t) === 'review' && t.supervisorId === p.me)
+            return (
+              <button className="row-act primary" onClick={() => p.onStatus(t.id, 'done')}>
+                Approve
+              </button>
+            );
+          if (t.source === 'request' && statusOf(t) === 'todo')
+            return (
+              <button className="row-act" onClick={() => p.onStatus(t.id, 'doing')}>
+                Start
+              </button>
+            );
+          if (d?.cls === 'overdue' && doers(t).includes(p.me))
+            return (
+              <button className="row-act" title="Move the due date to tomorrow" onClick={() => p.onPatch(t.id, { due: localDay(new Date(Date.now() + 86_400_000)) })}>
+                Tomorrow
+              </button>
+            );
+          return null;
+        })()}
         <PeoplePicker compact value={doers(t)} users={p.users} me={p.me} label="Doing it" onChange={(ids) => p.onPatch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />
         <div className="todo-actions">
           {!t.done && (
@@ -805,7 +828,7 @@ export function TasksView(p: Props) {
                       </button>
                     </li>
                   ))}
-                  {!open.length && <p className="te-empty">Nothing open.</p>}
+                  {!open.length && <p className="te-empty">Nothing open. Add a task on the Tasks tab, or start a brief from a template.</p>}
                 </ul>
               </div>
               <div className="side-card">
@@ -873,7 +896,7 @@ export function TasksView(p: Props) {
 
         {client && clientTab === 'emails' && (
           <div className="te-list">
-            {clientThreads.length === 0 && <p className="te-empty">No emails with @{client.domain ?? 'this client'} yet.</p>}
+            {clientThreads.length === 0 && <p className="te-empty">{client.domain ? `No emails with @${client.domain} yet. They show up here as soon as someone there writes.` : `Add ${client.name}’s email domain to see their emails here.`}</p>}
             {clientThreads.map((t) => {
               const last = t.messages[t.messages.length - 1];
               return (
@@ -894,7 +917,7 @@ export function TasksView(p: Props) {
 
         {client && clientTab === 'meetings' && (
           <div className="te-list">
-            {clientMeetings.length === 0 && <p className="te-empty">No recorded meetings with {client.name} yet.</p>}
+            {clientMeetings.length === 0 && <p className="te-empty">No recorded meetings with {client.name} yet. Send the notetaker to your next call with them (Meet, Send bot).</p>}
             {clientMeetings.map((m) => (
               <button key={m.id} className="te-row simple" onClick={() => p.onOpenMeeting(m.id)}>
                 <span className="kpi-icon">

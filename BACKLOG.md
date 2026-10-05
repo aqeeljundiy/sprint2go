@@ -87,4 +87,4 @@ Rule: every number or card must pass "so what, now what?" for this person today,
 - AI Spending: monthly cost and verdict first; tokens under "Where it goes".
 - Client portal: counts only for "Waiting on you" and "Needs approval".
 - Kept on purpose: unread counts, the Workload card for leads and founders, Storage and AI allowance numbers in Settings (there the numbers are the decision).
-- Still to do: inline row actions everywhere, search as the main way around, notifications landing on and highlighting the exact item, next-step empty states across apps.
+- Second pass done (6 Oct): row actions (task rows show Approve / Start / Tomorrow when that's what they need; Snooze on mail rows; file unfiled meetings from the list), search as the main way around (Home search bar, empty search shows what needs you and recent places, every-word matching with client names, "Create task" and "Ask AI" from what you typed), notifications land on and highlight the exact chat message (opening its thread), mail notifications open the email, empty states name the next step.

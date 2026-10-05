@@ -71,9 +71,10 @@ export function clientActions(c: ClientCtx) {
       const ch = c.channels.find((x) => x.id === channelId);
       const text = pl.text ?? '';
       if (!ch || (!text.trim() && !pl.files?.length)) return;
-      c.setMessages((ms) => [...ms, { id: uid(), channelId, userId: 'guest', guestEmail: c.person.email, text: text.trim(), at: now(), files: pl.files, parentId: pl.parentId, alsoInChannel: pl.alsoInChannel }]);
+      const mid = uid();
+      c.setMessages((ms) => [...ms, { id: mid, channelId, userId: 'guest', guestEmail: c.person.email, text: text.trim(), at: now(), files: pl.files, parentId: pl.parentId, alsoInChannel: pl.alsoInChannel }]);
       const mentioned = c.team.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id);
-      tell(mentioned, `${c.person.name} (${c.client.name}) mentioned you in #${ch.name}`, { app: 'chat', id: channelId });
+      tell(mentioned, `${c.person.name} (${c.client.name}) mentioned you in #${ch.name}`, { app: 'chat', id: channelId, msg: mid });
     },
 
     /** Approve work, or ask for changes. */

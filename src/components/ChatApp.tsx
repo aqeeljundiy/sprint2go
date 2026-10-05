@@ -732,6 +732,9 @@ interface ViewProps {
   onBack?: () => void; // phones: back to the channel list
   /** Someone at a client (their portal): messages and materials only, none of the team's tools. */
   guest?: { canPost: boolean };
+  /** Land on this message (from a notification): open its thread if it's a reply, scroll to it and highlight it. */
+  focusId?: string | null;
+  onFocused?: () => void;
 }
 
 /** "@Rizky" → <b>@Rizky</b>; links clickable; keeps everything else as text. */
@@ -810,6 +813,23 @@ export function ChatView(p: ViewProps) {
   const top = sorted.filter((m) => !m.parentId || m.alsoInChannel);
   const replies = (id: string) => sorted.filter((m) => m.parentId === id);
   const guest = p.guest;
+  useEffect(() => {
+    if (!p.focusId) return;
+    const target = p.messages.find((m) => m.id === p.focusId);
+    if (!target) return;
+    setTab('messages');
+    if (target.parentId) setThreadId(target.parentId);
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-msg="${p.focusId}"]`);
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 2200);
+      }
+      p.onFocused?.();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [p.focusId, p.messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const canPost = guest ? guest.canPost : !channel || channel.postPolicy !== 'admins' || p.myRole !== 'member' || channel.ownerId === me;
   const thread = threadId ? p.messages.find((m) => m.id === threadId) : undefined;
 
@@ -1003,7 +1023,7 @@ export function ChatView(p: ViewProps) {
     const reps = inThread ? [] : replies(m.id);
     const st = !a.guest ? p.statuses[m.userId] : undefined;
     return (
-      <div key={m.id} className={`chat-msg ${grouped ? 'grouped' : ''} ${m.kind === 'kudos' ? 'kudos-msg' : ''}`}>
+      <div key={m.id} data-msg={m.id} className={`chat-msg ${grouped ? 'grouped' : ''} ${m.kind === 'kudos' ? 'kudos-msg' : ''}`}>
         {grouped ? <span className="cm-gutter" /> : a.person ? <Avatar person={a.person} size={34} /> : <span className="cm-gutter" />}
         <div className="cm-body">
           {!grouped && (
@@ -1369,7 +1389,7 @@ export function ChatView(p: ViewProps) {
                 </div>
               );
             })}
-            {!chanTasks.length && <p className="te-empty">Nothing on this list yet.</p>}
+            {!chanTasks.length && <p className="te-empty">Nothing on this list yet. Add one above, or type /task in a message.</p>}
           </div>
         )}
 

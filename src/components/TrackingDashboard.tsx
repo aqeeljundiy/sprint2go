@@ -156,7 +156,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
             </div>
 
             <div className="te-list">
-              {shown.length === 0 && <p className="te-empty">Nothing here.</p>}
+              {shown.length === 0 && <p className="te-empty">Nothing here. Turn on tracking when you send an email to see opens and clicks.</p>}
               {shown.map((e, n) => {
                 const status = e.replied.length === e.people.length
                   ? { cls: 'replied', icon: Reply, text: 'Replied' }

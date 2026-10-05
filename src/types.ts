@@ -450,7 +450,7 @@ export interface Notice {
   text: string;
   at: string;
   read: boolean;
-  link?: { app: AppId; id?: string };
+  link?: { app: AppId; id?: string; msg?: string }; // msg: the exact chat message to land on
 }
 
 export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';

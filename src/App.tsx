@@ -305,6 +305,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [savedTemplates, setSavedTemplates] = useStored('templates');
   const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
+  const [askSeed, setAskSeed] = useState(''); // a question handed to Ask AI from search
+  const [focusMsg, setFocusMsg] = useState<string | null>(null); // a notification lands on this chat message
   const [viewAs, setViewAs] = useState<{ clientId: string; email: string } | null>(null); // "View as client"
   const [chatId, setChatId] = useState<string | null>(null);
   const [meetPage, setMeetPage] = useState<MeetPage>({ kind: 'list' });
@@ -1433,19 +1435,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const ch = channels.find((c) => c.id === chatId);
     if (!ch) return;
     const files = pl.files ? saveChatFiles(pl.files, ch) : undefined;
-    setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor }]);
+    const msgId = uid();
+    setMessages((ms) => [...ms, { id: msgId, channelId: chatId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor }]);
     const text = pl.text;
     const where = ch.kind === 'dm' ? 'a message' : `#${ch.name}`;
-    if (pl.kind === 'kudos' && pl.kudosFor) notify(pl.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id });
+    if (pl.kind === 'kudos' && pl.kudosFor) notify(pl.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id, msg: msgId });
     if (pl.parentId) {
       const root = messages.find((m) => m.id === pl.parentId);
-      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
+      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
     }
     for (const id of ch.members) {
       if (id === user.id) continue;
       const fn = firstOf(id);
-      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || (pl.voice ? 'a voice note' : pl.files ? 'a file' : '')).slice(0, 80)}”`, { app: 'chat', id: ch.id });
-      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id });
+      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || (pl.voice ? 'a voice note' : pl.files ? 'a file' : '')).slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
+      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
     }
     // DEMO ONLY: the other person answers a DM a few seconds later, so the chat feels alive.
     if (ch.kind === 'dm' && !pl.parentId) {
@@ -1657,7 +1660,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setNoticesOpen(false);
     if (!n.link) return;
     if (n.link.app === 'tasks') return n.link.id ? openTask(n.link.id) : openTasks({ kind: 'mine' });
-    if (n.link.app === 'chat') return n.link.id ? openChannel(n.link.id) : go('chat');
+    if (n.link.app === 'chat') {
+      if (n.link.msg) setFocusMsg(n.link.msg);
+      return n.link.id ? openChannel(n.link.id) : go('chat');
+    }
+    if (n.link.app === 'mail' && n.link.id) return openThread(n.link.id);
     if (n.link.app === 'meet') return n.link.id ? openMeeting(n.link.id) : go('meet');
     go(n.link.app);
   };
@@ -2047,14 +2054,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   })();
 
   // ⌘K: everything you can jump to
+  const today0 = localDay();
   const paletteItems: PaletteItem[] = [
+    // What needs you, so an empty search is already useful.
+    ...wsTasks
+      .filter((t) => !t.done && ((t.status === 'review' && t.supervisorId === user.id) || (doersOf(t).includes(user.id) && !!t.due && t.due <= today0)))
+      .map((t) => ({ id: 'n-' + t.id, group: 'Needs you', title: t.title, sub: t.status === 'review' ? 'Waiting for your review' : t.due! < today0 ? 'Late' : 'Due today', icon: ListChecks, run: () => openTask(t.id) })),
     { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, run: () => setDump('') },
     ...(enabled.has('mail') ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, run: () => openCompose() }] : []),
     { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, run: () => { openTasks({ kind: 'mine' }); setTimeout(() => document.getElementById('new-task')?.focus(), 200); } },
     ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, run: () => { go('calendar'); openNewEvent(); } }] : []),
     ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
     ...wsClients.map((c) => ({ id: 'c-' + c.id, group: 'Clients', title: c.name, sub: c.domain, icon: Building2, run: () => openClient(c.id) })),
-    ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: firstOf(t.userId), icon: ListChecks, run: () => openTask(t.id) })),
+    ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.userId ? firstOf(t.userId) : 'nobody yet'].filter(Boolean).join(' · '), icon: ListChecks, run: () => openTask(t.id) })),
     ...members.filter((u) => u.id !== user.id).map((u) => ({ id: 'p-' + u.id, group: 'People', title: u.name, sub: u.title || u.email, icon: UserIcon, run: () => openChannel(dmWith(u.id)) })),
     ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ id: 'ch-' + c.id, group: 'Channels', title: '#' + c.name, icon: Hash, run: () => openChannel(c.id) })),
     ...wsThreads.slice(0, 60).map((t) => ({ id: 'm-' + t.id, group: 'Emails', title: t.subject, sub: t.messages[t.messages.length - 1].from.name, icon: Mail, run: () => openThread(t.id) })),
@@ -2467,6 +2479,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             teams={wsTeams}
             users={members}
             onAssign={(id, uid2) => patchTask(id, { userId: uid2 })}
+            onSearch={() => setPaletteOpen(true)}
             onNudge={(id) => {
               const t = todos.find((x) => x.id === id);
               if (!t) return;
@@ -2550,6 +2563,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
         {mode === 'chat' && (!mobile || chatId) && (
           <ChatView
+            focusId={focusMsg}
+            onFocused={() => setFocusMsg(null)}
             channel={wsChannels.find((c) => c.id === chatId) ?? null}
             messages={messages.filter((m) => m.channelId === chatId)}
             users={members}
@@ -2673,6 +2688,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onStar={star}
               onArchive={archive}
               onTrash={trash}
+              onSnooze={(id) => {
+                const when = new Date();
+                when.setDate(when.getDate() + 1);
+                when.setHours(9, 0, 0, 0);
+                patchThread(id, { snoozedUntil: when.toISOString() });
+                if (selectedId === id) (setSelectedId(null), setReaderOpen(false));
+                showToast({ text: 'Snoozed until tomorrow 9:00', action: { label: 'Undo', run: () => patchThread(id, { snoozedUntil: undefined }) } });
+              }}
               onMenu={() => setSidebarOpen(true)}
             />
             <Reader
@@ -3090,6 +3113,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           chats={askChats}
           setChats={setAskChats}
           ask={askAnything}
+          seed={askSeed}
           live={aiLive()}
           citeLabel={(k, id) =>
             k === 'M' ? (meetings.find((m) => m.id === id)?.title ?? 'meeting') : k === 'E' ? (threads.find((t) => t.id === id)?.subject ?? 'email') : k === 'C' ? `#${channels.find((c) => c.id === id)?.name ?? 'channel'}` : 'Tasks'
@@ -3169,7 +3193,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onClose={() => setDump(null)}
         />
       )}
-      {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
+      {paletteOpen && (
+        <CommandPalette
+          items={paletteItems}
+          recentKey={`s2g-palette-recent:${user.id}:${ws.id}`}
+          queryActions={(q) => [
+            { id: 'q-task', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Create task “${q}”`, sub: 'Assigned to you', icon: ListChecks, run: () => { const t = createTask({ title: q.charAt(0).toUpperCase() + q.slice(1), userId: user.id, source: 'manual' }); showToast({ text: 'Task created', action: { label: 'Open', run: () => openTask(t.id) } }); } },
+            { id: 'q-ask', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Ask AI: “${q}”`, sub: 'Answers from your mail, chat, meetings and tasks', icon: Sparkles, run: () => { setAskSeed(q); setAskScope({ kind: 'all' }); } },
+          ]}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
 
       {blockTarget && incomingFrom(blockTarget) && (
         <BlockDialog

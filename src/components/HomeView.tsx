@@ -23,6 +23,7 @@ import {
   Users,
   Video,
   X,
+  Search,
 } from 'lucide-react';
 import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, Todo, User } from '../types';
 import { fmtTime } from '../calendarUtils';
@@ -126,6 +127,7 @@ interface Props {
   onToggleTask: (id: string) => void;
   onAssign: (taskId: string, userId: string) => void;
   onNudge: (taskId: string) => void; // remind the person doing a late task
+  onSearch: () => void;
   onOpenTask: (id: string) => void;
   onOpenTasks: () => void;
   onOpenTeam: (id: string) => void;
@@ -692,6 +694,12 @@ export function HomeView(p: Props) {
             <p className="muted small">Drag cards to reorder, or use the arrows. Make a card wide or narrow, or remove it. Only your Home changes.</p>
           </div>
         )}
+
+        <button className="home-search" onClick={p.onSearch}>
+          <Search size={16} />
+          <span>Jump to a client, task, person or file, or ask anything</span>
+          <kbd>⌘K</kbd>
+        </button>
 
         <UpNext
           items={d.upnext}

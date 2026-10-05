@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef } from 'react';
 import { lastTracked, summarize } from '../tracking';
-import { Archive, Eye, EyeOff, Menu, Paperclip, Search, Star, Trash2 } from 'lucide-react';
+import { Archive, Clock, Eye, EyeOff, Menu, Paperclip, Search, Star, Trash2 } from 'lucide-react';
 import type { Client, Person, Thread } from '../types';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
@@ -22,6 +22,7 @@ interface Props {
   onStar: (id: string) => void;
   onArchive: (id: string) => void;
   onTrash: (id: string) => void;
+  onSnooze?: (id: string) => void; // until tomorrow 9:00
   onMenu: () => void;
   leaving: Set<string>;
   showSnippets: boolean;
@@ -91,7 +92,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         <div className="empty">
           <div className="empty-art">✓</div>
           <p className="empty-title">{query ? 'No matches' : 'All caught up'}</p>
-          <p className="empty-sub">{query ? `Nothing found for “${query}”.` : 'Nothing here right now.'}</p>
+          <p className="empty-sub">{query ? `Nothing found for “${query}”. Try a name, an email address or a few words from the subject.` : 'Nothing waiting here. New mail lands in your inbox; press C to write one.'}</p>
         </div>
       ) : (
         <ul className="rows" ref={listRef}>
@@ -146,6 +147,11 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
                   )}
                 </div>
                 <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                  {props.onSnooze && t.location === 'inbox' && (
+                    <button className="icon-btn sm" onClick={() => props.onSnooze!(t.id)} title="Snooze until tomorrow morning">
+                      <Clock size={15} />
+                    </button>
+                  )}
                   <button className="icon-btn sm" onClick={() => props.onArchive(t.id)} title="Archive (E)">
                     <Archive size={15} />
                   </button>

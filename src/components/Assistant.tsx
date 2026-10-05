@@ -40,6 +40,8 @@ interface Props {
   onCite: (kind: string, id: string, at?: number) => void;
   live: boolean; // a real AI is connected
   onClose: () => void;
+  /** Ask this straight away (e.g. from search). */
+  seed?: string;
 }
 
 /** The one assistant: everything, a client, a channel or a meeting. Answers link to their sources. */
@@ -77,6 +79,16 @@ export function Assistant(p: Props) {
     p.setChats([{ ...next, messages: [...next.messages, { role: 'ai' as const, text: answer }] }, ...p.chats.filter((c) => c.id !== id)].slice(0, 50));
     setBusy(false);
   };
+
+  // A question handed over from search: ask it once, in a fresh chat.
+  const seeded = useRef('');
+  useEffect(() => {
+    if (p.seed && seeded.current !== p.seed) {
+      seeded.current = p.seed;
+      setChatId(null);
+      setTimeout(() => void ask(p.seed!), 0);
+    }
+  }, [p.seed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Light markdown plus source links. */
   const render = (t: string) =>
@@ -123,7 +135,7 @@ export function Assistant(p: Props) {
       <div className="cs-body">
         {history ? (
           <div className="people-list">
-            {p.chats.length === 0 && <p className="te-empty">No chats yet.</p>}
+            {p.chats.length === 0 && <p className="te-empty">No chats yet. Ask your first question below.</p>}
             {p.chats.map((c) => (
               <div key={c.id} className="pl-row">
                 <button className="pl-text" onClick={() => (setChatId(c.id), p.setScope(c.scope), setHistory(false))}>

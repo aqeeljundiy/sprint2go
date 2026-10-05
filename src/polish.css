@@ -1120,3 +1120,15 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .spend-details { margin-top: 16px; }
 .spend-details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); }
 .needs-card { margin-bottom: 14px; } .needs-card h3 { margin: 0 0 6px; font-size: 14px; }
+/* Landing on an item from a notification or search */
+.flash { animation: flashIn 2.2s var(--ease, ease); border-radius: 10px; }
+@keyframes flashIn { 0%, 30% { background: color-mix(in oklab, var(--accent) 22%, transparent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent); } 100% { background: transparent; box-shadow: none; } }
+.home-search { display: flex; align-items: center; gap: 10px; width: 100%; margin: 0 0 14px; padding: 11px 14px; border-radius: var(--r-card); border: 0; background: var(--surface); box-shadow: 0 0 0 1px var(--line); color: var(--muted); font: inherit; font-size: 14px; text-align: left; cursor: text; transition: box-shadow .15s; }
+.home-search:hover { box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--accent) 45%, var(--line)); }
+.home-search span { flex: 1; }
+.home-search kbd { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: var(--hover); color: var(--muted); }
+@media (max-width: 760px) { .home-search kbd { display: none; } }
+.row-act { flex: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 0; cursor: pointer; background: var(--hover); color: var(--text); }
+.row-act:hover { background: color-mix(in oklab, var(--accent) 14%, var(--hover)); }
+.row-act.primary { background: var(--accent); color: #fff; }
+.m-row { cursor: pointer; text-align: left; }

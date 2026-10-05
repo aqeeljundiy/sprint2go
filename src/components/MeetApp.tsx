@@ -202,14 +202,14 @@ function StatusPill({ m }: { m: Meeting }) {
   return <span className={`m-status s-${s}`}>{LIVE.has(s) && <i />}{STATUS_LABEL[s]}</span>;
 }
 
-function MeetingRows({ list, clients, tasks, onOpen, showStatusDone = false }: { list: Meeting[]; clients: Client[]; tasks: Todo[]; onOpen: (id: string) => void; showStatusDone?: boolean }) {
+function MeetingRows({ list, clients, tasks, onOpen, onFile, showStatusDone = false }: { list: Meeting[]; clients: Client[]; tasks: Todo[]; onOpen: (id: string) => void; onFile?: (id: string, clientId: string) => void; showStatusDone?: boolean }) {
   return (
     <div className="m-rows">
       {list.map((m) => {
         const c = clients.find((x) => x.id === m.clientId);
         const open = tasks.filter((t) => t.meetingId === m.id && !t.done).length;
         return (
-          <button key={m.id} className="m-row" onClick={() => onOpen(m.id)}>
+          <div key={m.id} className="m-row" role="button" tabIndex={0} onClick={(e) => !(e.target as HTMLElement).closest('.sel, .pop') && onOpen(m.id)} onKeyDown={(e) => e.key === 'Enter' && onOpen(m.id)}>
             <span className={`plat ${m.platform ?? 'meet'}`}>{m.platform === 'zoom' ? 'Zm' : 'GM'}</span>
             <span className="m-main">
               <strong>{m.title}</strong>
@@ -225,8 +225,14 @@ function MeetingRows({ list, clients, tasks, onOpen, showStatusDone = false }: {
                 {c.name}
               </span>
             )}
+            {!c && onFile && (!m.status || m.status === 'done') && (
+              // Not filed yet: file it right here.
+              <span onClick={(e) => e.stopPropagation()}>
+                <Select value="" onChange={(v) => onFile(m.id, v)} label="File under" placeholder="File under…" className="sel-flat" options={clients.map((x) => ({ value: x.id, label: x.name }))} />
+              </span>
+            )}
             {(showStatusDone || m.status !== 'done') && m.status && <StatusPill m={m} />}
-          </button>
+          </div>
         );
       })}
     </div>
@@ -265,7 +271,7 @@ function MeetingList(p: MeetProps & { unfiled: boolean }) {
       </Head>
       <div className="tracking-scroll">
         {bar('Search titles, notes and transcripts')}
-        <MeetingRows list={shown} clients={p.clients} tasks={p.tasks} onOpen={(id) => p.onPage({ kind: 'meeting', id })} />
+        <MeetingRows list={shown} clients={p.clients} tasks={p.tasks} onOpen={(id) => p.onPage({ kind: 'meeting', id })} onFile={(id, cid) => p.onFolder(id, cid, false)} />
         {shown.length === 0 && <p className="te-empty">{filtering ? 'Nothing matches.' : 'No meetings here yet. Use “Send bot to a meeting”.'}</p>}
       </div>
     </section>
@@ -866,7 +872,7 @@ function FolderPage(p: MeetProps & { clientId: string }) {
             grouped
             meetingFor={(t) => p.meetings.find((m) => m.id === t.meetingId)}
             nameFor={(t) => p.users.find((u) => u.id === t.userId)}
-            empty={<p className="te-empty">No tasks from these meetings yet.</p>}
+            empty={<p className="te-empty">No tasks from these meetings yet. Promises made in a meeting become tasks here.</p>}
           />
         )}
       </div>
@@ -964,7 +970,7 @@ function Upcoming(p: MeetProps) {
               })}
           </div>
         ))}
-        {!soon.length && <p className="te-empty">No meetings in the next 7 days.</p>}
+        {!soon.length && <p className="te-empty">No meetings in the next 7 days. Connect a calendar in Calendar, or send the bot to a meeting link.</p>}
       </div>
     </section>
   );
