@@ -842,8 +842,8 @@ function FolderPage(p: MeetProps & { clientId: string }) {
       <div className="client-tabs">
         {(
           [
-            ['meetings', `Meetings ${list.length}`],
-            ['tasks', `Tasks ${open}`],
+            ['meetings', 'Meetings'],
+            ['tasks', open ? `Tasks · ${open} open` : 'Tasks'],
           ] as const
         ).map(([k, l]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>

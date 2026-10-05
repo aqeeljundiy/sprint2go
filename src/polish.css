@@ -1113,3 +1113,10 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 @keyframes unIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (max-width: 760px) { .un-row { gap: 10px; } .un-text strong { white-space: normal; } }
 .sec-count.unread { color: var(--accent); font-weight: 700; opacity: 1; }
+.spend-lead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 8px 0 2px; }
+.spend-lead b { font-size: 26px; letter-spacing: -0.02em; }
+.spend-lead span { color: var(--muted); font-size: 13px; }
+.spend-verdict { font-weight: 600; }
+.spend-details { margin-top: 16px; }
+.spend-details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); }
+.needs-card { margin-bottom: 14px; } .needs-card h3 { margin: 0 0 6px; font-size: 14px; }

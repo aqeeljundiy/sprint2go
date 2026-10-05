@@ -518,11 +518,11 @@ export function TasksView(p: Props) {
           {(
             [
               ['overview', 'Overview'],
-              ['tasks', `Tasks · ${open.length}`],
+              ['tasks', overdue ? `Tasks · ${overdue} late` : 'Tasks'],
               ['chat', 'Chat'],
-              ['emails', `Mail · ${clientThreads.length}`],
-              ['meetings', `Meetings · ${clientMeetings.length}`],
-              ['files', `Files · ${clientFiles.length}`],
+              ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail'],
+              ['meetings', 'Meetings'],
+              ['files', 'Files'],
               ['portal', 'Portal'],
             ] as const
           ).map(([id, label]) => (
@@ -722,24 +722,36 @@ export function TasksView(p: Props) {
 
         {client && clientTab === 'overview' && (
           <div className="hub-overview">
-            <div className="stat-cards">
-              <div>
-                <b>{open.length}</b>
-                <span>Open tasks{overdue ? ` · ${overdue} late` : ''}</span>
-              </div>
-              <div>
-                <b>{briefs.filter((b) => !b.done).length}</b>
-                <span>Active briefs</span>
-              </div>
-              <div>
-                <b>{clientMeetings.length}</b>
-                <span>Meetings{clientMeetings[0] ? ` · last ${relative(clientMeetings[0].at)}` : ''}</span>
-              </div>
-              <div>
-                <b>{clientThreads.filter((t) => t.unread).length}</b>
-                <span>Unread emails</span>
-              </div>
-            </div>
+            {(() => {
+              // What needs doing for this client, not how much there is.
+              const today = localDay();
+              const items: { key: string; text: string; sub: string; run: () => void; tone?: string }[] = [
+                ...open.filter((t) => t.due && t.due < today).map((t) => ({ key: 'l' + t.id, text: t.title, sub: `Late, ${person(t.userId)?.name.split(' ')[0] ?? 'nobody'} on it`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
+                ...open.filter((t) => t.source === 'request' && statusOf(t) === 'todo').map((t) => ({ key: 'r' + t.id, text: t.title, sub: 'New request from the client', run: () => p.onOpenTask(t.id) })),
+                ...open.filter((t) => t.approval?.status === 'changes').map((t) => ({ key: 'c' + t.id, text: t.title, sub: `Client asked for changes${t.approval?.note ? `: “${t.approval.note}”` : ''}`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
+                ...open.filter((t) => !t.userId).map((t) => ({ key: 'u' + t.id, text: t.title, sub: 'Nobody on it yet', run: () => p.onOpenTask(t.id) })),
+                ...clientThreads.filter((t) => t.unread).map((t) => ({ key: 'm' + t.id, text: t.subject, sub: 'Unread email', run: () => p.onOpenThread(t.id) })),
+              ];
+              return (
+                <div className="side-card needs-card">
+                  <h3>Needs attention</h3>
+                  {items.length ? (
+                    <ul className="home-list">
+                      {items.slice(0, 6).map((x) => (
+                        <li key={x.key}>
+                          <button className={`home-notice ${x.tone ?? ''}`} onClick={x.run}>
+                            <span>{x.text}</span>
+                            <time>{x.sub}</time>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="te-empty">Nothing needs you for {client.name}.{clientMeetings[0] ? ` Last meeting ${relative(clientMeetings[0].at)}.` : ''}</p>
+                  )}
+                </div>
+              );
+            })()}
             <div className="side-card overview-card">
               <h3>
                 {client.overview?.headline ?? 'Where things stand'}

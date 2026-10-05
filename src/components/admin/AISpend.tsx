@@ -124,6 +124,28 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
           : 'Nothing measured yet, so this uses typical monthly use for a company your size. Once your keys are in use, the real numbers replace it.'}
       </p>
 
+      <div className="spend-lead">
+        <b>{rp(now.rp)}</b>
+        <span>a month on {hasKeys ? 'your keys' : 'your own keys'}, about US${now.usd.toFixed(2)}</span>
+      </div>
+      <p className="spend-verdict">
+        {now.rp <= included
+          ? `Your own keys cost about ${rp(diff)} a month less than Sprint2go AI included, for this much use. You manage the keys and the provider bills.`
+          : `Sprint2go AI included costs about ${rp(diff)} a month less than your own keys, for this much use, and there are no keys or provider bills to manage.`}
+      </p>
+      <h4 className="spend-sub">The same work, a month, on each setup</h4>
+      <div className="spend-compare">
+        {cards.map((c) => (
+          <div key={c.id} className={`spend-card ${c.id === cheapest.id ? 'best' : ''} ${c.id === (ai.payer === 'sprint2go' ? 'included' : 'now') ? 'current' : ''}`}>
+            <span className="sc-name">{c.name}</span>
+            <b>{rp(c.rp)}</b>
+            <small>{c.note}</small>
+            {c.id === cheapest.id && <em>Cheapest</em>}
+          </div>
+        ))}
+      </div>
+      <details className="spend-details">
+        <summary>Where it goes: each job, uses and tokens</summary>
       <div className="spend-totals">
         <div>
           <b>{totalUses.toLocaleString('id-ID')}</b>
@@ -136,10 +158,6 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
         <div>
           <b>{tokens(totalOut)}</b>
           <span>tokens out</span>
-        </div>
-        <div>
-          <b>{rp(now.rp)}</b>
-          <span>about US${now.usd.toFixed(2)} a month</span>
         </div>
       </div>
 
@@ -167,23 +185,7 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
           ))}
         </tbody>
       </table>
-
-      <h4 className="spend-sub">The same work, a month, on each setup</h4>
-      <div className="spend-compare">
-        {cards.map((c) => (
-          <div key={c.id} className={`spend-card ${c.id === cheapest.id ? 'best' : ''} ${c.id === (ai.payer === 'sprint2go' ? 'included' : 'now') ? 'current' : ''}`}>
-            <span className="sc-name">{c.name}</span>
-            <b>{rp(c.rp)}</b>
-            <small>{c.note}</small>
-            {c.id === cheapest.id && <em>Cheapest</em>}
-          </div>
-        ))}
-      </div>
-      <p className="spend-verdict">
-        {now.rp <= included
-          ? `Your own keys cost about ${rp(diff)} a month less than Sprint2go AI included, for this much use. You manage the keys and the provider bills.`
-          : `Sprint2go AI included costs about ${rp(diff)} a month less than your own keys, for this much use, and there are no keys or provider bills to manage.`}
-      </p>
+      </details>
     </div>
   );
 }

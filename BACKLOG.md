@@ -71,10 +71,20 @@
 - People from outside: **Guests**. Their area: **Shared space**. The other company gets a **type**: Client, Partner, Vendor, Freelancer, Collaborator (Client by default).
 - Workspace switcher section: "Shared with you". Channel category "With client" becomes "Shared". Settings "Client access" becomes "Guest access", with defaults per type.
 
-## Principle audit: "what do I need to do now?" (6 Oct)
+## Principle audit: "what do I need to do now?" (6 Oct): first pass done 6 Oct
 Rule: every number or card must pass "so what, now what?" for this person today, or go to a report. Exceptions over totals, hide zeros, the action next to the thing.
 - Home Company pulse: drop "Open" and "Clients" counts; keep Late / Not picked up only as links that open the fix.
 - AI Spending: tokens in/out under Advanced; lead with monthly cost and the verdict.
 - Workload card only on lead and founder Homes.
 - Cards that only link elsewhere: let you act, or remove.
 - Ideas: "Up next" ranked list at the top of Home (approvals, late, replies owed, requests, next meeting) with inline actions; inline row actions everywhere (approve, assign, snooze, reply); search as the main way to move around; notifications land on and highlight the exact item; empty states that name the next step.
+
+### Audit pass done (6 Oct)
+- Home: "Up next" at the top for everyone (reviews, client requests, late and due today, team queues with Assign, late work you handed out with Remind, client emails with Reply, finished briefs to close). Company pulse numbers removed from default Homes; Teams and Clients cards say what to fix ("1 late", "Next: …"), not how much exists.
+- Sidebars and headers: numbers only for late, due today, waiting for your review, unread, unfiled meetings, nobody on it. Totals removed (My tasks, Everything, clients, folders, sections, channel tabs). Task headers say "2 late · 1 due today" or "Nothing late or due today".
+- Client page: "Needs attention" list replaces the four total boxes; tabs show "1 late" / "2 unread" only.
+- Drive: storage meter only at 80% full or more.
+- AI Spending: monthly cost and verdict first; tokens under "Where it goes".
+- Client portal: counts only for "Waiting on you" and "Needs approval".
+- Kept on purpose: unread counts, the Workload card for leads and founders, Storage and AI allowance numbers in Settings (there the numbers are the decision).
+- Still to do: inline row actions everywhere, search as the main way around, notifications landing on and highlighting the exact item, next-step empty states across apps.

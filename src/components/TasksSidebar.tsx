@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Users } from 'lucide-react';
 import type { Client, Team, Todo } from '../types';
 import { doers, isBrief, statusOf, type TaskScope } from './TasksView';
+import { localDay } from '../utils';
 
 interface Props {
   scope: TaskScope;
@@ -24,7 +25,7 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
   const open = tasks.filter((t) => !t.done && !isBrief(t));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
   const urgent = (t: Todo) => !!t.due && t.due <= today; // late or due today: the only counts worth showing
   const is = (s: TaskScope) => s.kind === scope.kind && (!('id' in s) || ('id' in scope && scope.id === s.id));
 

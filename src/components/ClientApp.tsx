@@ -129,7 +129,7 @@ export function ClientApp(p: Props) {
 
   const MODES: [Mode, string, LucideIcon, number?][] = [
     ['home', 'Home', House],
-    ...(access.requests ? ([['requests', 'Requests', Inbox, requests.filter((t) => !t.done).length]] as [Mode, string, LucideIcon, number][]) : []),
+    ...(access.requests ? ([['requests', 'Requests', Inbox, waitingOnMe.length]] as [Mode, string, LucideIcon, number][]) : []),
     ['chat', 'Chat', MessagesSquare],
     ['work', 'Work', ListChecks, approvals.length],
     ['files', 'Files', HardDrive],
@@ -149,7 +149,7 @@ export function ClientApp(p: Props) {
     <button key={key} className={`nav-item ${on ? 'active' : ''}`} onClick={click}>
       {Icon ? <Icon size={17} /> : null}
       <span className="sb-label">{label}</span>
-      {count ? <span className="count muted-count">{count}</span> : null}
+      {count ? <span className="count warn-count">{count}</span> : null}
     </button>
   );
   const sidebar: Partial<Record<Mode, React.ReactNode>> = {
@@ -162,10 +162,10 @@ export function ClientApp(p: Props) {
           </button>
         )}
         <nav className="nav">
-          {navItem('', 'Open', Inbox, requests.filter((t) => !t.done).length)}
+          {navItem('', 'Open', Inbox)}
           {navItem('waiting', 'Waiting on you', Clock, waitingOnMe.length)}
-          {navItem('done', 'Done', CheckCircle2, requests.filter((t) => t.done).length)}
-          {navItem('all', 'All requests', ListChecks, requests.length)}
+          {navItem('done', 'Done', CheckCircle2)}
+          {navItem('all', 'All requests', ListChecks)}
         </nav>
       </>
     ),
@@ -178,9 +178,9 @@ export function ClientApp(p: Props) {
     work: (
       <>
         <nav className="nav">
-          {navItem('', 'Everything', ListChecks, work.filter((t) => !t.done).length)}
+          {navItem('', 'Everything', ListChecks)}
           {navItem('approve', 'Needs approval', Clock, approvals.length)}
-          {navItem('done', 'Done', CheckCircle2, work.filter((t) => t.done).length)}
+          {navItem('done', 'Done', CheckCircle2)}
         </nav>
         {briefs.length > 0 && (
           <>
@@ -194,14 +194,14 @@ export function ClientApp(p: Props) {
       <>
         {access.uploads && can(person, 'upload') && <UploadButton actions={actions} say={say} />}
         <nav className="nav">
-          {navItem('', 'All files', HardDrive, v.files.length)}
-          {navItem('shared', 'Shared with you', FileText, v.files.filter((f) => !f.uploadedBy).length)}
-          {navItem('mine', `From ${client.name}`, Upload, v.files.filter((f) => f.uploadedBy).length)}
+          {navItem('', 'All files', HardDrive)}
+          {navItem('shared', 'Shared with you', FileText)}
+          {navItem('mine', `From ${client.name}`, Upload)}
         </nav>
         {v.channels.length > 0 && (
           <>
             <div className="nav-heading sb-label">Channel materials</div>
-            <nav className="nav">{v.channels.map((c) => navItem(`chan:${c.id}`, c.name, Folder, c.materials?.items.length ?? c.bookmarks?.length))}</nav>
+            <nav className="nav">{v.channels.map((c) => navItem(`chan:${c.id}`, c.name, Folder))}</nav>
           </>
         )}
       </>
@@ -441,7 +441,7 @@ export function ClientApp(p: Props) {
     const list = requests.filter((t) => (sub === 'done' ? t.done : sub === 'waiting' ? requestStatus(t).cls === 'waiting' : sub === 'all' ? true : !t.done));
     content = pane(
       sub === 'done' ? 'Done' : sub === 'waiting' ? 'Waiting on you' : sub === 'all' ? 'All requests' : 'Requests',
-      `${requests.filter((t) => !t.done).length} open · the team picks these up like tickets`,
+      waitingOnMe.length ? `${waitingOnMe.length} waiting on you` : 'The team picks these up like tickets',
       list.length ? <div className="todo-group">{list.map(taskRow)}</div> : empty(<Inbox size={22} />, 'No requests here', can(person, 'request') ? 'Send one with “New request”.' : 'Your colleagues’ requests show up here.'),
       can(person, 'request') && mobile ? (
         <button className="primary-btn sm" onClick={() => setNewRequest(true)}>
@@ -459,7 +459,7 @@ export function ClientApp(p: Props) {
       : [...briefs.map((b) => ({ key: b.id, label: b.title, items: list.filter((t) => t.briefId === b.id) })), { key: 'other', label: briefs.length ? 'Other work' : null, items: list.filter((t) => !t.briefId || !briefs.some((b) => b.id === t.briefId)) }].filter((g) => g.items.length);
     content = pane(
       brief ? brief.title : sub === 'approve' ? 'Needs approval' : sub === 'done' ? 'Done' : 'Work',
-      brief ? `${brief.due ? `Due ${fmtDay(brief.due)} · ` : ''}${list.filter((t) => t.done).length} of ${list.length} done` : `${work.filter((t) => !t.done).length} in progress · ${approvals.length} waiting for your approval`,
+      brief ? `${brief.due ? `Due ${fmtDay(brief.due)} · ` : ''}${list.filter((t) => t.done).length} of ${list.length} done` : approvals.length ? `${approvals.length} waiting for your approval` : 'Nothing waiting on you',
       <>
         {brief?.context && <p className="client-brief-context">{brief.context}</p>}
         {groups.length
@@ -489,7 +489,7 @@ export function ClientApp(p: Props) {
       const list = v.files.filter((f) => (sub === 'shared' ? !f.uploadedBy : sub === 'mine' ? !!f.uploadedBy : true)).sort((a, b) => b.modified.localeCompare(a.modified));
       content = pane(
         sub === 'shared' ? 'Shared with you' : sub === 'mine' ? `From ${client.name}` : 'Files',
-        `${list.length} file${list.length === 1 ? '' : 's'}${access.uploads ? ` · uploads go to “From ${client.name}”` : ''}`,
+        access.uploads ? `Uploads go to “From ${client.name}”` : 'What the team shares with you',
         list.length ? (
           <div className="todo-group">
             {list.map((f) => (

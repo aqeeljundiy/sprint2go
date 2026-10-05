@@ -36,7 +36,7 @@ import { FolderPlus, ChevronUp, Handshake,
   X,
 } from 'lucide-react';
 import type { Channel, ChannelCategory, ChatLayout, ChatSection, ChatFile, ChatMessage, ChatView as ChatViewDef, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../types';
-import { relative } from '../utils';
+import { localDay, relative } from '../utils';
 import { usePersisted } from '../settings';
 import { ai } from '../ai';
 import { Avatar } from './Avatar';
@@ -1293,7 +1293,7 @@ export function ChatView(p: ViewProps) {
             [
               ['messages', 'Messages', null],
               ['materials', 'Materials', (channel.materials?.items.length ?? channel.bookmarks?.length ?? 0) + chanFiles.length + p.drive.length + new Set(links.map((l) => l.url)).size],
-              ['tasks', 'Tasks', chanTasks.filter((t) => !t.done && !!t.due && t.due < new Date().toISOString().slice(0, 10)).length], // late only
+              ['tasks', 'Tasks', chanTasks.filter((t) => !t.done && !!t.due && t.due < localDay()).length], // late only
               ['pinned', 'Pinned', pinned.length],
               ['summary', 'Summary', null],
               ['about', other ? 'Profile' : 'About', null],
