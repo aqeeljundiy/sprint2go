@@ -24,6 +24,11 @@ export const CLIENTS: Client[] = [
   },
   { id: 'c-arunika', workspaceId: 'pnp', name: 'Arunika Hotels', domain: 'arunikahotels.id', color: '#0ea5e9', status: 'lead', ownerId: 'u-aqeel' },
   { id: 'c-glowkind', workspaceId: 'pnp', name: 'Glowkind', domain: 'glowkind.id', color: '#a855f7', status: 'lead', ownerId: 'u-aditya' },
+  {
+    // Elkiya runs its own Sprint2go workspace and is also a client of Pixel & Profits: Dimas signs in once and has both.
+    id: 'c-elkiya', workspaceId: 'pnp', name: 'Elkiya Group', domain: 'elkiyagroup.com', color: '#0f766e', status: 'active', ownerId: 'u-aditya',
+    people: [{ email: 'dimas@elkiyagroup.com', name: 'Dimas Prakoso', role: 'approver', status: 'joined', invitedBy: 'u-aditya', at: '2026-09-25T03:00:00.000Z' }],
+  },
   { id: 'c-kopiharian', workspaceId: 'elk', name: 'Kopi Harian', domain: 'kopiharian.id', color: '#92400e', status: 'lead', ownerId: 'u-aqeel' },
   { id: 'c-supplements', workspaceId: 'elk', name: 'Supplements brand', color: '#16a34a', status: 'active', ownerId: 'u-dimas' },
 ];
@@ -48,6 +53,8 @@ const task = (t: Omit<Todo, 'id' | 'createdAt' | 'done'> & { done?: boolean; id?
 });
 
 export const TASKS: Todo[] = [
+  task({ visibleToClient: true, title: 'Supplements launch: first Meta ad set live', clientId: 'c-elkiya', teamId: 't-perf', userId: 'u-rizky', createdBy: 'u-aditya', due: day(3), priority: 'high', source: 'manual', workspaceId: 'pnp', status: 'doing' }),
+  task({ visibleToClient: true, approval: { status: 'waiting', askedBy: 'u-aditya', askedAt: ago(60 * 2) }, title: 'Three hooks for the launch ads', clientId: 'c-elkiya', teamId: 't-perf', userId: 'u-rizky', createdBy: 'u-aditya', due: day(1), priority: 'normal', source: 'manual', workspaceId: 'pnp', status: 'review' }),
   task({ visibleToClient: true, approval: { status: 'approved', askedBy: 'u-aqeel', askedAt: ago(60 * 30), by: 'nadia@kopikita.co.id', at: ago(60 * 20), note: 'Love direction 2 and 3!' }, title: 'Finish four Q4 concept directions', teamId: 't-design', briefId: 'brief-kopikita', clientId: 'c-kopikita', userId: 'u-aqeel', createdBy: 'u-aqeel', due: day(2), priority: 'high', source: 'manual', workspaceId: 'pnp', status: 'doing' }),
   task({ title: 'Storyboard the "morning ritual" short-form video', teamId: 't-video', briefId: 'brief-kopikita', clientId: 'c-kopikita', userId: 'u-rizky', createdBy: 'u-aqeel', due: day(3), priority: 'normal', source: 'meeting', workspaceId: 'pnp' }),
   task({ title: 'Send October invoice to Nadia', teamId: 't-finance', clientId: 'c-kopikita', userId: 'u-dewi', createdBy: 'u-aqeel', due: day(-1), priority: 'high', source: 'braindump', workspaceId: 'pnp' }),
@@ -110,6 +117,7 @@ export const CHANNELS: Channel[] = [
     ], },
   { id: 'ch-kopikita-shared', workspaceId: 'pnp', kind: 'channel', name: 'kopikita-x-pnp', members: ['u-aqeel', 'u-sekar', 'u-rizky'], clientId: 'c-kopikita', topic: 'With the KopiKita team: previews, approvals, dates', category: 'shared', ownerId: 'u-aqeel',
     guests: [{ email: 'nadia@kopikita.co.id', name: 'Nadia Putri', status: 'joined', invitedBy: 'u-aqeel', at: '2026-09-20T03:00:00.000Z' }] },
+  { id: 'ch-elkiya-shared', workspaceId: 'pnp', kind: 'channel', name: 'elkiya-x-pnp', members: ['u-aqeel', 'u-aditya', 'u-rizky'], clientId: 'c-elkiya', topic: 'Supplements launch ads with the Elkiya team', category: 'shared', ownerId: 'u-aditya', guests: [{ email: 'dimas@elkiyagroup.com', name: 'Dimas Prakoso', status: 'joined', invitedBy: 'u-aditya', at: '2026-09-25T03:00:00.000Z' }] },
   { id: 'ch-lumina', workspaceId: 'pnp', kind: 'channel', name: 'lumina-skin', members: ['u-aqeel', 'u-faisal', 'u-rizky', 'u-sekar', 'u-nanda'], clientId: 'c-lumina', topic: '11.11 and 12.12 push', category: 'client', ownerId: 'u-faisal' },
   { id: 'ch-arunika', workspaceId: 'pnp', kind: 'channel', name: 'arunika-hotels', members: ['u-aqeel', 'u-aditya'], clientId: 'c-arunika', topic: 'New business', category: 'client', ownerId: 'u-aditya', private: true },
   { id: 'ch-video', workspaceId: 'pnp', kind: 'channel', name: 'video-editing', members: ['u-nanda', 'u-rizky', 'u-aqeel'], teamId: 't-video', topic: 'Edits, cuts, feedback rounds', category: 'team', ownerId: 'u-nanda' },
@@ -134,6 +142,8 @@ const msg = (channelId: string, userId: string, minutesAgo: number, text: string
 });
 
 export const MESSAGES: ChatMessage[] = [
+  { id: 'msg-elk-1', channelId: 'ch-elkiya-shared', userId: 'u-aditya', at: ago(60 * 5), text: 'Dimas, the three hooks for the supplements launch are ready for your approval in the portal.' },
+  { id: 'msg-elk-2', channelId: 'ch-elkiya-shared', userId: 'guest', guestEmail: 'dimas@elkiyagroup.com', at: ago(60 * 4), text: 'Great, I’ll check them this afternoon.' },
   msg('ch-general', 'u-faisal', 60 * 26, 'Morning team. Big week: Lumina 11.11 prep and the KopiKita concepts are both due.', undefined, { pinned: true }),
   msg('ch-general', 'u-dewi', 60 * 27, 'Office wifi: PNP-Office / password on the fridge. Client wifi is PNP-Guest.', undefined, { pinned: true }),
   msg('ch-general', 'u-aditya', 60 * 25, 'Glowkind reached out through hello@. I’ll take the first call.'),

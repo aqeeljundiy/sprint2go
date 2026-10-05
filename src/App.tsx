@@ -49,7 +49,7 @@ import { ChannelDialog } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { ClientApp } from './components/ClientApp';
 import { clientActions } from './clientActions';
-import { accessFor, clientInbox, clientPeople, requestStatus, teamLabel } from './clientView';
+import { accessFor, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
 import { celebrate } from './components/ui/confetti';
 import { MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS } from './data/workspaces';
@@ -167,7 +167,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const workspaces = allWorkspaces.filter((w) => w.members.some((m) => m.userId === user.id));
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
-  useEffect(() => onWorkspace?.(ws.id), [ws.id, ws.ai]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Companies this person is a client of (same sign-in): their portals sit in the workspace switcher.
+  const [portalKey, setPortalKey] = usePersisted(`s2g-portal:${user.id}`, '');
+  useEffect(() => onWorkspace?.(portalKey && allWorkspaces.some((w) => portalKey.startsWith(w.id + ':')) ? portalKey.split(':')[0] : ws.id), [ws.id, ws.ai, portalKey]); // eslint-disable-line react-hooks/exhaustive-deps
   /** Adds the person; with the local server, also makes a link where they set their password. */
   const onInvite = (u: User) =>
     void inviteUser(u).then(
@@ -199,6 +201,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     a ? { name: a.kind === 'shared' ? a.name : settings.name || a.name, email: a.email } : ME;
 
   useEffect(() => {
+    if (myPortals.some((pt) => pt.key === portalKey)) return; // the portal brands itself
     applyBranding(ws);
     const root = document.documentElement;
     // The workspace colour is the brand; polish.css turns it into a light- or dark-friendly accent.
@@ -206,7 +209,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     root.style.removeProperty('--accent');
     root.style.removeProperty('--accent-hover');
     root.style.removeProperty('--accent-soft');
-  }, [ws]);
+  }, [ws, portalKey]); // also when coming back from a client portal (it uses the other company's brand)
 
   const patchWorkspace = (id: string, patch: Partial<Workspace>) => setWorkspaces((list) => list.map((w) => (w.id === id ? { ...w, ...patch } : w)));
   const mobile = useMedia('(max-width: 760px)');
@@ -833,6 +836,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Channels I can see in the sidebar: mine, plus public ones I could join.
   const visibleChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && !c.archived && (c.members.includes(user.id) || (c.kind === 'channel' && !c.private))), [channels, ws.id, user.id]);
   const myRole = ws.members.find((m) => m.userId === user.id)?.role ?? 'member';
+  const myPortals = useMemo(() => portalsFor(user.email, workspaces.map((w) => w.id), allWorkspaces, clients, channels), [user.email, workspaces, allWorkspaces, clients, channels]);
+  const portalItems = myPortals.map((pt) => ({ key: pt.key, ws: pt.ws, client: pt.client, unread: notices.filter((n) => !n.read && n.workspaceId === pt.ws.id && (n.userId === user.id || n.userId === clientInbox(user.email))).length }));
   const myNotices = useMemo(() => notices.filter((n) => n.userId === user.id && n.workspaceId === ws.id), [notices, user.id, ws.id]);
   const wsMeetings = useMemo(() => meetings.filter((m) => m.workspaceId === ws.id), [meetings, ws.id]);
   const firstOf = (id?: string) => (allUsers.find((u) => u.id === id)?.name ?? 'Someone').split(' ')[0];
@@ -2057,6 +2062,57 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...wsDrive.filter((i) => i.kind !== 'folder' && !i.trashed).map((i) => ({ id: 'f-' + i.id, group: 'Files', title: i.name, icon: FileText, run: () => { go('drive'); setPreview({ item: i, list: [i] }); } })),
   ];
 
+  // A company this person is a client of: their portal, with the same sign-in.
+  const portal = myPortals.find((pt) => pt.key === portalKey);
+  if (portal) {
+    const pws = portal.ws;
+    const access = accessFor(pws, portal.client);
+    const team = allUsers.filter((u) => pws.members.some((m) => m.userId === u.id));
+    const inbox = [user.id, clientInbox(user.email)];
+    const actions = clientActions({
+      ws: pws,
+      client: portal.client,
+      person: portal.person,
+      access,
+      team,
+      teams: teams.filter((t) => t.workspaceId === pws.id),
+      todos,
+      channels,
+      messages,
+      meetings: meetings.filter((m) => m.workspaceId === pws.id),
+      drive,
+      setTodos,
+      setMessages,
+      setDrive,
+      setClients,
+      setNotices,
+      setChannels,
+      makeInvite: async (pp) => {
+        if (!server.on) return null;
+        const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: pws.id, clientId: portal.client.id, ...pp }) });
+        return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+      },
+    });
+    return (
+      <ClientApp
+        key={portal.key}
+        ws={pws}
+        client={portal.client}
+        person={portal.person}
+        access={access}
+        team={team}
+        actions={actions}
+        messages={messages}
+        allTasks={todos}
+        notices={notices.filter((n) => n.workspaceId === pws.id && inbox.includes(n.userId))}
+        onReadNotices={() => setNotices((ns) => ns.map((n) => (n.workspaceId === pws.id && inbox.includes(n.userId) ? { ...n, read: true } : n)))}
+        onSignOut={onSignOut}
+        switcher={<WorkspaceSwitcher workspaces={workspaces} current={pws} currentPortal={portal.key} unread={wsUnread} portals={portalItems} onPortal={setPortalKey} onSwitch={(id) => (setPortalKey(''), switchWorkspace(id))} />}
+        mobileSwitch={{ workspaces: [...workspaces, pws], onWorkspace: (id) => id !== pws.id && (setPortalKey(''), switchWorkspace(id)) }}
+      />
+    );
+  }
+
   // "View as client": the whole app becomes exactly what this client person sees.
   if (viewAs) {
     const vc = wsClients.find((c) => c.id === viewAs.clientId);
@@ -2096,6 +2152,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             current={ws}
             unread={wsUnread}
             onSwitch={switchWorkspace}
+            portals={portalItems}
+            onPortal={setPortalKey}
             onAdd={() => setNewWs(true)}
             onSettings={() => {
               setSettingsSection('workspace');
@@ -2151,6 +2209,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             current={ws}
             unread={wsUnread}
             onSwitch={switchWorkspace}
+            portals={portalItems}
+            onPortal={setPortalKey}
             onAdd={() => setNewWs(true)}
             onSettings={() => {
               setSettingsSection('workspace');
@@ -2326,6 +2386,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             unread={myNotices.filter((n) => !n.read).length}
             onWorkspace={switchWorkspace}
             onAddWorkspace={() => setNewWs(true)}
+            portals={portalItems}
+            onPortal={setPortalKey}
             onSearch={() => setPaletteOpen(true)}
             onBell={() => setNoticesOpen(true)}
           />

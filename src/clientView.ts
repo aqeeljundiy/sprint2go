@@ -64,3 +64,16 @@ export const can = (p: Pick<ClientPerson, 'role'>, what: 'comment' | 'upload' | 
 export const clientInbox = (email: string) => `email:${email.toLowerCase()}`;
 
 export const thisMonth = () => new Date().toISOString().slice(0, 7);
+
+/**
+ * The client portals a signed-in person has: every client (in a company they're not part of) that lists their email.
+ * Someone can run their own workspace and be a client of another company with the same sign-in.
+ */
+export function portalsFor(email: string, memberOf: string[], workspaces: Workspace[], clients: Client[], channels: Channel[]) {
+  const mail = email.toLowerCase();
+  return clients
+    .filter((c) => !memberOf.includes(c.workspaceId) && workspaces.some((w) => w.id === c.workspaceId))
+    .map((c) => ({ client: c, ws: workspaces.find((w) => w.id === c.workspaceId)!, person: clientPeople(c, channels).find((p) => p.email.toLowerCase() === mail) }))
+    .filter((x): x is { client: Client; ws: Workspace; person: ClientPerson } => !!x.person && x.person.status !== 'pending')
+    .map((x) => ({ ...x, key: `${x.ws.id}:${x.client.id}` }));
+}

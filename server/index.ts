@@ -30,8 +30,10 @@ if (db.isEmpty()) {
   if (!pw) throw new Error('Set SEED_PASSWORD in .env (see .env.example) before the first run.');
   for (const u of s.users) db.setLogin(u.id, u.email, pw);
   // Client people who already joined can sign in to their portal (same demo password).
+  const known = new Set(s.users.map((u) => u.email.toLowerCase()));
+  // People who already have a sign-in (e.g. Dimas at Elkiya) just get the portal on their existing account.
   const clientUsers = s.clients.flatMap((c) =>
-    (c.people ?? []).filter((x) => x.status === 'joined').map((x) => ({ id: `cu-${x.email.split('@')[0]}-${c.id}`, name: x.name, email: x.email, title: c.name, color: c.color, clientOf: { workspaceId: c.workspaceId, clientId: c.id } })),
+    (c.people ?? []).filter((x) => x.status === 'joined' && !known.has(x.email.toLowerCase())).map((x) => ({ id: `cu-${x.email.split('@')[0]}-${c.id}`, name: x.name, email: x.email, title: c.name, color: c.color, clientOf: { workspaceId: c.workspaceId, clientId: c.id } })),
   );
   db.writeDocs('users', clientUsers as unknown as db.Doc[], [], null);
   for (const u of clientUsers) db.setLogin(u.id, u.email, pw);
@@ -53,33 +55,70 @@ const personOf = (userId: string) => db.getDoc('users', userId) as unknown as Pe
  * What one person may see, shaped for them (null = not at all). Team members: their workspaces, mailboxes they're on,
  * channels and DMs they're in, their notifications. Client people: only what the company shares with their client.
  */
+/**
+ * The client portals someone has: clients (in companies they're not part of) that list their email. One sign-in can
+ * be a team member in their own company and a client of another.
+ */
+function portalsOf(userId: string): { workspaceId: string; clientId: string }[] {
+  const me = personOf(userId);
+  if (!me?.email) return me?.clientOf ? [me.clientOf] : [];
+  const email = String(me.email).toLowerCase();
+  const mine = new Set(memberOf(userId).map((w) => w.id));
+  const channels = db.allDocs('channels') as any[];
+  const found = (db.allDocs('clients') as any[])
+    .filter((c) => !mine.has(c.workspaceId) && clientPeople(c, channels).some((x) => x.email.toLowerCase() === email && x.status !== 'pending'))
+    .map((c) => ({ workspaceId: c.workspaceId, clientId: c.id }));
+  if (me.clientOf && !found.some((f) => f.clientId === me.clientOf!.clientId)) found.push(me.clientOf);
+  return found;
+}
+/** Users (by id) who are people at this client, for the client's AI question limit. */
+const clientUserIds = (clientId: string) => {
+  const client = db.getDoc('clients', clientId) as any;
+  const emails = new Set(clientPeople(client, db.allDocs('channels') as any).map((x) => x.email.toLowerCase()));
+  return (db.allDocs('users') as any[]).filter((u) => emails.has(String(u.email).toLowerCase())).map((u) => u.id);
+};
+
 function lens(userId: string): (coll: string, d: any) => any | null {
   const me = personOf(userId);
-  if (me?.clientOf) return clientLens(me);
+  const portals = portalsOf(userId).map((pt) => clientLens({ ...me!, clientOf: pt }));
+  const team = teamLens(userId);
+  if (!portals.length) return team;
+  return (coll, d) => team(coll, d) ?? portals.map((l) => l(coll, d)).find(Boolean) ?? null;
+}
+
+/** A team member's view: their workspaces, mailboxes they're on, channels and DMs they're in, their notifications. */
+function teamLens(userId: string): (coll: string, d: any) => any | null {
+  const me = personOf(userId);
   const ws = workspaces();
   const mine = new Set(ws.filter((w) => w.members.some((m) => m.userId === userId)).map((w) => w.id));
+  if (!mine.size) return () => null; // someone at a client only
+  const people = new Set(ws.filter((w) => mine.has(w.id)).flatMap((w) => w.members.map((m) => m.userId)));
+  const firstWs = (ws.find((w) => w.id === 'pnp') ?? ws[0])?.id; // older documents without a workspace belong to the first one (as in the app)
   const accounts = new Map(ws.flatMap((w) => ((w.accounts ?? []) as { id: string; users?: string[] }[]).map((a) => [a.id, { ws: w.id, users: a.users ?? [] }] as const)));
   const channels = new Map((db.allDocs('channels') as any[]).map((c) => [String(c.id), c]));
   const channelOk = (c: any) => !!c && mine.has(c.workspaceId) && (!(c.private || c.kind === 'dm') || (c.members ?? []).includes(userId));
   const ok = (coll: string, d: any): boolean => {
     switch (coll) {
       case 'users':
-        return !d.clientOf || mine.has(d.clientOf.workspaceId);
+        // Yourself, your companies' people, and the client people of your companies.
+        return d.id === userId || people.has(d.id) || (!!d.clientOf && mine.has(d.clientOf.workspaceId));
       case 'workspaces':
         return mine.has(d.id);
+      case 'statuses':
+        return people.has(d.id);
       case 'channels':
         return channelOk(d);
       case 'messages':
         return channelOk(channels.get(d.channelId));
       case 'notices':
         // Your own, plus what the team sent to client people (so "View as client" shows it).
-        return d.userId === userId || (String(d.userId).startsWith('email:') && mine.has(d.workspaceId));
+        return d.userId === userId || (String(d.userId).startsWith('email:') && mine.has(d.workspaceId)) || (!!me?.email && d.userId === `email:${String(me.email).toLowerCase()}`);
       case 'threads': {
         const a = accounts.get(d.accountId);
         return !!a && mine.has(a.ws) && a.users.includes(userId);
       }
       default:
-        return typeof d.workspaceId !== 'string' || mine.has(d.workspaceId);
+        return mine.has(typeof d.workspaceId === 'string' ? d.workspaceId : firstWs);
     }
   };
   return (coll, d) => (ok(coll, d) ? d : null);
@@ -103,7 +142,7 @@ function clientLens(me: Person) {
   return (coll: string, d: any): any | null => {
     switch (coll) {
       case 'workspaces':
-        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: [], clientAccess: d.clientAccess, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
+        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: d.clientAccess, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
       case 'users':
         if (d.id === me.id || (d.clientOf?.clientId === clientId)) return { id: d.id, name: d.name, email: d.email, color: d.color, clientOf: d.clientOf };
         return team.has(d.id) ? { id: d.id, name: d.name, color: d.color, title: d.title, email: '' } : null;
@@ -355,12 +394,12 @@ createServer(async (req, res) => {
       const client = db.getDoc('clients', String(clientId)) as any;
       const w = workspaces().find((x) => x.id === workspaceId) as any;
       if (!client || !w || client.workspaceId !== w.id) return json(res, 404, { error: 'No such client.' });
-      const caller = personOf(me);
-      if (caller?.clientOf) {
+      if (!memberOf(me).some((x) => x.id === w.id)) {
+        // A client person inviting a colleague.
         const access = accessFor(w, client);
         const sameDomain = !!client.domain && mail.endsWith('@' + String(client.domain).toLowerCase());
-        if (caller.clientOf.clientId !== client.id || access.invites !== 'direct' || !sameDomain) return json(res, 403, { error: 'This needs the team’s approval.' });
-      } else if (!memberOf(me).some((x) => x.id === w.id)) return json(res, 403, { error: 'Not in this workspace.' });
+        if (!portalsOf(me).some((pt) => pt.clientId === client.id) || access.invites !== 'direct' || !sameDomain) return json(res, 403, { error: 'This needs the team’s approval.' });
+      }
       const existing = db.findLogin(mail);
       if (existing) return json(res, 409, { error: 'They already have a sign-in.' });
       let user = (db.allDocs('users') as any[]).find((u) => String(u.email).toLowerCase() === mail);
@@ -398,27 +437,33 @@ createServer(async (req, res) => {
     if (p === '/api/sync' && req.method === 'POST') {
       const { coll, upserts = [], deletes = [] } = await body(req);
       if (!COLLS.includes(coll)) return json(res, 400, { error: 'Unknown collection' });
-      const person = personOf(me);
-      if (person?.clientOf) {
-        // Client people: only their own kinds of changes, merged into what's stored.
-        const ok = (upserts as db.Doc[]).map((d) => (d && typeof d.id === 'string' ? clientWrite(person, coll, d) : null)).filter(Boolean);
-        db.writeDocs(coll, ok, [], me);
-        broadcast(coll, ok, [], req.headers['x-conn'] as string | undefined);
-        return json(res, 200, { saved: ok.length });
-      }
+      const person = personOf(me)!;
       const mine = new Set(memberOf(me).map((w) => w.id));
-      const see = lens(me);
-      // Nobody can write into a workspace they're not in, or change or delete something they can't see.
-      const ok = (upserts as db.Doc[]).filter((d) => {
-        if (!d || typeof d.id !== 'string') return false;
+      const see = teamLens(me);
+      const portals = portalsOf(me).map((pt) => ({ ...person, clientOf: pt }));
+      // Team changes: nobody can write into a workspace they're not in, or change or delete something they can't see.
+      const asTeam = (d: db.Doc) => {
+        if (!mine.size) return false;
         const before = db.getDoc(coll, d.id);
-        if (before && !see(coll, before)) return false;
-        return coll !== 'workspaces' ? typeof d.workspaceId !== 'string' || mine.has(d.workspaceId) : mine.has(d.id) || !before;
-      });
-      const dels = (deletes as string[]).filter((id) => {
-        const before = db.getDoc(coll, id);
-        return !before || see(coll, before);
-      });
+        if (before) return !!see(coll, before);
+        // New: workspaces and people can be added; notices go to anyone in your companies; anything else must be
+        // something you'd be able to see (e.g. a message in a channel you're in).
+        if (coll === 'workspaces' || coll === 'users') return true;
+        if (coll === 'notices') return mine.has(d.workspaceId as string);
+        if (coll === 'statuses') return d.id === me;
+        return !!see(coll, d);
+      };
+      // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
+      const ok = (upserts as db.Doc[])
+        .filter((d) => d && typeof d.id === 'string')
+        .map((d) => (asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
+        .filter(Boolean);
+      const dels = mine.size
+        ? (deletes as string[]).filter((id) => {
+            const before = db.getDoc(coll, id);
+            return !before || see(coll, before);
+          })
+        : [];
       db.writeDocs(coll, ok, dels, me);
       broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);
       return json(res, 200, { saved: ok.length });
@@ -464,21 +509,21 @@ createServer(async (req, res) => {
     }
     if (p === '/api/ai/status') {
       const wsId = url.searchParams.get('ws') ?? '';
-      const asClient = personOf(me)?.clientOf;
-      if (asClient ? asClient.workspaceId !== wsId : !memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
+      const asClient = memberOf(me).some((w) => w.id === wsId) ? undefined : portalsOf(me).find((pt) => pt.workspaceId === wsId);
+      if (!asClient && !memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
       return json(res, 200, { live: asClient ? !!aiFor(wsId, 'ask') : Object.values(JOB_OF).some((j) => !!aiFor(wsId, j)) });
     }
     const action = p.match(/^\/api\/ai\/(\w+)$/)?.[1];
     if (action && routes[action] && req.method === 'POST') {
       const b = await body(req);
-      const asClient = personOf(me)?.clientOf;
+      const asClient = memberOf(me).some((w) => w.id === b.workspaceId) ? undefined : portalsOf(me).find((pt) => pt.workspaceId === b.workspaceId);
       if (asClient) {
         // Client people: only "Ask AI", only when the company switched it on, within the monthly limit.
         const w = workspaces().find((x) => x.id === asClient.workspaceId) as any;
         const client = db.getDoc('clients', asClient.clientId) as any;
         const access = w && client ? accessFor(w, client) : null;
         if (action !== 'askmeetings' || b.workspaceId !== asClient.workspaceId || !access?.ai) return json(res, 403, { error: 'AI isn’t switched on for your portal.' });
-        const ids = (db.allDocs('users') as any[]).filter((u) => u.clientOf?.clientId === asClient.clientId).map((u) => u.id);
+        const ids = clientUserIds(asClient.clientId);
         if (db.monthlyUses(ids, 'ask') >= access.aiQuestions) return json(res, 429, { error: `You’ve used all ${access.aiQuestions} questions for this month.` });
       } else if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, { error: 'Not in this workspace.' });
       const cfg = aiFor(b.workspaceId, JOB_OF[action]);

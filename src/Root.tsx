@@ -8,7 +8,8 @@ import { setAIWorkspace } from './ai';
 import App from './App';
 import { ClientApp } from './components/ClientApp';
 import { clientActions } from './clientActions';
-import { accessFor, clientInbox, clientPeople } from './clientView';
+import { accessFor, clientInbox, portalsFor } from './clientView';
+import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { AcceptInvite, SignIn } from './components/SignIn';
 
 /**
@@ -57,8 +58,9 @@ function ServerRoot({ me }: { me: string }) {
   const [users, setUsers] = useStored('users');
   const [workspaces, setWorkspaces] = useStored('workspaces');
   const user = users.find((u) => u.id === me);
-  if (user?.clientOf) return <ClientRoot me={user} />;
-  if (!user || !workspaces.some((w) => w.members.some((m) => m.userId === me))) return <NoWorkspace email={user?.email ?? ''} onBack={() => void signOut()} />;
+  // Only a client somewhere (no workspace of their own): straight to their portal.
+  if (user && !workspaces.some((w) => w.members.some((m) => m.userId === me))) return <ClientRoot me={user} />;
+  if (!user) return <NoWorkspace email="" onBack={() => void signOut()} />;
   return (
     <App
       key={user.id}
@@ -160,13 +162,17 @@ function ClientRoot({ me }: { me: User }) {
   const [meetings] = useStored('meetings');
   const [drive, setDrive] = useStored('drive');
   const [notices, setNotices] = useStored('notices');
-  const ws = workspaces.find((w) => w.id === me.clientOf!.workspaceId);
-  const client = clients.find((c) => c.id === me.clientOf!.clientId);
+  // Someone can be a client of more than one company: one portal at a time, with a switcher.
+  const portals = portalsFor(me.email, [], workspaces, clients, channels);
+  const [key, setKey] = usePersisted(`s2g-portal:${me.id}`, '');
+  const portal = portals.find((pt) => pt.key === key) ?? portals[0];
+  const ws = portal?.ws;
+  const client = portal?.client;
   useEffect(() => {
     if (ws) setAIWorkspace(ws.id);
   }, [ws?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!ws || !client) return <NoWorkspace email={me.email} onBack={() => void signOut()} />;
-  const person = clientPeople(client, channels).find((x) => x.email.toLowerCase() === me.email.toLowerCase()) ?? { email: me.email, name: me.name, role: 'viewer' as const, status: 'joined' as const, invitedBy: '', at: '' };
+  if (!portal || !ws || !client) return <NoWorkspace email={me.email} onBack={() => void signOut()} />;
+  const person = portal.person;
   const access = accessFor(ws, client);
   const team = users.filter((u) => !u.clientOf);
   const actions = clientActions({
@@ -206,6 +212,7 @@ function ClientRoot({ me }: { me: User }) {
       notices={notices.filter((n) => inbox.includes(n.userId))}
       onReadNotices={() => setNotices((ns) => ns.map((n) => (inbox.includes(n.userId) ? { ...n, read: true } : n)))}
       onSignOut={() => void signOut()}
+      switcher={portals.length > 1 ? <WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} /> : undefined}
     />
   );
 }

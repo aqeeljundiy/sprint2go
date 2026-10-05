@@ -30,7 +30,7 @@ import type { ClientActions } from '../clientActions';
 import { can, requestStatus, teamLabel } from '../clientView';
 import { relative } from '../utils';
 import { Avatar } from './Avatar';
-import { WorkspaceLogo } from './WorkspaceLogo';
+import { WorkspaceLogo, applyBranding } from './WorkspaceLogo';
 import { Logo } from './Logo';
 import { MobileTop } from './MobileTop';
 import { Notifications } from './Notifications';
@@ -57,6 +57,9 @@ interface Props {
   /** "View as client": a pill to switch person or leave. */
   preview?: { onExit: () => void; people: ClientPerson[]; onSwitch: (email: string) => void };
   onSignOut?: () => void;
+  /** Someone with their own workspace (or several portals): the workspace switcher, in place of the logo. */
+  switcher?: React.ReactNode;
+  mobileSwitch?: { workspaces: Workspace[]; onWorkspace: (id: string) => void };
 }
 
 const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
@@ -100,6 +103,7 @@ export function ClientApp(p: Props) {
 
   // The company's colour drives the accent, the same way it does in the team app.
   useEffect(() => {
+    applyBranding(ws); // the company's icon in the browser tab
     document.documentElement.style.setProperty('--brand', ws.color);
     document.title = `${client.name} · ${ws.name}`;
   }, [ws.color, ws.name, client.name]);
@@ -566,9 +570,11 @@ export function ClientApp(p: Props) {
     <div className={`app client-app mode-${mode === 'work' ? 'tasks' : mode === 'files' ? 'drive' : mode} ${hasSidebar ? '' : 'no-sidebar'}`}>
       <nav className="rail" aria-label="Portal">
         <div className="rail-ws">
-          <span className="client-ws" title={`${ws.name} for ${client.name}`}>
-            <WorkspaceLogo ws={ws} size={34} />
-          </span>
+          {p.switcher ?? (
+            <span className="client-ws" title={`${ws.name} for ${client.name}`}>
+              <WorkspaceLogo ws={ws} size={34} />
+            </span>
+          )}
         </div>
         <div className="rail-apps">
           {MODES.map(([id, name, Icon, n]) => (
@@ -630,10 +636,10 @@ export function ClientApp(p: Props) {
                       ? { value: sub || v.meetings[0].meeting.id, label: 'Which meeting', onChange: setSub, options: v.meetings.map((x) => ({ value: x.meeting.id, label: x.meeting.title })) }
                       : undefined
             }
-            workspaces={[ws]}
+            workspaces={p.mobileSwitch?.workspaces ?? [ws]}
             current={ws}
             unread={unread}
-            onWorkspace={() => {}}
+            onWorkspace={p.mobileSwitch?.onWorkspace ?? (() => {})}
             onAddWorkspace={() => {}}
             onSearch={() => (access.ai ? setAskOpen(true) : go('home'))}
             onBell={() => (setNoticesOpen(true), p.onReadNotices())}

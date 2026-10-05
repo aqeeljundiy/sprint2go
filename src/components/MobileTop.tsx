@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Bell, ChevronDown, Search } from 'lucide-react';
-import type { Workspace } from '../types';
+import type { Client, Workspace } from '../types';
 import { WorkspaceLogo } from './WorkspaceLogo';
 import { Popover } from './ui/Popover';
 import { Select, type Option } from './ui/Select';
@@ -19,6 +19,8 @@ export function MobileTop({
   onAddWorkspace,
   onSearch,
   onBell,
+  portals = [],
+  onPortal,
 }: {
   title: string;
   switcher?: { value: string; options: Option[]; onChange: (v: string) => void; label: string };
@@ -29,6 +31,8 @@ export function MobileTop({
   onAddWorkspace: () => void;
   onSearch: () => void;
   onBell: () => void;
+  portals?: { key: string; ws: Workspace; client: Client }[];
+  onPortal?: (key: string) => void;
 }) {
   const wsBtn = useRef<HTMLButtonElement>(null);
   const [wsOpen, setWsOpen] = useState(false);
@@ -47,6 +51,18 @@ export function MobileTop({
               <span className="sel-label">
                 {w.name}
                 <small>{w.domains[0] ?? ''}</small>
+              </span>
+            </button>
+          ))}
+          {portals.length > 0 && <div className="sel-group">You’re a client of</div>}
+          {portals.map((pt) => (
+            <button key={pt.key} className="sel-opt" onClick={() => (onPortal?.(pt.key), setWsOpen(false))}>
+              <span className="sel-icon">
+                <WorkspaceLogo ws={pt.ws} size={24} />
+              </span>
+              <span className="sel-label">
+                {pt.ws.name}
+                <small>Client portal · {pt.client.name}</small>
               </span>
             </button>
           ))}
