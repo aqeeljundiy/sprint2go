@@ -59,11 +59,11 @@ interface Layout {
 const CARD_INFO: Record<CardId, { name: string; hint: string }> = {
   briefing: { name: 'Briefing', hint: 'A short summary of your day' },
   dump: { name: 'Brain dump', hint: 'Type what’s on your mind' },
-  pulse: { name: 'Company pulse', hint: 'Open, late, done, briefs' },
+  pulse: { name: 'Company numbers', hint: 'Late, not picked up, done this week' },
   risk: { name: 'Clients at risk', hint: 'Late or stuck work per client' },
   lateByTeam: { name: 'Teams', hint: 'Open and late work per team' },
   workload: { name: 'Workload', hint: 'How busy each person is' },
-  waiting: { name: 'Waiting on you', hint: 'Decisions and work only you can unblock' },
+  waiting: { name: 'Waiting on you', hint: 'Already at the top, in Up next' },
   teamQueue: { name: 'Team queue', hint: 'Tasks nobody has picked up yet' },
   briefs: { name: 'Briefs', hint: 'Bigger jobs and their progress' },
   mytasks: { name: 'My tasks', hint: 'Your queue, in order' },
@@ -79,27 +79,27 @@ const TEMPLATES: Record<HomeTemplateId, { name: string; hint: string; cards: [Ca
   founder: {
     name: 'Founder / C-level',
     hint: 'What’s happening across the whole company',
-    cards: [['pulse', 'l'], ['briefing', 'm'], ['waiting', 'm'], ['risk', 'm'], ['workload', 'm']],
+    cards: [['risk', 'm'], ['lateByTeam', 'm'], ['workload', 'm'], ['briefs', 'm']],
   },
   lead: {
     name: 'Team lead',
     hint: 'Your team’s queue and who is busy',
-    cards: [['briefing', 'l'], ['teamQueue', 'm'], ['workload', 'm'], ['mytasks', 'm'], ['today', 'm']],
+    cards: [['mytasks', 'm'], ['workload', 'm'], ['today', 'm'], ['briefs', 'm']],
   },
   maker: {
     name: 'Designer / Editor',
     hint: 'Your queue and the briefs behind it',
-    cards: [['mytasks', 'l'], ['briefs', 'm'], ['today', 'm'], ['foryou', 'm'], ['unread', 'm']],
+    cards: [['mytasks', 'l'], ['briefs', 'm'], ['today', 'm']],
   },
   account: {
     name: 'Account manager',
     hint: 'Your clients, their emails and meetings',
-    cards: [['briefing', 'l'], ['clients', 'l'], ['unread', 'm'], ['mytasks', 'm'], ['meetings', 'm']],
+    cards: [['clients', 'l'], ['unread', 'm'], ['meetings', 'm']],
   },
   finance: {
     name: 'Finance / Admin',
     hint: 'Payments, invoices and deadlines',
-    cards: [['mytasks', 'l'], ['unread', 'm'], ['today', 'm'], ['foryou', 'm'], ['waiting', 'm']],
+    cards: [['mytasks', 'l'], ['unread', 'm'], ['today', 'm']],
   },
 };
 export const HOME_TEMPLATES = TEMPLATES;
@@ -125,6 +125,7 @@ interface Props {
   onDump: (text?: string) => void;
   onToggleTask: (id: string) => void;
   onAssign: (taskId: string, userId: string) => void;
+  onNudge: (taskId: string) => void; // remind the person doing a late task
   onOpenTask: (id: string) => void;
   onOpenTasks: () => void;
   onOpenTeam: (id: string) => void;
@@ -207,7 +208,21 @@ export function HomeView(p: Props) {
         .map((b) => ({ key: 'b' + b.id, text: `All tasks done in “${b.title}”`, sub: 'Review and close the brief', run: () => p.onOpenTask(b.id) })),
       ...mine.filter((t) => t.priority === 'high' && t.due && t.due <= today).map((t) => ({ key: 'm' + t.id, text: t.title, sub: 'High priority, due now', run: () => p.onOpenTask(t.id), tone: 'warn' as const })),
     ];
-    return { open, late, mine, briefs, myBriefs, doneWeek, unread, todayEvents, pendingActions, risk, byTeam, people, queue, waiting, myTeams };
+    // Up next: everything that needs this person, across apps, most urgent first, each with its action.
+    type Next = { key: string; rank: number; kind: 'meeting' | 'review' | 'request' | 'late' | 'today' | 'queue' | 'delegated' | 'mail' | 'brief'; text: string; sub: string; task?: Todo; thread?: Thread; event?: CalEvent };
+    const soon = Date.now() + 45 * 60_000;
+    const upnext = ([
+      ...todayEvents.filter((e) => new Date(e.start).getTime() <= soon).map((e) => ({ key: 'e' + e.id, rank: 100, kind: 'meeting' as const, text: e.title, sub: new Date(e.start).getTime() <= Date.now() ? 'Happening now' : `Starts at ${fmtTime(e.start)}`, event: e })),
+      ...open.filter((t) => t.status === 'review' && t.supervisorId === p.me.id).map((t) => ({ key: 'r' + t.id, rank: 90, kind: 'review' as const, text: t.title, sub: `${p.users.find((u) => u.id === doers(t)[0])?.name.split(' ')[0] ?? 'Someone'} finished it, waiting for your review`, task: t })),
+      ...open.filter((t) => t.source === 'request' && t.status === 'todo' && (doers(t).includes(p.me.id) || (!t.userId && p.teams.some((tm) => tm.id === t.teamId && tm.leadId === p.me.id)))).map((t) => ({ key: 'q' + t.id, rank: 85, kind: 'request' as const, text: t.title, sub: `New request from ${p.clients.find((c) => c.id === t.clientId)?.name ?? 'a client'}`, task: t })),
+      ...mine.filter(late).map((t) => ({ key: 'l' + t.id, rank: 80, kind: 'late' as const, text: t.title, sub: `Late, was due ${dueLabel(t.due!).text}`, task: t })),
+      ...mine.filter((t) => t.due === today && t.status !== 'review').map((t) => ({ key: 't' + t.id, rank: 70, kind: 'today' as const, text: t.title, sub: 'Due today', task: t })),
+      ...queue.map((t) => ({ key: 'u' + t.id, rank: 60, kind: 'queue' as const, text: t.title, sub: `${p.teams.find((x) => x.id === t.teamId)?.name ?? 'Team'} queue, nobody on it yet`, task: t })),
+      ...work.filter((t) => t.createdBy === p.me.id && t.userId && !doers(t).includes(p.me.id) && late(t)).map((t) => ({ key: 'd' + t.id, rank: 50, kind: 'delegated' as const, text: t.title, sub: `Late with ${p.users.find((u) => u.id === t.userId)?.name.split(' ')[0] ?? 'someone'}`, task: t })),
+      ...unread.filter((t) => p.clients.some((c) => c.domain && t.messages[t.messages.length - 1].from.email.toLowerCase().endsWith('@' + c.domain))).map((t) => ({ key: 'm' + t.id, rank: 45, kind: 'mail' as const, text: t.subject, sub: `${t.messages[t.messages.length - 1].from.name} is waiting for a reply`, thread: t })),
+      ...briefs.filter((b) => b.userId === p.me.id && work.some((t) => t.briefId === b.id) && work.filter((t) => t.briefId === b.id).every((t) => t.done)).map((b) => ({ key: 'b' + b.id, rank: 30, kind: 'brief' as const, text: b.title, sub: 'Every task is done, close the brief', task: b })),
+    ] as Next[]).sort((a, b) => b.rank - a.rank || (a.task?.due ?? '').localeCompare(b.task?.due ?? ''));
+    return { open, late, mine, briefs, myBriefs, doneWeek, unread, todayEvents, pendingActions, risk, byTeam, people, queue, waiting, myTeams, upnext };
   }, [p.tasks, p.threads, p.events, p.meetings, p.clients, p.teams, p.users, p.me.id, p.isOwner]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A short, plain-language briefing built from the numbers (no AI call needed).
@@ -286,19 +301,18 @@ export function HomeView(p: Props) {
         <div className="pulse">
           {(
             [
-              ['Open', d.open.length, ''],
-              ['Late', d.open.filter(d.late).length, d.open.filter(d.late).length ? 'warn' : ''],
-              ['Not picked up', d.open.filter((t) => !t.userId).length, ''],
-              ['Done this week', d.doneWeek.length, 'go'],
-              ['Active briefs', d.briefs.length, ''],
-              ['Clients', p.clients.filter((c) => c.status === 'active').length, ''],
+              ['Late', d.open.filter(d.late).length, 'warn', p.onOpenGrid],
+              ['Not picked up', d.open.filter((t) => !t.userId).length, '', p.onOpenGrid],
+              ['Done this week', d.doneWeek.length, 'go', p.onOpenTasks],
             ] as const
-          ).map(([l, n, cls]) => (
-            <div key={l} className={`pulse-num ${cls}`}>
-              <b>{n}</b>
-              <span>{l}</span>
-            </div>
-          ))}
+          )
+            .filter(([, n]) => n > 0)
+            .map(([l, n, cls, go]) => (
+              <button key={l} className={`pulse-num ${cls}`} onClick={go}>
+                <b>{n}</b>
+                <span>{l}</span>
+              </button>
+            ))}
         </div>
       ),
     },
@@ -309,7 +323,7 @@ export function HomeView(p: Props) {
           empty('No client has late or stuck work.')
         ) : (
           <ul className="home-list">
-            {d.risk.slice(0, 5).map(({ c, open, late, waiting }) => (
+            {d.risk.slice(0, 5).map(({ c, late, waiting }) => (
               <li key={c.id}>
                 <button className="risk-row" onClick={() => p.onOpenClient(c.id)}>
                   <span className="client-dot sm" style={{ background: c.color }}>
@@ -320,7 +334,6 @@ export function HomeView(p: Props) {
                     {late ? <b className="late">{late} late</b> : null}
                     {late && waiting ? ' · ' : ''}
                     {waiting ? `${waiting} not picked up` : ''}
-                    <em> of {open}</em>
                   </span>
                 </button>
               </li>
@@ -330,24 +343,26 @@ export function HomeView(p: Props) {
     },
     lateByTeam: {
       icon: <Users size={15} />,
-      body: () => (
+      body: () =>
+        d.byTeam.every((x) => !x.late && !x.waiting) ? (
+          empty('No team has late or unassigned work.')
+        ) : (
         <ul className="home-list">
-          {d.byTeam.map(({ tm, open, late, waiting }) => (
+          {d.byTeam.filter((x) => x.late || x.waiting).map(({ tm, late, waiting }) => (
             <li key={tm.id}>
               <button className="team-row" onClick={() => p.onOpenTeam(tm.id)}>
                 <span className="team-square" style={{ background: tm.color }} />
                 <span className="tr-name">{tm.name}</span>
-                {bar(open, Math.max(...d.byTeam.map((x) => x.open)), late > 0)}
                 <span className="tr-num">
-                  {open}
-                  {late ? <b className="late"> · {late} late</b> : null}
-                  {waiting ? <em> · {waiting} waiting</em> : null}
+                  {late ? <b className="late">{late} late</b> : null}
+                  {late && waiting ? ' · ' : ''}
+                  {waiting ? <em>{waiting} not picked up</em> : null}
                 </span>
               </button>
             </li>
           ))}
         </ul>
-      ),
+        ),
     },
     workload: {
       icon: <Users size={15} />,
@@ -559,9 +574,18 @@ export function HomeView(p: Props) {
                 <span className="ctl-text">
                   <strong>{c.name}</strong>
                   <small>
-                    {open.length} open{late ? ' · ' : ''}
-                    {late ? <b className="late">{late} late</b> : null}
-                    {c.status === 'lead' ? ' · lead' : ''}
+                    {late ? (
+                      <b className="late">{late} late</b>
+                    ) : open.length ? (
+                      (() => {
+                        const next = open.filter((t) => t.due).sort((a, b) => (a.due ?? '').localeCompare(b.due ?? ''))[0] ?? open[0];
+                        return `Next: ${next.title}${next.due ? `, ${dueWord(next.due)}` : ''}`;
+                      })()
+                    ) : c.status === 'lead' ? (
+                      'Lead: nothing scheduled'
+                    ) : (
+                      'Nothing open'
+                    )}
                   </small>
                 </span>
               </button>
@@ -669,6 +693,21 @@ export function HomeView(p: Props) {
           </div>
         )}
 
+        <UpNext
+          items={d.upnext}
+          mine={d.mine}
+          events={d.todayEvents}
+          users={p.users}
+          teams={p.teams}
+          me={p.me.id}
+          onDone={p.onToggleTask}
+          onAssign={p.onAssign}
+          onNudge={p.onNudge}
+          onOpenTask={p.onOpenTask}
+          onOpenThread={p.onOpenThread}
+          onOpenEvent={(id) => p.onOpenCalendar(id)}
+        />
+
         <div className={`home-grid cards ${editing ? 'editing' : ''}`}>
           {visible.map((c, i) => {
             const card = cards[c.id];
@@ -721,6 +760,150 @@ export function HomeView(p: Props) {
           })}
         </div>
       </div>
+    </section>
+  );
+}
+
+/** "today", "tomorrow" read lower-case mid-sentence; dates keep their capitals. */
+const dueWord = (d: string) => {
+  const t = dueLabel(d).text;
+  return /^[A-Z][a-z]{2},/.test(t) ? t : t.toLowerCase();
+};
+type NextItem = ReturnType<typeof nextShape>;
+const nextShape = (x: { key: string; rank: number; kind: 'meeting' | 'review' | 'request' | 'late' | 'today' | 'queue' | 'delegated' | 'mail' | 'brief'; text: string; sub: string; task?: Todo; thread?: Thread; event?: CalEvent }) => x;
+
+/** The top of Home: what needs you now, across apps, with the action right there. No counts. */
+function UpNext(p: {
+  items: NextItem[];
+  mine: Todo[];
+  events: CalEvent[];
+  users: User[];
+  teams: Team[];
+  me: string;
+  onDone: (id: string) => void;
+  onAssign: (taskId: string, userId: string) => void;
+  onNudge: (taskId: string) => void;
+  onOpenTask: (id: string) => void;
+  onOpenThread: (id: string) => void;
+  onOpenEvent: (id: string) => void;
+}) {
+  const [all, setAll] = useState(false);
+  const [gone, setGone] = useState<string[]>([]); // acted on: leaves the list right away
+  const items = p.items.filter((x) => !gone.includes(x.key));
+  const shown = all ? items : items.slice(0, 6);
+  const act = (key: string, fn: () => void) => {
+    setGone((g) => [...g, key]);
+    fn();
+  };
+  const open = (x: NextItem) => (x.task ? p.onOpenTask(x.task.id) : x.thread ? p.onOpenThread(x.thread.id) : x.event ? p.onOpenEvent(x.event.id) : undefined);
+  const action = (x: NextItem) => {
+    const t = x.task;
+    switch (x.kind) {
+      case 'meeting':
+        return (
+          <button className="primary-btn sm" onClick={() => open(x)}>
+            Open
+          </button>
+        );
+      case 'review':
+        return (
+          <button className="primary-btn sm" onClick={() => act(x.key, () => p.onDone(t!.id))}>
+            <Check size={14} /> Approve
+          </button>
+        );
+      case 'late':
+      case 'today':
+        return (
+          <button className="ghost-btn sm" onClick={() => act(x.key, () => p.onDone(t!.id))}>
+            <Check size={14} /> Done
+          </button>
+        );
+      case 'queue': {
+        const tm = p.teams.find((m) => m.id === t!.teamId);
+        return (
+          <Select
+            value=""
+            options={peopleOptions(p.users.filter((u) => !tm || tm.members.includes(u.id)), p.me, false)}
+            onChange={(v) => act(x.key, () => p.onAssign(t!.id, v))}
+            label="Assign"
+            placeholder="Assign"
+            className="sel-flat"
+          />
+        );
+      }
+      case 'delegated':
+        return (
+          <button className="ghost-btn sm" onClick={() => act(x.key, () => p.onNudge(t!.id))}>
+            Remind
+          </button>
+        );
+      case 'mail':
+        return (
+          <button className="ghost-btn sm" onClick={() => open(x)}>
+            Reply
+          </button>
+        );
+      case 'brief':
+        return (
+          <button className="ghost-btn sm" onClick={() => act(x.key, () => p.onDone(t!.id))}>
+            Close brief
+          </button>
+        );
+      default:
+        return (
+          <button className="ghost-btn sm" onClick={() => open(x)}>
+            Open
+          </button>
+        );
+    }
+  };
+  const ICON: Record<NextItem['kind'], ReactNode> = {
+    meeting: <Video size={15} />,
+    review: <Check size={15} />,
+    request: <Inbox size={15} />,
+    late: <AlertTriangle size={15} />,
+    today: <ListChecks size={15} />,
+    queue: <Users size={15} />,
+    delegated: <AlertTriangle size={15} />,
+    mail: <Inbox size={15} />,
+    brief: <FileText size={15} />,
+  };
+
+  if (!items.length) {
+    // Clear: say what comes next instead of an empty box.
+    const nextTask = p.mine.find((t) => t.due);
+    const nextEvent = p.events[0];
+    return (
+      <section className="up-next clear">
+        <h2>
+          <Check size={16} /> You’re clear for now
+        </h2>
+        <p className="muted">
+          {nextEvent ? `Next: ${nextEvent.title} at ${fmtTime(nextEvent.start)}.` : nextTask ? `Next on your list: “${nextTask.title}”, ${dueWord(nextTask.due!)}.` : 'Nothing scheduled. A good time to get ahead.'}
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="up-next">
+      <h2>Up next</h2>
+      <ul>
+        {shown.map((x) => (
+          <li key={x.key} className={`un-row k-${x.kind}`}>
+            <span className="un-icon">{ICON[x.kind]}</span>
+            <button className="un-text" onClick={() => open(x)}>
+              <strong>{x.text}</strong>
+              <small>{x.sub}</small>
+            </button>
+            <span className="un-act">{action(x)}</span>
+          </li>
+        ))}
+      </ul>
+      {items.length > 6 && (
+        <button className="link-btn un-more" onClick={() => setAll((a) => !a)}>
+          {all ? 'Show less' : `Show ${items.length - 6} more`}
+        </button>
+      )}
     </section>
   );
 }

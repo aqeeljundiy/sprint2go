@@ -1090,3 +1090,25 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   .request-row { grid-template-columns: 1fr; }
 }
 .home-brief, .home-meeting { border: 0; background: none; font: inherit; cursor: pointer; }
+
+/* ---------- Home: Up next (what needs you now, with the action right there) ---------- */
+.up-next { background: var(--surface); border-radius: var(--r-card); box-shadow: 0 0 0 1px var(--line); padding: 14px 16px 10px; margin: 0 0 14px; }
+.up-next h2 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.up-next ul { list-style: none; margin: 0; padding: 0; }
+.un-row { display: flex; align-items: center; gap: 12px; padding: 8px 6px; border-radius: 10px; animation: unIn .25s var(--ease, ease) both; }
+.un-row + .un-row { border-top: 1px solid var(--line); }
+.un-row:hover { background: var(--hover); }
+.un-icon { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--hover); color: var(--text-2, var(--text)); }
+.un-row.k-late .un-icon, .un-row.k-delegated .un-icon { background: color-mix(in oklab, var(--danger, #dc2626) 14%, transparent); color: var(--danger, #dc2626); }
+.un-row.k-review .un-icon, .un-row.k-request .un-icon { background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--accent); }
+.un-row.k-meeting .un-icon { background: var(--warn-soft); color: var(--warn); }
+.un-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+.un-text strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.un-text small { color: var(--muted); font-size: 12.5px; }
+.un-act { flex: none; }
+.un-more { margin: 6px 6px 2px; }
+.up-next.clear { padding: 16px; }
+.up-next.clear p { margin: 0; }
+.pulse-num { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+@keyframes unIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (max-width: 760px) { .un-row { gap: 10px; } .un-text strong { white-space: normal; } }

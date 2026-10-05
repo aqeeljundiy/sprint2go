@@ -2467,6 +2467,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             teams={wsTeams}
             users={members}
             onAssign={(id, uid2) => patchTask(id, { userId: uid2 })}
+            onNudge={(id) => {
+              const t = todos.find((x) => x.id === id);
+              if (!t) return;
+              doersOf(t).filter((x) => x !== user.id).forEach((x) => notify(x, 'task', `${myFirst} is checking on “${t.title}”${t.due ? `, it was due ${dueWords(t.due)}` : ''}`, { app: 'tasks', id }));
+              logTask(id, 'comment', 'sent a reminder');
+              showToast({ text: `Reminded ${doersOf(t).map(firstOf).join(', ')}` });
+            }}
             onOpenTask={openTask}
             onOpenTeam={(id) => openTasks({ kind: 'team', id })}
             onOpenBriefs={() => openTasks({ kind: 'briefs' })}
