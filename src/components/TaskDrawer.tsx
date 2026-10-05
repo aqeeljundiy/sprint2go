@@ -272,7 +272,7 @@ export function TaskDrawer(p: Props) {
             <dt>Due</dt>
             <dd>
               <DatePicker value={t.due ?? ''} onChange={(v) => p.onPatch(t.id, { due: v || undefined })} label="Due date" placeholder="No date" />
-              {t.due && !t.done && <span className={`due ${dueLabel(t.due).cls}`}>{dueLabel(t.due).text}</span>}
+              {t.due && !t.done && dueLabel(t.due).cls && <span className={`due ${dueLabel(t.due).cls}`}>{dueLabel(t.due).text}</span>}
             </dd>
             {!brief && (
               <>
@@ -330,7 +330,7 @@ export function TaskDrawer(p: Props) {
                 onChange={(e) => p.onPatch(t.id, { context: e.target.value })}
                 placeholder="Goal, background, what to deliver, deadlines, links to files…"
               />
-              <div className="drawer-label row">
+              <div className="drawer-label label-row">
                 Tasks in this brief
                 <span className="bc-progress">
                   <span className="bar">
@@ -377,7 +377,7 @@ export function TaskDrawer(p: Props) {
             <>
               <label className="drawer-label">Notes</label>
               <textarea className="drawer-notes" value={t.notes ?? ''} onChange={(e) => p.onPatch(t.id, { notes: e.target.value })} placeholder="Details, links, what done looks like…" />
-              <div className="drawer-label row">
+              <div className="drawer-label label-row">
                 Checklist
                 {checklist.length > 0 && (
                   <span className="bc-progress">

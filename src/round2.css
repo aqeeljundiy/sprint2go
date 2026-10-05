@@ -489,7 +489,7 @@ button.cell:hover {
   letter-spacing: 0.02em;
   margin-bottom: -6px;
 }
-.drawer-label.row {
+.drawer-label.label-row {
   display: flex;
   align-items: center;
   gap: 8px;
