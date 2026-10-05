@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
-import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User } from '../types';
+import { Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
+import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace } from '../types';
+import { ClientAccessForm } from './admin/ClientAccessForm';
+import { accessFor, clientPeople } from '../clientView';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
@@ -20,12 +22,15 @@ export type TaskScope =
   | { kind: 'client'; id: string; teamId?: string }
   | { kind: 'team'; id: string };
 
+export const ROLE_NAME: Record<ClientPerson['role'], string> = { viewer: 'Viewer', collaborator: 'Collaborator', approver: 'Approver' };
+export const ROLE_HINT: Record<ClientPerson['role'], string> = { viewer: 'Reads only', collaborator: 'Comments, uploads, sends requests', approver: 'Also approves work' };
 export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }> = {
   ai: { icon: Mail, label: 'From email' },
   manual: { icon: Plus, label: 'Added by hand' },
   braindump: { icon: Brain, label: 'From a brain dump' },
   chat: { icon: MessagesSquare, label: 'From chat' },
   meeting: { icon: Video, label: 'From a meeting' },
+  request: { icon: Inbox, label: 'Client request' },
 };
 const COLUMNS: { id: TaskStatus; name: string }[] = [
   { id: 'todo', name: 'To do' },
@@ -80,7 +85,12 @@ interface Props {
   channels: Channel[];
   meetings: Meeting[];
   files: DriveItem[];
-  onPreviewPortal: (clientId: string, guestEmail?: string) => void;
+  workspace: Workspace;
+  canManage: boolean; // admins change client access
+  onViewAs: (clientId: string, email: string) => void;
+  onPatchClient: (id: string, patch: Partial<Client>) => void;
+  onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }) => void;
+  onApproveClientPerson: (clientId: string, email: string) => void;
   onShareMeeting: (id: string, shared: boolean) => void;
   onShareFile: (id: string, shared: boolean) => void;
   onScope: (s: TaskScope) => void;
@@ -120,6 +130,8 @@ export function TasksView(p: Props) {
     if (p.scope.kind === 'client') setClientTab(p.scope.teamId ? 'tasks' : (p.clientTab ?? 'overview'));
   }, [scopeId, p.clientTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [previewAs, setPreviewAs] = useState<string | null>(null);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
 
   const scope = p.scope;
   const client = scope.kind === 'client' ? p.clients.find((c) => c.id === scope.id) : undefined;
@@ -252,6 +264,11 @@ export function TasksView(p: Props) {
             {t.title}
           </button>
           <div className="task-meta">
+            {t.source === 'request' && (
+              <span className="req-chip" title={`Request from ${t.requestedBy}`}>
+                <Inbox size={11} /> Request
+              </span>
+            )}
             {statusOf(t) === 'doing' && <span className="due doing">In progress</span>}
             {statusOf(t) === 'waiting' && <span className="due waiting">Waiting on client</span>}
             {statusOf(t) === 'review' && <span className="due review">Waiting for review</span>}
@@ -285,7 +302,7 @@ export function TasksView(p: Props) {
                 Open email
               </button>
             )}
-            {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : person(t.createdBy)?.name.split(' ')[0]}</span>}
+            {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : t.createdBy.includes('@') ? (p.clients.flatMap((c) => c.people ?? []).find((x) => x.email === t.createdBy)?.name.split(' ')[0] ?? 'the client') : person(t.createdBy)?.name.split(' ')[0]}</span>}
           </div>
         </div>
         <PeoplePicker compact value={doers(t)} users={p.users} me={p.me} label="Doing it" onChange={(ids) => p.onPatch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />
@@ -882,33 +899,36 @@ export function TasksView(p: Props) {
           </div>
         )}
         {client && clientTab === 'portal' && (() => {
-          const guests = [...new Map(p.channels.filter((c) => c.clientId === client.id).flatMap((c) => c.guests ?? []).map((g) => [g.email, g])).values()];
-          const visible = p.tasks.filter((t) => t.clientId === client.id && t.visibleToClient);
+          const access = accessFor(p.workspace, client);
+          const company = accessFor(p.workspace, {});
+          const people = clientPeople(client, p.channels);
+          const visible = p.tasks.filter((t) => t.clientId === client.id && (t.visibleToClient || t.source === 'request'));
           const waiting = visible.filter((t) => t.approval?.status === 'waiting');
-          const files = p.files.filter((f) => (f.clientId === client.id || f.parentId && p.files.find((x) => x.id === f.parentId)?.clientId === client.id) && f.kind !== 'folder' && !f.trashed);
+          const files = p.files.filter((f) => (f.clientId === client.id || (f.parentId && p.files.find((x) => x.id === f.parentId)?.clientId === client.id)) && f.kind !== 'folder' && !f.trashed);
           const mts = p.meetings.filter((m) => m.clientId === client.id);
-          const candidates = p.tasks.filter((t) => t.clientId === client.id && !t.done).slice(0, 12);
+          const candidates = p.tasks.filter((t) => t.clientId === client.id && !t.done && t.source !== 'request').slice(0, 12);
+          const setPeople = (list: ClientPerson[]) => p.onPatchClient(client.id, { people: list });
+          const viewAs = previewAs && people.some((x) => x.email === previewAs) ? previewAs : people.find((x) => x.status !== 'pending')?.email;
           return (
             <div className="portal-admin">
               <div className="pa-hero">
                 <div>
                   <h3>What {client.name} sees</h3>
                   <p className="muted">
-                    Everything is internal until you mark it visible. {visible.length} item{visible.length === 1 ? '' : 's'} shared, {waiting.length} waiting for approval.
-                  </p>
-                  <p className="muted small">
-                    Portal address: <b>portal.sprint2go.com/{client.name.toLowerCase().replace(/[^a-z0-9]+/g, '')}</b> · guests sign in with their email
+                    Hidden until you share it. {visible.length} item{visible.length === 1 ? '' : 's'} shared, {waiting.length} waiting for approval, {people.filter((x) => x.status !== 'pending').length} people with access.
                   </p>
                 </div>
                 <div className="pa-preview">
-                  <Select
-                    value={previewAs ?? guests[0]?.email ?? ''}
-                    onChange={setPreviewAs}
-                    label="Preview as"
-                    options={guests.length ? guests.map((g) => ({ value: g.email, label: g.name, hint: g.email })) : [{ value: '', label: `Someone at ${client.name}` }]}
-                  />
-                  <button className="primary-btn sm" onClick={() => p.onPreviewPortal(client.id, (previewAs ?? guests[0]?.email) || undefined)}>
-                    <Eye size={14} /> Preview portal
+                  {people.length > 0 && (
+                    <Select
+                      value={viewAs ?? ''}
+                      onChange={setPreviewAs}
+                      label="View as"
+                      options={people.filter((x) => x.status !== 'pending').map((g) => ({ value: g.email, label: g.name, hint: ROLE_NAME[g.role] }))}
+                    />
+                  )}
+                  <button className="primary-btn sm" disabled={!viewAs} onClick={() => viewAs && p.onViewAs(client.id, viewAs)}>
+                    <Eye size={14} /> View as client
                   </button>
                 </div>
               </div>
@@ -916,6 +936,7 @@ export function TasksView(p: Props) {
               <div className="pa-grid">
                 <section>
                   <h4>Tasks and briefs</h4>
+                  {candidates.length === 0 && <p className="muted small">No open tasks for {client.name}.</p>}
                   {candidates.map((t) => (
                     <div key={t.id} className="pa-row">
                       <button className={`eye ${t.visibleToClient ? 'on' : ''}`} onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })} title={t.visibleToClient ? 'Visible to client' : 'Internal only'}>
@@ -936,39 +957,105 @@ export function TasksView(p: Props) {
                       )}
                     </div>
                   ))}
-                </section>
-                <section>
                   <h4>Files</h4>
                   {files.length === 0 && <p className="muted small">No files for {client.name} in Drive yet.</p>}
                   {files.map((f) => (
                     <div key={f.id} className="pa-row">
-                      <button className={`eye ${f.sharedWithClient ? 'on' : ''}`} onClick={() => p.onShareFile(f.id, !f.sharedWithClient)} title={f.sharedWithClient ? 'Visible to client' : 'Internal only'}>
-                        {f.sharedWithClient ? <Eye size={14} /> : <EyeOff size={14} />}
+                      <button className={`eye ${f.sharedWithClient || f.uploadedBy ? 'on' : ''}`} disabled={!!f.uploadedBy} onClick={() => p.onShareFile(f.id, !f.sharedWithClient)} title={f.uploadedBy ? 'Uploaded by the client' : f.sharedWithClient ? 'Visible to client' : 'Internal only'}>
+                        {f.sharedWithClient || f.uploadedBy ? <Eye size={14} /> : <EyeOff size={14} />}
                       </button>
-                      <span className="pa-title">{f.name}</span>
+                      <span className="pa-title">
+                        {f.name}
+                        {f.uploadedBy && <small className="muted"> from {people.find((x) => x.email === f.uploadedBy)?.name.split(' ')[0] ?? 'the client'}</small>}
+                      </span>
                     </div>
                   ))}
                   <h4>Meeting notes</h4>
+                  {access.meetingNotes === 'auto' && <p className="muted small">Notes of meetings {client.name} attended are shared automatically. Share others here.</p>}
                   {mts.length === 0 && <p className="muted small">No meetings with {client.name} yet.</p>}
-                  {mts.map((m) => (
-                    <div key={m.id} className="pa-row">
-                      <button className={`eye ${m.sharedWithClient ? 'on' : ''}`} onClick={() => p.onShareMeeting(m.id, !m.sharedWithClient)} title={m.sharedWithClient ? 'Visible to client' : 'Internal only'}>
-                        {m.sharedWithClient ? <Eye size={14} /> : <EyeOff size={14} />}
-                      </button>
-                      <span className="pa-title">{m.title}</span>
-                    </div>
-                  ))}
-                  <h4>People with access</h4>
-                  {guests.length === 0 && <p className="muted small">No client guests yet. Invite them from the client’s channel settings.</p>}
-                  {guests.map((g) => (
-                    <div key={g.email} className="pa-row">
+                  {mts.map((m) => {
+                    const auto = access.meetingNotes === 'auto' && people.some((x) => m.attendees.some((a) => a.toLowerCase() === x.name.toLowerCase() || a.split(' ')[0].toLowerCase() === x.name.split(' ')[0].toLowerCase()));
+                    const on = auto || !!m.sharedWithClient;
+                    return (
+                      <div key={m.id} className="pa-row">
+                        <button className={`eye ${on ? 'on' : ''}`} disabled={auto} onClick={() => p.onShareMeeting(m.id, !m.sharedWithClient)} title={auto ? 'Shared automatically: they attended' : on ? 'Visible to client' : 'Internal only'}>
+                          {on ? <Eye size={14} /> : <EyeOff size={14} />}
+                        </button>
+                        <span className="pa-title">
+                          {m.title}
+                          {auto && <small className="muted"> they attended</small>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </section>
+                <section>
+                  <h4>People at {client.name}</h4>
+                  {people.length === 0 && <p className="muted small">Nobody yet. Invite the people you work with there.</p>}
+                  {people.map((g) => (
+                    <div key={g.email} className="pa-row person-row">
                       <span className="guest-av">{g.name.charAt(0)}</span>
                       <span className="pa-title">
                         {g.name} <small className="muted">{g.email}</small>
                       </span>
-                      <span className={`guest-status ${g.status}`}>{g.status === 'joined' ? 'Joined' : 'Invited'}</span>
+                      {g.status === 'pending' ? (
+                        <>
+                          <span className="guest-status invited">Asked to join</span>
+                          {p.canManage && (
+                            <button className="primary-btn sm" onClick={() => p.onApproveClientPerson(client.id, g.email)}>
+                              Approve
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className={`guest-status ${g.status}`}>{g.status === 'joined' ? 'Joined' : 'Invited'}</span>
+                      )}
+                      <Select<ClientPerson['role']>
+                        value={g.role}
+                        onChange={(role) => setPeople(people.map((x) => (x.email === g.email ? { ...x, role } : x)))}
+                        label="Role"
+                        className="sel-flat"
+                        disabled={!p.canManage}
+                        options={(['viewer', 'collaborator', 'approver'] as const).map((r) => ({ value: r, label: ROLE_NAME[r], hint: ROLE_HINT[r] }))}
+                      />
+                      {p.canManage && (
+                        <button className="icon-btn sm" aria-label="Remove access" title="Remove access" onClick={() => setPeople(people.filter((x) => x.email !== g.email))}>
+                          <X size={14} />
+                        </button>
+                      )}
                     </div>
                   ))}
+                  <div className="pa-invite">
+                    <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Name" />
+                    <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={client.domain ? `name@${client.domain}` : 'name@client.com'} />
+                    <button
+                      className="ghost-btn sm"
+                      disabled={!inviteName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim()) || people.some((x) => x.email.toLowerCase() === inviteEmail.trim().toLowerCase())}
+                      onClick={() => {
+                        p.onInviteClientPerson(client.id, { name: inviteName.trim(), email: inviteEmail.trim().toLowerCase(), role: 'collaborator' });
+                        setInviteName('');
+                        setInviteEmail('');
+                      }}
+                    >
+                      <Plus size={13} /> Invite
+                    </button>
+                  </div>
+
+                  <h4>Settings for {client.name}</h4>
+                  <ClientAccessForm
+                    value={access}
+                    company={company}
+                    overrides={client.access}
+                    teams={p.teams}
+                    canManage={p.canManage}
+                    brandingAvailable={!!p.workspace.plan?.addons.branding}
+                    onChange={(patch) => p.onPatchClient(client.id, { access: { ...(client.access ?? {}), ...patch } })}
+                    onReset={(k) => {
+                      const next = { ...(client.access ?? {}) };
+                      delete next[k];
+                      p.onPatchClient(client.id, { access: next });
+                    }}
+                  />
                 </section>
               </div>
             </div>

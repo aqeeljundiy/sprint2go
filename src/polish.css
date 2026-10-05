@@ -1008,3 +1008,123 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 @media (hover: none) { .mat-row .mat-more { opacity: 1; } }
 .chan-space { padding: 12px 16px 0; margin: 0; flex: none; }
 .materials { padding-top: 10px; }
+
+/* ---------- Client access settings ---------- */
+.ca-form { display: flex; flex-direction: column; }
+.ca-row { gap: 16px; }
+.ca-row small .link-btn { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
+.ca-company { color: var(--muted); }
+.ca-num { width: 90px; padding: 8px 10px; border-radius: var(--r-control); border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; }
+.portal-admin .ca-form .set-row { padding: 10px 0; }
+.pa-invite { display: flex; gap: 6px; margin: 8px 0 18px; flex-wrap: wrap; }
+.pa-invite input { flex: 1 1 140px; min-width: 0; padding: 7px 10px; border-radius: var(--r-control); border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.person-row { flex-wrap: wrap; }
+.person-row .sel { max-width: 150px; }
+.req-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--accent); }
+
+/* Comments to and from clients (task panel) */
+.h-tag { font-style: normal; font-size: 10.5px; font-weight: 700; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--hover); color: var(--muted); }
+.h-tag.client { background: var(--warn-soft); color: var(--warn); }
+.avatar-empty.client { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
+.comment-box .cb-foot { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+.cb-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin-right: auto; cursor: pointer; }
+.comment-box.to-client textarea { box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--warn) 60%, transparent); }
+
+/* ---------- The client's app ---------- */
+.capp { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
+.capp-preview { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--warn-soft); color: var(--text); font-size: 13px; flex-wrap: wrap; }
+.capp-preview select { font: inherit; font-size: 12.5px; padding: 3px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+.capp-head { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.capp-title { display: flex; flex-direction: column; line-height: 1.2; }
+.capp-title small { color: var(--muted); font-size: 11.5px; }
+.capp-title strong { font-size: 16px; }
+.capp-bell { position: relative; }
+.capp-bell i { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; font-style: normal; display: grid; place-items: center; padding: 0 4px; }
+.capp-me { border: 0; background: none; padding: 0; cursor: pointer; }
+.capp-av { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--hover); color: var(--text); font-weight: 700; font-size: 12px; flex: none; }
+.capp-av.client { background: color-mix(in oklab, var(--accent) 18%, var(--surface)); color: var(--accent); }
+.capp-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px 1fr; }
+.capp-nav { display: flex; flex-direction: column; gap: 2px; padding: 16px 10px; border-right: 1px solid var(--line); background: var(--surface); }
+.capp-nav button { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r-control); color: var(--text-2, var(--text)); font-size: 14px; text-align: left; }
+.capp-nav button:hover { background: var(--hover); }
+.capp-nav button.on { background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; }
+.capp-nav button i { margin-left: auto; font-style: normal; font-size: 11px; font-weight: 700; min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 999px; background: var(--accent); color: #fff; }
+.capp-main { min-height: 0; overflow-y: auto; }
+.capp-page { max-width: 980px; margin: 0 auto; padding: 28px 28px 60px; display: flex; flex-direction: column; gap: 14px; }
+.capp-page.narrow { max-width: 720px; }
+.capp-page h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
+.capp-page > .muted { margin: -6px 0 6px; }
+.capp-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.capp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.capp-card { background: var(--surface); border-radius: var(--r-card); padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 0 0 1px var(--line); }
+.capp-card.attention { box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--warn) 55%, transparent); }
+.capp-card h2 { margin: 0 0 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.capp-card h2 .link-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 13px; }
+.capp-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; margin: 0 -8px; border-radius: 10px; text-align: left; color: var(--text); text-decoration: none; width: calc(100% + 16px); }
+.capp-row:hover { background: var(--hover); }
+.capp-row.big { padding: 12px; margin: 0; width: 100%; background: var(--surface); box-shadow: 0 0 0 1px var(--line); border-radius: var(--r-control); }
+.capp-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.capp-row-main strong { font-size: 14px; font-weight: 600; }
+.capp-row-main small { color: var(--muted); font-size: 12px; }
+.capp-snip { color: var(--muted); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.capp-progress { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.capp-progress .bar { flex: 0 0 120px; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+.capp-progress .bar span { display: block; height: 100%; background: var(--accent); }
+.req-status { flex: none; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--hover); color: var(--muted); }
+.req-status.new { background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--accent); }
+.req-status.doing { background: color-mix(in oklab, #3b82f6 16%, transparent); color: #3b82f6; }
+.req-status.waiting { background: var(--warn-soft); color: var(--warn); }
+.req-status.done { background: var(--ok-soft, var(--hover)); color: var(--ok, var(--text)); }
+.capp-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin: -4px 0 4px; }
+.capp-context { white-space: pre-wrap; background: var(--surface); padding: 14px; border-radius: var(--r-control); box-shadow: 0 0 0 1px var(--line); margin: 0; font-size: 14px; line-height: 1.5; }
+.capp-sub { font-size: 13px; margin: 10px 0 0; }
+.capp-thread { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.capp-thread li { display: flex; gap: 10px; align-items: flex-start; }
+.capp-thread li > div { flex: 1; background: var(--surface); box-shadow: 0 0 0 1px var(--line); border-radius: 12px; padding: 10px 12px; }
+.capp-thread li.from-client > div { background: color-mix(in oklab, var(--accent) 7%, var(--surface)); }
+.capp-thread time { color: var(--muted); font-size: 12px; }
+.capp-thread p { margin: 4px 0 0; white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
+.capp-reply { display: flex; gap: 8px; align-items: flex-end; background: var(--surface); padding: 8px; border-radius: var(--r-card); box-shadow: 0 0 0 1px var(--line); }
+.capp-reply textarea { flex: 1; border: 0; background: transparent; resize: none; font: inherit; font-size: 14px; color: var(--text); outline: none; padding: 6px; }
+.capp-approve { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: var(--r-control); background: var(--warn-soft); }
+.capp-approve textarea { font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+.capp-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.capp-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.capp-list button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 4px; text-align: left; color: var(--text); border-radius: 8px; font-size: 14px; }
+.capp-list button:hover { background: var(--hover); }
+.capp-list button span:nth-child(2) { flex: 1; }
+.capp-list button small { color: var(--muted); font-size: 12px; }
+.capp-attach { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.capp-attach .chip button { border: 0; background: none; padding: 0 0 0 4px; cursor: pointer; color: inherit; }
+.link-btn.back { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; }
+.capp-chat { height: 100%; display: flex; flex-direction: column; max-width: 860px; margin: 0 auto; padding: 16px 20px; gap: 10px; }
+.capp-chans { display: flex; gap: 6px; flex-wrap: wrap; }
+.capp-chans button { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; background: var(--hover); font-size: 13px; color: var(--text); }
+.capp-chans button.on { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); font-weight: 600; }
+.capp-chat-head { display: flex; flex-direction: column; }
+.capp-chat-head strong { display: inline-flex; align-items: center; gap: 4px; font-size: 16px; }
+.capp-chat-head small { color: var(--muted); }
+.capp-msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 6px 0; }
+.capp-msg { display: flex; gap: 10px; align-items: flex-start; }
+.capp-msg time { color: var(--muted); font-size: 12px; }
+.capp-msg p { margin: 2px 0 0; white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
+.capp-msg.celebration p { color: var(--ok, var(--text)); }
+.capp-ro { text-align: center; }
+.capp-recording { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: var(--r-control); background: var(--hover); flex-wrap: wrap; }
+.capp-ask { display: flex; flex-direction: column; gap: 10px; min-height: 160px; }
+.capp-invite { display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 10px; }
+.capp-invite input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.capp-foot { text-align: center; font-size: 11.5px; color: var(--muted); padding: 6px; display: flex; gap: 4px; justify-content: center; align-items: center; }
+.capp-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 13px; z-index: 70; }
+@media (max-width: 760px) {
+  .capp-body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  .capp-nav { order: 2; flex-direction: row; justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); border-right: 0; border-top: 1px solid var(--line); overflow-x: auto; }
+  .capp-nav button { flex-direction: column; gap: 2px; padding: 6px 8px; font-size: 11px; position: relative; }
+  .capp-nav button i { position: absolute; top: 0; right: 2px; margin: 0; min-width: 16px; padding: 0 4px; font-size: 10px; }
+  .capp-page { padding: 18px 16px 40px; }
+  .capp-page h1 { font-size: 22px; }
+  .capp-grid { grid-template-columns: 1fr; }
+  .capp-head { padding: 10px 14px; }
+  .capp-chat { padding: 10px 14px; }
+  .capp-foot { display: none; }
+}

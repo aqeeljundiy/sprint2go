@@ -150,6 +150,8 @@ export interface DriveItem {
   clientId?: string; // filed under a client (e.g. shared in its chat channel)
   channelId?: string; // shared in this chat channel
   sharedWithClient?: boolean; // visible in the client portal
+  url?: string; // uploaded content (prototype: a data URL)
+  uploadedBy?: string; // a client person's email when they uploaded it
 }
 
 /** Which part of Drive is showing. */
@@ -179,6 +181,7 @@ export interface Workspace {
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
   meetingRules?: MeetingRule[];
+  clientAccess?: ClientAccess; // what clients see and do in their portal
   chat?: {
     gifs: boolean;
     celebrations: boolean;
@@ -232,7 +235,8 @@ export interface Todo {
   status?: TaskStatus; // board column; kept in step with `done`
   priority: 'high' | 'normal';
   threadId?: string; // the email it came from
-  source: 'ai' | 'manual' | 'braindump' | 'chat' | 'meeting';
+  source: 'ai' | 'manual' | 'braindump' | 'chat' | 'meeting' | 'request';
+  requestedBy?: string; // a client person's email (requests from the portal)
   userId: string; // first person doing it ('' = waiting in a team queue); kept for older code
   assignees?: string[]; // everyone doing it (userId is the first)
   supervisorId?: string; // checks the work; by default whoever assigned it
@@ -259,6 +263,7 @@ export interface TaskEvent {
   by: string; // user id, or a guest email
   kind: 'created' | 'assigned' | 'status' | 'due' | 'edit' | 'comment' | 'review' | 'supervisor';
   text: string;
+  toClient?: boolean; // a comment the client can read (team comments are internal unless marked)
 }
 
 export interface Approval {
@@ -293,7 +298,46 @@ export interface Client {
   status: 'active' | 'lead' | 'paused';
   ownerId: string;
   overview?: { headline: string; summary: string; progress: string; wins: string[]; risks: string[]; next: string[]; at: string; from: number };
+  people?: ClientPerson[]; // the client's own people who can sign in to their portal
+  access?: Partial<ClientAccess>; // this client's own settings (otherwise the company's)
+  aiUsage?: { month: string; count: number }; // client questions to AI this month
 }
+
+/** Someone at a client who can sign in to see what's shared with them. */
+export interface ClientPerson {
+  email: string;
+  name: string;
+  role: 'viewer' | 'collaborator' | 'approver'; // viewer reads; collaborator also comments, uploads and asks; approver also approves work
+  status: 'invited' | 'joined' | 'pending'; // pending = waiting for an admin to OK it
+  invitedBy: string; // a team user id, or a client person's email
+  at: string;
+}
+
+/** What clients can see and do, set for the company (Settings, Client access) and changeable per client. */
+export interface ClientAccess {
+  teamNames: 'full' | 'first' | 'hide';
+  requests: boolean;
+  requestsTo: string; // 'owner' (the client's account manager) or a team id
+  meetingNotes: 'auto' | 'manual'; // auto = notes of meetings they attended
+  recordings: 'off' | 'audio' | 'video';
+  invites: 'direct' | 'approve' | 'off';
+  ai: boolean;
+  aiQuestions: number; // per client per month
+  uploads: boolean;
+  hideBranding: boolean; // needs the branding add-on
+}
+export const DEFAULT_CLIENT_ACCESS: ClientAccess = {
+  teamNames: 'first',
+  requests: true,
+  requestsTo: 'owner',
+  meetingNotes: 'auto',
+  recordings: 'off',
+  invites: 'direct',
+  ai: false,
+  aiQuestions: 30,
+  uploads: true,
+  hideBranding: false,
+};
 
 /** The company's Default chat sidebar: sections in order, and which section a channel sits in. */
 export interface ChatLayout {

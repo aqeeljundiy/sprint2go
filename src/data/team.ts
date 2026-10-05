@@ -11,8 +11,17 @@ const day = (offset: number) => {
 };
 
 export const CLIENTS: Client[] = [
-  { id: 'c-kopikita', workspaceId: 'pnp', name: 'KopiKita', domain: 'kopikita.co.id', color: '#b45309', status: 'active', ownerId: 'u-aqeel' },
-  { id: 'c-lumina', workspaceId: 'pnp', name: 'Lumina Skin', domain: 'luminaskin.sg', color: '#ec4899', status: 'active', ownerId: 'u-faisal' },
+  {
+    id: 'c-kopikita', workspaceId: 'pnp', name: 'KopiKita', domain: 'kopikita.co.id', color: '#b45309', status: 'active', ownerId: 'u-aqeel',
+    people: [
+      { email: 'nadia@kopikita.co.id', name: 'Nadia Putri', role: 'approver', status: 'joined', invitedBy: 'u-aqeel', at: '2026-09-20T03:00:00.000Z' },
+      { email: 'bagus@kopikita.co.id', name: 'Bagus Santoso', role: 'viewer', status: 'invited', invitedBy: 'nadia@kopikita.co.id', at: '2026-10-02T03:00:00.000Z' },
+    ],
+  },
+  {
+    id: 'c-lumina', workspaceId: 'pnp', name: 'Lumina Skin', domain: 'luminaskin.sg', color: '#ec4899', status: 'active', ownerId: 'u-faisal',
+    people: [{ email: 'sarah@luminaskin.sg', name: 'Sarah Lim', role: 'collaborator', status: 'joined', invitedBy: 'u-faisal', at: '2026-09-12T03:00:00.000Z' }],
+  },
   { id: 'c-arunika', workspaceId: 'pnp', name: 'Arunika Hotels', domain: 'arunikahotels.id', color: '#0ea5e9', status: 'lead', ownerId: 'u-aqeel' },
   { id: 'c-glowkind', workspaceId: 'pnp', name: 'Glowkind', domain: 'glowkind.id', color: '#a855f7', status: 'lead', ownerId: 'u-aditya' },
   { id: 'c-kopiharian', workspaceId: 'elk', name: 'Kopi Harian', domain: 'kopiharian.id', color: '#92400e', status: 'lead', ownerId: 'u-aqeel' },
@@ -377,7 +386,7 @@ for (const m of MEETINGS)
   }
 
 // Everyone on a task: who does it, who supervises (whoever assigned it), and a history that starts at creation.
-const SRC_WORD: Record<Todo['source'], string> = { ai: 'from an email', manual: '', braindump: 'from a brain dump', chat: 'from chat', meeting: 'from a meeting' };
+const SRC_WORD: Record<Todo['source'], string> = { ai: 'from an email', manual: '', braindump: 'from a brain dump', chat: 'from chat', meeting: 'from a meeting', request: 'from a client request' };
 for (const t of TASKS) {
   t.assignees = t.userId ? [t.userId] : [];
   t.supervisorId = t.createdBy;

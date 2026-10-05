@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
-import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -47,7 +47,9 @@ import { BrainDump, type DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
-import { ClientPortal } from './components/ClientPortal';
+import { ClientApp } from './components/ClientApp';
+import { clientActions } from './clientActions';
+import { accessFor, clientInbox, clientPeople, requestStatus, teamLabel } from './clientView';
 import { celebrate } from './components/ui/confetti';
 import { MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS } from './data/workspaces';
@@ -300,7 +302,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [savedTemplates, setSavedTemplates] = useStored('templates');
   const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
-  const [portal, setPortal] = useState<{ clientId: string; guestEmail?: string } | null>(null);
+  const [viewAs, setViewAs] = useState<{ clientId: string; email: string } | null>(null); // "View as client"
   const [chatId, setChatId] = useState<string | null>(null);
   const [meetPage, setMeetPage] = useState<MeetPage>({ kind: 'list' });
   const [sendBotOpen, setSendBotOpen] = useState(false);
@@ -961,7 +963,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       createdAt: nowIso(),
       assignees: t.userId ? [t.userId] : [],
       supervisorId: user.id, // whoever assigns it supervises it, unless someone changes it
-      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
+      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting', request: ' from a client request' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
     };
     setTodos((ts) => [...ts, task]);
     // Not assigned yet: tell the team lead it's waiting in their queue.
@@ -1033,6 +1035,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         x.id === id ? { ...x, status, done: status === 'done', doneAt: status === 'done' ? (x.done ? x.doneAt : nowIso()) : undefined, doneBy: status === 'done' ? (x.done ? x.doneBy : user.id) : undefined } : x,
       ),
     );
+    // Requests: the client sees each status change.
+    if (t.requestedBy && requestStatus(t).label !== requestStatus({ ...t, status, done: status === 'done' }).label) tellClient(t, `Your request “${t.title}” is now: ${requestStatus({ ...t, status, done: status === 'done' }).label}`);
+    else if (t.visibleToClient && status === 'done' && !t.done) tellClient(t, `“${t.title}” is done`);
     if (status === 'done' && !t.done) {
       const tell = new Set([t.supervisorId ?? t.createdBy, ...(t.followers ?? []), ...(t.status === 'review' ? doersOf(t) : [])].filter((x): x is string => !!x && x !== user.id));
       tell.forEach((uid2) => notify(uid2, 'done', t.status === 'review' ? `${myFirst} approved ${describe(t)}` : `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id }));
@@ -1089,10 +1094,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   /** A comment on a task: everyone on it hears about it (mentions too). */
-  const commentTask = (id: string, text: string) => {
+  const commentTask = (id: string, text: string, toClient = false) => {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    logTask(id, 'comment', text);
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}) }] } : x)));
+    if (toClient) {
+      const c = clients.find((x) => x.id === t.clientId);
+      tellClient(t, `${c ? teamLabel(user, accessFor(ws, c), ws.name) : myFirst} replied on “${t.title}”: “${text.slice(0, 80)}”`);
+    }
     const tell = new Set([...doersOf(t), t.supervisorId, ...(t.followers ?? []), ...members.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id)].filter((x): x is string => !!x && x !== user.id));
     tell.forEach((x) => notify(x, 'task', `${myFirst} commented on “${t.title}”: “${text.slice(0, 80)}”`, { app: 'tasks', id }));
   };
@@ -1263,19 +1272,40 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast({ text: ch ? `Approval requested. ${ch.guests!.map((g) => g.name.split(' ')[0]).join(', ')} will see it in the portal` : 'Approval requested in the client portal' });
   };
 
-  /** The client approves or asks for changes (from the portal). */
-  const clientDecision = (id: string, status: 'approved' | 'changes', note: string, by: string) => {
-    const t = todos.find((x) => x.id === id);
-    if (!t) return;
-    patchTask(id, { approval: { ...(t.approval ?? { askedBy: user.id, askedAt: nowIso() }), status, by, at: nowIso(), note: note || undefined } });
-    const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === t.clientId && c.guests?.some((g) => g.email === by));
-    const who = ch?.guests?.find((g) => g.email === by)?.name ?? by;
-    const text = status === 'approved' ? `✅ Approved “${t.title}”${note ? `: ${note}` : ''}` : `✏️ Asked for changes on “${t.title}”: ${note}`;
-    if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: 'guest', guestEmail: by, text, at: nowIso(), taskId: id }]);
-    const tellIds = new Set([t.approval?.askedBy, t.userId, t.createdBy].filter(Boolean) as string[]);
-    tellIds.forEach((uidX) => notify(uidX, 'task', `${who} ${status === 'approved' ? 'approved' : 'asked for changes on'} “${t.title}”`, { app: 'tasks', id }));
-    if (status === 'changes' && t.done) setTaskStatus(id, 'todo', true);
-    showToast({ text: status === 'approved' ? `${who} approved it` : `${who} asked for changes` });
+
+
+  const patchClient = (id: string, patch: Partial<Client>) => setClients((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  /** With the local server: a link where a client person sets their password and signs in to their portal. */
+  const makeClientInvite = (clientId: string) => async (p: { name: string; email: string }) => {
+    if (!server.on) return null;
+    const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, clientId, ...p }) });
+    return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+  };
+  /** Gives someone at a client access to their portal: added to the client's people and its shared channels. */
+  const giveClientAccess = async (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }, status: ClientPerson['status']) => {
+    const c = clients.find((x) => x.id === clientId);
+    if (!c) return;
+    const entry: ClientPerson = { ...person, status, invitedBy: user.id, at: nowIso() };
+    setClients((cs) => cs.map((x) => (x.id === clientId ? { ...x, people: [...(x.people ?? []).filter((p) => p.email !== person.email), entry] } : x)));
+    setChannels((chs) => chs.map((ch) => (ch.clientId === clientId && ch.category === 'shared' && !ch.guests?.some((g) => g.email === person.email) ? { ...ch, guests: [...(ch.guests ?? []), { email: person.email, name: person.name, status: 'invited', invitedBy: user.id, at: nowIso() }] } : ch)));
+    const link = await makeClientInvite(clientId)(person);
+    showToast(
+      link
+        ? { text: `${person.name.split(' ')[0]} can sign in with their invite link`, action: { label: 'Copy link', run: () => void navigator.clipboard?.writeText(link) }, ms: 20000 }
+        : { text: `${person.name} invited to ${c.name}’s portal` },
+    );
+  };
+  const inviteClientPerson = (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }) => void giveClientAccess(clientId, person, 'invited');
+  const approveClientPerson = (clientId: string, email: string) => {
+    const p = clients.find((x) => x.id === clientId)?.people?.find((x) => x.email === email);
+    if (p) void giveClientAccess(clientId, { name: p.name, email: p.email, role: p.role }, 'invited');
+  };
+  /** Tells the client people who should know (the requester, or everyone at the client for shared work). */
+  const tellClient = (t: Todo, text: string) => {
+    const c = clients.find((x) => x.id === t.clientId);
+    if (!c) return;
+    const to = t.requestedBy ? [t.requestedBy] : clientPeople(c, channels).filter((p) => p.status !== 'pending').map((p) => p.email);
+    setNotices((ns) => [...to.map((e) => ({ id: uid(), userId: clientInbox(e), workspaceId: ws.id, kind: 'task' as const, text, at: nowIso(), read: false, link: { app: 'tasks' as const, id: t.id } })), ...ns]);
   };
 
   /** Free covers 5 people: the 6th invite shows the price at that moment instead of a wall. */
@@ -2027,6 +2057,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...wsDrive.filter((i) => i.kind !== 'folder' && !i.trashed).map((i) => ({ id: 'f-' + i.id, group: 'Files', title: i.name, icon: FileText, run: () => { go('drive'); setPreview({ item: i, list: [i] }); } })),
   ];
 
+  // "View as client": the whole app becomes exactly what this client person sees.
+  if (viewAs) {
+    const vc = wsClients.find((c) => c.id === viewAs.clientId);
+    const people = vc ? clientPeople(vc, channels) : [];
+    const person = people.find((x) => x.email === viewAs.email);
+    if (vc && person) {
+      const access = accessFor(ws, vc);
+      const actions = clientActions({ ws, client: vc, person, access, team: members, teams: wsTeams, todos, channels, messages, meetings: wsMeetings, drive, setTodos, setMessages, setDrive, setClients, setNotices, setChannels, makeInvite: makeClientInvite(vc.id) });
+      const inbox = clientInbox(person.email);
+      return (
+        <ClientApp
+          ws={ws}
+          client={vc}
+          person={person}
+          access={access}
+          team={members}
+          actions={actions}
+          messages={messages}
+          allTasks={wsTasks}
+          notices={notices.filter((n) => n.userId === inbox)}
+          onReadNotices={() => setNotices((ns) => ns.map((n) => (n.userId === inbox ? { ...n, read: true } : n)))}
+          preview={{ onExit: () => setViewAs(null), people: people.filter((x) => x.status !== 'pending'), onSwitch: (email) => setViewAs({ clientId: vc.id, email }) }}
+        />
+      );
+    }
+  }
+
   return (
     <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''}`}>
       <AppRail
@@ -2388,7 +2445,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             myTeamIds={myTeamIds}
             myClientIds={myClientIds}
             files={drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id)}
-            onPreviewPortal={(clientId, guestEmail) => setPortal({ clientId, guestEmail })}
+            workspace={ws}
+            canManage={isAdmin}
+            onViewAs={(clientId, email) => setViewAs({ clientId, email })}
+            onPatchClient={patchClient}
+            onInviteClientPerson={inviteClientPerson}
+            onApproveClientPerson={approveClientPerson}
             messages={messages}
             clientTab={clientTab}
             onWriteOverview={writeOverview}
@@ -2920,6 +2982,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onOpenThread={(id) => (setTaskOpen(null), openThread(id))}
           onAskApproval={askApproval}
           onComment={commentTask}
+          clientNames={(() => {
+            const c = wsClients.find((x) => x.id === wsTasks.find((t) => t.id === taskOpen)?.clientId);
+            return c ? Object.fromEntries(clientPeople(c, channels).map((x) => [x.email.toLowerCase(), x.name])) : {};
+          })()}
           onSendBack={sendBack}
           onSaveTemplate={saveTemplate}
           onOpenChannel={(clientId) => {
@@ -2927,22 +2993,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             if (ch) (setTaskOpen(null), openChannel(ch.id));
             else showToast({ text: 'This client has no channel yet' });
           }}
-        />
-      )}
-      {portal && wsClients.some((c) => c.id === portal.clientId) && (
-        <ClientPortal
-          workspace={ws}
-          client={wsClients.find((c) => c.id === portal.clientId)!}
-          guest={channels.flatMap((c) => c.guests ?? []).find((g) => g.email === portal.guestEmail) ?? null}
-          tasks={wsTasks}
-          meetings={wsMeetings}
-          files={drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id && (d.clientId === portal.clientId || drive.find((x) => x.id === d.parentId)?.clientId === portal.clientId))}
-          channels={wsChannels}
-          users={members}
-          branded={false}
-          onApprove={clientDecision}
-          onOpenChannel={(id) => (setPortal(null), openChannel(id))}
-          onClose={() => setPortal(null)}
         />
       )}
       {sendBotOpen && <SendBotDialog clients={wsClients} botName={meetSettings.botName} onSend={sendBot} onClose={() => setSendBotOpen(false)} />}

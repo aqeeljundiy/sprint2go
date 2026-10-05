@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import type { AISettings, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
 import { AISection } from './admin/AISection';
@@ -12,12 +12,15 @@ import { WorkspaceLogo } from './WorkspaceLogo';
 import { initials } from '../utils';
 import type { SettingsSection } from './AccountMenu';
 import { RichEditor } from './RichEditor';
+import { ClientAccessForm } from './admin/ClientAccessForm';
+import { accessFor } from '../clientView';
 import { Select } from './ui/Select';
 import { changePassword, server } from '../sync';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
   { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
+  { id: 'clients', name: 'Client access', icon: Handshake, group: 'Company' },
   { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
   { id: 'meetings', name: 'Meetings', icon: Video, group: 'Company' },
   { id: 'ai', name: 'AI', icon: Sparkles, group: 'Company' },
@@ -458,6 +461,20 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           )}
 
           {section === 'storage' && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} byChannel={admin.byChannel} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
+          {section === 'clients' && (
+            <>
+              <h2>Client access</h2>
+              <p className="set-intro">What your clients see and can do when they sign in to their portal. You can change any of these for one client on its client page (Portal tab).</p>
+              <ClientAccessForm
+                value={accessFor(ws, {})}
+                teams={admin.teams.filter((t) => t.workspaceId === ws.id)}
+                canManage={canManage}
+                brandingAvailable={!!plan.addons.branding}
+                onChange={(p) => onWorkspace({ clientAccess: { ...accessFor(ws, {}), ...p } })}
+              />
+              <p className="muted small">Clients never see Mail, Calendar, Drive, your team’s channels, internal comments or other clients. To check, open a client’s page and choose “View as client”.</p>
+            </>
+          )}
           {section === 'teams' && <TeamsSection ws={ws} teams={admin.teams} users={wsUsers} canManage={canManage} onTeams={admin.onTeams} onTeamHome={admin.onTeamHome} toast={admin.toast} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}

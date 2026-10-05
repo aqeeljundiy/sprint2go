@@ -25,7 +25,8 @@ interface Props {
   onOpenThread: (id: string) => void;
   onOpenChannel?: (clientId: string) => void;
   onAskApproval: (id: string) => void;
-  onComment: (id: string, text: string) => void;
+  onComment: (id: string, text: string, toClient?: boolean) => void;
+  clientNames?: Record<string, string>; // client people by email (for their comments)
   onSendBack: (id: string, note: string) => void;
   onSaveTemplate?: (briefId: string) => void;
 }
@@ -44,6 +45,8 @@ export function TaskDrawer(p: Props) {
   const [subDue, setSubDue] = useState('');
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const [comment, setComment] = useState('');
+  const clientCanSee = !!t.clientId && (!!t.visibleToClient || t.source === 'request');
+  const [toClient, setToClient] = useState(false);
   const [sendingBack, setSendingBack] = useState(false);
   const [backNote, setBackNote] = useState('');
   const src = SOURCE[t.source];
@@ -409,18 +412,24 @@ export function TaskDrawer(p: Props) {
           <ol className="history">
             {(t.history ?? []).map((h) => {
               const who = p.users.find((u) => u.id === h.by);
+              const fromClient = h.by.includes('@');
+              const name = fromClient ? (p.clientNames?.[h.by.toLowerCase()] ?? h.by) : who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : 'Someone';
               return (
-                <li key={h.id} className={`h-${h.kind}`}>
-                  {who ? <Avatar person={who} size={22} /> : <span className="avatar-empty sm">?</span>}
+                <li key={h.id} className={`h-${h.kind} ${fromClient ? 'h-client' : ''}`}>
+                  {who ? <Avatar person={who} size={22} /> : fromClient ? <span className="avatar-empty sm client">{name.charAt(0)}</span> : <span className="avatar-empty sm">?</span>}
                   <span className="h-body">
                     {h.kind === 'comment' ? (
                       <>
-                        <b>{who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : 'Someone'}</b>
+                        <b>
+                          {name}
+                          {fromClient && <em className="h-tag client">Client</em>}
+                          {!fromClient && h.toClient && <em className="h-tag">To client</em>}
+                        </b>
                         <span className="h-comment">{h.text}</span>
                       </>
                     ) : (
                       <span>
-                        <b>{who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : 'Someone'}</b> {h.text}
+                        <b>{name}</b> {h.text}
                       </span>
                     )}
                     <time>{relative(h.at)}</time>
@@ -429,11 +438,18 @@ export function TaskDrawer(p: Props) {
               );
             })}
           </ol>
-          <div className="comment-box">
-            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(t.id, comment.trim()), setComment(''))} placeholder="Write a comment… @mention someone" />
-            <button className="primary-btn sm" disabled={!comment.trim()} onClick={() => (p.onComment(t.id, comment.trim()), setComment(''))}>
-              Comment
-            </button>
+          <div className={`comment-box ${toClient ? 'to-client' : ''}`}>
+            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(t.id, comment.trim(), toClient), setComment(''))} placeholder={toClient ? 'Reply to the client… they will see this' : 'Internal comment… @mention someone'} />
+            <div className="cb-foot">
+              {clientCanSee && (
+                <label className="cb-toggle">
+                  <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> Client can see this
+                </label>
+              )}
+              <button className="primary-btn sm" disabled={!comment.trim()} onClick={() => (p.onComment(t.id, comment.trim(), toClient), setComment(''))}>
+                {toClient ? 'Send to client' : 'Comment'}
+              </button>
+            </div>
           </div>
 
           <div className="drawer-meta">

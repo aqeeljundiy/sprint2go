@@ -501,6 +501,14 @@ export async function askMeetings(question: string, sources: MeetSource[]): Prom
     return `Here’s a follow-up you can send:\n\nHi all,\n\nThanks for the time today. Quick recap: ${m.summary}\n\nNext steps:\n${m.actions.map((a) => `- ${a.title}${a.owner ? ` (${a.owner})` : ''}`).join('\n') || '- None yet'}\n\nBest,\n[${m.kind ?? 'M'}:${m.id}]`;
   }
   const hits = sources.flatMap((m) => m.transcript.filter((l) => words.some((w) => l.text.toLowerCase().includes(w))).map((l) => ({ m, l }))).slice(0, 4);
-  if (!hits.length) return 'I couldn’t find that in these meetings. Try a client name, a topic or a person.';
+  if (!hits.length) {
+    // No quote matched: answer from the summaries (status questions, or sentences that mention the words).
+    const sentences = sources.flatMap((m) => m.summary.split(/(?<=[.!?])\s+/).filter(Boolean).map((t) => ({ m, t })));
+    const status = /stand|status|progress|where are|how is|waiting|next/.test(q);
+    const found = sentences.filter(({ t }) => words.some((w) => t.toLowerCase().includes(w)));
+    const pick = (found.length ? found : status ? sentences : []).slice(0, 5);
+    if (!pick.length) return 'I couldn’t find that in what’s shared here. Try a topic, a person or a date.';
+    return `Here’s what I found:\n${pick.map(({ m, t }) => `- ${t} [${m.kind ?? 'M'}:${m.id}]`).join('\n')}`;
+  }
   return `Here’s what was said:\n${hits.map(({ m, l }) => `- ${l.speaker}: “${l.text}” [${m.kind ?? 'M'}:${m.id}${(m.kind ?? 'M') === 'M' ? `@${l.at}` : ''}]`).join('\n')}`;
 }
