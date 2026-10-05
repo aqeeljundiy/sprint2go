@@ -24,7 +24,8 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
   const open = tasks.filter((t) => !t.done && !isBrief(t));
-  const openBriefs = tasks.filter((t) => !t.done && isBrief(t));
+  const today = new Date().toISOString().slice(0, 10);
+  const urgent = (t: Todo) => !!t.due && t.due <= today; // late or due today: the only counts worth showing
   const is = (s: TaskScope) => s.kind === scope.kind && (!('id' in s) || ('id' in scope && scope.id === s.id));
 
   const save = () => {
@@ -44,15 +45,15 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
       <nav className="nav">
         {(
           [
-            [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => doers(t).includes(me)).length],
+            [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => doers(t).includes(me) && urgent(t)).length],
             [{ kind: 'supervising' }, Eye, 'Supervising', open.filter((t) => t.supervisorId === me && statusOf(t) === 'review').length],
-            [{ kind: 'myteams' }, Users, 'My teams', open.filter((t) => t.teamId && myTeamIds.includes(t.teamId)).length],
-            [{ kind: 'myclients' }, Building2, 'My clients', open.filter((t) => t.clientId && myClientIds.includes(t.clientId)).length],
-            [{ kind: 'delegated' }, Send, 'Assigned by me', open.filter((t) => t.createdBy === me && !doers(t).includes(me)).length],
-            [{ kind: 'briefs' }, FileText, 'Briefs', openBriefs.length],
+            [{ kind: 'myteams' }, Users, 'My teams', 0],
+            [{ kind: 'myclients' }, Building2, 'My clients', 0],
+            [{ kind: 'delegated' }, Send, 'Assigned by me', open.filter((t) => t.createdBy === me && !doers(t).includes(me) && !!t.due && t.due < today).length],
+            [{ kind: 'briefs' }, FileText, 'Briefs', 0],
             ...(isAdmin
               ? ([
-                  [{ kind: 'all' }, Layers, 'Everything', open.length],
+                  [{ kind: 'all' }, Layers, 'Everything', 0],
                   [{ kind: 'grid' }, LayoutGrid, 'Clients × teams', 0],
                 ] as const)
               : []),
@@ -61,7 +62,7 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
           <button key={label} className={`nav-item ${is(s) ? 'active' : ''}`} onClick={() => onScope(s)} title={label}>
             <Icon size={17} />
             <span className="sb-label">{label}</span>
-            {count ? <span className="count muted-count">{count}</span> : null}
+            {count ? <span className="count warn-count">{count}</span> : null}
           </button>
         ))}
       </nav>
@@ -81,8 +82,6 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
                     <span className="count warn-count" title={`${waiting} not assigned`}>
                       {waiting}
                     </span>
-                  ) : mine.length ? (
-                    <span className="count muted-count">{mine.length}</span>
                   ) : null}
                 </button>
               );
@@ -94,7 +93,7 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
       <div className="nav-heading sb-label">Clients</div>
       <nav className="nav">
         {clients.map((c) => {
-          const n = open.filter((t) => t.clientId === c.id).length;
+          const n = open.filter((t) => t.clientId === c.id && !!t.due && t.due < today).length; // late work only
           return (
             <button key={c.id} className={`nav-item ${is({ kind: 'client', id: c.id }) ? 'active' : ''}`} onClick={() => onScope({ kind: 'client', id: c.id })} title={c.name}>
               <span className="client-dot" style={{ background: c.color }}>
@@ -104,7 +103,7 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
                 {c.name}
                 {c.status === 'lead' && <em className="lead-tag">lead</em>}
               </span>
-              {n ? <span className="count muted-count">{n}</span> : null}
+              {n ? <span className="count warn-count" title={`${n} late`}>{n}</span> : null}
             </button>
           );
         })}

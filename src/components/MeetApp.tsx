@@ -79,7 +79,7 @@ export function MeetSidebar({ page, meetings, clients, canSend, onPage, onSend, 
         <button className={`nav-item ${is('list') ? 'active' : ''}`} onClick={() => onPage({ kind: 'list' })} title="Meetings">
           <Video size={17} />
           <span className="sb-label">Meetings</span>
-          {live ? <span className="count live-count">{live} live</span> : <span className="count muted-count">{meetings.length}</span>}
+          {live ? <span className="count live-count">{live} live</span> : null}
         </button>
         <button className={`nav-item ${is('upcoming') ? 'active' : ''}`} onClick={() => onPage({ kind: 'upcoming' })} title="Upcoming">
           <CalendarClock size={17} />
@@ -97,21 +97,19 @@ export function MeetSidebar({ page, meetings, clients, canSend, onPage, onSend, 
       <div className="nav-heading sb-label">Folders</div>
       <nav className="nav">
         {clients.map((c) => {
-          const n = meetings.filter((m) => m.clientId === c.id).length;
           return (
             <button key={c.id} className={`nav-item ${is('folder', c.id) ? 'active' : ''}`} onClick={() => onPage({ kind: 'folder', clientId: c.id })} title={c.name}>
               <span className="client-dot" style={{ background: c.color }}>
                 {c.name.charAt(0)}
               </span>
               <span className="sb-label">{c.name}</span>
-              {n ? <span className="count muted-count">{n}</span> : null}
             </button>
           );
         })}
         <button className={`nav-item ${is('unfiled') ? 'active' : ''}`} onClick={() => onPage({ kind: 'unfiled' })} title="Unfiled">
           <Inbox size={16} />
           <span className="sb-label">Unfiled</span>
-          {unfiled ? <span className="count muted-count">{unfiled}</span> : null}
+          {unfiled ? <span className="count warn-count" title="Meetings to file">{unfiled}</span> : null}
         </button>
         <button className="nav-item" onClick={onSettings} title="Meeting settings">
           <Folder size={16} />

@@ -42,6 +42,7 @@ export function DriveSidebar({ section, used, quota, onSection, onUpload, onNewF
           </button>
         ))}
       </nav>
+      {used / quota >= 0.8 && (
       <div className="storage sb-label">
         <div className="storage-row">
           <span>Storage</span>
@@ -50,9 +51,11 @@ export function DriveSidebar({ section, used, quota, onSection, onUpload, onNewF
           </span>
         </div>
         <div className="bar">
-          <span style={{ width: `${Math.max(1, (used / quota) * 100)}%` }} />
+          <span style={{ width: `${Math.max(1, (used / quota) * 100)}%` }} className="warn" />
         </div>
+        <small className="muted">Running low. Free up space or add storage in Settings.</small>
       </div>
+      )}
     </>
   );
 }

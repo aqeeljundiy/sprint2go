@@ -463,12 +463,12 @@ export function TasksView(p: Props) {
   const subtitle = client
     ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : 'Active client'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
     : team
-      ? `Lead: ${person(team.leadId)?.name ?? 'not set'} · ${open.length} open${overdue ? ` · ${overdue} late` : ''} · ${open.filter((t) => !t.userId).length} not assigned`
+      ? [`Lead: ${person(team.leadId)?.name ?? 'not set'}`, overdue ? `${overdue} late` : '', open.filter((t) => !t.userId).length ? `${open.filter((t) => !t.userId).length} nobody on it yet` : ''].filter(Boolean).join(' · ')
       : scope.kind === 'grid'
         ? 'Open work for every client, split by team. Click a cell to open it.'
         : scope.kind === 'briefs'
           ? 'Bigger pieces of work with one person in charge and tasks for others'
-          : `${open.length} open${overdue ? ` · ${overdue} overdue` : ''} · ${recentDone.length} done this week`;
+          : [overdue ? `${overdue} late` : '', open.filter((t) => t.due === localDay()).length ? `${open.filter((t) => t.due === localDay()).length} due today` : ''].filter(Boolean).join(' · ') || (open.length ? 'Nothing late or due today' : 'Nothing open');
 
   return (
     <section className="tasks-pane view-enter">

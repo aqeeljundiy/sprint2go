@@ -265,7 +265,10 @@ export function ChatSidebar(p: SidebarProps) {
           <div className="sec-head-row">
             <button className="nav-heading sb-label sec-head" onClick={() => toggle(key)}>
               {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />} {title}
-              <span className="sec-count">{list.length || ''}</span>
+              {(() => {
+                const n = list.reduce((sum, c) => sum + (p.unread[c.id] ?? 0), 0);
+                return closed && n ? <span className="sec-count unread">{n}</span> : null; // collapsed: show what you'd miss
+              })()}
             </button>
             {mineId && (
               <button
@@ -417,7 +420,6 @@ export function ChatSidebar(p: SidebarProps) {
           <button className="nav-item" onClick={() => setBrowsing((b) => !b)} title="Browse channels">
             <Compass size={16} />
             <span className="sb-label">Browse channels</span>
-            <span className="count muted-count">{joinable.length}</span>
           </button>
         )}
         {browsing &&
@@ -1291,7 +1293,7 @@ export function ChatView(p: ViewProps) {
             [
               ['messages', 'Messages', null],
               ['materials', 'Materials', (channel.materials?.items.length ?? channel.bookmarks?.length ?? 0) + chanFiles.length + p.drive.length + new Set(links.map((l) => l.url)).size],
-              ['tasks', 'Tasks', chanTasks.filter((t) => !t.done).length],
+              ['tasks', 'Tasks', chanTasks.filter((t) => !t.done && !!t.due && t.due < new Date().toISOString().slice(0, 10)).length], // late only
               ['pinned', 'Pinned', pinned.length],
               ['summary', 'Summary', null],
               ['about', other ? 'Profile' : 'About', null],
@@ -1299,7 +1301,7 @@ export function ChatView(p: ViewProps) {
           ).filter(([id]) => !guest || id === 'messages' || id === 'materials').map(([id, l, n]) => (
             <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
               {l}
-              {n ? <span>{n}</span> : null}
+              {id === 'tasks' && n ? <span>{n}</span> : null}
             </button>
           ))}
         </div>

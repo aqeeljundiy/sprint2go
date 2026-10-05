@@ -1112,3 +1112,4 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .pulse-num { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 @keyframes unIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (max-width: 760px) { .un-row { gap: 10px; } .un-text strong { white-space: normal; } }
+.sec-count.unread { color: var(--accent); font-weight: 700; opacity: 1; }
