@@ -220,7 +220,7 @@ export function clientActions(c: ClientCtx) {
       return {
         people,
         tasks: tasksFor(c.client, c.todos),
-        channels: channelsFor(c.person.email, c.client.id, c.channels),
+        channels: channelsFor(c.person.email, c.client.id, c.channels, c.client.status === 'ended'),
         meetings: meetingsFor(c.client, people, c.meetings, c.access),
         files: filesFor(c.client, c.drive),
         inbox: clientInbox(c.person.email),

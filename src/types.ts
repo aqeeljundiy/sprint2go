@@ -297,7 +297,12 @@ export interface Client {
   name: string;
   domain?: string; // their email domain, used to find their emails
   color: string;
-  status: 'active' | 'lead' | 'paused';
+  status: 'active' | 'lead' | 'paused' | 'ended';
+  since?: string; // when the work started
+  endedAt?: string; // when the work ended (status 'ended')
+  endReason?: string;
+  portalAfterEnd?: 'readonly' | 'off'; // what their people keep after the end
+  archivedOnEnd?: string[]; // channels archived when ending (unarchived if they come back)
   ownerId: string;
   overview?: { headline: string; summary: string; progress: string; wins: string[]; risks: string[]; next: string[]; at: string; from: number };
   people?: ClientPerson[]; // the client's own people who can sign in to their portal

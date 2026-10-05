@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Users } from 'lucide-react';
+import { Archive, Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Users } from 'lucide-react';
 import type { Client, Team, Todo } from '../types';
 import { doers, isBrief, statusOf, type TaskScope } from './TasksView';
 import { localDay } from '../utils';
@@ -20,7 +20,10 @@ interface Props {
 
 export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeams, me, isAdmin, myTeamIds, myClientIds, onScope, onBrainDump, onAddClient }: Props) {
   const teams = isAdmin ? allTeams : allTeams.filter((t) => myTeamIds.includes(t.id));
-  const clients = isAdmin ? allClients : allClients.filter((c) => myClientIds.includes(c.id));
+  const mineOrAll = isAdmin ? allClients : allClients.filter((c) => myClientIds.includes(c.id));
+  const clients = mineOrAll.filter((c) => c.status !== 'ended');
+  const past = mineOrAll.filter((c) => c.status === 'ended');
+  const [showPast, setShowPast] = useState(false);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -108,6 +111,21 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
             </button>
           );
         })}
+        {past.length > 0 && (
+          <button className={`nav-item past-toggle ${is({ kind: 'past' }) ? 'active' : ''}`} onClick={() => (setShowPast((x) => !x), onScope({ kind: 'past' }))} title="Past clients">
+            <Archive size={16} />
+            <span className="sb-label">Past clients</span>
+          </button>
+        )}
+        {showPast &&
+          past.map((c) => (
+            <button key={c.id} className={`nav-item past ${is({ kind: 'client', id: c.id }) ? 'active' : ''}`} onClick={() => onScope({ kind: 'client', id: c.id })} title={c.name}>
+              <span className="client-dot" style={{ background: c.color }}>
+                {c.name.charAt(0)}
+              </span>
+              <span className="sb-label">{c.name}</span>
+            </button>
+          ))}
         {adding ? (
           <div className="add-client sb-label">
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Client name" onKeyDown={(e) => e.key === 'Enter' && save()} />

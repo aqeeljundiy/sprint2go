@@ -270,7 +270,7 @@ export function TaskDrawer(p: Props) {
             )}
             <dt>Client</dt>
             <dd>
-              <Select value={t.clientId ?? ''} options={clientOptions(p.clients)} onChange={(v) => p.onPatch(t.id, { clientId: v || undefined })} label="Client" />
+              <Select value={t.clientId ?? ''} options={clientOptions(p.clients, t.clientId)} onChange={(v) => p.onPatch(t.id, { clientId: v || undefined })} label="Client" />
             </dd>
             <dt>Due</dt>
             <dd>

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace } from '../types';
 import { ClientAccessForm } from './admin/ClientAccessForm';
+import { PastClients } from './PastClients';
 import { accessFor, clientPeople } from '../clientView';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
@@ -20,7 +21,8 @@ export type TaskScope =
   | { kind: 'briefs' }
   | { kind: 'grid' }
   | { kind: 'client'; id: string; teamId?: string }
-  | { kind: 'team'; id: string };
+  | { kind: 'team'; id: string }
+  | { kind: 'past' }; // past clients and clients over time
 
 export const ROLE_NAME: Record<ClientPerson['role'], string> = { viewer: 'Viewer', collaborator: 'Collaborator', approver: 'Approver' };
 export const ROLE_HINT: Record<ClientPerson['role'], string> = { viewer: 'Reads only', collaborator: 'Comments, uploads, sends requests', approver: 'Also approves work' };
@@ -66,9 +68,10 @@ export function peopleOptions(users: User[], me: string, unassigned = true): Opt
   ];
 }
 export const teamOptions = (teams: Team[]): Option[] => [{ value: '', label: 'No team', icon: <Dot color="var(--text-3)" /> }, ...teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))];
-export const clientOptions = (clients: Client[]): Option[] => [
+/** Clients to pick from: past clients only when it's the one already set. */
+export const clientOptions = (clients: Client[], current?: string): Option[] => [
   { value: '', label: 'No client (internal)', icon: <Dot color="var(--text-3)" /> },
-  ...clients.map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : undefined, icon: <Dot color={c.color} /> })),
+  ...clients.filter((c) => c.status !== 'ended' || c.id === current).map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? 'Past client' : undefined, icon: <Dot color={c.color} /> })),
 ];
 
 type GroupBy = 'client' | 'team' | 'person' | 'none';
@@ -91,6 +94,8 @@ interface Props {
   onPatchClient: (id: string, patch: Partial<Client>) => void;
   onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }) => void;
   onApproveClientPerson: (clientId: string, email: string) => void;
+  onEndClient: (id: string) => void;
+  onReactivateClient: (id: string) => void;
   onShareMeeting: (id: string, shared: boolean) => void;
   onShareFile: (id: string, shared: boolean) => void;
   onScope: (s: TaskScope) => void;
@@ -410,7 +415,7 @@ export function TasksView(p: Props) {
   const gridView = () => {
     const work = p.tasks.filter((t) => !isBrief(t) && !t.done);
     const cols = [...p.teams, null];
-    const rows = [...p.clients, null];
+    const rows = [...p.clients.filter((c) => c.status !== 'ended'), null];
     const cell = (cid: string | null, tid: string | null) => work.filter((t) => (t.clientId ?? null) === cid && (t.teamId ?? null) === tid);
     return (
       <div className="grid-wrap">
@@ -484,7 +489,7 @@ export function TasksView(p: Props) {
 
   const showTaskList = scope.kind !== 'grid' && scope.kind !== 'briefs' && (!client || clientTab === 'tasks');
   const subtitle = client
-    ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : 'Active client'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
+    ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : client.status === 'ended' ? `Past client${client.endReason ? ` · ${client.endReason}` : ''}` : 'Active client'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
     : team
       ? [`Lead: ${person(team.leadId)?.name ?? 'not set'}`, overdue ? `${overdue} late` : '', open.filter((t) => !t.userId).length ? `${open.filter((t) => !t.userId).length} nobody on it yet` : ''].filter(Boolean).join(' · ')
       : scope.kind === 'grid'
@@ -492,6 +497,9 @@ export function TasksView(p: Props) {
         : scope.kind === 'briefs'
           ? 'Bigger pieces of work with one person in charge and tasks for others'
           : [overdue ? `${overdue} late` : '', open.filter((t) => t.due === localDay()).length ? `${open.filter((t) => t.due === localDay()).length} due today` : ''].filter(Boolean).join(' · ') || (open.length ? 'Nothing late or due today' : 'Nothing open');
+
+  if (scope.kind === 'past')
+    return <PastClients clients={p.clients} tasks={p.tasks} canManage={p.canManage} onOpen={(id) => p.onScope({ kind: 'client', id })} onReactivate={p.onReactivateClient} />;
 
   return (
     <section className="tasks-pane view-enter">
@@ -518,6 +526,38 @@ export function TasksView(p: Props) {
           <h1>{heading}</h1>
           <p>{subtitle}</p>
         </div>
+        {client &&
+          (client.status === 'ended' ? (
+            <span className="client-ended">
+              <span className="ended-chip">
+                <Archive size={12} /> Ended{client.endedAt ? ` ${new Date(client.endedAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+              </span>
+              {(p.canManage || client.ownerId === p.me) && (
+                <button className="ghost-btn sm" onClick={() => p.onReactivateClient(client.id)}>
+                  <RotateCcw size={13} /> Work with them again
+                </button>
+              )}
+            </span>
+          ) : (
+            (p.canManage || client.ownerId === p.me) && (
+              <span className="client-status">
+                <Select<'lead' | 'active' | 'paused'>
+                  value={client.status as 'lead' | 'active' | 'paused'}
+                  onChange={(v) => p.onPatchClient(client.id, { status: v, ...(v === 'active' && !client.since ? { since: new Date().toISOString() } : {}) })}
+                  label="Status"
+                  className="sel-flat"
+                  options={[
+                    { value: 'lead', label: 'Lead', hint: 'Not working together yet' },
+                    { value: 'active', label: 'Active', hint: 'Working together' },
+                    { value: 'paused', label: 'Paused', hint: 'On hold for now' },
+                  ]}
+                />
+                <button className="ghost-btn sm" onClick={() => p.onEndClient(client.id)}>
+                  End work
+                </button>
+              </span>
+            )
+          ))}
         <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
           <LayoutTemplate size={14} /> <span>Template</span>
         </button>

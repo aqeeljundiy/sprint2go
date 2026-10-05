@@ -11,6 +11,7 @@ import { fmtTime } from './calendarUtils';
 import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { BUILT_IN_TEMPLATES, type TaskTemplate } from './data/templates';
 import { TemplateDialog } from './components/TemplateDialog';
+import { EndClientDialog } from './components/EndClientDialog';
 import { eventsOn } from './calendarUtils';
 import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
@@ -50,7 +51,7 @@ import { ChannelDialog } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { ClientApp } from './components/ClientApp';
 import { clientActions } from './clientActions';
-import { accessFor, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
+import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
 import { celebrate } from './components/ui/confetti';
 import { MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS } from './data/workspaces';
@@ -820,7 +821,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, [ws.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const members = useMemo(() => ws.members.map((m) => allUsers.find((u) => u.id === m.userId)).filter(Boolean) as User[], [ws.members, allUsers]);
-  const wsClients = useMemo(() => clients.filter((c) => c.workspaceId === ws.id), [clients, ws.id]);
+  // Every client, including past ones (client pages, search, history) …
+  const wsClientsAll = useMemo(() => clients.filter((c) => c.workspaceId === ws.id), [clients, ws.id]);
+  // … and the ones you work with now (pickers, sidebars, Home, filing).
+  const wsClients = useMemo(() => wsClientsAll.filter((c) => c.status !== 'ended'), [wsClientsAll]);
   const wsTeams = useMemo(() => teams.filter((t) => t.workspaceId === ws.id), [teams, ws.id]);
   const allWsTasks = useMemo(() => todos.filter((t) => (t.workspaceId ?? 'pnp') === ws.id), [todos, ws.id]);
   // Who sees which tasks: owners and admins see everything; everyone else sees their own work,
@@ -871,7 +875,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** Which client an email belongs to, by the sender's domain. */
   function clientForThread(t: Thread) {
-    return wsClients.find((c) => c.domain && t.messages.some((m) => [m.from, ...m.to].some((p) => p.email.toLowerCase().endsWith('@' + c.domain))));
+    return wsClientsAll.find((c) => c.domain && t.messages.some((m) => [m.from, ...m.to].some((p) => p.email.toLowerCase().endsWith('@' + c.domain))));
   }
 
   const chatUnread = useMemo(() => {
@@ -1330,6 +1334,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const p = clients.find((x) => x.id === clientId)?.people?.find((x) => x.email === email);
     if (p) void giveClientAccess(clientId, { name: p.name, email: p.email, role: p.role }, 'invited');
   };
+  /** Ending work with a client: archive their channels, decide what their people keep, optionally close open tasks. */
+  const [ending, setEnding] = useState<string | null>(null);
+  const endClient = (id: string, o: { date: string; reason: string; archive: boolean; portal: 'readonly' | 'off'; closeTasks: boolean }) => {
+    const chans = o.archive ? channels.filter((c) => c.clientId === id && !c.archived).map((c) => c.id) : [];
+    setClients((cs) => cs.map((c) => (c.id === id ? { ...c, status: 'ended', endedAt: new Date(o.date + 'T12:00').toISOString(), endReason: o.reason || undefined, portalAfterEnd: o.portal, archivedOnEnd: chans } : c)));
+    if (chans.length) setChannels((cs) => cs.map((c) => (chans.includes(c.id) ? { ...c, archived: true } : c)));
+    if (o.closeTasks) setTodos((ts) => ts.map((t) => (t.clientId === id && !t.done ? { ...t, done: true, status: 'done', doneAt: nowIso(), doneBy: user.id } : t)));
+    setEnding(null);
+    const c = clients.find((x) => x.id === id);
+    showToast({ text: `Work with ${c?.name} ended. They’re in Past clients`, action: { label: 'Undo', run: () => reactivateClient(id) } });
+  };
+  const reactivateClient = (id: string) => {
+    const c = clients.find((x) => x.id === id);
+    if (!c) return;
+    setClients((cs) => cs.map((x) => (x.id === id ? { ...x, status: 'active', endedAt: undefined, endReason: undefined, portalAfterEnd: undefined, archivedOnEnd: undefined } : x)));
+    if (c.archivedOnEnd?.length) setChannels((cs) => cs.map((ch) => (c.archivedOnEnd!.includes(ch.id) ? { ...ch, archived: false } : ch)));
+    showToast({ text: `${c.name} is an active client again` });
+  };
+
   /** Tells the client people who should know (the requester, or everyone at the client for shared work). */
   const tellClient = (t: Todo, text: string) => {
     const c = clients.find((x) => x.id === t.clientId);
@@ -2088,7 +2111,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, run: () => { openTasks({ kind: 'mine' }); setTimeout(() => document.getElementById('new-task')?.focus(), 200); } },
     ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, run: () => { go('calendar'); openNewEvent(); } }] : []),
     ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
-    ...wsClients.map((c) => ({ id: 'c-' + c.id, group: 'Clients', title: c.name, sub: c.domain, icon: Building2, run: () => openClient(c.id) })),
+    ...wsClientsAll.map((c) => ({ id: 'c-' + c.id, group: 'Clients', title: c.name, sub: c.status === 'ended' ? 'Past client' : c.domain, icon: Building2, run: () => openClient(c.id) })),
     ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.userId ? firstOf(t.userId) : 'nobody yet'].filter(Boolean).join(' · '), icon: ListChecks, run: () => openTask(t.id) })),
     ...members.filter((u) => u.id !== user.id).map((u) => ({ id: 'p-' + u.id, group: 'People', title: u.name, sub: u.title || u.email, icon: UserIcon, run: () => openChannel(dmWith(u.id)) })),
     ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ id: 'ch-' + c.id, group: 'Channels', title: '#' + c.name, icon: Hash, run: () => openChannel(c.id) })),
@@ -2101,13 +2124,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const portal = myPortals.find((pt) => pt.key === portalKey);
   if (portal) {
     const pws = portal.ws;
-    const access = accessFor(pws, portal.client);
+    const ended = afterEnd(portal.client, portal.person, accessFor(pws, portal.client));
+    const access = ended.access;
     const team = allUsers.filter((u) => pws.members.some((m) => m.userId === u.id));
     const inbox = [user.id, clientInbox(user.email)];
     const actions = clientActions({
       ws: pws,
       client: portal.client,
-      person: portal.person,
+      person: ended.person,
       access,
       team,
       teams: teams.filter((t) => t.workspaceId === pws.id),
@@ -2133,7 +2157,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         key={portal.key}
         ws={pws}
         client={portal.client}
-        person={portal.person}
+        person={ended.person}
         access={access}
         team={team}
         actions={actions}
@@ -2154,14 +2178,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const people = vc ? clientPeople(vc, channels) : [];
     const person = people.find((x) => x.email === viewAs.email);
     if (vc && person) {
-      const access = accessFor(ws, vc);
-      const actions = clientActions({ ws, client: vc, person, access, team: members, teams: wsTeams, todos, channels, messages, meetings: wsMeetings, drive, setTodos, setMessages, setDrive, setClients, setNotices, setChannels, makeInvite: makeClientInvite(vc.id) });
+      const view = afterEnd(vc, person, accessFor(ws, vc));
+      const access = view.access;
+      const actions = clientActions({ ws, client: vc, person: view.person, access, team: members, teams: wsTeams, todos, channels, messages, meetings: wsMeetings, drive, setTodos, setMessages, setDrive, setClients, setNotices, setChannels, makeInvite: makeClientInvite(vc.id) });
       const inbox = clientInbox(person.email);
       return (
         <ClientApp
           ws={ws}
           client={vc}
-          person={person}
+          person={view.person}
           access={access}
           team={members}
           actions={actions}
@@ -2327,7 +2352,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <TasksSidebar
             scope={taskScope}
             tasks={wsTasks}
-            clients={wsClients}
+            clients={wsClientsAll}
             teams={wsTeams}
             me={user.id}
             isAdmin={isAdmin}
@@ -2551,7 +2576,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <TasksView
             scope={taskScope}
             tasks={wsTasks}
-            clients={wsClients}
+            clients={wsClientsAll}
             teams={wsTeams}
             onScope={setTaskScope}
             onOpenTask={setTaskOpen}
@@ -2564,6 +2589,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onPatchClient={patchClient}
             onInviteClientPerson={inviteClientPerson}
             onApproveClientPerson={approveClientPerson}
+            onEndClient={setEnding}
+            onReactivateClient={reactivateClient}
             messages={messages}
             clientTab={clientTab}
             onWriteOverview={writeOverview}
@@ -3117,7 +3144,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         <TaskDrawer
           task={wsTasks.find((t) => t.id === taskOpen)!}
           tasks={wsTasks}
-          clients={wsClients}
+          clients={wsClientsAll}
           teams={wsTeams}
           users={members}
           me={user.id}
@@ -3226,6 +3253,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             setChanDialog(null);
           }}
+        />
+      )}
+      {ending && wsClientsAll.some((c) => c.id === ending) && (
+        <EndClientDialog
+          client={wsClientsAll.find((c) => c.id === ending)!}
+          openTasks={wsTasks.filter((t) => t.clientId === ending && !t.done).length}
+          channels={channels.filter((c) => c.clientId === ending && !c.archived).length}
+          people={clientPeople(wsClientsAll.find((c) => c.id === ending)!, channels).length}
+          onEnd={(o) => endClient(ending, o)}
+          onClose={() => setEnding(null)}
         />
       )}
       {tplOpen && (

@@ -622,6 +622,11 @@ export function ClientApp(p: Props) {
       )}
 
       <main className="main" key={mode}>
+        {client.status === 'ended' && (
+          <div className="ended-banner">
+            Your work with {ws.name} ended{client.endedAt ? ` on ${new Date(client.endedAt).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}. You can still read everything and download files.
+          </div>
+        )}
         {mobile && (
           <MobileTop
             title={title}

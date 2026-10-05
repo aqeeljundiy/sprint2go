@@ -12,23 +12,25 @@ const day = (offset: number) => {
 
 export const CLIENTS: Client[] = [
   {
-    id: 'c-kopikita', workspaceId: 'pnp', name: 'KopiKita', domain: 'kopikita.co.id', color: '#b45309', status: 'active', ownerId: 'u-aqeel',
+    id: 'c-kopikita', workspaceId: 'pnp', name: 'KopiKita', domain: 'kopikita.co.id', color: '#b45309', status: 'active', ownerId: 'u-aqeel', since: '2026-03-02T03:00:00.000Z',
     people: [
       { email: 'nadia@kopikita.co.id', name: 'Nadia Putri', role: 'approver', status: 'joined', invitedBy: 'u-aqeel', at: '2026-09-20T03:00:00.000Z' },
       { email: 'bagus@kopikita.co.id', name: 'Bagus Santoso', role: 'viewer', status: 'invited', invitedBy: 'nadia@kopikita.co.id', at: '2026-10-02T03:00:00.000Z' },
     ],
   },
   {
-    id: 'c-lumina', workspaceId: 'pnp', name: 'Lumina Skin', domain: 'luminaskin.sg', color: '#ec4899', status: 'active', ownerId: 'u-faisal',
+    id: 'c-lumina', workspaceId: 'pnp', name: 'Lumina Skin', domain: 'luminaskin.sg', color: '#ec4899', status: 'active', ownerId: 'u-faisal', since: '2026-05-18T03:00:00.000Z',
     people: [{ email: 'sarah@luminaskin.sg', name: 'Sarah Lim', role: 'collaborator', status: 'joined', invitedBy: 'u-faisal', at: '2026-09-12T03:00:00.000Z' }],
   },
   { id: 'c-arunika', workspaceId: 'pnp', name: 'Arunika Hotels', domain: 'arunikahotels.id', color: '#0ea5e9', status: 'lead', ownerId: 'u-aqeel' },
   { id: 'c-glowkind', workspaceId: 'pnp', name: 'Glowkind', domain: 'glowkind.id', color: '#a855f7', status: 'lead', ownerId: 'u-aditya' },
   {
     // Elkiya runs its own Sprint2go workspace and is also a client of Pixel & Profits: Dimas signs in once and has both.
-    id: 'c-elkiya', workspaceId: 'pnp', name: 'Elkiya Group', domain: 'elkiyagroup.com', color: '#0f766e', status: 'active', ownerId: 'u-aditya',
+    id: 'c-elkiya', workspaceId: 'pnp', name: 'Elkiya Group', domain: 'elkiyagroup.com', color: '#0f766e', status: 'active', ownerId: 'u-aditya', since: '2026-09-21T03:00:00.000Z',
     people: [{ email: 'dimas@elkiyagroup.com', name: 'Dimas Prakoso', role: 'approver', status: 'joined', invitedBy: 'u-aditya', at: '2026-09-25T03:00:00.000Z' }],
   },
+  // A past client: the work ended in August.
+  { id: 'c-batik', workspaceId: 'pnp', name: 'Batik Nusantara', domain: 'batiknusantara.id', color: '#7c3aed', status: 'ended', ownerId: 'u-faisal', since: '2026-01-12T03:00:00.000Z', endedAt: '2026-08-28T05:00:00.000Z', endReason: 'Project finished', portalAfterEnd: 'readonly' },
   { id: 'c-kopiharian', workspaceId: 'elk', name: 'Kopi Harian', domain: 'kopiharian.id', color: '#92400e', status: 'lead', ownerId: 'u-aqeel' },
   { id: 'c-supplements', workspaceId: 'elk', name: 'Supplements brand', color: '#16a34a', status: 'active', ownerId: 'u-dimas' },
 ];

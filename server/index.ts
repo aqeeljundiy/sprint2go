@@ -131,10 +131,12 @@ function clientLens(me: Person) {
   const w = workspaces().find((x) => x.id === workspaceId) as any;
   const client = db.getDoc('clients', clientId) as any;
   if (!w || !client) return () => null;
+  // Work ended: their people keep read-only access, or none at all.
+  if (client.status === 'ended' && client.portalAfterEnd !== 'readonly') return () => null;
   const access = accessFor(w, client);
   const channels = db.allDocs('channels') as any[];
   const people = clientPeople(client, channels as any);
-  const myChannels = new Set(channelsFor(email, clientId, channels as any).map((c) => c.id));
+  const myChannels = new Set(channelsFor(email, clientId, channels as any, client.status === 'ended').map((c) => c.id));
   const meetings = new Map(meetingsFor(client, people, db.allDocs('meetings') as any, access).map((x) => [x.meeting.id, x.notes]));
   const files = new Set(filesFor(client, db.allDocs('drive') as any).map((f) => f.id));
   const tasks = new Set(tasksFor(client, db.allDocs('todos') as any).map((t) => t.id));
@@ -197,6 +199,7 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
   const access = accessFor(w, client);
   const person = clientPeople(client, db.allDocs('channels') as any).find((x) => x.email.toLowerCase() === email);
   if (!person || person.status === 'pending') return null;
+  if (client.status === 'ended') return null; // read only after the work ended
   switch (coll) {
     case 'messages':
       return !before && d.userId === 'guest' && String(d.guestEmail).toLowerCase() === email && see('messages', d) && can(person, 'comment') ? d : null;

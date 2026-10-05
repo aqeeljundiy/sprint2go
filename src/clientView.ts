@@ -25,8 +25,8 @@ const isClient = (t: Todo, client: Client) => t.clientId === client.id;
 export const tasksFor = (client: Client, tasks: Todo[]) => tasks.filter((t) => isClient(t, client) && (t.visibleToClient || t.source === 'request'));
 
 /** Shared channels this person is in. */
-export const channelsFor = (email: string, clientId: string, channels: Channel[]) =>
-  channels.filter((c) => c.kind === 'channel' && !c.archived && c.clientId === clientId && c.guests?.some((g) => g.email.toLowerCase() === email.toLowerCase()));
+export const channelsFor = (email: string, clientId: string, channels: Channel[], includeArchived = false) =>
+  channels.filter((c) => c.kind === 'channel' && (includeArchived || !c.archived) && c.clientId === clientId && c.guests?.some((g) => g.email.toLowerCase() === email.toLowerCase()));
 
 /** Meetings with this client that their people were in, or that the team shared. */
 export function meetingsFor(client: Client, people: ClientPerson[], meetings: Meeting[], access: ClientAccess) {
@@ -47,6 +47,12 @@ export function filesFor(client: Client, drive: DriveItem[]) {
 export function teamLabel(u: Pick<User, 'name'> | undefined, access: ClientAccess, companyName: string) {
   if (!u || access.teamNames === 'hide') return `${companyName} team`;
   return access.teamNames === 'first' ? u.name.split(' ')[0] : u.name;
+}
+
+/** After the work ends: their people can only read and download (if the company kept read-only access). */
+export function afterEnd(client: Client, person: ClientPerson, access: ClientAccess): { person: ClientPerson; access: ClientAccess } {
+  if (client.status !== 'ended') return { person, access };
+  return { person: { ...person, role: 'viewer' }, access: { ...access, requests: false, uploads: false, ai: false, invites: 'off' } };
 }
 
 /** A request's status in the client's words. */
@@ -72,7 +78,7 @@ export const thisMonth = () => new Date().toISOString().slice(0, 7);
 export function portalsFor(email: string, memberOf: string[], workspaces: Workspace[], clients: Client[], channels: Channel[]) {
   const mail = email.toLowerCase();
   return clients
-    .filter((c) => !memberOf.includes(c.workspaceId) && workspaces.some((w) => w.id === c.workspaceId))
+    .filter((c) => !memberOf.includes(c.workspaceId) && workspaces.some((w) => w.id === c.workspaceId) && !(c.status === 'ended' && c.portalAfterEnd !== 'readonly'))
     .map((c) => ({ client: c, ws: workspaces.find((w) => w.id === c.workspaceId)!, person: clientPeople(c, channels).find((p) => p.email.toLowerCase() === mail) }))
     .filter((x): x is { client: Client; ws: Workspace; person: ClientPerson } => !!x.person && x.person.status !== 'pending')
     .map((x) => ({ ...x, key: `${x.ws.id}:${x.client.id}` }));

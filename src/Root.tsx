@@ -8,7 +8,7 @@ import { setAIWorkspace } from './ai';
 import App from './App';
 import { ClientApp } from './components/ClientApp';
 import { clientActions } from './clientActions';
-import { accessFor, clientInbox, portalsFor } from './clientView';
+import { accessFor, afterEnd, clientInbox, portalsFor } from './clientView';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { AcceptInvite, SignIn } from './components/SignIn';
 
@@ -172,8 +172,7 @@ function ClientRoot({ me }: { me: User }) {
     if (ws) setAIWorkspace(ws.id);
   }, [ws?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!portal || !ws || !client) return <NoWorkspace email={me.email} onBack={() => void signOut()} />;
-  const person = portal.person;
-  const access = accessFor(ws, client);
+  const { person, access } = afterEnd(client, portal.person, accessFor(ws, client));
   const team = users.filter((u) => !u.clientOf);
   const actions = clientActions({
     ws,
