@@ -2187,6 +2187,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             canManage={canManageChannel}
             onMove={moveChannel}
             onSettings={(id) => setChanDialog({ id })}
+            isAdmin={isAdmin}
+            layout={ws.chat?.layout}
+            onLayout={(layout) => patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout } })}
             onStatus={(st) =>
               setStatuses((all) => {
                 const next = { ...all };
@@ -2256,6 +2259,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               canManage={canManageChannel}
               onMove={moveChannel}
               onSettings={(id) => setChanDialog({ id })}
+              isAdmin={isAdmin}
+              layout={ws.chat?.layout}
+              onLayout={(layout) => patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout } })}
               onStatus={(st) =>
                 setStatuses((all) => {
                   const next = { ...all };

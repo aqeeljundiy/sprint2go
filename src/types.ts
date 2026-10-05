@@ -179,7 +179,13 @@ export interface Workspace {
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
   meetingRules?: MeetingRule[];
-  chat?: { gifs: boolean; celebrations: boolean; whoCanCreate: Policy; history?: 'forever' | '1y' | '90d' };
+  chat?: {
+    gifs: boolean;
+    celebrations: boolean;
+    whoCanCreate: Policy;
+    history?: 'forever' | '1y' | '90d';
+    layout?: ChatLayout; // the company's Default sidebar, set by admins
+  };
   plan?: Plan;
   ai?: AISettings;
   meetings?: MeetingSettings;
@@ -289,6 +295,16 @@ export interface Client {
   overview?: { headline: string; summary: string; progress: string; wins: string[]; risks: string[]; next: string[]; at: string; from: number };
 }
 
+/** The company's Default chat sidebar: sections in order, and which section a channel sits in. */
+export interface ChatLayout {
+  sections: ChatSection[];
+  placement: Record<string, string>; // channel id -> section id (otherwise the section for its category)
+}
+export interface ChatSection {
+  id: string;
+  name: string;
+  category?: ChannelCategory; // the built-in section for this kind of channel (can be renamed, not deleted)
+}
 export type ChannelCategory = 'client' | 'shared' | 'team' | 'project' | 'social'; // client = our team about a client; shared = with the client's people
 export type Policy = 'everyone' | 'admins';
 

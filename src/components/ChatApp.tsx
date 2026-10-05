@@ -37,7 +37,7 @@ import { FolderPlus, ChevronUp, Handshake,
   Video,
   X,
 } from 'lucide-react';
-import type { Channel, ChannelCategory, ChatFile, ChatMessage, ChatView as ChatViewDef, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../types';
+import type { Channel, ChannelCategory, ChatLayout, ChatSection, ChatFile, ChatMessage, ChatView as ChatViewDef, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../types';
 import { relative } from '../utils';
 import { usePersisted } from '../settings';
 import { ai } from '../ai';
@@ -82,6 +82,9 @@ interface SidebarProps {
   canManage: (c: Channel) => boolean; // owner or admin: may change the channel's category
   onMove: (id: string, category: ChannelCategory) => void;
   onSettings: (id: string) => void;
+  isAdmin: boolean;
+  layout?: ChatLayout; // the company's Default sidebar
+  onLayout: (l: ChatLayout) => void;
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -94,28 +97,60 @@ export function ChatSidebar(p: SidebarProps) {
   const [browsing, setBrowsing] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
-  // Your own sections in the Default view (only you see them), above the shared categories.
-  const [mySections, setMySections] = usePersisted<{ id: string; name: string; channelIds: string[] }[]>(`s2g-chat-sections:${p.me}:${p.workspaceId}`, []);
+  // The company's Default layout: admins add, rename and order sections and place channels for everyone.
   const [newSection, setNewSection] = useState<{ name: string; channelId?: string } | null>(null);
   const [secMenu, setSecMenu] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const secAnchor = useRef<HTMLElement | null>(null);
-  const inMine = new Set(mySections.flatMap((s) => s.channelIds));
-  /** Puts a channel in one of your sections (null = back to its category). */
-  const toMine = (channelId: string, sectionId: string | null) =>
-    setMySections((list) => list.map((s) => ({ ...s, channelIds: s.id === sectionId ? [...new Set([...s.channelIds, channelId])] : s.channelIds.filter((x) => x !== channelId) })));
+  const CATS: ChannelCategory[] = ['client', 'shared', 'team', 'project', 'social'];
+  const layout: ChatLayout = (() => {
+    const base = p.layout?.sections?.length ? p.layout.sections : [];
+    // Every kind of channel always has its built-in section (added if missing).
+    const missing = CATS.filter((c) => !base.some((s) => s.category === c)).map((c) => ({ id: c, name: CATEGORY_NAME[c], category: c }));
+    return { sections: [...base, ...missing], placement: p.layout?.placement ?? {} };
+  })();
+  const sectionOf = (c: Channel) => {
+    const placed = layout.placement[c.id];
+    if (placed && layout.sections.some((s) => s.id === placed)) return placed;
+    return layout.sections.find((s) => s.category === (c.category ?? 'project'))!.id;
+  };
+  /** Admins can arrange everything; a channel's owner can still change its kind (its built-in section). */
+  const canPlace = (c: Channel, sec: ChatSection) => p.isAdmin || (!!sec.category && p.canManage(c));
+  const placeIn = (channelId: string, sectionId: string) => {
+    const c = rooms.find((x) => x.id === channelId);
+    const sec = layout.sections.find((x) => x.id === sectionId);
+    if (!c || !sec || !canPlace(c, sec) || sectionOf(c) === sectionId) return;
+    const placement = { ...layout.placement };
+    if (sec.category) {
+      delete placement[channelId];
+      if ((c.category ?? 'project') !== sec.category) p.onMove(channelId, sec.category);
+    } else placement[channelId] = sectionId;
+    p.onLayout({ ...layout, placement });
+  };
   const saveRename = () => {
-    if (renaming?.name.trim()) setMySections((l) => l.map((x) => (x.id === renaming.id ? { ...x, name: renaming.name.trim() } : x)));
+    if (renaming?.name.trim()) p.onLayout({ ...layout, sections: layout.sections.map((x) => (x.id === renaming.id ? { ...x, name: renaming.name.trim() } : x)) });
     setRenaming(null);
   };
   const createSection = () => {
     if (!newSection?.name.trim()) return setNewSection(null);
-    const id = 's-' + Date.now().toString(36);
-    setMySections((list) => [
-      ...list.map((s) => ({ ...s, channelIds: s.channelIds.filter((x) => x !== newSection.channelId) })),
-      { id, name: newSection.name.trim(), channelIds: newSection.channelId ? [newSection.channelId] : [] },
-    ]);
+    const id = 'sec-' + Date.now().toString(36);
+    p.onLayout({
+      sections: [{ id, name: newSection.name.trim() }, ...layout.sections],
+      placement: newSection.channelId ? { ...layout.placement, [newSection.channelId]: id } : layout.placement,
+    });
     setNewSection(null);
+  };
+  const moveSection = (id: string, by: -1 | 1) => {
+    const i = layout.sections.findIndex((x) => x.id === id);
+    const j = i + by;
+    if (i < 0 || j < 0 || j >= layout.sections.length) return;
+    const n = [...layout.sections];
+    [n[i], n[j]] = [n[j], n[i]];
+    p.onLayout({ ...layout, sections: n });
+  };
+  const deleteSection = (id: string) => {
+    const placement = Object.fromEntries(Object.entries(layout.placement).filter(([, s]) => s !== id));
+    p.onLayout({ sections: layout.sections.filter((x) => x.id !== id), placement });
   };
   const [statusOpen, setStatusOpen] = useState(false);
   const [customStatus, setCustomStatus] = useState('');
@@ -142,7 +177,7 @@ export function ChatSidebar(p: SidebarProps) {
       <div
         key={c.id}
         className={`nav-row ${p.current === c.id ? 'active' : ''}`}
-        draggable={c.kind === 'channel' && (active === 'custom' || (active === 'default' && p.canManage(c)))}
+        draggable={c.kind === 'channel' && (active === 'custom' || (active === 'default' && (p.isAdmin || p.canManage(c))))}
         onDragStart={(e) => {
           e.dataTransfer.setData('text/s2g-channel', c.id);
           e.dataTransfer.effectAllowed = 'move';
@@ -249,19 +284,16 @@ export function ChatSidebar(p: SidebarProps) {
   const starredList = [...rooms, ...dms].filter((c) => star.has(c.id));
   let body: ReactNode;
   if (active === 'default') {
-    body = [
-      ...mySections.map((sec) =>
-        section(`my:${sec.id}`, sec.name, rooms.filter((c) => sec.channelIds.includes(c.id) && !star.has(c.id)), sec.channelIds.length ? undefined : <p className="muted small sec-empty sb-label">Drag channels here, or use a channel’s … menu.</p>, (id) => toMine(id, sec.id), sec.id),
+    body = layout.sections.map((sec) =>
+      section(
+        sec.id,
+        sec.name,
+        rooms.filter((c) => sectionOf(c) === sec.id && !star.has(c.id)),
+        !sec.category && p.isAdmin && !rooms.some((c) => sectionOf(c) === sec.id) ? <p className="muted small sec-empty sb-label">Drag channels here, or use a channel’s … menu.</p> : undefined,
+        (id) => placeIn(id, sec.id),
+        p.isAdmin ? sec.id : undefined,
       ),
-      ...(['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) =>
-        section(cat, CATEGORY_NAME[cat], rooms.filter((c) => (c.category ?? 'project') === cat && !star.has(c.id) && !inMine.has(c.id)), undefined, (id) => {
-          const c = rooms.find((x) => x.id === id);
-          if (!c) return;
-          toMine(id, null); // out of your own section, back with its category
-          if ((c.category ?? 'project') !== cat && p.canManage(c)) p.onMove(id, cat);
-        }),
-      ),
-    ];
+    );
   } else if (active === 'unread') {
     const list = rooms.filter((c) => !star.has(c.id)).sort((a, b) => (p.unread[b.id] ?? 0) - (p.unread[a.id] ?? 0) || recency(b).localeCompare(recency(a)));
     body = [section('u-unread', 'Unread', list.filter((c) => p.unread[c.id])), section('u-rest', 'Everything else', list.filter((c) => !p.unread[c.id]))];
@@ -278,7 +310,7 @@ export function ChatSidebar(p: SidebarProps) {
   }
 
   const viewOptions = [
-    { value: 'default', label: 'Default', hint: 'Grouped by Clients, Teams, Projects, Social', group: 'Built in' },
+    { value: 'default', label: 'Company default', hint: 'Sections your admins set for everyone', group: 'Built in' },
     { value: 'unread', label: 'Unread first', hint: 'What needs you on top', group: 'Built in' },
     { value: 'recent', label: 'Recent', hint: 'Latest activity first', group: 'Built in' },
     ...views.map((v) => ({ value: v.id, label: v.name, hint: `${v.sections.length} section${v.sections.length === 1 ? '' : 's'}`, group: 'Your views' })),
@@ -352,6 +384,7 @@ export function ChatSidebar(p: SidebarProps) {
           <span className="sb-label">New channel</span>
         </button>
         {!custom &&
+          p.isAdmin &&
           (newSection ? (
             <div className="add-client sb-label">
               <input
@@ -360,11 +393,11 @@ export function ChatSidebar(p: SidebarProps) {
                 onChange={(e) => setNewSection({ ...newSection, name: e.target.value })}
                 onKeyDown={(e) => (e.key === 'Enter' ? createSection() : e.key === 'Escape' && setNewSection(null))}
                 onBlur={createSection}
-                placeholder="Section name, e.g. Focus this week"
+                placeholder="Section name, e.g. Leadership"
               />
             </div>
           ) : (
-            <button className="nav-item" onClick={() => setNewSection({ name: '' })} title="New section">
+            <button className="nav-item" onClick={() => setNewSection({ name: '' })} title="New section for everyone in the company">
               <FolderPlus size={16} />
               <span className="sb-label">New section</span>
             </button>
@@ -413,21 +446,33 @@ export function ChatSidebar(p: SidebarProps) {
         ),
       )}
 
-      <Popover anchor={secAnchor} open={!!secMenu} onClose={() => setSecMenu(null)} width={220} title="Section">
+      <Popover anchor={secAnchor} open={!!secMenu} onClose={() => setSecMenu(null)} width={240} title="Section">
         {secMenu && (
           <div className="sel-pop">
-            <button className="sel-opt" onClick={() => (setRenaming({ id: secMenu, name: mySections.find((x) => x.id === secMenu)?.name ?? '' }), setSecMenu(null))}>
+            <button className="sel-opt" onClick={() => (setRenaming({ id: secMenu, name: layout.sections.find((x) => x.id === secMenu)?.name ?? '' }), setSecMenu(null))}>
               <Pencil size={14} /> Rename
             </button>
-            {mySections.findIndex((x) => x.id === secMenu) > 0 && (
-              <button className="sel-opt" onClick={() => (setMySections((l) => { const i = l.findIndex((x) => x.id === secMenu); const n = [...l]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; }), setSecMenu(null))}>
+            {layout.sections.findIndex((x) => x.id === secMenu) > 0 && (
+              <button className="sel-opt" onClick={() => (moveSection(secMenu, -1), setSecMenu(null))}>
                 <ChevronUp size={14} /> Move up
               </button>
             )}
-            <button className="sel-opt danger" onClick={() => (setMySections((l) => l.filter((x) => x.id !== secMenu)), setSecMenu(null))}>
-              <Trash2 size={14} /> Delete section
-            </button>
-            <p className="muted small menu-note">Deleting a section keeps its channels; they go back to their category.</p>
+            {layout.sections.findIndex((x) => x.id === secMenu) < layout.sections.length - 1 && (
+              <button className="sel-opt" onClick={() => (moveSection(secMenu, 1), setSecMenu(null))}>
+                <ChevronDown size={14} /> Move down
+              </button>
+            )}
+            {layout.sections.find((x) => x.id === secMenu)?.category ? (
+              <p className="muted small menu-note">Built-in section for {CATEGORY_ONE[layout.sections.find((x) => x.id === secMenu)!.category!].toLowerCase()} channels. You can rename and move it.</p>
+            ) : (
+              <>
+                <button className="sel-opt danger" onClick={() => (deleteSection(secMenu), setSecMenu(null))}>
+                  <Trash2 size={14} /> Delete section
+                </button>
+                <p className="muted small menu-note">Its channels go back to their usual section.</p>
+              </>
+            )}
+            <p className="muted small menu-note">Changes here apply to everyone in the company.</p>
           </div>
         )}
       </Popover>
@@ -459,32 +504,20 @@ export function ChatSidebar(p: SidebarProps) {
             )}
             {!custom && menuChannel.kind === 'channel' && (
               <>
-                <div className="sel-group">Your sections (only you see these)</div>
-                {mySections.map((sec) => (
-                  <button key={sec.id} className="sel-opt" onClick={() => (setMenuFor(null), toMine(menuChannel.id, sec.channelIds.includes(menuChannel.id) ? null : sec.id))}>
+                <div className="sel-group">Move to (for everyone)</div>
+                {layout.sections.filter((sec) => canPlace(menuChannel, sec)).map((sec) => (
+                  <button key={sec.id} className="sel-opt" onClick={() => (setMenuFor(null), placeIn(menuChannel.id, sec.id))}>
                     {sec.name}
-                    {sec.channelIds.includes(menuChannel.id) && <Check size={14} className="sel-check" />}
+                    {sectionOf(menuChannel) === sec.id && <Check size={14} className="sel-check" />}
                   </button>
                 ))}
-                <button className="sel-opt" onClick={() => (setMenuFor(null), setNewSection({ name: '', channelId: menuChannel.id }))}>
-                  <Plus size={14} /> New section…
-                </button>
-              </>
-            )}
-            {!custom && menuChannel.kind === 'channel' && (
-              <>
-                <div className="sel-group">Category (for everyone)</div>
-                {p.canManage(menuChannel) ? (
-                  (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => (
-                    <button key={cat} className="sel-opt" onClick={() => (setMenuFor(null), toMine(menuChannel.id, null), (menuChannel.category ?? 'project') !== cat && p.onMove(menuChannel.id, cat))}>
-                      {CATEGORY_ONE[cat]}
-                      {(menuChannel.category ?? 'project') === cat && <Check size={14} className="sel-check" />}
-                    </button>
-                  ))
-                ) : (
-                  <p className="muted small menu-note">Only the channel owner or an admin can move it for everyone. You can make your own groups with “Create a view…” in the View menu.</p>
+                {p.isAdmin && (
+                  <button className="sel-opt" onClick={() => (setMenuFor(null), setNewSection({ name: '', channelId: menuChannel.id }))}>
+                    <Plus size={14} /> New section…
+                  </button>
                 )}
-                <p className="muted small menu-note">Tip: you can also drag a channel onto another section.</p>
+                {!p.isAdmin && !p.canManage(menuChannel) && <p className="muted small menu-note">Admins arrange the company’s sidebar. For your own arrangement, choose “Create a view…” in the View menu.</p>}
+                {(p.isAdmin || p.canManage(menuChannel)) && <p className="muted small menu-note">Tip: you can also drag a channel onto another section.</p>}
               </>
             )}
             {menuChannel.kind === 'channel' && (
