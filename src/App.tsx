@@ -44,7 +44,7 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import { BrainDump, type DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { ClientPortal } from './components/ClientPortal';
@@ -1157,6 +1157,40 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast({ text: `Saved “${name}” as a template` });
   };
 
+  /** Gives people (and whole teams) every channel in a section of the company sidebar. */
+  const setSectionAccess = (sectionId: string, access: { userIds: string[]; teamIds: string[] }) => {
+    const layout = fullLayout(ws.chat?.layout);
+    const sec = layout.sections.find((x) => x.id === sectionId);
+    if (!sec) return;
+    const next = { ...sec, access };
+    const before = sectionPeople(sec, wsTeams);
+    const after = sectionPeople(next, wsTeams);
+    const removed = before.filter((x) => !after.includes(x));
+    patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout: { ...layout, sections: layout.sections.map((x) => (x.id === sectionId ? next : x)) } } });
+    const inSection = channels.filter((c) => c.workspaceId === ws.id && c.kind === 'channel' && !c.archived && sectionIdOf(layout, c) === sectionId);
+    setChannels((cs) => cs.map((c) => (inSection.some((x) => x.id === c.id) ? { ...c, members: [...new Set([...c.members.filter((m) => !removed.includes(m) || m === c.ownerId), ...after])] } : c)));
+    after.filter((x) => !before.includes(x) && x !== user.id).forEach((x) => notify(x, 'mention', `${myFirst} gave you access to the ${sec.name} channels`, { app: 'chat' }));
+    showToast({ text: `${after.length} ${after.length === 1 ? 'person has' : 'people have'} access to ${sec.name} (${inSection.length} channel${inSection.length === 1 ? '' : 's'})` });
+  };
+  // Section access stays up to date: channels moved or created in a section, and new team members, get the right people.
+  useEffect(() => {
+    const layout = fullLayout(ws.chat?.layout);
+    if (!layout.sections.some((s) => s.access)) return;
+    const missing = channels.filter((c) => {
+      if (c.workspaceId !== ws.id || c.kind !== 'channel' || c.archived) return false;
+      const sec = layout.sections.find((s) => s.id === sectionIdOf(layout, c));
+      return !!sec?.access && sectionPeople(sec, wsTeams).some((x) => !c.members.includes(x));
+    });
+    if (!missing.length) return;
+    setChannels((cs) =>
+      cs.map((c) => {
+        if (!missing.some((m) => m.id === c.id)) return c;
+        const sec = layout.sections.find((s) => s.id === sectionIdOf(layout, c))!;
+        return { ...c, members: [...new Set([...c.members, ...sectionPeople(sec, wsTeams)])] };
+      }),
+    );
+  }, [channels, ws.chat?.layout, wsTeams]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** The channel owner and admins can change a channel's category for everyone. */
   const canManageChannel = (c: Channel) => myRole !== 'member' || c.ownerId === user.id;
   /** Moves a channel to another category (sidebar menu or drag and drop). */
@@ -2189,6 +2223,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSettings={(id) => setChanDialog({ id })}
             isAdmin={isAdmin}
             layout={ws.chat?.layout}
+            teams={wsTeams}
+            onSectionAccess={setSectionAccess}
             onLayout={(layout) => patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout } })}
             onStatus={(st) =>
               setStatuses((all) => {
@@ -2261,6 +2297,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onSettings={(id) => setChanDialog({ id })}
               isAdmin={isAdmin}
               layout={ws.chat?.layout}
+              teams={wsTeams}
+              onSectionAccess={setSectionAccess}
               onLayout={(layout) => patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout } })}
               onStatus={(st) =>
                 setStatuses((all) => {

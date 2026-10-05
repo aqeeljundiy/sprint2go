@@ -304,6 +304,7 @@ export interface ChatSection {
   id: string;
   name: string;
   category?: ChannelCategory; // the built-in section for this kind of channel (can be renamed, not deleted)
+  access?: { userIds: string[]; teamIds: string[] }; // these people are in every channel of the section, now and later
 }
 export type ChannelCategory = 'client' | 'shared' | 'team' | 'project' | 'social'; // client = our team about a client; shared = with the client's people
 export type Policy = 'everyone' | 'admins';

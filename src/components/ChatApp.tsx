@@ -45,6 +45,7 @@ import { Avatar } from './Avatar';
 import { dueLabel, statusOf } from './TasksView';
 import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
+import { PeoplePicker } from './ui/PeoplePicker';
 import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 
@@ -59,6 +60,24 @@ const fmtSize = (b: number) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6
 const fmtSecs = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
 export type Presence = 'active' | 'away' | 'meeting';
+
+const ALL_CATS: ChannelCategory[] = ['client', 'shared', 'team', 'project', 'social'];
+/** The company layout with every built-in section present. */
+export function fullLayout(l: ChatLayout | undefined): ChatLayout {
+  const base = l?.sections?.length ? l.sections : [];
+  const missing = ALL_CATS.filter((c) => !base.some((s) => s.category === c)).map((c) => ({ id: c, name: CATEGORY_NAME[c], category: c }));
+  return { sections: [...base, ...missing], placement: l?.placement ?? {} };
+}
+/** Which section of the company layout a channel sits in. */
+export function sectionIdOf(l: ChatLayout, c: Channel) {
+  const placed = l.placement[c.id];
+  if (placed && l.sections.some((s) => s.id === placed)) return placed;
+  return l.sections.find((s) => s.category === (c.category ?? 'project'))!.id;
+}
+/** Everyone a section's access gives (people plus the current members of its teams). */
+export function sectionPeople(sec: ChatSection, teams: Team[]) {
+  return [...new Set([...(sec.access?.userIds ?? []), ...teams.filter((t) => sec.access?.teamIds.includes(t.id)).flatMap((t) => t.members)])];
+}
 
 /* ---------------- Sidebar ---------------- */
 
@@ -85,6 +104,8 @@ interface SidebarProps {
   isAdmin: boolean;
   layout?: ChatLayout; // the company's Default sidebar
   onLayout: (l: ChatLayout) => void;
+  teams: Team[];
+  onSectionAccess: (sectionId: string, access: { userIds: string[]; teamIds: string[] }) => void;
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -102,18 +123,9 @@ export function ChatSidebar(p: SidebarProps) {
   const [secMenu, setSecMenu] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const secAnchor = useRef<HTMLElement | null>(null);
-  const CATS: ChannelCategory[] = ['client', 'shared', 'team', 'project', 'social'];
-  const layout: ChatLayout = (() => {
-    const base = p.layout?.sections?.length ? p.layout.sections : [];
-    // Every kind of channel always has its built-in section (added if missing).
-    const missing = CATS.filter((c) => !base.some((s) => s.category === c)).map((c) => ({ id: c, name: CATEGORY_NAME[c], category: c }));
-    return { sections: [...base, ...missing], placement: p.layout?.placement ?? {} };
-  })();
-  const sectionOf = (c: Channel) => {
-    const placed = layout.placement[c.id];
-    if (placed && layout.sections.some((s) => s.id === placed)) return placed;
-    return layout.sections.find((s) => s.category === (c.category ?? 'project'))!.id;
-  };
+  const layout = fullLayout(p.layout);
+  const sectionOf = (c: Channel) => sectionIdOf(layout, c);
+  const [accessFor, setAccessFor] = useState<string | null>(null);
   /** Admins can arrange everything; a channel's owner can still change its kind (its built-in section). */
   const canPlace = (c: Channel, sec: ChatSection) => p.isAdmin || (!!sec.category && p.canManage(c));
   const placeIn = (channelId: string, sectionId: string) => {
@@ -449,6 +461,13 @@ export function ChatSidebar(p: SidebarProps) {
       <Popover anchor={secAnchor} open={!!secMenu} onClose={() => setSecMenu(null)} width={240} title="Section">
         {secMenu && (
           <div className="sel-pop">
+            <button className="sel-opt" onClick={() => (setAccessFor(secMenu), setSecMenu(null))}>
+              <Users size={14} /> People with access
+              {(() => {
+                const n = sectionPeople(layout.sections.find((x) => x.id === secMenu)!, p.teams).length;
+                return n ? <span className="sel-hint">{n}</span> : null;
+              })()}
+            </button>
             <button className="sel-opt" onClick={() => (setRenaming({ id: secMenu, name: layout.sections.find((x) => x.id === secMenu)?.name ?? '' }), setSecMenu(null))}>
               <Pencil size={14} /> Rename
             </button>
@@ -476,6 +495,21 @@ export function ChatSidebar(p: SidebarProps) {
           </div>
         )}
       </Popover>
+
+      {accessFor && (
+        <SectionAccess
+          section={layout.sections.find((x) => x.id === accessFor)!}
+          channels={p.channels.filter((c) => c.kind === 'channel' && !c.archived && sectionOf(c) === accessFor)}
+          users={p.users}
+          teams={p.teams}
+          me={p.me}
+          onSave={(access) => {
+            p.onSectionAccess(accessFor, access);
+            setAccessFor(null);
+          }}
+          onClose={() => setAccessFor(null)}
+        />
+      )}
 
       <Popover anchor={menuAnchor} open={!!menuChannel} onClose={() => setMenuFor(null)} width={250} title={menuChannel ? (menuChannel.kind === 'dm' ? 'Conversation' : `#${menuChannel.name}`) : ''}>
         {menuChannel && (
@@ -1836,6 +1870,64 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
           </div>
         )}
 
+    </div>
+  );
+}
+
+/** Who is in every channel of a section: people and whole teams. */
+function SectionAccess({ section, channels, users, teams, me, onSave, onClose }: { section: ChatSection; channels: Channel[]; users: User[]; teams: Team[]; me: string; onSave: (a: { userIds: string[]; teamIds: string[] }) => void; onClose: () => void }) {
+  const [userIds, setUserIds] = useState(section.access?.userIds ?? []);
+  const [teamIds, setTeamIds] = useState(section.access?.teamIds ?? []);
+  const everyone = sectionPeople({ ...section, access: { userIds, teamIds } }, teams);
+  const before = sectionPeople(section, teams);
+  const removed = before.filter((x) => !everyone.includes(x));
+  const priv = channels.filter((c) => c.private).length;
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal access-modal" role="dialog" aria-label="People with access" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <Users size={15} /> {section.name}: people with access
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body access-body">
+          <p className="muted small">
+            Everyone here is in {channels.length === 1 ? 'the channel' : `all ${channels.length} channels`} in this section{priv ? (channels.length === 1 ? ' (it’s private)' : `, including ${priv} private`) : ''}, and in any channel added to it later. No need to invite them one by one.
+          </p>
+          <div className="field">
+            <span>Teams</span>
+            <div className="team-toggles">
+              {teams.map((t) => (
+                <button key={t.id} type="button" className={teamIds.includes(t.id) ? 'on' : ''} onClick={() => setTeamIds((x) => (x.includes(t.id) ? x.filter((y) => y !== t.id) : [...x, t.id]))}>
+                  <span className="team-square" style={{ background: t.color }} /> {t.name}
+                  <small>{t.members.length}</small>
+                </button>
+              ))}
+            </div>
+            <small className="muted">New team members get access automatically.</small>
+          </div>
+          <div className="field">
+            <span>People</span>
+            <PeoplePicker value={userIds} users={users} me={me} onChange={setUserIds} label="People with access" emptyText="Add people" max={8} />
+          </div>
+          <p className="small">
+            <b>{everyone.length}</b> {everyone.length === 1 ? 'person has' : 'people have'} access.
+            {removed.length > 0 && <span className="muted"> {removed.length} will leave this section’s channels (channel owners stay).</span>}
+          </p>
+        </div>
+        <footer className="modal-foot">
+          <span className="spacer" />
+          <button className="ghost-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-btn" onClick={() => onSave({ userIds, teamIds })}>
+            Save
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }

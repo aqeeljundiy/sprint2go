@@ -939,3 +939,12 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .sec-head-row:hover .sec-more, .sec-head-row .sec-more:focus-visible { opacity: 1; }
 .sec-rename { margin: 4px 12px; width: calc(100% - 24px); font: inherit; font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--accent); background: var(--surface); color: var(--text); outline: none; }
 .sec-empty { margin: 2px 16px 8px; }
+/* Section access */
+.access-modal { width: min(520px, calc(100vw - 32px)); }
+.access-body { display: flex; flex-direction: column; gap: 14px; }
+.access-body .field { margin: 0; }
+.team-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.team-toggles button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: var(--hover); color: var(--text); font-size: 13px; }
+.team-toggles button small { color: var(--muted); }
+.team-toggles button.on { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent); }
+.sel-opt .sel-hint { margin-left: auto; color: var(--muted); font-size: 12px; }
