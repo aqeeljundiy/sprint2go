@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
-import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -1157,6 +1157,32 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast({ text: `Saved “${name}” as a template` });
   };
 
+  /** The channel owner and admins can change a channel's category for everyone. */
+  const canManageChannel = (c: Channel) => myRole !== 'member' || c.ownerId === user.id;
+  /** Moves a channel to another category (sidebar menu or drag and drop). */
+  const moveChannel = (id: string, category: ChannelCategory) => {
+    const c = channels.find((x) => x.id === id);
+    if (!c) return;
+    const label = { client: 'Client (internal)', shared: 'With client', team: 'Teams', project: 'Projects', social: 'Social' }[category];
+    // A client channel needs to know which client: ask in the settings.
+    if ((category === 'client' || category === 'shared') && !c.clientId) {
+      setChanDialog({ id });
+      showToast({ text: 'Pick the client, then choose the category' });
+      return;
+    }
+    const apply = () => {
+      const before = c;
+      setChannels((cs) => cs.map((x) => (x.id === id ? { ...x, category, guests: category === 'shared' ? x.guests : [] } : x)));
+      showToast({ text: `#${c.name} moved to ${label}`, action: { label: 'Undo', run: () => setChannels((cs) => cs.map((x) => (x.id === id ? before : x))) } });
+    };
+    // Leaving "With client" removes the client's guests, so ask first.
+    if (c.category === 'shared' && category !== 'shared' && c.guests?.length) {
+      showToast({ text: `Moving #${c.name} out of With client removes ${c.guests.length} client guest${c.guests.length > 1 ? 's' : ''}`, action: { label: 'Move anyway', run: apply }, ms: 8000 });
+      return;
+    }
+    apply();
+  };
+
   const openTasks = (scope: TaskScope) => {
     setTaskScope(scope);
     go('tasks');
@@ -2158,6 +2184,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }}
             onNewChannel={() => setChanDialog({})}
             onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+            canManage={canManageChannel}
+            onMove={moveChannel}
+            onSettings={(id) => setChanDialog({ id })}
             onStatus={(st) =>
               setStatuses((all) => {
                 const next = { ...all };
@@ -2224,6 +2253,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               }}
               onNewChannel={() => setChanDialog({})}
               onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+              canManage={canManageChannel}
+              onMove={moveChannel}
+              onSettings={(id) => setChanDialog({ id })}
               onStatus={(st) =>
                 setStatuses((all) => {
                   const next = { ...all };

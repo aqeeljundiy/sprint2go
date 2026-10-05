@@ -79,6 +79,9 @@ interface SidebarProps {
   onNewChannel: () => void;
   onNewDm: (userId: string) => void;
   onStatus: (s: Status | null) => void;
+  canManage: (c: Channel) => boolean; // owner or admin: may change the channel's category
+  onMove: (id: string, category: ChannelCategory) => void;
+  onSettings: (id: string) => void;
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -90,6 +93,7 @@ export function ChatSidebar(p: SidebarProps) {
   const [addingDm, setAddingDm] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const [customStatus, setCustomStatus] = useState('');
   const menuAnchor = useRef<HTMLElement | null>(null);
@@ -112,7 +116,17 @@ export function ChatSidebar(p: SidebarProps) {
     const other = c.kind === 'dm' ? p.users.find((u) => u.id === dmOther(c, p.me)) : undefined;
     const st = other ? p.statuses[other.id] : undefined;
     return (
-      <div key={c.id} className={`nav-row ${p.current === c.id ? 'active' : ''}`}>
+      <div
+        key={c.id}
+        className={`nav-row ${p.current === c.id ? 'active' : ''}`}
+        draggable={c.kind === 'channel' && (active === 'custom' || (active === 'default' && p.canManage(c)))}
+        onDragStart={(e) => {
+          e.dataTransfer.setData('text/s2g-channel', c.id);
+          e.dataTransfer.effectAllowed = 'move';
+          setDropOn(''); // dragging: show empty sections as drop targets
+        }}
+        onDragEnd={() => setDropOn(null)}
+      >
         <button className={`nav-item ${p.current === c.id ? 'active' : ''} ${p.unread[c.id] ? 'has-unread' : ''}`} onClick={() => p.onOpen(c.id)} title={other ? other.name : `#${c.name}`}>
           {other ? (
             <span className="dm-av">
@@ -147,11 +161,28 @@ export function ChatSidebar(p: SidebarProps) {
     );
   };
 
-  const section = (key: string, title: ReactNode, list: Channel[], extra?: ReactNode) => {
-    if (!list.length && !extra) return null;
+  const section = (key: string, title: ReactNode, list: Channel[], extra?: ReactNode, drop?: (channelId: string) => void) => {
+    // Empty sections still show while dragging, so a channel can be dropped into them.
+    if (!list.length && !extra && !(drop && dropOn !== null)) return null;
     const closed = collapsed.includes(key);
+    const dropProps = drop
+      ? {
+          onDragOver: (e: React.DragEvent) => {
+            if (!e.dataTransfer.types.includes('text/s2g-channel')) return;
+            e.preventDefault();
+            if (dropOn !== key) setDropOn(key);
+          },
+          onDragLeave: (e: React.DragEvent) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropOn((d) => (d === key ? '' : d)),
+          onDrop: (e: React.DragEvent) => {
+            e.preventDefault();
+            setDropOn(null);
+            const id = e.dataTransfer.getData('text/s2g-channel');
+            if (id) drop(id);
+          },
+        }
+      : {};
     return (
-      <div key={key} className="chat-section">
+      <div key={key} className={`chat-section ${dropOn === key ? 'drop-on' : ''}`} {...dropProps}>
         <button className="nav-heading sb-label sec-head" onClick={() => toggle(key)}>
           {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />} {title}
           <span className="sec-count">{list.length || ''}</span>
@@ -170,7 +201,12 @@ export function ChatSidebar(p: SidebarProps) {
   const starredList = [...rooms, ...dms].filter((c) => star.has(c.id));
   let body: ReactNode;
   if (active === 'default') {
-    body = (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => section(cat, CATEGORY_NAME[cat], rooms.filter((c) => (c.category ?? 'project') === cat && !star.has(c.id))));
+    body = (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) =>
+      section(cat, CATEGORY_NAME[cat], rooms.filter((c) => (c.category ?? 'project') === cat && !star.has(c.id)), undefined, (id) => {
+        const c = rooms.find((x) => x.id === id);
+        if (c && (c.category ?? 'project') !== cat && p.canManage(c)) p.onMove(id, cat);
+      }),
+    );
   } else if (active === 'unread') {
     const list = rooms.filter((c) => !star.has(c.id)).sort((a, b) => (p.unread[b.id] ?? 0) - (p.unread[a.id] ?? 0) || recency(b).localeCompare(recency(a)));
     body = [section('u-unread', 'Unread', list.filter((c) => p.unread[c.id])), section('u-rest', 'Everything else', list.filter((c) => !p.unread[c.id]))];
@@ -178,9 +214,11 @@ export function ChatSidebar(p: SidebarProps) {
     body = section('recent', 'Most recent first', rooms.filter((c) => !star.has(c.id)).sort((a, b) => recency(b).localeCompare(recency(a))));
   } else if (custom) {
     const used = new Set(custom.sections.flatMap((s) => s.channelIds));
+    const moveInView = (id: string, to: string | null) =>
+      setViews(views.map((v) => (v.id === custom.id ? { ...custom, sections: custom.sections.map((x) => ({ ...x, channelIds: x.id === to ? [...new Set([...x.channelIds, id])] : x.channelIds.filter((y) => y !== id) })) } : v)));
     body = [
-      ...custom.sections.map((s) => section(`${custom.id}:${s.id}`, s.name, rooms.filter((c) => s.channelIds.includes(c.id) && !star.has(c.id)))),
-      custom.showRest ? section(`${custom.id}:rest`, 'Other channels', rooms.filter((c) => !used.has(c.id) && !star.has(c.id))) : null,
+      ...custom.sections.map((s) => section(`${custom.id}:${s.id}`, s.name, rooms.filter((c) => s.channelIds.includes(c.id) && !star.has(c.id)), undefined, (id) => moveInView(id, s.id))),
+      custom.showRest ? section(`${custom.id}:rest`, 'Other channels', rooms.filter((c) => !used.has(c.id) && !star.has(c.id)), undefined, (id) => moveInView(id, null)) : null,
     ];
   }
 
@@ -327,7 +365,27 @@ export function ChatSidebar(p: SidebarProps) {
                 ))}
               </>
             )}
-            {!custom && menuChannel.kind === 'channel' && <p className="muted small menu-note">Want your own groups? Choose “Create a view…” in the View menu.</p>}
+            {!custom && menuChannel.kind === 'channel' && (
+              <>
+                <div className="sel-group">Move to</div>
+                {p.canManage(menuChannel) ? (
+                  (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => (
+                    <button key={cat} className="sel-opt" onClick={() => (setMenuFor(null), (menuChannel.category ?? 'project') !== cat && p.onMove(menuChannel.id, cat))}>
+                      {CATEGORY_ONE[cat]}
+                      {(menuChannel.category ?? 'project') === cat && <Check size={14} className="sel-check" />}
+                    </button>
+                  ))
+                ) : (
+                  <p className="muted small menu-note">Only the channel owner or an admin can move it for everyone. You can make your own groups with “Create a view…” in the View menu.</p>
+                )}
+                <p className="muted small menu-note">Tip: you can also drag a channel onto another section.</p>
+              </>
+            )}
+            {menuChannel.kind === 'channel' && (
+              <button className="sel-opt" onClick={() => (setMenuFor(null), p.onSettings(menuChannel.id))}>
+                <Settings size={14} /> Channel settings
+              </button>
+            )}
           </div>
         )}
       </Popover>
