@@ -66,3 +66,15 @@
 - Meeting recordings: playback once recordings are stored.
 - Materials of shared channels in the client's Files.
 - Email notifications to clients (needs real mail).
+
+## Rename "client" access to cover partners too (agreed 6 Oct)
+- People from outside: **Guests**. Their area: **Shared space**. The other company gets a **type**: Client, Partner, Vendor, Freelancer, Collaborator (Client by default).
+- Workspace switcher section: "Shared with you". Channel category "With client" becomes "Shared". Settings "Client access" becomes "Guest access", with defaults per type.
+
+## Principle audit: "what do I need to do now?" (6 Oct)
+Rule: every number or card must pass "so what, now what?" for this person today, or go to a report. Exceptions over totals, hide zeros, the action next to the thing.
+- Home Company pulse: drop "Open" and "Clients" counts; keep Late / Not picked up only as links that open the fix.
+- AI Spending: tokens in/out under Advanced; lead with monthly cost and the verdict.
+- Workload card only on lead and founder Homes.
+- Cards that only link elsewhere: let you act, or remove.
+- Ideas: "Up next" ranked list at the top of Home (approvals, late, replies owed, requests, next meeting) with inline actions; inline row actions everywhere (approve, assign, snooze, reply); search as the main way to move around; notifications land on and highlight the exact item; empty states that name the next step.

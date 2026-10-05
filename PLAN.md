@@ -2,6 +2,13 @@
 
 Updated 5 October 2026. One app for a team's whole workday (mail, chat, tasks, calendar, files, meetings), organised around clients, with any AI the company wants.
 
+## 0. Principle: what do I need to do now?
+People open the app to get to their part quickly and correctly. Every screen answers "what do I need to do now?", not "what data do we have?".
+- Every number or card passes "so what, now what?" for this person today; otherwise it goes to a report or goes away.
+- Exceptions over totals ("2 late", with the fix one click away, not "23 open"); hide zeros.
+- The action sits next to the thing (approve, reply, assign) instead of a trip to another screen.
+- First screens differ by role; links and notifications land on the exact item.
+
 ## 1. Where we are
 - **Phase 1 done:** clickable prototype (Home, Mail, Chat, Tasks + Clients, brain dump, Meet, notifications, ⌘K, onboarding, phone layout), sample data only.
 - **Round 2 done (5 Oct):** everything in section 2, plus the cut-and-merge pass, the tasks people model, the phone redesign and the agency essentials below.
