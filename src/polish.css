@@ -1132,3 +1132,23 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .row-act:hover { background: color-mix(in oklab, var(--accent) 14%, var(--hover)); }
 .row-act.primary { background: var(--accent); color: #fff; }
 .m-row { cursor: pointer; text-align: left; }
+
+/* ---------- Calendar: drag, resize, plan tasks ---------- */
+.block-event.editable { cursor: grab; touch-action: none; }
+.block-event.dragging { cursor: grabbing; opacity: .92; box-shadow: 0 8px 24px rgba(0,0,0,.22); z-index: 5; transition: none; }
+.be-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
+.be-resize::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 18px; height: 3px; margin-left: -9px; border-radius: 2px; background: currentColor; opacity: 0; transition: opacity .15s; }
+.block-event.editable:hover .be-resize::after { opacity: .45; }
+.plan-hint { margin: 0 12px 6px; }
+.plan-list { gap: 2px; }
+.plan-task { display: flex; align-items: center; gap: 8px; padding: 7px 8px; margin: 0 8px; border-radius: 10px; cursor: grab; background: var(--hover); }
+.plan-task:hover { background: color-mix(in oklab, var(--accent) 10%, var(--hover)); }
+.plan-task.late strong { color: var(--danger, #dc2626); }
+.plan-task .pt-grip { color: var(--muted); flex: none; }
+.plan-task .pt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.plan-task strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-task small { color: var(--muted); font-size: 11.5px; }
+.plan-task .pt-add { opacity: 0; }
+.plan-task:hover .pt-add { opacity: 1; }
+.ev-task { display: flex; flex-direction: column; gap: 8px; padding: 12px; margin: 8px 0; border-radius: var(--r-control); background: var(--hover); }
+.ev-task-btns { display: flex; flex-wrap: wrap; gap: 6px; }

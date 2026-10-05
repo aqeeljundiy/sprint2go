@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, MoreHorizontal, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { GripVertical, CalendarPlus, Check, ChevronLeft, ChevronRight, MoreHorizontal, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import type { CalendarDef, User } from '../types';
 import { addMonths, monthGrid, sameDay, startOfWeek } from '../calendarUtils';
 import { relative } from '../utils';
@@ -23,9 +23,12 @@ interface Props {
   onShare: (id: string, share: 'busy' | 'details' | 'private') => void;
   onSync: (id: string) => void;
   onRemove: (id: string) => void;
+  /** My open tasks without a time block yet: drag one onto the calendar. */
+  toPlan?: { id: string; title: string; sub?: string; late?: boolean }[];
+  onPlan?: (id: string) => void; // no drag (phones): block the next free morning slot
 }
 
-export function CalendarSidebar({ cursor, calendars, external, teammates, shownMates, hidden, busyDays, onCursor, onToggle, onToggleMate, onNew, onAddCalendar, onShare, onSync, onRemove }: Props) {
+export function CalendarSidebar({ cursor, calendars, external, teammates, shownMates, hidden, busyDays, onCursor, onToggle, onToggleMate, onNew, onAddCalendar, onShare, onSync, onRemove, toPlan = [], onPlan }: Props) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const anchor = useRef<HTMLElement | null>(null);
   const menuCal = external.find((c) => c.id === menuFor);
@@ -80,6 +83,38 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
           ))}
         </div>
       </div>
+
+      {toPlan.length > 0 && (
+        <>
+          <div className="nav-heading sb-label">Plan your tasks</div>
+          <p className="muted small sb-label plan-hint">Drag a task onto the calendar to block time for it.</p>
+          <nav className="nav plan-list">
+            {toPlan.slice(0, 8).map((t) => (
+              <div
+                key={t.id}
+                className={`plan-task sb-label ${t.late ? 'late' : ''}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/s2g-task', t.id);
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+                title="Drag onto the calendar"
+              >
+                <GripVertical size={13} className="pt-grip" />
+                <span className="pt-text">
+                  <strong>{t.title}</strong>
+                  {t.sub && <small>{t.sub}</small>}
+                </span>
+                {onPlan && (
+                  <button className="icon-btn sm pt-add" title="Block time tomorrow morning" onClick={() => onPlan(t.id)}>
+                    <CalendarPlus size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </nav>
+        </>
+      )}
 
       <div className="nav-heading sb-label">My calendars</div>
       <nav className="nav">

@@ -123,6 +123,7 @@ export interface CalEvent {
   threadId?: string; // the email this event came from
   workspaceId?: string; // defaults to the first workspace
   userId?: string; // whose calendar (defaults to the first user)
+  taskId?: string; // a time block for this task
 }
 
 export interface Label {

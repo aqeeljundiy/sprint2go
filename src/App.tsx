@@ -7,6 +7,7 @@ import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp } from './data/pricing';
 import { ConnectCalendar } from './components/ConnectCalendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
+import { fmtTime } from './calendarUtils';
 import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { BUILT_IN_TEMPLATES, type TaskTemplate } from './data/templates';
 import { TemplateDialog } from './components/TemplateDialog';
@@ -639,6 +640,27 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return () => clearInterval(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A time block for a task just ended and the task isn't done: offer to extend it (once per block).
+  const askedBlocks = useRef(new Set<string>());
+  useEffect(() => {
+    const check = () => {
+      const now = Date.now();
+      const ended = events.find(
+        (e) => e.taskId && (e.userId ?? user.id) === user.id && !askedBlocks.current.has(e.id) && new Date(e.end).getTime() <= now && now - new Date(e.end).getTime() < 15 * 60_000 && todos.some((t) => t.id === e.taskId && !t.done),
+      );
+      if (!ended) return;
+      askedBlocks.current.add(ended.id);
+      showToast({
+        text: `Time’s up for “${ended.title}”, but it isn’t done`,
+        action: { label: 'Extend 30 min', run: () => setEvents((es) => es.map((e) => (e.id === ended.id ? { ...e, end: new Date(Math.max(Date.now(), new Date(e.end).getTime()) + 30 * 60_000).toISOString() } : e))) },
+        ms: 15000,
+      });
+    };
+    check();
+    const id = setInterval(check, 60_000);
+    return () => clearInterval(id);
+  }, [events, todos]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const patchThread = (id: string, patch: Partial<Thread>) => setThreads((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   /* ---------------- AI to-dos ---------------- */
@@ -718,6 +740,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       start: start.toISOString(),
       end: new Date(start.getTime() + 30 * 60_000).toISOString(),
       threadId: t.threadId,
+      taskId: t.id,
       workspaceId: ws.id,
       userId: user.id,
     };
@@ -2250,6 +2273,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               })
             }
             onAddCalendar={() => setConnectCal(true)}
+            toPlan={wsTasks
+              .filter((t) => !t.done && !isBrief(t) && doersOf(t).includes(user.id) && !events.some((e) => e.taskId === t.id && new Date(e.end).getTime() > Date.now()))
+              .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
+              .map((t) => ({ id: t.id, title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.due ? dueLabel(t.due).text : ''].filter(Boolean).join(' · '), late: !!t.due && t.due < localDay() }))}
+            onPlan={(id) => {
+              const t = todos.find((x) => x.id === id);
+              if (t) todoToCalendar(t);
+            }}
             onShare={(id, share) => setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, share } : c)))}
             onSync={(id) => {
               setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, syncedAt: nowIso() } : c)));
@@ -2762,6 +2793,35 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onDelete={deleteEvent}
             onOpenThread={openThread}
             onMenu={() => setSidebarOpen(true)}
+            canEdit={(e) => !e.calendarId.startsWith('mate-') && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
+            onMove={(id, start, end) => {
+              const before = events.find((e) => e.id === id);
+              if (!before) return;
+              setEvents((es) => es.map((e) => (e.id === id ? { ...e, start: start.toISOString(), end: end.toISOString() } : e)));
+              const resized = new Date(before.start).getTime() === start.getTime();
+              showToast({
+                text: resized ? `Now ${fmtTime(start)} to ${fmtTime(end)}` : `Moved to ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(start)}`,
+                action: { label: 'Undo', run: () => setEvents((es) => es.map((e) => (e.id === id ? before : e))) },
+              });
+            }}
+            onSchedule={(taskId, start) => {
+              const t = todos.find((x) => x.id === taskId);
+              if (!t) return;
+              const ev: CalEvent = { id: uid(), title: t.title, calendarId: 'work', start: start.toISOString(), end: new Date(start.getTime() + 60 * 60_000).toISOString(), taskId, threadId: t.threadId, workspaceId: ws.id, userId: user.id };
+              setEvents((es) => [...es, ev]);
+              showToast({ text: `Blocked ${fmtTime(start)} for “${t.title}”. Drag the bottom edge to change how long`, action: { label: 'Undo', run: () => setEvents((es) => es.filter((e) => e.id !== ev.id)) } });
+            }}
+            taskOf={(e) => {
+              const t = e.taskId ? todos.find((x) => x.id === e.taskId) : undefined;
+              return t ? { title: t.title, done: t.done } : null;
+            }}
+            onExtend={(id, m) => setEvents((es) => es.map((e) => (e.id === id ? { ...e, end: new Date(new Date(e.end).getTime() + m * 60_000).toISOString() } : e)))}
+            onTomorrow={(id) =>
+              setEvents((es) =>
+                es.map((e) => (e.id === id ? { ...e, start: new Date(new Date(e.start).getTime() + 86_400_000).toISOString(), end: new Date(new Date(e.end).getTime() + 86_400_000).toISOString() } : e)),
+              )
+            }
+            onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, 'done')}
           />
         )}
 

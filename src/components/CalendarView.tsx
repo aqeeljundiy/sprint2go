@@ -34,6 +34,16 @@ interface Props {
   onDelete: (id: string) => void;
   onOpenThread: (threadId: string) => void;
   onMenu: () => void;
+  /** Move or resize an event (drag it, or drag its bottom edge). */
+  onMove?: (id: string, start: Date, end: Date) => void;
+  /** A task dropped on the calendar: block time for it. */
+  onSchedule?: (taskId: string, start: Date) => void;
+  canEdit?: (e: CalEvent) => boolean;
+  /** Time blocks for tasks: the panel offers Extend, Tomorrow and Done. */
+  taskOf?: (e: CalEvent) => { title: string; done: boolean } | null;
+  onExtend?: (id: string, minutes: number) => void;
+  onTomorrow?: (id: string) => void;
+  onTaskDone?: (e: CalEvent) => void;
 }
 
 export function CalendarView(props: Props) {
@@ -123,6 +133,10 @@ export function CalendarView(props: Props) {
           onClose={() => props.onSelect(null)}
           onDelete={() => props.onDelete(selected.id)}
           onOpenThread={props.onOpenThread}
+          task={props.taskOf?.(selected) ?? null}
+          onExtend={(m) => props.onExtend?.(selected.id, m)}
+          onTomorrow={() => props.onTomorrow?.(selected.id)}
+          onTaskDone={() => props.onTaskDone?.(selected)}
         />
       )}
     </section>
@@ -158,6 +172,59 @@ function TimeGrid(props: Props & { days: Date[]; color: (id: string) => string }
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = HOUR * 7.5;
   }, []);
+
+  // Dragging: move an event (also to another day) or drag its bottom edge to change how long it is. Snaps to 15 minutes.
+  const [drag, setDrag] = useState<{ id: string; mode: 'move' | 'resize'; x: number; y: number; start: Date; end: Date; curStart: Date; curEnd: Date; moved: boolean } | null>(null);
+  const colsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const dragRef = useRef(drag); // the latest drag, for the pointer-up handler
+  dragRef.current = drag;
+  const dayAt = (clientX: number) => {
+    const i = colsRef.current.findIndex((c) => {
+      const r = c?.getBoundingClientRect();
+      return r && clientX >= r.left && clientX < r.right;
+    });
+    return i;
+  };
+  useEffect(() => {
+    if (!drag) return;
+    const move = (e: PointerEvent) => {
+      const mins = Math.round((((e.clientY - drag.y) / HOUR) * 60) / 15) * 15;
+      if (drag.mode === 'resize') {
+        const end = new Date(Math.max(drag.start.getTime() + 15 * 60_000, drag.end.getTime() + mins * 60_000));
+        setDrag((d) => d && { ...d, curEnd: end, moved: d.moved || Math.abs(e.clientY - d.y) > 3 });
+      } else {
+        const from = days.findIndex((d) => sameDay(d, drag.start));
+        const to = dayAt(e.clientX);
+        const dayShift = to >= 0 && from >= 0 ? to - from : 0;
+        const shift = (mins + dayShift * 24 * 60) * 60_000;
+        setDrag((d) => d && { ...d, curStart: new Date(d.start.getTime() + shift), curEnd: new Date(d.end.getTime() + shift), moved: d.moved || Math.abs(e.clientY - d.y) > 3 || Math.abs(e.clientX - d.x) > 3 });
+      }
+    };
+    const up = () => {
+      const d = dragRef.current;
+      if (d?.moved) props.onMove?.(d.id, d.curStart, d.curEnd);
+      else if (d) props.onSelect(d.id);
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [drag?.id, drag?.mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const live = drag ? events.map((e) => (e.id === drag.id ? { ...e, start: drag.curStart.toISOString(), end: drag.curEnd.toISOString() } : e)) : events;
+
+  // A task dropped on a column becomes a time block at that spot.
+  const dropTask = (day: Date, e: React.DragEvent<HTMLDivElement>) => {
+    const id = e.dataTransfer.getData('text/s2g-task');
+    if (!id) return;
+    e.preventDefault();
+    const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+    const start = startOfDay(day);
+    start.setMinutes(Math.round(((y / HOUR) * 60) / 15) * 15);
+    props.onSchedule?.(id, start);
+  };
 
   const allDay = days.map((d) => eventsOn(events, d).filter((e) => e.allDay));
   const hasAllDay = allDay.some((a) => a.length);
@@ -218,20 +285,38 @@ function TimeGrid(props: Props & { days: Date[]; color: (id: string) => string }
               </span>
             ))}
           </div>
-          {days.map((d) => {
-            const timed = eventsOn(events, d).filter((e) => !e.allDay);
+          {days.map((d, di) => {
+            const timed = eventsOn(live, d).filter((e) => !e.allDay);
             const isToday = sameDay(d, now);
             return (
-              <div key={d.toISOString()} className={`tg-col ${isToday ? 'today' : ''}`} onClick={(e) => slotClick(d, e)}>
+              <div
+                key={d.toISOString()}
+                ref={(el) => {
+                  colsRef.current[di] = el;
+                }}
+                className={`tg-col ${isToday ? 'today' : ''}`}
+                onClick={(e) => !drag && slotClick(d, e)}
+                onDragOver={(e) => e.dataTransfer.types.includes('text/s2g-task') && e.preventDefault()}
+                onDrop={(e) => dropTask(d, e)}
+              >
                 {layoutDay(timed).map(({ ev, col, cols }) => {
                   const s = new Date(ev.start);
                   const e = new Date(ev.end);
                   const top = (minutesIntoDay(s) / 60) * HOUR;
                   const height = Math.max(((e.getTime() - s.getTime()) / 3_600_000) * HOUR - 2, 20);
+                  const editable = !!props.onMove && (props.canEdit?.(ev) ?? true);
+                  const dragging = drag?.id === ev.id;
                   return (
                     <button
                       key={ev.id}
-                      className={`block-event ${height < 40 ? 'short' : ''} ${e < now ? 'past' : ''} ${selected?.id === ev.id ? 'sel' : ''}`}
+                      className={`block-event ${height < 40 ? 'short' : ''} ${e < now ? 'past' : ''} ${selected?.id === ev.id ? 'sel' : ''} ${editable ? 'editable' : ''} ${dragging ? 'dragging' : ''}`}
+                      onPointerDown={(pe) => {
+                        if (!editable || pe.button !== 0) return;
+                        pe.stopPropagation();
+                        const st = new Date(events.find((x) => x.id === ev.id)!.start);
+                        const en = new Date(events.find((x) => x.id === ev.id)!.end);
+                        setDrag({ id: ev.id, mode: (pe.target as HTMLElement).closest('.be-resize') ? 'resize' : 'move', x: pe.clientX, y: pe.clientY, start: st, end: en, curStart: st, curEnd: en, moved: false });
+                      }}
                       style={{
                         ['--c' as string]: color(ev.calendarId),
                         top,
@@ -241,14 +326,15 @@ function TimeGrid(props: Props & { days: Date[]; color: (id: string) => string }
                       }}
                       onClick={(evt) => {
                         evt.stopPropagation();
-                        props.onSelect(ev.id);
+                        if (!editable) props.onSelect(ev.id); // editable ones select on pointer up (unless dragged)
                       }}
                     >
                       <span className="be-title">{ev.title}</span>
                       <span className="be-time">
                         {fmtTime(s)}
-                        {height >= 40 && ` – ${fmtTime(e)}`}
+                        {(height >= 40 || dragging) && ` – ${fmtTime(e)}`}
                       </span>
+                      {editable && <span className="be-resize" aria-hidden />}
                     </button>
                   );
                 })}
@@ -347,12 +433,20 @@ function EventDetail({
   onClose,
   onDelete,
   onOpenThread,
+  task,
+  onExtend,
+  onTomorrow,
+  onTaskDone,
 }: {
   event: CalEvent;
   calendar?: CalendarDef;
   onClose: () => void;
   onDelete: () => void;
   onOpenThread: (id: string) => void;
+  task?: { title: string; done: boolean } | null;
+  onExtend?: (minutes: number) => void;
+  onTomorrow?: () => void;
+  onTaskDone?: () => void;
 }) {
   return (
     <aside className="ev-detail" style={{ ['--c' as string]: calendar?.color }}>
@@ -402,6 +496,24 @@ function EventDetail({
         <span className="dot" style={{ background: calendar?.color, margin: '0 4px' }} />
         <span>{calendar?.name}</span>
       </div>
+      {task && (
+        <div className="ev-task">
+          <span className="muted small">{task.done ? 'Task done' : 'Time blocked for a task'}</span>
+          {!task.done && (
+            <div className="ev-task-btns">
+              <button className="ghost-btn sm" onClick={() => onExtend?.(30)}>
+                Extend 30 min
+              </button>
+              <button className="ghost-btn sm" onClick={onTomorrow}>
+                Move to tomorrow
+              </button>
+              <button className="primary-btn sm" onClick={onTaskDone}>
+                Mark task done
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {event.threadId && (
         <button className="ghost-btn outline ev-thread" onClick={() => onOpenThread(event.threadId!)}>
           <Mail size={15} /> Open related email
