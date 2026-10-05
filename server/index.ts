@@ -489,6 +489,69 @@ createServer(async (req, res) => {
       return;
     }
 
+    // Vault: shared logins. Only people given access see an item; passwords and 2FA codes leave the server one at a time, logged.
+    if (p.startsWith('/api/vault')) {
+      const wsId = url.searchParams.get('ws') ?? '';
+      const teamsOf = (uid: string) => (db.allDocs('teams') as any[]).filter((t) => (t.members ?? []).includes(uid)).map((t) => t.id);
+      const canSee = (it: db.VaultRow) =>
+        memberOf(me).some((w) => w.id === it.workspaceId) &&
+        (it.createdBy === me || isAdminOf(me, it.workspaceId) || it.meta.access.everyone || it.meta.access.userIds.includes(me) || it.meta.access.teamIds.some((t) => teamsOf(me).includes(t)));
+      const canEdit = (it: db.VaultRow) => it.createdBy === me || isAdminOf(me, it.workspaceId);
+      const m = p.match(/^\/api\/vault\/([\w-]+)(?:\/(reveal|code|log))?$/);
+      if (p === '/api/vault' && req.method === 'GET') {
+        if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
+        return json(res, 200, { items: db.vaultList(wsId).filter(canSee).map((it) => ({ ...it, canEdit: canEdit(it) })) });
+      }
+      if (p === '/api/vault' && req.method === 'POST') {
+        const b = await body(req);
+        if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, {});
+        const id = typeof b.id === 'string' && b.id ? b.id : 'v-' + randomBytes(6).toString('hex');
+        const before = db.vaultGet(id);
+        if (before && !canEdit(before)) return json(res, 403, { error: 'Only the person who added it, or an admin, can change it.' });
+        if (b.totp) {
+          try {
+            db.totpCode(String(b.totp));
+          } catch {
+            return json(res, 400, { error: 'That 2FA key doesn’t look right. Paste the setup key (letters and numbers) or the otpauth:// link.' });
+          }
+        }
+        const meta: db.VaultMeta = {
+          title: String(b.meta?.title ?? '').slice(0, 120) || 'Login',
+          url: b.meta?.url ? String(b.meta.url).slice(0, 300) : undefined,
+          username: b.meta?.username ? String(b.meta.username).slice(0, 200) : undefined,
+          clientId: b.meta?.clientId || undefined,
+          access: { everyone: !!b.meta?.access?.everyone, userIds: (b.meta?.access?.userIds ?? []).map(String), teamIds: (b.meta?.access?.teamIds ?? []).map(String) },
+        };
+        db.vaultSave({ id, workspaceId: before?.workspaceId ?? b.workspaceId, meta, password: b.password, totp: b.totp, notes: b.notes, by: me });
+        db.vaultLog(id, me, before ? 'changed it' : 'added it');
+        return json(res, 200, { id });
+      }
+      const item = m ? db.vaultGet(m[1]) : undefined;
+      if (!m || !item || !canSee(item)) return json(res, 404, { error: 'Not found.' });
+      if (!m[2] && req.method === 'DELETE') {
+        if (!canEdit(item)) return json(res, 403, { error: 'Only the person who added it, or an admin, can delete it.' });
+        db.vaultDelete(item.id);
+        return json(res, 200, {});
+      }
+      if (m[2] === 'reveal' && req.method === 'POST') {
+        const { field } = await body(req);
+        if (field !== 'password' && field !== 'notes') return json(res, 400, {});
+        db.vaultLog(item.id, me, field === 'password' ? 'copied the password' : 'read the notes');
+        return json(res, 200, { value: db.vaultSecret(item.id, field) ?? '' });
+      }
+      if (m[2] === 'code' && req.method === 'POST') {
+        const secret = db.vaultSecret(item.id, 'totp');
+        if (!secret) return json(res, 404, { error: 'No 2FA on this login.' });
+        db.vaultLog(item.id, me, 'used a 2FA code');
+        return json(res, 200, db.totpCode(secret));
+      }
+      if (m[2] === 'log' && req.method === 'GET') {
+        if (!canEdit(item)) return json(res, 403, {});
+        return json(res, 200, { log: db.vaultLogFor(item.id) });
+      }
+      return json(res, 404, {});
+    }
+
     // AI keys: kept encrypted here; the browser only ever sees the last 4 characters.
     if (p === '/api/ai/keys' && req.method === 'POST') {
       const { workspaceId, provider, key, baseUrl, test = true } = await body(req);

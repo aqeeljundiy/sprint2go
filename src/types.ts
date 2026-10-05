@@ -501,7 +501,7 @@ export interface MeetingRule {
   clientId: string;
 }
 
-export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'calendar' | 'notes' | 'drive' | 'meet';
+export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'calendar' | 'notes' | 'drive' | 'meet' | 'vault';
 
 /** A note: private, or shared with the whole company; can belong to a client. */
 export interface Note {

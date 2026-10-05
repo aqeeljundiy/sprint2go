@@ -1193,3 +1193,26 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .client-notes-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; }
 .client-notes-card h3 .link-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 13px; }
 @media (max-width: 760px) { .note-body { padding: 14px 16px 30px; } .note-title { font-size: 22px; } }
+
+/* ---------- Vault ---------- */
+.vault-note { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; line-height: 1.4; }
+.vault-row { cursor: default; }
+.vault-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--accent); font-weight: 700; }
+.vault-row .task-meta .src { display: inline-flex; align-items: center; gap: 3px; }
+.vault-code { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 0; background: var(--ok-soft, var(--hover)); color: var(--ok, var(--text)); font: inherit; cursor: pointer; }
+.vault-code b { font-family: ui-monospace, Menlo, monospace; font-size: 15px; letter-spacing: .06em; }
+.vault-code small { font-size: 11px; opacity: .8; }
+.vault-modal { width: min(620px, calc(100vw - 32px)); }
+.vault-body { display: flex; flex-direction: column; gap: 12px; }
+.vault-body .field { margin: 0; }
+.vault-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pw-row { display: flex; gap: 6px; align-items: center; }
+.pw-row input { flex: 1; min-width: 0; }
+.vault-log { width: min(460px, calc(100vw - 32px)); }
+.vault-log-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 13px; border-top: 1px solid var(--line); }
+.vault-log-row time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.vault-notes { white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--hover); padding: 12px; border-radius: var(--r-control); }
+@media (max-width: 760px) { .vault-grid { grid-template-columns: 1fr; } }
+.vault-row { flex-wrap: wrap; row-gap: 8px; }
+.vault-row .task-main { flex: 1 1 240px; }
+.vault-note { white-space: normal; padding-right: 12px; }

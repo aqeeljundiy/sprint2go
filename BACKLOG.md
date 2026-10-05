@@ -88,3 +88,13 @@ Rule: every number or card must pass "so what, now what?" for this person today,
 - Client portal: counts only for "Waiting on you" and "Needs approval".
 - Kept on purpose: unread counts, the Workload card for leads and founders, Storage and AI allowance numbers in Settings (there the numbers are the decision).
 - Second pass done (6 Oct): row actions (task rows show Approve / Start / Tomorrow when that's what they need; Snooze on mail rows; file unfiled meetings from the list), search as the main way around (Home search bar, empty search shows what needs you and recent places, every-word matching with client names, "Create task" and "Ask AI" from what you typed), notifications land on and highlight the exact chat message (opening its thread), mail notifications open the email, empty states name the next step.
+
+## Done 6 Oct: calendar, clients over time, notes, vault
+- Calendar: drag to move (also to another day), drag the bottom edge to resize, "Plan your tasks" (drag a task onto the calendar), task blocks offer Extend 30 min / Move to tomorrow / Mark done, a nudge when a block ends with the task unfinished.
+- Clients: status on the client page, End work (archive channels, read-only or no portal, optionally close tasks), Past clients with "Clients over time", Work with them again.
+- Notes app: private or shared, linked to a client (shown on the client page), pin, search, make a task from a selected line, new note from search.
+- Vault: shared logins per person or team, passwords and 2FA secrets encrypted on the server and never in the synced data, 2FA codes made on the server, copy with clipboard clear after 30 s, access log for the owner and admins.
+
+## Before going online (must)
+- Vault: end-to-end encryption (keys derived on the person's device) so even the server can't read passwords; today they're encrypted at rest with the server's key.
+- Choose the company's word for clients (Clients / Customers / Projects / Accounts), together with the Guest / Shared space rename.

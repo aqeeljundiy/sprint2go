@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
+import { KeyRound, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
 import type { AppId } from '../types';
 
 export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[] = [
@@ -11,6 +11,7 @@ export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[]
   { id: 'notes', name: 'Notes', icon: NotebookPen, path: '/notes' },
   { id: 'drive', name: 'Drive', icon: HardDrive, path: '/drive' },
   { id: 'meet', name: 'Meet', icon: Video, path: '/meet' },
+  { id: 'vault', name: 'Vault', icon: KeyRound, path: '/vault' },
 ];
 
 interface Props {

@@ -1,6 +1,6 @@
 // The local database: one SQLite file in ./data. Every app collection (threads, todos, channels…) is stored as JSON documents.
 import { DatabaseSync } from 'node:sqlite';
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -150,4 +150,84 @@ export function monthlyUses(userIds: string[], job: string) {
   start.setUTCHours(0, 0, 0, 0);
   const r = db.prepare(`SELECT COUNT(*) AS n FROM ai_usage WHERE job = ? AND at >= ? AND user_id IN (${userIds.map(() => '?').join(',')})`).get(job, start.toISOString(), ...userIds) as { n: number };
   return r.n;
+}
+
+/* ---------- Vault: shared logins, encrypted at rest; secrets leave the server only when revealed (and that's logged) ---------- */
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vault_items (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, meta TEXT NOT NULL, password TEXT, totp TEXT, notes TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS vault_log (id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, user_id TEXT NOT NULL, what TEXT NOT NULL, at TEXT NOT NULL);
+`);
+
+export interface VaultMeta {
+  title: string;
+  url?: string;
+  username?: string;
+  clientId?: string;
+  access: { everyone: boolean; userIds: string[]; teamIds: string[] };
+}
+export interface VaultRow {
+  id: string;
+  workspaceId: string;
+  meta: VaultMeta;
+  hasPassword: boolean;
+  hasTotp: boolean;
+  hasNotes: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const rowOf = (r: any): VaultRow => ({ id: r.id, workspaceId: r.workspace_id, meta: JSON.parse(r.meta), hasPassword: !!r.password, hasTotp: !!r.totp, hasNotes: !!r.notes, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at });
+export const vaultList = (workspaceId: string) => (db.prepare('SELECT * FROM vault_items WHERE workspace_id = ? ORDER BY updated_at DESC').all(workspaceId) as any[]).map(rowOf);
+export const vaultGet = (id: string) => {
+  const r = db.prepare('SELECT * FROM vault_items WHERE id = ?').get(id) as any;
+  return r ? rowOf(r) : undefined;
+};
+/** Saves an item. Secrets: a string sets it, '' clears it, undefined keeps what's there. */
+export function vaultSave(v: { id: string; workspaceId: string; meta: VaultMeta; password?: string; totp?: string; notes?: string; by: string }) {
+  const now = new Date().toISOString();
+  const before = db.prepare('SELECT * FROM vault_items WHERE id = ?').get(v.id) as any;
+  const keep = (val: string | undefined, old: string | null) => (val === undefined ? old : val ? seal(val) : null);
+  if (before)
+    db.prepare('UPDATE vault_items SET meta = ?, password = ?, totp = ?, notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(v.meta), keep(v.password, before.password), keep(v.totp, before.totp), keep(v.notes, before.notes), now, v.id);
+  else
+    db.prepare('INSERT INTO vault_items (id, workspace_id, meta, password, totp, notes, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+      v.id,
+      v.workspaceId,
+      JSON.stringify(v.meta),
+      v.password ? seal(v.password) : null,
+      v.totp ? seal(v.totp) : null,
+      v.notes ? seal(v.notes) : null,
+      v.by,
+      now,
+      now,
+    );
+}
+export const vaultDelete = (id: string) => db.prepare('DELETE FROM vault_items WHERE id = ?').run(id);
+export function vaultSecret(id: string, field: 'password' | 'totp' | 'notes'): string | null {
+  const r = db.prepare(`SELECT ${field} AS v FROM vault_items WHERE id = ?`).get(id) as { v: string | null } | undefined;
+  return r?.v ? unseal(r.v) : null;
+}
+export const vaultLog = (itemId: string, userId: string, what: string) => db.prepare('INSERT INTO vault_log (item_id, user_id, what, at) VALUES (?, ?, ?, ?)').run(itemId, userId, what, new Date().toISOString());
+export const vaultLogFor = (itemId: string) => db.prepare('SELECT user_id AS userId, what, at FROM vault_log WHERE item_id = ? ORDER BY id DESC LIMIT 100').all(itemId) as { userId: string; what: string; at: string }[];
+
+/** A 6-digit 2FA code (RFC 6238, 30 seconds) from a base32 secret. */
+export function totpCode(secret: string, now = Date.now()) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = secret.replace(/[\s=-]/g, '').toUpperCase();
+  let bits = '';
+  for (const ch of clean) {
+    const v = alphabet.indexOf(ch);
+    if (v < 0) throw new Error('Not a valid 2FA secret');
+    bits += v.toString(2).padStart(5, '0');
+  }
+  const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));
+  const counter = Math.floor(now / 1000 / 30);
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(counter));
+  const h = createHmac('sha1', key).update(msg).digest();
+  const o = h[h.length - 1] & 0xf;
+  const n = ((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return { code: String(n % 1_000_000).padStart(6, '0'), secondsLeft: 30 - (Math.floor(now / 1000) % 30) };
 }

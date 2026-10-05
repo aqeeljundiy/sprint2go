@@ -13,6 +13,7 @@ import { BUILT_IN_TEMPLATES, type TaskTemplate } from './data/templates';
 import { TemplateDialog } from './components/TemplateDialog';
 import { EndClientDialog } from './components/EndClientDialog';
 import { NoteEditor, NotesList, type NotesFilter } from './components/NotesApp';
+import { VaultSidebar, VaultView, type VaultItem } from './components/VaultApp';
 import { eventsOn } from './calendarUtils';
 import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
@@ -309,6 +310,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
   const [notes, setNotes] = useStored('notes');
+  // Vault: only titles and who can use them are loaded; passwords come from the server one at a time.
+  const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
+  const [vaultFilter, setVaultFilter] = useState('');
+  const [vaultEditing, setVaultEditing] = useState<VaultItem | 'new' | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
   const [notesFilter, setNotesFilter] = useState<NotesFilter>('all');
   const [askSeed, setAskSeed] = useState(''); // a question handed to Ask AI from search
@@ -1357,6 +1362,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast({ text: `${c.name} is an active client again` });
   };
 
+  const loadVault = () => {
+    if (!server.on) return;
+    void fetch(`/api/vault?ws=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d: { items: VaultItem[] }) => setVaultItems(d.items));
+  };
+  useEffect(() => {
+    if (mode === 'vault') loadVault();
+  }, [mode, ws.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ---------------- Notes ---------------- */
   // Mine, and the ones shared with the company.
   const wsNotes = useMemo(() => notes.filter((n) => n.workspaceId === ws.id && (n.visibility === 'team' || n.ownerId === user.id)), [notes, ws.id, user.id]);
@@ -2282,7 +2297,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       />
       <Sidebar
         mode={appMode}
-        title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[appMode]}
+        title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[appMode]}
         collapsed={collapsed && !mobile}
         onCollapse={setCollapsed}
         width={Math.min(Math.max(sidebarW, SIDEBAR_MIN), SIDEBAR_MAX)}
@@ -2445,6 +2460,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               })
             }
           />
+          ) : appMode === 'vault' ? (
+            <VaultSidebar items={vaultItems} clients={wsClientsAll} filter={vaultFilter} onFilter={(f) => (setVaultFilter(f), setSidebarOpen(false))} onNew={() => setVaultEditing('new')} />
           ) : appMode === 'notes' ? (
             <NotesList notes={wsNotes} clients={wsClientsAll} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={(id) => (setNoteId(id), setSidebarOpen(false))} onNew={() => newNote()} />
           ) : null
@@ -2474,7 +2491,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       <main className="main" key={`${ws.id}:${mode}`}>
         {mobile && (
           <MobileTop
-            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[mode]}
+            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[mode]}
             switcher={mobileSwitcher}
             workspaces={workspaces}
             current={ws}
@@ -2879,6 +2896,23 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               )
             }
             onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, 'done')}
+          />
+        )}
+
+        {mode === 'vault' && (
+          <VaultView
+            workspaceId={ws.id}
+            items={vaultItems}
+            reload={loadVault}
+            filter={vaultFilter}
+            clients={wsClientsAll}
+            users={members}
+            teams={wsTeams}
+            me={user.id}
+            isAdmin={isAdmin}
+            editing={vaultEditing}
+            setEditing={setVaultEditing}
+            toast={(text) => showToast({ text })}
           />
         )}
 
