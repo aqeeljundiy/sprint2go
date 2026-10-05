@@ -933,3 +933,9 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .chat-section.drop-on { background: color-mix(in oklab, var(--accent) 10%, transparent); border-radius: var(--r-control); outline: 1.5px dashed color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: -2px; }
 .chat-section:not(:has(.nav-row)) .sec-head { opacity: .7; }
 .chat-section:not(:has(.nav-row)) { min-height: 44px; }
+/* Your own chat sections */
+.sec-head-row { position: relative; display: flex; align-items: center; }
+.sec-head-row .sec-more { opacity: 0; }
+.sec-head-row:hover .sec-more, .sec-head-row .sec-more:focus-visible { opacity: 1; }
+.sec-rename { margin: 4px 12px; width: calc(100% - 24px); font: inherit; font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--accent); background: var(--surface); color: var(--text); outline: none; }
+.sec-empty { margin: 2px 16px 8px; }

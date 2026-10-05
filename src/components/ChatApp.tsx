@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Handshake,
+import { FolderPlus, ChevronUp, Handshake,
   ArrowLeft,
   ArrowUp,
   BarChart3,
@@ -94,6 +94,29 @@ export function ChatSidebar(p: SidebarProps) {
   const [browsing, setBrowsing] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
+  // Your own sections in the Default view (only you see them), above the shared categories.
+  const [mySections, setMySections] = usePersisted<{ id: string; name: string; channelIds: string[] }[]>(`s2g-chat-sections:${p.me}:${p.workspaceId}`, []);
+  const [newSection, setNewSection] = useState<{ name: string; channelId?: string } | null>(null);
+  const [secMenu, setSecMenu] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const secAnchor = useRef<HTMLElement | null>(null);
+  const inMine = new Set(mySections.flatMap((s) => s.channelIds));
+  /** Puts a channel in one of your sections (null = back to its category). */
+  const toMine = (channelId: string, sectionId: string | null) =>
+    setMySections((list) => list.map((s) => ({ ...s, channelIds: s.id === sectionId ? [...new Set([...s.channelIds, channelId])] : s.channelIds.filter((x) => x !== channelId) })));
+  const saveRename = () => {
+    if (renaming?.name.trim()) setMySections((l) => l.map((x) => (x.id === renaming.id ? { ...x, name: renaming.name.trim() } : x)));
+    setRenaming(null);
+  };
+  const createSection = () => {
+    if (!newSection?.name.trim()) return setNewSection(null);
+    const id = 's-' + Date.now().toString(36);
+    setMySections((list) => [
+      ...list.map((s) => ({ ...s, channelIds: s.channelIds.filter((x) => x !== newSection.channelId) })),
+      { id, name: newSection.name.trim(), channelIds: newSection.channelId ? [newSection.channelId] : [] },
+    ]);
+    setNewSection(null);
+  };
   const [statusOpen, setStatusOpen] = useState(false);
   const [customStatus, setCustomStatus] = useState('');
   const menuAnchor = useRef<HTMLElement | null>(null);
@@ -161,7 +184,7 @@ export function ChatSidebar(p: SidebarProps) {
     );
   };
 
-  const section = (key: string, title: ReactNode, list: Channel[], extra?: ReactNode, drop?: (channelId: string) => void) => {
+  const section = (key: string, title: ReactNode, list: Channel[], extra?: ReactNode, drop?: (channelId: string) => void, mineId?: string) => {
     // Empty sections still show while dragging, so a channel can be dropped into them.
     if (!list.length && !extra && !(drop && dropOn !== null)) return null;
     const closed = collapsed.includes(key);
@@ -183,10 +206,35 @@ export function ChatSidebar(p: SidebarProps) {
       : {};
     return (
       <div key={key} className={`chat-section ${dropOn === key ? 'drop-on' : ''}`} {...dropProps}>
-        <button className="nav-heading sb-label sec-head" onClick={() => toggle(key)}>
-          {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />} {title}
-          <span className="sec-count">{list.length || ''}</span>
-        </button>
+        {renaming && renaming.id === mineId ? (
+          <input
+            className="sec-rename sb-label"
+            autoFocus
+            value={renaming.name}
+            onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+            onBlur={saveRename}
+            onKeyDown={(e) => (e.key === 'Enter' ? saveRename() : e.key === 'Escape' && setRenaming(null))}
+          />
+        ) : (
+          <div className="sec-head-row">
+            <button className="nav-heading sb-label sec-head" onClick={() => toggle(key)}>
+              {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />} {title}
+              <span className="sec-count">{list.length || ''}</span>
+            </button>
+            {mineId && (
+              <button
+                className="nav-more sec-more"
+                aria-label="Section options"
+                onClick={(e) => {
+                  secAnchor.current = e.currentTarget;
+                  setSecMenu(mineId);
+                }}
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            )}
+          </div>
+        )}
         {!closed && (
           <nav className="nav">
             {list.map(row)}
@@ -201,12 +249,19 @@ export function ChatSidebar(p: SidebarProps) {
   const starredList = [...rooms, ...dms].filter((c) => star.has(c.id));
   let body: ReactNode;
   if (active === 'default') {
-    body = (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) =>
-      section(cat, CATEGORY_NAME[cat], rooms.filter((c) => (c.category ?? 'project') === cat && !star.has(c.id)), undefined, (id) => {
-        const c = rooms.find((x) => x.id === id);
-        if (c && (c.category ?? 'project') !== cat && p.canManage(c)) p.onMove(id, cat);
-      }),
-    );
+    body = [
+      ...mySections.map((sec) =>
+        section(`my:${sec.id}`, sec.name, rooms.filter((c) => sec.channelIds.includes(c.id) && !star.has(c.id)), sec.channelIds.length ? undefined : <p className="muted small sec-empty sb-label">Drag channels here, or use a channel’s … menu.</p>, (id) => toMine(id, sec.id), sec.id),
+      ),
+      ...(['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) =>
+        section(cat, CATEGORY_NAME[cat], rooms.filter((c) => (c.category ?? 'project') === cat && !star.has(c.id) && !inMine.has(c.id)), undefined, (id) => {
+          const c = rooms.find((x) => x.id === id);
+          if (!c) return;
+          toMine(id, null); // out of your own section, back with its category
+          if ((c.category ?? 'project') !== cat && p.canManage(c)) p.onMove(id, cat);
+        }),
+      ),
+    ];
   } else if (active === 'unread') {
     const list = rooms.filter((c) => !star.has(c.id)).sort((a, b) => (p.unread[b.id] ?? 0) - (p.unread[a.id] ?? 0) || recency(b).localeCompare(recency(a)));
     body = [section('u-unread', 'Unread', list.filter((c) => p.unread[c.id])), section('u-rest', 'Everything else', list.filter((c) => !p.unread[c.id]))];
@@ -296,6 +351,24 @@ export function ChatSidebar(p: SidebarProps) {
           <Plus size={16} />
           <span className="sb-label">New channel</span>
         </button>
+        {!custom &&
+          (newSection ? (
+            <div className="add-client sb-label">
+              <input
+                autoFocus
+                value={newSection.name}
+                onChange={(e) => setNewSection({ ...newSection, name: e.target.value })}
+                onKeyDown={(e) => (e.key === 'Enter' ? createSection() : e.key === 'Escape' && setNewSection(null))}
+                onBlur={createSection}
+                placeholder="Section name, e.g. Focus this week"
+              />
+            </div>
+          ) : (
+            <button className="nav-item" onClick={() => setNewSection({ name: '' })} title="New section">
+              <FolderPlus size={16} />
+              <span className="sb-label">New section</span>
+            </button>
+          ))}
         {joinable.length > 0 && (
           <button className="nav-item" onClick={() => setBrowsing((b) => !b)} title="Browse channels">
             <Compass size={16} />
@@ -340,6 +413,25 @@ export function ChatSidebar(p: SidebarProps) {
         ),
       )}
 
+      <Popover anchor={secAnchor} open={!!secMenu} onClose={() => setSecMenu(null)} width={220} title="Section">
+        {secMenu && (
+          <div className="sel-pop">
+            <button className="sel-opt" onClick={() => (setRenaming({ id: secMenu, name: mySections.find((x) => x.id === secMenu)?.name ?? '' }), setSecMenu(null))}>
+              <Pencil size={14} /> Rename
+            </button>
+            {mySections.findIndex((x) => x.id === secMenu) > 0 && (
+              <button className="sel-opt" onClick={() => (setMySections((l) => { const i = l.findIndex((x) => x.id === secMenu); const n = [...l]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; }), setSecMenu(null))}>
+                <ChevronUp size={14} /> Move up
+              </button>
+            )}
+            <button className="sel-opt danger" onClick={() => (setMySections((l) => l.filter((x) => x.id !== secMenu)), setSecMenu(null))}>
+              <Trash2 size={14} /> Delete section
+            </button>
+            <p className="muted small menu-note">Deleting a section keeps its channels; they go back to their category.</p>
+          </div>
+        )}
+      </Popover>
+
       <Popover anchor={menuAnchor} open={!!menuChannel} onClose={() => setMenuFor(null)} width={250} title={menuChannel ? (menuChannel.kind === 'dm' ? 'Conversation' : `#${menuChannel.name}`) : ''}>
         {menuChannel && (
           <div className="sel-pop">
@@ -367,10 +459,24 @@ export function ChatSidebar(p: SidebarProps) {
             )}
             {!custom && menuChannel.kind === 'channel' && (
               <>
-                <div className="sel-group">Move to</div>
+                <div className="sel-group">Your sections (only you see these)</div>
+                {mySections.map((sec) => (
+                  <button key={sec.id} className="sel-opt" onClick={() => (setMenuFor(null), toMine(menuChannel.id, sec.channelIds.includes(menuChannel.id) ? null : sec.id))}>
+                    {sec.name}
+                    {sec.channelIds.includes(menuChannel.id) && <Check size={14} className="sel-check" />}
+                  </button>
+                ))}
+                <button className="sel-opt" onClick={() => (setMenuFor(null), setNewSection({ name: '', channelId: menuChannel.id }))}>
+                  <Plus size={14} /> New section…
+                </button>
+              </>
+            )}
+            {!custom && menuChannel.kind === 'channel' && (
+              <>
+                <div className="sel-group">Category (for everyone)</div>
                 {p.canManage(menuChannel) ? (
                   (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => (
-                    <button key={cat} className="sel-opt" onClick={() => (setMenuFor(null), (menuChannel.category ?? 'project') !== cat && p.onMove(menuChannel.id, cat))}>
+                    <button key={cat} className="sel-opt" onClick={() => (setMenuFor(null), toMine(menuChannel.id, null), (menuChannel.category ?? 'project') !== cat && p.onMove(menuChannel.id, cat))}>
                       {CATEGORY_ONE[cat]}
                       {(menuChannel.category ?? 'project') === cat && <Check size={14} className="sel-check" />}
                     </button>

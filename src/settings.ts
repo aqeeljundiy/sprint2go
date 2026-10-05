@@ -95,8 +95,13 @@ export function useSettings(user: { id: string; name: string; title: string; col
 }
 
 /** Remembers a UI value (like a panel width) between visits. */
+// Every component using the same key sees the same value (e.g. the desktop and phone sidebars).
+const shared = new Map<string, unknown>();
+const subs = new Map<string, Set<(v: never) => void>>();
+
 export function usePersisted<T>(key: string, initial: T) {
   const [value, setValue] = useState<T>(() => {
+    if (shared.has(key)) return shared.get(key) as T;
     try {
       const raw = localStorage.getItem(key);
       if (raw != null) return JSON.parse(raw) as T;
@@ -104,6 +109,16 @@ export function usePersisted<T>(key: string, initial: T) {
     return initial;
   });
   useEffect(() => {
+    const set = subs.get(key) ?? new Set();
+    subs.set(key, set);
+    set.add(setValue as (v: never) => void);
+    if (shared.has(key) && shared.get(key) !== value) setValue(shared.get(key) as T);
+    return () => void set.delete(setValue as (v: never) => void);
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (shared.get(key) === value) return;
+    shared.set(key, value);
+    subs.get(key)?.forEach((fn) => fn !== (setValue as unknown) && (fn as (v: T) => void)(value));
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch {}
