@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
+import { NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
 import type { AppId } from '../types';
 
 export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[] = [
@@ -8,6 +8,7 @@ export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[]
   { id: 'chat', name: 'Chat', icon: MessagesSquare, path: '/chat' },
   { id: 'tasks', name: 'Tasks', icon: ListChecks, path: '/tasks' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, path: '/calendar' },
+  { id: 'notes', name: 'Notes', icon: NotebookPen, path: '/notes' },
   { id: 'drive', name: 'Drive', icon: HardDrive, path: '/drive' },
   { id: 'meet', name: 'Meet', icon: Video, path: '/meet' },
 ];

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
-import type { Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -12,6 +12,7 @@ import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { BUILT_IN_TEMPLATES, type TaskTemplate } from './data/templates';
 import { TemplateDialog } from './components/TemplateDialog';
 import { EndClientDialog } from './components/EndClientDialog';
+import { NoteEditor, NotesList, type NotesFilter } from './components/NotesApp';
 import { eventsOn } from './calendarUtils';
 import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
@@ -307,6 +308,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [savedTemplates, setSavedTemplates] = useStored('templates');
   const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
+  const [notes, setNotes] = useStored('notes');
+  const [noteId, setNoteId] = useState<string | null>(null);
+  const [notesFilter, setNotesFilter] = useState<NotesFilter>('all');
   const [askSeed, setAskSeed] = useState(''); // a question handed to Ask AI from search
   const [focusMsg, setFocusMsg] = useState<string | null>(null); // a notification lands on this chat message
   const [viewAs, setViewAs] = useState<{ clientId: string; email: string } | null>(null); // "View as client"
@@ -1353,6 +1357,26 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast({ text: `${c.name} is an active client again` });
   };
 
+  /* ---------------- Notes ---------------- */
+  // Mine, and the ones shared with the company.
+  const wsNotes = useMemo(() => notes.filter((n) => n.workspaceId === ws.id && (n.visibility === 'team' || n.ownerId === user.id)), [notes, ws.id, user.id]);
+  const patchNote = (id: string, patch: Partial<Note>) => setNotes((ns) => ns.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: nowIso(), updatedBy: user.id } : n)));
+  const newNote = (title = '', clientId?: string) => {
+    const n: Note = { id: uid(), workspaceId: ws.id, title, html: '', ownerId: user.id, visibility: clientId ? 'team' : 'private', clientId, createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id };
+    setNotes((ns) => [n, ...ns]);
+    setNoteId(n.id);
+    go('notes');
+    setTimeout(() => (document.querySelector(title ? '.note-body [contenteditable]' : '.note-title') as HTMLElement | null)?.focus(), 150);
+  };
+  const deleteNote = (id: string) => {
+    const n = notes.find((x) => x.id === id);
+    if (!n) return;
+    setNotes((ns) => ns.filter((x) => x.id !== id));
+    setNoteId(null);
+    showToast({ text: `“${n.title || 'Untitled'}” deleted`, action: { label: 'Undo', run: () => (setNotes((ns) => [n, ...ns]), setNoteId(n.id)) } });
+  };
+  const openNote = (id: string) => (setNoteId(id), go('notes'));
+
   /** Tells the client people who should know (the requester, or everyone at the client for shared work). */
   const tellClient = (t: Todo, text: string) => {
     const c = clients.find((x) => x.id === t.clientId);
@@ -2116,6 +2140,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...members.filter((u) => u.id !== user.id).map((u) => ({ id: 'p-' + u.id, group: 'People', title: u.name, sub: u.title || u.email, icon: UserIcon, run: () => openChannel(dmWith(u.id)) })),
     ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ id: 'ch-' + c.id, group: 'Channels', title: '#' + c.name, icon: Hash, run: () => openChannel(c.id) })),
     ...wsThreads.slice(0, 60).map((t) => ({ id: 'm-' + t.id, group: 'Emails', title: t.subject, sub: t.messages[t.messages.length - 1].from.name, icon: Mail, run: () => openThread(t.id) })),
+    ...wsNotes.map((n) => ({ id: 'no-' + n.id, group: 'Notes', title: n.title || 'Untitled note', sub: wsClientsAll.find((c) => c.id === n.clientId)?.name, icon: FileText, run: () => openNote(n.id) })),
     ...wsMeetings.map((m) => ({ id: 'mt-' + m.id, group: 'Meetings', title: m.title, icon: Video, run: () => openMeeting(m.id) })),
     ...wsDrive.filter((i) => i.kind !== 'folder' && !i.trashed).map((i) => ({ id: 'f-' + i.id, group: 'Files', title: i.name, icon: FileText, run: () => { go('drive'); setPreview({ item: i, list: [i] }); } })),
   ];
@@ -2257,7 +2282,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       />
       <Sidebar
         mode={appMode}
-        title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[appMode]}
+        title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[appMode]}
         collapsed={collapsed && !mobile}
         onCollapse={setCollapsed}
         width={Math.min(Math.max(sidebarW, SIDEBAR_MIN), SIDEBAR_MAX)}
@@ -2420,6 +2445,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               })
             }
           />
+          ) : appMode === 'notes' ? (
+            <NotesList notes={wsNotes} clients={wsClientsAll} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={(id) => (setNoteId(id), setSidebarOpen(false))} onNew={() => newNote()} />
           ) : null
         }
         accounts={myAccounts}
@@ -2447,7 +2474,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       <main className="main" key={`${ws.id}:${mode}`}>
         {mobile && (
           <MobileTop
-            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[mode]}
+            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', settings: 'Settings' } as Record<string, string>)[mode]}
             switcher={mobileSwitcher}
             workspaces={workspaces}
             current={ws}
@@ -2590,6 +2617,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onInviteClientPerson={inviteClientPerson}
             onApproveClientPerson={approveClientPerson}
             onEndClient={setEnding}
+            notes={wsNotes}
+            onOpenNote={openNote}
+            onNewNote={(clientId) => newNote('', clientId)}
             onReactivateClient={reactivateClient}
             messages={messages}
             clientTab={clientTab}
@@ -2851,6 +2881,27 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, 'done')}
           />
         )}
+
+        {mode === 'notes' &&
+          (mobile && !noteId ? (
+            <section className="mobile-list view-enter">
+              <NotesList notes={wsNotes} clients={wsClientsAll} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={setNoteId} onNew={() => newNote()} />
+            </section>
+          ) : (
+            <NoteEditor
+              note={wsNotes.find((n) => n.id === noteId)}
+              users={members}
+              clients={wsClientsAll}
+              me={user.id}
+              onPatch={patchNote}
+              onDelete={deleteNote}
+              onTask={(text, n) => {
+                const t = createTask({ title: text.length > 120 ? text.slice(0, 117) + '…' : text, clientId: n.clientId, userId: user.id, source: 'manual' });
+                showToast({ text: `Task made: “${t.title}”`, action: { label: 'Open', run: () => openTask(t.id) } });
+              }}
+              onBack={mobile ? () => setNoteId(null) : undefined}
+            />
+          ))}
 
         {mode === 'drive' && (
           <DriveView
@@ -3296,6 +3347,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           recentKey={`s2g-palette-recent:${user.id}:${ws.id}`}
           queryActions={(q) => [
             { id: 'q-task', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Create task “${q}”`, sub: 'Assigned to you', icon: ListChecks, run: () => { const t = createTask({ title: q.charAt(0).toUpperCase() + q.slice(1), userId: user.id, source: 'manual' }); showToast({ text: 'Task created', action: { label: 'Open', run: () => openTask(t.id) } }); } },
+            { id: 'q-note', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `New note “${q}”`, sub: 'Only you can see it until you share it', icon: FileText, run: () => newNote(q.charAt(0).toUpperCase() + q.slice(1)) },
             { id: 'q-ask', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Ask AI: “${q}”`, sub: 'Answers from your mail, chat, meetings and tasks', icon: Sparkles, run: () => { setAskSeed(q); setAskScope({ kind: 'all' }); } },
           ]}
           onClose={() => setPaletteOpen(false)}

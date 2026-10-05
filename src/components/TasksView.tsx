@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
-import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace } from '../types';
+import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note } from '../types';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { PastClients } from './PastClients';
 import { accessFor, clientPeople } from '../clientView';
@@ -95,6 +95,9 @@ interface Props {
   onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }) => void;
   onApproveClientPerson: (clientId: string, email: string) => void;
   onEndClient: (id: string) => void;
+  notes: Note[];
+  onOpenNote: (id: string) => void;
+  onNewNote: (clientId: string) => void;
   onReactivateClient: (id: string) => void;
   onShareMeeting: (id: string, shared: boolean) => void;
   onShareFile: (id: string, shared: boolean) => void;
@@ -815,6 +818,31 @@ export function TasksView(p: Props) {
                 </div>
               );
             })()}
+            <div className="side-card client-notes-card">
+              <h3>
+                Notes
+                <button className="link-btn" onClick={() => p.onNewNote(client.id)}>
+                  <Plus size={13} /> New note
+                </button>
+              </h3>
+              {p.notes.filter((n) => n.clientId === client.id).length ? (
+                <ul className="home-list">
+                  {p.notes
+                    .filter((n) => n.clientId === client.id)
+                    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt.localeCompare(a.updatedAt))
+                    .map((n) => (
+                      <li key={n.id}>
+                        <button className="home-notice" onClick={() => p.onOpenNote(n.id)}>
+                          <span>{n.title || 'Untitled'}</span>
+                          <time>{relative(n.updatedAt)}</time>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p className="te-empty">No notes for {client.name} yet. Meeting prep, preferences, who’s who: write it once, the whole team sees it here.</p>
+              )}
+            </div>
             <div className="side-card overview-card">
               <h3>
                 {client.overview?.headline ?? 'Where things stand'}

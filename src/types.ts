@@ -501,7 +501,22 @@ export interface MeetingRule {
   clientId: string;
 }
 
-export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'calendar' | 'drive' | 'meet';
+export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'calendar' | 'notes' | 'drive' | 'meet';
+
+/** A note: private, or shared with the whole company; can belong to a client. */
+export interface Note {
+  id: string;
+  workspaceId: string;
+  title: string;
+  html: string;
+  ownerId: string;
+  visibility: 'private' | 'team';
+  clientId?: string;
+  pinned?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
 
 /** Where a mailbox actually lives. */
 export type MailProvider = 'sprint2go' | 'google' | 'microsoft' | 'zoho' | 'imap';

@@ -5,6 +5,7 @@ import { EVENTS, EXTERNAL_CALENDARS, EXTERNAL_EVENTS } from './data/calendar';
 import { DRIVE } from './data/drive';
 import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './data/team';
 import { USERS, WORKSPACES } from './data/workspaces';
+import { NOTES } from './data/notes';
 
 /** The demo company's starting data. The browser demo starts from it; the local server copies it into its database on first run. */
 export const seed = () => ({
@@ -23,6 +24,7 @@ export const seed = () => ({
   statuses: { 'u-nanda': { emoji: '🎬', text: 'Editing, slow to reply' }, 'u-faisal': { emoji: '🗓️', text: 'In client meetings till 3pm' } } as Record<string, Status>,
   meetings: MEETINGS,
   templates: [] as TaskTemplate[], // templates a company saved for itself
+  notes: NOTES,
 });
 export type Collections = ReturnType<typeof seed>;
 export type CollectionKey = keyof Collections;

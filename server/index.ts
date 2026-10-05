@@ -40,6 +40,12 @@ if (db.isEmpty()) {
   console.log(`Seeded the demo company: ${s.users.length} people and ${clientUsers.length} client people can sign in with the password in .env / .env.example.`);
 }
 
+// A collection added after the database was made (e.g. notes) starts with its demo data.
+{
+  const s0 = seed();
+  for (const k of COLLS) if (!db.allDocs(k).length && toDocs(k, s0[k]).length) db.writeDocs(k, toDocs(k, s0[k]), [], null);
+}
+
 /* ---------- helpers ---------- */
 
 type Ws = { id: string; members: { userId: string; role: string }[]; accounts?: { id: string }[]; ai?: { jobs?: Record<string, { provider: string; model: string }>; providers?: { id: string; status: string }[]; payer?: string } };
@@ -106,6 +112,8 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
         return mine.has(d.id);
       case 'statuses':
         return people.has(d.id);
+      case 'notes':
+        return mine.has(d.workspaceId) && (d.visibility !== 'private' || d.ownerId === userId); // private notes: only their owner
       case 'channels':
         return channelOk(d);
       case 'messages':
