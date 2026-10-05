@@ -20,9 +20,7 @@ import { FolderPlus, ChevronUp, Handshake,
   Mic,
   MoreHorizontal,
   Paperclip,
-  Bookmark,
   HardDrive,
-  Link2,
   Pin,
   Pause,
   Play,
@@ -48,6 +46,7 @@ import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
+import { ChannelMaterials } from './ChannelMaterials';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -784,15 +783,12 @@ export function ChatView(p: ViewProps) {
   const { channel, users, me } = p;
   const [text, setText] = useState('');
   const [mention, setMention] = useState<string | null>(null);
-  const [tab, setTab] = useState<'messages' | 'files' | 'links' | 'tasks' | 'pinned' | 'summary' | 'about'>('messages');
-  const [bmTitle, setBmTitle] = useState('');
-  const [bmUrl, setBmUrl] = useState('');
+  const [tab, setTab] = useState<'messages' | 'materials' | 'tasks' | 'pinned' | 'summary' | 'about'>('messages');
   const [summarizing, setSummarizing] = useState<'period' | 'since' | null>(null);
   const [sinceText, setSinceText] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskWho, setTaskWho] = useState('');
   const [taskDue, setTaskDue] = useState('');
-  const [fileKind, setFileKind] = useState<'all' | 'images' | 'videos' | 'docs'>('all');
   const [threadId, setThreadId] = useState<string | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
   const [kudos, setKudos] = useState<{ who: string; text: string } | null>(null);
@@ -857,13 +853,7 @@ export function ChatView(p: ViewProps) {
       who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
     })),
   ).reverse();
-  const addBookmark = () => {
-    const url = bmUrl.trim();
-    if (!/^https?:\/\/\S+\.\S+/.test(url)) return;
-    p.onChannel({ bookmarks: [...(channel.bookmarks ?? []), { id: Math.random().toString(36).slice(2), title: bmTitle.trim() || url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], url, addedBy: me, at: new Date().toISOString() }] });
-    setBmTitle('');
-    setBmUrl('');
-  };
+
   const nextRun = (sch: string) => {
     const d = new Date();
     if (sch === 'monthly') d.setMonth(d.getMonth() + 1, 1);
@@ -1291,8 +1281,7 @@ export function ChatView(p: ViewProps) {
           {(
             [
               ['messages', 'Messages', null],
-              ['files', 'Files', chanFiles.length + p.drive.length],
-              ['links', 'Links', links.length + (channel.bookmarks?.length ?? 0)],
+              ['materials', 'Materials', (channel.materials?.items.length ?? channel.bookmarks?.length ?? 0) + chanFiles.length + p.drive.length + new Set(links.map((l) => l.url)).size],
               ['tasks', 'Tasks', chanTasks.filter((t) => !t.done).length],
               ['pinned', 'Pinned', pinned.length],
               ['summary', 'Summary', null],
@@ -1306,42 +1295,24 @@ export function ChatView(p: ViewProps) {
           ))}
         </div>
 
-        {tab === 'files' && (
-          <div className="chan-pane">
-            <p className="space-used">
-              <HardDrive size={14} /> {chanFiles.length ? <>This channel’s files use <b>{fmtSize(chanFiles.reduce((s2, x) => s2 + x.f.size, 0))}</b> of team storage</> : 'No files shared here yet'}
-              {p.drive.length ? <span className="muted"> · {fmtSize(p.drive.reduce((s2, d) => s2 + d.size, 0))} more in {client?.name}’s Drive folder</span> : null}
+        {tab === 'materials' && (
+          <>
+            <p className="space-used chan-space">
+              <HardDrive size={14} /> {chanFiles.length ? <>Files shared here use <b>{fmtSize(chanFiles.reduce((s2, x) => s2 + x.f.size, 0))}</b> of team storage</> : 'Files, links and docs for this channel, in folders if you like'}
+              {p.drive.length ? <span className="muted"> · {fmtSize(p.drive.reduce((s2, d) => s2 + d.size, 0))} in {client?.name}’s Drive folder</span> : null}
             </p>
-            <div className="segmented">
-              {(
-                [
-                  ['all', 'All'],
-                  ['images', 'Images'],
-                  ['videos', 'Videos'],
-                  ['docs', 'Documents'],
-                ] as const
-              ).map(([k, l]) => (
-                <button key={k} className={fileKind === k ? 'on' : ''} onClick={() => setFileKind(k)}>
-                  {l}
-                </button>
-              ))}
-            </div>
-            {[...chanFiles.map(({ f, m }) => ({ key: m.id + f.name, name: f.name, type: f.type, size: f.size, url: f.url, who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'), at: m.at, where: 'Shared here' })), ...p.drive.map((d) => ({ key: d.id, name: d.name, type: d.kind === 'image' ? 'image/' : d.kind === 'video' ? 'video/' : 'application/', size: d.size, url: undefined as string | undefined, who: 'Drive', at: d.modified, where: client ? `Drive › ${client.name}` : 'Drive' }))]
-              .filter((f) => fileKind === 'all' || (fileKind === 'images' ? f.type.startsWith('image') : fileKind === 'videos' ? f.type.startsWith('video') : !f.type.startsWith('image') && !f.type.startsWith('video')))
-              .sort((a, b) => b.at.localeCompare(a.at))
-              .map((f) => (
-                <a key={f.key} className="chat-file flat" href={f.url} target="_blank" rel="noreferrer" onClick={(e) => !f.url && e.preventDefault()}>
-                  <span className="cf-icon">{f.type.startsWith('video') ? <Video size={16} /> : f.type.startsWith('image') ? <ImageIcon size={16} /> : <FileText size={16} />}</span>
-                  <span className="cf-text">
-                    <strong>{f.name}</strong>
-                    <small>
-                      {fmtSize(f.size)} · {f.who} · {relative(f.at)} · {f.where}
-                    </small>
-                  </span>
-                </a>
-              ))}
-            {chanFiles.length + p.drive.length === 0 && <p className="te-empty">No files yet. Anything shared in this channel shows here and is saved to Drive.</p>}
-          </div>
+            <ChannelMaterials
+              channel={channel}
+              users={users}
+              me={me}
+              chatFiles={[
+                ...chanFiles.map(({ f, m }) => ({ key: `file:${m.id}:${f.name}`, name: f.name, type: f.type, size: f.size, url: f.url, who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'), at: m.at, where: 'in chat' })),
+                ...p.drive.map((d) => ({ key: `drive:${d.id}`, name: d.name, type: d.kind === 'image' ? 'image/' : d.kind === 'video' ? 'video/' : 'application/', size: d.size, url: undefined, who: '', at: d.modified, where: client ? `in ${client.name}’s Drive folder` : 'in Drive' })),
+              ]}
+              chatLinks={links}
+              onChannel={p.onChannel}
+            />
+          </>
         )}
 
         {tab === 'tasks' && (
@@ -1387,58 +1358,6 @@ export function ChatView(p: ViewProps) {
               );
             })}
             {!chanTasks.length && <p className="te-empty">Nothing on this list yet.</p>}
-          </div>
-        )}
-
-        {tab === 'links' && (
-          <div className="chan-pane">
-            <div className="d-heading">Bookmarks</div>
-            {(channel.bookmarks ?? []).map((b) => (
-              <div key={b.id} className="link-row">
-                <span className="cf-icon">
-                  <Bookmark size={15} />
-                </span>
-                <a className="cf-text" href={b.url} target="_blank" rel="noreferrer">
-                  <strong>{b.title}</strong>
-                  <small>
-                    {b.url.replace(/^https?:\/\//, '').slice(0, 60)} · added by {person(b.addedBy)?.name.split(' ')[0] ?? 'someone'}
-                  </small>
-                </a>
-                <button className="icon-btn sm" onClick={() => p.onChannel({ bookmarks: (channel.bookmarks ?? []).filter((x) => x.id !== b.id) })} aria-label="Remove bookmark">
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-            <div className="todo-add task-add">
-              <Bookmark size={15} />
-              <input value={bmTitle} onChange={(e) => setBmTitle(e.target.value)} placeholder="Name, e.g. Q4 brief" />
-              <input value={bmUrl} onChange={(e) => setBmUrl(e.target.value)} placeholder="https://…" onKeyDown={(e) => e.key === 'Enter' && addBookmark()} />
-              <button className="primary-btn sm" disabled={!/^https?:\/\/\S+\.\S+/.test(bmUrl.trim())} onClick={addBookmark}>
-                Add
-              </button>
-            </div>
-            <div className="d-heading">
-              Shared in messages <span>{links.length}</span>
-            </div>
-            {links.map((l) => (
-              <div key={l.key} className="link-row">
-                <span className="cf-icon">
-                  <Link2 size={15} />
-                </span>
-                <a className="cf-text" href={l.url} target="_blank" rel="noreferrer">
-                  <strong>{l.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}</strong>
-                  <small>
-                    {l.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 70)} · {l.who} · {relative(l.at)}
-                  </small>
-                </a>
-                {!(channel.bookmarks ?? []).some((b) => b.url === l.url) && (
-                  <button className="link-btn small" onClick={() => p.onChannel({ bookmarks: [...(channel.bookmarks ?? []), { id: Math.random().toString(36).slice(2), title: l.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], url: l.url, addedBy: me, at: new Date().toISOString() }] })}>
-                    Bookmark
-                  </button>
-                )}
-              </div>
-            ))}
-            {!links.length && <p className="te-empty">No links shared yet.</p>}
           </div>
         )}
 

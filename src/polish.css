@@ -976,3 +976,35 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .spend-card.best em { position: static; order: -1; margin-bottom: 2px; }
 .spend-card.best { box-shadow: inset 0 0 0 1.5px var(--ok, var(--accent)); }
 .spend-card.best.current { box-shadow: inset 0 0 0 2px var(--ok, var(--accent)); }
+
+/* Channel materials: folders of files, links and docs */
+.chan-space { margin: 0 0 8px; }
+.mat-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.mat-crumbs { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.mat-crumbs strong { color: var(--text); }
+.mat-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-bottom: 16px; }
+.mat-folder { position: relative; border-radius: var(--r-control); background: var(--hover); }
+.mat-folder .mf-open { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; padding: 12px 36px 12px 12px; text-align: left; color: var(--text); border-radius: inherit; }
+.mat-folder .mf-open svg { color: var(--accent); }
+.mat-folder .mf-open strong { font-size: 14px; }
+.mat-folder .mf-open small { color: var(--muted); font-size: 12px; }
+.mat-folder:hover { background: color-mix(in oklab, var(--accent) 8%, var(--hover)); }
+.mat-folder .mat-more { position: absolute; top: 8px; right: 6px; }
+.mat-row { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 10px; }
+.mat-row:hover { background: var(--hover); }
+.mat-row .cf-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 1px; color: var(--text); }
+.mat-row .cf-text strong { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.mat-row .cf-text small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.mat-row .cf-icon.k-link { color: var(--accent); }
+.mat-row .cf-icon.k-doc { color: var(--warn); }
+.mat-row .mat-more { opacity: 0; }
+.mat-row:hover .mat-more, .mat-more:focus-visible { opacity: 1; }
+.mat-doc-peek { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.mat-rename { flex: 1; font: inherit; font-size: 13.5px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--accent); background: var(--surface); color: var(--text); outline: none; }
+.mat-folder .mat-rename { margin: 10px; width: calc(100% - 20px); }
+.mat-add { margin-bottom: 10px; }
+.mat-doc { display: flex; flex-direction: column; gap: 10px; }
+.mat-doc-title { font: inherit; font-size: 20px; font-weight: 700; border: 0; background: transparent; color: var(--text); outline: none; padding: 4px 0; }
+@media (hover: none) { .mat-row .mat-more { opacity: 1; } }
+.chan-space { padding: 12px 16px 0; margin: 0; flex: none; }
+.materials { padding-top: 10px; }

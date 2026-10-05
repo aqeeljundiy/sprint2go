@@ -328,6 +328,7 @@ export interface Channel {
   digest?: boolean; // old name for summary.schedule === 'daily'
   summary?: ChannelSummary;
   bookmarks?: { id: string; title: string; url: string; addedBy: string; at: string }[];
+  materials?: Materials; // folders of files, links and docs for this channel
   archived?: boolean;
   createdAt?: string;
 }
@@ -339,6 +340,27 @@ export interface Guest {
   status: 'invited' | 'joined';
   invitedBy: string;
   at: string;
+}
+
+/** A channel's materials: folders (e.g. "Project A") holding files, links and simple docs. */
+export interface Materials {
+  folders: { id: string; name: string; color?: string }[];
+  items: Material[];
+  /** Files and links shared in chat (key: "file:<msgId>:<name>", "link:<url>", "drive:<id>") filed into a folder. */
+  placed: Record<string, string>;
+}
+export interface Material {
+  id: string;
+  kind: 'link' | 'doc' | 'file';
+  title: string;
+  folderId?: string;
+  url?: string; // link
+  html?: string; // doc
+  file?: { name: string; type: string; size: number; url?: string }; // uploaded here
+  addedBy: string;
+  at: string;
+  editedBy?: string;
+  editedAt?: string;
 }
 
 export interface ChatFile {
