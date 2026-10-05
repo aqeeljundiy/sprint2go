@@ -141,3 +141,13 @@ export function usageSince(workspaceId: string, since: string) {
     .prepare('SELECT job, provider, model, COUNT(*) AS uses, SUM(in_tokens) AS inTokens, SUM(out_tokens) AS outTokens FROM ai_usage WHERE workspace_id = ? AND at >= ? GROUP BY job, provider, model ORDER BY uses DESC')
     .all(workspaceId, since) as { job: string; provider: string; model: string; uses: number; inTokens: number; outTokens: number }[];
 }
+
+/** AI uses this month by these people for one job (the client portal's question limit). */
+export function monthlyUses(userIds: string[], job: string) {
+  if (!userIds.length) return 0;
+  const start = new Date();
+  start.setUTCDate(1);
+  start.setUTCHours(0, 0, 0, 0);
+  const r = db.prepare(`SELECT COUNT(*) AS n FROM ai_usage WHERE job = ? AND at >= ? AND user_id IN (${userIds.map(() => '?').join(',')})`).get(job, start.toISOString(), ...userIds) as { n: number };
+  return r.n;
+}

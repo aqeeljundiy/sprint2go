@@ -61,6 +61,9 @@ export function ClientApp(p: Props) {
   const { ws, client, person, access, actions } = p;
   const v = actions.view();
   const [tab, setTab] = useState<Tab>('home');
+  useEffect(() => {
+    document.title = `${client.name} · ${ws.name}`;
+  }, [client.name, ws.name]);
   const [open, setOpen] = useState<string | null>(null); // a task, request or meeting being read
   const [chanId, setChanId] = useState<string | null>(v.channels[0]?.id ?? null);
   const [toast, setToast] = useState('');

@@ -6,6 +6,9 @@ import { applyRemote, useStored } from './store';
 import { connect, probe, signIn, signOut } from './sync';
 import { setAIWorkspace } from './ai';
 import App from './App';
+import { ClientApp } from './components/ClientApp';
+import { clientActions } from './clientActions';
+import { accessFor, clientInbox, clientPeople } from './clientView';
 import { AcceptInvite, SignIn } from './components/SignIn';
 
 /**
@@ -54,6 +57,7 @@ function ServerRoot({ me }: { me: string }) {
   const [users, setUsers] = useStored('users');
   const [workspaces, setWorkspaces] = useStored('workspaces');
   const user = users.find((u) => u.id === me);
+  if (user?.clientOf) return <ClientRoot me={user} />;
   if (!user || !workspaces.some((w) => w.members.some((m) => m.userId === me))) return <NoWorkspace email={user?.email ?? ''} onBack={() => void signOut()} />;
   return (
     <App
@@ -140,5 +144,67 @@ function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
         </button>
       </div>
     </div>
+  );
+}
+
+/** Someone at a client, signed in: their portal, with only what the company shares (the server enforces it). */
+function ClientRoot({ me }: { me: User }) {
+  const [users] = useStored('users');
+  const [workspaces] = useStored('workspaces');
+  const [clients, setClients] = useStored('clients');
+  const [teams] = useStored('teams');
+  const [todos, setTodos] = useStored('todos');
+  const [channels, setChannels] = useStored('channels');
+  const [messages, setMessages] = useStored('messages');
+  const [meetings] = useStored('meetings');
+  const [drive, setDrive] = useStored('drive');
+  const [notices, setNotices] = useStored('notices');
+  const ws = workspaces.find((w) => w.id === me.clientOf!.workspaceId);
+  const client = clients.find((c) => c.id === me.clientOf!.clientId);
+  useEffect(() => {
+    if (ws) setAIWorkspace(ws.id);
+  }, [ws?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!ws || !client) return <NoWorkspace email={me.email} onBack={() => void signOut()} />;
+  const person = clientPeople(client, channels).find((x) => x.email.toLowerCase() === me.email.toLowerCase()) ?? { email: me.email, name: me.name, role: 'viewer' as const, status: 'joined' as const, invitedBy: '', at: '' };
+  const access = accessFor(ws, client);
+  const team = users.filter((u) => !u.clientOf);
+  const actions = clientActions({
+    ws,
+    client,
+    person,
+    access,
+    team,
+    teams,
+    todos,
+    channels,
+    messages,
+    meetings,
+    drive,
+    setTodos,
+    setMessages,
+    setDrive,
+    setClients,
+    setNotices,
+    setChannels,
+    makeInvite: async (p) => {
+      const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, clientId: client.id, ...p }) });
+      return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+    },
+  });
+  const inbox = [me.id, clientInbox(me.email)];
+  return (
+    <ClientApp
+      ws={ws}
+      client={client}
+      person={person}
+      access={access}
+      team={team}
+      actions={actions}
+      messages={messages}
+      allTasks={todos}
+      notices={notices.filter((n) => inbox.includes(n.userId))}
+      onReadNotices={() => setNotices((ns) => ns.map((n) => (inbox.includes(n.userId) ? { ...n, read: true } : n)))}
+      onSignOut={() => void signOut()}
+    />
   );
 }

@@ -1128,3 +1128,4 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   .capp-chat { padding: 10px 14px; }
   .capp-foot { display: none; }
 }
+.capp-ask .ask-msg { white-space: pre-wrap; }

@@ -55,3 +55,14 @@
 - WhatsApp for clients.
 - Huddles (quick voice calls in a channel).
 - Smart search across everything.
+
+## Done 6 Oct: client access
+- Settings, Client access (company) with per-client changes: team names, requests, meeting notes and recordings, inviting colleagues, uploads, AI with a monthly question limit, branding.
+- The client's app: Home, Requests (tickets), Chat, Work (approve, comment), Files (upload), Meetings, Ask AI. "View as client" from the client page.
+- Comments: internal by default, "Client can see this" to reply to the client.
+- Client sign-ins on the local server, with the server shaping and checking everything a client receives and changes.
+
+## Next, for clients
+- Meeting recordings: playback once recordings are stored.
+- Materials of shared channels in the client's Files.
+- Email notifications to clients (needs real mail).

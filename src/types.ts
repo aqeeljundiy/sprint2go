@@ -213,6 +213,7 @@ export interface User {
   title: string;
   color: string;
   nicknames?: string[]; // "Kiki" for Rizky; used by the brain dump
+  clientOf?: { workspaceId: string; clientId: string }; // someone at a client: signs in to their portal only
 }
 
 /** A task. `userId` is the person it's assigned to ('' = not assigned yet, e.g. waiting in a team's queue). */

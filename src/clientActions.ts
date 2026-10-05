@@ -190,7 +190,7 @@ export function clientActions(c: ClientCtx) {
           id: c.client.id,
           title: `${c.client.name} work`,
           summary: tasksFor(c.client, c.todos)
-            .map((t) => `${t.title}: ${t.done ? 'done' : t.status === 'doing' ? 'in progress' : t.status === 'waiting' ? 'waiting on you' : 'planned'}${t.due ? `, due ${t.due}` : ''}${t.approval ? `, approval ${t.approval.status}` : ''}.`)
+            .map((t) => `${t.title}: ${t.done ? 'done' : t.status === 'doing' ? 'in progress' : t.status === 'waiting' ? 'waiting on you' : 'planned'}${t.due ? `, due ${t.due}` : ''}${t.approval ? `, ${t.approval.status === 'waiting' ? 'waiting for your approval' : t.approval.status === 'approved' ? 'approved' : 'changes asked'}` : ''}.`)
             .join(' '),
           transcript: [],
           actions: tasksFor(c.client, c.todos).map((t) => ({ title: `${t.title}${t.due ? ` (due ${t.due})` : ''}`, done: t.done })),
