@@ -14,6 +14,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS logins (user_id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, pw_hash TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS invites (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, email TEXT NOT NULL, expires_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS ai_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, user_id TEXT, job TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, in_tokens INTEGER NOT NULL, out_tokens INTEGER NOT NULL, at TEXT NOT NULL);
+  CREATE INDEX IF NOT EXISTS ai_usage_ws_at ON ai_usage (workspace_id, at);
   CREATE TABLE IF NOT EXISTS ai_keys (workspace_id TEXT NOT NULL, provider TEXT NOT NULL, sealed TEXT NOT NULL, base_url TEXT, added_by TEXT, added_at TEXT NOT NULL, PRIMARY KEY (workspace_id, provider));
 `);
 
@@ -128,3 +130,14 @@ export function loadKey(workspaceId: string, provider: string): { key: string; b
   return r ? { key: unseal(r.sealed), baseUrl: r.base_url ?? undefined } : null;
 }
 export const deleteKey = (workspaceId: string, provider: string) => db.prepare('DELETE FROM ai_keys WHERE workspace_id = ? AND provider = ?').run(workspaceId, provider);
+
+/* ---------- AI usage log (tokens per call, for the cost estimate in Settings, AI) ---------- */
+
+export function logUsage(u: { workspaceId: string; userId: string; job: string; provider: string; model: string; inTokens: number; outTokens: number }) {
+  db.prepare('INSERT INTO ai_usage (workspace_id, user_id, job, provider, model, in_tokens, out_tokens, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(u.workspaceId, u.userId, u.job, u.provider, u.model, u.inTokens, u.outTokens, new Date().toISOString());
+}
+export function usageSince(workspaceId: string, since: string) {
+  return db
+    .prepare('SELECT job, provider, model, COUNT(*) AS uses, SUM(in_tokens) AS inTokens, SUM(out_tokens) AS outTokens FROM ai_usage WHERE workspace_id = ? AND at >= ? GROUP BY job, provider, model ORDER BY uses DESC')
+    .all(workspaceId, since) as { job: string; provider: string; model: string; uses: number; inTokens: number; outTokens: number }[];
+}

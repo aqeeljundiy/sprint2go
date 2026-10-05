@@ -8,6 +8,8 @@ export interface AIConfig {
   model: string;
   apiKey: string;
   baseUrl?: string;
+  included?: boolean; // Sprint2go's own key (the plan's allowance), not the company's
+  onUsage?: (inTokens: number, outTokens: number) => void; // every call reports its tokens (for the cost estimate)
 }
 
 /** OpenAI-compatible endpoints. Claude goes through the Anthropic SDK instead. */
@@ -58,6 +60,7 @@ async function anthropic(ai: AIConfig, prompt: string, opts: { system: string; s
     },
     messages: [{ role: 'user', content: prompt }],
   });
+  ai.onUsage?.(response.usage.input_tokens + (response.usage.cache_read_input_tokens ?? 0) + (response.usage.cache_creation_input_tokens ?? 0), response.usage.output_tokens);
   if (response.stop_reason === 'refusal') throw new AIError('The request was declined.');
   return response.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
 }
@@ -81,7 +84,8 @@ async function openaiCompatible(ai: AIConfig, prompt: string, opts: { system: st
     headers: { 'content-type': 'application/json', ...(ai.apiKey ? { authorization: `Bearer ${ai.apiKey}` } : {}) },
     body: JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as { error?: { message?: string }; choices?: { message?: { content?: string }; finish_reason?: string }[] };
+  const data = (await res.json().catch(() => ({}))) as { error?: { message?: string }; choices?: { message?: { content?: string }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+  if (data.usage) ai.onUsage?.(data.usage.prompt_tokens ?? 0, data.usage.completion_tokens ?? 0);
   // Gateways route to many models and not all accept a JSON schema: retry once in plain JSON mode.
   if (!res.ok && strict && res.status === 400 && /response_format|json_schema|schema/i.test(JSON.stringify(data))) return openaiCompatible(ai, prompt, opts, true);
   if (res.status === 401 || res.status === 403) throw new AIError(`${ai.provider} rejected the key. Check it in Settings, AI.`, 400);

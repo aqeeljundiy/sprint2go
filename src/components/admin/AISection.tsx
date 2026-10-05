@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { server } from '../../sync';
+import { AISpend } from './AISpend';
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Play, Plus, ShieldOff, Sparkles, Trash2 } from 'lucide-react';
 import type { AIJobId, AISettings, ProviderConn, ProviderId, User, Workspace } from '../../types';
 import { JOBS, PROVIDERS, costPer100, presetJobs, providerOf } from '../../data/aiCatalog';
@@ -219,7 +220,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                   {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : adding.id === 'bedrock' ? 'Region, e.g. ap-southeast-3' : 'Endpoint'} />}
                   <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} />
                   {adding.state === 'error' && <p className="err">{adding.message ?? `That doesn’t look like a valid key${providerOf(adding.id)!.needsUrl ? ' and address' : ''}.`}</p>}
-                  <p className="muted small">Prototype: the key is only checked for its shape and is not saved anywhere. The real version tests it with the provider and stores it encrypted.</p>
+                  <p className="muted small">{server.on ? 'We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.' : 'Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.'}</p>
                 </>
               )}
               <div className="add-prov-foot">
@@ -237,6 +238,8 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
             </button>
           )}
         </div>
+
+        <AISpend ws={ws.id} ai={ai} plan={plan} people={people} typical={{ braindump: 41, ask: 118, meeting: 22, summary: 236, draft: 97, replies: 180, todos: 420, sorting: 300 }} />
 
         <div className="set-block">
           <h3>Setup</h3>

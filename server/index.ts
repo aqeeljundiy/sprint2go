@@ -132,7 +132,7 @@ function aiFor(wsId: string, job: string): AIConfig | null {
     if (k) return { provider: pick.provider, model: pick.model, apiKey: k.key, baseUrl: k.baseUrl };
   }
   // Included AI (Sprint2go pays): the server's own Claude key.
-  if (process.env.ANTHROPIC_API_KEY && ws?.ai?.payer !== 'own') return { provider: 'anthropic', model: rec?.balanced?.startsWith('claude') ? rec.balanced : 'claude-sonnet-5-5', apiKey: process.env.ANTHROPIC_API_KEY };
+  if (process.env.ANTHROPIC_API_KEY && ws?.ai?.payer !== 'own') return { provider: 'anthropic', model: rec?.balanced?.startsWith('claude') ? rec.balanced : 'claude-sonnet-5-5', apiKey: process.env.ANTHROPIC_API_KEY, included: true };
   // Otherwise any key the company saved, with that provider's model for this kind of job.
   for (const p of ws?.ai?.providers ?? []) {
     const k = db.loadKey(wsId, p.id);
@@ -290,6 +290,13 @@ createServer(async (req, res) => {
       db.deleteKey(workspaceId, provider);
       return json(res, 200, {});
     }
+    if (p === '/api/ai/usage') {
+      const wsId = url.searchParams.get('ws') ?? '';
+      if (!isAdminOf(me, wsId)) return json(res, 403, {});
+      const days = Math.min(365, Number(url.searchParams.get('days') ?? 30));
+      const since = new Date(Date.now() - days * 86_400_000).toISOString();
+      return json(res, 200, { days, since, rows: db.usageSince(wsId, since) });
+    }
     if (p === '/api/ai/status') {
       const wsId = url.searchParams.get('ws') ?? '';
       if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
@@ -301,6 +308,7 @@ createServer(async (req, res) => {
       if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, { error: 'Not in this workspace.' });
       const cfg = aiFor(b.workspaceId, JOB_OF[action]);
       if (!cfg) return json(res, 409, { error: 'no-key' });
+      cfg.onUsage = (inTokens, outTokens) => db.logUsage({ workspaceId: b.workspaceId, userId: me, job: JOB_OF[action], provider: cfg.included ? 'included' : cfg.provider, model: cfg.model, inTokens, outTokens });
       return json(res, 200, await withAI(cfg, () => routes[action](b)));
     }
     return json(res, 404, { error: 'Not found' });
