@@ -26,7 +26,7 @@ import {
   StickyNote,
   UserCheck,
 } from 'lucide-react';
-import type { CalEvent, Label, Person, Thread, User } from '../types';
+import type { CalEvent, Person, Thread, User, Client } from '../types';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
 import { fmtTime } from '../calendarUtils';
@@ -43,7 +43,8 @@ import type { Attachment } from '../types';
 
 interface Props {
   thread: Thread | null;
-  labels: Label[];
+  client?: Client; // the client this email is with
+  onClient?: (id: string) => void;
   me: Person;
   inviteAdded: boolean;
   inviteConflicts: CalEvent[];
@@ -100,7 +101,7 @@ const snoozeTimes = (): [string, Date][] => {
 const TEMPLATES = ['Thanks, received!', 'Let me check and get back to you.', 'Sounds good, let’s do it.'];
 
 export function Reader(props: Props) {
-  const { thread, labels } = props;
+  const { thread } = props;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [replyOpen, setReplyOpen] = useState(false);
   const [reply, setReply] = useState({ html: '', text: '' });
@@ -276,14 +277,11 @@ export function Reader(props: Props) {
         <div className="thread-head">
           <h2>{thread.subject}</h2>
           <div className="thread-labels">
-            {thread.labels.map((id) => {
-              const l = labels.find((x) => x.id === id);
-              return l ? (
-                <span key={id} className="chip" style={{ ['--c' as string]: l.color }}>
-                  {l.name}
-                </span>
-              ) : null;
-            })}
+            {props.client && (
+              <button className="chip client-chip" style={{ ['--c' as string]: props.client.color }} onClick={() => props.onClient?.(props.client!.id)} title="Open the client page">
+                {props.client.name}
+              </button>
+            )}
             <span className="thread-count">
               {thread.messages.length} message{thread.messages.length > 1 ? 's' : ''}
             </span>

@@ -917,3 +917,9 @@ details.advanced[open] summary h3::after {
   border-radius: var(--r-control); background: var(--warn-soft); color: var(--text); font-size: 12.5px; line-height: 1.4;
 }
 .shared-note svg { color: var(--warn); flex: none; margin-top: 1px; }
+/* Client chip on emails: the client's colour as a dot, neutral text */
+.chip.client-chip { background: var(--hover); color: var(--text-2, var(--text)); display: inline-flex; align-items: center; gap: 6px; border: 0; font: inherit; font-size: 11.5px; cursor: default; }
+.chip.client-chip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+button.chip.client-chip { cursor: pointer; }
+button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, var(--hover)); }
+.chip.assignee-chip { background: var(--accent-soft, var(--hover)); color: var(--accent); font-size: 11.5px; }

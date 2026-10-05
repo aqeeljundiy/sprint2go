@@ -2449,7 +2449,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               ref={searchRef}
               title={title}
               threads={visible}
-              labels={LABELS}
+              clientOf={clientForThread}
+              personName={(id) => allUsers.find((u) => u.id === id)?.name}
+              meId={user.id}
               me={ME}
               selectedId={selectedId}
               query={query}
@@ -2487,7 +2489,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 patchThread(id, { notes: [...(t?.notes ?? []), { id: uid(), by: user.id, text, at: nowIso() }] });
                 members.filter((u) => u.id !== user.id && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).forEach((u) => notify(u.id, 'mention', `${myFirst} mentioned you in a note on “${t?.subject}”`, { app: 'mail', id }));
               }}
-              labels={LABELS}
+              client={selected ? clientForThread(selected) : undefined}
+              onClient={(id) => openClient(id, 'emails')}
               me={ME}
               signature={settings.signature}
               blockTrackers={settings.blockTrackers}

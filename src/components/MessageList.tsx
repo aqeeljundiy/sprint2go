@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useRef } from 'react';
 import { lastTracked, summarize } from '../tracking';
 import { Archive, Eye, EyeOff, Menu, Paperclip, Search, Star, Trash2 } from 'lucide-react';
-import type { Label, Person, Thread } from '../types';
+import type { Client, Person, Thread } from '../types';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
 import { isMine } from '../identity';
@@ -9,7 +9,9 @@ import { isMine } from '../identity';
 interface Props {
   title: string;
   threads: Thread[];
-  labels: Label[];
+  clientOf: (t: Thread) => Client | undefined; // the client this email is with (replaces labels)
+  personName: (id: string) => string | undefined;
+  meId: string;
   me: Person;
   selectedId: string | null;
   query: string;
@@ -31,7 +33,7 @@ export const LIST_MIN = 300;
 export const LIST_MAX = 560;
 
 export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageList(props, searchRef) {
-  const { title, threads, labels, me, selectedId, query, filter } = props;
+  const { title, threads, me, selectedId, query, filter } = props;
   const listRef = useRef<HTMLUListElement>(null);
   const unread = threads.filter((t) => t.unread).length;
 
@@ -95,6 +97,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         <ul className="rows" ref={listRef}>
           {threads.map((t) => {
             const last = lastMessage(t);
+            const client = props.clientOf(t);
             const hasFiles = t.messages.some((m) => m.attachments?.length);
             const tracked = lastTracked(t, me);
             const sum = tracked?.tracking ? summarize(tracked.tracking) : null;
@@ -115,16 +118,14 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
                   </div>
                   <div className="row-subject">{t.subject}</div>
                   {props.showSnippets && <div className="row-snippet">{snippet(last.body)}</div>}
-                  {(t.labels.length > 0 || hasFiles || sum) && (
+                  {(client || t.assignee || hasFiles || sum) && (
                     <div className="row-meta">
-                      {t.labels.map((id) => {
-                        const l = labels.find((x) => x.id === id);
-                        return l ? (
-                          <span key={id} className="chip" style={{ ['--c' as string]: l.color }}>
-                            {l.name}
-                          </span>
-                        ) : null;
-                      })}
+                      {client && (
+                        <span className="chip client-chip" style={{ ['--c' as string]: client.color }}>
+                          {client.name}
+                        </span>
+                      )}
+                      {t.assignee && <span className="chip assignee-chip">{t.assignee === props.meId ? 'You’re on it' : `${props.personName(t.assignee)?.split(' ')[0] ?? 'Someone'} is on it`}</span>}
                       {hasFiles && <Paperclip size={13} className="clip" />}
                       {sum && (
                         <span
