@@ -288,7 +288,7 @@ export interface Client {
   overview?: { headline: string; summary: string; progress: string; wins: string[]; risks: string[]; next: string[]; at: string; from: number };
 }
 
-export type ChannelCategory = 'client' | 'team' | 'project' | 'social';
+export type ChannelCategory = 'client' | 'shared' | 'team' | 'project' | 'social'; // client = our team about a client; shared = with the client's people
 export type Policy = 'everyone' | 'admins';
 
 export interface Channel {

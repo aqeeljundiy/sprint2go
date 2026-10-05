@@ -4,9 +4,12 @@ import type { Channel, ChannelCategory, Client, Guest, Policy, Team, User } from
 import { Avatar } from './Avatar';
 import { Dot, Select } from './ui/Select';
 
-export const CATEGORY_NAME: Record<ChannelCategory, string> = { client: 'Clients', team: 'Teams', project: 'Projects', social: 'Social' };
+export const CATEGORY_NAME: Record<ChannelCategory, string> = { client: 'Clients', shared: 'With clients', team: 'Teams', project: 'Projects', social: 'Social' };
+/** The name on one channel's category. */
+export const CATEGORY_ONE: Record<ChannelCategory, string> = { client: 'Client (internal)', shared: 'With client', team: 'Team', project: 'Project', social: 'Social' };
 const CATEGORY_HINT: Record<ChannelCategory, string> = {
-  client: 'Everything about one client',
+  client: 'Our team about one client. They never see it',
+  shared: 'With the client’s people, invited as guests',
   team: 'A department or the whole company',
   project: 'A piece of work with an end date',
   social: 'Lunch, wins, weekend plans',
@@ -54,7 +57,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
   const client = clients.find((c) => c.id === clientId);
   const pickCategory = (c: ChannelCategory) => {
     setCategory(c);
-    if (c !== 'client') setClientId('');
+    if (c !== 'client' && c !== 'shared') setClientId('');
     if (c !== 'team') setTeamId('');
   };
   const pickClient = (id: string) => {
@@ -89,7 +92,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
       teamId: teamId || undefined,
       private: priv,
       members: [...new Set([...members, me])],
-      guests,
+      guests: category === 'shared' ? guests : [],
       postPolicy,
       invitePolicy,
       sharedWith: shared ?? undefined,
@@ -147,13 +150,13 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                 <div className="cat-pick">
                   {(Object.keys(CATEGORY_NAME) as ChannelCategory[]).map((c) => (
                     <button key={c} type="button" className={category === c ? 'on' : ''} onClick={() => pickCategory(c)}>
-                      <strong>{CATEGORY_NAME[c].replace(/s$/, '')}</strong>
+                      <strong>{CATEGORY_ONE[c]}</strong>
                       <small>{CATEGORY_HINT[c]}</small>
                     </button>
                   ))}
                 </div>
               </div>
-              {category === 'client' && (
+              {(category === 'client' || category === 'shared') && (
                 <div className="field">
                   <span>Client</span>
                   <Select value={clientId} onChange={pickClient} label="Client" placeholder="Pick a client" options={clients.map((c) => ({ value: c.id, label: c.name, hint: c.domain ? '@' + c.domain : undefined, icon: <Dot color={c.color} /> }))} />
@@ -237,6 +240,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                 )}
               </div>
 
+              {category === 'shared' ? (
               <div className="guest-box">
                 <div className="gb-head">
                   <Mail size={15} />
@@ -271,6 +275,11 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                 )}
                 {guestDomainWarn && <p className="muted small">Heads up: this address isn’t at @{client!.domain}.</p>}
               </div>
+              ) : (
+                <p className="muted small guest-note">
+                  {category === 'client' ? 'Only your team is here. To talk with the client, make a channel with the “With client” category.' : 'Only your team is here. Client guests can only join “With client” channels.'}
+                </p>
+              )}
             </fieldset>
           )}
 
@@ -319,7 +328,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
             {readOnly ? 'Close' : 'Cancel'}
           </button>
           {!readOnly && (
-            <button className="primary-btn" onClick={save} disabled={!name.trim() || (category === 'client' && !clientId)}>
+            <button className="primary-btn" onClick={save} disabled={!name.trim() || ((category === 'client' || category === 'shared') && !clientId)}>
               {editing ? 'Save' : 'Create channel'}
             </button>
           )}

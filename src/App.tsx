@@ -1039,7 +1039,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         notify(br.userId, 'done', `All tasks in the brief “${br.title}” are done`, { app: 'tasks', id: br.id });
       // Celebrate in the client's (or team's) channel, and with a little confetti for the person who finished it.
       if (ws.chat?.celebrations !== false && !isBrief(t)) {
-        const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && ((t.clientId && c.clientId === t.clientId) || (!t.clientId && t.teamId && c.teamId === t.teamId)));
+        const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && c.category !== 'shared' && ((t.clientId && c.clientId === t.clientId) || (!t.clientId && t.teamId && c.teamId === t.teamId)));
         if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `${myFirst} finished “${t.title}”`, at: nowIso(), kind: 'celebration', taskId: t.id }]);
         if (!quiet) celebrate();
       }
@@ -2841,7 +2841,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onSendBack={sendBack}
           onSaveTemplate={saveTemplate}
           onOpenChannel={(clientId) => {
-            const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
+            const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId && c.category !== 'shared') ?? channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));
             else showToast({ text: 'This client has no channel yet' });
           }}

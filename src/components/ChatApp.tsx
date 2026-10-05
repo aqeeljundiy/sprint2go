@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
+import { Handshake,
   ArrowLeft,
   ArrowUp,
   BarChart3,
@@ -46,7 +46,7 @@ import { dueLabel, statusOf } from './TasksView';
 import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
-import { CATEGORY_NAME } from './ChannelDialog';
+import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -119,6 +119,8 @@ export function ChatSidebar(p: SidebarProps) {
               <Avatar person={other} size={20} />
               <i className={`presence ${p.presence(other.id)}`} />
             </span>
+          ) : c.category === 'shared' ? (
+            <Handshake size={15} />
           ) : c.private ? (
             <Lock size={15} />
           ) : (
@@ -127,7 +129,7 @@ export function ChatSidebar(p: SidebarProps) {
           <span className="sb-label">
             {other ? other.name : c.name}
             {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
-            {c.guests?.length ? <em className="ext-tag" title="Has client guests">ext</em> : null}
+            {c.category === 'shared' || c.guests?.length ? <em className="ext-tag" title="The client can see this channel">client</em> : null}
           </span>
           {p.unread[c.id] ? <span className="count">{p.unread[c.id]}</span> : null}
         </button>
@@ -168,7 +170,7 @@ export function ChatSidebar(p: SidebarProps) {
   const starredList = [...rooms, ...dms].filter((c) => star.has(c.id));
   let body: ReactNode;
   if (active === 'default') {
-    body = (['client', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => section(cat, CATEGORY_NAME[cat], rooms.filter((c) => (c.category ?? 'project') === cat && !star.has(c.id))));
+    body = (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => section(cat, CATEGORY_NAME[cat], rooms.filter((c) => (c.category ?? 'project') === cat && !star.has(c.id))));
   } else if (active === 'unread') {
     const list = rooms.filter((c) => !star.has(c.id)).sort((a, b) => (p.unread[b.id] ?? 0) - (p.unread[a.id] ?? 0) || recency(b).localeCompare(recency(a)));
     body = [section('u-unread', 'Unread', list.filter((c) => p.unread[c.id])), section('u-rest', 'Everything else', list.filter((c) => !p.unread[c.id]))];
@@ -360,7 +362,7 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
   const fromCategories = () =>
     setV({
       ...v,
-      sections: (['client', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => ({ id: cat, name: CATEGORY_NAME[cat], channelIds: channels.filter((c) => (c.category ?? 'project') === cat).map((c) => c.id) })),
+      sections: (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => ({ id: cat, name: CATEGORY_NAME[cat], channelIds: channels.filter((c) => (c.category ?? 'project') === cat).map((c) => c.id) })),
     });
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
@@ -1311,6 +1313,14 @@ export function ChatView(p: ViewProps) {
             </div>
           </div>
         )}
+        {tab === 'messages' && channel.category === 'shared' && (
+          <div className="shared-note">
+            <Handshake size={14} />
+            <span>
+              {channel.guests?.length ? `${channel.guests.map((g) => g.name.split(' ')[0]).join(', ')} from ${client?.name ?? 'the client'} can read this channel.` : `Shared with ${client?.name ?? 'the client'}. Invite their people in channel settings.`} Keep internal talk in your team’s own channel.
+            </span>
+          </div>
+        )}
         {tab === 'messages' && composer}
       </div>
 
@@ -1499,7 +1509,7 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
               <dt>Purpose</dt>
               <dd>{channel.topic ?? 'Not set'}</dd>
               <dt>Category</dt>
-              <dd>{CATEGORY_NAME[channel.category ?? 'project'].replace(/s$/, '')}</dd>
+              <dd>{CATEGORY_ONE[channel.category ?? 'project']}</dd>
               {client && (
                 <>
                   <dt>Client</dt>
