@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { term } from '../terms';
 import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import type { AISettings, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
@@ -20,7 +21,7 @@ import { changePassword, server } from '../sync';
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
   { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
-  { id: 'clients', name: 'Client access', icon: Handshake, group: 'Company' },
+  { id: 'clients', get name() { return `${term.Who} access`; }, icon: Handshake, group: 'Company' },
   { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
   { id: 'meetings', name: 'Meetings', icon: Video, group: 'Company' },
   { id: 'ai', name: 'AI', icon: Sparkles, group: 'Company' },
@@ -171,6 +172,19 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   placeholder="business.com"
                 />
                 <small>People at these domains are your team, so their email is never tracked.</small>
+              </div>
+              <div className="field">
+                <label>What you call your work</label>
+                <Select<'project' | 'client'>
+                  value={ws.terms?.word ?? 'project'}
+                  onChange={(v) => onWorkspace({ terms: { word: v } })}
+                  label="What you call your work"
+                  options={[
+                    { value: 'project', label: 'Projects', hint: 'Any kind of work: clients, partners, internal' },
+                    { value: 'client', label: 'Clients', hint: 'For agencies that work for clients' },
+                  ]}
+                />
+                <small>Changes the word everywhere in the app. With Projects, the people you invite are called guests.</small>
               </div>
               </fieldset>
 
@@ -463,7 +477,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'storage' && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} byChannel={admin.byChannel} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'clients' && (
             <>
-              <h2>Client access</h2>
+              <h2>{term.Who} access</h2>
               <p className="set-intro">What your clients see and can do when they sign in to their portal. You can change any of these for one client on its client page (Portal tab).</p>
               <ClientAccessForm
                 value={accessFor(ws, {})}
@@ -472,7 +486,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 brandingAvailable={!!plan.addons.branding}
                 onChange={(p) => onWorkspace({ clientAccess: { ...accessFor(ws, {}), ...p } })}
               />
-              <p className="muted small">Clients never see Mail, Calendar, Drive, your team’s channels, internal comments or other clients. To check, open a client’s page and choose “View as client”.</p>
+              <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
           {section === 'teams' && <TeamsSection ws={ws} teams={admin.teams} users={wsUsers} canManage={canManage} onTeams={admin.onTeams} onTeamHome={admin.onTeamHome} toast={admin.toast} />}

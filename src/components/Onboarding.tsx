@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { term } from '../terms';
 import { Check, Cloud, Copy, Loader2, Mail, MailX, Server, Shuffle, X, type LucideIcon } from 'lucide-react';
 import type { Account, AppId, EmailSetup, MailProvider, MeetingSettings, User, Workspace } from '../types';
 import { DEFAULT_MEETINGS, WORKSPACE_COLORS, defaultAI, trialPlan } from '../data/workspaces';
@@ -140,7 +141,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose }: Props) {
           {step === 0 && (
             <>
               <h2>Set up your company</h2>
-              <p className="set-intro">This becomes your workspace: your brand, your people, your clients.</p>
+              <p className="set-intro">This becomes your workspace: your brand, your people, your {term.many}.</p>
               <div className="field">
                 <label htmlFor="ob-name">Company name</label>
                 <input id="ob-name" autoFocus value={brand.name} onChange={(e) => setBrand({ ...brand, name: e.target.value })} placeholder="e.g. Nusa Creative" />

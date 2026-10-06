@@ -67,9 +67,19 @@
 - Materials of shared channels in the client's Files.
 - Email notifications to clients (needs real mail).
 
-## Rename "client" access to cover partners too (agreed 6 Oct)
-- People from outside: **Guests**. Their area: **Shared space**. The other company gets a **type**: Client, Partner, Vendor, Freelancer, Collaborator (Client by default).
-- Workspace switcher section: "Shared with you". Channel category "With client" becomes "Shared". Settings "Client access" becomes "Guest access", with defaults per type.
+## Done 6 Oct: "Project" replaces "client"
+- Words come from `src/terms.ts`. Settings, General, "What you call your work": **Projects** (default) or **Clients**. It switches live everywhere, including the Settings menu and chat sections.
+- With Projects, outside people are **guests**; with Clients they stay "clients". Shared space, Shared channels, Guests tab, Past projects, Projects × teams.
+- Chat sections: Projects, Shared, Teams, **Other** (the old "Projects" catch-all; still "Projects" for companies on Clients).
+- Project **type** label (Client, Internal, Partner, Vendor, Event, Other): set on the project header or when adding; filter chips above the list once there are 2+ types. Demo: "P&P website refresh" is Internal.
+- Guests show as **Name · Company**: company from the invite, else the project name when the email domain matches, else the email domain (gmail and the like are skipped).
+- Guests with 2+ shared projects land on **Shared with you**, grouped by inviting company, saying what waits on them. "See everything shared with you" in the switcher.
+- **Start your own workspace (free)** for guests: the usual onboarding, saved by `POST /api/workspace` (they're forced to owner). They keep their shared spaces in the switcher.
+
+## Next, for projects
+- Per-type defaults for guest access (e.g. Partners can see more than Clients).
+- Narrow panes: the project page's Guests tab squeezes its two columns below about 900px.
+- Mobile: a "Shared with you" entry in the phone switcher.
 
 ## Principle audit: "what do I need to do now?" (6 Oct): first pass done 6 Oct
 Rule: every number or card must pass "so what, now what?" for this person today, or go to a report. Exceptions over totals, hide zeros, the action next to the thing.

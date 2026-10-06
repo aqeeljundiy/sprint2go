@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { term } from '../terms';
 import {
   Bot,
   CalendarClock,
@@ -47,7 +48,7 @@ export const STATUS_LABEL: Record<NonNullable<Meeting['status']>, string> = {
   stopped: 'Stopped',
 };
 export const LIVE = new Set(['queued', 'joining', 'waiting_room', 'recording', 'stopping', 'processing']);
-export const TYPE_LABEL: Record<MeetingType, string> = { sales: 'Sales', client: 'Client', internal: 'Internal', hiring: 'Hiring', partner: 'Partner', one_on_one: '1:1', other: 'Other' };
+export const TYPE_LABEL: Record<MeetingType, string> = { sales: 'Sales', get client() { return `${term.One}`; }, internal: 'Internal', hiring: 'Hiring', partner: 'Partner', one_on_one: '1:1', other: 'Other' };
 const KEEP_LABEL = { video: 'Video, audio and notes', audio: 'Audio and notes', notes: 'Notes and transcript only' } as const;
 export const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 const sizeOf = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${Math.round(mb)} MB`);
@@ -264,7 +265,7 @@ function MeetingList(p: MeetProps & { unfiled: boolean }) {
   const { shown, bar, filtering } = useFilter(list);
   return (
     <section className="meet-pane view-enter">
-      <Head title={p.unfiled ? 'Unfiled' : 'Meetings'} sub={p.unfiled ? 'Meetings that didn’t fit a client yet.' : 'Every meeting the notetaker has joined in this workspace.'} onMenu={p.onMenu}>
+      <Head title={p.unfiled ? 'Unfiled' : 'Meetings'} sub={p.unfiled ? `Meetings that didn’t fit a ${term.one} yet.` : 'Every meeting the notetaker has joined in this workspace.'} onMenu={p.onMenu}>
         <button className="primary-btn sm" onClick={p.onSend}>
           <Bot size={14} /> Send bot
         </button>
@@ -353,7 +354,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
         <Select
           value={m.clientId ?? ''}
           onChange={(v) => {
-            const outsiders = speakers.filter((s) => !p.users.some((u) => u.name.split(' ')[0] === s.split(' ')[0]) && s !== 'You' && s !== 'Client');
+            const outsiders = speakers.filter((s) => !p.users.some((u) => u.name.split(' ')[0] === s.split(' ')[0]) && s !== 'You' && s !== `${term.One}`);
             if (v && outsiders.length && m.clientId !== v) setAskRemember(v);
             p.onFolder(m.id, v || null, false);
           }}
@@ -493,12 +494,12 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
               </dd>
               {client && (
                 <>
-                  <dt>Client</dt>
+                  <dt>{term.One}</dt>
                   <dd>
                     <button className="link-btn" onClick={() => p.onOpenClient(client.id)}>
                       {client.name}
                     </button>
-                    {m.sharedWithClient && <span className="ap-tag approved">notes visible to client</span>}
+                    {m.sharedWithClient && <span className="ap-tag approved">notes visible to {term.whos}</span>}
                   </dd>
                 </>
               )}
@@ -668,7 +669,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
               <input type="checkbox" checked={!!m.sharedWithClient} onChange={(e) => p.onPatch(m.id, { sharedWithClient: e.target.checked })} /> {client.name} sees the notes in their portal
             </label>
           )}
-          <p className="muted small">Recordings never go to the client portal. Use Share for a read-only link.</p>
+          <p className="muted small">Recordings never go to the shared space. Use Share for a read-only link.</p>
         </div>
       </Popover>
     </section>
@@ -835,11 +836,11 @@ function FolderPage(p: MeetProps & { clientId: string }) {
             {c.name}
           </>
         }
-        sub="Client folder"
+        sub={`${term.One} folder`}
         onMenu={p.onMenu}
       >
         <button className="ghost-btn sm" onClick={() => p.onOpenClient(c.id)}>
-          Client page: overview, mail, files
+          {term.One} page: overview, mail, files
         </button>
         <button className="ghost-btn sm" onClick={() => p.onAsk({ kind: 'client', id: c.id })}>
           <Sparkles size={13} /> Ask AI
@@ -860,7 +861,7 @@ function FolderPage(p: MeetProps & { clientId: string }) {
       <div className="tracking-scroll">
         {tab === 'meetings' && (
           <>
-            {bar('Search this client’s meetings')}
+            {bar(`Search this ${term.one}’s meetings`)}
             <MeetingRows list={shown} clients={p.clients} tasks={p.tasks} onOpen={(id) => p.onPage({ kind: 'meeting', id })} />
             {!shown.length && <p className="te-empty">{filtering ? 'Nothing matches.' : 'No meetings yet.'}</p>}
           </>

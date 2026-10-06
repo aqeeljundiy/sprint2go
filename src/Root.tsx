@@ -10,6 +10,8 @@ import { ClientApp } from './components/ClientApp';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, portalsFor } from './clientView';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
+import { SharedHome } from './components/SharedHome';
+import { Onboarding } from './components/Onboarding';
 import { AcceptInvite, SignIn } from './components/SignIn';
 
 /**
@@ -165,6 +167,9 @@ function ClientRoot({ me }: { me: User }) {
   // Someone can be a client of more than one company: one portal at a time, with a switcher.
   const portals = portalsFor(me.email, [], workspaces, clients, channels);
   const [key, setKey] = usePersisted(`s2g-portal:${me.id}`, '');
+  const [starting, setStarting] = useState(false);
+  // More than one project shared with them: start on "Shared with you" (grouped by company), unless one is open.
+  const home = portals.length > 1 && !portals.some((pt) => pt.key === key);
   const portal = portals.find((pt) => pt.key === key) ?? portals[0];
   const ws = portal?.ws;
   const client = portal?.client;
@@ -172,6 +177,27 @@ function ClientRoot({ me }: { me: User }) {
     if (ws) setAIWorkspace(ws.id);
   }, [ws?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!portal || !ws || !client) return <NoWorkspace email={me.email} onBack={() => void signOut()} />;
+  const start = (
+    starting && (
+      <Onboarding
+        me={me}
+        existingEmails={users.map((u) => u.email.toLowerCase())}
+        onClose={() => setStarting(false)}
+        onCreate={async (w, newUsers) => {
+          const r = await fetch('/api/workspace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspace: w, users: newUsers }) });
+          if (r.ok) location.reload();
+          else alert(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t create the workspace. Try again.');
+        }}
+      />
+    )
+  );
+  if (home)
+    return (
+      <>
+        <SharedHome name={me.name} portals={portals} todos={todos} channels={channels} messages={messages} onOpen={setKey} onStart={() => setStarting(true)} onSignOut={() => void signOut()} />
+        {start}
+      </>
+    );
   const { person, access } = afterEnd(client, portal.person, accessFor(ws, client));
   const team = users.filter((u) => !u.clientOf);
   const actions = clientActions({
@@ -211,7 +237,7 @@ function ClientRoot({ me }: { me: User }) {
       notices={notices.filter((n) => inbox.includes(n.userId))}
       onReadNotices={() => setNotices((ns) => ns.map((n) => (inbox.includes(n.userId) ? { ...n, read: true } : n)))}
       onSignOut={() => void signOut()}
-      switcher={portals.length > 1 ? <WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} /> : undefined}
+      switcher={<WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} onHome={portals.length > 1 ? () => setKey('') : undefined} onAdd={() => setStarting(true)} addLabel="Start your own workspace (free)" />}
     />
   );
 }

@@ -1,17 +1,18 @@
 import { useState } from 'react';
+import { term } from '../terms';
 import { Archive, Globe, Hash, Lock, Mail, Megaphone, Plus, Users, X } from 'lucide-react';
 import type { Channel, ChannelCategory, Client, Guest, Policy, Team, User } from '../types';
 import { Avatar } from './Avatar';
 import { Dot, Select } from './ui/Select';
 
-export const CATEGORY_NAME: Record<ChannelCategory, string> = { client: 'Clients', shared: 'With clients', team: 'Teams', project: 'Projects', social: 'Social' };
+export const CATEGORY_NAME: Record<ChannelCategory, string> = { get client() { return `${term.Many}`; }, shared: `Shared`, team: 'Teams', get project() { return term.word === 'project' ? 'Other' : 'Projects'; }, social: 'Social' };
 /** The name on one channel's category. */
-export const CATEGORY_ONE: Record<ChannelCategory, string> = { client: 'Client (internal)', shared: 'With client', team: 'Team', project: 'Project', social: 'Social' };
+export const CATEGORY_ONE: Record<ChannelCategory, string> = { get client() { return `${term.One} (internal)`; }, shared: `Shared`, team: 'Team', get project() { return term.word === 'project' ? 'Other' : 'Project'; }, social: 'Social' };
 const CATEGORY_HINT: Record<ChannelCategory, string> = {
-  client: 'Our team about one client. They never see it',
-  shared: 'With the client’s people, invited as guests',
+  get client() { return `Our team about one ${term.one}. They never see it`; },
+  get shared() { return `With people from outside, invited as ${term.whos}`; },
   team: 'A department or the whole company',
-  project: 'A piece of work with an end date',
+  get project() { return term.word === 'project' ? 'Planning, hiring, anything that isn’t one project' : 'A piece of work with an end date'; },
   social: 'Lunch, wins, weekend plans',
 };
 
@@ -158,8 +159,8 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
               </div>
               {(category === 'client' || category === 'shared') && (
                 <div className="field">
-                  <span>Client</span>
-                  <Select value={clientId} onChange={pickClient} label="Client" placeholder="Pick a client" options={clients.map((c) => ({ value: c.id, label: c.name, hint: c.domain ? '@' + c.domain : undefined, icon: <Dot color={c.color} /> }))} />
+                  <span>{term.One}</span>
+                  <Select value={clientId} onChange={pickClient} label={`${term.One}`} placeholder={`Pick a ${term.one}`} options={clients.map((c) => ({ value: c.id, label: c.name, hint: c.domain ? '@' + c.domain : undefined, icon: <Dot color={c.color} /> }))} />
                 </div>
               )}
               {category === 'team' && (
@@ -244,7 +245,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
               <div className="guest-box">
                 <div className="gb-head">
                   <Mail size={15} />
-                  <strong>Client guests</strong>
+                  <strong>Guests</strong>
                   <span className="muted small">People outside the company. They only see channels you add them to.</span>
                 </div>
                 {guests.map((g) => (
@@ -270,14 +271,14 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                   </div>
                 ) : (
                   <p className="gate">
-                    Free includes 1 client guest. <strong>Upgrade to Small (Rp 39.000 per person)</strong> to invite more clients.
+                    Free includes 1 guest. <strong>Upgrade to Small (Rp 39.000 per person)</strong> to invite more {term.whos}.
                   </p>
                 )}
                 {guestDomainWarn && <p className="muted small">Heads up: this address isn’t at @{client!.domain}.</p>}
               </div>
               ) : (
                 <p className="muted small guest-note">
-                  {category === 'client' ? 'Only your team is here. To talk with the client, make a channel with the “With client” category.' : 'Only your team is here. Client guests can only join “With client” channels.'}
+                  {category === 'client' ? `Only your team is here. To talk with the ${term.who}, make a channel with the “Shared” category.` : `Only your team is here. Guests can only join “Shared” channels.`}
                 </p>
               )}
             </fieldset>
@@ -310,7 +311,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                 />
               </div>
               <ul className="perm-notes">
-                <li>Client guests can read and post here, react and reply. They can’t see other channels, people’s profiles or your tasks unless you share them.</li>
+                <li>Guests can read and post here, react and reply. They can’t see other channels, people’s profiles or your tasks unless you share them.</li>
                 <li>{priv ? 'Private: only members see this channel and its files.' : 'Public: anyone in the company can find and join it.'}</li>
               </ul>
             </fieldset>

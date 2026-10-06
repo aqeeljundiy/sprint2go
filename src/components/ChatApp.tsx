@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { term } from '../terms';
+import { companyOf } from '../clientView';
 import { FolderPlus, ChevronUp, Handshake,
   ArrowLeft,
   ArrowUp,
@@ -212,7 +214,7 @@ export function ChatSidebar(p: SidebarProps) {
           <span className="sb-label">
             {other ? other.name : c.name}
             {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
-            {c.category === 'shared' || c.guests?.length ? <em className="ext-tag" title="The client can see this channel">client</em> : null}
+            {c.category === 'shared' || c.guests?.length ? <em className="ext-tag" title={`The ${term.whos} can see this channel`}>{term.whos}</em> : null}
           </span>
           {p.unread[c.id] ? <span className="count">{p.unread[c.id]}</span> : null}
         </button>
@@ -610,7 +612,7 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
         <div className="modal-body connect-form">
           <label className="field">
             <span>Name</span>
-            <input autoFocus value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="e.g. My clients" />
+            <input autoFocus value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder={`e.g. My ${term.many}`} />
           </label>
           <div className="field">
             <span>Sections</span>
@@ -861,7 +863,7 @@ export function ChatView(p: ViewProps) {
       <section className="chat-pane chat-empty view-enter">
         <Hash size={28} />
         <p className="empty-title">Pick a channel or person</p>
-        <p className="empty-sub">Client channels keep every conversation about a client in one place.</p>
+        <p className="empty-sub">{term.One} channels keep every conversation about a {term.one} in one place.</p>
       </section>
     );
 
@@ -1029,7 +1031,7 @@ export function ChatView(p: ViewProps) {
           {!grouped && (
             <div className="cm-head">
               <strong>{a.name}</strong>
-              {a.guest && <span className="guest-badge">Guest · {client?.name ?? 'client'}</span>}
+              {a.guest && <span className="guest-badge">Guest{(() => { const co = companyOf(a.person?.email ?? '', client?.people?.find((x) => x.email === a.person?.email)?.company, client); return co ? ` · ${co}` : ''; })()}</span>}
               {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
               <time>{relative(m.at)}</time>
               {m.parentId && m.alsoInChannel && !inThread && <span className="muted small">replied in a thread</span>}
@@ -1289,8 +1291,8 @@ export function ChatView(p: ViewProps) {
               {other && p.statuses[other.id] && <span className="st-emoji">{p.statuses[other.id].emoji}</span>}
             </h1>
             <p>
-              {other ? (p.statuses[other.id]?.text ?? other.title) : (channel.topic ?? (client ? `${client.name} client channel` : ''))}
-              {channel.guests?.length ? ` · ${channel.guests.length} client guest${channel.guests.length > 1 ? 's' : ''}` : ''}
+              {other ? (p.statuses[other.id]?.text ?? other.title) : (channel.topic ?? (client ? `${client.name} ${term.one} channel` : ''))}
+              {channel.guests?.length ? ` · ${channel.guests.length} guest${channel.guests.length > 1 ? 's' : ''}` : ''}
               {channel.sharedWith ? ` · shared with ${channel.sharedWith.workspaceName}${channel.sharedWith.status === 'pending' ? ' (waiting)' : ''}` : ''}
             </p>
           </div>
@@ -1499,7 +1501,7 @@ export function ChatView(p: ViewProps) {
           <div className="shared-note">
             <Handshake size={14} />
             <span>
-              {channel.guests?.length ? `${channel.guests.map((g) => g.name.split(' ')[0]).join(', ')} from ${client?.name ?? 'the client'} can read this channel.` : `Shared with ${client?.name ?? 'the client'}. Invite their people in channel settings.`} Keep internal talk in your team’s own channel.
+              {channel.guests?.length ? `${channel.guests.map((g) => g.name.split(' ')[0]).join(', ')} can read this channel.` : `Shared with ${client?.name ?? 'guests'}. Invite people in channel settings.`} Keep internal talk in your team’s own channel.
             </span>
           </div>
         )}
@@ -1694,7 +1696,7 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
               <dd>{CATEGORY_ONE[channel.category ?? 'project']}</dd>
               {client && (
                 <>
-                  <dt>Client</dt>
+                  <dt>{term.One}</dt>
                   <dd>
                     <button className="link-btn" onClick={() => p.onOpenClient(client.id)}>
                       {client.name}
@@ -1785,13 +1787,14 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
                 )
               );
             })}
-            {!!channel.guests?.length && <div className="sel-group">Client guests · {channel.guests.length}</div>}
+            {!!channel.guests?.length && <div className="sel-group">Guests · {channel.guests.length}</div>}
             {channel.guests?.map((g) => (
               <div key={g.email} className="pl-row">
                 <span className="guest-av">{g.name.charAt(0)}</span>
                 <span className="pl-text">
                   <strong>
-                    {g.name} <em className="ext-tag">guest</em>
+                    {g.name}
+                    {companyOf(g.email, client?.people?.find((x) => x.email === g.email)?.company, client) ? ` · ${companyOf(g.email, client?.people?.find((x) => x.email === g.email)?.company, client)}` : ''} <em className="ext-tag">guest</em>
                   </strong>
                   <small>
                     {g.email} · {g.status === 'joined' ? 'joined' : 'invite sent'}

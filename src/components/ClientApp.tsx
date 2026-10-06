@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { setTermWord, term } from '../terms';
 import {
   ArrowRight,
   Bell,
@@ -83,6 +84,7 @@ function useMobile() {
  */
 export function ClientApp(p: Props) {
   const { ws, client, person, access, actions } = p;
+  setTermWord(ws.terms?.word); // the inviting company's words
   const v = actions.view();
   const mobile = useMobile();
   const [mode, setMode] = useState<Mode>('home');
@@ -1144,7 +1146,7 @@ function PersonMenu({ p, close, mobileModes, go, say }: { p: Props; close: () =>
         ))}
       {(p.onSignOut ?? p.preview?.onExit) && (
         <button className="sel-opt" onClick={() => (close(), (p.onSignOut ?? p.preview!.onExit)())}>
-          <LogOut size={14} /> {p.onSignOut ? 'Sign out' : 'Exit client view'}
+          <LogOut size={14} /> {p.onSignOut ? 'Sign out' : `Exit ${term.who} view`}
         </button>
       )}
       <p className="muted small menu-note">You see what {ws.name} shares with you. Need something? Use Requests or Chat.</p>

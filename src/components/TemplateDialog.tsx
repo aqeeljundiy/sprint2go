@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { term } from '../terms';
 import { CheckSquare, LayoutTemplate, Repeat as RepeatIcon, Trash2, X } from 'lucide-react';
 import type { Client, User } from '../types';
 import type { TaskTemplate } from '../data/templates';
@@ -69,13 +70,13 @@ export function TemplateDialog(p: Props) {
               <p className="muted small">{tpl.description}</p>
               <div className="tpl-fields">
                 <label className="field">
-                  <span>Client</span>
+                  <span>{term.One}</span>
                   <Select
                     value={clientId}
                     onChange={setClientId}
-                    label="Client"
+                    label={`${term.One}`}
                     searchable
-                    options={[{ value: '', label: 'No client (internal)' }, ...p.clients.map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]}
+                    options={[{ value: '', label: `No ${term.one}` }, ...p.clients.map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]}
                   />
                 </label>
                 <label className="field">

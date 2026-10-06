@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { PROJECT_TYPES, term } from '../terms';
 import { Archive, Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Users } from 'lucide-react';
 import type { Client, Team, Todo } from '../types';
 import { doers, isBrief, statusOf, type TaskScope } from './TasksView';
 import { localDay } from '../utils';
+import { usePersisted } from '../settings';
+import { Select } from './ui/Select';
 
 interface Props {
   scope: TaskScope;
@@ -15,18 +18,21 @@ interface Props {
   myClientIds: string[];
   onScope: (s: TaskScope) => void;
   onBrainDump: () => void;
-  onAddClient: (name: string, domain?: string) => void;
+  onAddClient: (name: string, domain?: string, type?: string) => void;
 }
 
 export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeams, me, isAdmin, myTeamIds, myClientIds, onScope, onBrainDump, onAddClient }: Props) {
   const teams = isAdmin ? allTeams : allTeams.filter((t) => myTeamIds.includes(t.id));
   const mineOrAll = isAdmin ? allClients : allClients.filter((c) => myClientIds.includes(c.id));
-  const clients = mineOrAll.filter((c) => c.status !== 'ended');
+  const [typeFilter, setTypeFilter] = usePersisted<string>('s2g-project-type', '');
+  const types = [...new Set(mineOrAll.filter((c) => c.status !== 'ended' && c.type).map((c) => c.type!))];
+  const clients = mineOrAll.filter((c) => c.status !== 'ended' && (!typeFilter || !types.includes(typeFilter) || c.type === typeFilter));
   const past = mineOrAll.filter((c) => c.status === 'ended');
   const [showPast, setShowPast] = useState(false);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
+  const [type, setType] = useState('');
   const open = tasks.filter((t) => !t.done && !isBrief(t));
   const today = localDay();
   const urgent = (t: Todo) => !!t.due && t.due <= today; // late or due today: the only counts worth showing
@@ -34,9 +40,10 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
 
   const save = () => {
     if (!name.trim()) return;
-    onAddClient(name.trim(), domain.trim().replace(/^@/, '') || undefined);
+    onAddClient(name.trim(), domain.trim().replace(/^@/, '') || undefined, type || undefined);
     setName('');
     setDomain('');
+    setType('');
     setAdding(false);
   };
 
@@ -52,13 +59,13 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
             [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => doers(t).includes(me) && urgent(t)).length],
             [{ kind: 'supervising' }, Eye, 'Supervising', open.filter((t) => t.supervisorId === me && statusOf(t) === 'review').length],
             [{ kind: 'myteams' }, Users, 'My teams', 0],
-            [{ kind: 'myclients' }, Building2, 'My clients', 0],
+            [{ kind: 'myclients' }, Building2, `My ${term.many}`, 0],
             [{ kind: 'delegated' }, Send, 'Assigned by me', open.filter((t) => t.createdBy === me && !doers(t).includes(me) && !!t.due && t.due < today).length],
             [{ kind: 'briefs' }, FileText, 'Briefs', 0],
             ...(isAdmin
               ? ([
                   [{ kind: 'all' }, Layers, 'Everything', 0],
-                  [{ kind: 'grid' }, LayoutGrid, 'Clients × teams', 0],
+                  [{ kind: 'grid' }, LayoutGrid, `${term.Many} × teams`, 0],
                 ] as const)
               : []),
           ] as const
@@ -94,7 +101,16 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
         </>
       )}
 
-      <div className="nav-heading sb-label">Clients</div>
+      <div className="nav-heading sb-label">{term.Many}</div>
+      {types.length > 1 && (
+        <div className="type-chips sb-label" role="group" aria-label={`Filter ${term.many} by type`}>
+          {['', ...types].map((t) => (
+            <button key={t || 'all'} className={(typeFilter && types.includes(typeFilter) ? typeFilter : '') === t ? 'on' : ''} onClick={() => setTypeFilter(t)}>
+              {t || 'All'}
+            </button>
+          ))}
+        </div>
+      )}
       <nav className="nav">
         {clients.map((c) => {
           const n = open.filter((t) => t.clientId === c.id && !!t.due && t.due < today).length; // late work only
@@ -112,9 +128,9 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
           );
         })}
         {past.length > 0 && (
-          <button className={`nav-item past-toggle ${is({ kind: 'past' }) ? 'active' : ''}`} onClick={() => (setShowPast((x) => !x), onScope({ kind: 'past' }))} title="Past clients">
+          <button className={`nav-item past-toggle ${is({ kind: 'past' }) ? 'active' : ''}`} onClick={() => (setShowPast((x) => !x), onScope({ kind: 'past' }))} title={`Past ${term.many}`}>
             <Archive size={16} />
-            <span className="sb-label">Past clients</span>
+            <span className="sb-label">Past {term.many}</span>
           </button>
         )}
         {showPast &&
@@ -128,8 +144,9 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
           ))}
         {adding ? (
           <div className="add-client sb-label">
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Client name" onKeyDown={(e) => e.key === 'Enter' && save()} />
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={`${term.One} name`} onKeyDown={(e) => e.key === 'Enter' && save()} />
             <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="Email domain (optional)" onKeyDown={(e) => e.key === 'Enter' && save()} />
+            <Select<string> value={type} onChange={setType} label="Type" options={[{ value: '', label: 'No type' }, ...PROJECT_TYPES.map((t) => ({ value: t, label: t }))]} />
             <div>
               <button className="ghost-btn sm" onClick={() => setAdding(false)}>
                 Cancel
@@ -140,9 +157,9 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
             </div>
           </div>
         ) : (
-          <button className="nav-item" onClick={() => setAdding(true)} title="Add client">
+          <button className="nav-item" onClick={() => setAdding(true)} title={`Add ${term.one}`}>
             <Plus size={17} />
-            <span className="sb-label">Add client</span>
+            <span className="sb-label">Add {term.one}</span>
           </button>
         )}
       </nav>

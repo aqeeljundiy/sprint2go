@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { term } from '../terms';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, PenLine, Search, User, type LucideIcon } from 'lucide-react';
 
 export interface PaletteItem {
@@ -97,7 +98,7 @@ export function CommandPalette({ items, onClose, queryActions, recentKey = 's2g-
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Jump to a client, task, person, channel, email or file…"
+            placeholder={`Jump to a ${term.one}, task, person, channel, email or file…`}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();

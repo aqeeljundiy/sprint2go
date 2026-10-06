@@ -83,3 +83,16 @@ export function portalsFor(email: string, memberOf: string[], workspaces: Worksp
     .filter((x): x is { client: Client; ws: Workspace; person: ClientPerson } => !!x.person && x.person.status !== 'pending')
     .map((x) => ({ ...x, key: `${x.ws.id}:${x.client.id}` }));
 }
+
+const FREEMAIL = ['gmail', 'googlemail', 'yahoo', 'outlook', 'hotmail', 'icloud', 'live', 'proton', 'protonmail', 'me', 'aol', 'ymail'];
+
+/** Where a guest works, for "Name · Company": as given at the invite, the project's name if the email matches its domain, or the email's domain. */
+export function companyOf(email: string, company?: string, client?: Pick<Client, 'name' | 'domain'>): string | undefined {
+  if (company?.trim()) return company.trim();
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return undefined;
+  if (client?.domain && (domain === client.domain.toLowerCase() || domain.endsWith('.' + client.domain.toLowerCase()))) return client.name;
+  const first = domain.split('.')[0];
+  if (FREEMAIL.includes(first)) return undefined;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}

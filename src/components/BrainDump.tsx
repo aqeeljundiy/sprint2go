@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { term } from '../terms';
 import { ArrowLeft, Bell, FileText, ListChecks, Loader2, Mail, MessagesSquare, Mic, MicOff, Plus, Sparkles, UserPlus, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
 import { ai, aiLive, type DumpBrief, type DumpTask } from '../ai';
@@ -154,7 +155,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
 
   const nameOptions = (name: string) => [
     ...users.map((u) => ({ value: u.id, label: `${name} is ${u.name}`, hint: u.title, icon: <Avatar person={u} size={22} />, group: 'A teammate' })),
-    { value: '__contact', label: `${name} is a client contact`, hint: 'Not on our team. The task stays with you', icon: <span className="avatar-empty sm">C</span>, group: 'Someone else' },
+    { value: '__contact', label: `${name} is a ${term.who} contact`, hint: 'Not on our team. The task stays with you', icon: <span className="avatar-empty sm">C</span>, group: 'Someone else' },
     { value: '__invite', label: `Invite ${name} to the team`, hint: 'Sends an invite by email', icon: <UserPlus size={16} />, group: 'Someone else' },
   ];
 
@@ -172,7 +173,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
 
         {step !== 'review' ? (
           <div className="modal-body">
-            <p className="modal-intro">Say or type everything on your mind: clients, who should do what, by when. You’ll check the plan before anything is sent.</p>
+            <p className="modal-intro">Say or type everything on your mind: {term.many}, who should do what, by when. You’ll check the plan before anything is sent.</p>
             <div className="dump-input">
               <textarea
                 id="dump-text"
@@ -225,7 +226,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
                 <input className="dr-title" value={brief.title} onChange={(e) => setBrief({ ...brief, title: e.target.value })} placeholder="Brief title, e.g. Glowkind launch campaign" aria-label="Brief title" />
                 <div className="dr-fields">
                   <Select value={brief.ownerId} options={peopleOptions(users, me, false)} onChange={(v) => setBrief({ ...brief, ownerId: v })} label="In charge" renderValue={(o) => <>{o?.icon}<span className="sel-text">{o ? `${o.label.replace(' (me)', '')} in charge` : 'Who is in charge?'}</span></>} />
-                  <Select value={brief.clientId ?? ''} options={clientOptions(clients)} onChange={(v) => setBrief({ ...brief, clientId: v || null })} label="Client" />
+                  <Select value={brief.clientId ?? ''} options={clientOptions(clients)} onChange={(v) => setBrief({ ...brief, clientId: v || null })} label={`${term.One}`} />
                   <DatePicker value={brief.due ?? ''} onChange={(v) => setBrief({ ...brief, due: v || null })} label="Brief due" placeholder="Due" />
                 </div>
                 <textarea className="drawer-notes" value={brief.context} onChange={(e) => setBrief({ ...brief, context: e.target.value })} placeholder="Goal, background, deliverables, links…" aria-label="Context" />
@@ -256,9 +257,9 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
                       )}
                     </div>
                   )}
-                  {r.contact && (r.resolved === 'contact' || !r.unknownName) && <span className="contact-note">Client contact: {r.contact}</span>}
+                  {r.contact && (r.resolved === 'contact' || !r.unknownName) && <span className="contact-note">{term.Who} contact: {r.contact}</span>}
                   <div className="dr-fields">
-                    {!asBrief && <Select value={r.clientId ?? ''} options={clientOptions(clients)} onChange={(v) => patch(r.key, { clientId: v || null })} label="Client" />}
+                    {!asBrief && <Select value={r.clientId ?? ''} options={clientOptions(clients)} onChange={(v) => patch(r.key, { clientId: v || null })} label={`${term.One}`} />}
                     <Select value={r.teamId ?? ''} options={teamOptions(teams)} onChange={(v) => patch(r.key, { teamId: v || null })} label="Team" />
                     <Select
                       value={r.assigneeId ?? ''}

@@ -182,7 +182,8 @@ export interface Workspace {
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
   meetingRules?: MeetingRule[];
-  clientAccess?: ClientAccess; // what clients see and do in their portal
+  clientAccess?: ClientAccess; // what guests see and do in the shared space
+  terms?: { word: 'project' | 'client' }; // what the company calls its work: Projects (default) or Clients
   chat?: {
     gifs: boolean;
     celebrations: boolean;
@@ -298,6 +299,7 @@ export interface Client {
   domain?: string; // their email domain, used to find their emails
   color: string;
   status: 'active' | 'lead' | 'paused' | 'ended';
+  type?: string; // a label: Client, Internal, Partner… (see PROJECT_TYPES)
   since?: string; // when the work started
   endedAt?: string; // when the work ended (status 'ended')
   endReason?: string;
@@ -318,6 +320,7 @@ export interface ClientPerson {
   status: 'invited' | 'joined' | 'pending'; // pending = waiting for an admin to OK it
   invitedBy: string; // a team user id, or a client person's email
   at: string;
+  company?: string; // where they work, shown as "Name · Company" (from the invite, or their email domain)
 }
 
 /** What clients can see and do, set for the company (Settings, Client access) and changeable per client. */

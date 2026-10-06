@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronsUpDown, Plus, Settings2 } from 'lucide-react';
+import { Check, ChevronsUpDown, LayoutGrid, Plus, Settings2 } from 'lucide-react';
 import type { Client, Workspace } from '../types';
 import { WorkspaceLogo } from './WorkspaceLogo';
 
@@ -14,9 +14,11 @@ interface Props {
   portals?: { key: string; ws: Workspace; client: Client; unread?: number }[];
   currentPortal?: string; // set while a portal is open
   onPortal?: (key: string) => void;
+  onHome?: () => void; // a guest's "Shared with you" overview
+  addLabel?: string;
 }
 
-export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd, onSettings, portals = [], currentPortal, onPortal }: Props) {
+export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd, onSettings, portals = [], currentPortal, onPortal, onHome, addLabel = 'Add a workspace' }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -43,14 +45,14 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
         <WorkspaceLogo ws={current} size={30} />
         <span className="sb-label ws-name">
           <strong>{current.name}</strong>
-          <small>{currentPortal ? 'Client portal' : (current.domains[0] ?? 'Workspace')}</small>
+          <small>{currentPortal ? `Shared space` : (current.domains[0] ?? 'Workspace')}</small>
         </span>
         <ChevronsUpDown size={15} className="sb-label ws-chev" />
       </button>
 
       {open && (
         <div className="ws-menu" role="menu">
-          <div className="ws-menu-title">Workspaces</div>
+          {workspaces.length > 0 && <div className="ws-menu-title">Workspaces</div>}
           {workspaces.map((w, i) => (
             <button key={w.id} className={`ws-item ${w.id === current.id && !currentPortal ? 'on' : ''}`} onClick={() => pick(() => onSwitch(w.id))}>
               <WorkspaceLogo ws={w} size={32} />
@@ -66,13 +68,18 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
           ))}
           {portals.length > 0 && (
             <>
-              <div className="ws-menu-title">You’re a client of</div>
+              <div className="ws-menu-title">Shared with you</div>
+              {onHome && (
+                <button className="am-item" onClick={() => pick(onHome)}>
+                  <LayoutGrid size={16} /> See everything shared with you
+                </button>
+              )}
               {portals.map((pt) => (
                 <button key={pt.key} className={`ws-item ${pt.key === currentPortal ? 'on' : ''}`} onClick={() => pick(() => onPortal?.(pt.key))}>
                   <WorkspaceLogo ws={pt.ws} size={32} />
                   <span className="ws-name">
                     <strong>{pt.ws.name}</strong>
-                    <small>Client portal · {pt.client.name}</small>
+                    <small>Shared space · {pt.client.name}</small>
                   </span>
                   {pt.unread ? <span className="ws-unread">{pt.unread}</span> : null}
                   {pt.key === currentPortal && <Check size={16} className="ws-check" />}
@@ -83,7 +90,7 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
           {(onAdd || onSettings) && <div className="am-sep" />}
           {onAdd && (
             <button className="am-item" onClick={() => pick(onAdd)}>
-              <Plus size={16} /> Add a workspace
+              <Plus size={16} /> {addLabel}
             </button>
           )}
           {onSettings && !currentPortal && (

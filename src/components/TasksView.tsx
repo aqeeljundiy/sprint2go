@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PROJECT_TYPES, term } from '../terms';
 import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note } from '../types';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { PastClients } from './PastClients';
-import { accessFor, clientPeople } from '../clientView';
+import { accessFor, clientPeople, companyOf } from '../clientView';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
@@ -32,16 +33,16 @@ export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }>
   braindump: { icon: Brain, label: 'From a brain dump' },
   chat: { icon: MessagesSquare, label: 'From chat' },
   meeting: { icon: Video, label: 'From a meeting' },
-  request: { icon: Inbox, label: 'Client request' },
+  request: { icon: Inbox, get label() { return `${term.Who} request`; } },
 };
 const COLUMNS: { id: TaskStatus; name: string }[] = [
   { id: 'todo', name: 'To do' },
   { id: 'doing', name: 'In progress' },
-  { id: 'waiting', name: 'Waiting on client' },
+  { id: 'waiting', get name() { return `Waiting on ${term.who}`; } },
   { id: 'review', name: 'Review' },
   { id: 'done', name: 'Done' },
 ];
-export const STATUS_LABEL: Record<TaskStatus, string> = { todo: 'To do', doing: 'In progress', waiting: 'Waiting on client', review: 'Waiting for review', done: 'Done' };
+export const STATUS_LABEL: Record<TaskStatus, string> = { todo: 'To do', doing: 'In progress', get waiting() { return `Waiting on ${term.who}`; }, review: 'Waiting for review', done: 'Done' };
 
 export const statusOf = (t: Todo): TaskStatus => (t.done ? 'done' : t.status && t.status !== 'done' ? t.status : 'todo');
 /** Everyone doing a task (older tasks only have userId). */
@@ -70,8 +71,8 @@ export function peopleOptions(users: User[], me: string, unassigned = true): Opt
 export const teamOptions = (teams: Team[]): Option[] => [{ value: '', label: 'No team', icon: <Dot color="var(--text-3)" /> }, ...teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))];
 /** Clients to pick from: past clients only when it's the one already set. */
 export const clientOptions = (clients: Client[], current?: string): Option[] => [
-  { value: '', label: 'No client (internal)', icon: <Dot color="var(--text-3)" /> },
-  ...clients.filter((c) => c.status !== 'ended' || c.id === current).map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? 'Past client' : undefined, icon: <Dot color={c.color} /> })),
+  { value: '', label: `No ${term.one}`, icon: <Dot color="var(--text-3)" /> },
+  ...clients.filter((c) => c.status !== 'ended' || c.id === current).map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? `Past ${term.one}` : undefined, icon: <Dot color={c.color} /> })),
 ];
 
 type GroupBy = 'client' | 'team' | 'person' | 'none';
@@ -92,7 +93,7 @@ interface Props {
   canManage: boolean; // admins change client access
   onViewAs: (clientId: string, email: string) => void;
   onPatchClient: (id: string, patch: Partial<Client>) => void;
-  onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }) => void;
+  onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string }) => void;
   onApproveClientPerson: (clientId: string, email: string) => void;
   onEndClient: (id: string) => void;
   notes: Note[];
@@ -139,6 +140,7 @@ export function TasksView(p: Props) {
   }, [scopeId, p.clientTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [previewAs, setPreviewAs] = useState<string | null>(null);
   const [inviteName, setInviteName] = useState('');
+  const [inviteCompany, setInviteCompany] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
 
   const scope = p.scope;
@@ -206,7 +208,7 @@ export function TasksView(p: Props) {
       : scope.kind === 'myteams'
         ? 'My teams'
         : scope.kind === 'myclients'
-          ? 'My clients'
+          ? `My ${term.many}`
           : scope.kind === 'mine'
       ? 'My tasks'
       : scope.kind === 'delegated'
@@ -216,7 +218,7 @@ export function TasksView(p: Props) {
           : scope.kind === 'briefs'
             ? 'Briefs'
             : scope.kind === 'grid'
-              ? 'Clients × teams'
+              ? `${term.Many} × teams`
               : scope.kind === 'team'
                 ? (team?.name ?? 'Team')
                 : `${client?.name ?? 'Client'}${cellTeam ? ` · ${cellTeam.name}` : ''}`;
@@ -240,7 +242,7 @@ export function TasksView(p: Props) {
     const out = [...map.entries()].map(([k, items]) => {
       if (groupBy === 'client') {
         const c = clientOf(k);
-        return { key: k, sort: c ? c.name : '~', label: c ? <><span className="dot" style={{ background: c.color }} />{c.name}</> : 'Internal (no client)', items };
+        return { key: k, sort: c ? c.name : '~', label: c ? <><span className="dot" style={{ background: c.color }} />{c.name}</> : `No ${term.one}`, items };
       }
       if (groupBy === 'team') {
         const tm = teamOf(k);
@@ -278,7 +280,7 @@ export function TasksView(p: Props) {
               </span>
             )}
             {statusOf(t) === 'doing' && <span className="due doing">In progress</span>}
-            {statusOf(t) === 'waiting' && <span className="due waiting">Waiting on client</span>}
+            {statusOf(t) === 'waiting' && <span className="due waiting">Waiting on {term.who}</span>}
             {statusOf(t) === 'review' && <span className="due review">Waiting for review</span>}
             {d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
             {t.done && (
@@ -310,7 +312,7 @@ export function TasksView(p: Props) {
                 Open email
               </button>
             )}
-            {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : t.createdBy.includes('@') ? (p.clients.flatMap((c) => c.people ?? []).find((x) => x.email === t.createdBy)?.name.split(' ')[0] ?? 'the client') : person(t.createdBy)?.name.split(' ')[0]}</span>}
+            {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : t.createdBy.includes('@') ? (p.clients.flatMap((c) => c.people ?? []).find((x) => x.email === t.createdBy)?.name.split(' ')[0] ?? `the ${term.who}`) : person(t.createdBy)?.name.split(' ')[0]}</span>}
           </div>
         </div>
         {(() => {
@@ -492,11 +494,11 @@ export function TasksView(p: Props) {
 
   const showTaskList = scope.kind !== 'grid' && scope.kind !== 'briefs' && (!client || clientTab === 'tasks');
   const subtitle = client
-    ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : client.status === 'ended' ? `Past client${client.endReason ? ` · ${client.endReason}` : ''}` : 'Active client'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
+    ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : client.status === 'ended' ? `Past ${term.one}${client.endReason ? ` · ${client.endReason}` : ''}` : 'Active'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
     : team
       ? [`Lead: ${person(team.leadId)?.name ?? 'not set'}`, overdue ? `${overdue} late` : '', open.filter((t) => !t.userId).length ? `${open.filter((t) => !t.userId).length} nobody on it yet` : ''].filter(Boolean).join(' · ')
       : scope.kind === 'grid'
-        ? 'Open work for every client, split by team. Click a cell to open it.'
+        ? `Open work for every ${term.one}, split by team. Click a cell to open it.`
         : scope.kind === 'briefs'
           ? 'Bigger pieces of work with one person in charge and tasks for others'
           : [overdue ? `${overdue} late` : '', open.filter((t) => t.due === localDay()).length ? `${open.filter((t) => t.due === localDay()).length} due today` : ''].filter(Boolean).join(' · ') || (open.length ? 'Nothing late or due today' : 'Nothing open');
@@ -527,7 +529,20 @@ export function TasksView(p: Props) {
         )}
         <div className="th-text">
           <h1>{heading}</h1>
-          <p>{subtitle}</p>
+          <p>
+            {client && (p.canManage || client.ownerId === p.me) ? (
+              <Select<string>
+                value={client.type ?? ''}
+                onChange={(v) => p.onPatchClient(client.id, { type: v || undefined })}
+                label="Type"
+                className="sel-flat type-sel"
+                options={[{ value: '', label: 'No type', hint: 'A label to filter by' }, ...PROJECT_TYPES.map((t) => ({ value: t, label: t }))]}
+              />
+            ) : (
+              client?.type && <em className="type-tag">{client.type}</em>
+            )}
+            {subtitle}
+          </p>
         </div>
         {client &&
           (client.status === 'ended' ? (
@@ -589,7 +604,7 @@ export function TasksView(p: Props) {
               ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail'],
               ['meetings', 'Meetings'],
               ['files', 'Files'],
-              ['portal', 'Portal'],
+              ['portal', 'Guests'],
             ] as const
           ).map(([id, label]) => (
             <button key={id} className={clientTab === id ? 'on' : ''} onClick={() => setClientTab(id)}>
@@ -689,7 +704,7 @@ export function TasksView(p: Props) {
                     className="sel-flat"
                     renderValue={(o) => <span className="sel-text">Group: {o?.label}</span>}
                     options={[
-                      { value: 'client', label: 'Client' },
+                      { value: 'client', label: `${term.One}` },
                       { value: 'team', label: 'Team' },
                       { value: 'person', label: 'Person' },
                       { value: 'none', label: 'None' },
@@ -793,8 +808,8 @@ export function TasksView(p: Props) {
               const today = localDay();
               const items: { key: string; text: string; sub: string; run: () => void; tone?: string }[] = [
                 ...open.filter((t) => t.due && t.due < today).map((t) => ({ key: 'l' + t.id, text: t.title, sub: `Late, ${person(t.userId)?.name.split(' ')[0] ?? 'nobody'} on it`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
-                ...open.filter((t) => t.source === 'request' && statusOf(t) === 'todo').map((t) => ({ key: 'r' + t.id, text: t.title, sub: 'New request from the client', run: () => p.onOpenTask(t.id) })),
-                ...open.filter((t) => t.approval?.status === 'changes').map((t) => ({ key: 'c' + t.id, text: t.title, sub: `Client asked for changes${t.approval?.note ? `: “${t.approval.note}”` : ''}`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
+                ...open.filter((t) => t.source === 'request' && statusOf(t) === 'todo').map((t) => ({ key: 'r' + t.id, text: t.title, sub: `New request from the ${term.who}`, run: () => p.onOpenTask(t.id) })),
+                ...open.filter((t) => t.approval?.status === 'changes').map((t) => ({ key: 'c' + t.id, text: t.title, sub: `${term.Who} asked for changes${t.approval?.note ? `: “${t.approval.note}”` : ''}`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
                 ...open.filter((t) => !t.userId).map((t) => ({ key: 'u' + t.id, text: t.title, sub: 'Nobody on it yet', run: () => p.onOpenTask(t.id) })),
                 ...clientThreads.filter((t) => t.unread).map((t) => ({ key: 'm' + t.id, text: t.subject, sub: 'Unread email', run: () => p.onOpenThread(t.id) })),
               ];
@@ -881,7 +896,7 @@ export function TasksView(p: Props) {
                   </div>
                 </>
               ) : (
-                <p className="muted small">AI writes a one-page view of this client from its meetings, tasks and emails. Only when you click.</p>
+                <p className="muted small">AI writes a one-page view of this {term.one} from its meetings, tasks and emails. Only when you click.</p>
               )}
             </div>
             <div className="hub-two">
@@ -953,7 +968,7 @@ export function TasksView(p: Props) {
                   <strong>{f.name}</strong>
                   <small>
                     {(f.size / 1e6).toFixed(1)} MB · {relative(f.modified)}
-                    {f.sharedWithClient ? ' · visible to client' : ''}
+                    {f.sharedWithClient ? ` · visible to ${term.whos}` : ''}
                   </small>
                 </span>
               </div>
@@ -1031,7 +1046,7 @@ export function TasksView(p: Props) {
                     />
                   )}
                   <button className="primary-btn sm" disabled={!viewAs} onClick={() => viewAs && p.onViewAs(client.id, viewAs)}>
-                    <Eye size={14} /> View as client
+                    <Eye size={14} /> View as guest
                   </button>
                 </div>
               </div>
@@ -1042,7 +1057,7 @@ export function TasksView(p: Props) {
                   {candidates.length === 0 && <p className="muted small">No open tasks for {client.name}.</p>}
                   {candidates.map((t) => (
                     <div key={t.id} className="pa-row">
-                      <button className={`eye ${t.visibleToClient ? 'on' : ''}`} onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })} title={t.visibleToClient ? 'Visible to client' : 'Internal only'}>
+                      <button className={`eye ${t.visibleToClient ? 'on' : ''}`} onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })} title={t.visibleToClient ? `Visible to ${term.whos}` : 'Internal only'}>
                         {t.visibleToClient ? <Eye size={14} /> : <EyeOff size={14} />}
                       </button>
                       <button className="pa-title" onClick={() => p.onOpenTask(t.id)}>
@@ -1064,12 +1079,12 @@ export function TasksView(p: Props) {
                   {files.length === 0 && <p className="muted small">No files for {client.name} in Drive yet.</p>}
                   {files.map((f) => (
                     <div key={f.id} className="pa-row">
-                      <button className={`eye ${f.sharedWithClient || f.uploadedBy ? 'on' : ''}`} disabled={!!f.uploadedBy} onClick={() => p.onShareFile(f.id, !f.sharedWithClient)} title={f.uploadedBy ? 'Uploaded by the client' : f.sharedWithClient ? 'Visible to client' : 'Internal only'}>
+                      <button className={`eye ${f.sharedWithClient || f.uploadedBy ? 'on' : ''}`} disabled={!!f.uploadedBy} onClick={() => p.onShareFile(f.id, !f.sharedWithClient)} title={f.uploadedBy ? `Uploaded by the ${term.who}` : f.sharedWithClient ? `Visible to ${term.whos}` : 'Internal only'}>
                         {f.sharedWithClient || f.uploadedBy ? <Eye size={14} /> : <EyeOff size={14} />}
                       </button>
                       <span className="pa-title">
                         {f.name}
-                        {f.uploadedBy && <small className="muted"> from {people.find((x) => x.email === f.uploadedBy)?.name.split(' ')[0] ?? 'the client'}</small>}
+                        {f.uploadedBy && <small className="muted"> from {people.find((x) => x.email === f.uploadedBy)?.name.split(' ')[0] ?? `the ${term.who}`}</small>}
                       </span>
                     </div>
                   ))}
@@ -1081,7 +1096,7 @@ export function TasksView(p: Props) {
                     const on = auto || !!m.sharedWithClient;
                     return (
                       <div key={m.id} className="pa-row">
-                        <button className={`eye ${on ? 'on' : ''}`} disabled={auto} onClick={() => p.onShareMeeting(m.id, !m.sharedWithClient)} title={auto ? 'Shared automatically: they attended' : on ? 'Visible to client' : 'Internal only'}>
+                        <button className={`eye ${on ? 'on' : ''}`} disabled={auto} onClick={() => p.onShareMeeting(m.id, !m.sharedWithClient)} title={auto ? 'Shared automatically: they attended' : on ? `Visible to ${term.whos}` : 'Internal only'}>
                           {on ? <Eye size={14} /> : <EyeOff size={14} />}
                         </button>
                         <span className="pa-title">
@@ -1093,13 +1108,14 @@ export function TasksView(p: Props) {
                   })}
                 </section>
                 <section>
-                  <h4>People at {client.name}</h4>
-                  {people.length === 0 && <p className="muted small">Nobody yet. Invite the people you work with there.</p>}
+                  <h4>Guests</h4>
+                  {people.length === 0 && <p className="muted small">Nobody yet. Invite the people you work with on {client.name}. They get a free account.</p>}
                   {people.map((g) => (
                     <div key={g.email} className="pa-row person-row">
                       <span className="guest-av">{g.name.charAt(0)}</span>
                       <span className="pa-title">
-                        {g.name} <small className="muted">{g.email}</small>
+                        {g.name}
+                        {companyOf(g.email, g.company, client) && <span className="muted"> · {companyOf(g.email, g.company, client)}</span>} <small className="muted">{g.email}</small>
                       </span>
                       {g.status === 'pending' ? (
                         <>
@@ -1130,13 +1146,15 @@ export function TasksView(p: Props) {
                   ))}
                   <div className="pa-invite">
                     <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Name" />
-                    <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={client.domain ? `name@${client.domain}` : 'name@client.com'} />
+                    <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={client.domain ? `name@${client.domain}` : 'name@company.com'} />
+                    <input value={inviteCompany} onChange={(e) => setInviteCompany(e.target.value)} placeholder={companyOf(inviteEmail.trim(), undefined, client) ?? 'Company (optional)'} />
                     <button
                       className="ghost-btn sm"
                       disabled={!inviteName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim()) || people.some((x) => x.email.toLowerCase() === inviteEmail.trim().toLowerCase())}
                       onClick={() => {
-                        p.onInviteClientPerson(client.id, { name: inviteName.trim(), email: inviteEmail.trim().toLowerCase(), role: 'collaborator' });
+                        p.onInviteClientPerson(client.id, { name: inviteName.trim(), email: inviteEmail.trim().toLowerCase(), role: 'collaborator', company: inviteCompany.trim() || undefined });
                         setInviteName('');
+                        setInviteCompany('');
                         setInviteEmail('');
                       }}
                     >

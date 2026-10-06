@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from 'react';
+import { term } from '../terms';
 import {
   Activity,
   Archive,
@@ -179,10 +180,10 @@ export function Sidebar(props: Props) {
 
                 {!!props.clients?.length && (
                   <>
-                    <div className="nav-heading sb-label">Clients</div>
+                    <div className="nav-heading sb-label">{term.Many}</div>
                     <nav className="nav">
                       {props.clients.map((c) => (
-                        <button key={c.id} className="nav-item" onClick={() => props.onClient?.(c.id)} title={`${c.name}: emails on the client page`}>
+                        <button key={c.id} className="nav-item" onClick={() => props.onClient?.(c.id)} title={`${c.name}: emails on the ${term.one} page`}>
                           <span className="dot" style={{ background: c.color }} />
                           <span className="sb-label">{c.name}</span>
                         </button>

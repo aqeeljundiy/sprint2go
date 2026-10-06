@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { term } from '../terms';
 import { ArrowLeft, CalendarDays, Check, Globe, Link2, Loader2, X } from 'lucide-react';
 import type { CalendarDef, CalendarSource } from '../types';
 import { Select } from './ui/Select';
@@ -123,7 +124,7 @@ export function ConnectCalendar({ me, existing, onConnect, onClose }: Props) {
                         {s === 'google' && 'Two way: events you add here show in Google'}
                         {s === 'microsoft' && 'Two way, for Outlook.com and Microsoft 365'}
                         {s === 'icloud' && 'Two way, with an app-specific password'}
-                        {s === 'ics' && 'Read only: paste an .ics link (bookings, a client’s calendar)'}
+                        {s === 'ics' && `Read only: paste an .ics link (bookings, a ${term.one}’s calendar)`}
                         {s === 'holidays' && 'Read only: public holidays for your country'}
                       </small>
                     </span>

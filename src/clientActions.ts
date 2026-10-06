@@ -1,6 +1,7 @@
 // Everything a client person can do in their portal. Used by "View as client" (inside the team app) and by a real
 // client login, so both behave the same. The local server checks every change again (server/index.ts).
 import type { Dispatch, SetStateAction } from 'react';
+import { term } from './terms';
 import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, DriveItem, Meeting, Notice, Team, Todo, User, Workspace } from './types';
 import { channelsFor, clientInbox, clientPeople, filesFor, meetingsFor, tasksFor, thisMonth } from './clientView';
 import { ai } from './ai';
@@ -166,7 +167,7 @@ export function clientActions(c: ClientCtx) {
       const person: ClientPerson = { email, name: p.name.trim(), role: 'collaborator', status: pending ? 'pending' : 'invited', invitedBy: c.person.email, at: now() };
       c.setClients((cs) => cs.map((x) => (x.id === c.client.id ? { ...x, people: [...(x.people ?? []), person] } : x)));
       if (pending) {
-        tell([c.client.ownerId], `${first} (${c.client.name}) asked to give ${person.name} (${email}) access. Approve it on the client page`, { app: 'tasks' });
+        tell([c.client.ownerId], `${first} (${c.client.name}) asked to give ${person.name} (${email}) access. Approve it on the ${term.one} page`, { app: 'tasks' });
         return { ok: true, message: sameCompany ? `Sent to ${c.ws.name} to approve.` : `${email} isn’t at @${c.client.domain ?? 'your company'}, so ${c.ws.name} needs to approve it.` };
       }
       // Straight in: they join the shared channels too.
@@ -180,7 +181,7 @@ export function clientActions(c: ClientCtx) {
     async ask(question: string): Promise<string> {
       const month = thisMonth();
       const used = c.client.aiUsage?.month === month ? c.client.aiUsage.count : 0;
-      if (!c.access.ai) return 'AI isn’t switched on for your portal.';
+      if (!c.access.ai) return `AI isn’t switched on for your shared space.`;
       if (used >= c.access.aiQuestions) return `You’ve used all ${c.access.aiQuestions} questions for this month. They reset on the 1st.`;
       const people = clientPeople(c.client, c.channels);
       const sources: MeetSource[] = [

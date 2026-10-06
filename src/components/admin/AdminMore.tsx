@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { term } from '../../terms';
 import { Cloud, Download, FileText, HardDrive, Lock, Plus, ShieldCheck, Trash2, Video, X } from 'lucide-react';
 import type { AppId, DriveItem, HomeTemplateId, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
 import { fmtSize } from '../../data/drive';
@@ -86,7 +87,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
           <h3>Use your own storage for big files</h3>
-          <p className="muted small">Raw footage and huge files can live in your own cloud. They still show on the client page, but they don’t use Sprint2go storage.</p>
+          <p className="muted small">Raw footage and huge files can live in your own cloud. They still show on the {term.one} page, but they don’t use Sprint2go storage.</p>
           {st.own ? (
             <Row title={<><Cloud size={14} /> {OWN[st.own.provider]} · {st.own.account}</>} hint={`Files over ${st.own.forFilesOver >= 1000 ? `${st.own.forFilesOver / 1000} GB` : `${st.own.forFilesOver} MB`} are saved there`}>
               <button type="button" className="ghost-btn sm" onClick={() => (onStorage({ ...st, own: undefined }), toast('Disconnected. Files already there stay there'))}>
@@ -182,8 +183,8 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
           <h3>What to keep</h3>
-          <Row title="Client meetings" hint="Meetings with a client on the invite">
-            <Select value={m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label="Client meetings" width={280} />
+          <Row title={`${term.Who} meetings`} hint={`Meetings with a ${term.who} on the invite`}>
+            <Select value={m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label={`${term.Who} meetings`} width={280} />
           </Row>
           <Row title="Internal meetings" hint="Standups, team syncs">
             <Select value={m.internalMeetings} onChange={(v) => set({ internalMeetings: v })} options={KEEP} label="Internal meetings" width={280} />
@@ -216,10 +217,10 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
               ]}
             />
           </Row>
-          <Row title="Share notes with the client by default" hint="Notes from client meetings appear in their portal. Recordings never do unless someone shares them">
+          <Row title={`Share notes with the ${term.who} by default`} hint={`Notes from ${term.who} meetings appear in their shared space. Recordings never do unless someone shares them`}>
             <Switch on={m.shareNotesWithClient} onChange={(v) => set({ shareNotesWithClient: v })} />
           </Row>
-          <p className="muted small">On each meeting you can choose who can watch or download the recording, who sees the transcript, and whether the client sees the notes.</p>
+          <p className="muted small">On each meeting you can choose who can watch or download the recording, who sees the transcript, and whether the {term.who} sees the notes.</p>
         </div>
         <div className="set-block">
           <h3>Notetaker</h3>
@@ -264,14 +265,14 @@ export function TeamsSection({ ws, teams, users, canManage, onTeams, onTeamHome,
   return (
     <>
       <h2>Teams</h2>
-      <p className="set-intro">Departments like Video editing or Finance. Tasks belong to a client and a team, so you can see work both ways. Each team’s Home template is the default for its people.</p>
+      <p className="set-intro">Departments like Video editing or Finance. Tasks belong to a {term.one} and a team, so you can see work both ways. Each team’s Home template is the default for its people.</p>
       <fieldset className="plain" disabled={!canManage}>
         {teams.map((t) => (
           <div key={t.id} className="team-card">
             <div className="tc-head">
               <span className="team-square big" style={{ background: t.color }} />
               <input className="inline-input strong" value={t.name} onChange={(e) => patch(t.id, { name: e.target.value })} />
-              <button type="button" className="icon-btn sm" title="Delete team" onClick={() => (onTeams(teams.filter((x) => x.id !== t.id)), toast(`${t.name} deleted. Its tasks keep their clients`))}>
+              <button type="button" className="icon-btn sm" title="Delete team" onClick={() => (onTeams(teams.filter((x) => x.id !== t.id)), toast(`${t.name} deleted. Its tasks keep their ${term.many}`))}>
                 <Trash2 size={15} />
               </button>
             </div>
@@ -340,7 +341,7 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
           <Row title="GIFs and stickers" hint="Off for a more formal workspace">
             <Switch on={chat.gifs} onChange={(v) => onWorkspace({ chat: { ...chat, gifs: v } })} />
           </Row>
-          <Row title="Celebrate finished work" hint="A small confetti and a note in the client’s channel when a task is done">
+          <Row title="Celebrate finished work" hint={`A small confetti and a note in the ${term.one}’s channel when a task is done`}>
             <Switch on={chat.celebrations} onChange={(v) => onWorkspace({ chat: { ...chat, celebrations: v } })} />
           </Row>
           <Row title="Who can create channels">
@@ -410,7 +411,7 @@ export function SecuritySection({ ws, isOwner, onWorkspace, onExport, onDelete, 
       </fieldset>
       <div className="set-block">
         <h3>Your data</h3>
-        <Row title={<><Download size={14} /> Export everything</>} hint="Mail, chat, tasks, clients, calendars and file lists as one download. Always free, on every plan">
+        <Row title={<><Download size={14} /> Export everything</>} hint={`Mail, chat, tasks, ${term.many}, calendars and file lists as one download. Always free, on every plan`}>
           <button type="button" className="ghost-btn sm" onClick={onExport}>
             <HardDrive size={14} /> Download
           </button>

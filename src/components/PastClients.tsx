@@ -1,4 +1,5 @@
 import { Archive, RotateCcw } from 'lucide-react';
+import { term } from '../terms';
 import type { Client, Todo } from '../types';
 
 const month = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', year: 'numeric' });
@@ -42,13 +43,13 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
           <Archive size={16} />
         </span>
         <div className="th-text">
-          <h1>Past clients</h1>
+          <h1>Past {term.many}</h1>
           <p>Work that has ended. Everything stays here to read, and you can start again any time.</p>
         </div>
       </header>
       <div className="tracking-scroll">
         {past.length === 0 ? (
-          <p className="te-empty">No past clients. When work with a client ends, choose “End work” on their page.</p>
+          <p className="te-empty">No past {term.many}. When work with a {term.one} ends, choose “End work” on their page.</p>
         ) : (
           <div className="todo-group">
             {past.map((c) => {
@@ -81,8 +82,8 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
         )}
 
         <div className="side-card over-time">
-          <h3>Clients over time</h3>
-          {avg !== null && <p className="muted small">On average, work with a client lasted {avg} month{avg === 1 ? '' : 's'}.</p>}
+          <h3>{term.Many} over time</h3>
+          {avg !== null && <p className="muted small">On average, work with a {term.one} lasted {avg} month{avg === 1 ? '' : 's'}.</p>}
           {rows.length === 0 ? (
             <p className="te-empty">No changes in the last 12 months.</p>
           ) : (

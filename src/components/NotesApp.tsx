@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { term } from '../terms';
 import { ArrowLeft, ListChecks, Lock, NotebookPen, Pin, PinOff, Plus, Search, Trash2, Users } from 'lucide-react';
 import type { Client, Note, User } from '../types';
 import { relative } from '../utils';
@@ -52,7 +53,7 @@ export function NotesList({
             { value: 'all', label: 'All notes' },
             { value: 'private', label: 'Only me', icon: <Lock size={13} /> },
             { value: 'team', label: 'Shared with the team', icon: <Users size={13} /> },
-            ...withNotes.map((c) => ({ value: `client:${c.id}`, label: c.name, group: 'Clients', icon: <Dot color={c.color} /> })),
+            ...withNotes.map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}`, icon: <Dot color={c.color} /> })),
           ]}
         />
       </div>
@@ -108,7 +109,7 @@ export function NoteEditor({
             <NotebookPen size={22} />
           </div>
           <p className="empty-title">Pick a note, or write a new one</p>
-          <p className="empty-sub">Private notes, meeting prep, how-tos for the team. Link a note to a client and it shows on their page.</p>
+          <p className="empty-sub">Private notes, meeting prep, how-tos for the team. Link a note to a {term.one} and it shows on their page.</p>
         </div>
       </section>
     );
@@ -140,9 +141,9 @@ export function NoteEditor({
         <Select<string>
           value={note.clientId ?? ''}
           onChange={(v) => onPatch(note.id, { clientId: v || undefined })}
-          label="Client"
+          label={`${term.One}`}
           className="sel-flat"
-          options={[{ value: '', label: 'No client' }, ...clients.filter((c) => c.status !== 'ended' || c.id === note.clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]}
+          options={[{ value: '', label: `No ${term.one}` }, ...clients.filter((c) => c.status !== 'ended' || c.id === note.clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]}
         />
         <span className="spacer" />
         <button className="ghost-btn sm" onMouseDown={(e) => e.preventDefault()} onClick={taskFromSelection} title="Select a line, then make it a task">

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { term } from '../terms';
 import { Copy, Eye, History, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
 import { relative } from '../utils';
@@ -54,7 +55,7 @@ export function VaultSidebar({ items, clients, filter, onFilter, onNew }: { item
       </nav>
       {withItems.length > 0 && (
         <>
-          <div className="nav-heading sb-label">Clients</div>
+          <div className="nav-heading sb-label">{term.Many}</div>
           <nav className="nav">
             {withItems.map((c) => (
               <button key={c.id} className={`nav-item ${filter === c.id ? 'active' : ''}`} onClick={() => onFilter(c.id)}>
@@ -474,8 +475,8 @@ function VaultEditor({
             <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Backup codes, security questions, who to ask" autoComplete="off" />
           </label>
           <div className="field">
-            <span>Client</span>
-            <Select value={clientId} onChange={setClientId} label="Client" options={[{ value: '', label: 'Company login (no client)' }, ...clients.filter((c) => c.status !== 'ended' || c.id === clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]} />
+            <span>{term.One}</span>
+            <Select value={clientId} onChange={setClientId} label={`${term.One}`} options={[{ value: '', label: `Company login (no ${term.one})` }, ...clients.filter((c) => c.status !== 'ended' || c.id === clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]} />
           </div>
           <div className="field">
             <span>Who can use it</span>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { term } from '../terms';
 import { History, Plus, Send, Sparkles, X } from 'lucide-react';
 import { relative } from '../utils';
 import { Select } from './ui/Select';
@@ -22,9 +23,9 @@ export const keyScope = (k: string): AskScope => {
 };
 
 const CHIPS: Record<AskScope['kind'], string[]> = {
-  all: ['What’s urgent today?', 'What did we promise clients this week?', 'Which tasks are overdue?'],
-  client: ['Where do things stand with this client?', 'What is still open, and who owns it?', 'What are the biggest risks right now?'],
-  meeting: ['Summarize this meeting in 3 bullets', 'What did we promise the client?', 'Draft a follow-up email'],
+  get all() { return ['What’s urgent today?', `What did we promise ${term.many} this week?`, 'Which tasks are overdue?']; },
+  get client() { return [`Where do things stand with this ${term.one}?`, 'What is still open, and who owns it?', 'What are the biggest risks right now?']; },
+  get meeting() { return ['Summarize this meeting in 3 bullets', `What did we promise the ${term.who}?`, 'Draft a follow-up email']; },
   channel: ['What did I miss here?', 'What was decided?', 'Which questions are still open?'],
 };
 
@@ -181,7 +182,7 @@ export function Assistant(p: Props) {
         )}
       </div>
       <div className="thread-compose">
-        <textarea autoFocus rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), ask(text))} placeholder="Ask about a client, a meeting, open tasks…" />
+        <textarea autoFocus rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), ask(text))} placeholder={`Ask about a ${term.one}, a meeting, open tasks…`} />
         <div className="tc-foot">
           <span className="muted small">Uses AI when you send</span>
           <button className="ai-send chat-send" onClick={() => ask(text)} disabled={!text.trim() || busy} aria-label="Ask">

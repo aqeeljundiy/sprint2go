@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { term } from '../terms';
 import { Bell, CalendarPlus, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, LayoutTemplate, Plus, Repeat as RepeatIcon, RotateCcw, Trash2, X } from 'lucide-react';
 import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../types';
 import { localDay, relative } from '../utils';
@@ -152,8 +153,8 @@ export function TaskDrawer(p: Props) {
               <button className="cv-toggle" onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })}>
                 {t.visibleToClient ? <Eye size={15} /> : <EyeOff size={15} />}
                 <span>
-                  <strong>{t.visibleToClient ? 'Visible to client' : 'Internal only'}</strong>
-                  <small>{t.visibleToClient ? `${p.clients.find((c) => c.id === t.clientId)?.name} can see this in their portal` : 'Only your team can see this'}</small>
+                  <strong>{t.visibleToClient ? `Visible to ${term.whos}` : 'Internal only'}</strong>
+                  <small>{t.visibleToClient ? `${p.clients.find((c) => c.id === t.clientId)?.name} can see this in their shared space` : 'Only your team can see this'}</small>
                 </span>
               </button>
               {!brief &&
@@ -161,7 +162,7 @@ export function TaskDrawer(p: Props) {
                   <span className={`ap-tag ${t.approval.status}`}>
                     {t.approval.status === 'waiting' ? (
                       <>
-                        <Clock size={12} /> Waiting for client approval
+                        <Clock size={12} /> Waiting for {term.who} approval
                       </>
                     ) : t.approval.status === 'approved' ? (
                       <>
@@ -175,7 +176,7 @@ export function TaskDrawer(p: Props) {
                   </span>
                 ) : (
                   <button className="ghost-btn sm" onClick={() => p.onAskApproval(t.id)}>
-                    <CheckCircle2 size={13} /> Ask client to approve
+                    <CheckCircle2 size={13} /> Ask {term.who} to approve
                   </button>
                 ))}
               {t.approval && t.approval.status !== 'waiting' && (
@@ -226,7 +227,7 @@ export function TaskDrawer(p: Props) {
                 options={[
                   { value: 'todo', label: 'To do', icon: <span className="st-dot st-todo" /> },
                   { value: 'doing', label: 'In progress', icon: <span className="st-dot st-doing" /> },
-                  { value: 'waiting', label: 'Waiting on client', hint: 'The next step is the client’s', icon: <span className="st-dot st-waiting" /> },
+                  { value: 'waiting', label: `Waiting on ${term.who}`, hint: `The next step is the ${term.who}’s`, icon: <span className="st-dot st-waiting" /> },
                   ...(statusOf(t) === 'review' ? [{ value: 'review' as TaskStatus, label: 'Waiting for review', icon: <span className="st-dot st-review" /> }] : []),
                   { value: 'done', label: 'Done', icon: <span className="st-dot st-done" /> },
                 ]}
@@ -268,9 +269,9 @@ export function TaskDrawer(p: Props) {
                 </dd>
               </>
             )}
-            <dt>Client</dt>
+            <dt>{term.One}</dt>
             <dd>
-              <Select value={t.clientId ?? ''} options={clientOptions(p.clients, t.clientId)} onChange={(v) => p.onPatch(t.id, { clientId: v || undefined })} label="Client" />
+              <Select value={t.clientId ?? ''} options={clientOptions(p.clients, t.clientId)} onChange={(v) => p.onPatch(t.id, { clientId: v || undefined })} label={`${term.One}`} />
             </dd>
             <dt>Due</dt>
             <dd>
@@ -422,8 +423,8 @@ export function TaskDrawer(p: Props) {
                       <>
                         <b>
                           {name}
-                          {fromClient && <em className="h-tag client">Client</em>}
-                          {!fromClient && h.toClient && <em className="h-tag">To client</em>}
+                          {fromClient && <em className="h-tag client">{term.One}</em>}
+                          {!fromClient && h.toClient && <em className="h-tag">To {term.who}</em>}
                         </b>
                         <span className="h-comment">{h.text}</span>
                       </>
@@ -439,15 +440,15 @@ export function TaskDrawer(p: Props) {
             })}
           </ol>
           <div className={`comment-box ${toClient ? 'to-client' : ''}`}>
-            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(t.id, comment.trim(), toClient), setComment(''))} placeholder={toClient ? 'Reply to the client… they will see this' : 'Internal comment… @mention someone'} />
+            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(t.id, comment.trim(), toClient), setComment(''))} placeholder={toClient ? `Reply to the ${term.who}… they will see this` : 'Internal comment… @mention someone'} />
             <div className="cb-foot">
               {clientCanSee && (
                 <label className="cb-toggle">
-                  <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> Client can see this
+                  <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> {term.Who} can see this
                 </label>
               )}
               <button className="primary-btn sm" disabled={!comment.trim()} onClick={() => (p.onComment(t.id, comment.trim(), toClient), setComment(''))}>
-                {toClient ? 'Send to client' : 'Comment'}
+                {toClient ? `Send to ${term.who}` : 'Comment'}
               </button>
             </div>
           </div>
@@ -465,7 +466,7 @@ export function TaskDrawer(p: Props) {
             )}
             {t.clientId && p.onOpenChannel && (
               <button className="link-btn" onClick={() => p.onOpenChannel!(t.clientId!)}>
-                <Hash size={12} /> Client channel
+                <Hash size={12} /> {term.One} channel
               </button>
             )}
           </div>

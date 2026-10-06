@@ -404,7 +404,7 @@ createServer(async (req, res) => {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail) || !String(name ?? '').trim()) return json(res, 400, { error: 'Name and email, please.' });
       const client = db.getDoc('clients', String(clientId)) as any;
       const w = workspaces().find((x) => x.id === workspaceId) as any;
-      if (!client || !w || client.workspaceId !== w.id) return json(res, 404, { error: 'No such client.' });
+      if (!client || !w || client.workspaceId !== w.id) return json(res, 404, { error: 'No such project.' });
       if (!memberOf(me).some((x) => x.id === w.id)) {
         // A client person inviting a colleague.
         const access = accessFor(w, client);
@@ -435,6 +435,27 @@ createServer(async (req, res) => {
     }
 
     // An admin invites someone: they get a link to set their own password.
+    // Anyone signed in (a guest too) can start their own company, free: they're its owner. Guests can't write
+    // workspaces through sync (they're in no company yet), so it's made here.
+    if (p === '/api/workspace' && req.method === 'POST') {
+      const { workspace: w, users: invited = [] } = await body(req);
+      if (!w || typeof w.id !== 'string' || typeof w.name !== 'string' || !w.name.trim()) return json(res, 400, { error: 'Give the company a name.' });
+      if (db.getDoc('workspaces', w.id)) return json(res, 409, { error: 'That workspace already exists.' });
+      const taken = new Set((db.allDocs('users') as any[]).map((u) => String(u.email ?? '').toLowerCase()));
+      const people = (invited as any[]).filter((u) => u && typeof u.id === 'string' && !db.getDoc('users', u.id) && typeof u.email === 'string' && !taken.has(u.email.toLowerCase()));
+      const ids = new Set(people.map((u) => u.id));
+      const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
+      const ws = { ...w, name: String(w.name).trim().slice(0, 80), members };
+      const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
+      db.writeDocs('users', people, [], me);
+      db.writeDocs('workspaces', [ws], [], me);
+      db.writeDocs('channels', [general], [], me);
+      broadcast('users', people, []);
+      broadcast('workspaces', [ws], []);
+      broadcast('channels', [general], []);
+      return json(res, 200, { id: ws.id });
+    }
+
     if (p === '/api/invite' && req.method === 'POST') {
       const { userId, email } = await body(req);
       if (!memberOf(me).some((w) => isAdminOf(me, w.id))) return json(res, 403, { error: 'Only admins can invite people.' });

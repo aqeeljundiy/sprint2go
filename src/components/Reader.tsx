@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { term } from '../terms';
 import {
   Archive,
   ArrowLeft,
@@ -278,7 +279,7 @@ export function Reader(props: Props) {
           <h2>{thread.subject}</h2>
           <div className="thread-labels">
             {props.client && (
-              <button className="chip client-chip" style={{ ['--c' as string]: props.client.color }} onClick={() => props.onClient?.(props.client!.id)} title="Open the client page">
+              <button className="chip client-chip" style={{ ['--c' as string]: props.client.color }} onClick={() => props.onClient?.(props.client!.id)} title={`Open the ${term.one} page`}>
                 {props.client.name}
               </button>
             )}

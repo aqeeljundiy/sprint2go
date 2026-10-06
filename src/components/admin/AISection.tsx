@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { term } from '../../terms';
 import { server } from '../../sync';
 import { AISpend } from './AISpend';
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Play, Plus, ShieldOff, Sparkles, Trash2 } from 'lucide-react';
@@ -246,7 +247,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           <div className="preset-pick">
             {(
               [
-                ['best', 'Best quality', 'Top models for everything that assigns people or reaches clients'],
+                ['best', 'Best quality', `Top models for everything that assigns people or reaches ${term.whos}`],
                 ['balanced', 'Balanced', 'Strong models for heavy jobs, fast ones for the rest'],
                 ['cheap', 'Lowest cost', 'Cheapest models; you’ll fix more brain dump rows by hand'],
               ] as const
@@ -265,7 +266,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
             <h3>Advanced: choose the AI for each job</h3>
             <small className="muted">Most companies never need this. The setup above fills it in for you.</small>
           </summary>
-          <p className="muted small">Rule of thumb: spend on the jobs that assign people and talk to clients, save on the jobs nobody reads twice.</p>
+          <p className="muted small">Rule of thumb: spend on the jobs that assign people and talk to {term.whos}, save on the jobs nobody reads twice.</p>
           <div className="jobs-table">
             {JOBS.map((job) => {
               const cur = ai.jobs[job.id] ?? (allowIncluded ? { provider: 'included' as const, model: 'included' } : undefined);
@@ -327,7 +328,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           {(
             [
               ['meetingNotes', 'Meeting notes after each meeting', 'Summary, decisions and action items'],
-              ['emailTodos', 'To-dos from client emails', 'Only emails from clients and known contacts. Skips newsletters, receipts and no-reply'],
+              ['emailTodos', `To-dos from ${term.who} emails`, `Only emails from ${term.whos} and known contacts. Skips newsletters, receipts and no-reply`],
               ['digests', 'Daily channel digests', 'Only for channels that switch it on'],
             ] as const
           ).map(([k, l, h]) => (
@@ -357,7 +358,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           <div className="set-row">
             <span>
               <strong>Blocked providers</strong>
-              <small>Nobody in the company can use these, for example if a client doesn’t allow data in China</small>
+              <small>Nobody in the company can use these, for example if a {term.who} doesn’t allow data in China</small>
             </span>
           </div>
           <div className="chip-pick">

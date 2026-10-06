@@ -168,7 +168,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
             })}
           </div>
           <p className="muted small">
-            You never pay more than the next package: if extra people make a bigger package cheaper, we move you to it and tell you. Only active people are billed. Clients, guests and shared inboxes are always free.
+            You never pay more than the next package: if extra people make a bigger package cheaper, we move you to it and tell you. Only active people are billed. Guests and shared inboxes are always free.
           </p>
           {plan.tier !== 'free' && (
             <button type="button" className="link-btn" onClick={() => (onPlan({ ...plan, tier: 'free', track: 'own', trialEnds: undefined }), toast('Moved to Free. Nothing was deleted'))}>

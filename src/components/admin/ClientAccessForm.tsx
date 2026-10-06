@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { term } from '../../terms';
 import { RotateCcw } from 'lucide-react';
 import { DEFAULT_CLIENT_ACCESS, type ClientAccess, type Team } from '../../types';
 import { Select } from '../ui/Select';
@@ -7,14 +8,14 @@ type Key = keyof ClientAccess;
 
 const LABEL: Record<Key, [string, string]> = {
   teamNames: ['Show who’s doing the work', 'On tasks, requests and in chat'],
-  requests: ['Requests', 'Clients send requests that land in your team’s queue, like tickets'],
+  get requests() { return ['Requests', `${term.Whos} send requests that land in your team’s queue, like tickets`] as [string, string]; },
   requestsTo: ['Requests go to', 'Who picks them up first'],
-  meetingNotes: ['Meeting notes', 'For meetings the client was in'],
+  get meetingNotes() { return ['Meeting notes', `For meetings the ${term.who} was in`] as [string, string]; },
   recordings: ['Meeting recordings', 'Only for meetings they attended'],
-  invites: ['Clients invite colleagues', 'People at the same company'],
-  ai: ['AI for clients', 'Answers only from what the client can see. Uses your AI allowance or keys'],
-  aiQuestions: ['AI questions per month', 'For each client'],
-  uploads: ['Clients upload files', 'Into a “From client” folder you can see'],
+  get invites() { return [`${term.Whos} invite colleagues`, 'People at the same company'] as [string, string]; },
+  get ai() { return [`AI for ${term.whos}`, `Answers only from what the ${term.who} can see. Uses your AI allowance or keys`] as [string, string]; },
+  get aiQuestions() { return ['AI questions per month', `For each ${term.one}`] as [string, string]; },
+  get uploads() { return [`${term.Whos} upload files`, `Into a “From ${term.who}” folder you can see`] as [string, string]; },
   hideBranding: ['Hide “Made with Sprint2go”', 'Needs the branding add-on (Plan & billing)'],
 };
 
@@ -98,7 +99,7 @@ export function ClientAccessForm({
       {value.requests &&
         row(
           'requestsTo',
-          sel('requestsTo', [{ value: 'owner', label: 'The client’s account manager' }, ...teams.map((t) => ({ value: t.id, label: `${t.name} team queue` }))]),
+          sel('requestsTo', [{ value: 'owner', label: `The ${term.one}’s account manager` }, ...teams.map((t) => ({ value: t.id, label: `${t.name} team queue` }))]),
         )}
       {row(
         'meetingNotes',

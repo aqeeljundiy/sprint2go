@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { term } from '../terms';
 import {
   AlertTriangle,
   ArrowDown,
@@ -61,7 +62,7 @@ const CARD_INFO: Record<CardId, { name: string; hint: string }> = {
   briefing: { name: 'Briefing', hint: 'A short summary of your day' },
   dump: { name: 'Brain dump', hint: 'Type what’s on your mind' },
   pulse: { name: 'Company numbers', hint: 'Late, not picked up, done this week' },
-  risk: { name: 'Clients at risk', hint: 'Late or stuck work per client' },
+  risk: { get name() { return `${term.Many} at risk`; }, get hint() { return `Late or stuck work per ${term.one}`; } },
   lateByTeam: { name: 'Teams', hint: 'Open and late work per team' },
   workload: { name: 'Workload', hint: 'How busy each person is' },
   waiting: { name: 'Waiting on you', hint: 'Already at the top, in Up next' },
@@ -72,7 +73,7 @@ const CARD_INFO: Record<CardId, { name: string; hint: string }> = {
   unread: { name: 'Unread mail', hint: 'Mail waiting for you' },
   foryou: { name: 'For you', hint: 'Mentions and assignments' },
   meetings: { name: 'From meetings', hint: 'Action items without an owner' },
-  clients: { name: 'Clients', hint: 'Every client at a glance' },
+  clients: { get name() { return `${term.Many}`; }, get hint() { return `Every ${term.one} at a glance`; } },
   wins: { name: 'Wins this week', hint: 'What the team finished' },
 };
 
@@ -94,7 +95,7 @@ const TEMPLATES: Record<HomeTemplateId, { name: string; hint: string; cards: [Ca
   },
   account: {
     name: 'Account manager',
-    hint: 'Your clients, their emails and meetings',
+    get hint() { return `Your ${term.many}, their emails and meetings`; },
     cards: [['clients', 'l'], ['unread', 'm'], ['meetings', 'm']],
   },
   finance: {
@@ -289,7 +290,7 @@ export function HomeView(p: Props) {
             setDump('');
           }}
         >
-          <input id="home-dump" value={dump} onChange={(e) => setDump(e.target.value)} placeholder="What’s on your mind? Clients, who does what, by when…" />
+          <input id="home-dump" value={dump} onChange={(e) => setDump(e.target.value)} placeholder={`What’s on your mind? ${term.Many}, who does what, by when…`} />
           <button className="primary-btn sm" type="submit">
             <Sparkles size={14} /> Brain dump
           </button>
@@ -298,7 +299,7 @@ export function HomeView(p: Props) {
     },
     pulse: {
       icon: <LayoutGrid size={15} />,
-      link: ['Clients × teams', p.onOpenGrid],
+      link: [`${term.Many} × teams`, p.onOpenGrid],
       body: () => (
         <div className="pulse">
           {(
@@ -322,7 +323,7 @@ export function HomeView(p: Props) {
       icon: <AlertTriangle size={15} />,
       body: () =>
         d.risk.length === 0 ? (
-          empty('No client has late or stuck work.')
+          empty(`No ${term.one} has late or stuck work.`)
         ) : (
           <ul className="home-list">
             {d.risk.slice(0, 5).map(({ c, late, waiting }) => (
@@ -697,7 +698,7 @@ export function HomeView(p: Props) {
 
         <button className="home-search" onClick={p.onSearch}>
           <Search size={16} />
-          <span>Jump to a client, task, person or file, or ask anything</span>
+          <span>Jump to a {term.one}, task, person or file, or ask anything</span>
           <kbd>⌘K</kbd>
         </button>
 

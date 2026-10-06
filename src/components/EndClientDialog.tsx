@@ -64,7 +64,7 @@ export function EndClientDialog({
               <Select
                 value={portal}
                 onChange={setPortal}
-                label="Portal access"
+                label={`Shared space access`}
                 options={[
                   { value: 'readonly', label: 'Keep read-only access', hint: 'They can still read and download' },
                   { value: 'off', label: 'Switch off access', hint: 'Their sign-in stops working here' },

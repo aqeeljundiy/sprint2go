@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { term, setTermWord } from './terms';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
 import type { Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
@@ -49,7 +50,7 @@ import { TasksView, dueLabel, isBrief, type TaskScope } from './components/Tasks
 import { TasksSidebar } from './components/TasksSidebar';
 import { BrainDump, type DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
-import { ChannelDialog } from './components/ChannelDialog';
+import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { ClientApp } from './components/ClientApp';
 import { clientActions } from './clientActions';
@@ -171,6 +172,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const workspaces = allWorkspaces.filter((w) => w.members.some((m) => m.userId === user.id));
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
+  setTermWord(ws?.terms?.word); // "Projects" or "Clients", before anything below renders words
   // Companies this person is a client of (same sign-in): their portals sit in the workspace switcher.
   const [portalKey, setPortalKey] = usePersisted(`s2g-portal:${user.id}`, '');
   useEffect(() => onWorkspace?.(portalKey && allWorkspaces.some((w) => portalKey.startsWith(w.id + ':')) ? portalKey.split(':')[0] : ws.id), [ws.id, ws.ai, portalKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1006,7 +1008,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       createdAt: nowIso(),
       assignees: t.userId ? [t.userId] : [],
       supervisorId: user.id, // whoever assigns it supervises it, unless someone changes it
-      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting', request: ' from a client request' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
+      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting', request: ' from a request' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
     };
     setTodos((ts) => [...ts, task]);
     // Not assigned yet: tell the team lead it's waiting in their queue.
@@ -1039,7 +1041,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             ? 'approved it'
             : 'marked it done'
           : status === 'waiting'
-            ? 'set it to Waiting on client'
+            ? `set it to Waiting on ${term.who}`
             : status === 'doing'
               ? 'started it'
               : t.done
@@ -1249,11 +1251,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const moveChannel = (id: string, category: ChannelCategory) => {
     const c = channels.find((x) => x.id === id);
     if (!c) return;
-    const label = { client: 'Client (internal)', shared: 'With client', team: 'Teams', project: 'Projects', social: 'Social' }[category];
+    const label = CATEGORY_ONE[category];
     // A client channel needs to know which client: ask in the settings.
     if ((category === 'client' || category === 'shared') && !c.clientId) {
       setChanDialog({ id });
-      showToast({ text: 'Pick the client, then choose the category' });
+      showToast({ text: `Pick the ${term.one}, then choose the category` });
       return;
     }
     const apply = () => {
@@ -1263,7 +1265,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     };
     // Leaving "With client" removes the client's guests, so ask first.
     if (c.category === 'shared' && category !== 'shared' && c.guests?.length) {
-      showToast({ text: `Moving #${c.name} out of With client removes ${c.guests.length} client guest${c.guests.length > 1 ? 's' : ''}`, action: { label: 'Move anyway', run: apply }, ms: 8000 });
+      showToast({ text: `Moving #${c.name} out of Shared removes ${c.guests.length} guest${c.guests.length > 1 ? 's' : ''}`, action: { label: 'Move anyway', run: apply }, ms: 8000 });
       return;
     }
     apply();
@@ -1311,8 +1313,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!t) return;
     patchTask(id, { visibleToClient: true, approval: { status: 'waiting', askedBy: user.id, askedAt: nowIso() } });
     const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === t.clientId && c.guests?.length);
-    if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `Could you approve “${t.title}”? It’s waiting for you in your portal 🙏`, at: nowIso(), taskId: id }]);
-    showToast({ text: ch ? `Approval requested. ${ch.guests!.map((g) => g.name.split(' ')[0]).join(', ')} will see it in the portal` : 'Approval requested in the client portal' });
+    if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `Could you approve “${t.title}”? It’s waiting for you in your shared space 🙏`, at: nowIso(), taskId: id }]);
+    showToast({ text: ch ? `Approval requested. ${ch.guests!.map((g) => g.name.split(' ')[0]).join(', ')} will see it in the shared space` : `Approval requested in the shared space` });
   };
 
 
@@ -1325,7 +1327,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
   };
   /** Gives someone at a client access to their portal: added to the client's people and its shared channels. */
-  const giveClientAccess = async (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }, status: ClientPerson['status']) => {
+  const giveClientAccess = async (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string }, status: ClientPerson['status']) => {
     const c = clients.find((x) => x.id === clientId);
     if (!c) return;
     const entry: ClientPerson = { ...person, status, invitedBy: user.id, at: nowIso() };
@@ -1335,7 +1337,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast(
       link
         ? { text: `${person.name.split(' ')[0]} can sign in with their invite link`, action: { label: 'Copy link', run: () => void navigator.clipboard?.writeText(link) }, ms: 20000 }
-        : { text: `${person.name} invited to ${c.name}’s portal` },
+        : { text: `${person.name} invited to ${c.name}` },
     );
   };
   const inviteClientPerson = (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }) => void giveClientAccess(clientId, person, 'invited');
@@ -1352,14 +1354,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (o.closeTasks) setTodos((ts) => ts.map((t) => (t.clientId === id && !t.done ? { ...t, done: true, status: 'done', doneAt: nowIso(), doneBy: user.id } : t)));
     setEnding(null);
     const c = clients.find((x) => x.id === id);
-    showToast({ text: `Work with ${c?.name} ended. They’re in Past clients`, action: { label: 'Undo', run: () => reactivateClient(id) } });
+    showToast({ text: `Work with ${c?.name} ended. They’re in Past ${term.many}`, action: { label: 'Undo', run: () => reactivateClient(id) } });
   };
   const reactivateClient = (id: string) => {
     const c = clients.find((x) => x.id === id);
     if (!c) return;
     setClients((cs) => cs.map((x) => (x.id === id ? { ...x, status: 'active', endedAt: undefined, endReason: undefined, portalAfterEnd: undefined, archivedOnEnd: undefined } : x)));
     if (c.archivedOnEnd?.length) setChannels((cs) => cs.map((ch) => (c.archivedOnEnd!.includes(ch.id) ? { ...ch, archived: false } : ch)));
-    showToast({ text: `${c.name} is an active client again` });
+    showToast({ text: `${c.name} is an active ${term.one} again` });
   };
 
   const loadVault = () => {
@@ -1425,7 +1427,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const toggleAsk = () => setAskScope((s2) => (s2 ? null : contextScope()));
   const askOptions = [
     { value: 'all', label: 'Everything', group: 'Everywhere' },
-    ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: 'Clients' })),
+    ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}` })),
     ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ value: `channel:${c.id}`, label: `#${c.name}`, group: 'Channels' })),
     ...[...wsMeetings].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12).map((m) => ({ value: `meeting:${m.id}`, label: m.title, group: 'Meetings' })),
   ];
@@ -1687,7 +1689,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     later(id, 5000, () => meetLog(id, `Let in. Posted in the meeting chat: “Hi, I'm ${d.botName}. I'm recording this meeting and taking notes.”`, { status: meetSettings.announce ? 'recording' : 'recording' }));
     DEMO_SCRIPT.forEach((line, i) =>
       later(id, 6500 + i * 2200, () =>
-        setMeetings((ms) => ms.map((x) => (x.id === id && x.status === 'recording' ? { ...x, transcript: [...(x.transcript ?? []), { speaker: line.speaker === 'You' ? myFirst : line.speaker === 'Client' ? 'Guest' : line.speaker, text: line.text, at: 15_000 + i * 42_000 }] } : x))),
+        setMeetings((ms) => ms.map((x) => (x.id === id && x.status === 'recording' ? { ...x, transcript: [...(x.transcript ?? []), { speaker: line.speaker === 'You' ? myFirst : line.speaker === `${term.One}` ? 'Guest' : line.speaker, text: line.text, at: 15_000 + i * 42_000 }] } : x))),
       ),
     );
     later(id, 6500 + DEMO_SCRIPT.length * 2200 + 1500, () => {
@@ -2078,7 +2080,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           ...(Object.keys(FOLDER_TITLES) as FolderId[]).map((f) => ({ value: `folder:${f}`, label: FOLDER_TITLES[f], group: 'Folders' })),
           { value: 'track', label: 'Waiting for reply', group: 'Folders' },
           ...[{ id: 'all', email: 'All inboxes' }, ...myAccounts].map((a) => ({ value: `acct:${a.id}`, label: a.id === 'all' ? 'All inboxes' : a.email, group: 'Mailboxes' })),
-          ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: 'Clients' })),
+          ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}` })),
         ],
         onChange: (v: string) => {
           if (v === 'track') selectView({ kind: 'tracking', id: 'tracking' });
@@ -2096,12 +2098,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           { value: 'mine', label: 'My tasks', group: 'Views' },
           { value: 'supervising', label: 'Supervising', group: 'Views' },
           { value: 'myteams', label: 'My teams', group: 'Views' },
-          { value: 'myclients', label: 'My clients', group: 'Views' },
+          { value: 'myclients', label: `My ${term.many}`, group: 'Views' },
           { value: 'delegated', label: 'Assigned by me', group: 'Views' },
           { value: 'briefs', label: 'Briefs', group: 'Views' },
           ...(isAdmin ? [{ value: 'all', label: 'Everything', group: 'Views' }] : []),
           ...wsTeams.filter((t) => isAdmin || myTeamIds.includes(t.id)).map((t) => ({ value: `team:${t.id}`, label: t.name, group: 'Teams' })),
-          ...wsClients.filter((c) => isAdmin || myClientIds.includes(c.id)).map((c) => ({ value: `client:${c.id}`, label: c.name, group: 'Clients' })),
+          ...wsClients.filter((c) => isAdmin || myClientIds.includes(c.id)).map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}` })),
         ],
         onChange: (v: string) => setTaskScope(v.startsWith('client:') ? { kind: 'client', id: v.slice(7) } : v.startsWith('team:') ? { kind: 'team', id: v.slice(5) } : ({ kind: v } as TaskScope)),
       };
@@ -2115,7 +2117,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           { value: 'upcoming', label: 'Upcoming', group: 'Meet' },
           { value: 'tasks', label: 'Tasks from meetings', group: 'Meet' },
           { value: 'unfiled', label: 'Unfiled', group: 'Meet' },
-          ...wsClients.map((c) => ({ value: `folder:${c.id}`, label: c.name, group: 'Clients' })),
+          ...wsClients.map((c) => ({ value: `folder:${c.id}`, label: c.name, group: `${term.Many}` })),
         ],
         onChange: (v: string) => setMeetPage(v.startsWith('folder:') ? { kind: 'folder', clientId: v.slice(7) } : ({ kind: v } as MeetPage)),
       };
@@ -2150,7 +2152,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, run: () => { openTasks({ kind: 'mine' }); setTimeout(() => document.getElementById('new-task')?.focus(), 200); } },
     ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, run: () => { go('calendar'); openNewEvent(); } }] : []),
     ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
-    ...wsClientsAll.map((c) => ({ id: 'c-' + c.id, group: 'Clients', title: c.name, sub: c.status === 'ended' ? 'Past client' : c.domain, icon: Building2, run: () => openClient(c.id) })),
+    ...wsClientsAll.map((c) => ({ id: 'c-' + c.id, group: `${term.Many}`, title: c.name, sub: c.status === 'ended' ? `Past ${term.one}` : c.domain, icon: Building2, run: () => openClient(c.id) })),
     ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.userId ? firstOf(t.userId) : 'nobody yet'].filter(Boolean).join(' · '), icon: ListChecks, run: () => openTask(t.id) })),
     ...members.filter((u) => u.id !== user.id).map((u) => ({ id: 'p-' + u.id, group: 'People', title: u.name, sub: u.title || u.email, icon: UserIcon, run: () => openChannel(dmWith(u.id)) })),
     ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ id: 'ch-' + c.id, group: 'Channels', title: '#' + c.name, icon: Hash, run: () => openChannel(c.id) })),
@@ -2403,8 +2405,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setSidebarOpen(false);
             }}
             onBrainDump={() => setDump('')}
-            onAddClient={(name, domain) => {
-              const c = { id: uid(), workspaceId: ws.id, name, domain, color: ['#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444'][wsClients.length % 6], status: 'active' as const, ownerId: user.id };
+            onAddClient={(name, domain, type) => {
+              const c = { id: uid(), workspaceId: ws.id, name, domain, type, color: ['#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444'][wsClients.length % 6], status: 'active' as const, ownerId: user.id };
               setClients((cs) => [...cs, c]);
               setTaskScope({ kind: 'client', id: c.id });
               showToast({ text: `${name} added` });
@@ -3255,7 +3257,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onOpenChannel={(clientId) => {
             const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId && c.category !== 'shared') ?? channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));
-            else showToast({ text: 'This client has no channel yet' });
+            else showToast({ text: `This ${term.one} has no channel yet` });
           }}
         />
       )}

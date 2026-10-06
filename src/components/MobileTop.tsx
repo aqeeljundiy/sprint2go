@@ -54,7 +54,7 @@ export function MobileTop({
               </span>
             </button>
           ))}
-          {portals.length > 0 && <div className="sel-group">You’re a client of</div>}
+          {portals.length > 0 && <div className="sel-group">Shared with you</div>}
           {portals.map((pt) => (
             <button key={pt.key} className="sel-opt" onClick={() => (onPortal?.(pt.key), setWsOpen(false))}>
               <span className="sel-icon">
@@ -62,7 +62,7 @@ export function MobileTop({
               </span>
               <span className="sel-label">
                 {pt.ws.name}
-                <small>Client portal · {pt.client.name}</small>
+                <small>Shared space · {pt.client.name}</small>
               </span>
             </button>
           ))}
