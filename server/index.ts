@@ -10,7 +10,7 @@ import * as ai from './ai.ts';
 import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
-import { accessFor, can, channelsFor, clientPeople, filesFor, meetingsFor, tasksFor } from '../src/clientView.ts';
+import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -408,11 +408,14 @@ createServer(async (req, res) => {
       if (!memberOf(me).some((x) => x.id === w.id)) {
         // A client person inviting a colleague.
         const access = accessFor(w, client);
-        const sameDomain = !!client.domain && mail.endsWith('@' + String(client.domain).toLowerCase());
+        // Their colleagues (same email domain as theirs, not gmail and the like) or people at the project's domain.
+        const domainOf = (e: string) => e.split('@')[1]?.toLowerCase() ?? '';
+        const own = domainOf(String(personOf(me)?.email ?? ''));
+        const sameDomain = (!!own && !isFreemail(own) && domainOf(mail) === own) || (!!client.domain && domainOf(mail) === String(client.domain).toLowerCase());
         if (!portalsOf(me).some((pt) => pt.clientId === client.id) || access.invites !== 'direct' || !sameDomain) return json(res, 403, { error: 'This needs the team’s approval.' });
       }
+      // Someone who already signs in (e.g. a teammate at a company that uses Sprint2go) just gets access, no link.
       const existing = db.findLogin(mail);
-      if (existing) return json(res, 409, { error: 'They already have a sign-in.' });
       let user = (db.allDocs('users') as any[]).find((u) => String(u.email).toLowerCase() === mail);
       if (!user) {
         user = { id: 'cu-' + randomBytes(5).toString('hex'), name: String(name).trim(), email: mail, color: client.color ?? '#64748b', title: client.name, clientOf: { workspaceId: w.id, clientId: client.id } };
@@ -422,19 +425,23 @@ createServer(async (req, res) => {
       // On the client's people list, and a guest in its shared channels.
       const people = client.people ?? [];
       const known = people.find((x: any) => String(x.email).toLowerCase() === mail);
-      const nextClient = { ...client, people: known ? people.map((x: any) => (String(x.email).toLowerCase() === mail && x.status === 'pending' ? { ...x, status: 'invited' } : x)) : [...people, { email: mail, name: String(name).trim(), role: 'collaborator', status: 'invited', invitedBy: me, at: new Date().toISOString() }] };
+      // A guest's colleague works where they do: "Name · Company" from the start.
+      const inviter = people.find((x: any) => String(x.email).toLowerCase() === String(personOf(me)?.email ?? '').toLowerCase());
+      const sameAsInviter = !!inviter && mail.split('@')[1] === String(inviter.email).split('@')[1]?.toLowerCase();
+      const company = sameAsInviter ? companyOf(inviter.email, inviter.company, client) : undefined;
+      const status = existing ? 'joined' : 'invited'; // already signs in: nothing to accept
+      const nextClient = { ...client, people: known ? people.map((x: any) => (String(x.email).toLowerCase() === mail && x.status !== 'joined' ? { ...x, status, ...(company && !x.company ? { company } : {}) } : x)) : [...people, { email: mail, name: String(name).trim(), role: 'collaborator', status, invitedBy: me, at: new Date().toISOString(), ...(company ? { company } : {}) }] };
       db.writeDocs('clients', [nextClient], [], me);
       broadcast('clients', [nextClient], []);
       const chans = (db.allDocs('channels') as any[]).filter((c) => c.clientId === client.id && c.category === 'shared' && !(c.guests ?? []).some((g: any) => String(g.email).toLowerCase() === mail));
-      const withGuest = chans.map((c) => ({ ...c, guests: [...(c.guests ?? []), { email: mail, name: String(name).trim(), status: 'invited', invitedBy: me, at: new Date().toISOString() }] }));
+      const withGuest = chans.map((c) => ({ ...c, guests: [...(c.guests ?? []), { email: mail, name: String(name).trim(), status, invitedBy: me, at: new Date().toISOString() }] }));
       if (withGuest.length) {
         db.writeDocs('channels', withGuest, [], me);
         broadcast('channels', withGuest, []);
       }
-      return json(res, 200, { link: `/?invite=${db.newInvite(user.id, mail)}` });
+      return json(res, 200, { link: existing ? null : `/?invite=${db.newInvite(user.id, mail)}` });
     }
 
-    // An admin invites someone: they get a link to set their own password.
     // Anyone signed in (a guest too) can start their own company, free: they're its owner. Guests can't write
     // workspaces through sync (they're in no company yet), so it's made here.
     if (p === '/api/workspace' && req.method === 'POST') {
@@ -456,6 +463,7 @@ createServer(async (req, res) => {
       return json(res, 200, { id: ws.id });
     }
 
+    // An admin invites someone: they get a link to set their own password.
     if (p === '/api/invite' && req.method === 'POST') {
       const { userId, email } = await body(req);
       if (!memberOf(me).some((w) => isAdminOf(me, w.id))) return json(res, 403, { error: 'Only admins can invite people.' });

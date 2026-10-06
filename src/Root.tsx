@@ -78,7 +78,9 @@ function ServerRoot({ me }: { me: string }) {
       onInvite={async (u) => {
         setUsers((list) => (list.some((x) => x.id === u.id) ? list : [...list, u]));
         const r = await fetch('/api/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: u.id, email: u.email }) });
-        return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+        if (!r.ok) return null;
+      const { link } = (await r.json()) as { link: string | null };
+      return link ? `${location.origin}${link}` : null; // null: they already sign in, nothing to send
       }}
       onUpdateUser={(patch) => setUsers((list) => list.map((x) => (x.id === user.id ? { ...x, ...patch } : x)))}
     />
@@ -220,7 +222,9 @@ function ClientRoot({ me }: { me: User }) {
     setChannels,
     makeInvite: async (p) => {
       const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, clientId: client.id, ...p }) });
-      return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+      if (!r.ok) return null;
+      const { link } = (await r.json()) as { link: string | null };
+      return link ? `${location.origin}${link}` : null; // null: they already sign in, nothing to send
     },
   });
   const inbox = [me.id, clientInbox(me.email)];

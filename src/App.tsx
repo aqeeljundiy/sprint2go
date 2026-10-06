@@ -1324,7 +1324,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const makeClientInvite = (clientId: string) => async (p: { name: string; email: string }) => {
     if (!server.on) return null;
     const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, clientId, ...p }) });
-    return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+    if (!r.ok) return null;
+      const { link } = (await r.json()) as { link: string | null };
+      return link ? `${location.origin}${link}` : null; // null: they already sign in, nothing to send
   };
   /** Gives someone at a client access to their portal: added to the client's people and its shared channels. */
   const giveClientAccess = async (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string }, status: ClientPerson['status']) => {
@@ -2191,7 +2193,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       makeInvite: async (pp) => {
         if (!server.on) return null;
         const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: pws.id, clientId: portal.client.id, ...pp }) });
-        return r.ok ? `${location.origin}${((await r.json()) as { link: string }).link}` : null;
+        if (!r.ok) return null;
+      const { link } = (await r.json()) as { link: string | null };
+      return link ? `${location.origin}${link}` : null; // null: they already sign in, nothing to send
       },
     });
     return (

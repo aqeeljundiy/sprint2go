@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, DriveItem, Meeting, Notice, Todo, User, Workspace } from '../types';
 import type { ClientActions } from '../clientActions';
-import { can, requestStatus, teamLabel } from '../clientView';
+import { can, companyOf, requestStatus, teamLabel } from '../clientView';
 import { relative } from '../utils';
 import { Avatar } from './Avatar';
 import { WorkspaceLogo, applyBranding } from './WorkspaceLogo';
@@ -85,6 +85,7 @@ function useMobile() {
 export function ClientApp(p: Props) {
   const { ws, client, person, access, actions } = p;
   setTermWord(ws.terms?.word); // the inviting company's words
+  const fromWho = companyOf(person.email, person.company, client) ?? client.name; // where this guest works: their uploads folder
   const v = actions.view();
   const mobile = useMobile();
   const [mode, setMode] = useState<Mode>('home');
@@ -198,7 +199,7 @@ export function ClientApp(p: Props) {
         <nav className="nav">
           {navItem('', 'All files', HardDrive)}
           {navItem('shared', 'Shared with you', FileText)}
-          {navItem('mine', `From ${client.name}`, Upload)}
+          {navItem('mine', `From ${fromWho}`, Upload)}
         </nav>
         {v.channels.length > 0 && (
           <>
@@ -490,8 +491,8 @@ export function ClientApp(p: Props) {
     } else {
       const list = v.files.filter((f) => (sub === 'shared' ? !f.uploadedBy : sub === 'mine' ? !!f.uploadedBy : true)).sort((a, b) => b.modified.localeCompare(a.modified));
       content = pane(
-        sub === 'shared' ? 'Shared with you' : sub === 'mine' ? `From ${client.name}` : 'Files',
-        access.uploads ? `Uploads go to “From ${client.name}”` : 'What the team shares with you',
+        sub === 'shared' ? 'Shared with you' : sub === 'mine' ? `From ${fromWho}` : 'Files',
+        access.uploads ? `Uploads go to “From ${fromWho}”` : 'What the team shares with you',
         list.length ? (
           <div className="todo-group">
             {list.map((f) => (
@@ -636,7 +637,7 @@ export function ClientApp(p: Props) {
               mode === 'work'
                 ? { value: sub, label: 'Which work', onChange: setSub, options: [{ value: '', label: 'Work' }, { value: 'approve', label: 'Needs approval' }, { value: 'done', label: 'Done' }, ...briefs.map((b) => ({ value: `brief:${b.id}`, label: b.title, group: 'Briefs' }))] }
                 : mode === 'files'
-                  ? { value: sub, label: 'Which files', onChange: setSub, options: [{ value: '', label: 'Files' }, { value: 'shared', label: 'Shared with you' }, { value: 'mine', label: `From ${client.name}` }, ...v.channels.map((c) => ({ value: `chan:${c.id}`, label: c.name, group: 'Channel materials' }))] }
+                  ? { value: sub, label: 'Which files', onChange: setSub, options: [{ value: '', label: 'Files' }, { value: 'shared', label: 'Shared with you' }, { value: 'mine', label: `From ${fromWho}` }, ...v.channels.map((c) => ({ value: `chan:${c.id}`, label: c.name, group: 'Channel materials' }))] }
                   : mode === 'requests'
                     ? { value: sub, label: 'Which requests', onChange: setSub, options: [{ value: '', label: 'Requests' }, { value: 'waiting', label: 'Waiting on you' }, { value: 'done', label: 'Done' }, { value: 'all', label: 'All requests' }] }
                     : mode === 'meet' && v.meetings.length
@@ -1116,7 +1117,7 @@ function PersonMenu({ p, close, mobileModes, go, say }: { p: Props; close: () =>
         (inviting ? (
           <div className="client-invite">
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Their name" />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={p.client.domain ? `name@${p.client.domain}` : 'name@company.com'} />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={`name@${person.email.split('@')[1] ?? 'company.com'}`} />
             {msg && (
               <p className="small">
                 {msg.text}{' '}

@@ -84,6 +84,9 @@ export function portalsFor(email: string, memberOf: string[], workspaces: Worksp
     .map((x) => ({ ...x, key: `${x.ws.id}:${x.client.id}` }));
 }
 
+/** Personal mail (gmail and the like): its domain says nothing about the company. */
+export const isFreemail = (domain: string) => FREEMAIL.includes(domain.toLowerCase().split('.')[0]);
+
 const FREEMAIL = ['gmail', 'googlemail', 'yahoo', 'outlook', 'hotmail', 'icloud', 'live', 'proton', 'protonmail', 'me', 'aol', 'ymail'];
 
 /** Where a guest works, for "Name · Company": as given at the invite, the project's name if the email matches its domain, or the email's domain. */

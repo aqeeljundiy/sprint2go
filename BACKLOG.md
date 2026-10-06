@@ -76,7 +76,11 @@
 - Guests with 2+ shared projects land on **Shared with you**, grouped by inviting company, saying what waits on them. "See everything shared with you" in the switcher.
 - **Start your own workspace (free)** for guests: the usual onboarding, saved by `POST /api/workspace` (they're forced to owner). They keep their shared spaces in the switcher.
 
+- **Guests bring their colleagues** (decided 6 Oct, instead of inviting whole companies): a guest can add people at their own email domain straight away (e.g. Faisal adds Rizky @pixelandprofits.com to Elkiya's project); other domains wait for the team's OK. Someone who already signs in gets access with no link. The new person gets the same company label; uploads go to "From <their company>"; the team's notifications say "Faisal (Pixel & Profits)". Admins can turn it off or require approval (Guest access, "Guests invite colleagues").
+- Local demo: Elkiya's project "Q4 ads with Pixel & Profits" (Partner) with Faisal, Aditya and Rizky as guests. It lives in the local database only, not in the seed.
+
 ## Next, for projects
+- When someone leaves a company, also end their guest access in other companies' projects (needs the company to vouch for its domain).
 - Per-type defaults for guest access (e.g. Partners can see more than Clients).
 - Narrow panes: the project page's Guests tab squeezes its two columns below about 900px.
 - Mobile: a "Shared with you" entry in the phone switcher.
