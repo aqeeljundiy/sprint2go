@@ -336,7 +336,10 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 function serveStatic(req: IncomingMessage, res: ServerResponse) {
   const path = normalize(decodeURIComponent((req.url ?? '/').split('?')[0])).replace(/^(\.\.[/\\])+/, '');
   let file = join(DIST, path);
-  if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html'); // single-page app
+  // The front door: people who aren't signed in see the landing page; /welcome always shows it.
+  const signedIn = !!db.sessionUser(cookie(req, 's2g'));
+  if ((path === '/' && !signedIn) || path === '/welcome') file = join(DIST, 'landing.html');
+  else if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html'); // single-page app
   if (!existsSync(file)) {
     res.statusCode = 404;
     return res.end('Build the app first: npm run build');
