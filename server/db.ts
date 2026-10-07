@@ -61,6 +61,7 @@ export function checkPassword(pw: string, stored: string) {
 export function setLogin(userId: string, email: string, pw: string) {
   db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET email = excluded.email, pw_hash = excluded.pw_hash').run(userId, email, hashPassword(pw));
 }
+export const hasLogin = (userId: string) => !!db.prepare('SELECT 1 FROM logins WHERE user_id = ?').get(userId);
 export function findLogin(email: string) {
   return db.prepare('SELECT user_id, pw_hash FROM logins WHERE email = ?').get(email) as { user_id: string; pw_hash: string } | undefined;
 }

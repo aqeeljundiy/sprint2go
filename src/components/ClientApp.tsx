@@ -14,6 +14,10 @@ import {
   Inbox,
   ListChecks,
   LogOut,
+  Monitor,
+  Moon,
+  Sun,
+  UserRound,
   Menu as MenuIcon,
   MessagesSquare,
   Paperclip,
@@ -31,6 +35,10 @@ import type { ClientActions } from '../clientActions';
 import { can, companyOf, requestStatus, teamLabel } from '../clientView';
 import { relative } from '../utils';
 import { Avatar } from './Avatar';
+import { PhotoPicker } from './PhotoPicker';
+import { PasswordRow } from './SettingsPage';
+import { createPortal } from 'react-dom';
+import { ACCENTS, type ThemePref } from '../settings';
 import { WorkspaceLogo, applyBranding } from './WorkspaceLogo';
 import { Logo } from './Logo';
 import { MobileTop } from './MobileTop';
@@ -61,6 +69,8 @@ interface Props {
   /** Someone with their own workspace (or several portals): the workspace switcher, in place of the logo. */
   switcher?: React.ReactNode;
   mobileSwitch?: { workspaces: Workspace[]; onWorkspace: (id: string) => void };
+  /** Their own account: profile, photo, password and light or dark. Not in "View as guest". */
+  account?: { me: User; theme: ThemePref; onTheme: (t: ThemePref) => void; onProfile: (patch: Partial<User>) => void };
 }
 
 const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
@@ -95,6 +105,7 @@ export function ClientApp(p: Props) {
   const [chanId, setChanId] = useState<string | null>(mobile ? null : (v.channels[0]?.id ?? null));
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [meOpen, setMeOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [askChats, setAskChats] = useState<AskChat[]>([]);
   const [toast, setToast] = useState('');
@@ -605,7 +616,7 @@ export function ClientApp(p: Props) {
           </div>
           <div className="rail-account">
             <button ref={meBtn} className={`rail-avatar ${meOpen ? 'on' : ''}`} onClick={() => setMeOpen(true)} title={person.name}>
-              <Avatar person={{ name: person.name, email: person.email, color: client.color }} size={32} />
+              <Avatar person={{ name: p.account?.me.name ?? person.name, email: person.email, color: p.account?.me.color ?? client.color }} size={32} />
             </button>
           </div>
         </div>
@@ -716,9 +727,10 @@ export function ClientApp(p: Props) {
           onClose={() => setAskOpen(false)}
         />
       )}
-      <Popover anchor={meBtn} open={meOpen} onClose={() => setMeOpen(false)} width={300} title={person.name}>
-        <PersonMenu p={p} close={() => setMeOpen(false)} mobileModes={mobile ? MODES.slice(5) : []} go={go} say={say} />
+      <Popover anchor={meBtn} open={meOpen} onClose={() => setMeOpen(false)} width={300} title="Account">
+        <PersonMenu p={p} close={() => setMeOpen(false)} mobileModes={mobile ? MODES.slice(5) : []} go={go} say={say} onProfile={() => setProfileOpen(true)} />
       </Popover>
+      {profileOpen && p.account && <ProfileDialog me={p.account.me} email={person.email} onSave={(patch) => (p.account!.onProfile(patch), say('Profile saved'))} onClose={() => setProfileOpen(false)} />}
       {p.preview && (
         <div className="view-as-pill">
           <Eye size={14} />
@@ -1091,26 +1103,50 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
   );
 }
 
-function PersonMenu({ p, close, mobileModes, go, say }: { p: Props; close: () => void; mobileModes: [Mode, string, LucideIcon, number?][]; go: (m: Mode) => void; say: (t: string) => void }) {
-  const { person, access, ws } = p;
+function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; close: () => void; mobileModes: [Mode, string, LucideIcon, number?][]; go: (m: Mode) => void; say: (t: string) => void; onProfile: () => void }) {
+  const { person, access, ws, account } = p;
   const [inviting, setInviting] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [msg, setMsg] = useState<{ text: string; link?: string | null } | null>(null);
+  const me = account?.me;
+  const company = companyOf(person.email, person.company, p.client);
   return (
-    <div className="sel-pop">
-      <div className="client-me">
-        <Avatar person={{ name: person.name, email: person.email, color: p.client.color }} size={36} />
-        <span>
-          <strong>{person.name}</strong>
+    <div className="sel-pop guest-menu">
+      <div className="am-head">
+        <Avatar person={{ name: me?.name ?? person.name, email: person.email, color: me?.color ?? p.client.color }} size={42} />
+        <div>
+          <strong>{me?.name ?? person.name}</strong>
+          <small>{person.email}</small>
           <small>
-            {person.email} · {ROLE[person.role]}
+            {ROLE[person.role]}
+            {company ? ` · ${company}` : ''}
           </small>
-        </span>
+        </div>
       </div>
+      {account && (
+        <div className="am-theme">
+          {(
+            [
+              ['light', Sun, 'Light'],
+              ['dark', Moon, 'Dark'],
+              ['system', Monitor, 'Auto'],
+            ] as const
+          ).map(([id, Icon, label]) => (
+            <button key={id} className={account.theme === id ? 'on' : ''} onClick={() => account.onTheme(id)}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {account && (
+        <button className="am-item" onClick={() => (close(), onProfile())}>
+          <UserRound size={16} /> Your profile and password
+        </button>
+      )}
       {mobileModes.map(([id, label, Icon]) => (
-        <button key={id} className="sel-opt" onClick={() => (close(), go(id))}>
-          <Icon size={14} /> {label}
+        <button key={id} className="am-item" onClick={() => (close(), go(id))}>
+          <Icon size={16} /> {label}
         </button>
       ))}
       {access.invites !== 'off' &&
@@ -1128,30 +1164,95 @@ function PersonMenu({ p, close, mobileModes, go, say }: { p: Props; close: () =>
                 )}
               </p>
             )}
-            <button
-              className="primary-btn sm"
-              disabled={!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
-              onClick={async () => {
-                const r = await p.actions.invite({ name, email });
-                setMsg({ text: r.message, link: r.link });
-                if (r.ok) (setName(''), setEmail(''));
-              }}
-            >
-              {access.invites === 'approve' ? 'Ask to add them' : 'Invite'}
-            </button>
+            <div className="ci-actions">
+              <button className="ghost-btn sm" onClick={() => (setInviting(false), setMsg(null))}>
+                Cancel
+              </button>
+              <button
+                className="primary-btn sm"
+                disabled={!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
+                onClick={async () => {
+                  const r = await p.actions.invite({ name, email });
+                  setMsg({ text: r.message, link: r.link });
+                  if (r.ok) (setName(''), setEmail(''));
+                }}
+              >
+                {access.invites === 'approve' ? 'Ask to add them' : 'Invite'}
+              </button>
+            </div>
           </div>
         ) : (
-          <button className="sel-opt" onClick={() => setInviting(true)}>
-            <UserPlus size={14} /> Invite a colleague
+          <button className="am-item" onClick={() => setInviting(true)}>
+            <UserPlus size={16} /> Invite a colleague
           </button>
         ))}
+      <div className="am-sep" />
       {(p.onSignOut ?? p.preview?.onExit) && (
-        <button className="sel-opt" onClick={() => (close(), (p.onSignOut ?? p.preview!.onExit)())}>
-          <LogOut size={14} /> {p.onSignOut ? 'Sign out' : `Exit ${term.who} view`}
+        <button className="am-item danger" onClick={() => (close(), (p.onSignOut ?? p.preview!.onExit)())}>
+          <LogOut size={16} /> {p.onSignOut ? 'Sign out' : `Exit ${term.who} view`}
         </button>
       )}
       <p className="muted small menu-note">You see what {ws.name} shares with you. Need something? Use Requests or Chat.</p>
     </div>
+  );
+}
+
+/** A guest's own profile: photo, name, job title, colour and password. The same account works in every shared space. */
+function ProfileDialog({ me, email, onSave, onClose }: { me: User; email: string; onSave: (patch: Partial<User>) => void; onClose: () => void }) {
+  const [name, setName] = useState(me.name);
+  const [title, setTitle] = useState(me.title ?? '');
+  const [color, setColor] = useState(me.color);
+  const [photo, setPhoto] = useState(me.photo);
+  return createPortal(
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal profile-modal" role="dialog" aria-label="Your profile" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <UserRound size={15} /> Your profile
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body">
+          <PhotoPicker name={name || me.name} email={email} color={color} photo={photo} onChange={setPhoto} />
+          {!photo && (
+            <div className="avatar-colors">
+              <small>Or a colour</small>
+              <div>
+                {ACCENTS.map((c) => (
+                  <button key={c} className={`swatch ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={`Colour ${c}`} />
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="field">
+            <label>Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Job title</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Marketing lead" />
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input value={email} readOnly />
+            <small>You sign in with this address. The same sign-in works for everything shared with you.</small>
+          </div>
+          <PasswordRow />
+        </div>
+        <footer className="modal-foot">
+          <span className="spacer" />
+          <button className="ghost-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-btn" disabled={!name.trim()} onClick={() => (onSave({ name: name.trim(), title: title.trim(), color, photo }), onClose())}>
+            Save
+          </button>
+        </footer>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

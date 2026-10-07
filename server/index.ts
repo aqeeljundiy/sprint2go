@@ -102,12 +102,14 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
   const firstWs = (ws.find((w) => w.id === 'pnp') ?? ws[0])?.id; // older documents without a workspace belong to the first one (as in the app)
   const accounts = new Map(ws.flatMap((w) => ((w.accounts ?? []) as { id: string; users?: string[] }[]).map((a) => [a.id, { ws: w.id, users: a.users ?? [] }] as const)));
   const channels = new Map((db.allDocs('channels') as any[]).map((c) => [String(c.id), c]));
+  // Guests on your projects (some are people at other companies that use Sprint2go): so their names and photos show.
+  const guests = new Set((db.allDocs('clients') as any[]).filter((c) => mine.has(c.workspaceId)).flatMap((c) => (c.people ?? []).map((p: any) => String(p.email).toLowerCase())));
   const channelOk = (c: any) => !!c && mine.has(c.workspaceId) && (!(c.private || c.kind === 'dm') || (c.members ?? []).includes(userId));
   const ok = (coll: string, d: any): boolean => {
     switch (coll) {
       case 'users':
         // Yourself, your companies' people, and the client people of your companies.
-        return d.id === userId || people.has(d.id) || (!!d.clientOf && mine.has(d.clientOf.workspaceId));
+        return d.id === userId || people.has(d.id) || (!!d.clientOf && mine.has(d.clientOf.workspaceId)) || guests.has(String(d.email ?? '').toLowerCase());
       case 'workspaces':
         return mine.has(d.id);
       case 'statuses':
@@ -154,8 +156,9 @@ function clientLens(me: Person) {
       case 'workspaces':
         return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: d.clientAccess, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
       case 'users':
-        if (d.id === me.id || (d.clientOf?.clientId === clientId)) return { id: d.id, name: d.name, email: d.email, color: d.color, clientOf: d.clientOf };
-        return team.has(d.id) ? { id: d.id, name: d.name, color: d.color, title: d.title, email: '' } : null;
+        if (d.id === me.id || d.clientOf?.clientId === clientId || people.some((p) => p.email.toLowerCase() === String(d.email ?? '').toLowerCase()))
+          return { id: d.id, name: d.name, email: d.email, color: d.color, title: d.title, photo: d.photo, clientOf: d.clientOf };
+        return team.has(d.id) ? { id: d.id, name: d.name, color: d.color, title: d.title, photo: d.photo, email: '' } : null;
       case 'clients':
         return d.id === clientId ? d : null;
       case 'teams':
@@ -375,6 +378,8 @@ createServer(async (req, res) => {
       if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
       const inv = db.claimInvite(String(token ?? ''));
       if (!inv) return json(res, 404, { error: 'This invite link has expired or was already used.' });
+      // Never overwrite an existing sign-in (old links made before this check, or a colleague's invite to someone who already has an account).
+      if (db.hasLogin(inv.user_id)) return json(res, 409, { error: 'This account already has a password. Sign in instead.' });
       db.setLogin(inv.user_id, inv.email, password);
       res.setHeader('set-cookie', `s2g=${db.newSession(inv.user_id)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}`);
       return json(res, 200, { me: inv.user_id });
@@ -468,9 +473,16 @@ createServer(async (req, res) => {
       const { userId, email } = await body(req);
       if (!memberOf(me).some((w) => isAdminOf(me, w.id))) return json(res, 403, { error: 'Only admins can invite people.' });
       if (typeof email !== 'string' || !email.includes('@')) return json(res, 400, { error: 'Invalid email' });
+      const target = String(userId ?? '');
+      if (!target) return json(res, 400, { error: 'Who?' });
+      // An invite sets a password, so it can only be for someone who has never signed in: a new person (not saved yet,
+      // their doc may still be on its way) or someone added to a company you run. Never an existing account.
+      if (db.hasLogin(target)) return json(res, 409, { error: 'They already have a sign-in.' });
+      const existing = db.getDoc('users', target);
+      if (existing && !memberOf(me).some((w) => isAdminOf(me, w.id) && w.members.some((m: any) => m.userId === target))) return json(res, 403, { error: 'Only their own company can invite them.' });
       const taken = db.findLogin(email);
-      if (taken && taken.user_id !== userId) return json(res, 409, { error: 'Someone already uses that email.' });
-      return json(res, 200, { link: `/?invite=${db.newInvite(String(userId), email)}` });
+      if (taken) return json(res, 409, { error: 'Someone already uses that email.' });
+      return json(res, 200, { link: `/?invite=${db.newInvite(target, email)}` });
     }
 
     // Saves changes and tells everyone else who has the app open.
@@ -493,10 +505,18 @@ createServer(async (req, res) => {
         if (coll === 'statuses') return d.id === me;
         return !!see(coll, d);
       };
+      // Your own profile: name, title, colour and photo (a small image), whoever you are. Nothing else on it.
+      const ownProfile = (d: db.Doc) => {
+        if (coll !== 'users' || d.id !== me) return null;
+        const before = db.getDoc('users', me);
+        if (!before) return null;
+        const photo = typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000 ? d.photo : undefined;
+        return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo };
+      };
       // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
       const ok = (upserts as db.Doc[])
         .filter((d) => d && typeof d.id === 'string')
-        .map((d) => (asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
+        .map((d) => ownProfile(d) ?? (asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
         .filter(Boolean);
       const dels = mine.size
         ? (deletes as string[]).filter((id) => {

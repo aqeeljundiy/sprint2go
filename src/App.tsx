@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { term, setTermWord } from './terms';
+import { setPhotos } from './photos';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
 import type { Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
@@ -160,6 +161,8 @@ interface AppProps {
 
 export default function App({ user, signedInUsers, allUsers, workspaces: allWorkspaces, setWorkspaces, onSwitchUser, onAddUser, onSignOut, onInvite: inviteUser, onWorkspace, onUpdateUser }: AppProps) {
   const [settings, updateSettings] = useSettings(user);
+  const [previewOnboarding, setPreviewOnboarding] = useState(() => new URLSearchParams(location.search).get('preview') === 'onboarding');
+  setPhotos(allUsers); // every Avatar finds people's photos by email
 
   // Keep the user's profile in step with their settings.
   useEffect(() => {
@@ -2212,6 +2215,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         notices={notices.filter((n) => n.workspaceId === pws.id && inbox.includes(n.userId))}
         onReadNotices={() => setNotices((ns) => ns.map((n) => (n.workspaceId === pws.id && inbox.includes(n.userId) ? { ...n, read: true } : n)))}
         onSignOut={onSignOut}
+        account={{ me: user, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => (patch.name !== undefined && updateSettings({ name: patch.name, title: patch.title ?? settings.title, avatarColor: patch.color ?? settings.avatarColor }), onUpdateUser(patch)) }}
         switcher={<WorkspaceSwitcher workspaces={workspaces} current={pws} currentPortal={portal.key} unread={wsUnread} portals={portalItems} onPortal={setPortalKey} onSwitch={(id) => (setPortalKey(''), switchWorkspace(id))} />}
         mobileSwitch={{ workspaces: [...workspaces, pws], onWorkspace: (id) => id !== pws.id && (setPortalKey(''), switchWorkspace(id)) }}
       />
@@ -2986,6 +2990,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onAddAccount={() => setNewAcct(true)}
             users={allUsers}
             me={user.id}
+            onPhoto={(photo) => onUpdateUser({ photo })}
+            onPreviewOnboarding={() => setPreviewOnboarding(true)}
             myRole={role}
             onInvite={() => openInvite()}
             onRole={(uid2, r) => patchWorkspace(ws.id, { members: ws.members.map((m) => (m.userId === uid2 ? { ...m, role: r } : m)) })}
@@ -3157,6 +3163,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onClose={closeCompose}
         />
       )}
+      {previewOnboarding && <Onboarding preview me={user} existingEmails={[]} onCreate={() => {}} onClose={() => (setPreviewOnboarding(false), new URLSearchParams(location.search).has('preview') && history.replaceState(null, '', location.pathname))} />}
       {newWs && (
         <Onboarding
           me={user}

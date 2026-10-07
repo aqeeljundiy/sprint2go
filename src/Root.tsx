@@ -11,6 +11,7 @@ import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, portalsFor } from './clientView';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { SharedHome } from './components/SharedHome';
+import { setPhotos } from './photos';
 import { Onboarding } from './components/Onboarding';
 import { AcceptInvite, SignIn } from './components/SignIn';
 
@@ -155,8 +156,10 @@ function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
 
 /** Someone at a client, signed in: their portal, with only what the company shares (the server enforces it). */
 function ClientRoot({ me }: { me: User }) {
-  useSettings(me); // light or dark, like the team app
-  const [users] = useStored('users');
+  const [settings, updateSettings] = useSettings(me); // light or dark, like the team app
+  const [users, setUsers] = useStored('users');
+  setPhotos(users);
+  const self = users.find((u) => u.id === me.id) ?? me;
   const [workspaces] = useStored('workspaces');
   const [clients, setClients] = useStored('clients');
   const [teams] = useStored('teams');
@@ -241,6 +244,7 @@ function ClientRoot({ me }: { me: User }) {
       notices={notices.filter((n) => inbox.includes(n.userId))}
       onReadNotices={() => setNotices((ns) => ns.map((n) => (inbox.includes(n.userId) ? { ...n, read: true } : n)))}
       onSignOut={() => void signOut()}
+      account={{ me: self, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => setUsers((list) => list.map((u) => (u.id === me.id ? { ...u, ...patch } : u))) }}
       switcher={<WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} onHome={portals.length > 1 ? () => setKey('') : undefined} onAdd={() => setStarting(true)} addLabel="Start your own workspace (free)" />}
     />
   );

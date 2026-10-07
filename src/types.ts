@@ -214,6 +214,7 @@ export interface User {
   email: string; // sign-in address
   title: string;
   color: string;
+  photo?: string; // profile photo, a small square JPEG data URL
   nicknames?: string[]; // "Kiki" for Rizky; used by the brain dump
   clientOf?: { workspaceId: string; clientId: string }; // someone at a client: signs in to their portal only
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { term } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import type { AISettings, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
 import { AISection } from './admin/AISection';
@@ -10,9 +10,9 @@ import { trialPlan } from '../data/workspaces';
 import { Avatar } from './Avatar';
 import { BrandFields } from './WorkspaceForms';
 import { WorkspaceLogo } from './WorkspaceLogo';
-import { initials } from '../utils';
 import type { SettingsSection } from './AccountMenu';
 import { RichEditor } from './RichEditor';
+import { PhotoPicker } from './PhotoPicker';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { accessFor } from '../clientView';
 import { Select } from './ui/Select';
@@ -33,6 +33,7 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'mail', name: 'Mail & signature', icon: PenLine, group: 'You' },
   { id: 'notifications', name: 'Notifications', icon: Bell, group: 'You' },
   { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard, group: 'You' },
+  { id: 'developer', name: 'Developer', icon: FlaskConical, group: 'You' },
 ];
 
 const SHORTCUTS: [string, string[]][] = [
@@ -69,6 +70,8 @@ interface Props {
   onRemoveAccount: (id: string) => void;
   users: User[];
   me: string; // current user id
+  onPhoto?: (photo: string | undefined) => void;
+  onPreviewOnboarding?: () => void;
   myRole: Role;
   onInvite: () => void;
   onRole: (userId: string, role: Role) => void;
@@ -107,7 +110,7 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, users, me, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
+export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, users, me, onPhoto, onPreviewOnboarding, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -306,9 +309,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <h2>Account</h2>
               <p className="set-intro">How you appear to people you email.</p>
               <div className="profile-card">
-                <span className="avatar big" style={{ background: s.avatarColor }}>
-                  {initials(s.name)}
-                </span>
+                <PhotoPicker name={s.name} email={email} color={s.avatarColor} photo={users.find((u) => u.id === me)?.photo} onChange={(ph) => onPhoto?.(ph)} />
                 <div className="avatar-colors">
                   <small>Avatar colour</small>
                   <div>
@@ -347,6 +348,28 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 </span>
                 <span className="badge-soon">
                   <ShieldCheck size={13} /> Coming soon
+                </span>
+              </div>
+            </>
+          )}
+
+          {section === 'developer' && (
+            <>
+              <h2>Developer</h2>
+              <p className="set-intro">Walk through flows that can’t run for real yet. Nothing here changes your data.</p>
+              <div className="set-row">
+                <span>
+                  <strong>Sign-up and onboarding</strong>
+                  <small>Account, company, apps, email (forward from Gmail or Outlook, or move fully) and team. Waits like Gmail’s code and the DNS check are simulated.</small>
+                </span>
+                <button className="ghost-btn outline" onClick={onPreviewOnboarding}>
+                  Open preview
+                </button>
+              </div>
+              <div className="set-row">
+                <span>
+                  <strong>Link to the preview</strong>
+                  <small className="mono">{location.origin}/?preview=onboarding</small>
                 </span>
               </div>
             </>
@@ -502,7 +525,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 }
 
 /** Change your sign-in password (the local server checks it). */
-function PasswordRow() {
+export function PasswordRow() {
   const [open, setOpen] = useState(false);
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
