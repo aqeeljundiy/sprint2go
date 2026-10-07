@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { ArrowLeft, ChevronRight, FileText, Folder, FolderInput, FolderPlus, Image as ImageIcon, Link2, MoreHorizontal, NotebookPen, Pencil, Plus, Trash2, Upload, Video, X } from 'lucide-react';
 import type { Channel, Material, Materials, User } from '../types';
 import { relative } from '../utils';
@@ -284,6 +285,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
         </div>
       </Popover>
 
+      <SmoothHeight>
       {adding === 'folder' && (
         <div className="todo-add task-add mat-add">
           <Folder size={15} />
@@ -309,6 +311,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
           </button>
         </div>
       )}
+      </SmoothHeight>
       {error && <p className="err small">{error}</p>}
 
       {current ? (

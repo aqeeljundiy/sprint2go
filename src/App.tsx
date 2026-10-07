@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { term, setTermWord } from './terms';
 import { setPhotos } from './photos';
+import { SmoothHeight, TabPane } from './components/ui/Smooth';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
 import type { Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
@@ -3088,6 +3089,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {moreOpen && (
         <div className="more-sheet" onClick={() => setMoreOpen(false)}>
           <div className="more-card" onClick={(e) => e.stopPropagation()}>
+            <SmoothHeight>
+            <TabPane key={String(editingBar)}>
             {editingBar ? (
               <div className="bar-edit">
                 <strong>Your bottom bar</strong>
@@ -3125,6 +3128,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 </button>
               </>
             )}
+            </TabPane>
+            </SmoothHeight>
             <button onClick={() => go('settings')}>
               <UserIcon size={20} /> Account & settings
             </button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { TabPane } from './ui/Smooth';
+import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note } from '../types';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { PastClients } from './PastClients';
@@ -255,6 +255,20 @@ export function TasksView(p: Props) {
     return out.sort((a, b) => a.sort.localeCompare(b.sort));
   }, [shown, groupBy]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Ticking a task: show the tick, let the row fold away, then move it (instead of it jumping between groups).
+  const [ticking, setTicking] = useState<Set<string>>(new Set());
+  const tick = (t: Todo) => {
+    if (t.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return p.onStatus(t.id, t.done ? 'todo' : 'done');
+    setTicking((s) => new Set(s).add(t.id));
+    setTimeout(() => {
+      p.onStatus(t.id, 'done');
+      setTicking((s) => {
+        const n = new Set(s);
+        n.delete(t.id);
+        return n;
+      });
+    }, 380);
+  };
   const row = (t: Todo) => {
     const d = t.due ? dueLabel(t.due) : null;
     const src = SOURCE[t.source];
@@ -264,11 +278,11 @@ export function TasksView(p: Props) {
     return (
       <div
         key={t.id}
-        className={`task ${t.done ? 'done' : ''} ${t.priority === 'high' ? 'high' : ''} ${statusOf(t) === 'doing' ? 'doing' : ''}`}
+        className={`task ${t.done || ticking.has(t.id) ? 'done' : ''} ${ticking.has(t.id) ? 'leaving' : ''} ${t.priority === 'high' ? 'high' : ''} ${statusOf(t) === 'doing' ? 'doing' : ''}`}
         onClick={(e) => !(e.target as HTMLElement).closest('button, input, .sel') && p.onOpenTask(t.id)}
       >
-        <button className="todo-check" onClick={() => p.onStatus(t.id, t.done ? 'todo' : 'done')} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
-          {t.done && <span>✓</span>}
+        <button className="todo-check" onClick={() => tick(t)} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
+          {(t.done || ticking.has(t.id)) && <span>✓</span>}
         </button>
         <div className="task-main">
           <button className="task-title-btn" onClick={() => p.onOpenTask(t.id)}>
@@ -792,9 +806,9 @@ export function TasksView(p: Props) {
                 {filter === 'open' && recentDone.length > 0 && (
                   <div className="todo-group done-group">
                     <button className="d-heading done-toggle" onClick={() => setShowDone((s) => !s)}>
-                      Done this week <span>{recentDone.length}</span> {showDone ? '▾' : '▸'}
+                      Done this week <span>{recentDone.length}</span> <ChevronRight size={14} className={`rot-chev ${showDone ? 'open' : ''}`} />
                     </button>
-                    {showDone && recentDone.map(row)}
+                    <SmoothHeight>{showDone && recentDone.map(row)}</SmoothHeight>
                   </div>
                 )}
               </>

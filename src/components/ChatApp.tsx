@@ -267,7 +267,7 @@ export function ChatSidebar(p: SidebarProps) {
         ) : (
           <div className="sec-head-row">
             <button className="nav-heading sb-label sec-head" onClick={() => toggle(key)}>
-              {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />} {title}
+              <ChevronRight size={12} className={`rot-chev ${closed ? '' : 'open'}`} /> {title}
               {(() => {
                 const n = list.reduce((sum, c) => sum + (p.unread[c.id] ?? 0), 0);
                 return closed && n ? <span className="sec-count unread">{n}</span> : null; // collapsed: show what you'd miss
@@ -287,12 +287,12 @@ export function ChatSidebar(p: SidebarProps) {
             )}
           </div>
         )}
-        {!closed && (
+        <div className={`fold ${closed ? '' : 'open'}`} aria-hidden={closed}>
           <nav className="nav">
             {list.map(row)}
             {extra}
           </nav>
-        )}
+        </div>
       </div>
     );
   };
@@ -827,7 +827,7 @@ export function ChatView(p: ViewProps) {
     const t = setTimeout(() => {
       const el = document.querySelector(`[data-msg="${p.focusId}"]`);
       if (el) {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
         el.classList.add('flash');
         setTimeout(() => el.classList.remove('flash'), 2200);
       }

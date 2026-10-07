@@ -1953,7 +1953,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   background: var(--surface);
   box-shadow: 0 -20px 60px -20px rgba(0, 0, 0, 0.35);
   text-align: center;
-  animation: sheetUp 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: installUp 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 @media (min-width: 761px) {
   .install-scrim {
@@ -1963,7 +1963,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
     border-radius: 24px;
   }
 }
-@keyframes sheetUp {
+@keyframes installUp {
   from {
     transform: translateY(40px);
     opacity: 0;
@@ -2144,4 +2144,214 @@ select,
   [role='switch'] {
     transition: none;
   }
+}
+
+/* ---------- More things that now leave with motion (exitAnimations.ts) ---------- */
+.later-menu {
+  animation: pop-in 0.14s ease-out;
+}
+.mention-pop {
+  animation: pop-in-up 0.14s ease-out;
+}
+.is-leaving.more-sheet {
+  animation: s2gFadeOut 0.2s ease forwards !important;
+}
+.is-leaving .more-card,
+.is-leaving.inline-sheet {
+  animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.is-leaving.chat-side,
+.is-leaving.ask-drawer {
+  animation: s2gDrawerOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.is-leaving.later-menu,
+.is-leaving.track-menu,
+.is-leaving.tb-popup,
+.is-leaving.recip-suggest,
+.is-leaving.ev-detail {
+  animation: s2gMenuOut 0.16s ease forwards !important;
+}
+.is-leaving.mention-pop {
+  animation: s2gMenuOutUp 0.16s ease forwards !important;
+}
+.is-leaving.lightbox {
+  animation: s2gFadeOut 0.18s ease forwards !important;
+}
+.is-leaving.fab {
+  animation: s2gFabOut 0.18s ease forwards !important;
+}
+@keyframes s2gFabOut {
+  to {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+/* On phones dialogs are bottom sheets: they leave the way they came, down */
+@media (max-width: 760px) {
+  .is-leaving .modal,
+  .is-leaving .palette {
+    animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  }
+  .is-leaving.chat-side,
+  .is-leaving.ask-drawer {
+    animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  }
+}
+/* A ticked task: tick shows, then the row folds away before it moves to Done */
+.task.leaving {
+  animation: taskOut 0.36s cubic-bezier(0.4, 0, 0.2, 1) 0.12s forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+@keyframes taskOut {
+  0% {
+    max-height: 120px;
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    transform: translateX(12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task.leaving {
+    animation: none;
+  }
+}
+/* One chevron that turns, instead of swapping arrow characters */
+.rot-chev {
+  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+  vertical-align: -2px;
+}
+.rot-chev.open {
+  transform: rotate(90deg);
+}
+/* Home "Up next": a row you act on folds away */
+.un-row {
+  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.un-row.leaving {
+  animation: taskOut 0.24s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* A section that folds open and closed (grid rows, no measuring) */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.2s ease;
+}
+.fold.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.fold > * {
+  min-height: 0;
+  overflow: hidden;
+}
+.fold:not(.open) {
+  visibility: hidden;
+  transition: grid-template-rows 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.2s ease, visibility 0s linear 0.26s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fold,
+  .fold:not(.open) {
+    transition: none;
+  }
+}
+/* Settings menu: selection shows by colour, not weight, so pills next to it don't shift */
+.settings-nav button.on {
+  font-weight: 500;
+}
+/* An empty SmoothHeight takes no room (no stray gap in a flex or grid parent); it animates open when content arrives */
+.smooth-h:has(> .smooth-h-in:empty) {
+  display: none;
+}
+
+/* Touch screens have no hover: controls that only appear on hover are always there (quietly) */
+@media (hover: none) {
+  .checklist li .icon-btn,
+  .tpl-del,
+  .plan-task .pt-add,
+  .task .todo-actions {
+    opacity: 0.75;
+  }
+}
+/* Guest view: a toast sits above the "Viewing as" pill, not under it */
+@media (max-width: 760px) {
+  .client-app:has(.view-as-pill) .client-toast {
+    bottom: calc(132px + env(safe-area-inset-bottom));
+  }
+}
+.view-as-pill {
+  animation-duration: 0.28s;
+}
+.smooth-h {
+  transition-duration: 0.28s;
+}
+.esg-card {
+  animation-duration: 0.28s;
+}
+/* Home "Customise": the drag handle grows in, so card titles slide over instead of jumping */
+.home-card .home-grip {
+  flex: none;
+  width: 0;
+  margin-right: -6px;
+  opacity: 0;
+  color: var(--text-3);
+  transition: width 0.22s cubic-bezier(0.2, 0.7, 0.2, 1), margin 0.22s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.18s ease;
+}
+.home-card .home-grip.on {
+  width: 15px;
+  margin-right: 0;
+  opacity: 1;
+}
+
+/* ---------- Sliding tab selection (src/slidingTabs.ts) ---------- */
+.inked {
+  position: relative;
+  isolation: isolate;
+}
+.tab-ink {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), width 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), height 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.15s;
+}
+.tab-ink.show {
+  opacity: 1;
+}
+/* the selected tab hands its background (or underline) to the highlight */
+.inked-pill > button.on,
+.inked-pill > [role='tab'][aria-selected='true'] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.inked-line > button.on,
+.inked-line > [role='tab'][aria-selected='true'] {
+  border-bottom-color: transparent !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-ink {
+    transition: none;
+  }
+}
+.segmented > .tab-ink {
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.client-tabs > .tab-ink,
+.cs-tabs > .tab-ink {
+  background: var(--accent-soft);
+}
+.inked-line > .tab-ink {
+  background: var(--accent);
 }

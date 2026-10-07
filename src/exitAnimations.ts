@@ -17,6 +17,18 @@ const LEAVING = [
   '.ws-menu',
   '.notices',
   '.toast',
+  '.more-sheet',
+  '.chat-side',
+  '.ask-drawer',
+  '.later-menu',
+  '.track-menu',
+  '.tb-popup',
+  '.mention-pop',
+  '.recip-suggest',
+  '.lightbox',
+  '.ev-detail',
+  '.inline-sheet',
+  '.fab',
 ].join(',');
 
 const MS = 200;

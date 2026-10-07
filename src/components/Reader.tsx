@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
 import {
   Archive,
@@ -456,6 +457,8 @@ export function Reader(props: Props) {
           })}
         </div>
 
+        <SmoothHeight>
+        <TabPane key={String(replyOpen)}>
         {replyOpen ? (
           <div className="reply-box">
             <div className="reply-to">
@@ -563,6 +566,8 @@ export function Reader(props: Props) {
           </div>
           </>
         )}
+        </TabPane>
+        </SmoothHeight>
       </div>
     </section>
   );

@@ -39,7 +39,7 @@ export function EmailSetupGuide({ mode, provider, domain, first }: { mode: 'forw
   );
   const Value = ({ v }: { v: string }) => (
     <span className="esg-value">
-      <span className="mono sel">{v}</span>
+      <span className="mono esg-sel">{v}</span>
       <button className="icon-btn sm" title="Copy" onClick={() => void copy(v)}>
         {copied === v ? <Check size={13} /> : <Copy size={13} />}
       </button>

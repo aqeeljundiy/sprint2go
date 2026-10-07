@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { Bell, CalendarPlus, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, LayoutTemplate, Plus, Repeat as RepeatIcon, RotateCcw, Trash2, X } from 'lucide-react';
 import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../types';
@@ -187,6 +188,7 @@ export function TaskDrawer(p: Props) {
             </div>
           )}
 
+          <SmoothHeight>
           {statusOf(t) === 'review' && (
             <div className="review-banner">
               <span>
@@ -216,6 +218,7 @@ export function TaskDrawer(p: Props) {
               )}
             </div>
           )}
+          </SmoothHeight>
 
           <dl className="fields">
             <dt>Status</dt>

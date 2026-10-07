@@ -923,6 +923,7 @@ function TaskPanel({
         <div className="drawer-body">
           <h2 className="client-title">{t.title}</h2>
 
+          <SmoothHeight>
           {t.approval?.status === 'waiting' && (
             <div className="review-banner">
               <span>
@@ -941,6 +942,8 @@ function TaskPanel({
               )}
             </div>
           )}
+          </SmoothHeight>
+          <SmoothHeight>
           {changes !== null && (
             <div className="comment-box to-client">
               <textarea autoFocus rows={3} value={changes} onChange={(e) => setChanges(e.target.value)} placeholder="What should change?" />
@@ -954,6 +957,7 @@ function TaskPanel({
               </div>
             </div>
           )}
+          </SmoothHeight>
           {t.approval && t.approval.status !== 'waiting' && (
             <p className={`ap-tag ${t.approval.status}`}>
               {t.approval.status === 'approved' ? 'Approved' : 'Changes asked'} by {nameOf(t.approval.by ?? '')}

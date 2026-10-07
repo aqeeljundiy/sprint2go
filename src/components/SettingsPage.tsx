@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
@@ -264,6 +265,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                       </button>
                     )}
                   </div>
+                  <SmoothHeight>
                   {accessOpen === a.id && (
                     <div className="access-panel">
                       <small>Who can read and send from {a.email}</small>
@@ -293,6 +295,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                       })}
                     </div>
                   )}
+                  </SmoothHeight>
                   </div>
                 ))}
                 {canManage && (
@@ -546,6 +549,7 @@ export function PasswordRow() {
           Change password
         </button>
       </div>
+      <SmoothHeight>
       {open && (
         <div className="pw-form">
           <div className="field">
@@ -562,6 +566,7 @@ export function PasswordRow() {
           </button>
         </div>
       )}
+      </SmoothHeight>
     </>
   );
 }

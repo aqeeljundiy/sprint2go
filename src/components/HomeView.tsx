@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import {
   AlertTriangle,
@@ -668,6 +669,7 @@ export function HomeView(p: Props) {
           </button>
         </header>
 
+        <SmoothHeight>
         {editing && (
           <div className="home-edit">
             <div className="he-row">
@@ -695,6 +697,7 @@ export function HomeView(p: Props) {
             <p className="muted small">Drag cards to reorder, or use the arrows. Make a card wide or narrow, or remove it. Only your Home changes.</p>
           </div>
         )}
+        </SmoothHeight>
 
         <button className="home-search" onClick={p.onSearch}>
           <Search size={16} />
@@ -735,7 +738,7 @@ export function HomeView(p: Props) {
                 onDragEnd={() => setDragId(null)}
               >
                 <h3>
-                  {editing && <GripVertical size={15} className="grip" />}
+                  <GripVertical size={15} className={`home-grip ${editing ? 'on' : ''}`} aria-hidden={!editing} />
                   {card.icon} {info.name}
                   {!editing && card.link && (
                     <button className="link-btn" onClick={card.link[1]}>
@@ -797,12 +800,18 @@ function UpNext(p: {
   onOpenEvent: (id: string) => void;
 }) {
   const [all, setAll] = useState(false);
-  const [gone, setGone] = useState<string[]>([]); // acted on: leaves the list right away
+  const [gone, setGone] = useState<string[]>([]); // acted on: folds away, then leaves the list
+  const [leaving, setLeaving] = useState<string[]>([]);
   const items = p.items.filter((x) => !gone.includes(x.key));
   const shown = all ? items : items.slice(0, 6);
   const act = (key: string, fn: () => void) => {
-    setGone((g) => [...g, key]);
-    fn();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return (setGone((g) => [...g, key]), fn());
+    setLeaving((l) => [...l, key]);
+    setTimeout(() => {
+      setGone((g) => [...g, key]);
+      setLeaving((l) => l.filter((k) => k !== key));
+      fn();
+    }, 240);
   };
   const open = (x: NextItem) => (x.task ? p.onOpenTask(x.task.id) : x.thread ? p.onOpenThread(x.thread.id) : x.event ? p.onOpenEvent(x.event.id) : undefined);
   const action = (x: NextItem) => {
@@ -896,9 +905,10 @@ function UpNext(p: {
   return (
     <section className="up-next">
       <h2>Up next</h2>
+      <SmoothHeight>
       <ul>
         {shown.map((x) => (
-          <li key={x.key} className={`un-row k-${x.kind}`}>
+          <li key={x.key} className={`un-row k-${x.kind} ${leaving.includes(x.key) ? 'leaving' : ''}`}>
             <span className="un-icon">{ICON[x.kind]}</span>
             <button className="un-text" onClick={() => open(x)}>
               <strong>{x.text}</strong>
@@ -908,6 +918,7 @@ function UpNext(p: {
           </li>
         ))}
       </ul>
+      </SmoothHeight>
       {items.length > 6 && (
         <button className="link-btn un-more" onClick={() => setAll((a) => !a)}>
           {all ? 'Show less' : `Show ${items.length - 6} more`}
