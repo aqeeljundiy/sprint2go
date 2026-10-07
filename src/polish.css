@@ -1661,3 +1661,11 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
     width: auto;
   }
 }
+
+/* Home: room between the greeting, the search bar and the first card */
+.home-head {
+  margin-bottom: 26px;
+}
+.home-search {
+  margin: 0 0 22px;
+}
