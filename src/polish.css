@@ -2039,3 +2039,109 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
     animation: none;
   }
 }
+
+/* ---------- Closing animations (src/exitAnimations.ts): every overlay leaves the way it came in ---------- */
+.is-leaving {
+  pointer-events: none !important;
+}
+/* the copy shouldn't replay what's inside it (tab fades, list entrances) while it leaves */
+.is-leaving * {
+  animation: none !important;
+  transition: none !important;
+}
+.is-leaving.modal-scrim,
+.is-leaving.drawer-scrim,
+.is-leaving.palette-scrim,
+.is-leaving.pop-scrim,
+.is-leaving.install-scrim {
+  animation: s2gFadeOut 0.2s ease forwards !important;
+}
+.is-leaving .modal,
+.is-leaving .palette,
+.is-leaving .onboard-card {
+  animation: s2gPopOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.is-leaving .drawer {
+  animation: s2gDrawerOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.is-leaving .pop-sheet,
+.is-leaving .install-sheet {
+  animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.is-leaving.pop,
+.is-leaving.account-menu,
+.is-leaving.ws-menu,
+.is-leaving.notices {
+  animation: s2gMenuOut 0.16s ease forwards !important;
+}
+.is-leaving.pop.up {
+  animation-name: s2gMenuOutUp !important;
+}
+.is-leaving.toast {
+  animation: s2gToastOut 0.2s ease forwards !important;
+}
+@keyframes s2gFadeOut {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes s2gPopOut {
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+}
+@keyframes s2gDrawerOut {
+  to {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+}
+@keyframes s2gSheetOut {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes s2gMenuOut {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes s2gMenuOutUp {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+@keyframes s2gToastOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* Baseline: every interactive element eases between states (hover, selected, focus) instead of snapping.
+   Components with their own transition keep theirs (class rules win over these element rules). */
+button,
+a,
+input,
+textarea,
+select,
+[role='tab'],
+[role='switch'] {
+  transition-property: background-color, color, border-color, box-shadow, opacity;
+  transition-duration: 0.16s;
+  transition-timing-function: ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  [role='tab'],
+  [role='switch'] {
+    transition: none;
+  }
+}

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import Root from './Root';
+import { startExitAnimations } from './exitAnimations';
 import './styles.css';
 import './calendar.css';
 import './shell.css';
@@ -9,6 +10,8 @@ import './apps.css';
 import './ui.css';
 import './round2.css';
 import './polish.css';
+
+startExitAnimations();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
