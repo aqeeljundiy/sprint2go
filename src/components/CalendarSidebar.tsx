@@ -70,7 +70,7 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
                 'mini-day',
                 d.getMonth() !== cursor.getMonth() && 'out',
                 sameDay(d, today) && 'today',
-                sameDay(d, cursor) && 'sel',
+                sameDay(d, cursor) && 'picked',
                 startOfWeek(d).getTime() === week && 'in-week',
                 busyDays.has(d.toDateString()) && 'busy',
               ]

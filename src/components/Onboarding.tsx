@@ -8,6 +8,7 @@ import { APPS } from './AppRail';
 import { BrandFields } from './WorkspaceForms';
 import { Select } from './ui/Select';
 import { EmailSetupGuide } from './EmailSetupGuide';
+import { SmoothHeight, TabPane } from './ui/Smooth';
 import { TIER_NAME, options, rp } from '../data/pricing';
 import { isFreemail } from '../clientView';
 
@@ -143,7 +144,9 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
             </button>
           </div>
         ) : (
-        <div className="onboard-body" key={step}>
+        <div className="onboard-body">
+          <SmoothHeight>
+          <TabPane key={step}>
           {step === -1 && (
             <>
               <h2>Create your account</h2>
@@ -329,6 +332,8 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
               </div>
             </>
           )}
+          </TabPane>
+          </SmoothHeight>
         </div>
         )}
 

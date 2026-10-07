@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { Ban, X } from 'lucide-react';
 import type { Person } from '../types';
 
@@ -30,6 +31,7 @@ export function BlockDialog({ sender, count, domainCount, onBlock, onClose }: Pr
           </button>
         </header>
         <div className="modal-body">
+          <SmoothHeight>
           <div className="block-hero">
             <span>
               <Ban size={22} />
@@ -55,6 +57,7 @@ export function BlockDialog({ sender, count, domainCount, onBlock, onClose }: Pr
               Also move the {n} email{n > 1 ? 's' : ''} I already have from them to Trash
             </label>
           )}
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <button className="ghost-btn" onClick={onClose}>

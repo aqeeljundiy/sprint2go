@@ -55,13 +55,13 @@
   color: var(--accent);
   font-weight: 700;
 }
-.mini-day.sel {
+.mini-day.picked {
   background: var(--accent);
   color: #fff;
   border-radius: 8px;
   font-weight: 600;
 }
-.mini-day.sel::after {
+.mini-day.picked::after {
   background: #fff;
 }
 
@@ -255,13 +255,13 @@
   box-shadow: var(--shadow);
   z-index: 2;
 }
-.block-event.sel {
+.block-event.picked {
   background: var(--c);
   color: #fff;
   box-shadow: var(--shadow);
   z-index: 3;
 }
-.block-event.sel .be-time {
+.block-event.picked .be-time {
   color: rgba(255, 255, 255, 0.85);
 }
 .block-event.past {
@@ -329,7 +329,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pill-event.sel {
+.pill-event.picked {
   background: var(--c);
   color: #fff;
 }
@@ -410,7 +410,7 @@
   white-space: nowrap;
 }
 .dot-event:hover,
-.dot-event.sel {
+.dot-event.picked {
   background: var(--hover);
 }
 .dot-event i {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { CheckSquare, LayoutTemplate, Repeat as RepeatIcon, Trash2, X } from 'lucide-react';
 import type { Client, User } from '../types';
@@ -41,6 +42,7 @@ export function TemplateDialog(p: Props) {
           </button>
         </header>
         <div className="modal-body tpl-body">
+          <SmoothHeight>
           <div className="tpl-list">
             {p.templates.map((t) => (
               <button key={t.id} className={`tpl-card ${t.id === tplId ? 'on' : ''}`} onClick={() => (setTplId(t.id), setSkip([]))}>
@@ -117,6 +119,7 @@ export function TemplateDialog(p: Props) {
               <p className="muted small">Each task goes to the team whose work it matches. Team leads pick who does it.</p>
             </div>
           )}
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />

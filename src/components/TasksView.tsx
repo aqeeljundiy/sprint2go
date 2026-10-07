@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
 import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note } from '../types';
@@ -801,6 +802,7 @@ export function TasksView(p: Props) {
           </>
         )}
 
+        <TabPane key={clientTab}>
         {client && clientTab === 'overview' && (
           <div className="hub-overview">
             {(() => {
@@ -1182,6 +1184,7 @@ export function TasksView(p: Props) {
             </div>
           );
         })()}
+        </TabPane>
       </div>
     </section>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
 import { companyOf } from '../clientView';
 import { FolderPlus, ChevronUp, Handshake,
@@ -610,6 +611,7 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
           </button>
         </header>
         <div className="modal-body connect-form">
+          <SmoothHeight>
           <label className="field">
             <span>Name</span>
             <input autoFocus value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder={`e.g. My ${term.many}`} />
@@ -666,6 +668,7 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
               <span />
             </button>
           </label>
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           {!isNew && (
@@ -1328,6 +1331,7 @@ export function ChatView(p: ViewProps) {
           ))}
         </div>
 
+        <TabPane key={tab}>
         {tab === 'materials' && (
           <>
             <p className="space-used chan-space">
@@ -1506,6 +1510,7 @@ export function ChatView(p: ViewProps) {
           </div>
         )}
         {tab === 'messages' && composer}
+        </TabPane>
       </div>
 
       {thread && (
@@ -1848,6 +1853,7 @@ function SectionAccess({ section, channels, users, teams, me, onSave, onClose }:
           </button>
         </header>
         <div className="modal-body access-body">
+          <SmoothHeight>
           <p className="muted small">
             Everyone here is in {channels.length === 1 ? 'the channel' : `all ${channels.length} channels`} in this section{priv ? (channels.length === 1 ? ' (it’s private)' : `, including ${priv} private`) : ''}, and in any channel added to it later. No need to invite them one by one.
           </p>
@@ -1871,6 +1877,7 @@ function SectionAccess({ section, channels, users, teams, me, onSave, onClose }:
             <b>{everyone.length}</b> {everyone.length === 1 ? 'person has' : 'people have'} access.
             {removed.length > 0 && <span className="muted"> {removed.length} will leave this section’s channels (channel owners stay).</span>}
           </p>
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />

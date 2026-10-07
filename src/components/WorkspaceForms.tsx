@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { ImagePlus, Inbox, Shield, UserRound, Users, X } from 'lucide-react';
 import type { Account, MailProvider, Role, User, Workspace } from '../types';
 import { PROVIDERS } from './Onboarding';
@@ -105,6 +106,7 @@ export function NewWorkspace({ userId, userName, onCreate, onClose }: { userId: 
   return (
     <Modal title="New workspace" onClose={onClose}>
       <div className="modal-body">
+        <SmoothHeight>
         <p className="modal-intro">A workspace is one business, with its own brand, email accounts, calendar and drive.</p>
         <div className="field">
           <label>Business name</label>
@@ -120,6 +122,7 @@ export function NewWorkspace({ userId, userName, onCreate, onClose }: { userId: 
           <label>Name people see</label>
           <input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
+        </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>
@@ -147,6 +150,7 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
   return (
     <Modal title={`Add an account to ${workspace.name}`} onClose={onClose}>
       <div className="modal-body">
+        <SmoothHeight>
         <div className="kind-pick">
           <button className={kind === 'personal' ? 'on' : ''} onClick={() => setKind('personal')}>
             <UserRound size={18} />
@@ -196,6 +200,7 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
         <p className="modal-note">
           <Inbox size={14} /> It shows as “Not connected” until it’s signed in.
         </p>
+        </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>
@@ -244,6 +249,7 @@ export function InviteMember({
   return (
     <Modal title={`Invite someone to ${workspace.name}`} onClose={onClose}>
       <div className="modal-body">
+        <SmoothHeight>
         <div className="field">
           <label>Full name</label>
           <input
@@ -304,6 +310,7 @@ export function InviteMember({
         <p className="modal-note">
           <Inbox size={14} /> Admins can manage people, but nobody can read someone else’s personal mailbox.
         </p>
+        </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>

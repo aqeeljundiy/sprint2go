@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { Copy, Eye, History, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
@@ -315,8 +316,10 @@ export function VaultView({
               </button>
             </header>
             <div className="modal-body">
+              <SmoothHeight>
               <p className="vault-notes">{reading.value}</p>
               <p className="muted small">Reading notes is logged, like copying a password.</p>
+              </SmoothHeight>
             </div>
           </div>
         </div>
@@ -333,6 +336,7 @@ export function VaultView({
               </button>
             </header>
             <div className="modal-body">
+              <SmoothHeight>
               {log.rows.length === 0 && <p className="te-empty">Nobody has used it yet.</p>}
               <ul className="home-list">
                 {log.rows.map((r, i) => (
@@ -344,6 +348,7 @@ export function VaultView({
                   </li>
                 ))}
               </ul>
+              </SmoothHeight>
             </div>
           </div>
         </div>
@@ -440,6 +445,7 @@ function VaultEditor({
           </button>
         </header>
         <div className="modal-body vault-body">
+          <SmoothHeight>
           <div className="vault-grid">
             <label className="field">
               <span>Name</span>
@@ -498,6 +504,7 @@ function VaultEditor({
             )}
           </div>
           {error && <p className="err">{error}</p>}
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />

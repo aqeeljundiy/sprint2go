@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { ArrowLeft, Bell, FileText, ListChecks, Loader2, Mail, MessagesSquare, Mic, MicOff, Plus, Sparkles, UserPlus, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
@@ -173,6 +174,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
 
         {step !== 'review' ? (
           <div className="modal-body">
+            <SmoothHeight>
             <p className="modal-intro">Say or type everything on your mind: {term.many}, who should do what, by when. You’ll check the plan before anything is sent.</p>
             <div className="dump-input">
               <textarea
@@ -204,9 +206,11 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
               </div>
             )}
             {error && <p className="aw-error">{error}</p>}
+            </SmoothHeight>
           </div>
         ) : (
           <div className="modal-body">
+            <SmoothHeight>
             <div className="dump-mode">
               <div className="segmented">
                 <button className={!asBrief ? 'on' : ''} onClick={() => setAsBrief(false)}>
@@ -299,6 +303,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
                 </label>
               </div>
             )}
+            </SmoothHeight>
           </div>
         )}
 

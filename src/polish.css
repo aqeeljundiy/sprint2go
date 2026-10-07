@@ -1895,3 +1895,38 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
     animation: none;
   }
 }
+
+/* Smooth tabs and steps (components/ui/Smooth.tsx), used everywhere content switches in place */
+.smooth-h {
+  transition: height 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.smooth-h.moving {
+  overflow: hidden;
+}
+.smooth-h-in {
+  display: flow-root;
+}
+.tab-pane {
+  display: contents;
+}
+.tab-pane > * {
+  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes tabIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .smooth-h {
+    transition: none;
+  }
+  .tab-pane > * {
+    animation: none;
+  }
+}
+/* Inside a dialog body the inner wrapper copies the body's own layout (see Smooth.tsx), so spacing stays as designed */
+.modal-body > .smooth-h {
+  min-width: 0;
+}

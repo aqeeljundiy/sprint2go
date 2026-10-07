@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { ArrowLeft, CalendarDays, Check, Globe, Link2, Loader2, X } from 'lucide-react';
 import type { CalendarDef, CalendarSource } from '../types';
@@ -111,6 +112,7 @@ export function ConnectCalendar({ me, existing, onConnect, onClose }: Props) {
         </header>
 
         <div className="modal-body">
+          <SmoothHeight>
           {step === 'pick' && (
             <>
               <p className="modal-intro">Bring in the calendars you already use. They show next to your Sprint2go calendar, and teammates only see “Busy” unless you choose otherwise.</p>
@@ -213,6 +215,7 @@ export function ConnectCalendar({ me, existing, onConnect, onClose }: Props) {
               <span className="muted small">Demo: no real account is contacted.</span>
             </div>
           )}
+          </SmoothHeight>
         </div>
 
         {step === 'details' && (

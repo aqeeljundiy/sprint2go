@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { setTermWord, term } from '../terms';
 import {
   ArrowRight,
@@ -38,7 +39,8 @@ import { Avatar } from './Avatar';
 import { PhotoPicker } from './PhotoPicker';
 import { PasswordRow } from './SettingsPage';
 import { createPortal } from 'react-dom';
-import { ACCENTS, type ThemePref } from '../settings';
+import { ACCENTS, usePersisted, type ThemePref } from '../settings';
+import { SIDEBAR_MAX, SIDEBAR_MIN } from './Sidebar';
 import { WorkspaceLogo, applyBranding } from './WorkspaceLogo';
 import { Logo } from './Logo';
 import { MobileTop } from './MobileTop';
@@ -106,6 +108,22 @@ export function ClientApp(p: Props) {
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [meOpen, setMeOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  // The sidebar can be resized like the team's (remembered on this device).
+  const [sbW, setSbW] = usePersisted('s2g-guest-sb', 248);
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sbW;
+    document.body.classList.add('resizing', 'resizing-x');
+    const move = (ev: PointerEvent) => setSbW(Math.min(Math.max(startW + ev.clientX - startX, SIDEBAR_MIN), SIDEBAR_MAX));
+    const up = () => {
+      document.body.classList.remove('resizing', 'resizing-x');
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', up);
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  };
   const [askOpen, setAskOpen] = useState(false);
   const [askChats, setAskChats] = useState<AskChat[]>([]);
   const [toast, setToast] = useState('');
@@ -623,7 +641,7 @@ export function ClientApp(p: Props) {
       </nav>
 
       {hasSidebar && (
-        <aside className="sidebar client-sidebar" style={{ ['--sb-w' as string]: '248px' }}>
+        <aside className="sidebar client-sidebar" style={{ ['--sb-w' as string]: `${sbW}px` }}>
           <div className="sb-top">
             <h2 className="sb-title sb-label">{title}</h2>
           </div>
@@ -632,6 +650,7 @@ export function ClientApp(p: Props) {
               {sidebar[mode]}
             </div>
           </div>
+          <div className="sb-resize" onPointerDown={startResize} onDoubleClick={() => setSbW(248)} title="Drag to resize · double-click to reset" />
         </aside>
       )}
 
@@ -1054,6 +1073,7 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
           </button>
         </header>
         <div className="modal-body request-body">
+          <SmoothHeight>
           <label className="field">
             <span>What do you need?</span>
             <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. A new banner for the Ramadan promo" />
@@ -1088,6 +1108,7 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
           )}
           <input ref={ref} type="file" multiple hidden onChange={(e) => (setFiles([...files, ...(e.target.files ?? [])]), (e.target.value = ''))} />
           <p className="muted small">The team gets this straight away. You’ll see when they pick it up, and you can talk about it on the request.</p>
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />
@@ -1215,6 +1236,7 @@ function ProfileDialog({ me, email, onSave, onClose }: { me: User; email: string
           </button>
         </header>
         <div className="modal-body">
+          <SmoothHeight>
           <PhotoPicker name={name || me.name} email={email} color={color} photo={photo} onChange={setPhoto} />
           {!photo && (
             <div className="avatar-colors">
@@ -1240,6 +1262,7 @@ function ProfileDialog({ me, email, onSave, onClose }: { me: User; email: string
             <small>You sign in with this address. The same sign-in works for everything shared with you.</small>
           </div>
           <PasswordRow />
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />

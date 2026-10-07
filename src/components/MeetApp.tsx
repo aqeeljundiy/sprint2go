@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
 import {
   Bot,
@@ -534,6 +535,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
           </button>
         </div>
 
+        <TabPane key={tab}>
         {tab === 'summary' &&
           (m.summary ? (
             <div className="m-notes">
@@ -636,6 +638,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
         {tab === 'log' && (
           <pre className="m-log">{(m.log ?? []).map((l) => `${new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}  ${l.message}`).join('\n') || 'Nothing logged yet.'}</pre>
         )}
+        </TabPane>
       </div>
 
       <Popover anchor={accessBtn} open={accessOpen} onClose={() => setAccessOpen(false)} width={320} title="Who can see this meeting">
@@ -859,6 +862,7 @@ function FolderPage(p: MeetProps & { clientId: string }) {
         ))}
       </div>
       <div className="tracking-scroll">
+        <TabPane key={tab}>
         {tab === 'meetings' && (
           <>
             {bar(`Search this ${term.one}’s meetings`)}
@@ -876,6 +880,7 @@ function FolderPage(p: MeetProps & { clientId: string }) {
             empty={<p className="te-empty">No tasks from these meetings yet. Promises made in a meeting become tasks here.</p>}
           />
         )}
+        </TabPane>
       </div>
     </section>
   );
@@ -1001,6 +1006,7 @@ export function SendBotDialog({ clients, botName, onSend, onClose }: { clients: 
           </button>
         </header>
         <div className="modal-body connect-form">
+          <SmoothHeight>
           <p className="modal-intro">Paste a Google Meet or Zoom link. Someone in the call has to let the bot in.</p>
           <label className="field">
             <span>Meeting link</span>
@@ -1020,6 +1026,7 @@ export function SendBotDialog({ clients, botName, onSend, onClose }: { clients: 
             <Select value={clientId} onChange={setClientId} label="Folder" options={[{ value: '', label: 'Auto' }, ...clients.map((c) => ({ value: c.id, label: c.name, icon: <span className="sel-dot" style={{ background: c.color }} /> }))]} />
           </div>
           <p className="muted small">Demo: no real bot is sent. You’ll see it join, record a short sample conversation and write the notes.</p>
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />
@@ -1054,6 +1061,7 @@ export function ShareDialog({ m, onSave, onOff, onPreview, onClose, toast }: { m
           </button>
         </header>
         <div className="modal-body">
+          <SmoothHeight>
           <p className="modal-intro">Anyone with the link can view a read-only page: summary and tasks, plus the parts you allow below. No login needed.</p>
           <label className="set-row toggle-row">
             <span>
@@ -1084,6 +1092,7 @@ export function ShareDialog({ m, onSave, onOff, onPreview, onClose, toast }: { m
               </button>
             </div>
           )}
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           {link && (

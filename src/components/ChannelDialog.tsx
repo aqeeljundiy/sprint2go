@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { term } from '../terms';
+import { SmoothHeight, TabPane } from './ui/Smooth';
 import { Archive, Globe, Hash, Lock, Mail, Megaphone, Plus, Users, X } from 'lucide-react';
 import type { Channel, ChannelCategory, Client, Guest, Policy, Team, User } from '../types';
 import { Avatar } from './Avatar';
@@ -132,6 +133,8 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
         </div>
 
         <div className="modal-body chan-body">
+          <SmoothHeight>
+          <TabPane key={tab}>
           {readOnly && <p className="muted small">Only the channel owner and admins can change these settings.</p>}
           {tab === 'about' && (
             <fieldset disabled={readOnly}>
@@ -316,6 +319,8 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
               </ul>
             </fieldset>
           )}
+          </TabPane>
+          </SmoothHeight>
         </div>
 
         <footer className="modal-foot">

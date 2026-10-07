@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { Archive, X } from 'lucide-react';
 import type { Client } from '../types';
 import { localDay } from '../utils';
@@ -40,6 +41,7 @@ export function EndClientDialog({
           </button>
         </header>
         <div className="modal-body end-body">
+          <SmoothHeight>
           <p className="muted small">{client.name} moves to Past clients. Nothing is deleted: tasks, mail, meetings and files stay, and you can start working with them again any time.</p>
           <div className="end-row">
             <div className="field">
@@ -77,6 +79,7 @@ export function EndClientDialog({
               <input type="checkbox" checked={closeTasks} onChange={(e) => setCloseTasks(e.target.checked)} /> Mark its {openTasks} open task{openTasks === 1 ? '' : 's'} done
             </label>
           )}
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />

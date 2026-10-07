@@ -264,7 +264,7 @@ function TimeGrid(props: Props & { days: Date[]; color: (id: string) => string }
               {list.map((e) => (
                 <button
                   key={e.id}
-                  className={`pill-event ${selected?.id === e.id ? 'sel' : ''}`}
+                  className={`pill-event ${selected?.id === e.id ? 'picked' : ''}`}
                   style={{ ['--c' as string]: color(e.calendarId) }}
                   onClick={() => props.onSelect(e.id)}
                 >
@@ -309,7 +309,7 @@ function TimeGrid(props: Props & { days: Date[]; color: (id: string) => string }
                   return (
                     <button
                       key={ev.id}
-                      className={`block-event ${height < 40 ? 'short' : ''} ${e < now ? 'past' : ''} ${selected?.id === ev.id ? 'sel' : ''} ${editable ? 'editable' : ''} ${dragging ? 'dragging' : ''}`}
+                      className={`block-event ${height < 40 ? 'short' : ''} ${e < now ? 'past' : ''} ${selected?.id === ev.id ? 'picked' : ''} ${editable ? 'editable' : ''} ${dragging ? 'dragging' : ''}`}
                       onPointerDown={(pe) => {
                         if (!editable || pe.button !== 0) return;
                         pe.stopPropagation();
@@ -393,7 +393,7 @@ function MonthGrid(props: Props & { color: (id: string) => string }) {
               {list.slice(0, 3).map((e) => (
                 <button
                   key={e.id}
-                  className={`${e.allDay ? 'pill-event' : 'dot-event'} ${selected?.id === e.id ? 'sel' : ''}`}
+                  className={`${e.allDay ? 'pill-event' : 'dot-event'} ${selected?.id === e.id ? 'picked' : ''}`}
                   style={{ ['--c' as string]: color(e.calendarId) }}
                   onClick={(evt) => {
                     evt.stopPropagation();

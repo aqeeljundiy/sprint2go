@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { X } from 'lucide-react';
 import type { CalEvent, CalendarDef } from '../types';
 import { toDateInput, toTimeInput } from '../calendarUtils';
@@ -65,6 +66,7 @@ export function EventEditor({ start, calendars, onSave, onClose }: Props) {
           </button>
         </header>
         <div className="modal-body">
+          <SmoothHeight>
           <input
             className="title-input"
             autoFocus
@@ -103,6 +105,7 @@ export function EventEditor({ start, calendars, onSave, onClose }: Props) {
           <input value={location} onChange={(ev) => setLocation(ev.target.value)} placeholder="Location or video link" />
           <input value={guests} onChange={(ev) => setGuests(ev.target.value)} placeholder="Guests (emails, comma separated)" />
           <textarea value={notes} onChange={(ev) => setNotes(ev.target.value)} placeholder="Notes" rows={3} />
+          </SmoothHeight>
         </div>
         <footer className="modal-foot">
           {!valid && title.trim() && <span className="muted small">End must be after start</span>}
