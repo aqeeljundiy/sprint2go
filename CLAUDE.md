@@ -8,7 +8,10 @@ Every change has to pass this bar before it's called done. It isn't optional pol
    - Overlays (dialogs, drawers, sheets, menus, popovers, toasts): entrance animation in CSS. The exit comes from `src/exitAnimations.ts`; add any new overlay class to its `LEAVING` list and give it an `.is-leaving` rule in `polish.css`.
    - Tabs and steps: wrap the switching content in `<TabPane key={tab}>`. Anything whose height changes (dialog bodies, steps, sections that open) goes in `<SmoothHeight>` (`src/components/ui/Smooth.tsx`). Every `.modal-body` already has it.
    - State changes (selected, on/off, hover, expanded): transition color, background, border, transform, 150 to 250 ms.
-   - Lists: new rows fade or slide in; removed rows collapse rather than vanish.
+   - Lists: new rows fade or slide in; removed rows collapse rather than vanish (see `.task.leaving`, `.un-row.leaving`).
+   - Tab bars and segmented controls: `src/slidingTabs.ts` gives every `.segmented`, `.client-tabs`, `.chan-tabs` and `.cs-tabs` a highlight that slides. A new kind of tab bar goes in its `BARS` list.
+   - Sections that fold open and closed: `.fold` / `.fold.open` (grid rows), with one chevron that turns (`.rot-chev`).
+   - Gotcha: in a `MutationObserver` loop, only call `classList.add` or `remove` when the class actually changes. It records a mutation even when nothing changes, and that froze the app once.
 2. **Smooth, no jumps.** Nothing resizes or shifts abruptly.
    - Tabbed areas keep one height (stack the panels) or animate it.
    - Reserve space for things that load. Hover and selected states must not change size (no bold-on-select width shifts, no borders appearing without space for them).
