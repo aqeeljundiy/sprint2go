@@ -162,8 +162,8 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
         )}
 
         <div className="set-block">
-          <h3>Providers</h3>
-          {ai.providers.length === 0 && <p className="muted small">No keys yet. {included ? 'Sprint2go’s AI is used for everything.' : 'Add a key to switch the AI on.'}</p>}
+          <h3>{ai.payer === 'sprint2go' ? 'Providers' : 'Your AI keys'}</h3>
+          {ai.providers.length === 0 && <p className="muted small">No keys yet. {included && ai.payer !== 'own' ? 'Sprint2go’s AI is used for everything.' : 'Add a key to switch the AI on, then pick which model does each job below.'}</p>}
           <div className="prov-list">
             {ai.providers.map((c) => {
               const info = providerOf(c.id)!;
@@ -178,6 +178,23 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                     <small>
                       <KeyRound size={11} /> •••• {c.keyLast4} · added by {users.find((u) => u.id === c.addedBy)?.name.split(' ')[0] ?? 'someone'} · {info.models.length} model{info.models.length > 1 ? 's' : ''}
                     </small>
+                    {(() => {
+                      const uses = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id);
+                      return (
+                        <span className="prov-uses">
+                          {uses.length ? (
+                            <>
+                              Used for{' '}
+                              {uses.map((j) => (
+                                <em key={j.id}>{j.name}</em>
+                              ))}
+                            </>
+                          ) : (
+                            <span className="muted">Not used for any job yet. Pick it below.</span>
+                          )}
+                        </span>
+                      );
+                    })()}
                     <span className="prov-spend">
                       <span className="bar wide">
                         <span style={{ width: `${pct}%` }} className={pct > 80 ? 'warn' : ''} />
@@ -189,13 +206,32 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                     <label>Monthly cap US$</label>
                     <input type="number" min={0} value={c.capUsd ?? ''} placeholder="none" onChange={(e) => set({ providers: ai.providers.map((x) => (x.id === c.id ? { ...x, capUsd: e.target.value ? Number(e.target.value) : undefined } : x)) })} />
                   </span>
-                  <button type="button" className="icon-btn sm" title="Remove key" onClick={() => {
-                      if (server.on) void fetch('/api/ai/keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: c.id }) });
-                      set({ providers: ai.providers.filter((x) => x.id !== c.id) });
-                      toast(`${info.name} key removed`);
-                    }}>
-                    <Trash2 size={15} />
-                  </button>
+                  <span className="prov-acts">
+                    <button type="button" className="ghost-btn sm outline" onClick={() => setAdding({ id: c.id, key: '', url: c.baseUrl ?? '', state: 'idle' })}>
+                      <KeyRound size={13} /> Replace key
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn sm"
+                      title="Remove key"
+                      onClick={() => {
+                        if (server.on) void fetch('/api/ai/keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: c.id }) });
+                        const providers = ai.providers.filter((x) => x.id !== c.id);
+                        // Jobs that used this key move to the best match among the keys that are left.
+                        const moved = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id);
+                        const refill = presetJobs(ai.preset === 'custom' ? 'balanced' : ai.preset, providers.filter((x) => x.status === 'ok').map((x) => x.id), allowIncluded);
+                        const jobs = { ...ai.jobs };
+                        for (const j of moved) {
+                          if (refill[j.id]) jobs[j.id] = refill[j.id];
+                          else delete jobs[j.id];
+                        }
+                        set({ providers, jobs });
+                        toast(`${info.name} key removed${moved.length ? `. ${moved.length} job${moved.length === 1 ? '' : 's'} moved to another model` : ''}`);
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </span>
                 </div>
               );
             })}
@@ -242,85 +278,132 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
 
         <AISpend ws={ws.id} ai={ai} plan={plan} people={people} typical={{ braindump: 41, ask: 118, meeting: 22, summary: 236, draft: 97, replies: 180, todos: 420, sorting: 300 }} />
 
-        <div className="set-block">
-          <h3>Setup</h3>
-          <div className="preset-pick">
-            {(
-              [
-                ['best', 'Best quality', `Top models for everything that assigns people or reaches ${term.whos}`],
-                ['balanced', 'Balanced', 'Strong models for heavy jobs, fast ones for the rest'],
-                ['cheap', 'Lowest cost', 'Cheapest models; you’ll fix more brain dump rows by hand'],
-              ] as const
-            ).map(([v, l, h]) => (
-              <button key={v} type="button" className={ai.preset === v ? 'on' : ''} onClick={() => pickPreset(v)}>
-                <strong>{l}</strong>
-                <small>{h}</small>
-              </button>
-            ))}
-          </div>
-          {ai.preset === 'custom' && <p className="muted small">Custom: you picked models per job below.</p>}
-        </div>
-
-        <details className="set-block advanced">
-          <summary>
-            <h3>Advanced: choose the AI for each job</h3>
-            <small className="muted">Most companies never need this. The setup above fills it in for you.</small>
-          </summary>
-          <p className="muted small">Rule of thumb: spend on the jobs that assign people and talk to {term.whos}, save on the jobs nobody reads twice.</p>
-          <div className="jobs-table">
-            {JOBS.map((job) => {
-              const cur = ai.jobs[job.id] ?? (allowIncluded ? { provider: 'included' as const, model: 'included' } : undefined);
-              const cost = cur ? costPer100(job, cur.provider, cur.model) : null;
-              const recModel = (preset: 'best' | 'balanced' | 'cheap') => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === job.rec[preset] || m.id.endsWith(job.rec[preset]))?.name ?? (job.rec[preset] === 'browser' ? 'Browser' : job.rec[preset]);
-              return (
-                <div key={job.id} className="job-row">
-                  <div className="job-name">
-                    <strong>{job.name}</strong>
-                    <small>
-                      {job.hint} · {job.when === 'click' ? 'on click' : job.when === 'auto' ? 'automatic, once' : 'opt-in'}
-                    </small>
-                  </div>
-                  <span className={`w ${job.weight === 'Heavy' ? 'h' : job.weight === 'Light' ? 'l' : 'm'}`}>{job.weight}</span>
-                  <span className="job-acc">{job.accuracy} accuracy</span>
-                  <div className="job-pick">
-                    <Select
-                      value={cur ? `${cur.provider}|${cur.model}` : null}
-                      onChange={(v) => {
-                        const [provider, model] = v.split('|') as [ProviderId | 'included', string];
-                        set({ preset: 'custom', jobs: { ...ai.jobs, [job.id]: { provider, model } } });
-                      }}
-                      options={jobOptions()}
-                      placeholder={connected.length || allowIncluded ? 'Choose a model' : 'Add a provider first'}
-                      label={job.name}
-                      width={320}
-                      searchable
-                    />
-                    <small className="muted">
-                      Recommended: {recModel('balanced')} · cheapest {recModel('cheap')}
-                    </small>
-                  </div>
-                  <span className="job-cost">{cur?.provider === 'included' ? 'In your plan' : cost !== null && cost !== undefined ? `≈ ${rp(cost)} / 100 uses` : 'See provider prices'}</span>
-                  <button
-                    type="button"
-                    className="icon-btn sm"
-                    title="Run a sample"
-                    disabled={!cur || testing === job.id}
-                    onClick={() => {
-                      setTesting(job.id);
-                      setTimeout(() => {
-                        setTesting(null);
-                        setTested((t) => ({ ...t, [job.id]: `${(0.6 + Math.random() * 2.4).toFixed(1)}s · sample looked fine` }));
-                      }, 1100);
-                    }}
-                  >
-                    {testing === job.id ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
-                  </button>
-                  {tested[job.id] && <small className="job-test">{tested[job.id]}</small>}
+        {(() => {
+          const own = ai.payer !== 'sprint2go';
+          const row = (job: (typeof JOBS)[number]) => {
+            const cur = ai.jobs[job.id] ?? (allowIncluded ? { provider: 'included' as const, model: 'included' } : undefined);
+            const cost = cur ? costPer100(job, cur.provider, cur.model) : null;
+            const recModel = (preset: 'best' | 'balanced' | 'cheap') => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === job.rec[preset] || m.id.endsWith(job.rec[preset]))?.name ?? (job.rec[preset] === 'browser' ? 'Browser' : job.rec[preset]);
+            return (
+              <div key={job.id} className="job-row">
+                <div className="job-name">
+                  <strong>{job.name}</strong>
+                  <small>
+                    {job.hint} · {job.when === 'click' ? 'on click' : job.when === 'auto' ? 'automatic, once' : 'opt-in'}
+                  </small>
                 </div>
-              );
-            })}
-          </div>
-        </details>
+                <div className="job-pick">
+                  <Select
+                    value={cur ? `${cur.provider}|${cur.model}` : null}
+                    onChange={(v) => {
+                      const [provider, model] = v.split('|') as [ProviderId | 'included', string];
+                      set({ preset: 'custom', jobs: { ...ai.jobs, [job.id]: { provider, model } } });
+                    }}
+                    options={jobOptions().filter((o) => (job.id === 'speech' ? providerOf(String(o.value).split('|')[0] as ProviderId)?.kind === 'speech' || String(o.value).startsWith('custom|browser') : !String(o.value).startsWith('custom|browser') && providerOf(String(o.value).split('|')[0] as ProviderId)?.kind !== 'speech'))}
+                    placeholder={connected.length || allowIncluded ? 'Choose a model' : 'Add a key first'}
+                    label={job.name}
+                    width={320}
+                    searchable
+                  />
+                  <small className="muted">
+                    {cur && cur.provider !== 'included' && ai.providers.some((x) => x.id === cur.provider) ? (
+                      <>
+                        Uses your {providerOf(cur.provider)!.name} key •••• {ai.providers.find((x) => x.id === cur.provider)!.keyLast4} ·{' '}
+                      </>
+                    ) : cur?.provider === 'included' ? (
+                      'Sprint2go’s AI · '
+                    ) : null}
+                    Suggested: {recModel('balanced')}, cheapest {recModel('cheap')}
+                  </small>
+                </div>
+                <span className="job-cost">{cur?.provider === 'included' ? 'In your plan' : cost !== null && cost !== undefined ? `≈ ${rp(cost)} / 100 uses` : cur ? 'See provider prices' : ''}</span>
+                <button
+                  type="button"
+                  className="icon-btn sm"
+                  title="Run a sample"
+                  disabled={!cur || testing === job.id}
+                  onClick={() => {
+                    setTesting(job.id);
+                    setTimeout(() => {
+                      setTesting(null);
+                      setTested((t) => ({ ...t, [job.id]: `${(0.6 + Math.random() * 2.4).toFixed(1)}s · sample looked fine` }));
+                    }, 1100);
+                  }}
+                >
+                  {testing === job.id ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                </button>
+                {tested[job.id] && <small className="job-test">{tested[job.id]}</small>}
+              </div>
+            );
+          };
+          const groups: [string, AIJobId[]][] = [
+            ['Meetings', ['meeting', 'speech']],
+            ['Asking and planning', ['ask', 'braindump']],
+            ['Email', ['draft', 'summary', 'replies', 'todos']],
+            ['Behind the scenes', ['sorting', 'digest', 'translate']],
+          ];
+          const textModels = jobOptions().filter((o) => !String(o.value).startsWith('custom|browser') && providerOf(String(o.value).split('|')[0] as ProviderId)?.kind !== 'speech');
+          const board = (
+            <>
+              <div className="job-tools">
+                <span className="muted small">Fill in for me:</span>
+                <div className="segmented">
+                  {(
+                    [
+                      ['best', 'Best quality'],
+                      ['balanced', 'Balanced'],
+                      ['cheap', 'Lowest cost'],
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} type="button" className={ai.preset === v ? 'on' : ''} onClick={() => pickPreset(v)}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                {textModels.length > 0 && (
+                  <Select<string>
+                    value={null}
+                    onChange={(v) => {
+                      const [provider, model] = v.split('|') as [ProviderId | 'included', string];
+                      const jobs = { ...ai.jobs };
+                      for (const j of JOBS) if (j.id !== 'speech') jobs[j.id] = { provider, model };
+                      set({ preset: 'custom', jobs });
+                      toast(`Every text job now uses ${textModels.find((o) => o.value === v)?.label ?? 'that model'}`);
+                    }}
+                    options={textModels}
+                    placeholder="One model for everything…"
+                    label="One model for everything"
+                    className="sel-flat"
+                    width={300}
+                    searchable
+                  />
+                )}
+              </div>
+              {ai.preset === 'custom' && <p className="muted small">Your own mix. Pick a setup above to start over.</p>}
+              {groups.map(([g, ids]) => (
+                <div key={g} className="job-group">
+                  <h4>{g}</h4>
+                  <div className="jobs-table">{ids.map((id) => row(JOBS.find((j) => j.id === id)!))}</div>
+                </div>
+              ))}
+            </>
+          );
+          return own ? (
+            <div className="set-block">
+              <h3>Which AI does each job</h3>
+              <p className="muted small">Spend on the jobs that assign people and talk to {term.whos}; save on the ones nobody reads twice. Each job only uses the key you pick for it.</p>
+              {board}
+            </div>
+          ) : (
+            <details className="set-block advanced">
+              <summary>
+                <h3>Which AI does each job</h3>
+                <small className="muted">Sprint2go picks good models for you. Open this to choose your own.</small>
+              </summary>
+              {board}
+            </details>
+          );
+        })()}
 
         <div className="set-block">
           <h3>Automatic jobs</h3>
