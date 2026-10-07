@@ -15,6 +15,7 @@ import { setPhotos } from './photos';
 import { Onboarding } from './components/Onboarding';
 import { Wordmark } from './components/Logo';
 import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
+import { InstallPrompt } from './components/InstallPrompt';
 
 /**
  * With the local server: real sign-in, data from the database, live updates.
@@ -56,7 +57,13 @@ export default function Root() {
         }}
       />
     );
-  if (mode === 'ready' && me) return <ServerRoot me={me} />;
+  if (mode === 'ready' && me)
+    return (
+      <>
+        <ServerRoot me={me} />
+        <InstallPrompt />
+      </>
+    );
   return <DemoRoot />;
 }
 

@@ -1930,3 +1930,112 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .modal-body > .smooth-h {
   min-width: 0;
 }
+
+/* "Get the app" sheet on phones */
+.install-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(11, 12, 16, 0.35);
+  animation: fade 0.25s ease both;
+}
+.install-sheet {
+  position: relative;
+  width: min(440px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 26px 22px calc(18px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: var(--surface);
+  box-shadow: 0 -20px 60px -20px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  animation: sheetUp 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@media (min-width: 761px) {
+  .install-scrim {
+    align-items: center;
+  }
+  .install-sheet {
+    border-radius: 24px;
+  }
+}
+@keyframes sheetUp {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+.install-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+.install-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px -12px rgba(36, 72, 255, 0.6);
+}
+.install-sheet h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.install-sheet > p {
+  margin: 0 0 6px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.install-go {
+  width: 100%;
+  height: 46px;
+  justify-content: center;
+}
+.install-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.install-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: var(--surface-2, var(--bg));
+  font-size: 14px;
+}
+.install-steps li svg {
+  color: var(--accent);
+}
+.install-steps li > span {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.install-later {
+  width: 100%;
+  justify-content: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-scrim,
+  .install-sheet {
+    animation: none;
+  }
+}

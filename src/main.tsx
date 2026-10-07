@@ -15,3 +15,6 @@ createRoot(document.getElementById('root')!).render(
     <Root />
   </StrictMode>,
 );
+
+// Installable on phones and desktops (Add to Home Screen). Only in the built app, so development never gets a stale worker.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => {});
