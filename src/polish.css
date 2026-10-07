@@ -1762,3 +1762,33 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .job-tools .segmented {
   margin-left: 0;
 }
+
+/* Sign-up */
+.signin-switch {
+  margin-top: 16px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13.5px;
+}
+.signin-switch .link-btn {
+  font-weight: 600;
+}
+.signin-dev {
+  margin: 4px 0 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.signin-dev b {
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+.code-input {
+  font-size: 22px !important;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

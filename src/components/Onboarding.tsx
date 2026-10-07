@@ -8,6 +8,7 @@ import { APPS } from './AppRail';
 import { BrandFields } from './WorkspaceForms';
 import { Select } from './ui/Select';
 import { EmailSetupGuide } from './EmailSetupGuide';
+import { isFreemail } from '../clientView';
 
 export const PROVIDERS: { id: MailProvider; name: string }[] = [
   { id: 'google', name: 'Google Workspace' },
@@ -48,7 +49,8 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
   const [step, setStep] = useState(preview ? -1 : 0); // -1: the sign-up screen, shown in the preview only
   const [previewDone, setPreviewDone] = useState(false);
   const [brand, setBrand] = useState<Pick<Workspace, 'name' | 'logo' | 'color'>>({ name: '', color: WORKSPACE_COLORS[0] });
-  const [domain, setDomain] = useState('');
+  // A work address (not gmail and the like) already tells us the company's domain.
+  const [domain, setDomain] = useState(() => (preview ? '' : ((d) => (d && !isFreemail(d) ? d : ''))(me.email.split('@')[1] ?? '')));
   const [apps, setApps] = useState<AppId[]>(APPS.map((a) => a.id));
   const [setup, setSetup] = useState<EmailSetup>('keep');
   const [provider, setProvider] = useState<MailProvider>('google');

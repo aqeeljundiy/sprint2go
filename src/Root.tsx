@@ -13,7 +13,8 @@ import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { SharedHome } from './components/SharedHome';
 import { setPhotos } from './photos';
 import { Onboarding } from './components/Onboarding';
-import { AcceptInvite, SignIn } from './components/SignIn';
+import { Wordmark } from './components/Logo';
+import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
 
 /**
  * With the local server: real sign-in, data from the database, live updates.
@@ -23,6 +24,7 @@ export default function Root() {
   const [mode, setMode] = useState<'probing' | 'demo' | 'signed-out' | 'ready'>('probing');
   const [me, setMe] = useState<string | null>(null);
   const invite = new URLSearchParams(location.search).get('invite');
+  const [signingUp, setSigningUp] = useState(() => location.pathname === '/signup');
 
   useEffect(() => {
     if (invite) return;
@@ -37,9 +39,11 @@ export default function Root() {
 
   if (invite) return <AcceptInvite token={invite} onDone={() => location.replace('/')} />;
   if (mode === 'probing') return <div className="boot" />;
+  if (mode === 'signed-out' && signingUp) return <SignUp onDone={() => location.replace('/')} onSignIn={() => (setSigningUp(false), history.replaceState(null, '', '/signin'))} />;
   if (mode === 'signed-out')
     return (
       <SignIn
+        onCreate={() => (setSigningUp(true), history.replaceState(null, '', '/signup'))}
         users={[]}
         signedIn={[]}
         realPasswords
@@ -154,6 +158,43 @@ function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
   );
 }
 
+/** A brand-new account with no company and nothing shared with them yet: set up their company. */
+function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }) {
+  useSettings(me);
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="signin">
+      <div className="signin-card">
+        <Wordmark height={30} />
+        <h1>Welcome, {me.name.split(' ')[0]}</h1>
+        <p className="signin-sub">Set up your company in about a minute: name and logo, which apps you want, your email and your team.</p>
+        <button className="primary-btn signin-btn" onClick={() => setOpen(true)}>
+          Set up my company
+        </button>
+        <p className="signin-switch">
+          Joining a team instead? Ask them to invite {me.email}, then{' '}
+          <button type="button" className="link-btn" onClick={() => void signOut()}>
+            sign out
+          </button>{' '}
+          and open their link.
+        </p>
+      </div>
+      {open && (
+        <Onboarding
+          me={me}
+          existingEmails={existingEmails}
+          onClose={() => setOpen(false)}
+          onCreate={async (w, newUsers) => {
+            const r = await fetch('/api/workspace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspace: w, users: newUsers }) });
+            if (r.ok) location.replace('/');
+            else alert(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t create the workspace. Try again.');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 /** Someone at a client, signed in: their portal, with only what the company shares (the server enforces it). */
 function ClientRoot({ me }: { me: User }) {
   const [settings, updateSettings] = useSettings(me); // light or dark, like the team app
@@ -181,7 +222,7 @@ function ClientRoot({ me }: { me: User }) {
   useEffect(() => {
     if (ws) setAIWorkspace(ws.id);
   }, [ws?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!portal || !ws || !client) return <NoWorkspace email={me.email} onBack={() => void signOut()} />;
+  if (!portal || !ws || !client) return <FirstRun me={me} existingEmails={users.map((u) => u.email.toLowerCase())} />;
   const start = (
     starting && (
       <Onboarding

@@ -4,7 +4,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import * as db from './db.ts';
 import * as ai from './ai.ts';
 import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
@@ -16,6 +16,8 @@ for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = '127.0.0.1'; // localhost only
 const DIST = join(process.cwd(), 'dist');
+/** Sign-ups waiting for their email code (in memory: a restart just means starting again). */
+const signups = new Map<string, { name: string; hash: string; code: string; tries: number; until: number }>();
 
 /* ---------- first run: copy the demo company into the database ---------- */
 
@@ -88,8 +90,10 @@ function lens(userId: string): (coll: string, d: any) => any | null {
   const me = personOf(userId);
   const portals = portalsOf(userId).map((pt) => clientLens({ ...me!, clientOf: pt }));
   const team = teamLens(userId);
-  if (!portals.length) return team;
-  return (coll, d) => team(coll, d) ?? portals.map((l) => l(coll, d)).find(Boolean) ?? null;
+  // Everyone sees their own profile, even a new account with no company and nothing shared yet.
+  const self = (coll: string, d: any) => (coll === 'users' && d.id === userId ? d : null);
+  if (!portals.length) return (coll, d) => team(coll, d) ?? self(coll, d);
+  return (coll, d) => team(coll, d) ?? portals.map((l) => l(coll, d)).find(Boolean) ?? self(coll, d);
 }
 
 /** A team member's view: their workspaces, mailboxes they're on, channels and DMs they're in, their notifications. */
@@ -363,6 +367,40 @@ createServer(async (req, res) => {
       const token = db.newSession(login.user_id);
       res.setHeader('set-cookie', `s2g=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}`);
       return json(res, 200, { me: login.user_id });
+    }
+    // Sign-up: name, email and password, then a 6-digit code sent to the email. Until real email is wired up, the code
+    // is printed in the server log and (outside production) shown on screen so the flow can be tried.
+    if (p === '/api/signup' && req.method === 'POST') {
+      const { name, email, password } = await body(req);
+      const mail = String(email ?? '').trim().toLowerCase();
+      if (String(name ?? '').trim().length < 2) return json(res, 400, { error: 'Tell us your name.' });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return json(res, 400, { error: 'That email doesn’t look right.' });
+      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters for the password.' });
+      if (db.findLogin(mail)) return json(res, 409, { error: 'There’s already an account with this email. Sign in instead.' });
+      const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+      signups.set(mail, { name: String(name).trim().slice(0, 80), hash: db.hashPassword(password), code, tries: 0, until: Date.now() + 15 * 60_000 });
+      console.log(`Sign-up code for ${mail}: ${code}`);
+      return json(res, 200, { ok: true, ...(process.env.NODE_ENV === 'production' ? {} : { devCode: code }) });
+    }
+    if (p === '/api/signup/verify' && req.method === 'POST') {
+      const { email, code } = await body(req);
+      const mail = String(email ?? '').trim().toLowerCase();
+      const s = signups.get(mail);
+      if (!s || s.until < Date.now()) return json(res, 410, { error: 'That code has expired. Start again.' });
+      if (++s.tries > 5) return (signups.delete(mail), json(res, 429, { error: 'Too many tries. Start again.' }));
+      if (String(code ?? '').replace(/\D/g, '') !== s.code) return json(res, 400, { error: 'That code isn’t right.' });
+      if (db.findLogin(mail)) return json(res, 409, { error: 'There’s already an account with this email. Sign in instead.' });
+      signups.delete(mail);
+      // Someone already invited somewhere (a guest without a password yet) keeps their person; otherwise a new one.
+      const known = (db.allDocs('users') as any[]).find((u) => String(u.email).toLowerCase() === mail && !db.hasLogin(u.id));
+      const user = known ?? { id: 'u-' + randomBytes(6).toString('hex'), name: s.name, email: mail, title: '', color: ['#5b5bf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#d946ef'][randomInt(0, 6)] };
+      if (!known) {
+        db.writeDocs('users', [user], [], user.id);
+        broadcast('users', [user], []);
+      }
+      db.setLoginHash(user.id, mail, s.hash);
+      res.setHeader('set-cookie', `s2g=${db.newSession(user.id)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}`);
+      return json(res, 200, { me: user.id });
     }
     if (p === '/api/logout' && req.method === 'POST') {
       const t = cookie(req, 's2g');

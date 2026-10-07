@@ -29,6 +29,7 @@ import { PLAN_FEATURES, PRICES, TIER_NAME, rp } from '../data/pricing';
 import type { Tier, Track } from '../types';
 
 const APP = '/signin';
+const SIGNUP = '/signup';
 
 /** Fades sections in as they scroll into view (skipped for people who prefer less motion). */
 function useReveal() {
@@ -80,7 +81,7 @@ function Nav() {
           <a href={APP} className="ln-btn ghost">
             Sign in
           </a>
-          <a href={APP} className="ln-btn primary">
+          <a href={SIGNUP} className="ln-btn primary">
             Start free
           </a>
         </div>
@@ -365,7 +366,7 @@ export function Landing() {
             </h1>
             <p>Sprint2go brings your team’s email, chat, tasks, calendar, files, meetings and passwords together, and opens every morning on what needs you.</p>
             <div className="ln-cta">
-              <a href={APP} className="ln-btn primary lg">
+              <a href={SIGNUP} className="ln-btn primary lg">
                 Start free <ArrowRight size={16} />
               </a>
               <a href="#apps" className="ln-btn ghost lg">
@@ -544,7 +545,7 @@ export function Landing() {
         <div className="ln-wrap rv">
           <h2>Bring your team’s day into one place</h2>
           <p>Start free with up to 5 people. Invite your clients the same afternoon.</p>
-          <a href={APP} className="ln-btn white lg">
+          <a href={SIGNUP} className="ln-btn white lg">
             Start free <ArrowRight size={16} />
           </a>
         </div>

@@ -58,6 +58,10 @@ export function checkPassword(pw: string, stored: string) {
   const got = scryptSync(pw, Buffer.from(salt, 'hex'), 64);
   return timingSafeEqual(got, Buffer.from(hash, 'hex'));
 }
+/** For sign-up: the password was hashed when the code was sent, so it never waits around in plain text. */
+export function setLoginHash(userId: string, email: string, hash: string) {
+  db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?)').run(userId, email, hash);
+}
 export function setLogin(userId: string, email: string, pw: string) {
   db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET email = excluded.email, pw_hash = excluded.pw_hash').run(userId, email, hashPassword(pw));
 }
