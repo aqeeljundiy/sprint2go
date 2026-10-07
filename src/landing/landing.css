@@ -18,23 +18,6 @@
   --shadow-lg: 0 40px 100px -40px rgba(36, 72, 255, 0.35), 0 2px 6px rgba(11, 12, 16, 0.06);
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #08090c;
-    --surface: #111217;
-    --hover: #1d1f26;
-    --border: #252731;
-    --text: #f2f3f5;
-    --text-2: #b7b9c3;
-    --text-3: #7c7f8c;
-    --accent-soft: #171d3d;
-    --warn: #f59e0b;
-    --warn-soft: #2b1d0b;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 40px -24px rgba(0, 0, 0, 0.6);
-    --shadow-lg: 0 40px 100px -40px rgba(36, 72, 255, 0.45), 0 2px 6px rgba(0, 0, 0, 0.4);
-    color-scheme: dark;
-  }
-}
 
 * {
   box-sizing: border-box;
@@ -1211,7 +1194,7 @@ button {
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
-  animation: rise 0.8s var(--ease) both, float 6s ease-in-out infinite alternate;
+  animation: rise 0.8s var(--ease) both;
   z-index: 2;
 }
 .ln-float svg {
@@ -1221,7 +1204,7 @@ button {
   top: -18px;
   left: 22%;
   --rot: -2deg;
-  animation-delay: 1s, 1.8s;
+  animation-delay: 1s;
 }
 .ln-float.f1 svg {
   color: #16a34a;
@@ -1230,13 +1213,13 @@ button {
   right: -40px;
   bottom: 70px;
   --rot: 2deg;
-  animation-delay: 1.2s, 0.4s;
+  animation-delay: 1.2s;
 }
 .ln-float.f3 {
   bottom: -18px;
   left: 18%;
   --rot: -1deg;
-  animation-delay: 1.4s, 1.1s;
+  animation-delay: 1.4s;
 }
 
 /* ---------- works-with strip ---------- */
@@ -2142,4 +2125,78 @@ button {
 }
 .ln-head {
   max-width: 780px;
+}
+
+/* ---------- still tour: every panel in one cell, so the height never changes ---------- */
+.tour-stack {
+  display: grid;
+}
+.tour-stack > .tour-stage {
+  grid-area: 1 / 1;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+.tour-stack > .tour-stage.on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.35s ease;
+}
+.tour-copy,
+.tour-mock,
+.tm > *,
+.tm-card,
+.tm-pop,
+.tm-note mark {
+  animation: none !important;
+}
+.tm-voice i {
+  animation: none;
+}
+.tm-note mark {
+  background-size: 100% 100%;
+}
+
+/* ---------- language switch ---------- */
+.ln-lang {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 9999px;
+  background: var(--hover);
+  margin-right: 4px;
+}
+.ln-lang button {
+  position: relative;
+  z-index: 1;
+  width: 38px;
+  padding: 5px 0;
+  border: 0;
+  border-radius: 9999px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.25s;
+}
+.ln-lang button.on {
+  color: var(--text);
+}
+.ln-lang-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: 38px;
+  border-radius: 9999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: transform 0.35s var(--ease);
+}
+.ln-lang-pill.id {
+  transform: translateX(38px);
+}
+.ln-drawer-lang {
+  padding: 4px 0 8px;
 }

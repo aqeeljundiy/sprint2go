@@ -1792,3 +1792,106 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* Email guide: one step at a time */
+.esg-wiz {
+  display: grid;
+  gap: 12px;
+}
+.esg-steps {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.esg-steps button {
+  flex: 1 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s, border-color 0.25s;
+}
+.esg-steps button b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--hover);
+  font-size: 11px;
+  transition: background 0.25s, color 0.25s;
+}
+.esg-steps button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.esg-steps button.on b {
+  background: var(--accent);
+  color: #fff;
+}
+.esg-steps button.done {
+  color: var(--text-2);
+}
+.esg-steps button.done b {
+  background: #dcfce7;
+  color: #16a34a;
+}
+.esg-card {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  min-height: 210px;
+  align-content: start;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  animation: esgIn 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.esg-card > * {
+  max-width: 100%;
+}
+.esg-card p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.esg-card .esg-records {
+  justify-self: stretch;
+}
+@keyframes esgIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.esg-tipline {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-size: 12.5px !important;
+}
+.esg-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* Provider picker: a smooth change, not a jump */
+.ob-provider .aw-tones button {
+  transition: background 0.25s, color 0.25s, border-color 0.25s, box-shadow 0.25s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .esg-card {
+    animation: none;
+  }
+}

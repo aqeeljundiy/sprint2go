@@ -8,6 +8,7 @@ import { APPS } from './AppRail';
 import { BrandFields } from './WorkspaceForms';
 import { Select } from './ui/Select';
 import { EmailSetupGuide } from './EmailSetupGuide';
+import { TIER_NAME, options, rp } from '../data/pricing';
 import { isFreemail } from '../clientView';
 
 export const PROVIDERS: { id: MailProvider; name: string }[] = [
@@ -193,7 +194,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
           {step === 1 && (
             <>
               <h2>Which apps do you want?</h2>
-              <p className="set-intro">Switch on what your team needs. You can change this any time.</p>
+              <p className="set-intro">Every app is included in every plan, Free too. There are no add-ons per app. Switch off what your team doesn’t need; you can change it any time.</p>
               <div className="ob-apps">
                 {APPS.map(({ id, name, icon: Icon }) => {
                   const on = apps.includes(id);
@@ -227,7 +228,9 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                   </div>
                 </div>
               )}
-              <p className="trial-note">Your first 14 days are on Studio AI with every feature. No card needed.</p>
+              <p className="trial-note">
+                Your first 14 days are on Studio AI with everything switched on. After that you stay on <b>Free</b> (up to 5 people) unless you pick a plan. No card, no surprise charges.
+              </p>
             </>
           )}
 
@@ -312,6 +315,17 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                 <button className="ghost-btn sm" onClick={() => setTeam((ts) => [...ts, { key: Date.now(), name: '', email: '', role: 'member', where: 'sprint2go' }])}>
                   + Add another person
                 </button>
+                {(() => {
+                  const n = 1 + team.filter((t) => t.email.trim()).length;
+                  const price = options('own', n)[0];
+                  return (
+                    <p className="trial-note">
+                      {n <= 5
+                        ? `${n} ${n === 1 ? 'person' : 'people'}: free after the trial. Up to 5 people never pay.`
+                        : `${n} people: after the 14-day trial, about ${rp(price?.price ?? 0)} a month on ${TIER_NAME[price?.tier ?? 'small']}, with your own AI keys. You choose before anything is charged.`}
+                    </p>
+                  );
+                })()}
               </div>
             </>
           )}

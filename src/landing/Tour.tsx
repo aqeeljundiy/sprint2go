@@ -1,31 +1,28 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Calendar, Check, CheckSquare, Eye, FileText, FolderOpen, KeyRound, Mail, MessagesSquare, Mic, NotebookPen, Paperclip, Sparkles, Video, type LucideIcon } from 'lucide-react';
+import { useT, type Dict } from './i18n';
 
-/* Small product previews for the tour, built from the app's own look. Each one moves a little, on its own. */
+/* Small, still previews for the tour, built from the app's own look. */
 
 const Chip = ({ children, tone }: { children: ReactNode; tone?: 'blue' | 'amber' | 'green' | 'pink' }) => <span className={`tc ${tone ?? ''}`}>{children}</span>;
 
-function MailMock() {
-  const rows: [string, string, string, ReactNode][] = [
-    ['Nadia Putri', 'Re: Q4 concepts', 'Love direction 2. Could one of the four lean into…', <Chip tone="amber">KopiKita</Chip>],
-    ['Sarah Lim', 'Budget for 12.12', 'Can we see two scenarios before Friday?', <Chip tone="pink">Lumina Skin</Chip>],
-    ['Kirana Dewi', 'Founder intro', 'We’re a subscription coffee brand looking for…', <Chip>New lead</Chip>],
-  ];
+function MailMock({ m }: { m: Dict['tm'] }) {
+  const chips = [<Chip tone="amber">KopiKita</Chip>, <Chip tone="pink">Lumina Skin</Chip>, <Chip>{m.newLead}</Chip>];
   return (
     <div className="tm">
       <div className="tm-head">
-        <strong>Inbox</strong>
+        <strong>{m.inbox}</strong>
         <span className="tm-seg">
-          <span className="on">Needs reply</span>
-          <span>Everything</span>
+          <span className="on">{m.needsReply}</span>
+          <span>{m.everything}</span>
         </span>
       </div>
-      {rows.map(([from, subj, snip, chip], i) => (
-        <div key={from} className="tm-mail" style={{ ['--i' as string]: i }}>
+      {m.mails.map(([from, subj, snip], i) => (
+        <div key={from} className="tm-mail">
           <span className="tm-av">{from.charAt(0)}</span>
           <span className="tm-mtxt">
             <span className="tm-mrow">
-              <b>{from}</b> {chip}
+              <b>{from}</b> {chips[i]}
             </span>
             <small>
               <strong>{subj}</strong> · {snip}
@@ -34,52 +31,47 @@ function MailMock() {
         </div>
       ))}
       <div className="tm-found">
-        <Sparkles size={13} /> To-do found in Sarah’s email: <b>Send two 12.12 budget scenarios</b>, due Friday <span className="tm-add">Add</span>
+        <Sparkles size={13} /> {m.found} <b>{m.foundTask}</b>, {m.foundDue} <span className="tm-add">{m.add}</span>
       </div>
     </div>
   );
 }
 
-function ChatMock() {
+function ChatMock({ m }: { m: Dict['tm'] }) {
   return (
     <div className="tm">
       <div className="tm-head">
         <strong># kopikita-x-pnp</strong>
-        <Chip tone="green">Guests can see this</Chip>
+        <Chip tone="green">{m.guestsSee}</Chip>
       </div>
-      <div className="tm-msg" style={{ ['--i' as string]: 0 }}>
+      <div className="tm-msg">
         <span className="tm-av" style={{ background: '#b45309' }}>N</span>
         <span>
           <b>
-            Nadia Putri <em className="tm-guest">Guest · KopiKita</em>
+            Nadia Putri <em className="tm-guest">{m.guestTag}</em>
           </b>
-          <p>The morning ritual angle is exactly it. Can we see it as a 15s?</p>
+          <p>{m.msg1}</p>
         </span>
       </div>
-      <div className="tm-msg" style={{ ['--i' as string]: 1 }}>
+      <div className="tm-msg">
         <span className="tm-av" style={{ background: '#5b5bf6' }}>A</span>
         <span>
           <b>Aqeel</b>
           <span className="tm-voice">
             <Mic size={12} />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
+            {[6, 11, 8, 14, 9, 12, 5, 10].map((h, i) => (
+              <i key={i} style={{ height: h }} />
+            ))}
             <small>0:14</small>
           </span>
         </span>
       </div>
-      <div className="tm-msg" style={{ ['--i' as string]: 2 }}>
+      <div className="tm-msg">
         <span className="tm-av" style={{ background: '#f97316' }}>N</span>
         <span>
           <b>Nanda</b>
           <p>
-            Cut is up <Paperclip size={11} /> <u>KopiKita_ritual_15s.mp4</u>
+            {m.msg3} <Paperclip size={11} /> <u>KopiKita_ritual_15s.mp4</u>
           </p>
         </span>
       </div>
@@ -87,11 +79,11 @@ function ChatMock() {
   );
 }
 
-function TasksMock() {
+function TasksMock({ m }: { m: Dict['tm'] }) {
   const cols: [string, [string, ReactNode?][]][] = [
-    ['To do', [['Storyboard the 15s cut'], ['Brief for 12.12', <Chip tone="pink">Lumina</Chip>]]],
-    ['In progress', [['Four Q4 concepts', <Chip tone="amber">KopiKita</Chip>]]],
-    ['Waiting on guest', [['November ad budget', <Chip tone="blue">Approve</Chip>]]],
+    [m.cols[0], [[m.cards[0]], [m.cards[1], <Chip tone="pink">Lumina</Chip>]]],
+    [m.cols[1], [[m.cards[2], <Chip tone="amber">KopiKita</Chip>]]],
+    [m.cols[2], [[m.cards[3], <Chip tone="blue">{m.approve}</Chip>]]],
   ];
   return (
     <div className="tm">
@@ -99,8 +91,8 @@ function TasksMock() {
         {cols.map(([name, cards]) => (
           <div key={name} className="tm-col">
             <small>{name}</small>
-            {cards.map(([t, chip], i) => (
-              <div key={t} className="tm-card" style={{ ['--i' as string]: i }}>
+            {cards.map(([t, chip]) => (
+              <div key={t} className="tm-card">
                 <span>{t}</span>
                 {chip}
               </div>
@@ -109,18 +101,18 @@ function TasksMock() {
         ))}
       </div>
       <div className="tm-found">
-        <Check size={13} /> Nadia approved <b>Four Q4 concepts</b>. Moved to Done.
+        <Check size={13} /> {m.approved} <b>{m.cards[2]}</b>. {m.moved}
       </div>
     </div>
   );
 }
 
-function CalendarMock() {
+function CalendarMock({ m }: { m: Dict['tm'] }) {
   return (
     <div className="tm tm-cal">
       <div className="tm-head">
-        <strong>Thursday, 8 October</strong>
-        <small>Drag a task into your day</small>
+        <strong>{m.calDay}</strong>
+        <small>{m.calHint}</small>
       </div>
       <div className="tm-day">
         {['9', '10', '11', '12', '13', '14'].map((h) => (
@@ -129,40 +121,37 @@ function CalendarMock() {
           </span>
         ))}
         <span className="tm-ev a" style={{ top: '4%', height: '14%' }}>
-          Standup
+          {m.standup}
         </span>
         <span className="tm-ev b" style={{ top: '52%', height: '22%' }}>
-          Lumina monthly review
+          {m.review}
         </span>
-        <span className="tm-ev c drag">
-          <CheckSquare size={11} /> Storyboard the 15s cut
+        <span className="tm-ev c">
+          <CheckSquare size={11} /> {m.cards[0]}
         </span>
       </div>
     </div>
   );
 }
 
-function MeetMock() {
+function MeetMock({ m }: { m: Dict['tm'] }) {
   return (
     <div className="tm">
       <div className="tm-head">
-        <strong>Lumina monthly review</strong>
-        <small>47 min · notes ready</small>
+        <strong>{m.meetH}</strong>
+        <small>{m.meetMeta}</small>
       </div>
-      <p className="tm-sum">Blended ROAS rose to 4.1 from 3.2. Sarah approved scaling for 11.11 and wants 12.12 scenarios next week.</p>
-      <small className="tm-label">Decisions</small>
+      <p className="tm-sum">{m.meetSum}</p>
+      <small className="tm-label">{m.decisions}</small>
       <div className="tm-li">
-        <Check size={12} /> Scale 11.11 budget by 30%
+        <Check size={12} /> {m.decision}
       </div>
-      <small className="tm-label">Action items</small>
-      {[
-        ['Two 12.12 budget scenarios', 'F', '#f59e0b'],
-        ['Retargeting carousel for bundles', 'S', '#d946ef'],
-      ].map(([t, a, c], i) => (
-        <div key={t} className="tm-li task" style={{ ['--i' as string]: i }}>
+      <small className="tm-label">{m.actions}</small>
+      {m.acts.map((t, i) => (
+        <div key={t} className="tm-li task">
           <CheckSquare size={12} /> {t}
-          <span className="tm-av sm" style={{ background: c }}>
-            {a}
+          <span className="tm-av sm" style={{ background: i ? '#d946ef' : '#f59e0b' }}>
+            {i ? 'S' : 'F'}
           </span>
         </div>
       ))}
@@ -170,7 +159,7 @@ function MeetMock() {
   );
 }
 
-function DriveMock() {
+function DriveMock({ m }: { m: Dict['tm'] }) {
   const files: [string, string, boolean][] = [
     ['KopiKita_ritual_15s.mp4', '48 MB', true],
     ['Q4 concepts.pdf', '6.4 MB', true],
@@ -182,15 +171,15 @@ function DriveMock() {
         <strong>
           <FolderOpen size={14} /> KopiKita
         </strong>
-        <small>Shared with guests are marked</small>
+        <small>{m.driveHint}</small>
       </div>
-      {files.map(([n, s, shared], i) => (
-        <div key={n} className="tm-file" style={{ ['--i' as string]: i }}>
+      {files.map(([n, s, shared]) => (
+        <div key={n} className="tm-file">
           <FileText size={15} />
           <span>{n}</span>
           <small>{s}</small>
-          <span className={`tm-eye ${shared ? 'on' : ''}`} title={shared ? 'Guests can see it' : 'Team only'}>
-            <Eye size={12} /> {shared ? 'Shared' : 'Team only'}
+          <span className={`tm-eye ${shared ? 'on' : ''}`}>
+            <Eye size={12} /> {shared ? m.shared : m.teamOnly}
           </span>
         </div>
       ))}
@@ -198,55 +187,50 @@ function DriveMock() {
   );
 }
 
-function NotesMock() {
+function NotesMock({ m }: { m: Dict['tm'] }) {
   return (
     <div className="tm">
       <div className="tm-head">
-        <strong>KopiKita review call prep</strong>
-        <small>Team · edited just now</small>
+        <strong>{m.noteH}</strong>
+        <small>{m.noteMeta}</small>
       </div>
-      <p className="tm-note">Open with the 11.11 numbers, then the four concepts.</p>
+      <p className="tm-note">{m.note1}</p>
       <p className="tm-note">
-        <mark>Ask Nadia for the CEO’s final word by Friday</mark>
+        <mark>{m.note2}</mark>
         <span className="tm-pop">
-          <CheckSquare size={12} /> Make a task
+          <CheckSquare size={12} /> {m.makeTask}
         </span>
       </p>
-      <p className="tm-note muted">Bring the retainer renewal up last.</p>
+      <p className="tm-note muted">{m.note3}</p>
     </div>
   );
 }
 
-function VaultMock() {
-  const [left, setLeft] = useState(30 - (Math.floor(Date.now() / 1000) % 30));
-  useEffect(() => {
-    const t = setInterval(() => setLeft(30 - (Math.floor(Date.now() / 1000) % 30)), 1000);
-    return () => clearInterval(t);
-  }, []);
+function VaultMock({ m }: { m: Dict['tm'] }) {
   return (
     <div className="tm">
       <div className="tm-head">
         <strong>
           <KeyRound size={14} /> KopiKita Meta Business
         </strong>
-        <Chip>Design team</Chip>
+        <Chip>{m.designTeam}</Chip>
       </div>
       <div className="tm-field">
-        <small>Email</small>
+        <small>{m.email}</small>
         <span>ads@kopikita.co.id</span>
       </div>
       <div className="tm-field">
-        <small>Password</small>
-        <span>•••••••••••• </span>
-        <em>Reveal · logged</em>
+        <small>{m.password}</small>
+        <span>••••••••••••</span>
+        <em>{m.reveal}</em>
       </div>
       <div className="tm-field">
-        <small>2FA code</small>
+        <small>{m.code}</small>
         <span className="tm-code">
-          {left > 15 ? '482 913' : '106 274'}
+          482 913
           <svg viewBox="0 0 20 20" className="tm-ring">
             <circle cx="10" cy="10" r="8" />
-            <circle cx="10" cy="10" r="8" style={{ strokeDashoffset: 50.3 * (1 - left / 30) }} />
+            <circle cx="10" cy="10" r="8" style={{ strokeDashoffset: 18 }} />
           </svg>
         </span>
       </div>
@@ -254,69 +238,52 @@ function VaultMock() {
   );
 }
 
-export const TOUR: { id: string; icon: LucideIcon; name: string; title: string; points: string[]; mock: () => ReactNode }[] = [
-  { id: 'mail', icon: Mail, name: 'Mail', title: 'Email that sorts itself by project', points: ['Shared inboxes for hello@ and finance@', 'Snooze, send later, and who’s on it', 'To-dos pulled from the emails that matter'], mock: MailMock },
-  { id: 'chat', icon: MessagesSquare, name: 'Chat', title: 'Channels per project, guests included', points: ['Shared channels with clients and partners', 'Threads, voice notes, kudos', 'A shelf for the links and files people keep asking for'], mock: ChatMock },
-  { id: 'tasks', icon: CheckSquare, name: 'Tasks', title: 'Work that moves on its own', points: ['By person, team or project', 'Approvals from guests, right on the task', 'Checklists, repeats and briefs'], mock: TasksMock },
-  { id: 'calendar', icon: Calendar, name: 'Calendar', title: 'Your day, with your tasks in it', points: ['Drag to move, stretch to resize', 'Drop a task in to block time for it', 'Every calendar you use, in one view'], mock: CalendarMock },
-  { id: 'meet', icon: Video, name: 'Meet', title: 'Meetings that turn into work', points: ['Notes, decisions and action items', 'Filed under the right project', 'Shared with guests only if you want'], mock: MeetMock },
-  { id: 'drive', icon: FolderOpen, name: 'Drive', title: 'Files where the project is', points: ['A folder per project, automatically', 'What guests can see is always marked', 'Your own cloud for the big files'], mock: DriveMock },
-  { id: 'notes', icon: NotebookPen, name: 'Notes', title: 'Notes that become tasks', points: ['Private, or for the whole team', 'Link a note to a project', 'Select a line, make it a task'], mock: NotesMock },
-  { id: 'vault', icon: KeyRound, name: 'Vault', title: 'Shared logins without the spreadsheet', points: ['Passwords and 2FA codes for chosen people', 'Every reveal is logged', 'Encrypted, revealed one at a time'], mock: VaultMock },
+const TOUR: { id: string; icon: LucideIcon; Mock: (p: { m: Dict['tm'] }) => ReactNode }[] = [
+  { id: 'mail', icon: Mail, Mock: MailMock },
+  { id: 'chat', icon: MessagesSquare, Mock: ChatMock },
+  { id: 'tasks', icon: CheckSquare, Mock: TasksMock },
+  { id: 'calendar', icon: Calendar, Mock: CalendarMock },
+  { id: 'meet', icon: Video, Mock: MeetMock },
+  { id: 'drive', icon: FolderOpen, Mock: DriveMock },
+  { id: 'notes', icon: NotebookPen, Mock: NotesMock },
+  { id: 'vault', icon: KeyRound, Mock: VaultMock },
 ];
 
-const STEP = 6000;
-
-/** The product tour: a tab per app, auto-advancing with a progress bar until someone picks one. */
+/**
+ * The product tour: a tab per app. Every panel sits in the same grid cell, so the section keeps one height
+ * (the tallest panel) and switching tabs only cross-fades. Nothing moves on its own.
+ */
 export function Tour() {
+  const { t } = useT();
   const [cur, setCur] = useState(0);
-  const [auto, setAuto] = useState(true);
-  const [paused, setPaused] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0.3 });
-    if (ref.current) io.observe(ref.current);
-    return () => io.disconnect();
-  }, []);
-  useEffect(() => {
-    if (!auto || paused || !visible || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const t = setTimeout(() => setCur((c) => (c + 1) % TOUR.length), STEP);
-    return () => clearTimeout(t);
-  }, [cur, auto, paused, visible]);
-  const item = TOUR[cur];
-  const Mock = item.mock;
   return (
-    <div className="tour rv" ref={ref} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+    <div className="tour rv">
       <div className="tour-tabs" role="tablist" aria-label="Apps">
-        {TOUR.map((t, i) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={i === cur}
-            className={i === cur ? 'on' : ''}
-            onClick={() => (setCur(i), setAuto(false))}
-          >
-            <t.icon size={17} />
-            <span>{t.name}</span>
-            {i === cur && auto && <i className={`tour-bar ${paused || !visible ? 'paused' : ''}`} style={{ animationDuration: `${STEP}ms` }} key={cur} />}
+        {TOUR.map((x, i) => (
+          <button key={x.id} role="tab" aria-selected={i === cur} className={i === cur ? 'on' : ''} onClick={() => setCur(i)}>
+            <x.icon size={17} />
+            <span>{t.tour[x.id].name}</span>
           </button>
         ))}
       </div>
-      <div className="tour-stage" key={item.id}>
-        <div className="tour-copy">
-          <h3>{item.title}</h3>
-          <ul>
-            {item.points.map((p) => (
-              <li key={p}>
-                <Check size={15} /> {p}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="tour-mock">
-          <Mock />
-        </div>
+      <div className="tour-stack">
+        {TOUR.map(({ id, Mock }, i) => (
+          <div key={id} className={`tour-stage ${i === cur ? 'on' : ''}`} role="tabpanel" aria-hidden={i !== cur}>
+            <div className="tour-copy">
+              <h3>{t.tour[id].title}</h3>
+              <ul>
+                {t.tour[id].points.map((p) => (
+                  <li key={p}>
+                    <Check size={15} /> {p}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="tour-mock">
+              <Mock m={t.tm} />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
