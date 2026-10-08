@@ -343,7 +343,7 @@ const hits = new Map<string, number[]>();
 export function intake(env: Env, token: string, payload: unknown): { status: number; body: unknown } {
   const t = tables().find((x) => x.intake?.token === token);
   if (!t || !t.intake) return { status: 404, body: { error: 'Unknown address' } };
-  if (!t.intake.enabled) return { status: 403, body: { error: 'This table isn’t accepting data right now' } };
+
   const recent = (hits.get(token) ?? []).filter((x) => Date.now() - x < 60_000);
   if (recent.length >= 120) return { status: 429, body: { error: 'Too many deliveries; at most 120 a minute' } };
   hits.set(token, [...recent, Date.now()]);
@@ -353,6 +353,15 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
     logTo(env, t.id, { dir: 'in', ok: false, text: 'A delivery arrived with no data' });
     return { status: 400, body: { error: 'No data' } };
   }
+  // Listening for a test: capture what arrived so its variables can be matched to fields; no row yet.
+  if (t.intake.listening) {
+    const sample = Object.fromEntries(Object.entries(flat).slice(0, 80));
+    const mapping = { ...t.intake.mapping };
+    for (const k of Object.keys(sample)) if (!(k in mapping)) mapping[k] = guessField(k, t.fields) ?? '';
+    save(env, 'tables', [{ ...t, intake: { ...t.intake, listening: false, sample, mapping, testAt: now() }, log: [...(t.log ?? []), { at: now(), dir: 'in' as const, ok: true, text: `Test received: ${Object.keys(sample).length} values to match to fields` }].slice(-50) }]);
+    return { status: 200, body: { ok: true, test: true, received: Object.keys(sample) } };
+  }
+  if (!t.intake.enabled) return { status: 403, body: { error: 'This table isn’t accepting data yet. Finish matching the test delivery to fields, then turn it on.' } };
   const users = usersOf(t.workspaceId);
   // Keys never seen before get their best field by name, remembered so the mapping screen shows them.
   const mapping = { ...t.intake.mapping };

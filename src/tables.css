@@ -1698,3 +1698,100 @@
     min-width: 120px;
   }
 }
+
+/* Data coming in, as steps: address, test, match, turn on. The current step stands out; done ones get a tick. */
+.tb-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.tb-steps > li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  opacity: 0.55;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+.tb-steps > li.now {
+  opacity: 1;
+  background: var(--surface-2);
+}
+.tb-steps > li.done {
+  opacity: 1;
+}
+.tb-steps > li > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  justify-items: start;
+}
+.tb-steps > li > div > .tb-url,
+.tb-steps > li > div > .tb-map,
+.tb-steps > li > div > .tb-act-row,
+.tb-steps > li > div > .tb-listen,
+.tb-steps > li > div > .tb-try {
+  justify-self: stretch;
+}
+.tb-steps strong {
+  font-size: 13.5px;
+}
+.tb-step-n {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: var(--hover);
+  color: var(--text-2);
+}
+.tb-steps > li.now .tb-step-n {
+  background: var(--accent);
+  color: #fff;
+}
+.tb-steps > li.done .tb-step-n {
+  background: color-mix(in srgb, var(--ok-solid, #10b981) 18%, transparent);
+  color: var(--ok-solid, #10b981);
+}
+.tb-listen {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.tb-listen .tb-spin {
+  margin-top: 3px;
+  color: var(--accent);
+}
+.tb-try summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-3);
+  list-style: none;
+}
+.tb-try summary::-webkit-details-marker {
+  display: none;
+}
+.tb-try[open] summary {
+  margin-bottom: 6px;
+}
+.tb-map-row.skip code {
+  color: var(--text-3);
+}
+.tb-on-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok-solid, #10b981);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok-solid, #10b981) 20%, transparent);
+}

@@ -1,3 +1,4 @@
+import { TabBar } from './ui/TabBar';
 import { ProjectBadge } from './ProjectBadge';
 import { MEETING_LANGUAGES, languageName, languagesText } from '../data/languages';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -523,29 +524,34 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
           </div>
         </div>
 
-        <div className="client-tabs m-tabs">
-          {(
+        <TabBar
+          storageKey="meeting-tabs"
+          className="client-tabs m-tabs"
+          value={tab}
+          onSelect={(id) => setTab(id as typeof tab)}
+          fixed={['summary']}
+          items={(
             [
-              ['summary', 'Summary'],
-              ['tasks', `Tasks ${mTasks.filter((t) => !t.done).length}`],
-              ['transcript', 'Transcript'],
-              ['log', 'Bot log'],
+              ['summary', 'Summary', 'Summary'],
+              ['tasks', `Tasks ${mTasks.filter((t) => !t.done).length}`, 'Tasks'],
+              ['transcript', 'Transcript', 'Transcript'],
+              ['log', 'Bot log', 'Bot log'],
             ] as const
-          ).map(([id, l]) => (
-            <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
-              {l}
-            </button>
-          ))}
-          <span className="spacer" />
-          {tab === 'transcript' && (m.transcript?.length ?? 0) > 0 && (
-            <button className="m-tab-act" onClick={downloadTxt} title="Download .txt">
-              <Download size={13} /> <span className="lbl">Download .txt</span>
-            </button>
-          )}
-          <button className="m-tab-act" onClick={copy} title="Copy">
-            <Copy size={13} /> <span className="lbl">Copy</span>
-          </button>
-        </div>
+          ).map(([id, label, name]) => ({ id, label, name }))}
+          trailing={
+            <>
+              <span className="spacer" />
+              {tab === 'transcript' && (m.transcript?.length ?? 0) > 0 && (
+                <button className="m-tab-act" onClick={downloadTxt} title="Download .txt">
+                  <Download size={13} /> <span className="lbl">Download .txt</span>
+                </button>
+              )}
+              <button className="m-tab-act" onClick={copy} title="Copy">
+                <Copy size={13} /> <span className="lbl">Copy</span>
+              </button>
+            </>
+          }
+        />
 
         <TabPane key={tab}>
         {tab === 'summary' &&

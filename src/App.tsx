@@ -1,3 +1,4 @@
+import { TabDefaultsCtx } from './components/ui/TabBar';
 import { NewTableDialog, TableScreen, TablesHome, TablesSidebar, makeTable } from './components/tables/TablesApp';
 import type { TemplateId } from './components/tables/fields';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1499,6 +1500,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Notes ---------------- */
   // Mine, and the ones shared with the company.
+  // Tab orders an admin made everyone's default (each person can still arrange their own).
+  const tabDefaults = useMemo(
+    () => ({ defaults: ws.tabDefaults ?? {}, canSet: isAdmin, set: (key: string, prefs: { order: string[]; hidden: string[] } | null) => patchWorkspace(ws.id, { tabDefaults: Object.fromEntries(Object.entries({ ...(ws.tabDefaults ?? {}), [key]: prefs }).filter(([, v]) => v)) as Record<string, { order: string[]; hidden: string[] }> }) }),
+    [ws.tabDefaults, ws.id, isAdmin], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const wsTables = useMemo(() => tables.filter((t) => t.workspaceId === ws.id), [tables, ws.id]);
   const wsTableRows = useMemo(() => tableRows.filter((r) => r.workspaceId === ws.id), [tableRows, ws.id]);
   const currentTable = wsTables.find((t) => t.id === tableId);
@@ -2412,6 +2418,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }
 
   return (
+    <TabDefaultsCtx.Provider value={tabDefaults}>
     <ProjectsCtx.Provider value={projectsCtx}>
     <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''}`}>
       <AppRail
@@ -3762,5 +3769,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       )}
     </div>
     </ProjectsCtx.Provider>
+    </TabDefaultsCtx.Provider>
   );
 }

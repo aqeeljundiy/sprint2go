@@ -907,7 +907,9 @@ createServer(async (req, res) => {
           const before = db.getDoc('tables', ok[i]!.id) as any;
           if (!before) continue;
           const d = ok[i] as any;
-          ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
+          // listening: once a test arrives the server switches it off; an older copy can't switch it back on unless it asks afresh.
+          const listening = !!d.intake?.listening && String(d.intake?.listenFrom ?? '') > String(before.intake?.testAt ?? '');
+          ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
         }
       db.writeDocs(coll, ok, dels, me);
       broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);

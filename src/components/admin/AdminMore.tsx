@@ -1,12 +1,12 @@
 import { LanguagePicker } from '../LanguagePicker';
 import { useState } from 'react';
 import { term } from '../../terms';
-import { Cloud, Download, FileText, HardDrive, Lock, Plus, ShieldCheck, Trash2, Video, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, Lock, Plus, ShieldCheck, Trash2, Video, X } from 'lucide-react';
 import type { AppId, DriveItem, HomeTemplateId, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
 import { fmtSize } from '../../data/drive';
 import { storageGB, rp } from '../../data/pricing';
 import { DEFAULT_MEETINGS } from '../../data/workspaces';
-import { APPS } from '../AppRail';
+import { APPS, useAppOrder } from '../AppRail';
 import { HOME_TEMPLATES } from '../HomeView';
 import { Avatar } from '../Avatar';
 import { Select } from '../ui/Select';
@@ -377,18 +377,49 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
  */
 export function MyAppsSection({ ws, hidden, isAdmin, asked, onHidden, onCompanyApp, onAsk }: { ws: Workspace; hidden: AppId[]; isAdmin: boolean; asked: AppId[]; onHidden: (list: AppId[]) => void; onCompanyApp: (id: AppId) => void; onAsk: (id: AppId) => void }) {
   const company = ws.apps ?? APPS.map((a) => a.id);
-  const on = APPS.filter((a) => a.id !== 'home' && company.includes(a.id));
+  const order = useAppOrder();
+  const on = order.arranged(APPS).filter((a) => a.id !== 'home' && company.includes(a.id));
   const off = APPS.filter((a) => a.id !== 'home' && !company.includes(a.id));
+  const ids: string[] = order.arranged(APPS).map((a) => a.id as string);
+  const move = (id: string, d: -1 | 1) => {
+    const visible: string[] = on.map((a) => a.id as string);
+    const swap = visible[visible.indexOf(id) + d];
+    if (!swap) return;
+    const next = [...ids];
+    const i = next.indexOf(id), j = next.indexOf(swap);
+    [next[i], next[j]] = [next[j], next[i]];
+    order.setOrder(next);
+  };
   return (
     <>
       <h2>Your apps</h2>
-      <p className="set-intro">Hide apps you don’t use from your own sidebar. Your team still has them, and you can show them again any time.</p>
+      <p className="set-intro">Put your apps in the order you use them (or drag them in the left rail), and hide the ones you don’t. Your team still has them, and you can show them again any time.</p>
       <div className="set-block">
-        {on.map((a) => (
+        {on.map((a, i) => (
           <Row key={a.id} title={<><a.icon size={15} /> {a.name}</>} hint={hidden.includes(a.id) ? 'Hidden for you' : undefined}>
-            <Switch on={!hidden.includes(a.id)} onChange={() => onHidden(hidden.includes(a.id) ? hidden.filter((x) => x !== a.id) : [...hidden, a.id])} />
+            <span className="app-order">
+              <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(a.id, -1)} aria-label={`Move ${a.name} up`}>
+                <ArrowUp size={13} />
+              </button>
+              <button type="button" className="icon-btn sm" disabled={i === on.length - 1} onClick={() => move(a.id, 1)} aria-label={`Move ${a.name} down`}>
+                <ArrowDown size={13} />
+              </button>
+              <Switch on={!hidden.includes(a.id)} onChange={() => onHidden(hidden.includes(a.id) ? hidden.filter((x) => x !== a.id) : [...hidden, a.id])} />
+            </span>
           </Row>
         ))}
+        <div className="app-order-foot">
+          {order.mine && (
+            <button type="button" className="link-btn small" onClick={order.reset}>
+              {order.shared.defaults.rail ? 'Use the company’s order' : 'Back to the usual order'}
+            </button>
+          )}
+          {isAdmin && (
+            <button type="button" className="link-btn small" onClick={() => order.shared.set('rail', { order: ids, hidden: [] })}>
+              Make this everyone’s order
+            </button>
+          )}
+        </div>
       </div>
       {off.length > 0 && (
         <div className="set-block">

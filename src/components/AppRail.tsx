@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { useContext, useState, type ReactNode } from 'react';
+import { usePersisted } from '../settings';
+import { TabDefaultsCtx, arrange, type TabPrefs } from './ui/TabBar';
 import { Briefcase, KeyRound, Table2, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
 import { term } from '../terms';
 import type { AppId } from '../types';
@@ -40,14 +42,52 @@ interface Props {
   onNotices: () => void;
 }
 
-/** The far-left column: one icon per app, like Slack or Teams. */
+/** The apps in this person's order (drag them in the rail, or use Settings → Your apps), else the company's. */
+export function useAppOrder() {
+  const shared = useContext(TabDefaultsCtx);
+  const [mine, setMine] = usePersisted<TabPrefs | null>('s2g-tabs:rail', null);
+  const prefs = mine ?? shared.defaults.rail ?? null;
+  return { arranged: (list: typeof APPS) => arrange(list, prefs), setOrder: (order: string[]) => setMine({ order, hidden: [] }), reset: () => setMine(null), mine, shared };
+}
+
+/** The far-left column: one icon per app, like Slack or Teams. Drag an app to move it. */
 export function AppRail(p: Props) {
+  const { arranged, setOrder } = useAppOrder();
+  const apps = arranged(APPS.filter((a) => p.enabled.includes(a.id)));
+  const [drag, setDrag] = useState<string | null>(null);
+  const [over, setOver] = useState<{ id: string; after: boolean } | null>(null);
+  const drop = () => {
+    if (drag && over && drag !== over.id) {
+      const ids: string[] = arranged(APPS).map((a) => a.id as string).filter((x) => x !== drag);
+      ids.splice(ids.indexOf(over.id) + (over.after ? 1 : 0), 0, drag);
+      setOrder(ids);
+    }
+    setDrag(null);
+    setOver(null);
+  };
   return (
     <nav className="rail" aria-label="Apps">
       <div className="rail-ws">{p.workspace}</div>
       <div className="rail-apps">
-        {APPS.filter((a) => p.enabled.includes(a.id)).map(({ id, name, icon: Icon }) => (
-          <button key={id} className={`rail-app ${p.current === id ? 'on' : ''}`} onClick={() => p.onApp(id)} title={name} aria-current={p.current === id ? 'page' : undefined}>
+        {apps.map(({ id, name, icon: Icon }) => (
+          <button
+            key={id}
+            className={`rail-app ${p.current === id ? 'on' : ''}${drag === id ? ' tab-dragging' : ''}${over?.id === id && drag !== id ? (over.after ? ' drop-below' : ' drop-above') : ''}`}
+            onClick={() => p.onApp(id)}
+            title={name}
+            aria-current={p.current === id ? 'page' : undefined}
+            draggable
+            onDragStart={(e) => ((e.dataTransfer.effectAllowed = 'move'), e.dataTransfer.setData('text/plain', id), setDrag(id))}
+            onDragEnd={() => (setDrag(null), setOver(null))}
+            onDragOver={(e) => {
+              if (!drag) return;
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              const after = e.clientY > r.top + r.height / 2;
+              if (over?.id !== id || over.after !== after) setOver({ id, after });
+            }}
+            onDrop={(e) => (e.preventDefault(), drop())}
+          >
             <span className="rail-icon">
               <Icon size={19} />
               {p.badges[id] ? <i>{p.badges[id]! > 99 ? '99+' : p.badges[id]}</i> : null}

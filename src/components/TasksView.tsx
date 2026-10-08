@@ -1,3 +1,4 @@
+import { TabBar } from './ui/TabBar';
 import { ProjectPeople } from './ProjectPeople';
 import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
 import { useEffect, useMemo, useState } from 'react';
@@ -618,31 +619,33 @@ export function TasksView(p: Props) {
       </header>
 
       {client && (
-        <div className="client-tabs">
-          {(
+        <TabBar
+          storageKey="project-tabs"
+          value={clientTab}
+          onSelect={(id) => setClientTab(id as typeof clientTab)}
+          fixed={['overview']}
+          items={(
             [
-              ['overview', 'Overview'],
-              ['tasks', overdue ? `Tasks · ${overdue} late` : 'Tasks'],
-              ['chat', 'Chat'],
-              ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail'],
-              ['meetings', 'Meetings'],
-              ['files', 'Files'],
-              ['notes', 'Notes'],
-              ...(p.onOpenTable ? ([['tables', 'Tables']] as const) : []),
-              ['logins', 'Logins'],
-              ['portal', 'Guests'],
+              ['overview', 'Overview', 'Overview'],
+              ['tasks', overdue ? `Tasks · ${overdue} late` : 'Tasks', 'Tasks'],
+              ['chat', 'Chat', 'Chat'],
+              ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail', 'Mail'],
+              ['meetings', 'Meetings', 'Meetings'],
+              ['files', 'Files', 'Files'],
+              ['notes', 'Notes', 'Notes'],
+              ...(p.onOpenTable ? ([['tables', 'Tables', 'Tables']] as const) : []),
+              ['logins', 'Logins', 'Logins'],
+              ['portal', 'Guests', 'Guests'],
             ] as const
-          ).map(([id, label]) => (
-            <button key={id} className={clientTab === id ? 'on' : ''} onClick={() => setClientTab(id)}>
-              {label}
-            </button>
-          ))}
-          {cellTeam && (
-            <button className="on soft" onClick={() => p.onScope({ kind: 'client', id: client.id })}>
-              {cellTeam.name} only · show all teams
-            </button>
-          )}
-        </div>
+          ).map(([id, label, name]) => ({ id, label, name }))}
+          extra={
+            cellTeam && (
+              <button className="on soft" onClick={() => p.onScope({ kind: 'client', id: client.id })}>
+                {cellTeam.name} only · show all teams
+              </button>
+            )
+          }
+        />
       )}
 
       <div className="tracking-scroll" key={`${JSON.stringify(scope)}:${layout}:${clientTab}`}>

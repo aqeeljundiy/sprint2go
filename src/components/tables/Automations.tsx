@@ -4,6 +4,13 @@ import type { ButtonDef, Channel, DataTable, TableAction, TableField, TableIntak
 import { relative, uid } from '../../utils';
 import { TabPane } from '../ui/Smooth';
 import { OPTION_COLORS, opsFor } from './fields';
+import { guessType } from './csv';
+
+/** data.full_name -> Full name */
+const humanize = (k: string) => {
+  const w = (k.split('.').pop() ?? k).replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase();
+  return w ? w[0].toUpperCase() + w.slice(1) : k;
+};
 
 /* ---------- small helpers ---------- */
 
@@ -525,6 +532,14 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
     onPatch({ rules: [...rules, r] });
     setEditing(r.id);
   };
+  // A variable as a field: a new field named after it, of the kind its value looks like, mapped straight away.
+  const newFieldFor = (k: string) => {
+    if (!intake) return;
+    const name = humanize(k);
+    const f: TableField = { id: uid(), name, type: guessType(name, [String(intake.sample?.[k] ?? '')]) };
+    if (f.type === 'money') f.currency = 'IDR';
+    onPatch({ fields: [...t.fields, f], intake: { ...intake, mapping: { ...intake.mapping, [k]: f.id } } });
+  };
   // Every key seen so far (the latest delivery's first), so earlier ones can still be mapped.
   const sampleKeys = [...new Set([...Object.keys(intake?.sample ?? {}), ...Object.keys(intake?.mapping ?? {})])];
   const example = JSON.stringify(Object.fromEntries(t.fields.filter((f) => !['button', 'link'].includes(f.type)).slice(0, 4).map((f) => [f.name.toLowerCase().replace(/\W+/g, '_'), f.type === 'email' ? 'rina@example.com' : f.type === 'phone' ? '+62 812 0000 0000' : f.type === 'money' || f.type === 'number' ? 1000000 : f.options?.[0]?.label ?? `Example ${f.name.toLowerCase()}`])), null, 2);
@@ -556,78 +571,139 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
           <TabPane key={tab}>
             {tab === 'in' && (
               <div className="tb-auto-sec">
-                <p className="muted small">Forms, ads, Zapier, Make or your own scripts can add rows by posting to this table’s own address. JSON or form data both work.</p>
-                {!intake ? (
-                  <button className="primary-btn sm" onClick={() => setIntake({})}>
-                    <ArrowDownLeft size={14} /> Make an address for this table
-                  </button>
-                ) : (
-                  <>
-                    <div className="tb-url">
-                      <code>{url}</code>
-                      <button className="icon-btn sm" onClick={() => copy(url, 'Address')} aria-label="Copy address">
-                        <Copy size={14} />
-                      </button>
-                    </div>
-                    <div className="tb-act-row">
-                      <label className="check-row">
-                        <input type="checkbox" checked={intake.enabled} onChange={(e) => setIntake({ enabled: e.target.checked })} /> Accepting data
-                      </label>
-                      <span className="spacer" />
-                      <button className="link-btn small" onClick={() => confirm('Make a new address? The old one stops working straight away, so update anything that posts to it.') && setIntake({ token: secret() })}>
-                        <RefreshCw size={12} /> New address
-                      </button>
-                    </div>
-                    <div className="tb-act-row">
-                      <span className="tb-act-label">Duplicates</span>
-                      <select className="tb-native" value={intake.dedupeField ?? ''} aria-label="Duplicates" onChange={(e) => setIntake({ dedupeField: e.target.value || undefined })}>
-                        <option value="">Always add a new row</option>
-                        {t.fields.filter((f) => ['text', 'email', 'phone', 'url', 'number'].includes(f.type)).map((f) => (
-                          <option key={f.id} value={f.id}>
-                            Same {f.name.toLowerCase()} updates that row
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <h4 className="tb-auto-h">Which field each value goes into</h4>
-                    {sampleKeys.length ? (
-                      <div className="tb-map">
-                        {sampleKeys.map((k) => (
-                          <div key={k} className="tb-map-row">
-                            <code title={k}>{k}</code>
-                            <span className="tb-map-sample muted small" title={String(intake.sample?.[k] ?? '')}>
-                              {intake.sample?.[k] != null ? String(intake.sample[k]).slice(0, 40) : ''}
-                            </span>
-                            <select className="tb-native" value={intake.mapping[k] ?? ''} aria-label={`Field for ${k}`} onChange={(e) => setIntake({ mapping: { ...intake.mapping, [k]: e.target.value } })}>
-                              <option value="">Keep aside (not a field)</option>
-                              {t.fields.filter((f) => !['button', 'link'].includes(f.type)).map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.name}
-                                </option>
-                              ))}
-                            </select>
+                <p className="muted small">Leads from Facebook, Zapier, Make, a website form or your own scripts can land in this table. Give them this table’s address, send one test, then match what arrives to fields.</p>
+                <ol className="tb-steps">
+                  <li className={intake ? 'done' : 'now'}>
+                    <span className="tb-step-n">{intake ? <Check size={12} /> : 1}</span>
+                    <div>
+                      <strong>Your webhook address</strong>
+                      {!intake ? (
+                        <button className="primary-btn sm" onClick={() => setIntake({ enabled: false, listening: true, listenFrom: new Date().toISOString() })}>
+                          <ArrowDownLeft size={14} /> Make the address
+                        </button>
+                      ) : (
+                        <>
+                          <div className="tb-url">
+                            <code>{url}</code>
+                            <button className="icon-btn sm" onClick={() => copy(url, 'Address')} aria-label="Copy address">
+                              <Copy size={14} />
+                            </button>
                           </div>
-                        ))}
-                        <p className="muted small">Values matched to fields by name automatically; change any of them here. Values kept aside are still saved on the row.</p>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="muted small">Send one test delivery and its values appear here to match to fields. Names that match a field (like email or phone_number) go in by themselves. For example:</p>
-                        <div className="tb-url">
-                          <code className="block">{`curl -X POST ${url} \\\n  -H "content-type: application/json" \\\n  -d '${example.replace(/\n\s*/g, ' ')}'`}</code>
-                          <button className="icon-btn sm" onClick={() => copy(`curl -X POST ${url} -H "content-type: application/json" -d '${example.replace(/\n\s*/g, ' ')}'`, 'Example')} aria-label="Copy example">
-                            <Copy size={14} />
+                          <button className="link-btn small" onClick={() => confirm('Make a new address? The old one stops working straight away, so update anything that posts to it.') && setIntake({ token: secret() })}>
+                            <RefreshCw size={12} /> New address
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </li>
+
+                  <li className={!intake ? '' : intake.listening ? 'now' : intake.sample ? 'done' : 'now'}>
+                    <span className="tb-step-n">{intake?.sample && !intake.listening ? <Check size={12} /> : 2}</span>
+                    <div>
+                      <strong>Send a test</strong>
+                      {intake?.listening ? (
+                        <div className="tb-listen">
+                          <span className="tb-spin" aria-hidden />
+                          <span>
+                            Waiting for a test… Send something to the address now: from Zapier or Make, a test lead from your form, or anywhere that sends webhooks. Nothing is added to the table; it’s only to see what arrives.
+                          </span>
+                          <button className="link-btn small" onClick={() => setIntake({ listening: false })}>
+                            Stop
                           </button>
                         </div>
-                      </>
-                    )}
-                  </>
-                )}
+                      ) : intake ? (
+                        <div className="tb-act-row">
+                          <button className={intake.sample ? 'ghost-btn sm' : 'primary-btn sm'} onClick={() => setIntake({ listening: true, listenFrom: new Date().toISOString() })}>
+                            <ArrowDownLeft size={14} /> {intake.sample ? 'Listen for another test' : 'Listen for a test'}
+                          </button>
+                          {intake.testAt && <span className="muted small">Last test {relative(intake.testAt)}</span>}
+                        </div>
+                      ) : (
+                        <p className="muted small">After the address.</p>
+                      )}
+                      {intake && (
+                        <details className="tb-try">
+                          <summary>Or send one yourself</summary>
+                          <div className="tb-url">
+                            <code className="block">{`curl -X POST ${url} \\\n  -H "content-type: application/json" \\\n  -d '${example.replace(/\n\s*/g, ' ')}'`}</code>
+                            <button className="icon-btn sm" onClick={() => copy(`curl -X POST ${url} -H "content-type: application/json" -d '${example.replace(/\n\s*/g, ' ')}'`, 'Example')} aria-label="Copy example">
+                              <Copy size={14} />
+                            </button>
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </li>
+
+                  <li className={!intake?.sample ? '' : intake.enabled ? 'done' : 'now'}>
+                    <span className="tb-step-n">{intake?.enabled && intake.sample ? <Check size={12} /> : 3}</span>
+                    <div>
+                      <strong>Match what arrived to fields</strong>
+                      {intake && sampleKeys.length ? (
+                        <div className="tb-map">
+                          {sampleKeys.map((k) => (
+                            <div key={k} className={`tb-map-row${intake.mapping[k] ? '' : ' skip'}`}>
+                              <code title={k}>{k}</code>
+                              <span className="tb-map-sample muted small" title={String(intake.sample?.[k] ?? '')}>
+                                {intake.sample?.[k] != null && intake.sample[k] !== '' ? String(intake.sample[k]).slice(0, 40) : 'empty'}
+                              </span>
+                              <select className="tb-native" value={intake.mapping[k] ?? ''} aria-label={`Field for ${k}`} onChange={(e) => (e.target.value === '__new' ? newFieldFor(k) : setIntake({ mapping: { ...intake.mapping, [k]: e.target.value } }))}>
+                                <option value="">Skip (kept on the row, not in a field)</option>
+                                {t.fields.filter((f) => !['button', 'link'].includes(f.type)).map((f) => (
+                                  <option key={f.id} value={f.id}>
+                                    {f.name}
+                                  </option>
+                                ))}
+                                <option value="__new">+ New field “{humanize(k)}”</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="muted small">The values from your test appear here, each with what it contained, to put into the right field.</p>
+                      )}
+                    </div>
+                  </li>
+
+                  <li className={intake?.enabled ? 'done' : intake?.sample ? 'now' : ''}>
+                    <span className="tb-step-n">{intake?.enabled ? <Check size={12} /> : 4}</span>
+                    <div>
+                      <strong>Turn it on</strong>
+                      {intake && (
+                        <div className="tb-act-row">
+                          <span className="tb-act-label">Duplicates</span>
+                          <select className="tb-native" value={intake.dedupeField ?? ''} aria-label="Duplicates" onChange={(e) => setIntake({ dedupeField: e.target.value || undefined })}>
+                            <option value="">Always add a new row</option>
+                            {t.fields.filter((f) => ['text', 'email', 'phone', 'url', 'number'].includes(f.type)).map((f) => (
+                              <option key={f.id} value={f.id}>
+                                Same {f.name.toLowerCase()} updates that row
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {intake?.enabled ? (
+                        <div className="tb-act-row">
+                          <span className="tb-on-dot" aria-hidden />
+                          <span className="small">On: every delivery adds a row.</span>
+                          <span className="spacer" />
+                          <button className="link-btn small" onClick={() => setIntake({ enabled: false })}>
+                            Pause
+                          </button>
+                        </div>
+                      ) : (
+                        <button className="primary-btn sm" disabled={!intake?.sample || !Object.values(intake.mapping).some(Boolean)} onClick={() => setIntake({ enabled: true, listening: false })}>
+                          Save and turn on
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                </ol>
+
                 <h4 className="tb-auto-h">
-                  <KeyRound size={13} /> Signing outgoing webhooks
+                  <KeyRound size={13} /> Signing webhooks this table sends
                 </h4>
-                <p className="muted small">Webhooks this table sends carry an <code>X-Sprint2go-Signature</code> header: an HMAC-SHA256 of the body with this secret, so the other side can check it came from you.</p>
+                <p className="muted small">Webhooks sent by this table’s buttons and rules carry an <code>X-Sprint2go-Signature</code> header: an HMAC-SHA256 of the body with this secret, so the other side can check it came from you.</p>
                 {t.signingSecret ? (
                   <div className="tb-url">
                     <code>{t.signingSecret.slice(0, 6)}••••••••••••</code>

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Download, FileUp, Users, Zap, ArrowLeft, ArrowUpDown, Columns3, EyeOff, Filter, LayoutGrid, Menu, MoreHorizontal, Plus, Search, Table2, Trash2, X } from 'lucide-react';
 import type { CellValue, Channel, Client, DataTable, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
 import { AutomationsPanel } from './Automations';
+import { TabBar } from '../ui/TabBar';
 import { ImportDialog, type ImportPlan } from './ImportDialog';
 import { download, rowsToCsv } from './csv';
 import { term } from '../../terms';
@@ -418,18 +419,30 @@ export function TableScreen(p: ScreenProps) {
       </header>
 
       <div className="tb-bar">
-        <div className="client-tabs tb-views">
-          {t.views.map((v) => (
-            <button key={v.id} ref={v.id === view?.id ? refs.view : undefined} className={v.id === view?.id ? 'on' : ''} onClick={() => (v.id === view?.id ? !g && (setRenamingView(v.name), setPop('view')) : (setViewId(v.id), setSelected(new Set())))} title={v.id === view?.id ? 'View settings' : undefined}>
-              {v.kind === 'board' ? <Columns3 size={13} /> : <LayoutGrid size={13} />} {v.name}
-            </button>
-          ))}
-          {!g && (
-            <button ref={refs.addView} className="tb-add-view" onClick={() => setPop('addView')} title="Add a view">
-              <Plus size={14} />
-            </button>
-          )}
-        </div>
+        <TabBar
+          storageKey={`table-views:${t.id}`}
+          className="client-tabs tb-views"
+          value={view?.id ?? ''}
+          canHide={false}
+          order={{ order: t.views.map((v) => v.id), hidden: [] }}
+          onOrder={g ? undefined : (o) => patchTable({ views: o.order.map((id) => t.views.find((v) => v.id === id)!).filter(Boolean) })}
+          onSelect={(id) => {
+            if (id !== view?.id) return (setViewId(id), setSelected(new Set()));
+            if (g) return;
+            // Clicking the open view: its settings, under its tab.
+            refs.view.current = document.querySelector<HTMLButtonElement>(`.tb-views [role=tab].on`);
+            setRenamingView(view.name);
+            setPop('view');
+          }}
+          items={t.views.map((v) => ({ id: v.id, name: v.name, title: v.id === view?.id && !g ? 'View settings' : undefined, label: <>{v.kind === 'board' ? <Columns3 size={13} /> : <LayoutGrid size={13} />} {v.name}</> }))}
+          extra={
+            !g && (
+              <button ref={refs.addView} className="tb-add-view" onClick={() => setPop('addView')} title="Add a view">
+                <Plus size={14} />
+              </button>
+            )
+          }
+        />
         <Popover anchor={refs.addView} open={pop === 'addView'} onClose={() => setPop(null)} width={220} title="Add a view">
           <div className="tb-menu">
             <button type="button" onClick={() => addView('grid')}>

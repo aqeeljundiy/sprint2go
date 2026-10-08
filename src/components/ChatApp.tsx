@@ -1,3 +1,4 @@
+import { TabBar } from './ui/TabBar';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
@@ -1313,8 +1314,13 @@ export function ChatView(p: ViewProps) {
 
         </header>
 
-        <div className="chan-tabs" role="tablist">
-          {(
+        <TabBar
+          storageKey="channel-tabs"
+          className="chan-tabs"
+          value={tab}
+          onSelect={(id) => setTab(id as typeof tab)}
+          fixed={['messages']}
+          items={(
             [
               ['messages', 'Messages', null],
               ['materials', 'Materials', (channel.materials?.items.length ?? channel.bookmarks?.length ?? 0) + chanFiles.length + p.drive.length + new Set(links.map((l) => l.url)).size],
@@ -1323,13 +1329,19 @@ export function ChatView(p: ViewProps) {
               ['summary', 'Summary', null],
               ['about', other ? 'Profile' : 'About', null],
             ] as const
-          ).filter(([id]) => !guest || id === 'messages' || id === 'materials').map(([id, l, n]) => (
-            <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
-              {l}
-              {id === 'tasks' && n ? <span>{n}</span> : null}
-            </button>
-          ))}
-        </div>
+          )
+            .filter(([id]) => !guest || id === 'messages' || id === 'materials')
+            .map(([id, l, n]) => ({
+              id,
+              name: l,
+              label: (
+                <>
+                  {l}
+                  {id === 'tasks' && n ? <span>{n}</span> : null}
+                </>
+              ),
+            }))}
+        />
 
         <TabPane key={tab}>
         {tab === 'materials' && (

@@ -3162,3 +3162,111 @@ p.trial-note > svg:first-child {
     display: none;
   }
 }
+
+/* Tabs you can rearrange: a line shows where a dragged tab will land; the "⋯" opens the arrange list. */
+.tab-bar [role='tab'] {
+  position: relative;
+}
+.tab-bar .tab-dragging,
+.rail-app.tab-dragging {
+  opacity: 0.45;
+}
+.tab-bar .drop-before::before,
+.tab-bar .drop-after::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.tab-bar .drop-before::before {
+  left: -3px;
+}
+.tab-bar .drop-after::after {
+  right: -3px;
+}
+.rail-app.drop-above {
+  box-shadow: 0 -2px 0 var(--accent);
+}
+.rail-app.drop-below {
+  box-shadow: 0 2px 0 var(--accent);
+}
+.tab-bar .tab-edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 2px;
+  border-radius: 8px;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.tab-bar:hover .tab-edit,
+.tab-bar .tab-edit:focus-visible {
+  opacity: 1;
+}
+.tab-bar .tab-edit:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+@media (hover: none) {
+  .tab-bar .tab-edit {
+    opacity: 1;
+  }
+}
+.tab-edit-list {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+}
+.tab-edit-list > p {
+  margin: 0 0 6px;
+}
+.tab-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  transition: opacity 0.15s ease, background 0.12s ease;
+}
+.tab-edit-row:hover {
+  background: var(--hover);
+}
+.tab-edit-row.off {
+  opacity: 0.5;
+}
+.tab-edit-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-edit-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.app-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.app-order .switch,
+.app-order > :last-child {
+  margin-left: 8px;
+}
+.app-order-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+}

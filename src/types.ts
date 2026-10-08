@@ -200,6 +200,7 @@ export interface Workspace {
   security?: { twoStep: boolean; google: boolean; microsoft: boolean; sso: boolean };
   aliases?: Record<string, string>; // learned names: "andi" -> user id, or "contact:<name>"
   teamHome?: Record<string, HomeTemplateId>; // default Home template per team
+  tabDefaults?: Record<string, { order: string[]; hidden: string[] }>; // tab orders an admin set for everyone
 }
 
 export type Role = 'owner' | 'admin' | 'member';
@@ -701,6 +702,9 @@ export interface TableIntake {
   mapping: Record<string, string>; // incoming key (dot path, e.g. data.email) -> field id
   dedupeField?: string; // same value here = update that row instead of adding one
   sample?: Record<string, unknown>; // the last delivery, flattened, to map from
+  listening?: boolean; // waiting for a test delivery: the next one is only captured to map from, no row is made
+  testAt?: string; // when the last test delivery arrived
+  listenFrom?: string; // when "Listen for a test" was pressed (only a press after the last test counts)
 }
 
 export interface TableLogEntry {
