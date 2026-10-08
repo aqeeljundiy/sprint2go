@@ -588,14 +588,15 @@ const OUR_AI_DOWN = 'AI isn’t available right now. We’ve been told; try agai
 
 /**
  * A company's plan as the app may save it. Free months, discounts and trials are ours: the app can end a trial (by
- * picking a plan) but never start or stretch one, since a trial runs on our AI. Top-ups bought this month only go up
- * from the app; invoicing resets them.
+ * picking a plan) but never start or stretch one, since a trial runs on our AI. Top-ups: the app may add one at a
+ * time, never lower the count or bring back a count the invoice run already reset (a page left open since then).
  */
 function planFromApp(next: any, prev: any) {
   if (!next) return prev;
   const max = new Date(Date.now() + 14 * 86_400_000).toISOString();
   const trialEnds = !next.trialEnds ? undefined : prev ? prev.trialEnds : String(next.trialEnds) > max ? max : next.trialEnds;
-  const topUps = Math.max(prev?.topUps ?? 0, Number(next.topUps) || 0);
+  const had = prev?.topUps ?? 0;
+  const topUps = (Number(next.topUps) || 0) === had + 1 ? had + 1 : had;
   return { ...next, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined };
 }
 
