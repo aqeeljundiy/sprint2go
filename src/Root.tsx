@@ -3,13 +3,13 @@ import type { User, Workspace } from './types';
 import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
 import { usePersisted, useSettings } from './settings';
 import { applyRemote, useStored } from './store';
-import { connect, probe, signIn, signOut } from './sync';
+import { connect, probe, server, signIn, signOut, type Session } from './sync';
 import { setAIWorkspace } from './ai';
 import App from './App';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, portalsFor } from './clientView';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
-import { ClientApp, Onboarding, SharedHome } from './lazy';
+import { ActingBanner, AdminApp, ClientApp, Onboarding, SharedHome } from './lazy';
 import { setPhotos } from './photos';
 import { Wordmark } from './components/Logo';
 import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
@@ -22,20 +22,22 @@ import { brand as product, brandOf, setBrandName } from './terms';
  */
 export default function Root() {
   const [mode, setMode] = useState<'probing' | 'demo' | 'signed-out' | 'ready'>('probing');
-  const [me, setMe] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const invite = new URLSearchParams(location.search).get('invite');
   const [signingUp, setSigningUp] = useState(() => location.pathname === '/signup');
+  const admin = location.pathname.startsWith('/admin'); // the operator backend: its own screens, its own API
 
   useEffect(() => {
     if (invite) return;
     void probe().then(async (r) => {
       if (r === 'none') return setMode('demo');
       if (r === 'signed-out') return setMode('signed-out');
-      await connect(applyRemote);
-      setMe(r.me);
+      setSession(r);
+      server.operator = !!r.operator;
+      if (!r.suspended && !admin) await connect(applyRemote);
       setMode('ready');
     });
-  }, [invite]);
+  }, [invite, admin]);
 
   if (invite) return <AcceptInvite token={invite} onDone={() => location.replace('/')} />;
   if (mode === 'probing') return <div className="boot" />;
@@ -56,14 +58,40 @@ export default function Root() {
         }}
       />
     );
-  if (mode === 'ready' && me)
+  if (mode === 'ready' && session?.suspended) return <Suspended reason={session.suspended.reason} />;
+  if (admin && (mode === 'ready' || mode === 'demo')) return <AdminApp />;
+  if (mode === 'ready' && session)
     return (
       <>
-        <ServerRoot me={me} />
+        <ServerRoot me={session.me} />
         <InstallPrompt />
+        {session.actingAs && <ActingBanner operator={session.actingAs} />}
+        {!session.actingAs && !!session.suspendedIn?.length && (
+          <div className="op-banner warn" role="status">
+            <span>
+              {session.suspendedIn.map((w) => w.name).join(', ')} {session.suspendedIn.length === 1 ? 'is' : 'are'} suspended{session.suspendedIn[0].reason ? `: ${session.suspendedIn[0].reason}` : ''}. Everything stays, nothing can be changed until it is lifted.
+            </span>
+          </div>
+        )}
       </>
     );
   return <DemoRoot />;
+}
+
+/** The account itself is suspended by an operator: nothing to do here but sign out. */
+function Suspended({ reason }: { reason: string }) {
+  return (
+    <div className="signin">
+      <div className="signin-card">
+        <Wordmark height={30} />
+        <h1>This account is suspended</h1>
+        <p className="signin-sub">{reason || 'Contact support to find out why.'}</p>
+        <button className="primary-btn signin-btn" onClick={() => void signOut()}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Signed in to the local server: one person per browser, everything saved in the database. */

@@ -3,7 +3,7 @@ import { DatabaseSync, backup as sqliteBackup } from 'node:sqlite';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, n: number) => Promise<Buffer>;
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DIR = process.env.S2G_DATA ?? join(process.cwd(), 'data');
@@ -80,16 +80,20 @@ export function findLogin(email: string) {
 const DAY = 86_400_000;
 // Only a hash of the session token is stored: a copy of the database can't be used to sign in as anyone.
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
-export function newSession(userId: string) {
+/** `operator`: an operator signed in as this person from the backend (shorter session, shown in the app, logged). */
+export function newSession(userId: string, operator?: string) {
   const token = randomBytes(32).toString('base64url');
-  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(tokenHash(token), userId, new Date().toISOString(), new Date(Date.now() + 30 * DAY).toISOString());
+  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at, operator) VALUES (?, ?, ?, ?, ?)').run(tokenHash(token), userId, new Date().toISOString(), new Date(Date.now() + (operator ? 0.5 : 30) * DAY).toISOString(), operator ?? null);
   return token;
 }
 export function sessionUser(token: string | undefined): string | null {
+  return sessionInfo(token)?.userId ?? null;
+}
+export function sessionInfo(token: string | undefined): { userId: string; operator: string | null } | null {
   if (!token) return null;
-  const r = db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?').get(tokenHash(token)) as { user_id: string; expires_at: string } | undefined;
+  const r = db.prepare('SELECT user_id, expires_at, operator FROM sessions WHERE token = ?').get(tokenHash(token)) as { user_id: string; expires_at: string; operator: string | null } | undefined;
   if (!r || r.expires_at < new Date().toISOString()) return null;
-  return r.user_id;
+  return { userId: r.user_id, operator: r.operator };
 }
 export const endSession = (token: string) => db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash(token));
 /** Everyone signed in as this person is signed out (after a password change or reset). */
@@ -286,4 +290,78 @@ export function fileData(id: string): Buffer | null {
 /** One person's usage this period (for their own monthly cap). */
 export function usageSinceFor(workspaceId: string, userId: string, since: string) {
   return db.prepare('SELECT job, provider, model, SUM(in_tokens) AS inTokens, SUM(out_tokens) AS outTokens FROM ai_usage WHERE workspace_id = ? AND user_id = ? AND at >= ? GROUP BY job, provider, model').all(workspaceId, userId, since);
+}
+
+/* ---------- the operator backend: who did what, who was here when ---------- */
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, operator TEXT NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT);
+  CREATE TABLE IF NOT EXISTS activity (user_id TEXT PRIMARY KEY, at TEXT NOT NULL);
+`);
+try {
+  db.exec('ALTER TABLE sessions ADD COLUMN operator TEXT');
+} catch {
+  /* already there */
+}
+
+export const audit = (operator: string, action: string, target: string | null, detail?: string) =>
+  db.prepare('INSERT INTO audit (at, operator, action, target, detail) VALUES (?, ?, ?, ?, ?)').run(new Date().toISOString(), operator, action, target, detail ?? null);
+export const auditList = (limit = 200, target?: string) =>
+  (target
+    ? db.prepare('SELECT id, at, operator, action, target, detail FROM audit WHERE target = ? ORDER BY id DESC LIMIT ?').all(target, limit)
+    : db.prepare('SELECT id, at, operator, action, target, detail FROM audit ORDER BY id DESC LIMIT ?').all(limit)) as { id: number; at: string; operator: string; action: string; target: string | null; detail: string | null }[];
+
+const touched = new Map<string, number>();
+/** Remembers that this person was here (at most once every few minutes, so it costs nothing). */
+export function touch(userId: string) {
+  const now = Date.now();
+  if ((touched.get(userId) ?? 0) > now - 5 * 60_000) return;
+  touched.set(userId, now);
+  db.prepare('INSERT INTO activity (user_id, at) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET at = excluded.at').run(userId, new Date(now).toISOString());
+}
+export const lastSeen = () => new Map((db.prepare('SELECT user_id, at FROM activity').all() as { user_id: string; at: string }[]).map((r) => [r.user_id, r.at]));
+
+/** Everyone's AI usage since a date, by company (the operator's cost view). */
+export const usageByWorkspace = (since: string) =>
+  db.prepare('SELECT workspace_id AS workspaceId, provider, model, COUNT(*) AS uses, SUM(in_tokens) AS inTokens, SUM(out_tokens) AS outTokens FROM ai_usage WHERE at >= ? GROUP BY workspace_id, provider, model').all(since) as {
+    workspaceId: string;
+    provider: string;
+    model: string;
+    uses: number;
+    inTokens: number;
+    outTokens: number;
+  }[];
+/** Bytes of uploaded files per company. */
+export const storageByWorkspace = () => new Map((db.prepare('SELECT workspace_id, SUM(size) AS bytes FROM files GROUP BY workspace_id').all() as { workspace_id: string; bytes: number }[]).map((r) => [r.workspace_id, r.bytes]));
+export const sessionCount = () => (db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?').get(new Date().toISOString()) as { n: number }).n;
+export const dbPath = join(DIR, 'sprint2go.db');
+export const dataDir = DIR;
+/** Removes every document of a company across all collections (the company itself included when `all`). */
+export function deleteWorkspaceDocs(workspaceId: string, all: boolean) {
+  const rows = db.prepare("SELECT coll, id, data FROM docs WHERE coll != 'users'").all() as { coll: string; id: string; data: string }[];
+  const gone: Record<string, string[]> = {};
+  for (const r of rows) {
+    let d: any;
+    try {
+      d = JSON.parse(r.data);
+    } catch {
+      continue;
+    }
+    const inWs = r.coll === 'workspaces' ? r.id === workspaceId && all : d?.workspaceId === workspaceId || (r.coll === 'prefs' ? false : d?.value?.workspaceId === workspaceId);
+    if (inWs) (gone[r.coll] ??= []).push(r.id);
+  }
+  const del = db.prepare('DELETE FROM docs WHERE coll = ? AND id = ?');
+  for (const [coll, ids] of Object.entries(gone)) for (const id of ids) del.run(coll, id);
+  db.prepare('DELETE FROM ai_usage WHERE workspace_id = ?').run(workspaceId);
+  db.prepare('DELETE FROM ai_keys WHERE workspace_id = ?').run(workspaceId);
+  db.prepare('DELETE FROM vault_items WHERE workspace_id = ?').run(workspaceId);
+  for (const f of db.prepare('SELECT id FROM files WHERE workspace_id = ?').all(workspaceId) as { id: string }[]) {
+    try {
+      unlinkSync(join(FILES, f.id));
+    } catch {
+      /* gone already */
+    }
+  }
+  db.prepare('DELETE FROM files WHERE workspace_id = ?').run(workspaceId);
+  return gone;
 }

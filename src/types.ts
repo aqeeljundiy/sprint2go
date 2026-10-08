@@ -207,6 +207,8 @@ export interface Workspace {
   permissions?: Partial<MemberPermissions>;
   whiteLabel?: WhiteLabel; // an agency running the app under its own brand
   industry?: Industry; // what the company does: picks the starter tables and brief templates
+  createdAt?: string;
+  suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string }; // WhatsApp Business (Meta Cloud API); the token stays on the server
 }
 
@@ -283,6 +285,8 @@ export interface User {
   hiddenApps?: AppId[]; // apps this person hid from their own sidebar (the company still has them)
   nicknames?: string[]; // "Kiki" for Rizky; used by the brain dump
   clientOf?: { workspaceId: string; clientId: string }; // someone at a client: signs in to their portal only
+  suspended?: { at: string; by: string; reason: string }; // set by an operator: can't sign in
+  deletedAt?: string; // the account was deleted; the record stays so old messages keep a name
   vaultKey?: { pub: JsonWebKey; wrapped: string; salt: string; iv: string }; // the Vault's end-to-end keys: public, and private locked by their passphrase
 }
 
@@ -623,6 +627,7 @@ export interface Plan {
   cycle: 'monthly' | 'yearly';
   trialEnds?: string; // reverse trial of Studio AI
   paused?: boolean;
+  comp?: { until: string; note?: string; by?: string }; // free months given by an operator
   addons: { mailboxes: number; storage50: number; meetHours10: number; branding: boolean };
   autoTopUp?: { on: boolean; limit: number }; // rupiah per month
   topUps?: number; // bought this month

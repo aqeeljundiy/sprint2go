@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { HardDrive, Keyboard, LogOut, Monitor, Moon, Settings as Cog, Sun, UserPlus, UserRound } from 'lucide-react';
+import { HardDrive, Keyboard, LogOut, Monitor, Moon, ServerCog, Settings as Cog, Sun, UserPlus, UserRound } from 'lucide-react';
+import { server } from '../sync';
 import type { Person, User } from '../types';
 import type { Settings, ThemePref } from '../settings';
 import { fmtSize } from '../data/drive';
@@ -98,6 +99,11 @@ export function AccountMenu({ me, settings, used, quota, onSettings, onTheme, on
         <UserPlus size={16} /> Add another user
       </button>
       <div className="am-sep" />
+      {server.operator && (
+        <a className="am-item" href="/admin">
+          <ServerCog size={16} /> Operator backend
+        </a>
+      )}
       <button className="am-item danger" onClick={onSignOut}>
         <LogOut size={16} /> Sign out of {me.name.split(' ')[0]}
       </button>

@@ -15,6 +15,7 @@ import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
 import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
+import * as admin from './admin.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
@@ -22,6 +23,7 @@ for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1'; // localhost only, unless hosted (HOST=0.0.0.0 in the container)
 const DIST = join(process.cwd(), 'dist');
+const STARTED = Date.now();
 /** Sign-ups waiting for their email code (in memory: a restart just means starting again). */
 const signups = new Map<string, { name: string; hash: string; code: string; tries: number; until: number }>();
 
@@ -651,15 +653,16 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('cache-control', path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
   const data = readFileSync(file);
   if (/^(text\/|application\/(javascript|json|manifest))/.test(type) && String(req.headers['accept-encoding'] ?? '').includes('gzip') && data.length > 1024) {
+    const stamp = statSync(file).mtimeMs;
     let z = gzipped.get(file);
-    if (!z || z.size !== data.length) (z = { size: data.length, body: gzipSync(data) }), gzipped.set(file, z);
+    if (!z || z.size !== data.length || z.stamp !== stamp) (z = { size: data.length, stamp, body: gzipSync(data) }), gzipped.set(file, z);
     res.setHeader('content-encoding', 'gzip');
     res.setHeader('vary', 'accept-encoding');
     return res.end(z.body);
   }
   res.end(data);
 }
-const gzipped = new Map<string, { size: number; body: Buffer }>();
+const gzipped = new Map<string, { size: number; stamp: number; body: Buffer }>();
 
 /** What usage rows cost in rupiah at list prices (own keys); included AI counts as 0 here, the plan's allowance covers it. */
 function spendRp(rows: { provider: string; model: string; inTokens: number; outTokens: number }[]) {
@@ -751,6 +754,7 @@ createServer(async (req, res) => {
       const login = mail && db.findLogin(mail);
       const good = login && typeof password === 'string' ? await db.checkPassword(password, login.pw_hash) : (await db.burnPasswordTime(String(password ?? '')), false);
       if (!good || !login) return json(res, 401, { error: 'Wrong email or password.' });
+      if ((db.getDoc('users', login.user_id) as any)?.suspended) return json(res, 403, { error: 'This account is suspended. Contact support.' });
       setSession(res, db.newSession(login.user_id));
       return json(res, 200, { me: login.user_id });
     }
@@ -902,10 +906,58 @@ createServer(async (req, res) => {
       return json(res, 200, {});
     }
 
-    const me = db.sessionUser(cookie(req, 's2g'));
+    const session = db.sessionInfo(cookie(req, 's2g'));
+    const me = session?.userId ?? null;
     if (!me) return json(res, 401, { error: 'Sign in first.' });
+    db.touch(me);
+    const meDoc = personOf(me) as any;
+    // A suspended person can still see that they're suspended; nothing else.
+    if (meDoc?.suspended) return p === '/api/me' ? json(res, 200, { me, suspended: meDoc.suspended }) : json(res, 403, { error: 'This account is suspended.' });
+    const operator = admin.isOperatorEmail(meDoc?.email) && !session?.operator;
 
-    if (p === '/api/me') return json(res, 200, { me });
+    if (p === '/api/me')
+      return json(res, 200, {
+        me,
+        actingAs: session?.operator ?? undefined, // an operator looking at the app as this person
+        operator: operator || undefined,
+        suspendedIn: memberOf(me)
+          .filter((w: any) => w.suspended)
+          .map((w: any) => ({ id: w.id, name: w.name, reason: w.suspended.reason })),
+      });
+    // Back from "sign in as": the operator's own session again.
+    if (p === '/api/admin/signin-as/stop' && req.method === 'POST') {
+      if (!session?.operator) return json(res, 400, { error: 'Not signed in as someone.' });
+      const op = (db.allDocs('users') as any[]).find((u) => String(u.email ?? '').toLowerCase() === session.operator);
+      db.endSession(cookie(req, 's2g')!);
+      setSession(res, op ? db.newSession(op.id) : null);
+      db.audit(session.operator, 'person.signin-as.stop', me);
+      return json(res, 200, { ok: true });
+    }
+    if (p.startsWith('/api/admin/')) {
+      if (!operator) return json(res, 403, { error: 'Operators only.' });
+      const handled = await admin.handleAdmin(p, {
+        req,
+        res,
+        url,
+        me,
+        email: String(meDoc.email).toLowerCase(),
+        json,
+        body,
+        broadcast,
+        signups,
+        codes,
+        newCode,
+        mailOn: mailConfigured(),
+        publicUrl: PUBLIC_URL,
+        recorder: { configured: !!RECORDER_URL && !!RECORDER_SECRET, health: () => recorder('/health').then((r) => (r.ok ? (r.json() as Promise<{ ok: boolean; bots?: number }>) : null), () => null) },
+        spendRp,
+        setSession,
+        sseClients: () => clients.size,
+        startedAt: STARTED,
+        backup: db.backup,
+      });
+      return handled ? undefined : json(res, 404, { error: 'No such admin route.' });
+    }
     if (p === '/api/state') return json(res, 200, visibleState(me));
 
     if (p === '/api/password' && req.method === 'POST') {
@@ -1275,6 +1327,9 @@ createServer(async (req, res) => {
       /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
       const guard = (d: db.Doc): db.Doc | null => {
         const before = db.getDoc(coll, d.id) as any;
+        // A suspended company is read-only for everyone in it.
+        const wsId = coll === 'workspaces' ? d.id : ((d as any).workspaceId ?? before?.workspaceId);
+        if (wsId && (db.getDoc('workspaces', wsId) as any)?.suspended) return null;
         if (before && 'workspaceId' in before && d.workspaceId !== before.workspaceId) return null;
         if (coll === 'workspaces') {
           if (before) return isAdminOf(me, d.id) ? d : null; // only admins change a company's settings and people

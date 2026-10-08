@@ -5,7 +5,7 @@ import { RECORD_KEYS, type Collections, type CollectionKey } from './seed';
 
 type Doc = { id: string; [k: string]: unknown };
 
-export const server = { on: false, conn: '' };
+export const server = { on: false, conn: '', operator: false }; // operator: this person may open /admin
 /** What the server has, per collection, by id (object identity tells what changed locally). */
 const synced: Partial<Record<CollectionKey, Map<string, unknown>>> = {};
 const timers: Partial<Record<CollectionKey, ReturnType<typeof setTimeout>>> = {};
@@ -17,13 +17,20 @@ const fromDocs = (k: CollectionKey, docs: Doc[]) => (isRecord(k) ? Object.fromEn
 const remember = (k: CollectionKey, docs: Doc[]) => (synced[k] = new Map(docs.map((d) => [d.id, d])));
 
 /** Is there a local server, and is someone signed in? */
-export async function probe(): Promise<'none' | 'signed-out' | { me: string }> {
+export interface Session {
+  me: string;
+  actingAs?: string; // an operator is looking at the app as this person
+  operator?: boolean; // this person may open the operator backend
+  suspended?: { at: string; by: string; reason: string }; // this account can't do anything
+  suspendedIn?: { id: string; name: string; reason: string }[]; // companies that are read-only right now
+}
+export async function probe(): Promise<'none' | 'signed-out' | Session> {
   if (!location.protocol.startsWith('http')) return 'none';
   try {
     const r = await fetch('/api/me');
     if (r.status === 401) return 'signed-out';
     if (!r.ok || !r.headers.get('content-type')?.includes('json')) return 'none';
-    return (await r.json()) as { me: string };
+    return (await r.json()) as Session;
   } catch {
     return 'none';
   }
