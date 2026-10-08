@@ -222,8 +222,8 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
               <label className={`ob-agency ${agency ? 'on' : ''}`}>
                 <input type="checkbox" checked={agency} onChange={(e) => setAgency(e.target.checked)} />
                 <span>
-                  <strong>We’re an agency</strong>
-                  <small>Run it under our own name and logo for our team and our clients, at our own address, and set up workspaces for clients. Change it any time in Settings, White label & agency.</small>
+                  <strong>Our clients should see our brand, not Sprint2go’s</strong>
+                  <small>Clients sign in at your own address (like portal.youragency.com) and see your name and logo, never ours. Change it any time in Settings, Client portal & brand.</small>
                 </span>
               </label>
             </>

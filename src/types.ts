@@ -208,10 +208,9 @@ export interface Workspace {
   whiteLabel?: WhiteLabel; // an agency running the app under its own brand
   industry?: Industry; // what the company does: picks the starter tables and brief templates
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string }; // WhatsApp Business (Meta Cloud API); the token stays on the server
-  agency?: { id: string; name: string; logo?: string; color?: string }; // a client workspace run by an agency: whose brand it shows // what people with the Member role can do (owners and admins can do everything)
 }
 
-/** An agency's own brand in place of Sprint2go, for its team, its clients' workspaces and its guests. */
+/** The company's own brand in place of Sprint2go: for its team and, above all, for its clients at its own address. */
 export interface WhiteLabel {
   enabled: boolean;
   name: string; // shown wherever the app would say Sprint2go

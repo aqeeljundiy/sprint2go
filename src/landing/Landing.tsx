@@ -302,7 +302,7 @@ function GuestMock() {
   );
 }
 
-/** An agency's own app: its name in the address bar, its client workspaces a click away. */
+/** A client's view: the agency's address and name, and what's shared with them. */
 function AgencyMock() {
   const { t } = useT();
   const a = t.agency;
@@ -333,7 +333,7 @@ function AgencyMock() {
             </div>
           ))}
           <div className="am-row am-add">
-            <span className="av">+</span>
+            <span className="av">→</span>
             <span>
               <strong>{a.add}</strong>
             </span>

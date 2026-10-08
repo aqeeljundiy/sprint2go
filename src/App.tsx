@@ -4,7 +4,7 @@ import { NewTableDialog, TablesHome, TablesSidebar, makeTable } from './componen
 import type { TeamActions } from './components/teams/TeamsApp';
 import type { TemplateId } from './components/tables/fields';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { term, setTermWord, brand as product, setBrandName, brandOf } from './terms';
+import { term, setTermWord, brand as product, setBrandName, brandOf, portalOrigin } from './terms';
 import { setPhotos } from './photos';
 import { TempAddressDialog, lifeLeft } from './components/TempAddress';
 import { AppSetupCard } from './components/AppSetupCard';
@@ -233,8 +233,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, [ws, portalKey]); // also when coming back from a client portal (it uses the other company's brand)
 
   const patchWorkspace = (id: string, patch: Partial<Workspace>) => setWorkspaces((list) => list.map((w) => (w.id === id ? { ...w, ...patch } : w)));
-  /** An agency's copy of its brand on each client workspace it runs (their people can't read the agency's own). */
-  const agencyCopy = (a: Workspace) => ({ id: a.id, name: a.whiteLabel?.enabled ? a.whiteLabel.name : '', logo: a.whiteLabel?.enabled ? a.whiteLabel.logo ?? a.logo : undefined, color: a.whiteLabel?.enabled ? a.whiteLabel.color ?? a.color : undefined });
   const mobile = useMedia('(max-width: 760px)');
 
   // Shell
@@ -1014,30 +1012,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   useEffect(() => {
     if (huddleId && !huddleChannel?.huddle?.members.includes(user.id)) setHuddleId(null);
   }, [huddleId, huddleChannel?.huddle?.members, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  // When the agency changes its brand, the client workspaces it runs follow.
-  useEffect(() => {
-    const want = agencyCopy(ws);
-    workspaces.filter((w) => w.agency?.id === ws.id && JSON.stringify(w.agency) !== JSON.stringify(want)).forEach((w) => patchWorkspace(w.id, { agency: want }));
-  }, [ws.whiteLabel, ws.logo, ws.color]); // eslint-disable-line react-hooks/exhaustive-deps
-  /** A workspace the agency runs for a client: the agency's brand, you as its owner, and the client's main person invited. */
-  const newClientWorkspace = (name: string, owner?: { name: string; email: string }) => {
-    const existing = owner ? allUsers.find((u) => u.email.toLowerCase() === owner.email) : undefined;
-    const newUser: User | undefined = owner && !existing ? { id: uid(), name: owner.name, email: owner.email, title: '', color: '#64748b' } : undefined;
-    const ownerId = existing?.id ?? newUser?.id;
-    const w: Workspace = {
-      id: uid(),
-      name,
-      color: ws.whiteLabel?.color ?? ws.color,
-      domains: owner ? [owner.email.split('@')[1]].filter((d) => d && !/^(gmail|yahoo|hotmail|outlook|icloud)\./.test(d)) : [],
-      accounts: [],
-      members: [{ userId: user.id, role: 'owner' }, ...(ownerId ? [{ userId: ownerId, role: 'owner' as const }] : [])],
-      agency: agencyCopy(ws),
-    };
-    if (newUser) onInvite(newUser);
-    setWorkspaces((list) => [...list, w]);
-    setChannels((cs) => [...cs, { id: uid(), workspaceId: w.id, kind: 'channel', name: 'general', members: w.members.map((m) => m.userId), topic: 'Everyone at ' + name }]);
-    showToast({ text: `${name}’s workspace is ready${owner ? `; ${owner.name} is invited` : ''}`, action: { label: 'Open', run: () => (switchWorkspace(w.id), go('home')) } });
-  };
   const myTeamIds = useMemo(() => teams.filter((t) => t.workspaceId === ws.id && (t.members.includes(user.id) || t.leadId === user.id)).map((t) => t.id), [teams, ws.id, user.id]);
   const myClientIds = useMemo(
     () =>
@@ -1578,7 +1552,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, clientId, ...p }) });
     if (!r.ok) return null;
       const { link } = (await r.json()) as { link: string | null };
-      return link ? `${location.origin}${link}` : null; // null: they already sign in, nothing to send
+      return link ? `${portalOrigin(ws)}${link}` : null; // null: they already sign in, nothing to send. Guests get the company's own address.
   };
   /** Gives someone at a client access to their portal: added to the client's people and its shared channels. */
   const giveClientAccess = async (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string; phone?: string }, status: ClientPerson['status']) => {
@@ -3560,9 +3534,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 .sort((a, b) => b.size - a.size),
               onTeams: saveTeams,
               onOpenTeams: (id?: string) => (setTeamId(id ?? null), go('teams')),
-              clientWorkspaces: workspaces.filter((w) => w.agency?.id === ws.id),
-              onNewClientWorkspace: newClientWorkspace,
-              onOpenWorkspace: (id: string) => (switchWorkspace(id), go('home')),
               onTeamHome: (teamId, t) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [teamId]: t } }),
               onAI: (ai) => patchWorkspace(ws.id, { ai }),
               onPlan: (plan) => patchWorkspace(ws.id, { plan }),

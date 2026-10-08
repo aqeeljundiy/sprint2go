@@ -28,7 +28,7 @@ import { AgencySection } from './admin/AgencySection';
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
   { id: 'permissions', name: 'Permissions', icon: KeySquare, group: 'Company' },
-  { id: 'agency', name: 'White label & agency', icon: Stamp, group: 'Company' },
+  { id: 'agency', name: 'Client portal & brand', icon: Stamp, group: 'Company' },
   { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
   { id: 'clients', get name() { return `${term.Who} access`; }, icon: Handshake, group: 'Company' },
   { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
@@ -97,9 +97,6 @@ interface Props {
     byChannel: { name: string; size: number }[];
     onTeams: (t: Team[]) => void;
     onOpenTeams: (id?: string) => void;
-    clientWorkspaces: Workspace[];
-    onNewClientWorkspace: (name: string, owner?: { name: string; email: string }) => void;
-    onOpenWorkspace: (id: string) => void;
     onTeamHome: (teamId: string, t: HomeTemplateId) => void;
     onAI: (a: AISettings) => void;
     onPlan: (p: Plan) => void;
@@ -134,7 +131,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const canManage = myRole !== 'member';
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
-  const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')) && !(ws.agency && x.id === 'billing'));
+  const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')));
   const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
 
   return (
@@ -591,7 +588,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
-          {section === 'agency' && <AgencySection ws={ws} canManage={canManage} clientWorkspaces={admin.clientWorkspaces} onWorkspace={onWorkspace} onNewClientWorkspace={admin.onNewClientWorkspace} onOpenWorkspace={admin.onOpenWorkspace} />}
+          {section === 'agency' && <AgencySection ws={ws} canManage={canManage} onWorkspace={onWorkspace} brandingAddon={!!plan.addons.branding} onBilling={() => onSection('billing')} />}
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}

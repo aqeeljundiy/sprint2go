@@ -1,0 +1,7 @@
+node_modules
+dist
+data
+desktop
+recorder/node_modules
+.git
+*.log

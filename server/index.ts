@@ -18,7 +18,7 @@ import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRo
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
-const HOST = '127.0.0.1'; // localhost only
+const HOST = process.env.HOST ?? '127.0.0.1'; // localhost only, unless hosted (HOST=0.0.0.0 in the container)
 const DIST = join(process.cwd(), 'dist');
 /** Sign-ups waiting for their email code (in memory: a restart just means starting again). */
 const signups = new Map<string, { name: string; hash: string; code: string; tries: number; until: number }>();
@@ -588,12 +588,31 @@ async function writeMeetingNotes(id: string, again = false) {
 /* ---------- the app itself ---------- */
 
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp' };
+/** The company whose own address this request came to (its clients' door), if any. */
+function brandedHost(req: IncomingMessage) {
+  const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
+  return (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
+}
 function serveStatic(req: IncomingMessage, res: ServerResponse) {
   const path = normalize(decodeURIComponent((req.url ?? '/').split('?')[0])).replace(/^(\.\.[/\\])+/, '');
   let file = join(DIST, path);
+  const branded = brandedHost(req);
+  // At a company's own address: its name on the install prompt and home-screen icon, never ours.
+  if (path === '/manifest.webmanifest' && branded) {
+    const wl = branded.whiteLabel;
+    const icon = wl.logo ?? branded.logo;
+    res.setHeader('content-type', 'application/manifest+json');
+    return res.end(JSON.stringify({ name: wl.name, short_name: wl.name.slice(0, 12), id: '/', start_url: '/?source=app', scope: '/', display: 'standalone', background_color: '#f5f6f8', theme_color: wl.color ?? branded.color, icons: icon ? [{ src: '/brand-icon', sizes: '512x512', type: String(icon).slice(5, String(icon).indexOf(';')) || 'image/png', purpose: 'any' }] : [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }));
+  }
+  if (path === '/brand-icon' && branded) {
+    const icon: string | undefined = branded.whiteLabel.logo ?? branded.logo;
+    const m = icon?.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
+    if (m) return (res.setHeader('content-type', m[1]), res.end(Buffer.from(m[2], 'base64')));
+  }
   // The front door: people who aren't signed in see the landing page; /welcome always shows it.
+  // At a company's own address there's no landing page: its clients go straight to the branded sign-in.
   const signedIn = !!db.sessionUser(cookie(req, 's2g'));
-  if ((path === '/' && !signedIn) || path === '/welcome') file = join(DIST, 'landing.html');
+  if (((path === '/' && !signedIn) || path === '/welcome') && !branded) file = join(DIST, 'landing.html');
   else if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html'); // single-page app
   if (!existsSync(file)) {
     res.statusCode = 404;
