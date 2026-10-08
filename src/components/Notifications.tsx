@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { AtSign, Bell, CheckCheck, CircleCheck, ListChecks, Mail, Video, type LucideIcon } from 'lucide-react';
+import { AtSign, Bell, CheckCheck, CircleCheck, ListChecks, Mail, Users, Video, type LucideIcon } from 'lucide-react';
 import type { Notice } from '../types';
 import { relative } from '../utils';
 
-const ICON: Record<Notice['kind'], LucideIcon> = { task: ListChecks, mention: AtSign, meeting: Video, mail: Mail, done: CircleCheck };
+const ICON: Record<Notice['kind'], LucideIcon> = { task: ListChecks, mention: AtSign, meeting: Video, mail: Mail, done: CircleCheck, team: Users };
 
 interface Props {
   notices: Notice[];

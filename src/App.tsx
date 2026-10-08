@@ -1,5 +1,6 @@
 import { TabDefaultsCtx } from './components/ui/TabBar';
 import { NewTableDialog, TableScreen, TablesHome, TablesSidebar, makeTable } from './components/tables/TablesApp';
+import { NewTeamDialog, TeamPage, TeamsHome, TeamsSidebar, type TeamActions } from './components/teams/TeamsApp';
 import type { TemplateId } from './components/tables/fields';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { term, setTermWord } from './terms';
@@ -12,7 +13,8 @@ import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
 import { SmoothHeight, TabPane } from './components/ui/Smooth';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
-import type { Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import { DEFAULT_PERMISSIONS } from './types';
+import type { Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -394,6 +396,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [tableId, setTableId] = usePersisted<string | null>('s2g-table', null);
   const [tableRow, setTableRow] = useState<string | null>(null);
   const [newTableFor, setNewTableFor] = useState<{ clientId?: string } | null>(null);
+  const [teamId, setTeamId] = usePersisted<string | null>('s2g-team', null);
+  const [newTeam, setNewTeam] = useState(false);
   // Vault: only titles and who can use them are loaded; passwords come from the server one at a time.
   const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
   const [vaultFilter, setVaultFilter] = useState('');
@@ -916,7 +920,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // The company's apps, minus the ones this person hid from their own sidebar (Settings, Your apps).
   // Projects used to live inside Tasks: companies that chose their apps before it existed get it with Tasks.
-  const companyApps: AppId[] = ws.apps ? (ws.apps.includes('tasks') && !ws.apps.includes('projects') ? [...ws.apps, 'projects'] : ws.apps) : APPS.map((a) => a.id);
+  // Projects and Teams came after some companies picked their apps: they're on wherever Tasks is.
+  const companyApps: AppId[] = ws.apps ? (ws.apps.includes('tasks') ? [...new Set<AppId>([...ws.apps, 'projects', 'teams'])] : ws.apps) : APPS.map((a) => a.id);
   const myHidden: AppId[] = user.hiddenApps ?? [];
   const enabledApps: AppId[] = companyApps.filter((a) => a === 'home' || !myHidden.includes(a));
   const enabled = new Set<string>(enabledApps);
@@ -1051,6 +1056,46 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (userId === user.id) return;
     setNotices((ns) => [{ id: uid(), userId, workspaceId: ws.id, kind, text, at: nowIso(), read: false, link }, ...ns]);
   };
+
+  /** Saves this company's teams. A new team gets its own channel; people added to a team join it and hear about it. */
+  const saveTeams = (t: Team[]) => {
+    const fresh = t.filter((x) => !wsTeams.some((y) => y.id === x.id));
+    fresh.forEach((tm) => {
+      const id = uid();
+      setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'channel', name: tm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), members: [...new Set([user.id, ...tm.members])], teamId: tm.id, topic: `${tm.name} team`, category: 'team', ownerId: user.id, createdAt: nowIso() }]);
+    });
+    t.forEach((tm) => {
+      const before = wsTeams.find((x) => x.id === tm.id);
+      tm.members.filter((m) => m !== user.id && !before?.members.includes(m)).forEach((m) => notify(m, 'team', `${user.name} added you to ${tm.name}`, { app: 'teams', id: tm.id }));
+      setChannels((cs) => cs.map((c) => (c.teamId === tm.id ? { ...c, members: [...new Set([...c.members, ...tm.members])] } : c)));
+    });
+    setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...t]);
+  };
+  const teamActions: TeamActions = {
+    patch: (id, p) => saveTeams(wsTeams.map((t) => (t.id === id ? { ...t, ...p } : t))),
+    direct: (t) => t.join === 'open' || isAdmin,
+    join: (t) => {
+      if (t.join === 'open' || isAdmin) {
+        saveTeams(wsTeams.map((x) => (x.id === t.id ? { ...x, members: [...new Set([...x.members, user.id])], requests: (x.requests ?? []).filter((r) => r.userId !== user.id) } : x)));
+        return showToast({ text: `You joined ${t.name}` });
+      }
+      saveTeams(wsTeams.map((x) => (x.id === t.id ? { ...x, requests: [...(x.requests ?? []).filter((r) => r.userId !== user.id), { userId: user.id, at: nowIso() }] } : x)));
+      const to = t.leadId ? [t.leadId] : ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
+      to.forEach((id) => notify(id, 'team', `${user.name} asked to join ${t.name}`, { app: 'teams', id: t.id }));
+      showToast({ text: t.leadId ? `Asked ${firstOf(t.leadId)} to add you` : 'Asked an admin to add you' });
+    },
+    leave: (t) => {
+      saveTeams(wsTeams.map((x) => (x.id === t.id ? { ...x, members: x.members.filter((m) => m !== user.id), leadId: x.leadId === user.id ? undefined : x.leadId } : x)));
+      showToast({ text: `You left ${t.name}` });
+    },
+    remove: (t) => {
+      saveTeams(wsTeams.filter((x) => x.id !== t.id));
+      setTeamId(null);
+      showToast({ text: `${t.name} deleted. Its tasks keep their ${term.many}` });
+    },
+  };
+  const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  const canCreateTeams = isAdmin || perms.createTeams;
 
   /** The DM channel between me and someone (created on first use). */
   const dmWith = (otherId: string) => {
@@ -1929,6 +1974,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (n.link.app === 'mail' && n.link.id) return openThread(n.link.id);
     if (n.link.app === 'meet') return n.link.id ? openMeeting(n.link.id) : go('meet');
     if (n.link.app === 'tables' && n.link.id) return openTable(n.link.id, n.link.msg);
+    if (n.link.app === 'teams') return (setTeamId(n.link.id ?? null), go('teams'));
     if (n.link.app === 'settings') return (setSettingsSection((n.link.id ?? 'account') as SettingsSection), go('settings'));
     go(n.link.app);
   };
@@ -2663,6 +2709,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
           ) : appMode === 'vault' ? (
             <VaultSidebar items={vaultItems} clients={wsClientsAll} filter={vaultFilter} onFilter={(f) => (setVaultFilter(f), setSidebarOpen(false))} onNew={() => setVaultEditing('new')} />
+          ) : appMode === 'teams' ? (
+            <TeamsSidebar teams={wsTeams} me={user.id} current={wsTeams.some((t) => t.id === teamId) ? teamId : null} canCreate={canCreateTeams} onOpen={(id) => (setTeamId(id), setSidebarOpen(false))} onNew={() => setNewTeam(true)} />
           ) : appMode === 'tables' ? (
             <TablesSidebar tables={wsTables} clients={wsClientsAll} current={currentTable?.id ?? null} onOpen={(id) => (openTable(id), setSidebarOpen(false))} onNew={() => setNewTableFor({})} />
           ) : appMode === 'notes' ? (
@@ -3227,6 +3275,44 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           ) : (
             <TablesHome tables={wsTables} rows={wsTableRows} clients={wsClientsAll} onOpen={openTable} onNew={() => setNewTableFor({})} onMenu={() => setSidebarOpen(true)} />
           ))}
+        {mode === 'teams' &&
+          (() => {
+            const team = wsTeams.find((t) => t.id === teamId);
+            return team ? (
+              <TeamPage
+                key={team.id}
+                team={team}
+                teams={wsTeams}
+                users={members}
+                tasks={wsTasks}
+                clients={wsClientsAll}
+                me={user.id}
+                isAdmin={isAdmin}
+                actions={teamActions}
+                homeTemplate={ws.teamHome?.[team.id]}
+                onHomeTemplate={(v) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [team.id]: v } })}
+                onOpenTask={openTask}
+                onBack={() => setTeamId(null)}
+              />
+            ) : (
+              <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} />
+            );
+          })()}
+        {newTeam && (
+          <NewTeamDialog
+            users={members}
+            me={user.id}
+            count={wsTeams.length}
+            onClose={() => setNewTeam(false)}
+            onCreate={(t) => {
+              const id = 't-' + Date.now().toString(36);
+              saveTeams([...wsTeams, { ...t, id, workspaceId: ws.id }]);
+              setTeamId(id);
+              go('teams');
+              showToast({ text: `${t.name} created, with its own channel` });
+            }}
+          />
+        )}
         {newTableFor && <NewTableDialog clients={wsClients} clientId={newTableFor.clientId} onCreate={createTable} onClose={() => setNewTableFor(null)} />}
 
         {mode === 'notes' &&
@@ -3327,17 +3413,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 .map((c) => ({ name: c.name, size: messages.filter((m) => m.channelId === c.id).flatMap((m) => m.files ?? []).reduce((s2, f) => s2 + f.size, 0) }))
                 .filter((c) => c.size > 0)
                 .sort((a, b) => b.size - a.size),
-              onTeams: (t) => {
-                // A new team gets its own channel, with the team in it.
-                const fresh = t.filter((x) => !wsTeams.some((y) => y.id === x.id));
-                fresh.forEach((tm) => {
-                  const id = uid();
-                  setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'channel', name: tm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), members: [...new Set([user.id, ...tm.members])], teamId: tm.id, topic: `${tm.name} team`, category: 'team', ownerId: user.id, createdAt: nowIso() }]);
-                });
-                // People added to a team join its channel.
-                t.forEach((tm) => setChannels((cs) => cs.map((c) => (c.teamId === tm.id ? { ...c, members: [...new Set([...c.members, ...tm.members])] } : c))));
-                setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...t]);
-              },
+              onTeams: saveTeams,
+              onOpenTeams: (id?: string) => (setTeamId(id ?? null), go('teams')),
               onTeamHome: (teamId, t) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [teamId]: t } }),
               onAI: (ai) => patchWorkspace(ws.id, { ai }),
               onPlan: (plan) => patchWorkspace(ws.id, { plan }),

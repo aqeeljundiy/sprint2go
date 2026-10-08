@@ -201,7 +201,20 @@ export interface Workspace {
   aliases?: Record<string, string>; // learned names: "andi" -> user id, or "contact:<name>"
   teamHome?: Record<string, HomeTemplateId>; // default Home template per team
   tabDefaults?: Record<string, { order: string[]; hidden: string[] }>; // tab orders an admin set for everyone
+  permissions?: Partial<MemberPermissions>; // what people with the Member role can do (owners and admins can do everything)
 }
+
+/** What Members can do. Each project's Lead can always manage that project. */
+export interface MemberPermissions {
+  createProjects: boolean;
+  inviteGuests: boolean;
+  seeAllProjects: boolean; // off: only the projects they're on
+  editTables: boolean; // columns, views and automations (rows are always editable)
+  deleteThings: boolean; // projects, tables, channels, notes and files
+  seeBilling: boolean; // plan, billing and AI usage
+  createTeams: boolean;
+}
+export const DEFAULT_PERMISSIONS: MemberPermissions = { createProjects: true, inviteGuests: true, seeAllProjects: true, editTables: true, deleteThings: false, seeBilling: false, createTeams: false };
 
 export type Role = 'owner' | 'admin' | 'member';
 
@@ -293,6 +306,9 @@ export interface Team {
   members: string[];
   keywords?: string[]; // words that route brain-dump tasks to this team
   review?: boolean; // finished tasks wait for the supervisor before they count as done
+  about?: string; // what the team does, one line
+  join?: 'open' | 'lead'; // open: anyone can join; lead (default): the lead or an admin adds people, others ask
+  requests?: { userId: string; at: string }[]; // people who asked to join
 }
 
 export type HomeTemplateId = 'founder' | 'lead' | 'maker' | 'account' | 'finance';
@@ -462,7 +478,7 @@ export interface Notice {
   id: string;
   userId: string; // who receives it
   workspaceId: string;
-  kind: 'task' | 'mention' | 'meeting' | 'mail' | 'done';
+  kind: 'task' | 'mention' | 'meeting' | 'mail' | 'done' | 'team';
   text: string;
   at: string;
   read: boolean;
@@ -514,7 +530,7 @@ export interface MeetingRule {
   clientId: string;
 }
 
-export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'projects' | 'calendar' | 'notes' | 'drive' | 'meet' | 'vault' | 'tables';
+export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'projects' | 'teams' | 'calendar' | 'notes' | 'drive' | 'meet' | 'vault' | 'tables';
 
 /** A note: private, or shared with the whole company; can belong to a client. */
 export interface Note {

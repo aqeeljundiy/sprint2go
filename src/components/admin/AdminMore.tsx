@@ -1,16 +1,14 @@
 import { LanguagePicker } from '../LanguagePicker';
 import { useState } from 'react';
 import { term } from '../../terms';
-import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, Lock, Plus, ShieldCheck, Trash2, Video, X } from 'lucide-react';
-import type { AppId, DriveItem, HomeTemplateId, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
+import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, Lock, ShieldCheck, Users, Video } from 'lucide-react';
+import type { AppId, DriveItem, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
 import { fmtSize } from '../../data/drive';
 import { storageGB, rp } from '../../data/pricing';
 import { DEFAULT_MEETINGS } from '../../data/workspaces';
 import { APPS, useAppOrder } from '../AppRail';
-import { HOME_TEMPLATES } from '../HomeView';
 import { Avatar } from '../Avatar';
 import { Select } from '../ui/Select';
-import { personOption } from '../ui/PeopleList';
 
 const Switch = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
   <button type="button" role="switch" aria-checked={on} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
@@ -258,76 +256,29 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
 
 /* ---------------- Teams ---------------- */
 
-export function TeamsSection({ ws, teams, users, canManage, onTeams, onTeamHome, toast }: {
-  ws: Workspace;
-  teams: Team[];
-  users: User[];
-  canManage: boolean;
-  onTeams: (t: Team[]) => void;
-  onTeamHome: (teamId: string, t: HomeTemplateId) => void;
-  toast: (t: string) => void;
-}) {
-  const [name, setName] = useState('');
-  const colors = ['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#d946ef', '#ef4444', '#f59e0b'];
-  const patch = (id: string, p: Partial<Team>) => onTeams(teams.map((t) => (t.id === id ? { ...t, ...p } : t)));
-  const add = () => {
-    if (!name.trim()) return;
-    onTeams([...teams, { id: 't-' + Date.now().toString(36), workspaceId: ws.id, name: name.trim(), color: colors[teams.length % colors.length], members: [], keywords: [] }]);
-    setName('');
-    toast(`${name.trim()} added`);
-  };
+/** Teams have their own app now; Settings points there. */
+export function TeamsLink({ teams, users, onOpen }: { teams: Team[]; users: User[]; onOpen: (id?: string) => void }) {
   return (
     <>
       <h2>Teams</h2>
-      <p className="set-intro">Departments like Video editing or Finance. Tasks belong to a {term.one} and a team, so you can see work both ways. Each team’s Home template is the default for its people.</p>
-      <fieldset className="plain" disabled={!canManage}>
-        {teams.map((t) => (
-          <div key={t.id} className="team-card">
-            <div className="tc-head">
-              <span className="team-square big" style={{ background: t.color }} />
-              <input className="inline-input strong" value={t.name} onChange={(e) => patch(t.id, { name: e.target.value })} />
-              <button type="button" className="icon-btn sm" title="Delete team" onClick={() => (onTeams(teams.filter((x) => x.id !== t.id)), toast(`${t.name} deleted. Its tasks keep their ${term.many}`))}>
-                <Trash2 size={15} />
+      <p className="set-intro">Departments like Video editing or Finance. Teams have their own app in the sidebar: make teams, add people (someone can be in several), set who can join, and see each team’s work and workload.</p>
+      <div className="set-block">
+        {teams.map((t) => {
+          const lead = users.find((u) => u.id === t.leadId);
+          return (
+            <Row key={t.id} title={<><span className="team-square" style={{ background: t.color }} /> {t.name}</>} hint={`${t.members.length} ${t.members.length === 1 ? 'person' : 'people'}${lead ? ` · led by ${lead.name}` : ''}`}>
+              <button type="button" className="ghost-btn sm" onClick={() => onOpen(t.id)}>
+                Open
               </button>
-            </div>
-            <div className="tc-fields">
-              <label>Lead</label>
-              <Select value={t.leadId ?? ''} onChange={(v) => patch(t.id, { leadId: v || undefined, members: v && !t.members.includes(v) ? [...t.members, v] : t.members })} label="Lead" options={[{ value: '', label: 'No lead' }, ...users.map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={20} /> }))]} />
-              <label>People</label>
-              <div className="tc-members">
-                {t.members.map((id) => {
-                  const u = users.find((x) => x.id === id);
-                  return (
-                    u && (
-                      <span key={id} className="member-chip">
-                        <Avatar person={u} size={18} /> {u.name.split(' ')[0]}
-                        <button type="button" onClick={() => patch(t.id, { members: t.members.filter((x) => x !== id) })} aria-label={`Remove ${u.name}`}>
-                          <X size={12} />
-                        </button>
-                      </span>
-                    )
-                  );
-                })}
-                <Select value={null} onChange={(v) => patch(t.id, { members: [...t.members, v] })} placeholder="Add" label="Add person" className="sel-flat" options={users.filter((u) => !t.members.includes(u.id)).map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={20} /> }))} />
-              </div>
-              <label>Home</label>
-              <Select<HomeTemplateId> value={ws.teamHome?.[t.id] ?? null} onChange={(v) => onTeamHome(t.id, v)} placeholder="Guess from role" label="Default Home" options={(Object.keys(HOME_TEMPLATES) as HomeTemplateId[]).map((k) => ({ value: k, label: HOME_TEMPLATES[k].name, hint: HOME_TEMPLATES[k].hint }))} />
-              <label>Review</label>
-              <label className="check-row small">
-                <input type="checkbox" checked={!!t.review} onChange={(e) => patch(t.id, { review: e.target.checked })} /> Finished tasks wait for the supervisor before they count as done
-              </label>
-              <label>Keywords</label>
-              <input className="inline-input" value={(t.keywords ?? []).join(', ')} onChange={(e) => patch(t.id, { keywords: e.target.value.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean) })} placeholder="video, reel, edit (the brain dump uses these)" />
-            </div>
-          </div>
-        ))}
-        <div className="add-prov inline">
-          <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="New team, e.g. Copywriting" />
-          <button type="button" className="ghost-btn sm" onClick={add} disabled={!name.trim()}>
-            <Plus size={14} /> Add team
+            </Row>
+          );
+        })}
+        <div className="set-foot">
+          <button type="button" className="primary-btn sm" onClick={() => onOpen()}>
+            <Users size={14} /> Open Teams
           </button>
         </div>
-      </fieldset>
+      </div>
     </>
   );
 }

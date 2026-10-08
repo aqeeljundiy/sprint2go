@@ -1,7 +1,7 @@
 import { useContext, useState, type ReactNode } from 'react';
 import { usePersisted } from '../settings';
 import { TabDefaultsCtx, arrange, type TabPrefs } from './ui/TabBar';
-import { Briefcase, KeyRound, Table2, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
+import { Briefcase, UsersRound, KeyRound, Table2, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
 import { term } from '../terms';
 import type { AppId } from '../types';
 
@@ -18,6 +18,7 @@ export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[]
     icon: Briefcase,
     path: '/projects',
   },
+  { id: 'teams', name: 'Teams', icon: UsersRound, path: '/teams' },
   { id: 'tables', name: 'Tables', icon: Table2, path: '/tables' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, path: '/calendar' },
   { id: 'notes', name: 'Notes', icon: NotebookPen, path: '/notes' },

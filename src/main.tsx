@@ -11,6 +11,7 @@ import './apps.css';
 import './ui.css';
 import './round2.css';
 import './tables.css';
+import './teams.css';
 import './polish.css';
 
 startExitAnimations();

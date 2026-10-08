@@ -6,7 +6,7 @@ import { ACCENTS, type Settings } from '../settings';
 import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
 import { AISection } from './admin/AISection';
 import { BillingSection } from './admin/BillingSection';
-import { AppsSection, MyAppsSection, MeetingsSection, SecuritySection, StorageSection, TeamsSection } from './admin/AdminMore';
+import { AppsSection, MyAppsSection, MeetingsSection, SecuritySection, StorageSection, TeamsLink } from './admin/AdminMore';
 import { trialPlan } from '../data/workspaces';
 import { Avatar } from './Avatar';
 import { BrandFields } from './WorkspaceForms';
@@ -88,6 +88,7 @@ interface Props {
     drive: DriveItem[];
     byChannel: { name: string; size: number }[];
     onTeams: (t: Team[]) => void;
+    onOpenTeams: (id?: string) => void;
     onTeamHome: (teamId: string, t: HomeTemplateId) => void;
     onAI: (a: AISettings) => void;
     onPlan: (p: Plan) => void;
@@ -517,7 +518,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
-          {section === 'teams' && <TeamsSection ws={ws} teams={admin.teams} users={wsUsers} canManage={canManage} onTeams={admin.onTeams} onTeamHome={admin.onTeamHome} toast={admin.toast} />}
+          {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'myapps' && myApps && (
             <MyAppsSection
