@@ -54,11 +54,15 @@ import { ChannelMaterials } from './ChannelMaterials';
 import { Assistant, type AskChat } from './Assistant';
 import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
-import { dueLabel, isBrief, statusOf } from './TasksView';
+import { dueLabel, isBrief } from './TasksView';
+import { kindOf } from '../stages';
 import { useOnePanel } from '../onePanel';
 import { Select } from './ui/Select';
 import { GuestQuotes } from './Quotes';
 import type { Quote } from '../types';
+
+/** The dot for a task in the guest's view: planned, in progress, waiting on them, or done. */
+const stCls = (t: Todo) => ({ open: 'todo', active: 'doing', review: 'doing', waiting: 'waiting', done: 'done' } as const)[kindOf(t)];
 
 type Mode = 'home' | 'requests' | 'chat' | 'work' | 'files' | 'meet' | 'tables';
 
@@ -290,17 +294,18 @@ export function ClientApp(p: Props) {
   };
 
   /* ---------------- shared bits ---------------- */
-  const stLabel = (t: Todo) => (t.source === 'request' ? requestStatus(t).label : t.done ? 'Done' : statusOf(t) === 'doing' || statusOf(t) === 'review' ? 'In progress' : statusOf(t) === 'waiting' ? 'Waiting on you' : 'Planned');
+  // Guests see where work is in their words, from the kind of stage it's in (the team's own stage names stay inside).
+  const stLabel = (t: Todo) => (t.source === 'request' ? requestStatus(t).label : ({ done: 'Done', active: 'In progress', review: 'In progress', waiting: 'Waiting on you', open: 'Planned' } as const)[kindOf(t)]);
   const taskRow = (t: Todo) => {
     const d = t.due && !t.done ? dueLabel(t.due) : null;
     const doers = [...new Set((t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []))];
     return (
       <div key={t.id} className={`task ${t.done ? 'done' : ''}`} onClick={() => setOpenTask(t.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), setOpenTask(t.id))}>
-        <span className={`st-dot st-${t.done ? 'done' : statusOf(t)} task-dot`} />
+        <span className={`st-dot st-${stCls(t)} task-dot`} />
         <div className="task-main">
           <button className="task-title-btn">{t.title}</button>
           <div className="task-meta">
-            {t.approval?.status === 'waiting' ? <span className="due waiting">Needs approval</span> : <span className={`due ${statusOf(t) === 'waiting' ? 'waiting' : statusOf(t) === 'doing' ? 'doing' : ''}`}>{stLabel(t)}</span>}
+            {t.approval?.status === 'waiting' ? <span className="due waiting">Needs approval</span> : <span className={`due ${stCls(t) === 'waiting' || stCls(t) === 'doing' ? stCls(t) : ''}`}>{stLabel(t)}</span>}
             {d && <span className={`due ${d.cls}`}>{d.text}</span>}
             {t.source === 'request' && <span className="src">from {nameOf(t.requestedBy ?? '').split(' ')[0]}</span>}
           </div>
@@ -1044,7 +1049,7 @@ function TaskPanel({
           <dl className="fields">
             <dt>Status</dt>
             <dd>
-              <span className={`st-dot st-${t.done ? 'done' : statusOf(t)}`} /> {stLabel(t)}
+              <span className={`st-dot st-${stCls(t)}`} /> {stLabel(t)}
             </dd>
             {doers.length > 0 && (
               <>
@@ -1086,7 +1091,7 @@ function TaskPanel({
               <div className="sub-list">
                 {subs.map((s) => (
                   <div key={s.id} className={`sub ${s.done ? 'done' : ''}`}>
-                    <span className={`st-dot st-${s.done ? 'done' : statusOf(s)}`} />
+                    <span className={`st-dot st-${stCls(s)}`} />
                     <button className="sub-title" onClick={() => onOpen(s.id)}>
                       {s.title}
                     </button>

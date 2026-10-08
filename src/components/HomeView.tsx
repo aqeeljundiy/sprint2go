@@ -11,6 +11,7 @@ import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { doers, dueLabel, isBrief, peopleOptions } from './TasksView';
+import { kindOf } from '../stages';
 
 type CardId =
   | 'briefing'
@@ -198,10 +199,10 @@ export function HomeView(p: Props) {
     const soon = Date.now() + 45 * 60_000;
     const upnext = ([
       ...todayEvents.filter((e) => new Date(e.start).getTime() <= soon).map((e) => ({ key: 'e' + e.id, rank: 100, kind: 'meeting' as const, text: e.title, sub: new Date(e.start).getTime() <= Date.now() ? 'Happening now' : `Starts at ${fmtTime(e.start)}`, event: e })),
-      ...open.filter((t) => t.status === 'review' && t.supervisorId === p.me.id).map((t) => ({ key: 'r' + t.id, rank: 90, kind: 'review' as const, text: t.title, sub: `${p.users.find((u) => u.id === doers(t)[0])?.name.split(' ')[0] ?? 'Someone'} finished it, waiting for your review`, task: t })),
-      ...open.filter((t) => t.source === 'request' && t.status === 'todo' && (doers(t).includes(p.me.id) || (!t.userId && p.teams.some((tm) => tm.id === t.teamId && tm.leadId === p.me.id)))).map((t) => ({ key: 'q' + t.id, rank: 85, kind: 'request' as const, text: t.title, sub: `New request from ${p.clients.find((c) => c.id === t.clientId)?.name ?? 'a client'}`, task: t })),
+      ...open.filter((t) => kindOf(t) === 'review' && t.supervisorId === p.me.id).map((t) => ({ key: 'r' + t.id, rank: 90, kind: 'review' as const, text: t.title, sub: `${p.users.find((u) => u.id === doers(t)[0])?.name.split(' ')[0] ?? 'Someone'} finished it, waiting for your review`, task: t })),
+      ...open.filter((t) => t.source === 'request' && kindOf(t) === 'open' && (doers(t).includes(p.me.id) || (!t.userId && p.teams.some((tm) => tm.id === t.teamId && tm.leadId === p.me.id)))).map((t) => ({ key: 'q' + t.id, rank: 85, kind: 'request' as const, text: t.title, sub: `New request from ${p.clients.find((c) => c.id === t.clientId)?.name ?? 'a client'}`, task: t })),
       ...mine.filter(late).map((t) => ({ key: 'l' + t.id, rank: 80, kind: 'late' as const, text: t.title, sub: `Late: was due ${new Date(t.due! + 'T12:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}`, task: t })),
-      ...mine.filter((t) => t.due === today && t.status !== 'review').map((t) => ({ key: 't' + t.id, rank: 70, kind: 'today' as const, text: t.title, sub: 'Due today', task: t })),
+      ...mine.filter((t) => t.due === today && kindOf(t) !== 'review').map((t) => ({ key: 't' + t.id, rank: 70, kind: 'today' as const, text: t.title, sub: 'Due today', task: t })),
       ...queue.map((t) => ({ key: 'u' + t.id, rank: 60, kind: 'queue' as const, text: t.title, sub: `${p.teams.find((x) => x.id === t.teamId)?.name ?? 'Team'} queue, nobody on it yet`, task: t })),
       ...work.filter((t) => t.createdBy === p.me.id && t.userId && !doers(t).includes(p.me.id) && late(t)).map((t) => ({ key: 'd' + t.id, rank: 50, kind: 'delegated' as const, text: t.title, sub: `Late with ${p.users.find((u) => u.id === t.userId)?.name.split(' ')[0] ?? 'someone'}`, task: t })),
       ...unread.filter((t) => p.clients.some((c) => c.domain && t.messages[t.messages.length - 1].from.email.toLowerCase().endsWith('@' + c.domain))).map((t) => ({ key: 'm' + t.id, rank: 45, kind: 'mail' as const, text: t.subject, sub: `${t.messages[t.messages.length - 1].from.name} is waiting for a reply`, thread: t })),

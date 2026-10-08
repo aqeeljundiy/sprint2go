@@ -15,6 +15,7 @@ import { Wordmark } from './components/Logo';
 import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
 import { InstallPrompt } from './components/InstallPrompt';
 import { brand as product, brandOf, setBrandName } from './terms';
+import { registerStages } from './stages';
 import { applyPricing, type PricingOverride } from './data/pricing';
 import { loadCaps } from './caps';
 
@@ -261,6 +262,7 @@ function ClientRoot({ me }: { me: User }) {
   const [notices, setNotices] = useStored('notices');
   // Someone can be a client of more than one company: one portal at a time, with a switcher.
   const portals = portalsFor(me.email, [], workspaces, clients, channels);
+  registerStages(workspaces); // each company's task stages (kinds only for guests): what "In progress" or "Waiting on you" means
   const [key, setKey] = usePersisted(`s2g-portal:${me.id}`, '');
   const [starting, setStarting] = useState(false);
   // More than one project shared with them: start on "Shared with you" (grouped by company), unless one is open.

@@ -200,6 +200,7 @@ export interface Workspace {
   clientAccess?: ClientAccess; // what guests see and do in the shared space
   clientAccessByType?: Record<string, Partial<ClientAccess>>; // changes for one project type (Partner, Vendor…) on top of the company's
   terms?: { word: 'project' | 'client' }; // what the company calls its work: Projects (default) or Clients
+  taskStages?: TaskStage[]; // the company's task stages, in board order (default: To do, In progress, Waiting, Review, Done)
   chat?: {
     gifs: boolean;
     celebrations: boolean;
@@ -340,7 +341,22 @@ export interface Todo {
 }
 export type Task = Todo;
 export type Repeat = 'daily' | 'weekdays' | 'weekly' | 'monthly';
-export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'review' | 'done'; // waiting = on the client; review = waiting for the supervisor
+/** A stage id: one of the company's task stages (src/stages.ts). The five built-in ones are 'todo', 'doing', 'waiting', 'review' and 'done'. */
+export type TaskStatus = string;
+/**
+ * What a stage means, whatever the company calls it: not started, being worked on, waiting on the guest, waiting
+ * for the supervisor's check, or finished. Everything that reacts to a task's stage (Home, reminders, approvals,
+ * the guest portal) looks at this, never at a stage's id or name.
+ */
+export type StageKind = 'open' | 'active' | 'waiting' | 'review' | 'done';
+export type StageColor = 'gray' | 'accent' | 'blue' | 'violet' | 'teal';
+/** One column of the task board. */
+export interface TaskStage {
+  id: string;
+  kind: StageKind;
+  name?: string; // empty on a built-in stage: its usual name (which follows the company's words)
+  color?: StageColor; // waiting stages are always amber and done stages green
+}
 
 /** One line in a task's history: what changed, or a comment. */
 export interface TaskEvent {

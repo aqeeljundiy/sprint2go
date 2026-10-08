@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronRight, LogOut, Menu, Plus, Trash2, UserPlus, Users, X } from 'lucide-react';
 import type { Client, HomeTemplateId, Team, Todo, User } from '../../types';
 import { localDay, relative } from '../../utils';
+import { kindOf, stageBadge, stageOf } from '../../stages';
 import { Avatar } from '../Avatar';
 import { HOME_TEMPLATES } from '../HomeView';
 import { PeoplePicker, PersonSelect } from '../ui/PeoplePicker';
@@ -15,7 +16,7 @@ export const TEAM_COLORS = ['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#d946ef
 /** Who can change a team: admins, and the team's lead. */
 export const canManageTeam = (t: Team, me: string, isAdmin: boolean) => isAdmin || t.leadId === me;
 
-const isOpen = (t: Todo) => !t.doneAt && t.status !== 'done';
+const isOpen = (t: Todo) => !t.done;
 const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
 const today = () => localDay();
 const inDays = (n: number) => {
@@ -102,7 +103,7 @@ function teamState(t: Team, tasks: Todo[]) {
   const open = tasks.filter((x) => x.teamId === t.id && isOpen(x));
   const late = open.filter((x) => x.due && x.due < today()).length;
   const waiting = open.filter((x) => !doers(x).length).length;
-  const review = open.filter((x) => x.status === 'review').length;
+  const review = open.filter((x) => kindOf(x) === 'review').length;
   const issues = [late && `${late} late`, waiting && `${waiting} not picked up`, review && `${review} to review`].filter(Boolean) as string[];
   return { open: open.length, late, issues };
 }
@@ -388,7 +389,7 @@ function WorkTab({ t, tasks, users, clients, onOpenTask }: { t: Team; tasks: Tod
                 <button key={x.id} type="button" className="team-row team-task" onClick={() => onOpenTask(x.id)}>
                   <span className="team-row-text">
                     <strong>{x.title}</strong>
-                    <small className="muted">{[client?.name, x.status === 'review' ? 'Waiting for review' : x.status === 'waiting' ? 'Waiting on the guest' : ''].filter(Boolean).join(' · ') || ' '}</small>
+                    <small className="muted">{[client?.name, kindOf(x) === 'review' || kindOf(x) === 'waiting' ? stageBadge(stageOf(x)) : ''].filter(Boolean).join(' · ') || ' '}</small>
                   </span>
                   {x.due && <span className={`team-due small ${x.due < today() ? 'bad' : ''}`}>{shortDate(x.due)}</span>}
                   <span className="av-stack">{people.length ? people.slice(0, 3).map((u) => <Avatar key={u.id} person={u} size={22} />) : <span className="team-nobody small">Nobody</span>}</span>

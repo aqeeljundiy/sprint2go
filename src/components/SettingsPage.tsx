@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term, brand as product } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import { DEFAULT_PERMISSIONS } from '../types';
-import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
+import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, Todo, User, Workspace } from '../types';
+import { TaskStagesSection } from './admin/TaskStages';
 import { AISection } from './admin/AISection';
 import { BillingSection } from './admin/BillingSection';
 import { AppsSection, MyAppsSection, MeetingsSection, PermissionsSection, SecuritySection, StorageSection, TeamsLink } from './admin/AdminMore';
@@ -33,6 +34,7 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'permissions', name: 'Permissions', icon: KeySquare, group: 'Company' },
   { id: 'agency', name: 'Client portal & brand', icon: Stamp, group: 'Company' },
   { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
+  { id: 'stages', name: 'Task stages', icon: Columns3, group: 'Company' },
   { id: 'clients', get name() { return `${term.Who} access`; }, icon: Handshake, group: 'Company' },
   { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
   { id: 'meetings', name: 'Meetings', icon: Video, group: 'Company' },
@@ -109,6 +111,8 @@ interface Props {
     onExport: () => void;
     onDelete: () => void;
     toast: (t: string) => void;
+    tasks: Todo[]; // the company's tasks, for Task stages (where a removed stage's tasks go)
+    onMoveTasks: (moves: { id: string; patch: Partial<Todo> }[]) => void;
   };
 }
 
@@ -622,6 +626,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'agency' && <AgencySection ws={ws} canManage={canManage} onWorkspace={onWorkspace} brandingAddon={!!plan.addons.branding} onBilling={() => onSection('billing')} />}
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
+          {section === 'stages' && <TaskStagesSection ws={ws} canManage={canManage} tasks={admin.tasks} teams={admin.teams} me={me} onWorkspace={onWorkspace} onMoveTasks={admin.onMoveTasks} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'myapps' && myApps && (
             <MyAppsSection

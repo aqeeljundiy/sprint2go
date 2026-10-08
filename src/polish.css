@@ -575,7 +575,7 @@ details.advanced[open] summary h3::after {
   background: var(--accent);
 }
 .board {
-  grid-template-columns: repeat(5, minmax(200px, 1fr)) !important;
+  grid-template-columns: repeat(var(--cols, 5), minmax(200px, 1fr)) !important;
 }
 .review-banner {
   display: flex;

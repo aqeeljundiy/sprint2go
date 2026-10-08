@@ -1,4 +1,5 @@
 // What a client can see and do. One set of rules for the client app, "View as client" and the local server.
+import { kindOf } from './stages';
 import { DEFAULT_CLIENT_ACCESS, type Channel, type Client, type ClientAccess, type ClientPerson, type DataTable, type DriveItem, type Meeting, type TableRow, type Todo, type User, type Workspace } from './types';
 
 /** A project's guest settings: the company's, then its type's (e.g. Partners see more), then the project's own changes. */
@@ -56,11 +57,12 @@ export function afterEnd(client: Client, person: ClientPerson, access: ClientAcc
   return { person: { ...person, role: 'viewer' }, access: { ...access, requests: false, uploads: false, ai: false, invites: 'off' } };
 }
 
-/** A request's status in the client's words. */
+/** A request's status in the client's words: from the kind of stage it's in, whatever the company calls its stages. */
 export function requestStatus(t: Todo): { label: string; cls: string } {
-  if (t.done || t.status === 'done') return { label: 'Done', cls: 'done' };
-  if (t.status === 'waiting') return { label: 'Waiting on you', cls: 'waiting' };
-  if (t.status === 'doing' || t.status === 'review') return { label: 'In progress', cls: 'doing' };
+  const kind = kindOf(t);
+  if (kind === 'done') return { label: 'Done', cls: 'done' };
+  if (kind === 'waiting') return { label: 'Waiting on you', cls: 'waiting' };
+  if (kind === 'active' || kind === 'review') return { label: 'In progress', cls: 'doing' };
   return { label: 'New', cls: 'new' };
 }
 

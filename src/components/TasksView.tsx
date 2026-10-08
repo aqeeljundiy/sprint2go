@@ -7,6 +7,7 @@ import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
 import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
+import { firstOf, kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
 import { ProjectTables } from './tables/TablesApp';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { PastClients } from './PastClients';
@@ -45,16 +46,13 @@ export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }>
   meeting: { icon: Video, label: 'From a meeting' },
   request: { icon: Inbox, get label() { return `${term.Who} request`; } },
 };
-const COLUMNS: { id: TaskStatus; name: string }[] = [
-  { id: 'todo', name: 'To do' },
-  { id: 'doing', name: 'In progress' },
-  { id: 'waiting', get name() { return `Waiting on ${term.who}`; } },
-  { id: 'review', name: 'Review' },
-  { id: 'done', name: 'Done' },
-];
-export const STATUS_LABEL: Record<TaskStatus, string> = { todo: 'To do', doing: 'In progress', get waiting() { return `Waiting on ${term.who}`; }, review: 'Waiting for review', done: 'Done' };
-
-export const statusOf = (t: Todo): TaskStatus => (t.done ? 'done' : t.status && t.status !== 'done' ? t.status : 'todo');
+/** A task's stage id (one of its company's stages; see src/stages.ts). */
+export const statusOf = (t: Todo): TaskStatus => stageOf(t).id;
+/** A stage's colour dot: filled when done, hollow when not started. */
+export const StageDot = ({ t, className = '' }: { t: Pick<Todo, 'status' | 'done' | 'workspaceId'>; className?: string }) => {
+  const s = stageOf(t);
+  return <span className={`stage-dot k-${s.kind} tone-${toneOf(s)} ${className}`} />;
+};
 /** Everyone doing a task (older tasks only have userId). */
 export const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
 export const isBrief = (t: Todo) => t.kind === 'brief';
@@ -85,7 +83,7 @@ export const clientOptions = (clients: Client[], current?: string): Option[] => 
   ...clients.filter((c) => c.status !== 'ended' || c.id === current).map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? `Past ${term.one}` : undefined, icon: <Dot color={c.color} /> })),
 ];
 
-type GroupBy = 'client' | 'team' | 'person' | 'none';
+type GroupBy = 'client' | 'team' | 'person' | 'stage' | 'none';
 type Filter = 'open' | 'done' | 'all';
 
 interface Props {
@@ -185,6 +183,9 @@ export function TasksView(p: Props) {
   const [inviteEmail, setInviteEmail] = useState('');
 
   const scope = p.scope;
+  // The company's own stages: board columns, grouping, the Start button and what each row says.
+  const stages = stagesFor(p.workspace.id);
+  const activeStage = firstOf('active', stages);
   const client = scope.kind === 'client' ? p.clients.find((c) => c.id === scope.id) : undefined;
   const team = scope.kind === 'team' ? p.teams.find((t) => t.id === scope.id) : undefined;
   const cellTeam = scope.kind === 'client' && scope.teamId ? p.teams.find((t) => t.id === scope.teamId) : undefined;
@@ -223,7 +224,7 @@ export function TasksView(p: Props) {
         (t) =>
           (!quick.includes('late') || (!t.done && late(t))) &&
           (!quick.includes('high') || t.priority === 'high') &&
-          (!quick.includes('waiting') || statusOf(t) === 'waiting' || t.approval?.status === 'waiting') &&
+          (!quick.includes('waiting') || kindOf(t) === 'waiting' || t.approval?.status === 'waiting') &&
           (!quick.includes('nobody') || (!t.userId && !(t.assignees?.length))),
       ),
     [scoped, quick],
@@ -270,7 +271,7 @@ export function TasksView(p: Props) {
     }
   }, [p.tasks, scope, p.me, inScope]);
 
-  const open = inScope.filter((t) => !t.done).sort((a, b) => (scope.kind === 'supervising' ? Number(statusOf(b) === 'review') - Number(statusOf(a) === 'review') : 0) || byDue(a, b));
+  const open = inScope.filter((t) => !t.done).sort((a, b) => (scope.kind === 'supervising' ? Number(kindOf(b) === 'review') - Number(kindOf(a) === 'review') : 0) || byDue(a, b));
   const done = inScope.filter((t) => t.done).sort((a, b) => (b.doneAt ?? b.createdAt).localeCompare(a.doneAt ?? a.createdAt));
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const recentDone = done.filter((t) => (t.doneAt ?? t.createdAt) > weekAgo);
@@ -314,7 +315,7 @@ export function TasksView(p: Props) {
   const groups: { key: string; label: React.ReactNode; items: Todo[]; extra?: React.ReactNode }[] = useMemo(() => {
     if (groupBy === 'none') return [{ key: 'all', label: null, items: shown }];
     const map = new Map<string, Todo[]>();
-    const keyOf = (t: Todo) => (groupBy === 'client' ? (t.clientId ?? '') : groupBy === 'team' ? (t.teamId ?? '') : t.userId);
+    const keyOf = (t: Todo) => (groupBy === 'client' ? (t.clientId ?? '') : groupBy === 'team' ? (t.teamId ?? '') : groupBy === 'stage' ? stageOf(t, stages).id : t.userId);
     for (const t of shown) map.set(keyOf(t), [...(map.get(keyOf(t)) ?? []), t]);
     const out = [...map.entries()].map(([k, items]) => {
       if (groupBy === 'client') {
@@ -325,19 +326,24 @@ export function TasksView(p: Props) {
         const tm = teamOf(k);
         return { key: k, sort: tm ? tm.name : '~', label: tm ? <><span className="dot" style={{ background: tm.color }} />{tm.name}</> : 'No team', items };
       }
+      if (groupBy === 'stage') {
+        const i = stages.findIndex((x) => x.id === k);
+        const st = stages[i];
+        return { key: k, sort: String(i).padStart(3, '0'), label: st ? <><span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />{stageName(st)}</> : 'Other', items };
+      }
       const u = person(k);
       return { key: k, sort: u ? (u.id === p.me ? '!' : u.name) : ' ', label: u ? <><Avatar person={u} size={18} />{u.id === p.me ? 'You' : u.name}</> : <><span className="avatar-empty sm">?</span>Not assigned yet</>, items };
     });
     return out.sort((a, b) => a.sort.localeCompare(b.sort));
-  }, [shown, groupBy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shown, groupBy, stages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ticking a task: show the tick, let the row fold away, then move it (instead of it jumping between groups).
   const [ticking, setTicking] = useState<Set<string>>(new Set());
   const tick = (t: Todo) => {
-    if (t.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return p.onStatus(t.id, t.done ? 'todo' : 'done');
+    if (t.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return p.onStatus(t.id, stageIdFor(t, t.done ? 'open' : 'done'));
     setTicking((s) => new Set(s).add(t.id));
     setTimeout(() => {
-      p.onStatus(t.id, 'done');
+      p.onStatus(t.id, stageIdFor(t, 'done'));
       setTicking((s) => {
         const n = new Set(s);
         n.delete(t.id);
@@ -371,6 +377,7 @@ export function TasksView(p: Props) {
   };
   const row = (t: Todo) => {
     const d = t.due ? dueLabel(t.due) : null;
+    const st = stageOf(t, stages);
     const src = SOURCE[t.source];
     const c = clientOf(t.clientId);
     const tm = teamOf(t.teamId);
@@ -378,7 +385,7 @@ export function TasksView(p: Props) {
     return (
       <div
         key={t.id}
-        className={`task ${t.done || ticking.has(t.id) ? 'done' : ''} ${ticking.has(t.id) ? 'leaving' : ''} ${t.priority === 'high' && showF('list', 'priority') ? 'high' : ''} ${statusOf(t) === 'doing' ? 'doing' : ''}`}
+        className={`task ${t.done || ticking.has(t.id) ? 'done' : ''} ${ticking.has(t.id) ? 'leaving' : ''} ${t.priority === 'high' && showF('list', 'priority') ? 'high' : ''} ${st.kind === 'active' ? 'doing' : ''}`}
         onClick={(e) => !(e.target as HTMLElement).closest('button, input, .sel') && p.onOpenTask(t.id)}
       >
         <button className="todo-check" onClick={() => tick(t)} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
@@ -394,9 +401,7 @@ export function TasksView(p: Props) {
                 <Inbox size={11} /> Request
               </span>
             )}
-            {statusOf(t) === 'doing' && <span className="due doing">In progress</span>}
-            {statusOf(t) === 'waiting' && <span className="due waiting">Waiting on {term.who}</span>}
-            {statusOf(t) === 'review' && <span className="due review">Waiting for review</span>}
+            {st.kind !== 'done' && st !== firstOf('open', stages) && groupBy !== 'stage' && <span className={`due stage-badge tone-${toneOf(st)}`}>{stageBadge(st)}</span>}
             {showF('list', 'due') && d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
             {showF('list', 'assignee') && person(t.userId) && (
               <span className="meta-chip person-chip">
@@ -441,15 +446,15 @@ export function TasksView(p: Props) {
         {(() => {
           // The one thing this row needs, right on it.
           if (t.done) return null;
-          if (statusOf(t) === 'review' && t.supervisorId === p.me)
+          if (st.kind === 'review' && t.supervisorId === p.me)
             return (
-              <button className="row-act primary" onClick={() => p.onStatus(t.id, 'done')}>
+              <button className="row-act primary" onClick={() => p.onStatus(t.id, stageIdFor(t, 'done', stages))}>
                 Approve
               </button>
             );
-          if (t.source === 'request' && statusOf(t) === 'todo')
+          if (t.source === 'request' && st.kind === 'open' && activeStage)
             return (
-              <button className="row-act" onClick={() => p.onStatus(t.id, 'doing')}>
+              <button className="row-act" onClick={() => p.onStatus(t.id, activeStage.id)}>
                 Start
               </button>
             );
@@ -463,8 +468,12 @@ export function TasksView(p: Props) {
         })()}
         <PeoplePicker compact value={doers(t)} users={p.users} me={p.me} label="Doing it" onChange={(ids) => p.onPatch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />
         <div className="todo-actions">
-          {!t.done && (
-            <button className="icon-btn sm" title={statusOf(t) === 'doing' ? 'Move back to To do' : 'Start (In progress)'} onClick={() => p.onStatus(t.id, statusOf(t) === 'doing' ? 'todo' : 'doing')}>
+          {!t.done && activeStage && (st.kind === 'open' || st.kind === 'active') && (
+            <button
+              className="icon-btn sm"
+              title={st.kind === 'active' ? `Move back to ${stageName(firstOf('open', stages)!)}` : `Start (${stageName(activeStage)})`}
+              onClick={() => p.onStatus(t.id, st.kind === 'active' ? stageIdFor(t, 'open', stages) : activeStage.id)}
+            >
               <Columns3 size={15} />
             </button>
           )}
@@ -893,7 +902,7 @@ export function TasksView(p: Props) {
                   [
                     ['late', 'Late'],
                     ['high', 'High priority'],
-                    ['waiting', `Waiting on ${term.who}`],
+                    ...(firstOf('waiting', stages) || quick.includes('waiting') ? ([['waiting', `Waiting on ${term.who}`]] as const) : []),
                     ['nobody', 'Nobody on it'],
                   ] as const
                 ).map(([id, l]) => (
@@ -957,6 +966,7 @@ export function TasksView(p: Props) {
                     options={[
                       { value: 'team', label: 'Team' },
                       { value: 'person', label: 'Person' },
+                      { value: 'stage', label: 'Stage' },
                       { value: 'none', label: 'None' },
                     ]}
                   />
@@ -972,6 +982,7 @@ export function TasksView(p: Props) {
                       { value: 'client', label: `${term.One}` },
                       { value: 'team', label: 'Team' },
                       { value: 'person', label: 'Person' },
+                      { value: 'stage', label: 'Stage' },
                       { value: 'none', label: 'None' },
                     ]}
                   />
@@ -980,9 +991,9 @@ export function TasksView(p: Props) {
             )}
 
             {layout === 'board' ? (
-              <div className="board">
-                {COLUMNS.map((col) => {
-                  const items = inScope.filter((t) => statusOf(t) === col.id).sort(byDue);
+              <div className="board" style={{ ['--cols' as string]: stages.length }}>
+                {stages.map((col) => {
+                  const items = inScope.filter((t) => stageOf(t, stages).id === col.id).sort(byDue);
                   return (
                     <div
                       key={col.id}
@@ -994,7 +1005,8 @@ export function TasksView(p: Props) {
                       }}
                     >
                       <div className="board-head">
-                        {col.name} <span>{items.length}</span>
+                        <span className={`stage-dot k-${col.kind} tone-${toneOf(col)}`} />
+                        {stageName(col)} <span>{items.length}</span>
                       </div>
                       {items.map((t) => {
                         const c = clientOf(t.clientId);
@@ -1028,7 +1040,7 @@ export function TasksView(p: Props) {
                                   {tm.name}
                                 </span>
                               )}
-                              {showF('board', 'due') && d && col.id !== 'done' && <span className={`due ${d.cls}`}>{d.text}</span>}
+                              {showF('board', 'due') && d && col.kind !== 'done' && <span className={`due ${d.cls}`}>{d.text}</span>}
                               {showF('board', 'brief') && briefOf(t.briefId) && (
                                 <span className="meta-chip">
                                   <FileText size={11} /> {briefOf(t.briefId)!.title}
@@ -1092,7 +1104,7 @@ export function TasksView(p: Props) {
               const today = localDay();
               const items: { key: string; text: string; sub: string; run: () => void; tone?: string }[] = [
                 ...open.filter((t) => t.due && t.due < today).map((t) => ({ key: 'l' + t.id, text: t.title, sub: `Late, ${person(t.userId)?.name.split(' ')[0] ?? 'nobody'} on it`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
-                ...open.filter((t) => t.source === 'request' && statusOf(t) === 'todo').map((t) => ({ key: 'r' + t.id, text: t.title, sub: `New request from the ${term.who}`, run: () => p.onOpenTask(t.id) })),
+                ...open.filter((t) => t.source === 'request' && kindOf(t, stages) === 'open').map((t) => ({ key: 'r' + t.id, text: t.title, sub: `New request from the ${term.who}`, run: () => p.onOpenTask(t.id) })),
                 ...open.filter((t) => t.approval?.status === 'changes').map((t) => ({ key: 'c' + t.id, text: t.title, sub: `${term.Who} asked for changes${t.approval?.note ? `: “${t.approval.note}”` : ''}`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
                 ...open.filter((t) => !t.userId).map((t) => ({ key: 'u' + t.id, text: t.title, sub: 'Nobody on it yet', run: () => p.onOpenTask(t.id) })),
                 ...clientThreads.filter((t) => t.unread).map((t) => ({ key: 'm' + t.id, text: t.subject, sub: 'Unread email', run: () => p.onOpenThread(t.id) })),

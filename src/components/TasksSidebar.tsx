@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { PROJECT_TYPES, term } from '../terms';
 import { Archive, Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Users } from 'lucide-react';
 import type { Client, Team, Todo } from '../types';
-import { doers, isBrief, statusOf, type TaskScope } from './TasksView';
+import { doers, isBrief, type TaskScope } from './TasksView';
+import { kindOf } from '../stages';
 import { localDay } from '../utils';
 import { usePersisted } from '../settings';
 import { Select } from './ui/Select';
@@ -59,7 +60,7 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
         {(
           [
             [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => doers(t).includes(me) && urgent(t)).length],
-            [{ kind: 'supervising' }, Eye, 'Supervising', open.filter((t) => t.supervisorId === me && statusOf(t) === 'review').length],
+            [{ kind: 'supervising' }, Eye, 'Supervising', open.filter((t) => t.supervisorId === me && kindOf(t) === 'review').length],
             [{ kind: 'myteams' }, Users, 'My teams', 0],
             [{ kind: 'myclients' }, Building2, `My ${term.many}`, 0],
             [{ kind: 'delegated' }, Send, 'Assigned by me', open.filter((t) => t.createdBy === me && !doers(t).includes(me) && !!t.due && t.due < today).length],

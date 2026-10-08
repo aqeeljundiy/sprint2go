@@ -2,6 +2,7 @@
 // client login, so both behave the same. The local server checks every change again (server/index.ts).
 import type { Dispatch, SetStateAction } from 'react';
 import { term } from './terms';
+import { kindOf, stageIdFor } from './stages';
 import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, DriveItem, Meeting, Notice, Team, Todo, User, Workspace } from './types';
 import { channelsFor, clientInbox, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor, thisMonth } from './clientView';
 import { ai } from './ai';
@@ -81,7 +82,7 @@ export function clientActions(c: ClientCtx) {
                 ...x,
                 approval: { ...(x.approval ?? { askedBy: c.client.ownerId, askedAt: now() }), status, by: c.person.email, at: now(), note: note || undefined },
                 history: [...(x.history ?? []), { id: uid(), at: now(), by: c.person.email, kind: 'review', text: status === 'approved' ? `approved it${note ? `: “${note}”` : ''}` : `asked for changes: “${note}”`, toClient: true }],
-                ...(status === 'changes' && x.done ? { done: false, status: 'doing' as const, doneAt: undefined, doneBy: undefined } : {}),
+                ...(status === 'changes' && x.done ? { done: false, status: stageIdFor(x, 'active'), doneAt: undefined, doneBy: undefined } : {}),
               }
             : x,
         ),
@@ -120,7 +121,7 @@ export function clientActions(c: ClientCtx) {
         due: r.due || undefined,
         priority: 'normal',
         done: false,
-        status: 'todo',
+        status: stageIdFor({ workspaceId: c.ws.id }, 'open'),
         source: 'request',
         requestedBy: c.person.email,
         visibleToClient: true,
@@ -193,7 +194,7 @@ export function clientActions(c: ClientCtx) {
           id: c.client.id,
           title: `${c.client.name} work`,
           summary: tasksFor(c.client, c.todos)
-            .map((t) => `${t.title}: ${t.done ? 'done' : t.status === 'doing' ? 'in progress' : t.status === 'waiting' ? 'waiting on you' : 'planned'}${t.due ? `, due ${t.due}` : ''}${t.approval ? `, ${t.approval.status === 'waiting' ? 'waiting for your approval' : t.approval.status === 'approved' ? 'approved' : 'changes asked'}` : ''}.`)
+            .map((t) => `${t.title}: ${{ done: 'done', active: 'in progress', review: 'in progress', waiting: 'waiting on you', open: 'planned' }[kindOf(t)]}${t.due ? `, due ${t.due}` : ''}${t.approval ? `, ${t.approval.status === 'waiting' ? 'waiting for your approval' : t.approval.status === 'approved' ? 'approved' : 'changes asked'}` : ''}.`)
             .join(' '),
           transcript: [],
           actions: tasksFor(c.client, c.todos).map((t) => ({ title: `${t.title}${t.due ? ` (due ${t.due})` : ''}`, done: t.done })),

@@ -7,7 +7,8 @@ import type { Client, Todo, User } from '../types';
 import { PROJECT_TYPES, term } from '../terms';
 import { localDay, relative } from '../utils';
 import { Avatar } from './Avatar';
-import { isBrief, statusOf } from './TasksView';
+import { isBrief } from './TasksView';
+import { kindOf } from '../stages';
 import { Select } from './ui/Select';
 import { SmoothHeight } from './ui/Smooth';
 
@@ -30,7 +31,7 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
     const open = tasks.filter((t) => t.clientId === c.id && !t.done && !isBrief(t));
     const late = open.filter((t) => t.due && t.due < today).length;
     const nobody = open.filter((t) => !t.userId && !(t.assignees?.length)).length;
-    const guest = open.filter((t) => statusOf(t) === 'waiting' || t.approval?.status === 'waiting').length;
+    const guest = open.filter((t) => kindOf(t) === 'waiting' || t.approval?.status === 'waiting').length;
     const last = tasks
       .filter((t) => t.clientId === c.id)
       .map((t) => t.history?.at(-1)?.at ?? t.createdAt)
