@@ -1,0 +1,59 @@
+# Every 10 minutes: are the app and the website up? When either stops answering, an issue "sprint2go is down" opens
+# (once); when both answer again, it gets a comment and closes. Uses only the built-in token, no secrets.
+name: Uptime
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+permissions:
+  issues: write
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask both addresses
+        id: ask
+        run: |
+          down=""
+          for url in https://app.sprint2go.com/api/health https://sprint2go.com/; do
+            code=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 --retry-delay 10 --retry-all-errors "$url" || true)
+            if [ -z "$code" ] || [ "$code" = "000" ]; then code="no answer"; fi
+            echo "$url: $code"
+            case "$code" in
+              2??) ;;
+              *) down="$down"$'\n'"- $url: $code" ;;
+            esac
+          done
+          {
+            echo 'down<<EOF'
+            echo "$down"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Open or close the issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DOWN: ${{ steps.ask.outputs.down }}
+        run: |
+          title="sprint2go is down"
+          now=$(date -u +'%Y-%m-%d %H:%M UTC')
+          open=$(gh issue list --state open --search "\"$title\" in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+          if [ -n "$(echo "$DOWN" | tr -d '[:space:]')" ]; then
+            if [ -z "$open" ]; then
+              gh issue create --title "$title" --body "Checked at $now. Not answering:
+          $DOWN
+
+          This closes by itself once both answer again."
+            else
+              echo "Still down; issue #$open is already open."
+            fi
+          elif [ -n "$open" ]; then
+            gh issue comment "$open" --body "Both answer again at $now."
+            gh issue close "$open"
+          else
+            echo "Both up."
+          fi
