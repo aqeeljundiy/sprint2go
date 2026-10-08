@@ -2767,3 +2767,83 @@ select,
     animation: none;
   }
 }
+
+/* ---------- No box inside a box ---------- */
+/* A flat dropdown: no frame of its own, a soft background on hover (used inside cards, toolbars and form rows) */
+.sel.sel-flat {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.sel.sel-flat:hover,
+.sel.sel-flat.open {
+  background: var(--hover);
+}
+/* Compose: From reads like To and Subject, a plain line */
+.compose .from-sel {
+  padding-left: 0;
+}
+.compose .from-sel:hover,
+.compose .from-sel.open {
+  padding-left: 8px;
+}
+/* A framed list's rows don't get frames: thin dividers instead */
+.te-list > .chat-file.flat {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+.te-list > .chat-file.flat:last-child {
+  border-bottom: 0;
+}
+.te-list > .chat-file.flat:hover {
+  background: var(--hover);
+}
+/* Key hints inside a search box: a soft key, not a box in the box */
+.search kbd,
+label.search kbd,
+.notes-search kbd {
+  border: 0;
+  box-shadow: none;
+  background: var(--hover);
+}
+/* "Nobody yet": a soft circle instead of a dashed ring inside bars and cards */
+.task-add .avatar-empty,
+.card-task .avatar-empty,
+.todo-add .avatar-empty {
+  border: 0;
+  background: var(--hover);
+}
+/* Compose footer: the tracking toggle is a quiet button, not a framed pill */
+.compose .track-btn,
+.compose-foot .ghost-btn.outline {
+  border-color: transparent;
+}
+/* Inside a framed card or list, fields and dropdowns are soft filled areas, not frames in a frame */
+:is(.acct-list, .team-card, .jobs-table, .profile-card, .danger-zone, .te-list, .side-card, .access-panel, .prov, .add-prov, .pa-invite)
+  :is(.sel, input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']), textarea, .inline-input) {
+  border-color: transparent !important;
+  background: var(--hover);
+  box-shadow: none;
+}
+:is(.acct-list, .team-card, .jobs-table, .profile-card, .danger-zone, .te-list, .side-card, .access-panel, .prov, .add-prov, .pa-invite)
+  :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']), textarea, .inline-input):focus {
+  background: var(--surface);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+:is(.acct-list, .team-card, .jobs-table, .profile-card, .side-card, .prov) .ghost-btn.outline,
+.profile-card .ghost-btn {
+  border-color: transparent;
+  background: var(--hover);
+}
+.team-card .member-chip {
+  border-color: transparent;
+  background: var(--hover);
+}
+/* Key caps: a soft key everywhere, never a box in a box */
+kbd {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}

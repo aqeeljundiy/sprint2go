@@ -2200,3 +2200,28 @@ button {
 .ln-drawer-lang {
   padding: 4px 0 8px;
 }
+
+/* ---------- No box inside a box: inside a preview window, tiles sit on the grey canvas without frames ---------- */
+.mock .mock-card,
+.gm-people,
+.tm-day {
+  border-color: transparent;
+}
+.mock-card.big {
+  border-color: transparent;
+}
+.tour .tm {
+  border-color: transparent;
+}
+.tm-mail,
+.tm-msg,
+.tm-file,
+.tm-card,
+.tm-li,
+.tm-field {
+  border-color: transparent;
+}
+.ai-model {
+  border-color: transparent;
+  background: var(--hover);
+}

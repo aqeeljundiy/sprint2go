@@ -17,7 +17,7 @@ Every change has to pass this bar before it's called done. It isn't optional pol
    - Reserve space for things that load. Hover and selected states must not change size (no bold-on-select width shifts, no borders appearing without space for them).
 3. **Fast.** Enter 150 to 300 ms with ease-out; exit 150 to 200 ms with ease-in. Motion never makes anyone wait for their next click.
 4. **Calm.** Nothing moves by itself: no loops, auto-advancing carousels or tours, or bobbing decorations. The exception is live status (a recording dot, a progress bar). Motion answers what the person did.
-5. **Clean.** Spacing on a 4/8 px scale, consistent radii, one primary action per area, aligned edges and baselines. Centered things are actually centered: check for class clashes like the old `.sel`, which is the Select component's class.
+5. **Clean.** Spacing on a 4/8 px scale, consistent radii, one primary action per area, aligned edges and baselines. **No box inside a box**: inside a bordered card or list, rows and controls have no border of their own (use a divider line, a hover background or plain spacing). A dropdown inside a form row is a plain field, not a framed button inside a frame. Centered things are actually centered: check for class clashes like the old `.sel`, which is the Select component's class.
 6. **Responsive.** Check at 375, 768, 1024 and 1440 px wide.
    - No horizontal scroll, and tap targets of at least 40 px on phones.
    - Popovers become bottom sheets on phones.
