@@ -64,6 +64,19 @@
   width: 100%;
   padding: 6px 6px 0;
   border-top: 1px solid var(--border);
+  /* More apps than the screen is tall: the list scrolls under soft edges; the bottom tools stay put. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 14px), transparent);
+  overscroll-behavior: contain;
+}
+.rail-apps::-webkit-scrollbar {
+  display: none;
+}
+.rail-apps > * {
+  flex: none;
 }
 .rail-app {
   display: flex;
@@ -117,11 +130,14 @@
   box-shadow: 0 0 0 2px var(--bg);
 }
 .rail-foot {
-  margin-top: auto;
+  flex: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--border);
+  width: 100%;
 }
 .rail-tool {
   position: relative;
