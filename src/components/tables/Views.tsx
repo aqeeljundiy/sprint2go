@@ -4,6 +4,7 @@ import type { CellValue, DataTable, FileRef, TableField, TableRow, TableViewDef 
 import { localDay, uid } from '../../utils';
 import { CellView, type CellCtx } from './Cell';
 import { groupRows, isEmpty, rowName, valueOf, viewFields } from './fields';
+import { EmptyState } from '../ui/EmptyState';
 
 /** The fields a card or list row shows: the view's visible ones after the name, minus long and empty ones. */
 const cardFields = (t: DataTable, view: TableViewDef, n: number) => viewFields(t, view).filter((f) => f.id !== t.fields[0]?.id && f.type !== 'longtext' && f.type !== 'button' && f.id !== view.cover).slice(0, n);
@@ -107,22 +108,24 @@ export function CalendarView({ table: t, view, rows, ctx, onOpenRow, onCell, onA
   const [over, setOver] = useState<string | null>(null);
   if (!df)
     return (
-      <div className="empty">
-        <p className="empty-title">A calendar needs a date field</p>
-        <p className="empty-sub">Add one like Due or Follow-up; rows then sit on their dates.</p>
-        {!readOnly && (
-          <button
-            className="primary-btn sm"
-            onClick={() => {
-              const f: TableField = { id: uid(), name: 'Date', type: 'date' };
-              onNewField(f);
-              onView({ dateField: f.id });
-            }}
-          >
-            <Plus size={14} /> Add a date field
-          </button>
-        )}
-      </div>
+      <EmptyState
+        title="A calendar needs a date field"
+        text="Add one like Due or Follow-up; rows then sit on their dates."
+        action={
+          !readOnly && (
+            <button
+              className="primary-btn sm"
+              onClick={() => {
+                const f: TableField = { id: uid(), name: 'Date', type: 'date' };
+                onNewField(f);
+                onView({ dateField: f.id });
+              }}
+            >
+              <Plus size={14} /> Add a date field
+            </button>
+          )
+        }
+      />
     );
   const start = new Date(month);
   start.setDate(1 - ((month.getDay() + 6) % 7)); // weeks start on Monday

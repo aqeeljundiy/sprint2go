@@ -5,6 +5,7 @@ import { DEFAULT_TRACK_OPTIONS, fmtDuration, realClicks, realOpens, replyAfter, 
 import { fullDate, relative } from '../utils';
 import { Avatar } from './Avatar';
 import { isMine } from '../identity';
+import { EmptyState } from './ui/EmptyState';
 
 interface Props {
   threads: Thread[];
@@ -156,7 +157,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
             </div>
 
             <div className="te-list">
-              {shown.length === 0 && <p className="te-empty">Nothing here. Turn on tracking when you send an email to see opens and clicks.</p>}
+              {shown.length === 0 && <EmptyState compact text="Nothing here. Turn on tracking when you send an email to see opens and clicks." />}
               {shown.map((e, n) => {
                 const status = e.replied.length === e.people.length
                   ? { cls: 'replied', icon: Reply, text: 'Replied' }
@@ -208,7 +209,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
               <h3>
                 <BellRing size={14} /> Waiting for a reply
               </h3>
-              {waiting.length === 0 && <p className="te-empty">Everyone has replied. 🎉</p>}
+              {waiting.length === 0 && <EmptyState compact text="Everyone has replied. 🎉" />}
               {waiting.map((e) => (
                 <div key={e.message.id} className={`wait-row ${e.remindDue ? 'due' : ''}`}>
                   <Avatar person={e.waiting[0]} size={28} />
@@ -230,7 +231,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
               <h3>
                 <span className="live-dot" /> Activity
               </h3>
-              {feed.length === 0 && <p className="te-empty">No activity yet.</p>}
+              {feed.length === 0 && <EmptyState compact text="No activity yet." />}
               <ol className="feed">
                 {feed.map((f, i) => (
                   <li key={i} onClick={() => onOpenThread(f.threadId)} className={`feed-${f.kind}`}>

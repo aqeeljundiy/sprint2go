@@ -357,25 +357,9 @@ kbd {
   background: none;
 }
 
+/* .segmented (and every tab bar) lives in system.css: one look everywhere. */
 .segmented {
-  display: inline-flex;
   justify-self: start;
-  padding: 3px;
-  border-radius: 9px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.segmented button {
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-.segmented button.on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .rows {

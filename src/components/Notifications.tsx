@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AtSign, Bell, CheckCheck, CircleCheck, ListChecks, Mail, Users, Video, type LucideIcon } from 'lucide-react';
 import type { Notice } from '../types';
 import { relative } from '../utils';
+import { EmptyState } from './ui/EmptyState';
 
 const ICON: Record<Notice['kind'], LucideIcon> = { task: ListChecks, mention: AtSign, meeting: Video, mail: Mail, done: CircleCheck, team: Users };
 
@@ -37,10 +38,7 @@ export function Notifications({ notices, onOpen, onReadAll, onClose }: Props) {
         )}
       </header>
       {sorted.length === 0 ? (
-        <div className="notices-empty">
-          <Bell size={22} />
-          <p>You’re all caught up.</p>
-        </div>
+        <EmptyState className="notices-empty" icon={<Bell size={20} />} title="You’re all caught up" text="New mentions, assignments and replies show up here." />
       ) : (
         <ul>
           {sorted.map((n) => {

@@ -10,6 +10,7 @@ import { server } from '../sync';
 import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { decryptSecret, encryptSecret, isEncrypted, makeVaultKeys, newItemKeys, rewrapVaultKey, setVaultUnlocked, totp as totpCode, unlockVaultKey, unwrapWith, vaultUnlocked, wrapFor, type VaultKeyRecord, type WrappedKey } from '../vaultCrypto';
+import { EmptyState } from './ui/EmptyState';
 
 /** What the browser knows about a login. The password, 2FA secret and notes stay on the server. */
 export interface VaultItem {
@@ -129,13 +130,11 @@ export function VaultView({
   if (!server.on)
     return (
       <section className="tasks-pane view-enter">
-        <div className="empty">
-          <div className="empty-art">
-            <KeyRound size={22} />
-          </div>
-          <p className="empty-title">The Vault needs the {product.name} server</p>
-          <p className="empty-sub">Passwords are never kept in the browser. Run the local server (npm run server) and sign in to use it.</p>
-        </div>
+        <EmptyState
+          icon={<KeyRound size={22} />}
+          title={<>The Vault needs the {product.name} server</>}
+          text="Passwords are never kept in the browser. Run the local server (npm run server) and sign in to use it."
+        />
       </section>
     );
 
@@ -218,13 +217,11 @@ export function VaultView({
       </header>
       <div className="tracking-scroll">
         {shown.length === 0 && (
-          <div className="empty">
-            <div className="empty-art">
-              <KeyRound size={22} />
-            </div>
-            <p className="empty-title">No logins here yet</p>
-            <p className="empty-sub">Add the client logins your team shares (Meta, Shopify, Google Ads). Paste the 2FA setup key and everyone with access gets the codes here, without anyone’s phone.</p>
-          </div>
+          <EmptyState
+            icon={<KeyRound size={22} />}
+            title="No logins here yet"
+            text="Add the client logins your team shares (Meta, Shopify, Google Ads). Paste the 2FA setup key and everyone with access gets the codes here, without anyone’s phone."
+          />
         )}
         <div className="todo-group">
           {shown.map((it) => {
@@ -395,7 +392,7 @@ export function VaultView({
             </header>
             <div className="modal-body">
               <SmoothHeight>
-              {log.rows.length === 0 && <p className="te-empty">Nobody has used it yet.</p>}
+              {log.rows.length === 0 && <EmptyState compact text="Nobody has used it yet." />}
               <ul className="home-list">
                 {log.rows.map((r, i) => (
                   <li key={i} className="vault-log-row">

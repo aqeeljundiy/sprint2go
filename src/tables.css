@@ -180,7 +180,7 @@
   transition: background 0.12s ease;
 }
 .tb-tr:not(.tb-head) {
-  animation: tb-row-in 0.22s ease-out both;
+  animation: tb-row-in 0.22s ease-out backwards;
   animation-delay: calc(var(--i, 0) * 12ms);
 }
 @keyframes tb-row-in {
@@ -818,11 +818,14 @@
   display: flex;
   flex-direction: column;
 }
-.tb-board-by {
-  display: flex;
+/* What makes a board's columns: shown in the table's toolbar (BoardTools), not a row of its own. */
+.tb-board-by-text {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px 0;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px;
+  color: var(--text-2);
 }
 .tb-board {
   flex: 1;
@@ -876,7 +879,7 @@
   font-size: 13px;
   color: var(--text);
   cursor: grab;
-  animation: tb-row-in 0.2s ease-out both;
+  animation: tb-row-in 0.2s ease-out backwards;
   transition: box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 .tb-card:hover {
@@ -1088,7 +1091,7 @@
   box-shadow: 0 0 0 1px var(--border);
   text-align: left;
   color: var(--text);
-  animation: tb-row-in 0.25s ease-out both;
+  animation: tb-row-in 0.25s ease-out backwards;
   animation-delay: calc(var(--i, 0) * 30ms);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
@@ -2131,6 +2134,16 @@
 .tb-colmenu-type {
   flex-wrap: wrap;
 }
+/* The name column's type, shown but not a button: it can't change. */
+.tb-colmenu-type.fixed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
 .tb-colmenu-type small {
   display: inline-flex;
   align-items: center;
@@ -2439,7 +2452,7 @@
   border-radius: 10px;
   text-align: left;
   color: var(--text);
-  animation: tb-row-in 0.2s ease-out both;
+  animation: tb-row-in 0.2s ease-out backwards;
   animation-delay: calc(var(--i, 0) * 12ms);
   transition: background 0.12s ease;
 }
@@ -2501,7 +2514,7 @@
   overflow: hidden;
   text-align: left;
   color: var(--text);
-  animation: tb-row-in 0.22s ease-out both;
+  animation: tb-row-in 0.22s ease-out backwards;
   animation-delay: calc(var(--i, 0) * 18ms);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
@@ -2717,9 +2730,6 @@
 
 /* ---------- board: editable columns and card settings ---------- */
 
-.tb-board-by .spacer {
-  flex: 1;
-}
 .tb-col-head {
   min-height: 32px;
   cursor: default;
@@ -2818,10 +2828,6 @@
   grid-column: 1 / -1;
 }
 @media (max-width: 600px) {
-  .tb-board-by {
-    flex-wrap: wrap;
-    padding: 10px 16px 0;
-  }
   .tb-board {
     padding: 12px 16px 16px;
   }

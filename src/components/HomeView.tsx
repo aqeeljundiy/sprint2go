@@ -13,6 +13,7 @@ import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { doers, dueLabel, isBrief, peopleOptions } from './TasksView';
 import { kindOf } from '../stages';
+import { EmptyState } from './ui/EmptyState';
 
 type CardId =
   | 'briefing'
@@ -255,7 +256,7 @@ export function HomeView(p: Props) {
       <span style={{ width: `${Math.min(100, (n / Math.max(1, max)) * 100)}%` }} className={warn ? 'warn' : ''} />
     </span>
   );
-  const empty = (text: string) => <p className="te-empty">{text}</p>;
+  const empty = (text: string) => <EmptyState compact text={text} />;
 
   const cards: Record<CardId, { icon: ReactNode; link?: [string, () => void]; body: () => ReactNode; show?: boolean }> = {
     briefing: {

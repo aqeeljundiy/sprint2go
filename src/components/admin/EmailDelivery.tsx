@@ -5,7 +5,7 @@ import { AliasDialog } from '../WorkspaceForms';
 import { server } from '../../sync';
 import { brand as product } from '../../terms';
 import { relative } from '../../utils';
-import { SmoothHeight } from '../ui/Smooth';
+import { SmoothHeight, useLeaving } from '../ui/Smooth';
 import { EmailSetupGuide, providerLabel } from '../EmailSetupGuide';
 import { providerName } from '../Onboarding';
 import { MAIL_PACKS, countedMailboxes, mailboxRoom } from '../../data/pricing';
@@ -79,6 +79,7 @@ export function EmailDeliverySection({
   const [aliasEdit, setAliasEdit] = useState<MailAlias | 'new' | null>(null);
   const [leaving, setLeaving] = useState<string[]>([]); // addresses folding away while they're removed
   const mailboxes = ws.accounts.filter((a) => !a.temp);
+  const mailboxRows = useLeaving(mailboxes, (a) => a.id); // a removed one folds away (the remove happens in a dialog)
   const hostedBoxes = mailboxes.filter((a) => !a.provider || a.provider === 'sprint2go');
   const room = mailboxRoom(ws.plan ?? trialPlan(ws.name, ''), Math.max(1, ws.members.length));
   const boxRoom = { ...room, used: countedMailboxes(ws.accounts, room.sharedFree) };
@@ -437,14 +438,14 @@ export function EmailDeliverySection({
               <p className="small muted">No mailboxes yet. Add one for each person, and shared inboxes like hello@ for the team.</p>
             ) : (
               <div className="ed-records">
-                {mailboxes.map((a) => {
+                {mailboxRows.map(({ item: a, leaving: going }) => {
                   const r = ws.mailReady?.mailboxes?.[a.id];
                   // Kept with Google or Microsoft: copies arriving here is all it can do, so that counts as working.
                   const kept = !!a.provider && a.provider !== 'sprint2go';
                   const both = kept ? r?.receive : r?.receive && r?.send;
                   const extra = aliases.filter((al) => al.to.includes(a.id)).map((al) => al.address);
                   return (
-                    <div key={a.id} className={`ed-record ${!r ? '' : both ? 'ok' : 'bad'}`}>
+                    <div key={a.id} className={`ed-record ${!r ? '' : both ? 'ok' : 'bad'}${going ? ' leaving' : ''}`}>
                       <span className="ed-rec-main">
                         <strong>{a.email}</strong>
                         <small className="muted">

@@ -51,7 +51,7 @@ export function AccountMenu({ me, settings, used, quota, onSettings, onTheme, on
         </div>
       </div>
 
-      <div className="am-theme">
+      <div className="am-theme segmented wide">
         {([
           ['light', Sun, 'Light'],
           ['dark', Moon, 'Dark'],

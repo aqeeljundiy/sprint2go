@@ -144,7 +144,7 @@ body.resizing-x .pane-resize::after {
   animation: viewIn 0.3s var(--ease) backwards; /* not "both": a leftover transform would trap fixed dialogs inside the pane */
 }
 .reader-scroll {
-  animation: viewIn 0.28s var(--ease) both;
+  animation: viewIn 0.28s var(--ease) backwards; /* not "both": a leftover transform traps fixed dialogs inside */
 }
 .row {
   animation: fadeIn 0.25s var(--ease) both;
@@ -362,30 +362,10 @@ body.resizing-x .pane-resize::after {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.am-theme {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
+/* Light / Dark / Auto: a segmented control like every other (system.css). */
+.am-theme.segmented.wide {
   margin: 0 4px 6px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--hover);
-}
-.am-theme button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 6px;
-  border-radius: 7px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-.am-theme button.on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  width: auto;
 }
 .am-item {
   display: flex;
@@ -1002,7 +982,7 @@ body.resizing-x .pane-resize::after {
   min-width: 0;
   overflow-y: auto;
   padding: 28px clamp(20px, 4vw, 48px) 48px;
-  animation: viewIn 0.28s var(--ease) both;
+  animation: viewIn 0.28s var(--ease) backwards; /* not "both": a leftover transform traps fixed dialogs inside */
 }
 .settings-content > * {
   max-width: 640px;
@@ -1206,7 +1186,7 @@ body.resizing-x .pane-resize::after {
   flex-wrap: wrap;
   gap: 10px;
 }
-.accent {
+.accent-swatch {
   display: grid;
   place-items: center;
   width: 32px;
@@ -1215,10 +1195,10 @@ body.resizing-x .pane-resize::after {
   color: #fff;
   transition: transform 0.15s;
 }
-.accent:hover {
+.accent-swatch:hover {
   transform: scale(1.1);
 }
-.accent.on {
+.accent-swatch.on {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
@@ -1358,7 +1338,7 @@ body.resizing-x .pane-resize::after {
   flex: 1;
   overflow-y: auto;
   padding: 18px 20px 40px;
-  animation: viewIn 0.28s var(--ease) both;
+  animation: viewIn 0.28s var(--ease) backwards; /* not "both": a leftover transform traps fixed dialogs inside */
 }
 .drive-note {
   display: flex;
@@ -1402,7 +1382,7 @@ body.resizing-x .pane-resize::after {
   cursor: pointer;
   border: 1px solid var(--border);
   transition: border-color 0.15s, box-shadow 0.2s, transform 0.2s var(--ease);
-  animation: cardIn 0.32s var(--ease) both;
+  animation: cardIn 0.32s var(--ease) backwards;
   animation-delay: calc(var(--i, 0) * 22ms);
 }
 .folder-card:hover,
@@ -1559,7 +1539,7 @@ body.resizing-x .pane-resize::after {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background 0.12s;
-  animation: cardIn 0.25s var(--ease) both;
+  animation: cardIn 0.25s var(--ease) backwards;
   animation-delay: calc(var(--i, 0) * 15ms);
 }
 .d-tr:last-child {
@@ -2632,7 +2612,7 @@ body.resizing-x .pane-resize::after {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: linear-gradient(160deg, var(--surface-2), var(--surface));
-  animation: cardIn 0.35s var(--ease) both;
+  animation: cardIn 0.35s var(--ease) backwards;
   animation-delay: calc(var(--i) * 40ms);
 }
 .kpi-icon {
@@ -2689,7 +2669,7 @@ body.resizing-x .pane-resize::after {
   border-bottom: 1px solid var(--border);
   text-align: left;
   transition: background 0.12s;
-  animation: cardIn 0.3s var(--ease) both;
+  animation: cardIn 0.3s var(--ease) backwards;
   animation-delay: calc(var(--i) * 25ms);
 }
 .te-row:last-child {
@@ -3147,13 +3127,13 @@ body.resizing-x .pane-resize::after {
 .logo-drop:hover .logo-over {
   opacity: 1;
 }
-.accent.custom {
+.accent-swatch.custom {
   position: relative;
   overflow: hidden;
   cursor: pointer;
   background: conic-gradient(#ef4444, #f59e0b, #10b981, #0ea5e9, #8b5cf6, #ef4444);
 }
-.accent.custom input {
+.accent-swatch.custom input {
   position: absolute;
   inset: 0;
   opacity: 0;
@@ -3982,7 +3962,7 @@ fieldset.plain:disabled {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  animation: cardIn 0.3s var(--ease) both;
+  animation: cardIn 0.3s var(--ease) backwards;
   animation-delay: calc(var(--i) * 60ms);
   transition: border-color 0.15s, background 0.15s;
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SmoothHeight } from './ui/Smooth';
+import { SmoothHeight, useLeaving } from './ui/Smooth';
 import { term, brand as product } from '../terms';
 import { Handshake, Ban, Bell, Building2, ChevronDown, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
@@ -11,7 +11,7 @@ import { AISection } from './admin/AISection';
 import { BillingSection } from './admin/BillingSection';
 import { AppsSection, MyAppsSection, MeetingsSection, PermissionsSection, SecuritySection, StorageSection, TeamsLink } from './admin/AdminMore';
 import { trialPlan } from '../data/workspaces';
-import { Avatar } from './Avatar';
+import { Badge, PersonCell } from './ui/Person';
 import { BrandFields } from './WorkspaceForms';
 import { WorkspaceLogo } from './WorkspaceLogo';
 import type { SettingsSection } from './AccountMenu';
@@ -146,6 +146,9 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
   const [routingGuide, setRoutingGuide] = useState(false);
   const [accessType, setAccessType] = useState(''); // Guest access: '' = every project, or one project type
+  // A removed member or mailbox folds away instead of vanishing (the remove happens in a dialog or in App).
+  const memberRows = useLeaving(ws.members, (m) => m.userId);
+  const accountRows = useLeaving(ws.accounts.filter((a) => !a.temp), (a) => a.id);
   const canManage = myRole !== 'member';
   const realMail = server.on && !caps.demo; // a real server, not the standalone demo
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
@@ -248,20 +251,13 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
               <h3>Members</h3>
               <div className="acct-list">
-                {ws.members.map((m) => {
+                {memberRows.map(({ item: m, leaving }) => {
                   const u = users.find((x) => x.id === m.userId);
                   if (!u) return null;
                   const owners = ws.members.filter((x) => x.role === 'owner').length;
                   return (
-                    <div key={m.userId} className="acct-row">
-                      <Avatar person={u} size={32} />
-                      <span className="acct-info">
-                        <strong>
-                          {u.name}
-                          {m.userId === me && <span className="you-tag">You</span>}
-                        </strong>
-                        <small>{u.email}</small>
-                      </span>
+                    <div key={m.userId} className={`acct-row${leaving ? ' row-leaving' : ''}`}>
+                      <PersonCell person={u} badges={m.userId === me && <Badge tone="accent">You</Badge>} />
                       {canManage && m.userId !== me && !(m.role === 'owner' && owners === 1) ? (
                         <Select<Role>
                           value={m.role}
@@ -343,8 +339,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
               <h3>Email accounts</h3>
               <div className="acct-list">
-                {ws.accounts.filter((a) => !a.temp).map((a) => (
-                  <div key={a.id} className="acct-block">
+                {accountRows.map(({ item: a, leaving }) => (
+                  <div key={a.id} className={`acct-block${leaving ? ' row-leaving' : ''}`}>
                   <div className="acct-row">
                     <span className="acct-icon">{a.kind === 'shared' ? <Users size={16} /> : <Inbox size={16} />}</span>
                     <span className="acct-info">
@@ -353,7 +349,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                         {a.kind === 'shared' ? 'Shared inbox' : 'Personal'} · opened by {a.users.map(nameOf).join(', ') || 'nobody'}
                       </small>
                     </span>
-                    <span className={`acct-status ${a.connected ? 'ok' : ''}`}>{a.connected ? 'Connected' : 'Not connected'}</span>
+                    <Badge tone={a.connected ? 'good' : 'warn'}>{a.connected ? 'Connected' : 'Not connected'}</Badge>
                     {canManage && a.kind === 'shared' && (
                       <button
                         className={`ghost-btn outline sm access-btn ${accessOpen === a.id ? 'on' : ''}`}
@@ -379,11 +375,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                         const last = on && a.users.length === 1;
                         return (
                           <label key={u.id} className="access-row" title={last ? 'At least one person needs access' : ''}>
-                            <Avatar person={u} size={24} />
-                            <span>
-                              {u.name}
-                              {u.id === me && <span className="you-tag">You</span>}
-                            </span>
+                            <PersonCell person={u} sub={null} size={24} badges={u.id === me && <Badge tone="accent">You</Badge>} />
                             <button
                               role="switch"
                               aria-checked={on}
@@ -560,7 +552,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   <strong>Trackers in emails you receive are blocked</strong>
                   <small>Senders can’t see when or where you read their email.</small>
                 </span>
-                <span className="acct-status ok">Always on</span>
+                <Badge tone="good">Always on</Badge>
               </div>
               {ws.readTracking !== false && <small className="set-hint">Your team’s internal email is never tracked. If you email people in the EU, mention tracking in your privacy policy.</small>}
 

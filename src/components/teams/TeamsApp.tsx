@@ -4,6 +4,8 @@ import type { Client, HomeTemplateId, Team, Todo, User } from '../../types';
 import { localDay, relative } from '../../utils';
 import { kindOf, stageBadge, stageOf } from '../../stages';
 import { Avatar } from '../Avatar';
+import { Badge, PersonCell } from '../ui/Person';
+import { EmptyState } from '../ui/EmptyState';
 import { HOME_TEMPLATES } from '../HomeView';
 import { PeoplePicker, PersonSelect } from '../ui/PeoplePicker';
 import { PeopleList } from '../ui/PeopleList';
@@ -130,18 +132,18 @@ export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen,
       </header>
       <div className="tracking-scroll">
         {!teams.length ? (
-          <div className="empty">
-            <div className="empty-art">
-              <Users size={20} />
-            </div>
-            <p className="empty-title">No teams yet</p>
-            <p className="empty-sub">Make one per department. People can be in more than one team.</p>
-            {canCreate && (
-              <button className="primary-btn sm" onClick={onNew}>
-                <Plus size={14} /> New team
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={<Users size={20} />}
+            title="No teams yet"
+            text="Make one per department. People can be in more than one team."
+            action={
+              canCreate && (
+                <button className="primary-btn sm" onClick={onNew}>
+                  <Plus size={14} /> New team
+                </button>
+              )
+            }
+          />
         ) : (
           <div className="proj-grid">
             {sorted.map((t, i) => {
@@ -245,7 +247,7 @@ export function TeamPage({
         {tabs.map((x) => (
           <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? 'on' : ''} onClick={() => setTab(x.id)}>
             {x.label}
-            {x.id === 'members' && manage && (t.requests?.length ?? 0) > 0 && <span className="count">{t.requests!.length}</span>}
+            {x.id === 'members' && manage && (t.requests?.length ?? 0) > 0 && <span className="tab-count">{t.requests!.length}</span>}
           </button>
         ))}
       </div>
@@ -273,13 +275,7 @@ function MembersTab({ t, teams, users, me, manage, actions }: { t: Team; teams: 
           <h3>Asked to join</h3>
           {requests.map(({ r, u }) => (
             <div key={u.id} className="team-row">
-              <Avatar person={u} size={32} />
-              <span className="team-row-text">
-                <strong>{u.name}</strong>
-                <small className="muted">
-                  {u.title ? `${u.title} · ` : ''}asked {relative(r.at)}
-                </small>
-              </span>
+              <PersonCell person={u} sub={`${u.title ? `${u.title} · ` : ''}asked ${relative(r.at)}`} />
               <button className="ghost-btn sm" onClick={() => decline(u.id)}>
                 Decline
               </button>
@@ -300,14 +296,16 @@ function MembersTab({ t, teams, users, me, manage, actions }: { t: Team; teams: 
           const also = teams.filter((x) => x.id !== t.id && x.members.includes(u.id));
           return (
             <div key={u.id} className="team-row">
-              <Avatar person={u} size={32} />
-              <span className="team-row-text">
-                <strong>
-                  {u.id === me ? `${u.name} (me)` : u.name}
-                  {t.leadId === u.id && <span className="team-lead-tag">Lead</span>}
-                </strong>
-                <small className="muted">{[u.title, also.length ? `Also in ${also.map((x) => x.name).join(', ')}` : ''].filter(Boolean).join(' · ') || u.email}</small>
-              </span>
+              <PersonCell
+                person={u}
+                badges={
+                  <>
+                    {u.id === me && <Badge tone="accent">You</Badge>}
+                    {t.leadId === u.id && <Badge>Lead</Badge>}
+                  </>
+                }
+                sub={[u.title, also.length ? `Also in ${also.map((x) => x.name).join(', ')}` : ''].filter(Boolean).join(' · ') || u.email}
+              />
               {manage && t.leadId !== u.id && (
                 <button className="link-btn small" onClick={() => actions.patch(t.id, { leadId: u.id })}>
                   Make lead
@@ -426,11 +424,7 @@ function WorkloadTab({ t, tasks, users, onOpenTask }: { t: Team; tasks: Todo[]; 
         {rows.map(({ u, mine, late, week, here }) => (
           <div key={u.id} className="team-load">
             <button type="button" className="team-row" onClick={() => setOpenId(openId === u.id ? null : u.id)} aria-expanded={openId === u.id}>
-              <Avatar person={u} size={30} />
-              <span className="team-row-text">
-                <strong>{u.name}</strong>
-                <small className="muted">{[late && `${late} late`, week && `${week} due this week`, `${here} in ${t.name}`].filter(Boolean).join(' · ')}</small>
-              </span>
+              <PersonCell person={u} sub={[late && `${late} late`, week && `${week} due this week`, `${here} in ${t.name}`].filter(Boolean).join(' · ')} />
               <span className="team-bar" aria-label={`${mine.length} open`}>
                 <i style={{ width: `${(mine.length / most) * 100}%` }} className={late ? 'bad' : mine.length > 8 ? 'warn' : ''} />
               </span>

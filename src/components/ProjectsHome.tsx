@@ -11,6 +11,7 @@ import { isBrief } from './TasksView';
 import { kindOf } from '../stages';
 import { Select } from './ui/Select';
 import { SmoothHeight } from './ui/Smooth';
+import { EmptyState } from './ui/EmptyState';
 
 /**
  * The Projects app's home: every project, the ones that need something first. Each card says what's wrong (late,
@@ -102,18 +103,18 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
           )}
         </SmoothHeight>
         {rows.length === 0 ? (
-          <div className="empty">
-            <div className="empty-art">
-              <Plus size={20} />
-            </div>
-            <p className="empty-title">No {term.many} yet</p>
-            <p className="empty-sub">A {term.one} holds everything about one piece of work: its tasks, chat, mail, meetings, files, notes, logins and the guests you invite.</p>
-            {onCreate && (
-              <button className="primary-btn sm" onClick={() => setAdding(true)}>
-                <Plus size={14} /> New {term.one}
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={<Plus size={20} />}
+            title={<>No {term.many} yet</>}
+            text={<>A {term.one} holds everything about one piece of work: its tasks, chat, mail, meetings, files, notes, logins and the guests you invite.</>}
+            action={
+              onCreate && (
+                <button className="primary-btn sm" onClick={() => setAdding(true)}>
+                  <Plus size={14} /> New {term.one}
+                </button>
+              )
+            }
+          />
         ) : (
           <div className="proj-grid">
             {rows.map(({ c, s }, i) => {

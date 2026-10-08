@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Loader2, Paperclip, Send, X } from 'lucide-react';
+import { ArrowLeft, Check, LifeBuoy, Loader2, Paperclip, Send, X } from 'lucide-react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { uploadFile, wasSkipped } from '../sync';
 import { diagnostics } from '../diagnostics';
 import { relative } from '../utils';
+import { EmptyState } from './ui/EmptyState';
 
 interface Ticket {
   id: string;
@@ -63,10 +64,7 @@ export function HelpSection({ workspaceId, toast }: { workspaceId: string; toast
               {list === null ? (
                 <p className="muted small">Loading…</p>
               ) : list.length === 0 ? (
-                <div className="help-empty">
-                  <strong>No conversations yet</strong>
-                  <span>Questions about email setup, billing, guests or anything that doesn’t work: we usually answer within a few hours.</span>
-                </div>
+                <EmptyState className="help-empty" icon={<LifeBuoy size={20} />} title="No conversations yet" text="Questions about email setup, billing, guests or anything that doesn’t work: we usually answer within a few hours." />
               ) : (
                 <div className="help-list">
                   {list.map((t) => (

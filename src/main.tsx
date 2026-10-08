@@ -20,6 +20,7 @@ import './admin.css';
 import './notify.css';
 import './security.css';
 import './jobs.css';
+import './system.css';
 
 startExitAnimations();
 startSlidingTabs();

@@ -6,6 +6,7 @@ import { uid } from '../../utils';
 import { SmoothHeight } from '../ui/Smooth';
 import { ProjectPicker } from '../ProjectPicker';
 import { TABLE_COLORS, TEMPLATES, templateFields, type TemplateId } from './fields';
+import { EmptyState } from '../ui/EmptyState';
 
 /* ---------- sidebar ---------- */
 
@@ -114,16 +115,16 @@ export function makeTable(d: { name: string; clientId?: string; template: Templa
 export function ProjectTables({ tables, rows, onOpen, onNew, bare }: { tables: DataTable[]; rows: TableRow[]; onOpen: (id: string) => void; onNew: () => void; bare?: boolean }) {
   if (!tables.length)
     return (
-      <div className="empty">
-        <div className="empty-art">
-          <Table2 size={20} />
-        </div>
-        <p className="empty-title">No tables for this {term.one} yet</p>
-        <p className="empty-sub">Leads, a content pipeline, a list of anything: your own columns, as a grid or a board.</p>
-        <button className="primary-btn sm" onClick={onNew}>
-          <Plus size={14} /> New table
-        </button>
-      </div>
+      <EmptyState
+        icon={<Table2 size={20} />}
+        title={<>No tables for this {term.one} yet</>}
+        text="Leads, a content pipeline, a list of anything: your own columns, as a grid or a board."
+        action={
+          <button className="primary-btn sm" onClick={onNew}>
+            <Plus size={14} /> New table
+          </button>
+        }
+      />
     );
   return (
     <div className="tb-project">
@@ -174,16 +175,16 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
       </header>
       <div className="tracking-scroll">
         {!tables.length ? (
-          <div className="empty">
-            <div className="empty-art">
-              <Table2 size={20} />
-            </div>
-            <p className="empty-title">No tables yet</p>
-            <p className="empty-sub">Start from Leads, a content pipeline or a blank table. Add your own columns any time.</p>
-            <button className="primary-btn sm" onClick={onNew}>
-              <Plus size={14} /> New table
-            </button>
-          </div>
+          <EmptyState
+            icon={<Table2 size={20} />}
+            title="No tables yet"
+            text="Start from Leads, a content pipeline or a blank table. Add your own columns any time."
+            action={
+              <button className="primary-btn sm" onClick={onNew}>
+                <Plus size={14} /> New table
+              </button>
+            }
+          />
         ) : (
           groups.map((g) => (
             <div key={g.id || 'company'} className="tb-group">

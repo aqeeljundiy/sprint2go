@@ -3,8 +3,9 @@ import { SmoothHeight } from './ui/Smooth';
 import { X } from 'lucide-react';
 import type { CalEvent, CalendarDef } from '../types';
 import { toDateInput, toTimeInput } from '../calendarUtils';
-import { Select } from './ui/Select';
-import { DatePicker, TIMES } from './ui/DatePicker';
+import { DatePicker, TimePicker } from './ui/DatePicker';
+
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
 interface Props {
   start: Date;
@@ -25,6 +26,13 @@ export function EventEditor({ start, calendars, onSave, onClose }: Props) {
   const [guests, setGuests] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Moving the start keeps the event's length (a 1 hour meeting stays 1 hour), the way calendars do.
+  const moveStart = (v: string) => {
+    const len = Math.max(15, toMin(to) - toMin(from));
+    const end = Math.min(23 * 60 + 45, toMin(v) + len);
+    setFrom(v);
+    setTo(`${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`);
+  };
   const s = new Date(`${date}T${allDay ? '00:00' : from}`);
   let e = new Date(`${date}T${allDay ? '00:00' : to}`);
   if (allDay) e = new Date(s.getTime() + 86_400_000);
@@ -78,11 +86,11 @@ export function EventEditor({ start, calendars, onSave, onClose }: Props) {
           <div className="field-row">
             <DatePicker value={date} onChange={(v) => v && setDate(v)} clearable={false} label="Date" />
             {!allDay && (
-              <>
-                <Select value={from} onChange={setFrom} label="Starts" options={TIMES.map((t) => ({ value: t, label: t }))} width={130} />
+              <span className="ev-times">
+                <TimePicker value={from} onChange={moveStart} label="Starts" />
                 <span className="muted">to</span>
-                <Select value={to} onChange={setTo} label="Ends" options={TIMES.map((t) => ({ value: t, label: t }))} width={130} />
-              </>
+                <TimePicker value={to} onChange={setTo} label="Ends" />
+              </span>
             )}
           </div>
           <label className="check-row">

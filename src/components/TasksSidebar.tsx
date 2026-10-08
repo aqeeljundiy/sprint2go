@@ -8,6 +8,7 @@ import { kindOf } from '../stages';
 import { localDay } from '../utils';
 import { usePersisted } from '../settings';
 import { Select } from './ui/Select';
+import { Badge } from './ui/Person';
 
 interface Props {
   scope: TaskScope;
@@ -124,7 +125,7 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
               <ProjectBadge p={c} kind="client-dot" />
               <span className="sb-label">
                 {c.name}
-                {c.status === 'lead' && <em className="lead-tag">lead</em>}
+                {c.status === 'lead' && <Badge small>Lead</Badge>}
               </span>
               {n ? <span className="count warn-count" title={`${n} late`}>{n}</span> : null}
             </button>

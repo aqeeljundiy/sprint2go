@@ -5,6 +5,7 @@ import { SmoothHeight, TabPane } from './ui/Smooth';
 import { brand as product } from '../terms';
 import { server, signOut } from '../sync';
 import { BrandMark } from './SignIn';
+import { Badge } from './ui/Person';
 
 /*
  * Two-step sign-in: after the password, a 6-digit code from an authenticator app (or one of ten backup codes).
@@ -365,8 +366,8 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
       <div className="set-row ts-row">
         <span>
           <strong>
-            Two-step sign-in {s?.on && <span className="acct-status ok">On</span>}
-            {s && !s.on && s.required && <span className="acct-status">Required</span>}
+            Two-step sign-in {s?.on && <Badge tone="good">On</Badge>}
+            {s && !s.on && s.required && <Badge tone="warn">Required</Badge>}
           </strong>
           <small>
             {!st

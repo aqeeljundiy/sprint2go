@@ -173,6 +173,8 @@ export interface MeetProps {
 export type { AskScope } from './Assistant';
 import type { AskScope } from './Assistant';
 import { personOption } from './ui/PeopleList';
+import { EmptyState } from './ui/EmptyState';
+import { DatePicker } from './ui/DatePicker';
 
 export function MeetView(p: MeetProps) {
   const pg = p.page;
@@ -181,11 +183,15 @@ export function MeetView(p: MeetProps) {
     if (!m)
       return (
         <section className="meet-pane meet-empty view-enter">
-          <p className="empty-title">Not found</p>
-          <p className="empty-sub">This meeting doesn’t exist in this workspace.</p>
-          <button className="ghost-btn" onClick={() => p.onPage({ kind: 'list' })}>
-            Back to meetings
-          </button>
+          <EmptyState
+            title="Not found"
+            text="This meeting doesn’t exist in this workspace."
+            action={
+              <button className="ghost-btn" onClick={() => p.onPage({ kind: 'list' })}>
+                Back to meetings
+              </button>
+            }
+          />
         </section>
       );
     return <MeetingPage {...p} m={m} />;
@@ -286,7 +292,7 @@ function MeetingList(p: MeetProps & { unfiled: boolean }) {
       <div className="tracking-scroll">
         {bar('Search titles, notes and transcripts')}
         <MeetingRows list={shown} clients={p.clients} tasks={p.tasks} onOpen={(id) => p.onPage({ kind: 'meeting', id })} onFile={(id, cid) => p.onFolder(id, cid, false)} />
-        {shown.length === 0 && <p className="te-empty">{filtering ? 'Nothing matches.' : 'No meetings here yet. Use “Send bot to a meeting”.'}</p>}
+        {shown.length === 0 && <EmptyState compact text={filtering ? 'Nothing matches.' : 'No meetings here yet. Use “Send bot to a meeting”.'} />}
       </div>
     </section>
   );
@@ -600,7 +606,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
               )}
             </div>
           ) : (
-            <p className="te-empty">{live ? 'Notes appear here when the meeting ends.' : 'No notes. The bot log says why (notes need a transcript and an AI provider in Settings → AI).'}</p>
+            <EmptyState compact text={live ? 'Notes appear here when the meeting ends.' : 'No notes. The bot log says why (notes need a transcript and an AI provider in Settings → AI).'} />
           ))}
 
         {tab === 'tasks' && (
@@ -631,7 +637,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                   </ul>
                 </div>
               ) : (
-                <p className="te-empty">No action items.</p>
+                <EmptyState compact text="No action items." />
               )
             }
             footer={
@@ -670,7 +676,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                 <span>{l.text}</span>
               </button>
             ))}
-            {!m.transcript?.length && <p className="te-empty">{live ? 'Waiting for people to talk… (captions must be on in the meeting)' : 'No transcript.'}</p>}
+            {!m.transcript?.length && <EmptyState compact text={live ? 'Waiting for people to talk… (captions must be on in the meeting)' : 'No transcript.'} />}
             <div ref={tEnd} />
           </div>
         )}
@@ -797,7 +803,9 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
                       ...p.users.map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={18} /> })),
                     ]}
                   />
-                  <input className="due-input" value={t.due ?? ''} onChange={(e) => p.onPatchTask(t.id, { due: e.target.value || undefined })} placeholder="No due date" onClick={(e) => e.stopPropagation()} aria-label="Due" />
+                  <span className="due-pick" onClick={(e) => e.stopPropagation()}>
+                    <DatePicker value={t.due ?? ''} onChange={(v) => p.onPatchTask(t.id, { due: v || undefined })} label="Due" placeholder="No due date" className="sel-flat" />
+                  </span>
                   {t.saidAt !== undefined && m && (
                     <button className="jump" onClick={(e) => (e.stopPropagation(), p.onSeek ? p.onSeek(t.saidAt!, t) : p.onPage({ kind: 'meeting', id: m.id }))} title="Jump to when it was said">
                       ▶ {mmss(t.saidAt)}
@@ -851,7 +859,7 @@ function MeetTasks(p: MeetProps) {
           meetingFor={(t) => p.meetings.find((m) => m.id === t.meetingId)}
           ownerName={(t) => p.meetings.find((m) => m.id === t.meetingId)?.actions.find((a) => a.taskId === t.id)?.owner}
           nameFor={(t) => p.users.find((u) => u.id === t.userId)}
-          empty={<p className="te-empty">{tab === 'done' ? 'Nothing finished yet.' : 'No open tasks. Nice.'}</p>}
+          empty={<EmptyState compact text={tab === 'done' ? 'Nothing finished yet.' : 'No open tasks. Nice.'} />}
         />
       </div>
     </section>
@@ -905,7 +913,7 @@ function FolderPage(p: MeetProps & { clientId: string }) {
           <>
             {bar(`Search this ${term.one}’s meetings`)}
             <MeetingRows list={shown} clients={p.clients} tasks={p.tasks} onOpen={(id) => p.onPage({ kind: 'meeting', id })} />
-            {!shown.length && <p className="te-empty">{filtering ? 'Nothing matches.' : 'No meetings yet.'}</p>}
+            {!shown.length && <EmptyState compact text={filtering ? 'Nothing matches.' : 'No meetings yet.'} />}
           </>
         )}
         {tab === 'tasks' && (
@@ -915,7 +923,7 @@ function FolderPage(p: MeetProps & { clientId: string }) {
             grouped
             meetingFor={(t) => p.meetings.find((m) => m.id === t.meetingId)}
             nameFor={(t) => p.users.find((u) => u.id === t.userId)}
-            empty={<p className="te-empty">No tasks from these meetings yet. Promises made in a meeting become tasks here.</p>}
+            empty={<EmptyState compact text="No tasks from these meetings yet. Promises made in a meeting become tasks here." />}
           />
         )}
         </TabPane>
@@ -1041,7 +1049,7 @@ function Upcoming(p: MeetProps) {
               })}
           </div>
         ))}
-        {!soon.length && <p className="te-empty">No meetings in the next 7 days. Connect a calendar in Calendar, or send the bot to a meeting link.</p>}
+        {!soon.length && <EmptyState compact text="No meetings in the next 7 days. Connect a calendar in Calendar, or send the bot to a meeting link." />}
       </div>
     </section>
   );

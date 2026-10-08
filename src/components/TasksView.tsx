@@ -6,7 +6,7 @@ import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronDown, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
 import { firstOf, kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
 import { ProjectTables } from './tables/TablesApp';
@@ -16,6 +16,8 @@ import { accessFor, clientPeople, companyOf } from '../clientView';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
+import { Badge, PersonCell } from './ui/Person';
+import { EmptyState } from './ui/EmptyState';
 import { Dot, Select, type Option } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { PeoplePicker } from './ui/PeoplePicker';
@@ -139,6 +141,7 @@ interface Props {
   onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
+  dumpInSidebar?: boolean; // the Tasks sidebar already has Brain dump at its top: no second one in the header
   onTemplate: () => void;
   onMenu: () => void;
 }
@@ -770,9 +773,11 @@ export function TasksView(p: Props) {
         <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
           <LayoutTemplate size={14} /> <span>Template</span>
         </button>
-        <button className={`${showTaskList ? 'ghost-btn' : 'primary-btn'} sm brain-btn`} onClick={p.onBrainDump}>
-          <Sparkles size={14} /> Brain dump
-        </button>
+        {!p.dumpInSidebar && (
+          <button className={`${showTaskList ? 'ghost-btn' : 'primary-btn'} sm brain-btn`} onClick={p.onBrainDump}>
+            <Sparkles size={14} /> Brain dump
+          </button>
+        )}
         {showTaskList && (
           <button ref={newBtn} className="primary-btn sm new-task-btn" onClick={() => (adding ? setAdding(false) : openAdd())} aria-expanded={adding} title="New task (N)">
             <Plus size={14} /> New task <kbd>N</kbd>
@@ -896,13 +901,11 @@ export function TasksView(p: Props) {
           </div>
         )}
         {scope.kind === 'briefs' && briefs.length === 0 && (
-          <div className="empty">
-            <div className="empty-art">
-              <FileText size={22} />
-            </div>
-            <p className="empty-title">No briefs yet</p>
-            <p className="empty-sub">In a brain dump, choose “Brief” to turn a bigger job into a brief with tasks for each person.</p>
-          </div>
+          <EmptyState
+            icon={<FileText size={22} />}
+            title="No briefs yet"
+            text="In a brain dump, choose “Brief” to turn a bigger job into a brief with tasks for each person."
+          />
         )}
 
         {showTaskList && (
@@ -949,19 +952,79 @@ export function TasksView(p: Props) {
                   items={views.map((v) => ({ id: v.id, name: v.name, label: v.name }))}
                 />
               )}
-              <div className="quick-chips" role="group" aria-label="Quick filters">
-                {(
-                  [
-                    ['late', 'Late'],
-                    ['high', 'High priority'],
-                    ...(firstOf('waiting', stages) || quick.includes('waiting') ? ([['waiting', waitingStages.length === 1 ? stageName(waitingStages[0]) : `Waiting on ${term.who}`]] as const) : []),
-                    ['nobody', 'Nobody on it'],
-                  ] as const
-                ).map(([id, l]) => (
-                  <button key={id} className={quick.includes(id) ? 'on' : ''} aria-pressed={quick.includes(id)} onClick={() => setQuick((q) => (q.includes(id) ? q.filter((x) => x !== id) : [...q, id]))}>
-                    {l}
-                  </button>
-                ))}
+              <div className="tool-row task-toolbar">
+                {layout === 'list' && (
+                  <>
+                    <div className="segmented">
+                      {(
+                        [
+                          ['open', `Open ${open.length}`],
+                          ['done', `Done ${done.length}`],
+                          ['all', 'All'],
+                        ] as const
+                      ).map(([id, l]) => (
+                        <button key={id} className={filter === id ? 'on' : ''} onClick={() => setFilter(id)}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                    {scope.kind === 'client' && !scope.teamId && (
+                      <Select<GroupBy>
+                        value={projGroup}
+                        onChange={setProjGroup}
+                        label="Group by"
+                        className="sel-flat"
+                        renderValue={(o) => (
+                          <>
+                            <span className="sel-text">Group: {o?.label}</span>
+                            <ChevronDown size={14} className="sel-chev" />
+                          </>
+                        )}
+                        options={[
+                          { value: 'team', label: 'Team' },
+                          { value: 'person', label: 'Person' },
+                          { value: 'stage', label: 'Stage' },
+                          { value: 'none', label: 'None' },
+                        ]}
+                      />
+                    )}
+                    {!['team', 'client'].includes(scope.kind) && (
+                      <Select<GroupBy>
+                        value={groupPref}
+                        onChange={setGroupBy}
+                        label="Group by"
+                        className="sel-flat"
+                        renderValue={(o) => (
+                          <>
+                            <span className="sel-text">Group: {o?.label}</span>
+                            <ChevronDown size={14} className="sel-chev" />
+                          </>
+                        )}
+                        options={[
+                          { value: 'client', label: `${term.One}` },
+                          { value: 'team', label: 'Team' },
+                          { value: 'person', label: 'Person' },
+                          { value: 'stage', label: 'Stage' },
+                          { value: 'none', label: 'None' },
+                        ]}
+                      />
+                    )}
+                  </>
+                )}
+                <div className="quick-chips" role="group" aria-label="Quick filters">
+                  {(
+                    [
+                      ['late', 'Late'],
+                      ['high', 'High priority'],
+                      ...(firstOf('waiting', stages) || quick.includes('waiting') ? ([['waiting', waitingStages.length === 1 ? stageName(waitingStages[0]) : `Waiting on ${term.who}`]] as const) : []),
+                      ['nobody', 'Nobody on it'],
+                    ] as const
+                  ).map(([id, l]) => (
+                    <button key={id} className={quick.includes(id) ? 'on' : ''} aria-pressed={quick.includes(id)} onClick={() => setQuick((q) => (q.includes(id) ? q.filter((x) => x !== id) : [...q, id]))}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
                 <span className="spacer" />
                 <button ref={viewsBtn} className="link-btn small" onClick={() => setViewsOpen(true)}>
                   <Bookmark size={13} /> {activeView ? activeView.name : 'Save as a view'}
@@ -993,54 +1056,6 @@ export function TasksView(p: Props) {
               </div>
             </div>
 
-            {layout === 'list' && (
-              <div className="list-tools">
-                <div className="segmented">
-                  {(
-                    [
-                      ['open', `Open ${open.length}`],
-                      ['done', `Done ${done.length}`],
-                      ['all', 'All'],
-                    ] as const
-                  ).map(([id, l]) => (
-                    <button key={id} className={filter === id ? 'on' : ''} onClick={() => setFilter(id)}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                {scope.kind === 'client' && !scope.teamId && (
-                  <Select<GroupBy>
-                    value={projGroup}
-                    onChange={setProjGroup}
-                    label="Group by"
-                    className="sel-flat"
-                    renderValue={(o) => <span className="sel-text">Group: {o?.label}</span>}
-                    options={[
-                      { value: 'team', label: 'Team' },
-                      { value: 'person', label: 'Person' },
-                      { value: 'stage', label: 'Stage' },
-                      { value: 'none', label: 'None' },
-                    ]}
-                  />
-                )}
-                {!['team', 'client'].includes(scope.kind) && (
-                  <Select<GroupBy>
-                    value={groupPref}
-                    onChange={setGroupBy}
-                    label="Group by"
-                    className="sel-flat"
-                    renderValue={(o) => <span className="sel-text">Group: {o?.label}</span>}
-                    options={[
-                      { value: 'client', label: `${term.One}` },
-                      { value: 'team', label: 'Team' },
-                      { value: 'person', label: 'Person' },
-                      { value: 'stage', label: 'Stage' },
-                      { value: 'none', label: 'None' },
-                    ]}
-                  />
-                )}
-              </div>
-            )}
 
             {layout === 'board' ? (
               <div className="board" style={{ ['--cols' as string]: stages.length }}>
@@ -1119,16 +1134,18 @@ export function TasksView(p: Props) {
             ) : (
               <>
                 {shown.length === 0 && (
-                  <div className="empty">
-                    <div className="empty-art">✓</div>
-                    <p className="empty-title">{filter === 'done' ? 'Nothing finished yet' : 'Nothing open'}</p>
-                    <p className="empty-sub">Add one, or use Brain dump to turn your thoughts into tasks.</p>
-                    {filter !== 'done' && (
-                      <button type="button" className="primary-btn sm" onClick={openAdd}>
-                        <Plus size={14} /> New task
-                      </button>
-                    )}
-                  </div>
+                  <EmptyState
+                    icon="✓"
+                    title={filter === 'done' ? 'Nothing finished yet' : 'Nothing open'}
+                    text="Add one, or use Brain dump to turn your thoughts into tasks."
+                    action={
+                      filter !== 'done' && (
+                        <button type="button" className="primary-btn sm" onClick={openAdd}>
+                          <Plus size={14} /> New task
+                        </button>
+                      )
+                    }
+                  />
                 )}
                 {groups.map((g) => (
                   <div key={g.key || 'none'} className="todo-group">
@@ -1181,7 +1198,7 @@ export function TasksView(p: Props) {
                       ))}
                     </ul>
                   ) : (
-                    <p className="te-empty">Nothing needs you for {client.name}.{clientMeetings[0] ? ` Last meeting ${relative(clientMeetings[0].at)}.` : ''}</p>
+                    <EmptyState compact text={<>Nothing needs you for {client.name}.{clientMeetings[0] ? ` Last meeting ${relative(clientMeetings[0].at)}.` : ''}</>} />
                   )}
                 </div>
               );
@@ -1208,7 +1225,7 @@ export function TasksView(p: Props) {
                     ))}
                 </ul>
               ) : (
-                <p className="te-empty">No notes for {client.name} yet. Meeting prep, preferences, who’s who: write it once, the whole team sees it here.</p>
+                <EmptyState compact text={<>No notes for {client.name} yet. Meeting prep, preferences, who’s who: write it once, the whole team sees it here.</>} />
               )}
             </div>
             <div className="side-card overview-card">
@@ -1264,7 +1281,7 @@ export function TasksView(p: Props) {
                       </button>
                     </li>
                   ))}
-                  {!open.length && <p className="te-empty">Nothing open. Add a task on the Tasks tab, or start a brief from a template.</p>}
+                  {!open.length && <EmptyState compact text="Nothing open. Add a task on the Tasks tab, or start a brief from a template." />}
                 </ul>
               </div>
               <div className="side-card">
@@ -1307,7 +1324,7 @@ export function TasksView(p: Props) {
                         <div className="hm-body">
                           <div className="hm-head">
                             <b>{who.name.split(' ')[0]}</b>
-                            {g && <em className="ext-tag">{term.who}</em>}
+                            {g && <Badge small tone="warn">{term.Who}</Badge>}
                             <time>{relative(m.at)}</time>
                           </div>
                           <p>{m.text || (m.voice ? 'Voice note' : m.files ? m.files.map((f) => f.name).join(', ') : '')}</p>
@@ -1324,7 +1341,7 @@ export function TasksView(p: Props) {
                 </footer>
               </>
             ) : (
-              <p className="te-empty">{client.name} has no channel yet. Create one in Chat and pick “{term.One} (internal)” or “Shared”.</p>
+              <EmptyState compact text={<>{client.name} has no channel yet. Create one in Chat and pick “{term.One} (internal)” or “Shared”.</>} />
             )}
           </div>
         )}
@@ -1343,13 +1360,13 @@ export function TasksView(p: Props) {
                 </span>
               </div>
             ))}
-            {!clientFiles.length && <p className="te-empty">No files for {client.name} yet. Files shared in its channel and saved in its Drive folder show here.</p>}
+            {!clientFiles.length && <EmptyState compact text={<>No files for {client.name} yet. Files shared in its channel and saved in its Drive folder show here.</>} />}
           </div>
         )}
 
         {client && clientTab === 'emails' && (
           <div className="te-list">
-            {clientThreads.length === 0 && <p className="te-empty">{client.domain ? `No emails with @${client.domain} yet. They show up here as soon as someone there writes.` : `Add ${client.name}’s email domain to see their emails here.`}</p>}
+            {clientThreads.length === 0 && <EmptyState compact text={<>{client.domain ? `No emails with @${client.domain} yet. They show up here as soon as someone there writes.` : `Add ${client.name}’s email domain to see their emails here.`}</>} />}
             {clientThreads.map((t) => {
               const last = t.messages[t.messages.length - 1];
               return (
@@ -1370,7 +1387,7 @@ export function TasksView(p: Props) {
 
         {client && clientTab === 'meetings' && (
           <div className="te-list">
-            {clientMeetings.length === 0 && <p className="te-empty">No recorded meetings with {client.name} yet. Send the notetaker to your next call with them (Meet, Send bot).</p>}
+            {clientMeetings.length === 0 && <EmptyState compact text={<>No recorded meetings with {client.name} yet. Send the notetaker to your next call with them (Meet, Send bot).</>} />}
             {clientMeetings.map((m) => (
               <button key={m.id} className="te-row simple" onClick={() => p.onOpenMeeting(m.id)}>
                 <span className="kpi-icon">
@@ -1412,7 +1429,7 @@ export function TasksView(p: Props) {
                   ))}
               </ul>
             ) : (
-              <p className="te-empty">No notes for {client.name} yet.</p>
+              <EmptyState compact text={<>No notes for {client.name} yet.</>} />
             )}
           </div>
         )}
@@ -1450,7 +1467,7 @@ export function TasksView(p: Props) {
                   ))}
               </ul>
             ) : (
-              <p className="te-empty">No logins for {client.name} yet. Add the ad accounts, social logins and tools you share with the team.</p>
+              <EmptyState compact text={<>No logins for {client.name} yet. Add the ad accounts, social logins and tools you share with the team.</>} />
             )}
           </div>
         )}
@@ -1550,14 +1567,10 @@ export function TasksView(p: Props) {
                   {people.length === 0 && <p className="muted small">Nobody yet. Invite the people you work with on {client.name}. They get a free account.</p>}
                   {people.map((g) => (
                     <div key={g.email} className="pa-row person-row">
-                      <span className="guest-av">{g.name.charAt(0)}</span>
-                      <span className="pa-title">
-                        {g.name}
-                        {companyOf(g.email, g.company, client) && <span className="muted"> · {companyOf(g.email, g.company, client)}</span>} <small className="muted">{g.email}</small>
-                      </span>
+                      <PersonCell person={{ name: g.name, email: g.email, color: client.color }} sub={[companyOf(g.email, g.company, client), g.email].filter(Boolean).join(' · ')} />
                       {g.status === 'pending' ? (
                         <>
-                          <span className="guest-status invited">Asked to join</span>
+                          <Badge tone="warn">Asked to join</Badge>
                           {projectManage && (
                             <button className="primary-btn sm" onClick={() => p.onApproveClientPerson(client.id, g.email)}>
                               Approve
@@ -1565,7 +1578,7 @@ export function TasksView(p: Props) {
                           )}
                         </>
                       ) : (
-                        <span className={`guest-status ${g.status}`}>{g.status === 'joined' ? 'Joined' : 'Invited'}</span>
+                        <Badge tone={g.status === 'joined' ? 'good' : 'neutral'}>{g.status === 'joined' ? 'Joined' : 'Invited'}</Badge>
                       )}
                       {p.workspace.whatsapp?.connected && g.phone && (
                         <button type="button" className="icon-btn sm wa-btn" title={`WhatsApp ${g.phone}`} aria-label={`WhatsApp ${g.name}`} onClick={() => setWaTo(g)}>
@@ -1674,11 +1687,7 @@ function ProjectWorkload({ tasks, people, users, me, onOpenTask }: { tasks: Todo
         {rows.map(({ u, mine, late, soon }) => (
           <div key={u.id} className="team-load">
             <button type="button" className="team-row" onClick={() => setOpenId(openId === u.id ? null : u.id)} aria-expanded={openId === u.id}>
-              <Avatar person={u} size={30} />
-              <span className="team-row-text">
-                <strong>{u.id === me ? `${u.name} (me)` : u.name}</strong>
-                <small className="muted">{[late && `${late} late`, soon && `${soon} due this week`, !mine.length && 'Nothing open here'].filter(Boolean).join(' · ') || `${mine.length} open`}</small>
-              </span>
+              <PersonCell person={u} badges={u.id === me && <Badge tone="accent">You</Badge>} sub={[late && `${late} late`, soon && `${soon} due this week`, !mine.length && 'Nothing open here'].filter(Boolean).join(' · ') || `${mine.length} open`} />
               <span className="team-bar" aria-hidden>
                 <i style={{ width: `${(mine.length / most) * 100}%` }} className={late ? 'bad' : ''} />
               </span>

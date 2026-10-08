@@ -7,6 +7,7 @@ import { htmlToText, sanitize } from '../sanitize';
 import { Popover } from './ui/Popover';
 import { RichEditor } from './RichEditor';
 import { uploadFile } from '../sync';
+import { EmptyState } from './ui/EmptyState';
 
 /** Something shown in Materials: an item added here, or a file or link that came from the chat or Drive. */
 interface Entry {
@@ -313,7 +314,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
 
       {current ? (
         <>
-          {inFolder(current.id).length ? inFolder(current.id).sort((a, b) => b.at.localeCompare(a.at)).map(row) : <p className="te-empty">Empty folder. Add files, links or docs, or move things here from Materials.</p>}
+          {inFolder(current.id).length ? inFolder(current.id).sort((a, b) => b.at.localeCompare(a.at)).map(row) : <EmptyState compact text="Empty folder. Add files, links or docs, or move things here from Materials." />}
         </>
       ) : (
         <>
@@ -370,7 +371,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
                     {fromChat.map(row)}
                   </>
                 )}
-                {!mats.folders.length && !loose.length && <p className="te-empty">Nothing here yet. Make a folder for a project, then add files, links and docs. Anything shared in the chat shows up here too.</p>}
+                {!mats.folders.length && !loose.length && <EmptyState compact text="Nothing here yet. Make a folder for a project, then add files, links and docs. Anything shared in the chat shows up here too." />}
               </>
             );
           })()}

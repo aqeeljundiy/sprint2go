@@ -4,7 +4,7 @@ import { Select } from '../../components/ui/Select';
 import { SmoothHeight } from '../../components/ui/Smooth';
 
 import { rel, dateTime, duration, post, PRIORITY_LABEL, rpShort, STATE_LABEL, STATUS_LABEL, type Priority, type TicketRow, type TicketStatus } from '../api';
-import { Badge, Dialog, Empty, Failed, Field, HealthPill, Initials, KV, Loading, Menu, Page, Section, Table, useAct, useAdmin, useApi } from '../ui';
+import { Badge, Dialog, Empty, Failed, Field, HealthPill, Initials, KV, Loading, Menu, Page, Section, Table, useAct, useAdmin, useApi, Who } from '../ui';
 
 const STATUS_TONE: Record<TicketStatus, 'accent' | 'warn' | 'info' | 'good' | 'neutral'> = { new: 'accent', open: 'warn', waiting: 'info', resolved: 'good', closed: 'neutral' };
 const PRIO_TONE: Record<Priority, 'neutral' | 'warn' | 'bad'> = { low: 'neutral', normal: 'neutral', high: 'warn', urgent: 'bad' };
@@ -345,12 +345,7 @@ export function TicketPage({ id }: { id: string }) {
             {data.person ? (
               <div className="adm-who">
                 <button type="button" className="adm-who-main" onClick={() => go(`/admin/people/${data.person!.id}`)}>
-                  <Initials name={data.person.name} color={data.person.color} />
-                  <span>
-                    <strong>{data.person.name}</strong>
-                    <small>{data.person.email}</small>
-                    <small>{data.person.lastSeen ? `Seen ${rel(data.person.lastSeen)}` : 'Not seen in the app yet'}</small>
-                  </span>
+                  <Who name={data.person.name} email={data.person.email} color={data.person.color} sub={`${data.person.email} · ${data.person.lastSeen ? `seen ${rel(data.person.lastSeen)}` : 'not seen in the app yet'}`} />
                 </button>
                 {may('impersonate') && (
                   <button className="ghost-btn sm" onClick={() => signInAs(data.person!.id, t.number)}>

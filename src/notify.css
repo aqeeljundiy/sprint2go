@@ -105,7 +105,7 @@
   border-top: 1px solid var(--line);
   font-size: 13px;
   color: var(--text-2);
-  animation: tabIn 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: tabIn 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 .push-note.error {
   color: var(--danger);

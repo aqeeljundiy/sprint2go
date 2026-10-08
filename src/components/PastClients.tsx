@@ -2,6 +2,7 @@ import { ProjectBadge } from './ProjectBadge';
 import { Archive, RotateCcw } from 'lucide-react';
 import { term } from '../terms';
 import type { Client, Todo } from '../types';
+import { EmptyState } from './ui/EmptyState';
 
 const month = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', year: 'numeric' });
 const monthsBetween = (a: string, b: string) => Math.max(1, Math.round((new Date(b).getTime() - new Date(a).getTime()) / (30.4 * 86_400_000)));
@@ -50,7 +51,7 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
       </header>
       <div className="tracking-scroll">
         {past.length === 0 ? (
-          <p className="te-empty">No past {term.many}. When work with a {term.one} ends, choose “End work” on their page.</p>
+          <EmptyState compact text={<>No past {term.many}. When work with a {term.one} ends, choose “End work” on their page.</>} />
         ) : (
           <div className="todo-group">
             {past.map((c) => {
@@ -84,7 +85,7 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
           <h3>{term.Many} over time</h3>
           {avg !== null && <p className="muted small">On average, work with a {term.one} lasted {avg} month{avg === 1 ? '' : 's'}.</p>}
           {rows.length === 0 ? (
-            <p className="te-empty">No changes in the last 12 months.</p>
+            <EmptyState compact text="No changes in the last 12 months." />
           ) : (
             <table className="ot-table">
               <thead>

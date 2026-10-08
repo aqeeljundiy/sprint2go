@@ -4,7 +4,7 @@ import { Select } from '../../components/ui/Select';
 import { DatePicker } from '../../components/ui/DatePicker';
 
 import { rel, bytes, CompanyRow, copy, dateTime, day, planLabel, post, rp, rpShort, STATE_LABEL, type Health, type State } from '../api';
-import { Badge, Confirm, CopyBtn, Dialog, Dot, Empty, Failed, Field, HealthPill, Initials, KV, Loading, Menu, Page, Section, Stat, Stats, Switch, Table, Tabs, useAct, useAdmin, useApi } from '../ui';
+import { Badge, Confirm, CopyBtn, Dialog, Dot, Empty, Failed, Field, HealthPill, KV, Loading, Menu, Page, Section, Stat, Stats, Switch, Table, Tabs, useAct, useAdmin, useApi, Who } from '../ui';
 import { TicketList } from './Tickets';
 
 export const STATE_TONE: Record<State, 'good' | 'accent' | 'warn' | 'bad' | 'neutral' | 'info'> = { paying: 'good', trial: 'accent', comp: 'info', paused: 'warn', suspended: 'bad', free: 'neutral' };
@@ -499,13 +499,7 @@ function PeopleTab({ c, reload }: { c: Full; reload: () => void }) {
             width: 'minmax(0, 2fr)',
             sort: (m) => m.name,
             render: (m) => (
-              <span className="adm-cell-main with-dot">
-                <Initials name={m.name} color={m.color} />
-                <span>
-                  <strong>{m.name}</strong>
-                  <small>{m.email}</small>
-                </span>
-              </span>
+              <Who name={m.name} email={m.email} color={m.color} />
             ),
           },
           {

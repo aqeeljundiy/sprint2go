@@ -316,13 +316,7 @@
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
 }
-/* Tabs never change height when their counts appear or change. */
-.chan-tabs,
-.client-tabs,
-.cs-tabs {
-  min-height: 42px;
-  align-items: center;
-}
+/* Tabs never change height when their counts appear or change: their height is fixed in system.css. */
 /* The composer grows up to a limit; the message list keeps its place (see ChatView). */
 .chat-compose textarea {
   max-height: 160px;
@@ -954,7 +948,8 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .task-add { flex-wrap: wrap; row-gap: 6px; }
 .task-add input#new-task { flex: 1 1 calc(100% - 40px); }
 .task-add > .primary-btn { margin-left: auto; }
-.task-add .hide-sm { display: inline-flex; }
+/* Shown again on wider screens only: on phones the Team picker stays hidden (round2.css) so the title gets the room. */
+@media (min-width: 761px) { .task-add .hide-sm { display: inline-flex; } }
 /* Dragging a channel onto a sidebar section */
 .nav-row[draggable='true'] { cursor: grab; }
 .chat-section.drop-on { background: color-mix(in oklab, var(--accent) 10%, transparent); border-radius: var(--r-control); outline: 1.5px dashed color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: -2px; }
@@ -1289,7 +1284,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   max-width: 760px;
   margin: 0 auto;
   padding: 48px 16px 64px;
-  animation: rise 0.28s ease both;
+  animation: rise 0.28s ease backwards;
 }
 .sh-head {
   display: flex;
@@ -1881,7 +1876,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
-  animation: esgIn 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: esgIn 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 .esg-card > * {
   max-width: 100%;
@@ -1937,7 +1932,8 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   display: contents;
 }
 .tab-pane > * {
-  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  /* backwards, not both: a held (identity) transform would trap fixed dialogs and menus inside the tab */
+  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 @keyframes tabIn {
   from {
@@ -2266,7 +2262,7 @@ select,
 }
 /* Home "Up next": a row you act on folds away */
 .un-row {
-  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 .un-row.leaving {
   animation: taskOut 0.24s cubic-bezier(0.4, 0, 0.2, 1) forwards;
@@ -2378,14 +2374,7 @@ select,
     transition: none;
   }
 }
-.segmented > .tab-ink {
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-.client-tabs > .tab-ink,
-.cs-tabs > .tab-ink {
-  background: var(--accent-soft);
-}
+/* The highlight's colour and shape: system.css (the same tinted pill on every bar). */
 .inked-line > .tab-ink {
   background: var(--accent);
 }
@@ -2521,7 +2510,7 @@ select,
   padding: 12px 14px;
   border-radius: 14px;
   background: var(--accent-soft);
-  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: tabIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 .code-card span {
   display: grid;
@@ -2604,7 +2593,7 @@ select,
   padding: 8px 6px 4px;
   margin-top: 4px;
   border-top: 1px solid var(--border);
-  animation: tabIn 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: tabIn 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 .sel-create input {
   flex: 1;
@@ -2637,7 +2626,7 @@ select,
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  animation: tabIn 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: tabIn 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
   animation-delay: calc(min(var(--i, 0), 12) * 30ms);
   transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.18s, box-shadow 0.18s;
 }
@@ -3313,9 +3302,13 @@ p.trial-note > svg:first-child {
   gap: 6px;
 }
 .quick-chips > button:not(.link-btn) {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  height: calc(var(--tab-h, 32px) - 4px);
+  padding: 0 12px;
   border-radius: 999px;
   font-size: 12.5px;
+  font-weight: 500;
   color: var(--text-2);
   background: var(--hover);
   transition: background 0.15s ease, color 0.15s ease;
@@ -3323,7 +3316,6 @@ p.trial-note > svg:first-child {
 .quick-chips > button.on {
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 550;
 }
 .link-like {
   text-align: left;
@@ -3879,20 +3871,7 @@ p.trial-note > svg:first-child {
   justify-content: flex-end;
   margin: 0 0 12px;
 }
-.help-empty {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 28px 16px;
-  text-align: center;
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  font-size: 13.5px;
-}
-.help-empty span {
-  color: var(--text-2);
-  line-height: 1.5;
-}
+/* .help-empty: an EmptyState (system.css). */
 .help-list {
   display: flex;
   flex-direction: column;

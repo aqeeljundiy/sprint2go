@@ -3,6 +3,7 @@
    Lists are one bordered container with divider rows; numbers are soft tiles. */
 
 .adm,
+.adm-modal,
 .op-banner,
 .adm-gate {
   --ad-green: #15803d;
@@ -13,6 +14,7 @@
   --ad-nav: 240px;
 }
 :root[data-theme='dark'] .adm,
+:root[data-theme='dark'] .adm-modal,
 :root[data-theme='dark'] .op-banner,
 :root[data-theme='dark'] .adm-gate {
   --ad-green: #4ade80;
@@ -435,43 +437,7 @@
 
 /* ---------- small parts ---------- */
 
-.adm-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-size: 11.5px;
-  font-weight: 650;
-  line-height: 1.5;
-  white-space: nowrap;
-  vertical-align: 1px;
-  background: color-mix(in srgb, var(--text) 7%, transparent);
-  color: var(--text-2);
-}
-strong > .adm-badge {
-  margin-left: 6px;
-}
-.adm-badge.good {
-  background: color-mix(in srgb, var(--ad-green) 14%, transparent);
-  color: var(--ad-green);
-}
-.adm-badge.warn {
-  background: color-mix(in srgb, var(--ad-amber) 15%, transparent);
-  color: var(--ad-amber);
-}
-.adm-badge.bad {
-  background: color-mix(in srgb, var(--ad-red) 13%, transparent);
-  color: var(--ad-red);
-}
-.adm-badge.accent {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.adm-badge.info {
-  background: color-mix(in srgb, var(--ad-blue) 13%, transparent);
-  color: var(--ad-blue);
-}
+/* Badges: the app's pill (system.css .badge), via Badge in ui.tsx. */
 .adm-health {
   display: inline-flex;
   align-items: center;
@@ -514,38 +480,7 @@ strong > .adm-badge {
   height: 10px;
   border-radius: 50%;
 }
-.adm-avatar {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 50%;
-  color: #fff;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-.adm-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 32px 16px;
-  text-align: center;
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  animation: adm-fade 0.2s ease-out backwards;
-}
-.adm-empty strong {
-  font-size: 14px;
-}
-.adm-empty span {
-  font-size: 13px;
-  color: var(--text-2);
-  max-width: 440px;
-  line-height: 1.5;
-}
-.adm-empty .ghost-btn {
-  margin-top: 6px;
-}
+/* Avatars and empty lists: the app's own (Avatar, EmptyState), via Initials and Empty in ui.tsx. */
 .adm-skel {
   display: flex;
   flex-direction: column;
@@ -1561,6 +1496,9 @@ button.adm-q-text:hover strong {
   cursor: pointer;
   transition: background 0.12s;
 }
+.adm-who-main {
+  align-items: center;
+}
 .adm-who-main:hover,
 .adm-card-link:hover {
   background: var(--hover);
@@ -2404,7 +2342,11 @@ button.adm-q-text:hover strong {
     display: none;
   }
   .adm-tr .sel {
-    min-height: 36px;
+    min-height: 40px;
+  }
+  .adm-check {
+    min-width: 40px;
+    min-height: 40px;
   }
   .adm-search {
     margin-left: 0;
@@ -2590,7 +2532,6 @@ button.adm-q-text:hover strong {
   .adm-timeline li,
   .adm-notes article,
   .adm-card,
-  .adm-empty,
   .adm-banner,
   .adm-funnel-row,
   .adm-bar-stack span,
@@ -2615,8 +2556,8 @@ button.adm-q-text:hover strong {
     transition: none;
   }
 }
-.adm-mini-list > button > .adm-badge,
-.adm-mini-row > .adm-badge {
+.adm-mini-list > button > .badge,
+.adm-mini-row > .badge {
   flex: none;
   overflow: visible;
 }
@@ -2697,7 +2638,7 @@ button.adm-q-text:hover strong {
   justify-content: flex-start;
   min-height: 52px;
 }
-.adm-ai-line .adm-badge {
+.adm-ai-line .badge {
   flex: none;
 }
 .adm-ai-mark {

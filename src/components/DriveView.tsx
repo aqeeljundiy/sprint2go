@@ -6,6 +6,7 @@ import { relative } from '../utils';
 import { usePersisted } from '../settings';
 import { DRIVE_SECTIONS } from './DriveSidebar';
 import { FileIcon } from './FileIcon';
+import { EmptyState } from './ui/EmptyState';
 
 interface Props {
   items: DriveItem[]; // everything, including attachments from email
@@ -187,7 +188,7 @@ export function DriveView(props: Props) {
               ))}
             </>
           ) : (
-            <h1>{sectionName}</h1>
+            <h1 className="drive-sec-title">{sectionName}</h1>
           )}
         </div>
         <label className="search drive-search">
@@ -221,11 +222,11 @@ export function DriveView(props: Props) {
         {section === 'trash' && shown.length > 0 && <p className="drive-note">Items in trash are deleted forever after 30 days.</p>}
 
         {shown.length === 0 ? (
-          <div className="empty">
-            <div className="empty-art">{section === 'trash' ? '✓' : '+'}</div>
-            <p className="empty-title">{q ? 'No files found' : section === 'trash' ? 'Trash is empty' : 'Nothing here yet'}</p>
-            <p className="empty-sub">{q ? `Nothing matches “${query}”.` : section === 'trash' ? '' : 'Drag files here or press Upload.'}</p>
-          </div>
+          <EmptyState
+            icon={section === 'trash' ? '✓' : '+'}
+            title={q ? 'No files found' : section === 'trash' ? 'Trash is empty' : 'Nothing here yet'}
+            text={q ? `Nothing matches “${query}”.` : section === 'trash' ? '' : 'Drag files here or press Upload.'}
+          />
         ) : layout === 'list' ? (
           <div className="d-table">
             <div className="d-tr d-th">

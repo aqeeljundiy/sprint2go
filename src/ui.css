@@ -456,3 +456,69 @@ input[type='checkbox']:disabled {
     padding: 16px;
   }
 }
+
+/* ---------- Time picker (ui/DatePicker.tsx): type a time or pick one; opens on the current time ---------- */
+.time-sel {
+  font-variant-numeric: tabular-nums;
+}
+.tp {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+.tp-input {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+.tp-input:focus {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.tp-list {
+  display: grid;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tp-opt {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tp-opt:hover:not(:disabled) {
+  background: var(--hover);
+}
+.tp-opt.on {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+.tp-opt.typed {
+  background: var(--hover);
+}
+.tp-opt.bad {
+  color: var(--text-3);
+}
+@media (max-width: 760px) {
+  .tp-input,
+  .tp-opt {
+    height: 40px;
+  }
+  .tp-list {
+    max-height: 50vh;
+  }
+}

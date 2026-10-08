@@ -1,4 +1,32 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+
+/**
+ * A list whose removed items stay a moment so their row can fold away (give it the `row-leaving` class) instead of
+ * vanishing, whichever screen or dialog removed them. Items that come back simply stay. Reduced motion: no delay.
+ */
+export function useLeaving<T>(items: T[], key: (t: T) => string, ms = 240): { item: T; leaving: boolean }[] {
+  const [, bump] = useState(0);
+  const prev = useRef<T[]>(items);
+  const gone = useRef(new Map<string, { item: T; at: number }>());
+  const now = new Set(items.map(key));
+  const still = typeof matchMedia === 'undefined' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prev.current !== items) {
+    prev.current.forEach((t, i) => {
+      const k = key(t);
+      if (now.has(k) || gone.current.has(k) || still) return;
+      gone.current.set(k, { item: t, at: i });
+      setTimeout(() => {
+        gone.current.delete(k);
+        bump((n) => n + 1);
+      }, ms);
+    });
+    prev.current = items;
+  }
+  for (const k of [...gone.current.keys()]) if (now.has(k)) gone.current.delete(k);
+  const out = items.map((item) => ({ item, leaving: false }));
+  [...gone.current.values()].sort((a, b) => a.at - b.at).forEach(({ item, at }) => out.splice(Math.min(at, out.length), 0, { item, leaving: true }));
+  return out;
+}
 
 /**
  * Animates its own height when what's inside changes size (a tab switch, a step, a section opening), instead of
