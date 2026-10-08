@@ -44,6 +44,12 @@ if (db.isEmpty()) {
   console.log(`Seeded the demo company: ${s.users.length} people and ${clientUsers.length} client people can sign in with the password in .env / .env.example.`);
 }
 
+// An app added after a company chose its apps (Tables) starts switched on, once; they can turn it off after.
+for (const w of db.allDocs('workspaces') as any[]) {
+  if (!Array.isArray(w.apps) || w.apps.includes('tables') || (w.appsAdded ?? []).includes('tables')) continue;
+  db.writeDocs('workspaces', [{ ...w, apps: [...w.apps, 'tables'], appsAdded: [...(w.appsAdded ?? []), 'tables'] }], [], null);
+}
+
 // A collection added after the database was made (e.g. notes) starts with its demo data.
 {
   const s0 = seed();

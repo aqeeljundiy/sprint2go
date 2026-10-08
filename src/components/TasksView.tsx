@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
 import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight } from 'lucide-react';
-import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note } from '../types';
+import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
+import { ProjectTables } from './tables/TablesApp';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { PastClients } from './PastClients';
 import { accessFor, clientPeople, companyOf } from '../clientView';
@@ -106,6 +107,11 @@ interface Props {
   logins?: { id: string; title: string; url?: string; username?: string; clientId?: string; hasTotp?: boolean }[];
   onOpenLogins?: (clientId: string) => void;
   onNewLogin?: (clientId: string) => void;
+  /** Tables that belong to this project (leads, pipelines…); open one, or make one for it. */
+  tables?: DataTable[];
+  tableRows?: TableRow[];
+  onOpenTable?: (id: string) => void;
+  onNewTable?: (clientId: string) => void;
   onShareMeeting: (id: string, shared: boolean) => void;
   onShareFile: (id: string, shared: boolean) => void;
   onScope: (s: TaskScope) => void;
@@ -120,7 +126,7 @@ interface Props {
   onOpenThread: (id: string) => void;
   onOpenChannel: (id: string) => void;
   messages: ChatMessage[]; // this workspace's chat, for the client page's Chat tab
-  clientTab?: 'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'logins' | 'portal';
+  clientTab?: 'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal';
   onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
@@ -138,7 +144,7 @@ export function TasksView(p: Props) {
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'logins' | 'portal'>('overview');
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal'>('overview');
   const [writingOv, setWritingOv] = useState(false);
   const scopeId = 'id' in p.scope ? p.scope.id : '';
   useEffect(() => {
@@ -625,6 +631,7 @@ export function TasksView(p: Props) {
               ['meetings', 'Meetings'],
               ['files', 'Files'],
               ['notes', 'Notes'],
+              ...(p.onOpenTable ? ([['tables', 'Tables']] as const) : []),
               ['logins', 'Logins'],
               ['portal', 'Guests'],
             ] as const
@@ -1087,6 +1094,11 @@ export function TasksView(p: Props) {
             ) : (
               <p className="te-empty">No notes for {client.name} yet.</p>
             )}
+          </div>
+        )}
+        {client && clientTab === 'tables' && (
+          <div className="tracking-scroll proj-tab">
+            <ProjectTables tables={(p.tables ?? []).filter((t) => t.clientId === client.id)} rows={p.tableRows ?? []} onOpen={(id) => p.onOpenTable?.(id)} onNew={() => p.onNewTable?.(client.id)} />
           </div>
         )}
         {client && clientTab === 'logins' && (

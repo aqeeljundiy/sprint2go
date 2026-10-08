@@ -1,3 +1,5 @@
+import { NewTableDialog, TableScreen, TablesHome, TablesSidebar, makeTable } from './components/tables/TablesApp';
+import type { TemplateId } from './components/tables/fields';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { term, setTermWord } from './terms';
 import { setPhotos } from './photos';
@@ -371,13 +373,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [projScope, setProjScope] = useState<TaskScope>({ kind: 'projects' });
   const [projNew, setProjNew] = useState(0); // bumps to open the "new project" form
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'logins' | 'portal' | undefined>(undefined);
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal' | undefined>(undefined);
   const [teams, setTeams] = useStored('teams');
   const [statuses, setStatuses] = useStored('statuses');
   const [savedTemplates, setSavedTemplates] = useStored('templates');
   const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
   const [chanDialog, setChanDialog] = useState<{ id?: string } | null>(null);
   const [notes, setNotes] = useStored('notes');
+  // Tables: the company's own databases (leads, pipelines…). Table structure and rows sync separately.
+  const [tables, setTables] = useStored('tables');
+  const [tableRows, setTableRows] = useStored('rows');
+  const [tableId, setTableId] = usePersisted<string | null>('s2g-table', null);
+  const [tableRow, setTableRow] = useState<string | null>(null);
+  const [newTableFor, setNewTableFor] = useState<{ clientId?: string } | null>(null);
   // Vault: only titles and who can use them are loaded; passwords come from the server one at a time.
   const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
   const [vaultFilter, setVaultFilter] = useState('');
@@ -1483,6 +1491,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Notes ---------------- */
   // Mine, and the ones shared with the company.
+  const wsTables = useMemo(() => tables.filter((t) => t.workspaceId === ws.id), [tables, ws.id]);
+  const wsTableRows = useMemo(() => tableRows.filter((r) => r.workspaceId === ws.id), [tableRows, ws.id]);
+  const currentTable = wsTables.find((t) => t.id === tableId);
+  const openTable = (id: string, rowId?: string) => {
+    setTableId(id);
+    setTableRow(rowId ?? null);
+    go('tables');
+  };
+  const createTable = (d: { name: string; clientId?: string; template: TemplateId }) => {
+    const t = makeTable(d, ws.id, user.id);
+    setTables((ts) => [...ts, t]);
+    setNewTableFor(null);
+    openTable(t.id);
+  };
   const wsNotes = useMemo(() => notes.filter((n) => n.workspaceId === ws.id && (n.visibility === 'team' || n.ownerId === user.id)), [notes, ws.id, user.id]);
   const patchNote = (id: string, patch: Partial<Note>) => setNotes((ns) => ns.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: nowIso(), updatedBy: user.id } : n)));
   const newNote = (title = '', clientId?: string) => {
@@ -2617,6 +2639,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
           ) : appMode === 'vault' ? (
             <VaultSidebar items={vaultItems} clients={wsClientsAll} filter={vaultFilter} onFilter={(f) => (setVaultFilter(f), setSidebarOpen(false))} onNew={() => setVaultEditing('new')} />
+          ) : appMode === 'tables' ? (
+            <TablesSidebar tables={wsTables} clients={wsClientsAll} current={currentTable?.id ?? null} onOpen={(id) => (openTable(id), setSidebarOpen(false))} onNew={() => setNewTableFor({})} />
           ) : appMode === 'notes' ? (
             <NotesList notes={wsNotes} clients={wsClientsAll} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={(id) => (setNoteId(id), setSidebarOpen(false))} onNew={() => newNote()} />
           ) : null
@@ -2799,6 +2823,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             logins={vaultItems.map((v) => ({ id: v.id, title: v.meta.title, url: v.meta.url, username: v.meta.username, clientId: v.meta.clientId, hasTotp: v.hasTotp }))}
             onOpenLogins={(clientId) => (setVaultFilter(clientId), go('vault'))}
             onNewLogin={(clientId) => (setVaultFilter(clientId), setVaultEditing('new'), go('vault'))}
+            tables={enabled.has('tables') ? wsTables : undefined}
+            tableRows={wsTableRows}
+            onOpenTable={enabled.has('tables') ? (id) => openTable(id) : undefined}
+            onNewTable={(clientId) => setNewTableFor({ clientId })}
             onOpenTask={setTaskOpen}
             myTeamIds={myTeamIds}
             myClientIds={myClientIds}
@@ -3148,6 +3176,30 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             toast={(text) => showToast({ text })}
           />
         )}
+
+        {mode === 'tables' &&
+          (currentTable && !(mobile && !tableId) ? (
+            <TableScreen
+              key={currentTable.id}
+              table={currentTable}
+              tables={wsTables}
+              rows={wsTableRows}
+              users={members}
+              clients={wsClientsAll}
+              me={user.id}
+              setTables={setTables}
+              setRows={setTableRows}
+              onOpenTable={openTable}
+              openRow={tableRow}
+              setOpenRow={setTableRow}
+              onDeleted={() => setTableId(null)}
+              onMenu={() => (mobile ? setTableId(null) : setSidebarOpen(true))}
+              toast={showToast}
+            />
+          ) : (
+            <TablesHome tables={wsTables} rows={wsTableRows} clients={wsClientsAll} onOpen={openTable} onNew={() => setNewTableFor({})} onMenu={() => setSidebarOpen(true)} />
+          ))}
+        {newTableFor && <NewTableDialog clients={wsClients} clientId={newTableFor.clientId} onCreate={createTable} onClose={() => setNewTableFor(null)} />}
 
         {mode === 'notes' &&
           (mobile && !noteId ? (

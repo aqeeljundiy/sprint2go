@@ -511,7 +511,7 @@ export interface MeetingRule {
   clientId: string;
 }
 
-export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'projects' | 'calendar' | 'notes' | 'drive' | 'meet' | 'vault';
+export type AppId = 'home' | 'mail' | 'chat' | 'tasks' | 'projects' | 'calendar' | 'notes' | 'drive' | 'meet' | 'vault' | 'tables';
 
 /** A note: private, or shared with the whole company; can belong to a client. */
 export interface Note {
@@ -631,4 +631,68 @@ export interface ChannelSummary {
   schedule: 'off' | 'daily' | 'weekly' | 'monthly';
   post: boolean; // also post each new summary into the channel
   history: { id: string; text: string; period: string; at: string; auto: boolean; by?: string }[];
+}
+
+/* ---------- Tables: flexible databases (leads, pipelines, anything) ---------- */
+
+export type FieldType = 'text' | 'longtext' | 'number' | 'money' | 'date' | 'select' | 'multi' | 'person' | 'email' | 'phone' | 'url' | 'checkbox' | 'link';
+
+export interface FieldOption {
+  id: string;
+  label: string;
+  color: string;
+}
+
+export interface TableField {
+  id: string;
+  name: string;
+  type: FieldType;
+  options?: FieldOption[]; // select, multi
+  currency?: 'IDR' | 'USD' | 'SGD' | 'EUR'; // money
+  linkTable?: string; // link: the table its rows come from
+}
+
+export interface TableFilter {
+  fieldId: string;
+  op: 'is' | 'not' | 'has' | 'empty' | 'filled' | 'gt' | 'lt';
+  value?: string;
+}
+
+export interface TableViewDef {
+  id: string;
+  name: string;
+  kind: 'grid' | 'board';
+  groupBy?: string; // board: a select field
+  sort?: { fieldId: string; dir: 'asc' | 'desc' };
+  filters?: TableFilter[];
+  hidden?: string[]; // field ids not shown in this view
+  widths?: Record<string, number>; // grid column widths
+}
+
+export interface DataTable {
+  id: string;
+  workspaceId: string;
+  name: string;
+  color: string;
+  clientId?: string; // belongs to a project; empty = the whole company
+  description?: string;
+  fields: TableField[]; // the first is the row's name
+  views: TableViewDef[];
+  createdBy: string;
+  createdAt: string;
+}
+
+export type CellValue = string | number | boolean | string[] | null;
+
+export interface TableRow {
+  id: string;
+  workspaceId: string;
+  tableId: string;
+  values: Record<string, CellValue>;
+  order: number; // manual order (new rows go last)
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  comments?: { id: string; by: string; at: string; text: string }[];
+  history?: { by: string; at: string; fieldId: string; from: CellValue; to: CellValue }[];
 }

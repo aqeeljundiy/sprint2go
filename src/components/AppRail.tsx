@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Briefcase, KeyRound, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
+import { Briefcase, KeyRound, Table2, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
 import { term } from '../terms';
 import type { AppId } from '../types';
 
@@ -16,6 +16,7 @@ export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[]
     icon: Briefcase,
     path: '/projects',
   },
+  { id: 'tables', name: 'Tables', icon: Table2, path: '/tables' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, path: '/calendar' },
   { id: 'notes', name: 'Notes', icon: NotebookPen, path: '/notes' },
   { id: 'drive', name: 'Drive', icon: HardDrive, path: '/drive' },

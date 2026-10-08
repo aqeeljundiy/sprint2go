@@ -6,6 +6,8 @@ import { DRIVE } from './data/drive';
 import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './data/team';
 import { USERS, WORKSPACES } from './data/workspaces';
 import { NOTES } from './data/notes';
+import { ROWS, TABLES } from './data/tables';
+import type { DataTable, TableRow } from './types';
 
 /** The demo company's starting data. The browser demo starts from it; the local server copies it into its database on first run. */
 export const seed = () => ({
@@ -25,6 +27,8 @@ export const seed = () => ({
   meetings: MEETINGS,
   templates: [] as TaskTemplate[], // templates a company saved for itself
   notes: NOTES,
+  tables: TABLES as DataTable[],
+  rows: ROWS as TableRow[],
 });
 export type Collections = ReturnType<typeof seed>;
 export type CollectionKey = keyof Collections;
