@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term, brand as product } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import { DEFAULT_PERMISSIONS } from '../types';
 import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
@@ -24,9 +24,11 @@ import { providerName } from './Onboarding';
 import { relative } from '../utils';
 import { PROJECT_TYPES } from '../terms';
 import { AgencySection } from './admin/AgencySection';
+import { EmailDeliverySection } from './admin/EmailDelivery';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
+  { id: 'email', name: 'Email delivery', icon: Send, group: 'Company' },
   { id: 'permissions', name: 'Permissions', icon: KeySquare, group: 'Company' },
   { id: 'agency', name: 'Client portal & brand', icon: Stamp, group: 'Company' },
   { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
@@ -589,6 +591,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
+          {section === 'email' && <EmailDeliverySection ws={ws} canManage={canManage} firstName={users.find((u) => u.id === me)?.name.split(' ')[0] ?? 'you'} onWorkspace={onWorkspace} toast={admin.toast} />}
           {section === 'agency' && <AgencySection ws={ws} canManage={canManage} onWorkspace={onWorkspace} brandingAddon={!!plan.addons.branding} onBilling={() => onSection('billing')} />}
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}

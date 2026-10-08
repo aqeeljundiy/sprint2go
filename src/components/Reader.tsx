@@ -1,33 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
-import {
-  Archive,
-  ArrowLeft,
-  CalendarCheck,
-  CalendarPlus,
-  Eye,
-  FileText,
-  HardDriveUpload,
-  Check,
-  Forward,
-  Inbox,
-  Mail,
-  Reply,
-  Send,
-  ShieldAlert,
-  Ban,
-  ListChecks,
-  MailMinus,
-  Sparkles,
-  Loader2,
-  ShieldCheck,
-  Star,
-  Trash2,
-  Clock,
-  StickyNote,
-  UserCheck,
-} from 'lucide-react';
+import { AlertTriangle, Archive, ArrowLeft, Ban, CalendarCheck, CalendarPlus, Check, Clock, Eye, FileText, Forward, HardDriveUpload, Inbox, ListChecks, Loader2, Mail, MailMinus, Reply, Send, ShieldAlert, ShieldCheck, Sparkles, Star, StickyNote, Trash2, UserCheck } from 'lucide-react';
 import type { CalEvent, Person, Thread, User, Client } from '../types';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
@@ -412,6 +386,12 @@ export function Reader(props: Props) {
                   </time>
                   {!open && m.tracking && <Eye size={14} className="head-eye" />}
                 </button>
+                {open && m.delivery && (
+                  <div className={`delivery-note ${m.delivery.state}`}>
+                    {m.delivery.state === 'sending' ? <Loader2 size={14} className="spin" /> : m.delivery.state === 'sent' ? <Check size={14} /> : <AlertTriangle size={14} />}{' '}
+                    {m.delivery.state === 'sending' ? 'Sending…' : m.delivery.state === 'sent' ? `Delivered ${relative(m.delivery.at)}` : `Could not be delivered: ${m.delivery.error ?? 'the receiving server refused it'}`}
+                  </div>
+                )}
                 {open && props.blockTrackers && m.trackersBlocked ? (
                   <div className="blocked-note">
                     <ShieldCheck size={14} /> Blocked {m.trackersBlocked} tracker{m.trackersBlocked > 1 ? 's' : ''}, so the sender can’t see when you read this
@@ -435,7 +415,15 @@ export function Reader(props: Props) {
                                 <FileText size={18} />
                               </span>
                               <div>
-                                <div className="file-name">{a.name}</div>
+                                <div className="file-name">
+                                  {a.url ? (
+                                    <a href={a.url} target="_blank" rel="noreferrer" download={a.name}>
+                                      {a.name}
+                                    </a>
+                                  ) : (
+                                    a.name
+                                  )}
+                                </div>
                                 <div className="file-size">{a.size}</div>
                               </div>
                               <button

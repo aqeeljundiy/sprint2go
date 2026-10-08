@@ -636,7 +636,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
-    if (thread.messages[0].tracking) simulateOpen(thread);
+    // With the server: the mail engine really sends it (our own mailboxes already have their copies).
+    const from = accountOf(m.fromId);
+    if (server.on && from && (!from.provider || from.provider === 'sprint2go')) {
+      void fetch('/api/mail/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })) }),
+      }).then(
+        async (r) => {
+          if (!r.ok) showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The mail could not be handed to the mail engine.' });
+        },
+        () => showToast({ text: 'No connection: the mail was not sent.' }),
+      );
+    } else if (thread.messages[0].tracking) simulateOpen(thread);
     showToast({
       text: 'Message sent',
       ms: settings.undoSend ? settings.undoSend * 1000 : 4000,
@@ -2969,6 +2982,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenMeeting={openMeeting}
             onNotice={openNotice}
             onMenu={() => setSidebarOpen(true)}
+            setup={
+              ws.members.some((m) => m.userId === user.id && m.role !== 'member')
+                ? [
+                    {
+                      key: 'email',
+                      label: 'Email',
+                      hint: ws.emailSetup === 'none' ? 'Mail is off for this company' : !ws.domains[0] ? 'Addresses live on the Sprint2go server; add your own domain when you have one' : ws.mailChecks?.allOk ? 'Records in place; mail from your domain is trusted' : 'Add the records so mail from your domain is trusted',
+                      done: ws.emailSetup === 'none' || !ws.domains[0] || !!ws.mailChecks?.allOk,
+                      onOpen: () => (setSettingsSection('email'), go('settings')),
+                    },
+                    { key: 'people', label: 'Your team', hint: ws.members.length > 1 ? `${ws.members.length} people in` : 'Invite the people you work with', done: ws.members.length > 1, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
+                    { key: 'brand', label: 'Logo and colour', hint: ws.logo ? 'Set' : 'Your logo on the app and in shared spaces', done: !!ws.logo, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
+                    { key: 'plan', label: 'Plan', hint: ws.plan?.payment ? 'Payment set up' : ws.plan?.trialEnds ? `Trial ends ${new Date(ws.plan.trialEnds).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}; pick a plan before then` : 'Pick a plan', done: !!ws.plan?.payment || ws.plan?.tier === 'free', onOpen: () => (setSettingsSection('billing'), go('settings')) },
+                  ]
+                : undefined
+            }
           />
         )}
 

@@ -6,6 +6,13 @@ import { RECORD_KEYS, type Collections, type CollectionKey } from './seed';
 type Doc = { id: string; [k: string]: unknown };
 
 export const server = { on: false, conn: '', operator: false }; // operator: this person may open /admin
+/** This server's mail name and address (for the records a company adds), and whether Boosted sending exists here. */
+export const mailInfo = { host: '', ip: '', boosted: false };
+export const loadMailInfo = () =>
+  fetch('/api/brand')
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((b: { mailHost?: string; mailIp?: string; boosted?: boolean }) => Object.assign(mailInfo, { host: b.mailHost ?? '', ip: b.mailIp ?? '', boosted: !!b.boosted }))
+    .catch(() => {});
 /** What the server has, per collection, by id (object identity tells what changed locally). */
 const synced: Partial<Record<CollectionKey, Map<string, unknown>>> = {};
 const timers: Partial<Record<CollectionKey, ReturnType<typeof setTimeout>>> = {};

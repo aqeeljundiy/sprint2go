@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, Check, Copy, Loader2, Mail } from 'lucide-react';
 import type { MailProvider } from '../types';
 import { providerName } from './Onboarding';
+import { mailInfo } from '../sync';
 import { brand as product } from '../terms';
 
 /**
@@ -16,7 +17,7 @@ import { brand as product } from '../terms';
 export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: { mode: 'forward' | 'move' | 'split'; provider: MailProvider; domain: string; first: string; onVerified?: () => void }) {
   const d = domain || 'yourcompany.com';
   const slug = d.split('.')[0].replace(/[^a-z0-9]/g, '') || 'company';
-  const inbox = `${first || 'you'}.${slug}@in.sprint2go.com`;
+  const inbox = `${first || 'you'}.${slug}@${mailInfo.host || 'in.sprint2go.com'}`; // a copy of their mail, forwarded here
   const [copied, setCopied] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, 'wait' | 'ok'>>({});
   const [cur, setCur] = useState(0);
@@ -52,13 +53,16 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
     </span>
   );
 
+  // The real server name comes from /api/brand once signed in; before that (the preview) a placeholder stands in.
+  const mx = mailInfo.host || 'mail.sprint2go.com';
+  const spfUs = mailInfo.ip ? `ip4:${mailInfo.ip}` : `a:${mx}`;
   const sendRecords = [
-    { type: 'TXT', host: '@', value: 'v=spf1 include:amazonses.com ~all', note: 'Add to your SPF record (keep what’s there)' },
-    { type: 'CNAME', host: 's2g._domainkey', value: `s2g.${d}.dkim.sprint2go.com`, note: `Signs mail sent from ${product.name}` },
+    { type: 'TXT', host: '@', value: `v=spf1 ${spfUs} ~all`, note: 'Add to your SPF record (keep what’s there)' },
+    { type: 'TXT', host: 's2g._domainkey', value: 'v=DKIM1; k=rsa; p=… (the exact value is in Settings, Email delivery)', note: `Signs mail sent from ${product.name}` },
   ];
   const moveRecords = [
-    { type: 'MX', host: '@', value: 'mx.sprint2go.com', note: 'Priority 10. Replaces your current MX records' },
-    ...sendRecords.map((r) => (r.type === 'TXT' ? { ...r, value: 'v=spf1 include:amazonses.com include:spf.sprint2go.com ~all', note: 'Replaces your SPF record' } : r)),
+    { type: 'MX', host: '@', value: mx, note: 'Priority 10. Replaces your current MX records' },
+    ...sendRecords.map((r) => (r.host === '@' ? { ...r, note: 'Replaces your SPF record' } : r)),
     { type: 'TXT', host: '_dmarc', value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${d}`, note: 'Protects your domain from spoofing' },
   ];
   const Records = ({ list }: { list: typeof sendRecords }) => (
@@ -139,7 +143,7 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             body: (
               <>
                 {routeHow}
-                <Value v="mx.sprint2go.com" />
+                <Value v={mx} />
                 <p className="muted small">Port 25. Only an admin of {d} can add this rule, once for the whole company.</p>
               </>
             ),

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { monthlyTotal } from '../src/data/pricing.ts';
+import { mailStats, mailStatsAll } from './mailer.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
 
 export const OPERATORS = (process.env.S2G_OPERATORS ?? '')
@@ -252,7 +253,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     }
     return (
       json(res, 200, {
-        company: { ...row, accounts: (ws.accounts ?? []).map((a: any) => ({ id: a.id, email: a.email, kind: a.kind, users: a.users?.length ?? 0 })), apps: ws.apps ?? null, emailSetup: ws.emailSetup ?? null, whiteLabel: ws.whiteLabel?.enabled ? { name: ws.whiteLabel.name, domain: ws.whiteLabel.domain ?? null } : null, members, usage: usage.map((u) => ({ ...u, rp: ctx.spendRp([u]) })), invoices: invoices.reverse(), audit: db.auditList(50, id) },
+        company: { ...row, mail: mailStats(id, monthStart()), accounts: (ws.accounts ?? []).map((a: any) => ({ id: a.id, email: a.email, kind: a.kind, users: a.users?.length ?? 0 })), apps: ws.apps ?? null, emailSetup: ws.emailSetup ?? null, whiteLabel: ws.whiteLabel?.enabled ? { name: ws.whiteLabel.name, domain: ws.whiteLabel.domain ?? null } : null, members, usage: usage.map((u) => ({ ...u, rp: ctx.spendRp([u]) })), invoices: invoices.reverse(), audit: db.auditList(50, id) },
       }),
       true
     );
@@ -498,14 +499,19 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   if (sub === 'usage' && req.method === 'GET') {
     const companies = companyRows(ctx);
     const meetings = (db.allDocs('meetings') as any[]).filter((m) => m.at >= monthStart());
+    const mail = mailStatsAll(monthStart());
     const rows = companies
       .map((c) => {
         const minutes = meetings.filter((m) => m.workspaceId === c.id && m.recording).reduce((n, m) => n + (m.minutes ?? 0), 0);
         const included = c.plan?.track === 'ai';
-        return { id: c.id, name: c.name, state: c.state, mrr: c.mrr, aiRp: c.aiRp, aiIncludedUses: c.aiIncludedUses, included, storageBytes: c.storageBytes, recorderMinutes: minutes, people: c.people, margin: c.mrr - (included ? c.aiRp : 0) };
+        const m = mail.filter((x) => x.workspaceId === c.id);
+        const mailOut = m.filter((x) => x.direction === 'out' && x.state === 'sent').reduce((n, x) => n + x.n, 0);
+        const mailIn = m.filter((x) => x.direction === 'in').reduce((n, x) => n + x.n, 0);
+        const boosted = m.filter((x) => x.direction === 'out' && x.route === 'boosted' && x.state === 'sent').reduce((n, x) => n + x.n, 0);
+        return { id: c.id, name: c.name, state: c.state, mrr: c.mrr, aiRp: c.aiRp, aiIncludedUses: c.aiIncludedUses, included, storageBytes: c.storageBytes, recorderMinutes: minutes, people: c.people, margin: c.mrr - (included ? c.aiRp : 0) - boosted * 2, mailOut, mailIn, boosted };
       })
       .sort((a, b) => b.aiRp - a.aiRp);
-    return (json(res, 200, { month: monthStart().slice(0, 7), companies: rows, totals: { aiRp: rows.reduce((n, r) => n + r.aiRp, 0), storageBytes: rows.reduce((n, r) => n + r.storageBytes, 0), recorderMinutes: rows.reduce((n, r) => n + r.recorderMinutes, 0) } }), true);
+    return (json(res, 200, { month: monthStart().slice(0, 7), companies: rows, totals: { aiRp: rows.reduce((n, r) => n + r.aiRp, 0), storageBytes: rows.reduce((n, r) => n + r.storageBytes, 0), recorderMinutes: rows.reduce((n, r) => n + r.recorderMinutes, 0), mailOut: rows.reduce((n, r) => n + r.mailOut, 0), mailIn: rows.reduce((n, r) => n + r.mailIn, 0), boosted: rows.reduce((n, r) => n + r.boosted, 0) } }), true);
   }
 
   if (sub === 'system' && req.method === 'GET') {

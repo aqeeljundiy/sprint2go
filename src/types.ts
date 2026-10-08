@@ -13,6 +13,7 @@ export interface Person {
 export interface Attachment {
   name: string;
   size: string;
+  url?: string; // where the file is (uploaded or received by the mail engine)
 }
 
 export interface Message {
@@ -31,6 +32,9 @@ export interface Message {
   trackersBlocked?: number;
   /** The sender's official unsubscribe link (List-Unsubscribe header). */
   listUnsubscribe?: { url: string; oneClick: boolean };
+  mid?: string; // the Message-ID on the wire, so replies land in the same thread
+  delivery?: { state: 'sending' | 'sent' | 'failed'; at: string; error?: string }; // set by the mail engine for mail you sent
+  auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
 }
 
 export interface OpenEvent {
@@ -85,6 +89,7 @@ export interface Thread {
   snoozedUntil?: string; // hidden from the inbox until then
   scannedFor?: string[]; // `${userId}:${lastMessageId}`: already read for to-dos (so the AI reads each email once)
   sendAt?: string; // scheduled to send
+  workspaceId?: string; // set by the server for mail it received
 }
 
 /** A meeting proposed inside an email, offered as "Add to calendar". */
@@ -184,6 +189,10 @@ export interface Workspace {
   /** "Some of each": the domain stays with Google or Microsoft, which passes unknown addresses on to Sprint2go. */
   mailRouting?: { verifiedAt?: string; dailyCheck: boolean; lastCheck?: { at: string; ok: boolean } };
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
+  mailRoute?: 'own' | 'boosted'; // how mail goes out: from the Sprint2go server, or through Amazon on our account
+  mailCredits?: number; // emails left on Boosted sending
+  mailCreditsNotified?: boolean;
+  mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
   meetUrl?: string;
   meetingRules?: MeetingRule[];
   clientAccess?: ClientAccess; // what guests see and do in the shared space

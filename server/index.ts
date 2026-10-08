@@ -16,6 +16,7 @@ import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
 import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
+import * as mailer from './mailer.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
@@ -745,7 +746,7 @@ createServer(async (req, res) => {
     if (p === '/api/brand') {
       const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
       const w = (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
-      return json(res, 200, w ? { name: w.whiteLabel.name, logo: w.whiteLabel.logo ?? w.logo, color: w.whiteLabel.color ?? w.color } : {});
+      return json(res, 200, { ...(w ? { name: w.whiteLabel.name, logo: w.whiteLabel.logo ?? w.logo, color: w.whiteLabel.color ?? w.color } : {}), mailHost: mailer.MAIL_HOST, mailIp: mailer.MAIL_IP || undefined, boosted: mailer.boostedAvailable() });
     }
     if (p === '/api/login' && req.method === 'POST') {
       const { email, password } = await body(req);
@@ -959,6 +960,81 @@ createServer(async (req, res) => {
       return handled ? undefined : json(res, 404, { error: 'No such admin route.' });
     }
     if (p === '/api/state') return json(res, 200, visibleState(me));
+
+    /* ---------- the mail engine: a company's domain, records, route and sending ---------- */
+    const monthStart = () => {
+      const d = new Date();
+      d.setUTCDate(1);
+      d.setUTCHours(0, 0, 0, 0);
+      return d.toISOString();
+    };
+    if (p === '/api/mail/setup' && req.method === 'GET') {
+      const ws = memberOf(me).find((w) => w.id === url.searchParams.get('ws')) as any;
+      if (!ws) return json(res, 403, { error: 'Not in this company.' });
+      const [records, health] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth()]);
+      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain: mailer.mailDomainOf(ws), ownDomain: mailer.mailDomainOf(ws) !== mailer.MAIL_HOST, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health });
+    }
+    if (p === '/api/mail/check' && req.method === 'POST') {
+      const { workspaceId } = await body(req);
+      const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can check the records.' });
+      const result = await mailer.checkDomain(ws);
+      const own = result.domain === mailer.MAIL_HOST;
+      const next = { ...ws, mailChecks: { at: result.at, allOk: result.allOk, checks: result.checks }, accounts: (ws.accounts ?? []).map((a: any) => (!a.provider || a.provider === 'sprint2go' ? { ...a, connected: own || result.allOk || result.checks.filter((c) => c.key !== 'dmarc').every((c) => c.ok) } : a)) };
+      db.writeDocs('workspaces', [next], [], me);
+      broadcast('workspaces', [next], []);
+      return json(res, 200, result);
+    }
+    if (p === '/api/mail/route' && req.method === 'POST') {
+      const { workspaceId, route } = await body(req);
+      const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change how mail is sent.' });
+      if (!['own', 'boosted'].includes(route)) return json(res, 400, { error: 'Unknown route.' });
+      if (route === 'boosted' && !mailer.boostedAvailable()) return json(res, 409, { error: 'Boosted sending isn’t available on this server yet.' });
+      const next = { ...ws, mailRoute: route, mailChecks: undefined };
+      db.writeDocs('workspaces', [next], [], me);
+      broadcast('workspaces', [next], []);
+      return json(res, 200, { records: await mailer.expectedRecords(next) });
+    }
+    if (p === '/api/mail/credits' && req.method === 'POST') {
+      const { workspaceId, add } = await body(req);
+      const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can buy credits.' });
+      const n = Math.max(0, Math.min(100_000, Number(add) || 0));
+      const next = { ...ws, mailCredits: (ws.mailCredits ?? 0) + n, mailCreditsNotified: false };
+      db.writeDocs('workspaces', [next], [], me);
+      broadcast('workspaces', [next], []);
+      return json(res, 200, { credits: next.mailCredits });
+    }
+    if (p === '/api/mail/send' && req.method === 'POST') {
+      const b = await body(req);
+      const ws = memberOf(me).find((w) => w.id === b.workspaceId) as any;
+      const account = ws?.accounts?.find((a: any) => a.id === b.accountId);
+      if (!ws || !account) return json(res, 403, { error: 'Not your mailbox.' });
+      if (account.provider && account.provider !== 'sprint2go') return json(res, 409, { error: 'This mailbox is not hosted here.' });
+      if (Array.isArray(account.users) && account.users.length && !account.users.includes(me) && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Not your mailbox.' });
+      const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
+      try {
+        const r = await mailer.queueSend({
+          workspaceId: ws.id,
+          accountId: account.id,
+          threadId: String(b.threadId ?? ''),
+          messageId: String(b.messageId ?? ''),
+          from: { name: String(account.name || ws.name), email: String(account.email).toLowerCase() },
+          to: people(b.to),
+          cc: people(b.cc),
+          subject: String(b.subject ?? '').slice(0, 500),
+          text: String(b.text ?? ''),
+          html: typeof b.html === 'string' && b.html ? b.html : undefined,
+          files: (Array.isArray(b.files) ? b.files : []).filter((f: any) => f && typeof f.url === 'string').map((f: any) => ({ name: String(f.name ?? 'file').slice(0, 200), url: String(f.url) })),
+          inReplyTo: typeof b.inReplyTo === 'string' ? b.inReplyTo : undefined,
+          references: Array.isArray(b.references) ? b.references.filter((x: unknown) => typeof x === 'string') : undefined,
+        });
+        return json(res, 200, r);
+      } catch (e) {
+        return json(res, 400, { error: e instanceof Error ? e.message : 'Could not send.' });
+      }
+    }
 
     if (p === '/api/password' && req.method === 'POST') {
       const { current, next } = await body(req);
@@ -1598,7 +1674,17 @@ createServer(async (req, res) => {
     // Never leak keys or raw upstream errors.
     json(res, status, { error: err instanceof AIError ? err.message : status === 503 ? 'AI is busy, try again shortly.' : 'Something went wrong.' });
   }
-}).listen(PORT, HOST, () => console.log(`Sprint2go on http://localhost:${PORT}${mailConfigured() ? ' (email on)' : ' (no email: codes go to this log)'}`));
+}).listen(PORT, HOST, () => {
+  console.log(`Sprint2go on http://localhost:${PORT}${mailConfigured() ? ' (email on)' : ' (no email: codes go to this log)'}`);
+  mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
+});
+
+/** A notice for these people (the mail engine uses it for failures and credits). */
+function notifyPeople(userIds: string[], workspaceId: string, text: string, link?: string) {
+  const at = new Date().toISOString();
+  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind: 'mail', text, at, read: false, link: link?.startsWith('/settings') ? { app: 'settings', id: link.split('/')[2] } : { app: 'mail' } }));
+  if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
+}
 
 // Once a day: expired sessions go, and a copy of the database lands in data/backups (the last 14 are kept).
 const housekeeping = () => {
@@ -1634,14 +1720,25 @@ setInterval(() => {
 
 setInterval(() => {
   const now = new Date().toISOString();
+  const sendNow: any[] = [];
   const threads = (db.allDocs('threads') as any[]).flatMap((t) => {
-    if (t.sendAt && t.sendAt <= now) return [{ ...t, sendAt: undefined, location: 'archive', messages: t.messages.map((m: any) => ({ ...m, date: now })) }];
+    if (t.sendAt && t.sendAt <= now) return (sendNow.push(t), [{ ...t, sendAt: undefined, location: 'archive', messages: t.messages.map((m: any) => ({ ...m, date: now })) }]);
     if (t.snoozedUntil && t.snoozedUntil <= now) return [{ ...t, snoozedUntil: undefined, unread: true }];
     return [];
   });
   if (threads.length) {
     db.writeDocs('threads', threads, [], null);
     broadcast('threads', threads, []);
+  }
+  // "Send later" mail goes out for real now.
+  for (const t of sendNow) {
+    const ws = workspaces().find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId)) as any;
+    const account = ws?.accounts?.find((a: any) => a.id === t.accountId);
+    const m = t.messages[t.messages.length - 1];
+    if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
+    void mailer
+      .queueSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })) })
+      .catch((e) => console.error('[mail] scheduled send', e instanceof Error ? e.message : e));
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
   if (due.length) {

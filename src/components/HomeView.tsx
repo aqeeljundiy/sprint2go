@@ -2,32 +2,7 @@ import { ProjectBadge } from './ProjectBadge';
 import { useMemo, useState, type ReactNode } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowRight,
-  ArrowUp,
-  CalendarDays,
-  Check,
-  FileText,
-  GripVertical,
-  Hash,
-  Inbox,
-  LayoutGrid,
-  ListChecks,
-  Maximize2,
-  Menu,
-  Mic,
-  Minimize2,
-  PartyPopper,
-  Plus,
-  Settings2,
-  Sparkles,
-  Users,
-  Video,
-  X,
-  Search,
-} from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, FileText, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search } from 'lucide-react';
 import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, Todo, User } from '../types';
 import { fmtTime } from '../calendarUtils';
 import { isMine } from '../identity';
@@ -143,6 +118,8 @@ interface Props {
   onOpenMeeting: (id: string) => void;
   onNotice: (n: Notice) => void;
   onMenu: () => void;
+  /** What the company hasn't set up yet (admins only): each row opens the right place. */
+  setup?: { key: string; label: string; hint: string; done: boolean; onOpen: () => void }[];
 }
 
 /** The template that fits a person: owners get the company view, team leads the team view, then by team. */
@@ -701,6 +678,28 @@ export function HomeView(p: Props) {
           <span>Jump to a {term.one}, task, person or file, or ask anything</span>
           <kbd>⌘K</kbd>
         </button>
+
+        {p.setup && p.setup.some((x) => !x.done) && (
+          <section className="setup-card">
+            <h2>Finish setting up</h2>
+            <ul>
+              {p.setup.map((x) => (
+                <li key={x.key} className={x.done ? 'done' : ''}>
+                  <span className="setup-mark">{x.done ? <Check size={13} /> : null}</span>
+                  <button type="button" className="setup-text" onClick={x.onOpen} disabled={x.done}>
+                    <strong>{x.label}</strong>
+                    <small>{x.hint}</small>
+                  </button>
+                  {!x.done && (
+                    <button type="button" className="ghost-btn sm" onClick={x.onOpen}>
+                      Set up
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <UpNext
           items={d.upnext}

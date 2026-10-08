@@ -3,7 +3,7 @@ import type { User, Workspace } from './types';
 import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
 import { usePersisted, useSettings } from './settings';
 import { applyRemote, useStored } from './store';
-import { connect, probe, server, signIn, signOut, type Session } from './sync';
+import { connect, loadMailInfo, probe, server, signIn, signOut, type Session } from './sync';
 import { setAIWorkspace } from './ai';
 import App from './App';
 import { clientActions } from './clientActions';
@@ -34,6 +34,7 @@ export default function Root() {
       if (r === 'signed-out') return setMode('signed-out');
       setSession(r);
       server.operator = !!r.operator;
+      void loadMailInfo();
       if (!r.suspended && !admin) await connect(applyRemote);
       setMode('ready');
     });

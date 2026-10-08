@@ -2,7 +2,7 @@ import { LanguagePicker } from './LanguagePicker';
 import { MEETING_LANGUAGES } from '../data/languages';
 import { useState } from 'react';
 import { term, brand as product } from '../terms';
-import { Check, Cloud, MailX, Server, Shuffle, X, type LucideIcon } from 'lucide-react';
+import { Check, Cloud, MailX, Server, Shuffle, X, type LucideIcon, Zap } from 'lucide-react';
 import { INDUSTRIES, type Industry } from '../types';
 import type { Account, AppId, EmailSetup, MailProvider, MeetingSettings, User, Workspace } from '../types';
 import { DEFAULT_MEETINGS, WORKSPACE_COLORS, defaultAI, trialPlan } from '../data/workspaces';
@@ -60,6 +60,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
   const [apps, setApps] = useState<AppId[]>(APPS.map((a) => a.id));
   const [setup, setSetup] = useState<EmailSetup>('keep');
   const [provider, setProvider] = useState<MailProvider>('google');
+  const [route, setRoute] = useState<'own' | 'boosted'>('own'); // how mail goes out: our server, or Boosted (Amazon on our account)
   const [emailInput, setMyEmail] = useState('');
   const [keep, setKeep] = useState<MeetingSettings['keep']>('audio');
   // Meeting languages: a first guess from the browser (Indonesian usually comes mixed with English), easy to change.
@@ -118,6 +119,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
         ...(agency ? { whiteLabel: { enabled: true, name: brand.name.trim(), logo: brand.logo, color: brand.color, slug: brand.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') } } : {}),
         ...(setup === 'mix' ? { mailRouting: { dailyCheck: true, ...(routingOk ? { verifiedAt: new Date().toISOString() } : {}) } } : {}),
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,
+        ...(mailOn ? { mailRoute: route } : {}),
         plan: trialPlan(brand.name.trim(), myEmail),
         ai: defaultAI(false),
         meetings: { ...DEFAULT_MEETINGS, keep, clientMeetings: keep, internalMeetings: keep, languages },
@@ -328,7 +330,26 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                       <EmailSetupGuide mode={setup === 'hosted' ? 'move' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} />
                     </>
                   )}
-                  <small className="set-hint">You can finish now and do this later from Settings, Mail. {preview ? 'In this preview the waits are simulated.' : ''}</small>
+                  <h3 className="esg-title">How your mail goes out</h3>
+                  <div className="ed-routes ob-routes">
+                    <button type="button" className={`ed-route ${route === 'own' ? 'on' : ''}`} onClick={() => setRoute('own')}>
+                      <span className="ed-route-head">
+                        <Server size={16} />
+                        <strong>{product.name} mail server</strong>
+                        <em>Included</em>
+                      </span>
+                      <small>Free. A brand-new domain may land in spam for the first weeks while its reputation builds.</small>
+                    </button>
+                    <button type="button" className={`ed-route ${route === 'boosted' ? 'on' : ''}`} onClick={() => setRoute('boosted')}>
+                      <span className="ed-route-head">
+                        <Zap size={16} />
+                        <strong>Boosted sending</strong>
+                        <em>Credits</em>
+                      </span>
+                      <small>Through Amazon on our account: proven delivery to Gmail and Outlook from day one. Paid per email, from Rp 15.000 per 1,000.</small>
+                    </button>
+                  </div>
+                  <small className="set-hint">You can finish now and do this later from Settings, Email delivery. {preview ? 'In this preview the waits are simulated.' : ''}</small>
                 </>
               )}
             </>
