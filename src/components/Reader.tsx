@@ -418,6 +418,7 @@ export function Reader(props: Props) {
                 ) : null}
                 {open && (
                   <div className="message-body">
+                    <CodeCard text={`${thread.subject}\n${m.body}`} />
                     {m.html ? (
                       <div className="prose" dangerouslySetInnerHTML={{ __html: sanitize(m.html) }} />
                     ) : (
@@ -570,5 +571,24 @@ export function Reader(props: Props) {
         </SmoothHeight>
       </div>
     </section>
+  );
+}
+
+/** Verification emails: the code, big, with Copy (that's usually why a throwaway address exists). */
+function CodeCard({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  // The number right after "code" (or kode, OTP, PIN), so dates and prices in the email aren't mistaken for it.
+  const code = text.match(/\b(?:code|kode|OTP|PIN)\b[^0-9\n]{0,40}?\b(\d{4,8}|\d{3}[- ]\d{3})\b/i)?.[1];
+  if (!code) return null;
+  return (
+    <div className="code-card">
+      <span>
+        <small>Code in this email</small>
+        <b>{code}</b>
+      </span>
+      <button className="ghost-btn sm outline" onClick={() => void navigator.clipboard?.writeText(code).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1500)))}>
+        {copied ? 'Copied' : 'Copy code'}
+      </button>
+    </div>
   );
 }

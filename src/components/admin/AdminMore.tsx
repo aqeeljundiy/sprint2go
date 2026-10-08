@@ -356,6 +356,52 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
   );
 }
 
+/* ---------------- Your apps (per person) ---------------- */
+
+/**
+ * Each person's own sidebar: hide apps you don't use (the company keeps them). Apps the company switched off show
+ * here too: admins switch them on, everyone else can ask an admin.
+ */
+export function MyAppsSection({ ws, hidden, isAdmin, asked, onHidden, onCompanyApp, onAsk }: { ws: Workspace; hidden: AppId[]; isAdmin: boolean; asked: AppId[]; onHidden: (list: AppId[]) => void; onCompanyApp: (id: AppId) => void; onAsk: (id: AppId) => void }) {
+  const company = ws.apps ?? APPS.map((a) => a.id);
+  const on = APPS.filter((a) => a.id !== 'home' && company.includes(a.id));
+  const off = APPS.filter((a) => a.id !== 'home' && !company.includes(a.id));
+  return (
+    <>
+      <h2>Your apps</h2>
+      <p className="set-intro">Hide apps you don’t use from your own sidebar. Your team still has them, and you can show them again any time.</p>
+      <div className="set-block">
+        {on.map((a) => (
+          <Row key={a.id} title={<><a.icon size={15} /> {a.name}</>} hint={hidden.includes(a.id) ? 'Hidden for you' : undefined}>
+            <Switch on={!hidden.includes(a.id)} onChange={() => onHidden(hidden.includes(a.id) ? hidden.filter((x) => x !== a.id) : [...hidden, a.id])} />
+          </Row>
+        ))}
+      </div>
+      {off.length > 0 && (
+        <div className="set-block">
+          <h3>Off for {ws.name || 'the company'}</h3>
+          <p className="muted small">{isAdmin ? 'Switch one on and it appears for everyone.' : 'An admin decides which apps the company uses. Ask, and they get a notification that takes them straight to the switch.'}</p>
+          {off.map((a) => (
+            <Row key={a.id} title={<><a.icon size={15} /> {a.name}</>}>
+              {isAdmin ? (
+                <button className="ghost-btn sm outline" onClick={() => onCompanyApp(a.id)}>
+                  Switch on for everyone
+                </button>
+              ) : asked.includes(a.id) ? (
+                <span className="muted small">Asked</span>
+              ) : (
+                <button className="ghost-btn sm outline" onClick={() => onAsk(a.id)}>
+                  Ask an admin
+                </button>
+              )}
+            </Row>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ---------------- Security & data ---------------- */
 
 export function SecuritySection({ ws, isOwner, onWorkspace, onExport, onDelete, users }: {

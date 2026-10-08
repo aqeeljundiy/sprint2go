@@ -7,6 +7,8 @@ import { Avatar } from './Avatar';
 import { isMine } from '../identity';
 
 interface Props {
+  /** What an empty list says instead (e.g. a temporary address waiting for its first email). */
+  empty?: { title: string; sub: string; action?: React.ReactNode };
   title: string;
   threads: Thread[];
   clientOf: (t: Thread) => Client | undefined; // the client this email is with (replaces labels)
@@ -91,8 +93,9 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
       {threads.length === 0 ? (
         <div className="empty">
           <div className="empty-art">✓</div>
-          <p className="empty-title">{query ? 'No matches' : 'All caught up'}</p>
-          <p className="empty-sub">{query ? `Nothing found for “${query}”. Try a name, an email address or a few words from the subject.` : 'Nothing waiting here. New mail lands in your inbox; press C to write one.'}</p>
+          <p className="empty-title">{query ? 'No matches' : (props.empty?.title ?? 'All caught up')}</p>
+          <p className="empty-sub">{query ? `Nothing found for “${query}”. Try a name, an email address or a few words from the subject.` : (props.empty?.sub ?? 'Nothing waiting here. New mail lands in your inbox; press C to write one.')}</p>
+          {!query && props.empty?.action}
         </div>
       ) : (
         <ul className="rows" ref={listRef}>

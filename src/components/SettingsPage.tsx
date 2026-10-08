@@ -3,10 +3,10 @@ import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
-import type { AISettings, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
+import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
 import { AISection } from './admin/AISection';
 import { BillingSection } from './admin/BillingSection';
-import { AppsSection, MeetingsSection, SecuritySection, StorageSection, TeamsSection } from './admin/AdminMore';
+import { AppsSection, MyAppsSection, MeetingsSection, SecuritySection, StorageSection, TeamsSection } from './admin/AdminMore';
 import { trialPlan } from '../data/workspaces';
 import { Avatar } from './Avatar';
 import { BrandFields } from './WorkspaceForms';
@@ -31,6 +31,7 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'security', name: 'Security & data', icon: ShieldCheck, group: 'Company' },
   { id: 'account', name: 'Account', icon: UserRound, group: 'You' },
   { id: 'appearance', name: 'Appearance', icon: Palette, group: 'You' },
+  { id: 'myapps', name: 'Your apps', icon: LayoutGrid, group: 'You' },
   { id: 'mail', name: 'Mail & signature', icon: PenLine, group: 'You' },
   { id: 'notifications', name: 'Notifications', icon: Bell, group: 'You' },
   { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard, group: 'You' },
@@ -73,6 +74,7 @@ interface Props {
   me: string; // current user id
   onPhoto?: (photo: string | undefined) => void;
   onPreviewOnboarding?: () => void;
+  myApps?: { hidden: AppId[]; asked: AppId[]; onHidden: (l: AppId[]) => void; onAsk: (id: AppId) => void };
   myRole: Role;
   onInvite: () => void;
   onRole: (userId: string, role: Role) => void;
@@ -111,7 +113,7 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, users, me, onPhoto, onPreviewOnboarding, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
+export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -240,7 +242,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
               <h3>Email accounts</h3>
               <div className="acct-list">
-                {ws.accounts.map((a) => (
+                {ws.accounts.filter((a) => !a.temp).map((a) => (
                   <div key={a.id} className="acct-block">
                   <div className="acct-row">
                     <span className="acct-icon">{a.kind === 'shared' ? <Users size={16} /> : <Inbox size={16} />}</span>
@@ -517,6 +519,17 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           )}
           {section === 'teams' && <TeamsSection ws={ws} teams={admin.teams} users={wsUsers} canManage={canManage} onTeams={admin.onTeams} onTeamHome={admin.onTeamHome} toast={admin.toast} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
+          {section === 'myapps' && myApps && (
+            <MyAppsSection
+              ws={ws}
+              hidden={myApps.hidden}
+              isAdmin={canManage}
+              asked={myApps.asked}
+              onHidden={myApps.onHidden}
+              onAsk={myApps.onAsk}
+              onCompanyApp={(id) => onWorkspace({ apps: [...(ws.apps ?? []), id] })}
+            />
+          )}
           {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}
           {section === 'ai' && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'billing' && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}

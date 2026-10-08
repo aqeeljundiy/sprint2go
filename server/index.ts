@@ -552,7 +552,8 @@ createServer(async (req, res) => {
         const before = db.getDoc('users', me);
         if (!before) return null;
         const photo = typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000 ? d.photo : undefined;
-        return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo };
+        const hiddenApps = Array.isArray(d.hiddenApps) ? d.hiddenApps.filter((a: unknown) => typeof a === 'string' && /^[a-z]{2,12}$/.test(a)).slice(0, 12) : undefined;
+        return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo, hiddenApps };
       };
       // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
       const ok = (upserts as db.Doc[])

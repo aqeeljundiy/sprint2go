@@ -59,7 +59,7 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
               <span className="ws-name">
                 <strong>{w.name}</strong>
                 <small>
-                  {w.accounts.length} account{w.accounts.length > 1 ? 's' : ''} · {w.domains[0] ?? 'no domain'}
+                  {w.accounts.filter((a) => !a.temp).length} account{w.accounts.filter((a) => !a.temp).length === 1 ? '' : 's'} · {w.domains[0] ?? 'no domain'}
                 </small>
               </span>
               {unread[w.id] ? <span className="ws-unread">{unread[w.id]}</span> : null}

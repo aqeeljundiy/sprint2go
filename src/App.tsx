@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { term, setTermWord } from './terms';
 import { setPhotos } from './photos';
+import { TempAddressDialog, lifeLeft } from './components/TempAddress';
+import { AppSetupCard } from './components/AppSetupCard';
+import { Popover } from './components/ui/Popover';
 import { SmoothHeight, TabPane } from './components/ui/Smooth';
-import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Sparkles, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
+import { Brain, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
 import type { Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
@@ -200,6 +203,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [activeAccount, setActiveAccount] = useState<string>('all');
   const [newWs, setNewWs] = useState(false);
   const [newAcct, setNewAcct] = useState(false);
+  // Throwaway addresses: the dialog (new or editing one) and the little menu on each.
+  const [tempDialog, setTempDialog] = useState<{ editing?: Account } | null>(null);
+  const [tempMenu, setTempMenu] = useState<Account | null>(null);
+  const tempAnchor = useRef<HTMLElement | null>(null);
   const [inviting, setInviting] = useState(false);
   const allAccounts = allWorkspaces.flatMap((w) => w.accounts);
   const mine = workspaces.flatMap((w) => w.accounts.filter((a) => a.users.includes(user.id)));
@@ -248,6 +255,55 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [threads, setThreads] = useStored('threads');
   // Threads in mailboxes this user can open in this workspace, narrowed to one inbox when picked.
   const wsThreads = useMemo(() => threads.filter((t) => myAccounts.some((a) => a.id === t.accountId)), [threads, myAccounts]);
+
+  /* ---------------- Throwaway addresses ---------------- */
+
+  const withAccounts = (wsId: string, fn: (list: Account[]) => Account[]) => setWorkspaces((list) => list.map((w) => (w.id === wsId ? { ...w, accounts: fn(w.accounts) } : w)));
+  /** Delete one, its mail with it. A person doing it gets Undo; the timer does it quietly. */
+  const deleteTemp = (a: Account, quiet = false) => {
+    const w = workspaces.find((x) => x.accounts.some((y) => y.id === a.id));
+    if (!w) return;
+    const gone = threads.filter((t) => t.accountId === a.id);
+    withAccounts(w.id, (l) => l.filter((x) => x.id !== a.id));
+    setThreads((ts) => ts.filter((t) => t.accountId !== a.id));
+    if (activeAccount === a.id) setActiveAccount('all');
+    if (!quiet)
+      showToast({
+        text: `${a.email} deleted`,
+        // The address goes back first; its mail follows once the server knows the address again (or it would be refused).
+        action: { label: 'Undo', run: () => (withAccounts(w.id, (l) => [...l, a]), setTimeout(() => setThreads((ts) => [...ts, ...gone]), 900)) },
+      });
+  };
+  // Time's up: the people who can see an address clear it out (whoever opens the app first).
+  const sweepRef = useRef(() => {});
+  sweepRef.current = () => {
+    const now = new Date().toISOString();
+    workspaces.forEach((w) => w.accounts.filter((a) => a.temp?.expiresAt && a.temp.expiresAt < now && a.users.includes(user.id)).forEach((a) => deleteTemp(a, true)));
+  };
+  useEffect(() => {
+    sweepRef.current();
+    const t = setInterval(() => sweepRef.current(), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  /** Until real mail flows in: a test message, so you can see how codes show up. */
+  const testTemp = (a: Account) => {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    setThreads((ts) => [
+      {
+        id: uid(),
+        accountId: a.id,
+        subject: `Test: your verification code is ${code}`,
+        location: 'inbox',
+        starred: false,
+        unread: true,
+        labels: [],
+        messages: [{ id: uid(), from: { name: 'Sprint2go test', email: 'test@s2g.email' }, to: [{ name: a.email, email: a.email }], date: nowIso(), body: `This is a test message for ${a.email}.\n\nYour verification code is ${code}. It expires in 10 minutes.` }],
+      },
+      ...ts,
+    ]);
+    setActiveAccount(a.id);
+    if (mode !== 'mail') go('mail');
+  };
   // Blocked senders (per user): their mail never shows outside Trash.
   const [blocked, setBlocked] = usePersisted<BlockRule[]>(`pm-blocked:${user.id}`, []);
   const [unsubscribed, setUnsubscribed] = usePersisted<Record<string, string>>(`pm-unsub:${user.id}`, {});
@@ -829,8 +885,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Team: tasks, clients, chat, notifications ---------------- */
 
-  const enabledApps: AppId[] = ws.apps ?? APPS.map((a) => a.id);
+  // The company's apps, minus the ones this person hid from their own sidebar (Settings, Your apps).
+  const companyApps: AppId[] = ws.apps ?? APPS.map((a) => a.id);
+  const myHidden: AppId[] = user.hiddenApps ?? [];
+  const enabledApps: AppId[] = companyApps.filter((a) => a === 'home' || !myHidden.includes(a));
   const enabled = new Set<string>(enabledApps);
+  const setMyHidden = (list: AppId[]) => {
+    onUpdateUser({ hiddenApps: list });
+    if (list.includes(mode as AppId)) go('home');
+  };
+  const [askedApps, setAskedApps] = useState<AppId[]>([]);
+  /** Someone wants an app the company switched off: every owner and admin gets a notification with a way to switch it on. */
+  const askForApp = (id: AppId) => {
+    const admins = ws.members.filter((m) => m.role !== 'member' && m.userId !== user.id).map((m) => m.userId);
+    const name = APPS.find((a) => a.id === id)?.name ?? id;
+    admins.forEach((a) => notify(a, 'task', `${myFirst} asked to switch on ${name} for ${ws.name}`, { app: 'settings', id: 'apps' }));
+    setAskedApps((l) => [...l, id]);
+    showToast({ text: admins.length ? `Asked ${admins.map(firstOf).join(', ')}` : 'There’s no other admin to ask yet' });
+  };
   useEffect(() => {
     if (mode !== 'settings' && !enabled.has(mode)) setMode('home');
   }, [ws.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1759,6 +1831,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     if (n.link.app === 'mail' && n.link.id) return openThread(n.link.id);
     if (n.link.app === 'meet') return n.link.id ? openMeeting(n.link.id) : go('meet');
+    if (n.link.app === 'settings') return (setSettingsSection((n.link.id ?? 'account') as SettingsSection), go('settings'));
     go(n.link.app);
   };
 
@@ -2480,6 +2553,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         accounts={myAccounts}
         activeAccount={activeAccount}
         accountUnread={accountUnread}
+        onNewTemp={() => setTempDialog({})}
+        onTempMenu={(a, el) => ((tempAnchor.current = el), setTempMenu(a))}
         onAccountFilter={(id) => {
           setActiveAccount(id);
           setSelectedId(null);
@@ -2781,7 +2856,42 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
         )}
 
-        {mode === 'mail' && view.kind !== 'tracking' && (
+        {mode === 'mail' && myAccounts.length === 0 && (
+          <AppSetupCard
+            icon={Mail}
+            title="Your email isn’t here yet"
+            body={
+              isAdmin
+                ? 'Connect a mailbox to read and send email here, next to your tasks and chat. You can keep Gmail or Outlook and forward a copy, or move your email over.'
+                : 'An admin connects mailboxes for the team. Ask them to add yours, or make a temporary address for a quick sign-up in the meantime.'
+            }
+            actions={
+              <>
+                {isAdmin ? (
+                  <button className="primary-btn" onClick={() => setNewAcct(true)}>
+                    <Mail size={15} /> Connect a mailbox
+                  </button>
+                ) : (
+                  <button
+                    className="primary-btn"
+                    onClick={() => {
+                      const admins = ws.members.filter((m) => m.role !== 'member' && m.userId !== user.id).map((m) => m.userId);
+                      admins.forEach((a) => notify(a, 'mail', `${myFirst} asked for a mailbox in ${ws.name}`, { app: 'settings', id: 'workspace' }));
+                      showToast({ text: admins.length ? `Asked ${admins.map(firstOf).join(', ')}` : 'There’s no other admin to ask yet' });
+                    }}
+                  >
+                    Ask for a mailbox
+                  </button>
+                )}
+                <button className="ghost-btn outline" onClick={() => setTempDialog({})}>
+                  <Timer size={15} /> Make a temporary address
+                </button>
+              </>
+            }
+            onHide={() => setMyHidden([...myHidden, 'mail'])}
+          />
+        )}
+        {mode === 'mail' && myAccounts.length > 0 && view.kind !== 'tracking' && (
           <div className="mail-view view-enter">
             <MessageList
               ref={searchRef}
@@ -2813,6 +2923,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 showToast({ text: 'Snoozed until tomorrow 9:00', action: { label: 'Undo', run: () => patchThread(id, { snoozedUntil: undefined }) } });
               }}
               onMenu={() => setSidebarOpen(true)}
+              empty={(() => {
+                const t = myAccounts.find((a) => a.id === activeAccount && a.temp);
+                return t
+                  ? {
+                      title: 'Nothing here yet',
+                      sub: `Mail sent to ${t.email} lands here. ${lifeLeft(t)}.`,
+                      action: (
+                        <button className="ghost-btn sm outline" onClick={() => testTemp(t)}>
+                          <Send size={14} /> Send a test email
+                        </button>
+                      ),
+                    }
+                  : undefined;
+              })()}
             />
             <Reader
               thread={selected}
@@ -2993,6 +3117,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             me={user.id}
             onPhoto={(photo) => onUpdateUser({ photo })}
             onPreviewOnboarding={() => setPreviewOnboarding(true)}
+            myApps={{ hidden: myHidden, asked: askedApps, onHidden: setMyHidden, onAsk: askForApp }}
             myRole={role}
             onInvite={() => openInvite()}
             onRole={(uid2, r) => patchWorkspace(ws.id, { members: ws.members.map((m) => (m.userId === uid2 ? { ...m, role: r } : m)) })}
@@ -3169,6 +3294,44 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
       {previewOnboarding && <Onboarding preview me={user} existingEmails={[]} onCreate={() => {}} onClose={() => (setPreviewOnboarding(false), new URLSearchParams(location.search).has('preview') && history.replaceState(null, '', location.pathname))} />}
+      {tempDialog && (
+        <TempAddressDialog
+          ws={ws}
+          me={user.id}
+          people={members}
+          editing={tempDialog.editing}
+          onClose={() => setTempDialog(null)}
+          onSave={(a) => {
+            const editing = !!tempDialog.editing;
+            withAccounts(ws.id, (l) => (editing ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
+            setTempDialog(null);
+            if (editing) return showToast({ text: 'Saved' });
+            setActiveAccount(a.id);
+            setView({ kind: 'folder', id: 'inbox' });
+            go('mail');
+            showToast({ text: `${a.email} is ready`, action: { label: 'Copy', run: () => void navigator.clipboard?.writeText(a.email) } });
+          }}
+        />
+      )}
+      {tempMenu && (
+        <Popover anchor={tempAnchor} open onClose={() => setTempMenu(null)} width={250} title={tempMenu.email}>
+          <div className="sel-pop temp-pop">
+            <button className="am-item" onClick={() => (void navigator.clipboard?.writeText(tempMenu.email), setTempMenu(null), showToast({ text: 'Address copied' }))}>
+              <Copy size={15} /> Copy address
+            </button>
+            <button className="am-item" onClick={() => (setTempDialog({ editing: tempMenu }), setTempMenu(null))}>
+              <Timer size={15} /> Who can see it, how long
+            </button>
+            <button className="am-item" onClick={() => (testTemp(tempMenu), setTempMenu(null))}>
+              <Send size={15} /> Send a test email
+            </button>
+            <div className="am-sep" />
+            <button className="am-item danger" onClick={() => (deleteTemp(tempMenu), setTempMenu(null))}>
+              <Trash2 size={15} /> Delete now
+            </button>
+          </div>
+        </Popover>
+      )}
       {newWs && (
         <Onboarding
           me={user}

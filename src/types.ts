@@ -166,6 +166,8 @@ export interface Account {
   connected: boolean; // false until the mail server is linked
   provider?: MailProvider; // default: sprint2go
   users: string[]; // user ids who can open this mailbox
+  /** A throwaway address: made in seconds, shared with a few people, deleted by itself (or by hand). */
+  temp?: { createdBy: string; createdAt: string; expiresAt?: string };
 }
 
 /** One business: its own brand, domains, mailboxes, calendar and drive. */
@@ -215,6 +217,7 @@ export interface User {
   title: string;
   color: string;
   photo?: string; // profile photo, a small square JPEG data URL
+  hiddenApps?: AppId[]; // apps this person hid from their own sidebar (the company still has them)
   nicknames?: string[]; // "Kiki" for Rizky; used by the brain dump
   clientOf?: { workspaceId: string; clientId: string }; // someone at a client: signs in to their portal only
 }
@@ -460,7 +463,7 @@ export interface Notice {
   text: string;
   at: string;
   read: boolean;
-  link?: { app: AppId; id?: string; msg?: string }; // msg: the exact chat message to land on
+  link?: { app: AppId | 'settings'; id?: string; msg?: string }; // msg: the exact chat message to land on; settings: id is the section
 }
 
 export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';

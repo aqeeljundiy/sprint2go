@@ -14,9 +14,10 @@ import {
   ShieldAlert,
   Star,
   Trash2,
-  type LucideIcon, Clock, CalendarClock, UserCheck } from 'lucide-react';
+  type LucideIcon, Clock, CalendarClock, UserCheck, Timer, MoreHorizontal, Plus } from 'lucide-react';
 import type { Account, AppId, FolderId, Label, View } from '../types';
 import { providerName } from './Onboarding';
+import { lifeLeft } from './TempAddress';
 
 const FOLDERS: { id: FolderId; name: string; icon: LucideIcon }[] = [
   { id: 'inbox', name: 'Inbox', icon: Inbox },
@@ -51,6 +52,8 @@ interface Props {
   activeAccount: string; // 'all' or an account id
   accountUnread: Record<string, number>;
   onAccountFilter: (id: string) => void;
+  onNewTemp?: () => void;
+  onTempMenu?: (a: Account, anchor: HTMLElement) => void;
   view: View;
   labels: Label[];
   clients?: { id: string; name: string; color: string }[];
@@ -124,11 +127,11 @@ export function Sidebar(props: Props) {
                   <kbd className="sb-label">C</kbd>
                 </button>
 
-                {props.accounts.length > 1 && (
+                {props.accounts.filter((a) => !a.temp).length > 1 && (
                   <>
                     <div className="nav-heading sb-label">Inboxes</div>
                     <nav className="nav inbox-nav">
-                      {[{ id: 'all', name: 'All inboxes', email: '', kind: 'all' as const }, ...props.accounts].map((a) => (
+                      {[{ id: 'all', name: 'All inboxes', email: '', kind: 'all' as const }, ...props.accounts.filter((a) => !a.temp)].map((a) => (
                         <button
                           key={a.id}
                           className={`nav-item acct ${props.activeAccount === a.id ? 'active' : ''}`}
@@ -148,9 +151,39 @@ export function Sidebar(props: Props) {
                         </button>
                       ))}
                     </nav>
-                    <div className="nav-heading sb-label">Folders</div>
                   </>
                 )}
+                {(props.onNewTemp || props.accounts.some((a) => a.temp)) && (
+                  <>
+                    {props.accounts.some((a) => a.temp) && <div className="nav-heading sb-label">Temporary</div>}
+                    <nav className="nav temp-nav">
+                      {props.accounts
+                        .filter((a) => a.temp)
+                        .map((a) => (
+                          <div key={a.id} className={`nav-item acct temp-row ${props.activeAccount === a.id ? 'active' : ''}`}>
+                            <button className="temp-open" onClick={() => props.onAccountFilter(a.id)} title={a.email}>
+                              <Timer size={17} />
+                              <span className="sb-label acct-text">
+                                <span>{a.email.split('@')[0]}@</span>
+                                <small>{lifeLeft(a)}</small>
+                              </span>
+                            </button>
+                            {props.accountUnread[a.id] ? <span className="count">{props.accountUnread[a.id]}</span> : null}
+                            <button className="icon-btn sm temp-more sb-label" title="Copy, share or delete" onClick={(e) => props.onTempMenu?.(a, e.currentTarget)}>
+                              <MoreHorizontal size={15} />
+                            </button>
+                          </div>
+                        ))}
+                      {props.onNewTemp && (
+                        <button className="nav-item temp-add" onClick={props.onNewTemp} title="Temporary address">
+                          <Plus size={16} />
+                          <span className="sb-label">Temporary address</span>
+                        </button>
+                      )}
+                    </nav>
+                  </>
+                )}
+                {(props.accounts.filter((a) => !a.temp).length > 1 || props.accounts.some((a) => a.temp)) && <div className="nav-heading sb-label">Folders</div>}
                 <nav className="nav">
                   {FOLDERS.map(({ id, name, icon: Icon }) => (
                     <button
