@@ -1,5 +1,5 @@
 // The local database: one SQLite file in ./data. Every app collection (threads, todos, channels…) is stored as JSON documents.
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, backup as sqliteBackup } from 'node:sqlite';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, n: number) => Promise<Buffer>;
@@ -101,7 +101,7 @@ export async function backup() {
   const dir = join(DIR, 'backups');
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `sprint2go-${new Date().toISOString().slice(0, 10)}.db`);
-  await (db as unknown as { backup: (path: string) => Promise<unknown> }).backup(file);
+  await sqliteBackup(db, file);
   const { readdirSync, unlinkSync } = await import('node:fs');
   readdirSync(dir)
     .filter((f) => f.startsWith('sprint2go-') && f.endsWith('.db'))
