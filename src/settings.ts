@@ -21,6 +21,9 @@ export interface Settings {
   notifyGuests: boolean; // guests' messages, comments and approvals
   notifyEvents: boolean; // calendar reminders (10 minutes ahead) and meeting notes
   notifyOther: boolean; // finished work, teams and the rest
+  // One email about what's waiting, when they haven't used the app for a while (the server sends it: server/digest.ts).
+  emailDigest: 'off' | 'hourly' | 'daily';
+  timeZone?: string; // where they are (from their browser), for "daily at 9:00"
   showSnippets: boolean;
   trackByDefault: boolean;
   notifyOpens: boolean;
@@ -44,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   notifyGuests: true,
   notifyEvents: true,
   notifyOther: false,
+  emailDigest: 'daily',
   showSnippets: true,
   trackByDefault: true,
   notifyOpens: true,
@@ -79,6 +83,21 @@ export function useSettings(user: { id: string; name: string; title: string; col
       user.id === 'u-aqeel' ? 'pm-settings' : undefined, // keep settings saved before users existed
     ),
   );
+
+  // Their time zone follows the device they last opened (the daily email goes out at 9:00 where they are). Once per
+  // visit, after settings from their other devices have arrived, so two devices never keep changing it back and forth.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      let zone: string | undefined;
+      try {
+        zone = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+      } catch {
+        /* no zone: the company's is used */
+      }
+      if (zone) setSettings((s) => (s.timeZone === zone ? s : { ...s, timeZone: zone }));
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [key]);
 
   useEffect(() => {
     try {

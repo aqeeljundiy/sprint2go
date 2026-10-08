@@ -42,6 +42,7 @@ import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRo
 import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
 import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
+import * as digest from './digest.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -2689,6 +2690,7 @@ function caps() {
     routingCheck: process.env.MAIL_ENABLED !== '0' && mailer.systemMailPath() !== 'log', // the server can send "Some of each" routing tests
     customDomains: customDomains.dokployOn(), // agencies' own addresses get certificates (Dokploy is set up)
     customTarget: customDomains.TARGET, // what those addresses point at
+    emailNotes: mailer.systemMailPath() !== 'log', // the server can email people (teammates' away emails, guests' notices)
   };
 }
 /**
@@ -2910,6 +2912,23 @@ const summaryDeps: summaries.SummaryDeps = {
 };
 setTimeout(() => void summaries.runSummaries(summaryDeps).catch((e) => console.error('[summaries]', e instanceof Error ? e.message : e)), 45_000);
 setInterval(() => void summaries.runSummaries(summaryDeps).catch((e) => console.error('[summaries]', e instanceof Error ? e.message : e)), 10 * 60_000);
+
+// Email for teammates who are away (Settings, Notifications), through the system mail; only when it can send. Away
+// means no window in use and no request (opening the app from a notification is one) for a while.
+setInterval(() => {
+  if (mailer.systemMailPath() === 'log') return;
+  const seen = db.lastSeen();
+  const deps: digest.DigestDeps = {
+    publicUrl: PUBLIC_URL,
+    lastActive: (userId) => {
+      const live = [...clients.values()].filter((c) => c.userId === userId && !c.operator);
+      if (live.some((c) => c.visible && Date.now() - c.seen < IDLE_MS)) return Date.now();
+      return Math.max(Date.parse(seen.get(userId) ?? '') || 0, ...live.map((c) => c.seen));
+    },
+    send: (to, subject, text, html, fromName) => mailer.sendNote(to, subject, text, html, fromName),
+  };
+  void digest.runDigests(deps).catch((e) => console.error('[digest]', e instanceof Error ? e.message : e));
+}, 10 * 60_000);
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {

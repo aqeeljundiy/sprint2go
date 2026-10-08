@@ -433,6 +433,64 @@ await test('Undo send: a refused email is marked failed on the message', async (
   assert.match(m.delivery.error, /paused/);
   db.writeDocs('workspaces', [w], [], null);
 });
+
+/* email for teammates who are away (server/digest.ts) */
+
+const digest = await import('../server/digest.ts');
+const D0 = at('2026-10-12', 9, 10); // Monday 9:10 in Jakarta
+const hoursAgo = (h) => new Date(D0 - h * 3600_000).toISOString();
+await db.setLogin('aj-ana', 'ana@aj.example', 'unit-test-password');
+await db.setLogin('aj-mo', 'mo@aj.example', 'unit-test-password');
+db.writeDocs('notices', [
+  { id: 'dn-dm', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'Mo messaged you: “lunch?”', at: hoursAgo(3), read: false, link: { app: 'chat', id: 'ch-x', msg: 'mx' } },
+  { id: 'dn-task', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'task', text: 'Mo assigned you “Write the brief”', at: hoursAgo(2), read: false, link: { app: 'tasks', id: 'task-1' } },
+  { id: 'dn-read', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'task', text: 'Already read', at: hoursAgo(2), read: true, link: { app: 'tasks', id: 'task-2' } },
+  { id: 'dn-seen', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'Seen in chat', at: hoursAgo(2), read: false, link: { app: 'chat', id: 'ch-seen', msg: 'my' } },
+  { id: 'dn-before', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'From before she left', at: hoursAgo(5), read: false, link: { app: 'chat', id: 'ch-x' } },
+  { id: 'dn-done', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'done', text: 'Finished work', at: hoursAgo(2), read: false },
+], [], null);
+db.writeDocs('prefs', [{ id: 'aj-ana', value: { 's2g-read:aj-ana': { 'ch-seen': hoursAgo(1) }, 'pm-settings:aj-ana': { timeZone: 'Asia/Jakarta' } } }], [], null);
+const w0 = db.getDoc('workspaces', 'w-aj');
+db.writeDocs('workspaces', [{ ...w0, accounts: [{ id: 'aj-box', email: 'ana@aj.example', name: 'Ana', kind: 'personal', users: ['aj-ana'] }] }], [], null);
+db.writeDocs('threads', [
+  { id: 'dt-reply', accountId: 'aj-box', subject: 'Proposal', location: 'inbox', unread: true, messages: [{ id: 'q1', from: { name: 'Ana', email: 'ana@aj.example' }, to: [], date: hoursAgo(30), body: 'Here it is' }, { id: 'q2', from: { name: 'Budi', email: 'budi@client.example' }, to: [], date: hoursAgo(1.5), body: 'Looks good' }] },
+  { id: 'dt-news', accountId: 'aj-box', subject: 'Newsletter', location: 'inbox', unread: true, messages: [{ id: 'q3', from: { name: 'News', email: 'news@else.example' }, to: [], date: hoursAgo(1.5), body: 'Hi', listUnsubscribe: { url: 'https://x', oneClick: true } }] },
+], [], null);
+const mails = [];
+const digestDeps = (lastActive) => ({ publicUrl: 'https://app.example', lastActive: () => lastActive, send: async (to, subject, text, html) => (mails.push({ to, subject, text, html }), true) });
+await test('Digest: someone away gets one email at 9:00 their time, about what came while they were away', async () => {
+  assert.equal((await digest.runDigests(digestDeps(D0 - 30 * 60_000), D0)).filter((r) => r.userId === 'aj-ana').length, 0, 'not while they’re around');
+  assert.equal((await digest.runDigests(digestDeps(D0 - 4 * 3600_000), at('2026-10-12', 8, 50))).filter((r) => r.userId === 'aj-ana').length, 0, 'not before 9:00');
+  const r = await digest.runDigests(digestDeps(D0 - 4 * 3600_000), D0);
+  assert.deepEqual(r.filter((x) => x.userId === 'aj-ana'), [{ userId: 'aj-ana', items: 3, sent: true }]);
+  const m = mails.at(-1);
+  assert.equal(m.to, 'ana@aj.example');
+  assert.equal(m.subject, '3 things waiting for you in AJ');
+  assert.match(m.text, /Mo messaged you/);
+  assert.match(m.text, /https:\/\/app\.example\/tasks\?ws=w-aj&id=task-1&notice=dn-task/);
+  assert.match(m.text, /Budi replied: Proposal/);
+  for (const not of ['Already read', 'Seen in chat', 'From before she left', 'Finished work', 'Newsletter']) assert.ok(!m.text.includes(not), `${not} is left out`);
+  assert.ok(!/—/.test(m.text + m.html), 'no em dashes');
+  assert.match(m.html, /<a href="https:\/\/app\.example\/mail\?ws=w-aj&amp;id=dt-reply"/);
+});
+await test('Digest: never the same thing twice, and once a day', async () => {
+  db.writeDocs('notices', [{ id: 'dn-new', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'Something new', at: new Date(D0 + 60_000).toISOString(), read: false, link: { app: 'chat', id: 'ch-x' } }], [], null);
+  assert.equal((await digest.runDigests(digestDeps(D0 - 4 * 3600_000), D0 + 2 * 3600_000)).filter((r) => r.userId === 'aj-ana').length, 0, 'today’s email went already');
+  const r = await digest.runDigests(digestDeps(D0 - 4 * 3600_000), D0 + 24 * 3600_000);
+  assert.deepEqual(r.filter((x) => x.userId === 'aj-ana'), [{ userId: 'aj-ana', items: 1, sent: true }], 'tomorrow: only the new thing');
+});
+await test('Digest: hourly or off, and the kinds switched off in Settings, Notifications stay out', async () => {
+  db.writeDocs('prefs', [{ id: 'aj-mo', value: { 'pm-settings:aj-mo': { emailDigest: 'hourly', notifyTasks: false, timeZone: 'Asia/Jakarta' } } }], [], null);
+  db.writeDocs('notices', [
+    { id: 'dm-1', userId: 'aj-mo', workspaceId: 'w-aj', kind: 'mention', text: 'Ana mentioned you in #design', at: new Date(D0 - 90 * 60_000).toISOString(), read: false, link: { app: 'chat', id: 'ch-d' } },
+    { id: 'dm-2', userId: 'aj-mo', workspaceId: 'w-aj', kind: 'task', text: 'Ana assigned you a task', at: new Date(D0 - 90 * 60_000).toISOString(), read: false, link: { app: 'tasks', id: 't9' } },
+  ], [], null);
+  const r = await digest.runDigests(digestDeps(D0 - 2 * 3600_000), at('2026-10-12', 15));
+  assert.deepEqual(r.filter((x) => x.userId === 'aj-mo'), [{ userId: 'aj-mo', items: 1, sent: true }], 'hourly: any time of day; tasks are off for Mo');
+  db.writeDocs('prefs', [{ id: 'aj-mo', value: { 'pm-settings:aj-mo': { emailDigest: 'off' } } }], [], null);
+  db.writeDocs('notices', [{ id: 'dm-3', userId: 'aj-mo', workspaceId: 'w-aj', kind: 'mention', text: 'More', at: new Date(at('2026-10-12', 15, 30)).toISOString(), read: false }], [], null);
+  assert.equal((await digest.runDigests(digestDeps(D0 - 2 * 3600_000), at('2026-10-12', 17))).filter((x) => x.userId === 'aj-mo').length, 0, 'off');
+});
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');
