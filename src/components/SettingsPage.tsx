@@ -19,7 +19,8 @@ import { RichEditor } from './RichEditor';
 import { PhotoPicker } from './PhotoPicker';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { accessFor } from '../clientView';
-import { Select } from './ui/Select';
+import { Select, type Option } from './ui/Select';
+import { COMPANY_TZ, SUMMARY_HOUR, companyTz } from '../jobTimes';
 import { changePassword, server } from '../sync';
 import { EmailSetupGuide, providerLabel } from './EmailSetupGuide';
 import { caps } from '../caps';
@@ -55,6 +56,27 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard, group: 'You' },
   { id: 'developer', name: 'Developer', icon: FlaskConical, group: 'You' },
 ];
+
+/** Every time zone the browser knows, as "Jakarta, GMT+7" (found by its region too), for Settings, General. */
+let ZONES: Option[] | null = null;
+function zoneOptions(current: string): Option[] {
+  ZONES ??= (() => {
+    const at = new Date();
+    const names: string[] = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [COMPANY_TZ];
+    return names.map((tz) => {
+      let offset = '';
+      try {
+        offset = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(at).find((x) => x.type === 'timeZoneName')?.value ?? '';
+      } catch {
+        /* an old browser: the name alone */
+      }
+      const parts = tz.split('/');
+      const city = parts[parts.length - 1].replace(/_/g, ' ');
+      return { value: tz, label: offset ? `${city}, ${offset}` : city, hint: parts.slice(0, -1).join(', ').replace(/_/g, ' ') || undefined, keywords: tz.replace(/[/_]/g, ' ') };
+    });
+  })();
+  return ZONES.some((z) => z.value === current) ? ZONES : [{ value: current, label: current.split('/').pop()!.replace(/_/g, ' '), keywords: current }, ...ZONES];
+}
 
 const SHORTCUTS: [string, string[]][] = [
   ['Compose', ['C']],
@@ -243,6 +265,11 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                         ? `In everyone’s calendar, and a note on tasks due that day. Checked ${relative(holidayCal.syncedAt)}.`
                         : 'Adding them to everyone’s calendar…'}
                 </small>
+              </div>
+              <div className="field">
+                <label>Time zone</label>
+                <Select value={companyTz(ws)} onChange={(v) => onWorkspace({ timeZone: v })} label="Time zone" searchable options={zoneOptions(companyTz(ws))} />
+                <small>Scheduled channel summaries are written at {SUMMARY_HOUR}:00 here. Email digests use it for anyone whose own time zone isn’t known yet.</small>
               </div>
               </fieldset>
 

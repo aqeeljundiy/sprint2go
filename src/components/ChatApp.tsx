@@ -19,7 +19,7 @@ import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 import { ChannelMaterials } from './ChannelMaterials';
 import { personOption } from './ui/PeopleList';
 import { server, uploadFile, wasSkipped } from '../sync';
-import { channelSchedule, nextSummaryDay, settledKey } from '../jobTimes';
+import { channelSchedule, companyTz, nextSummaryDay, settledKey } from '../jobTimes';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -715,6 +715,8 @@ interface ViewProps {
   /** Land on this message (from a notification): open its thread if it's a reply, scroll to it and highlight it. */
   focusId?: string | null;
   onFocused?: () => void;
+  /** The company's time zone (Settings, General): when scheduled summaries are written. */
+  timeZone?: string;
 }
 
 /** "@Rizky" → <b>@Rizky</b>; links clickable; keeps everything else as text. */
@@ -862,7 +864,7 @@ export function ChatView(p: ViewProps) {
   // The schedule the server runs (server/summaries.ts): when the next one comes, and what happened to the last one.
   const schedule = channelSchedule(channel);
   const lastRun = channel.summary?.last;
-  const nextDay = nextSummaryDay(schedule, settledKey(lastRun), Date.now(), undefined, !!lastRun);
+  const nextDay = nextSummaryDay(schedule, settledKey(lastRun), Date.now(), companyTz({ timeZone: p.timeZone }), !!lastRun);
   const nextRun = () => (!nextDay ? '' : nextDay === localDay() ? 'today' : new Date(`${nextDay}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }));
   const lastMissed = lastRun && (lastRun.state === 'off' || lastRun.state === 'failed') && lastRun.key === settledKey(lastRun) ? lastRun : null;
   const lastRetrying = lastRun?.state === 'failed' && !settledKey(lastRun) ? lastRun : null;
@@ -1726,7 +1728,7 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
                 </span>
               )}
               <a href={`mailto:${other.email}`}>{other.email}</a>
-              <span className="muted small">Local time {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} WIB</span>
+              <span className="muted small">Local time {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: companyTz({ timeZone: p.timeZone }), timeZoneName: 'short' })}</span>
             </div>
           ) : (
             <dl className="fields about-fields">

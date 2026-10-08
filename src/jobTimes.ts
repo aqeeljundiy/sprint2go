@@ -1,8 +1,33 @@
 // When the server's scheduled jobs run, in local time: channel summaries (daily, weekly, monthly) and the email
 // digest. Shared by the server, which runs them, and the app, which says when the next one comes.
 
-/** The company's time zone for its scheduled jobs (companies don't pick one yet; sprint2go starts in Indonesia). */
+/**
+ * The time zone of a company that hasn't picked one (Settings, General): companies made before there was a choice.
+ * sprint2go started in Indonesia. A new company starts in its creator's own time zone.
+ */
 export const COMPANY_TZ = 'Asia/Jakarta';
+
+/** Whether this is a time zone the clock here knows (an IANA name like "Asia/Jakarta"). */
+export function isZone(tz: unknown): tz is string {
+  if (typeof tz !== 'string' || !tz || tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+/** A company's time zone for its scheduled jobs (summaries, the fallback for digests and table rules). */
+export const companyTz = (ws: { timeZone?: string } | null | undefined) => (isZone(ws?.timeZone) ? ws!.timeZone! : COMPANY_TZ);
+/** The time zone this device is in, or the default when the browser doesn't say. */
+export const deviceTz = () => {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return isZone(tz) ? tz : COMPANY_TZ;
+  } catch {
+    return COMPANY_TZ;
+  }
+};
 /** Scheduled channel summaries are written from this local hour on the day they're due. */
 export const SUMMARY_HOUR = 6;
 /** A summary missed while the server was down is still written this many days late, never later. */

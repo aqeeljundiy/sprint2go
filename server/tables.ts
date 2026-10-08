@@ -5,6 +5,7 @@ import * as db from './db.ts';
 import { cellText, guessField, isEmpty, parseIncoming, passes, rowName, valueOf } from '../src/components/tables/core.ts';
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
 import { cleanStages, stageIdFor } from '../src/stages.ts';
+import { companyTz } from '../src/jobTimes.ts';
 
 export interface Env {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
@@ -445,11 +446,13 @@ function localNow(tz: string) {
 export function runSchedules(env: Env) {
   for (const t of tables()) {
     for (const rule of (t.rules ?? []).filter((x) => x.enabled && x.on === 'schedule' && x.schedule && x.actions.length)) {
+      // The rule's own time zone (set when it was made), else the company's.
+      const home = companyTz(db.getDoc('workspaces', t.workspaceId) as { timeZone?: string } | undefined);
       let at;
       try {
-        at = localNow(rule.schedule!.tz || 'Asia/Jakarta');
+        at = localNow(rule.schedule!.tz || home);
       } catch {
-        at = localNow('Asia/Jakarta');
+        at = localNow(home);
       }
       if (!rule.schedule!.days.includes(at.weekday) || at.hour < rule.schedule!.hour || t.ruleRuns?.[rule.id] === at.day) continue;
       const cur = db.getDoc('tables', t.id) as unknown as DataTable;

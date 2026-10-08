@@ -9,6 +9,7 @@ import { WORKSPACE_COLORS } from '../data/workspaces';
 import { uid } from '../utils';
 import { readLogo, WorkspaceLogo } from './WorkspaceLogo';
 import { brand as product } from '../terms';
+import { deviceTz } from '../jobTimes';
 
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 
@@ -104,6 +105,7 @@ export function NewWorkspace({ userId, userName, onCreate, onClose }: { userId: 
       domains: domain ? [domain.toLowerCase()] : [],
       accounts: [{ id: uid(), email: email.trim().toLowerCase(), name: name.trim() || email, kind: 'personal', connected: false, users: [userId] }],
       members: [{ userId, role: 'owner' }],
+      timeZone: deviceTz(), // where its creator is; Settings, General changes it
     });
 
   return (

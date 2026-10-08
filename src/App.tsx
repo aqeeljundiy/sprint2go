@@ -3575,6 +3575,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             focusId={focusMsg}
             onFocused={() => setFocusMsg(null)}
+            timeZone={ws.timeZone}
             channel={wsChannels.find((c) => c.id === chatId) ?? null}
             messages={messages.filter((m) => m.channelId === chatId)}
             users={members}
