@@ -27,6 +27,9 @@ import { templatesFor, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
 import type { VaultItem } from './components/VaultApp';
 import { eventsOn } from './calendarUtils';
+import { meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
+import { setHolidayDays } from './holidayDays';
+import { holidayCalendarId, holidayCountry } from './data/holidays';
 import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
@@ -394,7 +397,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [hiddenCals, setHiddenCals] = useState<Set<string>>(new Set());
   const [extCals, setExtCals] = useStored('calendars');
   const [shownMates, setShownMates] = useState<Set<string>>(new Set());
-  const [connectCal, setConnectCal] = useState(false);
+  const [connectCal, setConnectCal] = useState<false | true | 'holidays'>(false);
   const [calCursor, setCalCursor] = useState(new Date());
   const [calView, setCalView] = useState<CalView>(() => (matchMedia('(max-width: 760px)').matches ? 'day' : 'week'));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -1843,7 +1846,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       messages: messages.filter((m) => channels.some((c) => c.id === m.channelId && c.workspaceId === ws.id)),
       meetings: wsMeetings,
       mail: wsThreads,
-      events: events.filter((e) => (e.workspaceId ?? 'pnp') === ws.id),
+      events: events.filter((e) => e.feed !== 'link' && !e.busy && (e.workspaceId ?? 'pnp') === ws.id), // not people's own calendar links
       files: drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id).map((d) => ({ ...d, thumb: undefined })),
     };
     try {
@@ -2157,14 +2160,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Calendar ---------------- */
 
-  // My outside calendars (personal: they show in every workspace) and teammates' availability on top.
-  const myExtCals = useMemo(() => extCals.filter((c) => c.ownerId === user.id), [extCals, user.id]);
+  // My outside calendars (personal: they show in every workspace), this company's public holidays, and teammates'
+  // availability on top.
+  const myExtCals = useMemo(() => extCals.filter((c) => c.ownerId === user.id || (c.source === 'holidays' && c.workspaceId === ws.id)), [extCals, user.id, ws.id]);
   const extIds = useMemo(() => new Set(extCals.map((c) => c.id)), [extCals]);
+  // Public holidays by day, for the date picker and tasks due on a holiday.
+  const holidayDays = useMemo(() => {
+    const days = new Map<string, string>();
+    for (const e of events) {
+      if (e.feed !== 'holidays' || e.workspaceId !== ws.id) continue;
+      for (let d = new Date(e.start); d < new Date(e.end); d.setDate(d.getDate() + 1)) {
+        const day = localDay(d);
+        days.set(day, days.has(day) ? `${days.get(day)}, ${e.title}` : e.title);
+      }
+    }
+    return days;
+  }, [events, ws.id]);
+  setHolidayDays(holidayDays);
   const mateCals = useMemo(() => members.filter((u) => shownMates.has(u.id)).map((u) => ({ id: `mate-${u.id}`, name: u.name, color: u.color })), [members, shownMates]);
   const allCals = useMemo(() => [...CALENDARS, ...myExtCals, ...mateCals], [myExtCals, mateCals]);
   const visibleEvents = useMemo(() => {
-    const mine = events.filter((e) => !hiddenCals.has(e.calendarId) && (e.userId ?? 'u-aqeel') === user.id && (extIds.has(e.calendarId) ? myExtCals.some((c) => c.id === e.calendarId) : (e.workspaceId ?? 'pnp') === ws.id));
+    const mine = events.filter((e) => {
+      if (hiddenCals.has(e.calendarId)) return false;
+      if (e.feed === 'holidays') return e.workspaceId === ws.id; // the company's: everyone's
+      return (e.userId ?? 'u-aqeel') === user.id && (extIds.has(e.calendarId) ? myExtCals.some((c) => c.id === e.calendarId) : (e.workspaceId ?? 'pnp') === ws.id);
+    });
     const mates = events.flatMap((e) => {
+      if (e.feed === 'holidays') return [];
       const owner = e.userId ?? 'u-aqeel';
       if (owner === user.id || !shownMates.has(owner)) return [];
       const ext = extCals.find((c) => c.id === e.calendarId);
@@ -2172,7 +2194,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const share = ext ? (ext.share ?? 'busy') : 'details';
       if (share === 'private') return [];
       const first = (allUsers.find((u) => u.id === owner)?.name ?? 'Someone').split(' ')[0];
-      return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${share === 'busy' ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined }];
+      return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${share === 'busy' || e.busy ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined, meetUrl: undefined }];
     });
     return [...mine, ...mates];
   }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers]);
@@ -2194,6 +2216,42 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setCalCursor(new Date(ev.start));
     setSelectedEventId(ev.id);
     showToast({ text: 'Event created' });
+  };
+
+  /** My outside calendars other than holidays (links, and the demo's pretend Google and Outlook ones). */
+  const linkCals = myExtCals.filter((c) => c.source !== 'holidays');
+  /** Read all my calendar links again now (Meet's Upcoming). */
+  const refreshLinks = async () => {
+    const results = await Promise.all(
+      linkCals
+        .filter((c) => c.source === 'ics')
+        .map((c) =>
+          fetch(`/api/calendars/${c.id}/refresh`, { method: 'POST' })
+            .then((r) => r.json() as Promise<{ ok?: boolean; error?: string }>)
+            .catch(() => ({ ok: false, error: 'Couldn’t reach the server.' }))
+            .then((r) => ({ name: c.name, ...r })),
+        ),
+    );
+    const bad = results.find((r) => !r.ok);
+    showToast({ text: bad ? `${bad.name}: ${bad.error ?? 'couldn’t update it'}` : 'Your calendars are up to date', ms: bad ? 8000 : undefined });
+  };
+
+  /** The standalone demo has no server to read holidays: its holiday calendar just follows the setting. */
+  const demoHolidays = (country: string | null) => {
+    const id = holidayCalendarId(ws.id);
+    const c = holidayCountry(country ?? undefined);
+    setExtCals((cs) => [...cs.filter((x) => x.id !== id), ...(c ? [{ id, name: `Holidays in ${c.name}`, color: '#dc2626', source: 'holidays' as const, workspaceId: ws.id, readOnly: true, share: 'details' as const, country: c.code }] : [])]);
+    if (!c) setEvents((es) => es.filter((e) => e.calendarId !== id));
+  };
+
+  /** The notetaker to an event's call: its real Meet or Zoom link (the demo makes one up when there isn't one). */
+  const sendNotetakerTo = (e: CalEvent) => {
+    const link = meetingLinkOf(e);
+    if (link && !notetakerJoins(link.kind)) return showToast({ text: `The notetaker joins Google Meet and Zoom calls. It can’t join ${MEETING_NAME[link.kind]} yet.`, ms: 7000 });
+    const url = link?.url ?? (demoOk ? (/zoom/i.test(e.location ?? '') ? 'https://zoom.us/j/1234567890' : 'https://meet.google.com/abc-defg-hij') : null);
+    if (!url) return showToast({ text: 'This event has no Meet or Zoom link, so the notetaker has nowhere to go.', ms: 7000 });
+    sendBot({ url, title: e.title, botName: meetSettings.botName, clientId: '', attendees: (e.guests ?? []).map((g) => g.name), fromEvent: e.id });
+    setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
   };
 
   const deleteEvent = (id: string) => {
@@ -2789,16 +2847,37 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               if (t) todoToCalendar(t);
             }}
             onShare={(id, share) => setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, share } : c)))}
-            onSync={(id) => {
+            onSync={async (id) => {
+              const cal = extCals.find((c) => c.id === id);
+              // Links and holidays are read by the server: ask it to read them again now.
+              if (server.on && (cal?.source === 'ics' || cal?.source === 'holidays')) {
+                const r = (await fetch(`/api/calendars/${id}/refresh`, { method: 'POST' })
+                  .then((x) => x.json())
+                  .catch(() => ({ ok: false, error: 'Couldn’t reach the server. Try again in a moment.' }))) as { ok?: boolean; error?: string };
+                showToast({ text: r.ok ? `${cal.name} is up to date` : `${cal.name} didn’t update. ${r.error ?? 'Try again later.'}`, ms: r.ok ? undefined : 8000 });
+                return;
+              }
               setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, syncedAt: nowIso() } : c)));
               showToast({ text: 'Synced' });
             }}
             onRemove={(id) => {
               const cal = extCals.find((c) => c.id === id);
+              if (!cal) return;
               const snapshot = { extCals, events };
               setExtCals((cs) => cs.filter((c) => c.id !== id));
               setEvents((es) => es.filter((e) => e.calendarId !== id));
-              showToast({ text: `${cal?.name ?? 'Calendar'} removed`, action: { label: 'Undo', run: () => (setExtCals(snapshot.extCals), setEvents(snapshot.events)) } });
+              // A link is put back and read again by the server (its events come back with it).
+              const relink = server.on && cal.source === 'ics';
+              showToast({ text: `${cal.name} removed`, action: { label: 'Undo', run: () => (relink ? setExtCals((cs) => [...cs, cal]) : (setExtCals(snapshot.extCals), setEvents(snapshot.events))) } });
+            }}
+            companyName={ws.name}
+            isAdmin={isAdmin}
+            onHolidays={() => setConnectCal('holidays')}
+            onHolidaysOff={() => {
+              const before = ws.holidays;
+              patchWorkspace(ws.id, { holidays: undefined });
+              if (!server.on) demoHolidays(null);
+              showToast({ text: 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !server.on && demoHolidays(before?.country ?? null)) } });
             }}
             hidden={hiddenCals}
             busyDays={busyDays}
@@ -3299,11 +3378,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 return n;
               })
             }
-            onSendNow={(e) => {
-              const zoom = /zoom/i.test(e.location ?? '');
-              sendBot({ url: zoom ? 'https://zoom.us/j/1234567890' : 'https://meet.google.com/abc-defg-hij', title: e.title, botName: meetSettings.botName, clientId: '', attendees: (e.guests ?? []).map((g) => g.name), fromEvent: e.id });
-              setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
-            }}
+            onSendNow={(e) => sendNotetakerTo(e)}
+            demo={demoOk}
+            calendarsSyncedAt={linkCals.reduce<string | undefined>((a, c) => (c.syncedAt && (!a || c.syncedAt > a) ? c.syncedAt : a), undefined)}
+            onSyncCalendars={server.on && linkCals.some((c) => c.source === 'ics') ? refreshLinks : demoOk ? () => showToast({ text: 'Synced' }) : undefined}
             onAsk={setAskScope}
             onSend={() => openSendBot()}
             onMenu={() => setSidebarOpen(true)}
@@ -3492,7 +3570,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onDelete={deleteEvent}
             onOpenThread={openThread}
             onMenu={() => setSidebarOpen(true)}
-            canEdit={(e) => !e.calendarId.startsWith('mate-') && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
+            canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
+            onNotetaker={botOn ? sendNotetakerTo : undefined}
             onMove={(id, start, end) => {
               const before = events.find((e) => e.id === id);
               if (!before) return;
@@ -3673,6 +3752,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onMenu={() => setSidebarOpen(true)}
             workspace={ws}
             onWorkspace={(p) => patchWorkspace(ws.id, p)}
+            onHolidays={(country) => {
+              patchWorkspace(ws.id, { holidays: country ? { country } : undefined });
+              if (!server.on) demoHolidays(country);
+            }}
+            holidayCal={extCals.find((c) => c.id === holidayCalendarId(ws.id))}
             onAddAccount={() => setNewAcct(true)}
             users={allUsers}
             me={user.id}
@@ -3948,12 +4032,31 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         <ConnectCalendar
           me={{ id: user.id, email: user.email }}
           existing={myExtCals}
+          workspace={ws}
+          isAdmin={isAdmin}
+          live={server.on}
+          demo={demoOk}
+          google={caps.googleCalendar}
+          microsoft={caps.microsoftCalendar}
+          start={connectCal === 'holidays' ? 'holidays' : undefined}
           onClose={() => setConnectCal(false)}
           onConnect={(cals) => {
             setExtCals((cs) => [...cs, ...cals]);
             setEvents((es) => [...es, ...cals.flatMap(externalEvents)]);
             setConnectCal(false);
             showToast({ text: `${cals.length > 1 ? `${cals.length} calendars` : cals[0].name} connected` });
+          }}
+          onLinked={(cal, upcoming) => {
+            setConnectCal(false);
+            setHiddenCals((h) => (h.has(cal.id) ? new Set([...h].filter((x) => x !== cal.id)) : h));
+            showToast({ text: upcoming ? `${cal.name} added. It updates every 30 minutes.` : `${cal.name} added, but it has nothing in the coming year. Check it’s the right calendar.`, ms: upcoming ? undefined : 9000 });
+          }}
+          onHolidays={(country) => {
+            const before = ws.holidays;
+            patchWorkspace(ws.id, { holidays: country ? { country } : undefined });
+            if (!server.on) demoHolidays(country);
+            setConnectCal(false);
+            showToast({ text: country ? `Holidays in ${holidayCountry(country)?.name ?? country} now show for everyone at ${ws.name}` : 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !server.on && demoHolidays(before?.country ?? null)) } });
           }}
         />
       )}

@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import type { CalEvent, Client, Meeting, MeetingSettings, MeetingType, Role, Todo, User } from '../types';
 import { relative, fullDate } from '../utils';
+import { MEETING_NAME, meetingLinkOf, notetakerJoins, type MeetingKind } from '../meetingLinks';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { Popover } from './ui/Popover';
@@ -157,6 +158,9 @@ export interface MeetProps {
   onJoinMode: (m: NonNullable<MeetingSettings['joinMode']>) => void;
   onOverride: (eventId: string, join: boolean | null) => void;
   onSendNow: (e: CalEvent) => void;
+  demo?: boolean; // the demo: events that only say "Zoom" or "Google Meet" count as having a link
+  calendarsSyncedAt?: string; // when the outside calendars were last read
+  onSyncCalendars?: () => void;
   onAsk: (scope: AskScope) => void;
   onSend: () => void;
   onMenu: () => void;
@@ -920,7 +924,8 @@ function FolderPage(p: MeetProps & { clientId: string }) {
 /* ---------------- Upcoming ---------------- */
 
 const JOIN_LABEL = { accepted: 'Meetings I organize or accept', organizer: 'Only meetings I organize', all: 'Every meeting with a link', off: 'Off: I pick each one' } as const;
-const linkOf = (e: CalEvent) => (/zoom/i.test(e.location ?? '') ? 'zoom' : /meet|google/i.test(e.location ?? '') ? 'meet' : null);
+/** The event's video call: a real link, or in the demo a place that just says Zoom or Google Meet. */
+const linkOf = (e: CalEvent, demo?: boolean): MeetingKind | null => meetingLinkOf(e)?.kind ?? (demo ? (/zoom/i.test(e.location ?? '') ? 'zoom' : /meet|google/i.test(e.location ?? '') ? 'meet' : null) : null);
 
 function Upcoming(p: MeetProps) {
   const mode = p.settings.joinMode ?? 'accepted';
@@ -929,16 +934,19 @@ function Upcoming(p: MeetProps) {
   const days = [...new Set(soon.map((e) => new Date(e.start).toDateString()))];
   const dayName = (d: string) => (d === new Date().toDateString() ? 'Today' : d === new Date(now + 86_400_000).toDateString() ? 'Tomorrow' : new Date(d).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' }));
   const joins = (e: CalEvent) => {
-    if (!linkOf(e)) return false;
+    const k = linkOf(e, p.demo);
+    if (!k || !notetakerJoins(k)) return false;
     if (e.id in p.overrides) return p.overrides[e.id];
     return mode === 'all' || mode === 'accepted' || (mode === 'organizer' && !e.guests?.length);
   };
   return (
     <section className="meet-pane view-enter">
-      <Head title="Upcoming" sub={`From your connected calendars · synced ${relative(new Date(now - 3 * 60_000).toISOString())}`} onMenu={p.onMenu}>
-        <button className="ghost-btn sm" onClick={() => p.toast('Synced')}>
-          <RefreshCw size={13} /> Sync now
-        </button>
+      <Head title="Upcoming" sub={p.calendarsSyncedAt ? `From your calendars · updated ${relative(p.calendarsSyncedAt)}` : 'From your calendar'} onMenu={p.onMenu}>
+        {p.onSyncCalendars && (
+          <button className="ghost-btn sm" onClick={p.onSyncCalendars}>
+            <RefreshCw size={13} /> Update now
+          </button>
+        )}
       </Head>
       <div className="tracking-scroll">
         <div className="side-card upcoming-set">
@@ -954,7 +962,9 @@ function Upcoming(p: MeetProps) {
             {soon
               .filter((e) => new Date(e.start).toDateString() === d)
               .map((e) => {
-                const link = linkOf(e);
+                const link = linkOf(e, p.demo);
+                const url = meetingLinkOf(e)?.url;
+                const bot = !!link && notetakerJoins(link);
                 const mid = p.sentEvents[e.id];
                 const mt = mid ? p.meetings.find((x) => x.id === mid) : undefined;
                 const startsSoon = new Date(e.start).getTime() - now < 15 * 60_000;
@@ -967,7 +977,8 @@ function Upcoming(p: MeetProps) {
                     <span className="ev-main">
                       <strong>{e.title}</strong>
                       <small>
-                        {link === 'zoom' ? 'Zoom' : link === 'meet' ? 'Google Meet' : 'No meeting link'}
+                        {link ? MEETING_NAME[link] : 'No meeting link'}
+                        {link && !bot ? ' · the notetaker can’t join this yet' : ''}
                         {e.guests?.length ? ` · ${e.guests.length} other${e.guests.length > 1 ? 's' : ''}` : ''}
                         {e.id in p.overrides ? ' · set by you' : ''}
                       </small>
@@ -977,14 +988,19 @@ function Upcoming(p: MeetProps) {
                         <StatusPill m={mt} />
                       </button>
                     ) : (
-                      link &&
+                      bot &&
                       startsSoon && (
                         <button className="ghost-btn sm" onClick={() => p.onSendNow(e)}>
                           <Send size={13} /> Send now
                         </button>
                       )
                     )}
-                    {link && (
+                    {url && startsSoon && (
+                      <a className="ghost-btn sm" href={url} target="_blank" rel="noopener noreferrer">
+                        <Video size={13} /> Join
+                      </a>
+                    )}
+                    {bot && (
                       <label className="ev-switch" title="Bot joins">
                         <span className="muted small">Bot joins</span>
                         <button

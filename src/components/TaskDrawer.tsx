@@ -8,6 +8,7 @@ import { localDay, relative } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
+import { holidayOn } from '../holidayDays';
 import { SOURCE, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { useOnePanel } from '../onePanel';
@@ -159,6 +160,7 @@ export function TaskDrawer(p: Props) {
             <dd>
               <DatePicker value={t.due ?? ''} onChange={(v) => p.onPatch(t.id, { due: v || undefined })} label="Due date" placeholder="No date" />
               {t.due && !t.done && dueLabel(t.due).cls && <span className={`due ${dueLabel(t.due).cls}`}>{dueLabel(t.due).text}</span>}
+              {t.due && !t.done && dueLabel(t.due).cls !== 'overdue' && holidayOn(t.due) && <span className="hol-hint">{holidayOn(t.due)} is a public holiday</span>}
             </dd>
             {!brief && (
               <>

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Popover } from './Popover';
+import { holidayOn } from '../../holidayDays';
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (n: number) => {
@@ -119,11 +120,14 @@ export function DatePicker({
             ))}
             {days.map((d) => {
               const v = iso(d);
+              const hol = holidayOn(v);
               return (
                 <button
                   key={v}
                   type="button"
-                  className={`dp-day ${d.getMonth() !== month.getMonth() ? 'out' : ''} ${v === today ? 'today' : ''} ${v === value ? 'on' : ''}`}
+                  className={`dp-day ${d.getMonth() !== month.getMonth() ? 'out' : ''} ${v === today ? 'today' : ''} ${v === value ? 'on' : ''} ${hol ? 'hol' : ''}`}
+                  title={hol ? `${hol}, a public holiday` : undefined}
+                  aria-label={hol ? `${d.getDate()}, ${hol}, public holiday` : undefined}
                   onClick={() => pick(v)}
                 >
                   {d.getDate()}
@@ -131,6 +135,7 @@ export function DatePicker({
               );
             })}
           </div>
+          {value && holidayOn(value) && <p className="dp-hol">{holidayOn(value)} is a public holiday</p>}
           {clearable && value && (
             <button type="button" className="dp-clear" onClick={() => pick('')}>
               <X size={13} /> No date

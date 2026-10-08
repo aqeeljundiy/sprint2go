@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { GripVertical, CalendarPlus, Check, ChevronLeft, ChevronRight, MoreHorizontal, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, GripVertical, CalendarPlus, Check, ChevronLeft, ChevronRight, Globe, MoreHorizontal, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import type { CalendarDef, User } from '../types';
 import { addMonths, monthGrid, sameDay, startOfWeek } from '../calendarUtils';
 import { relative } from '../utils';
@@ -21,18 +21,34 @@ interface Props {
   onNew: () => void;
   onAddCalendar: () => void;
   onShare: (id: string, share: 'busy' | 'details' | 'private') => void;
-  onSync: (id: string) => void;
+  onSync: (id: string) => void | Promise<void>;
   onRemove: (id: string) => void;
+  /** The company's public holidays (a calendar everyone in it has). */
+  companyName: string;
+  isAdmin: boolean;
+  onHolidays: () => void; // pick or change the country
+  onHolidaysOff: () => void;
   /** My open tasks without a time block yet: drag one onto the calendar. */
   toPlan?: { id: string; title: string; sub?: string; late?: boolean }[];
   onPlan?: (id: string) => void; // no drag (phones): block the next free morning slot
 }
 
-export function CalendarSidebar({ cursor, calendars, external, teammates, shownMates, hidden, busyDays, onCursor, onToggle, onToggleMate, onNew, onAddCalendar, onShare, onSync, onRemove, toPlan = [], onPlan }: Props) {
+export function CalendarSidebar({ cursor, calendars, external, teammates, shownMates, hidden, busyDays, onCursor, onToggle, onToggleMate, onNew, onAddCalendar, onShare, onSync, onRemove, companyName, isAdmin, onHolidays, onHolidaysOff, toPlan = [], onPlan }: Props) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
   const anchor = useRef<HTMLElement | null>(null);
   const menuCal = external.find((c) => c.id === menuFor);
-  const accounts = [...new Set(external.map((c) => c.account ?? (c.source === 'holidays' ? 'Holidays' : 'Calendar links')))];
+  const groupOf = (c: CalendarDef) => c.account ?? (c.source === 'holidays' ? 'Public holidays' : 'Calendar links');
+  const accounts = [...new Set(external.map(groupOf))];
+  const companyHolidays = menuCal?.source === 'holidays' && !!menuCal.workspaceId;
+  const sync = async (id: string) => {
+    setSyncing(id);
+    try {
+      await onSync(id);
+    } finally {
+      setSyncing(null);
+    }
+  };
   const cells = monthGrid(cursor);
   const today = new Date();
   const week = startOfWeek(cursor).getTime();
@@ -135,27 +151,28 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
         <div key={acc}>
           <div className="nav-heading sb-label cal-acc">
             {(() => {
-              const first = external.find((c) => (c.account ?? (c.source === 'holidays' ? 'Holidays' : 'Calendar links')) === acc)!;
+              const first = external.find((c) => groupOf(c) === acc)!;
               return <SourceMark source={first.source ?? 'sprint2go'} size={14} />;
             })()}
             <span>{acc}</span>
           </div>
           <nav className="nav">
             {external
-              .filter((c) => (c.account ?? (c.source === 'holidays' ? 'Holidays' : 'Calendar links')) === acc)
+              .filter((c) => groupOf(c) === acc)
               .map((c) => {
                 const on = !hidden.has(c.id);
                 return (
                   <div key={c.id} className="nav-row">
-                    <button className="nav-item" onClick={() => onToggle(c.id)} title={`${c.name}${c.syncedAt ? ` · synced ${relative(c.syncedAt)}` : ''}`}>
+                    <button className="nav-item" onClick={() => onToggle(c.id)} title={c.error ? `${c.name}: not updating. ${c.error}` : `${c.name}${c.syncedAt ? `, updated ${relative(c.syncedAt)}` : ''}`}>
                       <span className={`cal-check ${on ? 'on' : ''}`} style={{ ['--c' as string]: c.color }}>
                         {on && <Check size={11} strokeWidth={3} />}
                       </span>
                       <span className="sb-label">
                         {c.name}
-                        {c.share === 'busy' && <em className="cal-share">busy only</em>}
-                        {c.share === 'private' && <em className="cal-share">private</em>}
+                        {c.source !== 'holidays' && c.share === 'busy' && <em className="cal-share">busy only</em>}
+                        {c.source !== 'holidays' && c.share === 'private' && <em className="cal-share">private</em>}
                       </span>
+                      {c.error && <AlertTriangle size={13} className="cal-warn sb-label" aria-label="Not updating" />}
                     </button>
                     <button
                       className="nav-more"
@@ -198,34 +215,74 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
         </>
       )}
 
-      <Popover anchor={anchor} open={!!menuCal} onClose={() => setMenuFor(null)} width={260} title={menuCal?.name}>
+      <Popover anchor={anchor} open={!!menuCal} onClose={() => setMenuFor(null)} width={280} title={menuCal?.name}>
         {menuCal && (
-          <div className="sel-pop">
-            <div className="sel-group">Teammates see</div>
-            {(
-              [
-                ['busy', 'Busy only', 'A busy block, never the title'],
-                ['details', 'Full details', 'Titles and places'],
-                ['private', 'Nothing', 'Only you see these'],
-              ] as const
-            ).map(([v, l, h]) => (
-              <button key={v} className="sel-opt" onClick={() => (onShare(menuCal.id, v), setMenuFor(null))}>
-                <span className="sel-label">
-                  {l}
-                  <small>{h}</small>
+          <div className="sel-pop cal-menu">
+            {/* Where it comes from and whether it's keeping up. */}
+            {menuCal.error ? (
+              <div className="cal-status bad" role="status">
+                <AlertTriangle size={14} />
+                <span>
+                  <strong>Not updating</strong>
+                  <small>
+                    {menuCal.error}
+                    {menuCal.syncedAt ? ` Last worked ${relative(menuCal.syncedAt)}.` : ''}
+                  </small>
                 </span>
-                {(menuCal.share ?? 'busy') === v && <Check size={14} className="sel-check" />}
-              </button>
-            ))}
-            {!menuCal.readOnly || menuCal.source === 'ics' ? (
-              <button className="sel-opt" onClick={() => (onSync(menuCal.id), setMenuFor(null))}>
-                <RefreshCw size={14} /> Sync now
-                {menuCal.syncedAt && <small className="muted">&nbsp;last {relative(menuCal.syncedAt)}</small>}
-              </button>
+              </div>
+            ) : menuCal.source === 'ics' || menuCal.source === 'holidays' ? (
+              <div className="cal-status">
+                {menuCal.source === 'holidays' ? <Globe size={14} /> : <RefreshCw size={14} />}
+                <span>
+                  <strong>{menuCal.syncedAt ? `Updated ${relative(menuCal.syncedAt)}` : 'Reading it now…'}</strong>
+                  <small>{companyHolidays ? `For everyone at ${companyName}. Checked daily.` : 'Read only. Updates every 30 minutes.'}</small>
+                </span>
+              </div>
             ) : null}
-            <button className="sel-opt danger" onClick={() => (onRemove(menuCal.id), setMenuFor(null))}>
-              <Trash2 size={14} /> Remove calendar
-            </button>
+            {!companyHolidays && (
+              <>
+                <div className="sel-group">Teammates see</div>
+                {(
+                  [
+                    ['busy', 'Busy only', 'A busy block, never the title'],
+                    ['details', 'Full details', 'Titles and places'],
+                    ['private', 'Nothing', 'Only you see these'],
+                  ] as const
+                ).map(([v, l, h]) => (
+                  <button key={v} className="sel-opt" onClick={() => (onShare(menuCal.id, v), setMenuFor(null))}>
+                    <span className="sel-label">
+                      {l}
+                      <small>{h}</small>
+                    </span>
+                    {(menuCal.share ?? 'busy') === v && <Check size={14} className="sel-check" />}
+                  </button>
+                ))}
+                <div className="sel-sep" />
+              </>
+            )}
+            {(!menuCal.readOnly || menuCal.source === 'ics' || companyHolidays) && (
+              <button className="sel-opt" disabled={syncing === menuCal.id} onClick={() => void sync(menuCal.id).then(() => setMenuFor(null))}>
+                <RefreshCw size={14} className={syncing === menuCal.id ? 'spin' : ''} /> {menuCal.error ? 'Try again now' : 'Update now'}
+              </button>
+            )}
+            {companyHolidays ? (
+              isAdmin ? (
+                <>
+                  <button className="sel-opt" onClick={() => (setMenuFor(null), onHolidays())}>
+                    <Globe size={14} /> Change country
+                  </button>
+                  <button className="sel-opt danger" onClick={() => (setMenuFor(null), onHolidaysOff())}>
+                    <Trash2 size={14} /> Remove for everyone
+                  </button>
+                </>
+              ) : (
+                <p className="cal-menu-note">Owners and admins pick the country, in Settings, General. Untick it to hide it just for you.</p>
+              )
+            ) : (
+              <button className="sel-opt danger" onClick={() => (onRemove(menuCal.id), setMenuFor(null))}>
+                <Trash2 size={14} /> Remove calendar
+              </button>
+            )}
           </div>
         )}
       </Popover>

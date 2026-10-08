@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Mail, MapPin, Menu, Plus, StickyNote, Trash2, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Lock, Mail, MapPin, Menu, Mic, Plus, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef } from '../types';
 import {
   addDays,
@@ -16,6 +16,7 @@ import {
   startOfWeek,
 } from '../calendarUtils';
 import { Avatar } from './Avatar';
+import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../meetingLinks';
 
 export type CalView = 'day' | 'week' | 'month';
 
@@ -44,6 +45,8 @@ interface Props {
   onExtend?: (id: string, minutes: number) => void;
   onTomorrow?: (id: string) => void;
   onTaskDone?: (e: CalEvent) => void;
+  /** Send the meeting notetaker to this event's Meet or Zoom call. */
+  onNotetaker?: (e: CalEvent) => void;
 }
 
 export function CalendarView(props: Props) {
@@ -132,6 +135,8 @@ export function CalendarView(props: Props) {
           calendar={calendars.find((c) => c.id === selected.calendarId)}
           onClose={() => props.onSelect(null)}
           onDelete={() => props.onDelete(selected.id)}
+          readOnly={!(props.canEdit?.(selected) ?? true)}
+          onNotetaker={props.onNotetaker ? () => props.onNotetaker!(selected) : undefined}
           onOpenThread={props.onOpenThread}
           task={props.taskOf?.(selected) ?? null}
           onExtend={(m) => props.onExtend?.(selected.id, m)}
@@ -437,23 +442,30 @@ function EventDetail({
   onExtend,
   onTomorrow,
   onTaskDone,
+  readOnly,
+  onNotetaker,
 }: {
   event: CalEvent;
   calendar?: CalendarDef;
   onClose: () => void;
   onDelete: () => void;
+  readOnly?: boolean;
+  onNotetaker?: () => void;
   onOpenThread: (id: string) => void;
   task?: { title: string; done: boolean } | null;
   onExtend?: (minutes: number) => void;
   onTomorrow?: () => void;
   onTaskDone?: () => void;
 }) {
+  const link = meetingLinkOf(event);
   return (
     <aside className="ev-detail" style={{ ['--c' as string]: calendar?.color }}>
       <div className="ev-actions">
-        <button className="icon-btn sm" onClick={onDelete} title="Delete event">
-          <Trash2 size={15} />
-        </button>
+        {!readOnly && (
+          <button className="icon-btn sm" onClick={onDelete} title="Delete event">
+            <Trash2 size={15} />
+          </button>
+        )}
         <button className="icon-btn sm" onClick={onClose} title="Close (Esc)">
           <X size={15} />
         </button>
@@ -466,6 +478,18 @@ function EventDetail({
         <Clock size={16} />
         <span>{fmtRange(event)}</span>
       </div>
+      {link && new Date(event.end).getTime() > Date.now() && (
+        <div className="ev-join">
+          <a className="primary-btn sm" href={link.url} target="_blank" rel="noopener noreferrer">
+            <Video size={14} /> Join {MEETING_NAME[link.kind]}
+          </a>
+          {onNotetaker && notetakerJoins(link.kind) && (
+            <button className="ghost-btn sm" onClick={onNotetaker}>
+              <Mic size={14} /> Send notetaker
+            </button>
+          )}
+        </div>
+      )}
       {event.location && (
         <div className="ev-row">
           <MapPin size={16} />
@@ -489,13 +513,19 @@ function EventDetail({
       {event.notes && (
         <div className="ev-row top">
           <StickyNote size={16} />
-          <span>{event.notes}</span>
+          <span className="ev-notes">{event.notes}</span>
         </div>
       )}
       <div className="ev-row muted">
         <span className="dot" style={{ background: calendar?.color, margin: '0 4px' }} />
         <span>{calendar?.name}</span>
       </div>
+      {event.feed && (
+        <div className="ev-row muted small">
+          <Lock size={14} />
+          <span>{event.feed === 'holidays' ? 'Public holiday, shown to everyone in the company.' : 'Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.'}</span>
+        </div>
+      )}
       {task && (
         <div className="ev-task">
           <span className="muted small">{task.done ? 'Task done' : 'Time blocked for a task'}</span>
