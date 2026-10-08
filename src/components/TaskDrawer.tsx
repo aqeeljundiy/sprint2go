@@ -98,131 +98,7 @@ export function TaskDrawer(p: Props) {
   ].filter(([, v]) => v > new Date().toISOString()) as [string, string][];
   const remindLabel = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-  return (
-    <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && p.onClose()}>
-      <aside className="drawer" role="dialog" aria-label={brief ? 'Brief' : 'Task'}>
-        <header className="drawer-head">
-          {brief ? (
-            <span className="brief-badge">
-              <FileText size={12} /> Brief
-            </span>
-          ) : (
-            <span className="drawer-kind">Task</span>
-          )}
-          <span className="spacer" />
-          {brief && p.onSaveTemplate && (
-            <button className="icon-btn sm" title="Save as a template" onClick={() => p.onSaveTemplate!(t.id)}>
-              <LayoutTemplate size={16} />
-            </button>
-          )}
-          {!brief && !t.done && (
-            <button className="icon-btn sm" title="Add to calendar" onClick={() => p.onToCalendar(t)}>
-              <CalendarPlus size={16} />
-            </button>
-          )}
-          <button className="icon-btn sm" title="Delete" onClick={() => (p.onDelete(t.id), p.onClose())}>
-            <Trash2 size={16} />
-          </button>
-          <button className="icon-btn sm" onClick={p.onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </header>
-
-        <div className="drawer-body">
-          <div className="drawer-title-row">
-            {!brief && (
-              <button className={`todo-check big ${t.done ? 'on' : ''}`} onClick={() => p.onStatus(t.id, t.done ? 'todo' : 'done')} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
-                {t.done && <span>✓</span>}
-              </button>
-            )}
-            <textarea ref={titleRef} className="drawer-title" rows={1} value={t.title} onChange={(e) => p.onPatch(t.id, { title: e.target.value })} aria-label="Title" />
-          </div>
-
-          {parent && (
-            <button className="parent-brief" onClick={() => p.onOpen(parent.id)}>
-              <span className="pb-head">
-                <FileText size={13} /> Part of <strong>{parent.title}</strong>
-              </span>
-              <span className="pb-owner">
-                {person(parent.userId) && <Avatar person={person(parent.userId)!} size={18} />}
-                {parent.userId === p.me ? 'You are' : `${person(parent.userId)?.name ?? 'Someone'} is`} in charge
-              </span>
-              {parent.context && <span className="pb-context">{parent.context.slice(0, 260)}{parent.context.length > 260 ? '…' : ''}</span>}
-              <span className="pb-open">Open the brief</span>
-            </button>
-          )}
-
-          {t.clientId && (
-            <div className={`client-vis ${t.visibleToClient ? 'on' : ''}`}>
-              <button className="cv-toggle" onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })}>
-                {t.visibleToClient ? <Eye size={15} /> : <EyeOff size={15} />}
-                <span>
-                  <strong>{t.visibleToClient ? `Visible to ${term.whos}` : 'Internal only'}</strong>
-                  <small>{t.visibleToClient ? `${p.clients.find((c) => c.id === t.clientId)?.name} can see this in their shared space` : 'Only your team can see this'}</small>
-                </span>
-              </button>
-              {!brief &&
-                (t.approval ? (
-                  <span className={`ap-tag ${t.approval.status}`}>
-                    {t.approval.status === 'waiting' ? (
-                      <>
-                        <Clock size={12} /> Waiting for {term.who} approval
-                      </>
-                    ) : t.approval.status === 'approved' ? (
-                      <>
-                        <CheckCircle2 size={12} /> Approved {t.approval.at ? relative(t.approval.at) : ''}
-                      </>
-                    ) : (
-                      <>
-                        <RotateCcw size={12} /> Changes asked: “{t.approval.note}”
-                      </>
-                    )}
-                  </span>
-                ) : (
-                  <button className="ghost-btn sm" onClick={() => p.onAskApproval(t.id)}>
-                    <CheckCircle2 size={13} /> Ask {term.who} to approve
-                  </button>
-                ))}
-              {t.approval && t.approval.status !== 'waiting' && (
-                <button className="link-btn small" onClick={() => p.onAskApproval(t.id)}>
-                  Ask again
-                </button>
-              )}
-            </div>
-          )}
-
-          <SmoothHeight>
-          {statusOf(t) === 'review' && (
-            <div className="review-banner">
-              <span>
-                <strong>Waiting for review</strong>
-                <small>{t.supervisorId === p.me ? 'You supervise this. Approve it, or send it back with a note.' : `${p.users.find((u) => u.id === t.supervisorId)?.name.split(' ')[0] ?? 'The supervisor'} checks it before it counts as done.`}</small>
-              </span>
-              {t.supervisorId === p.me && (
-                <span className="rb-actions">
-                  {sendingBack ? (
-                    <>
-                      <input autoFocus value={backNote} onChange={(e) => setBackNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && backNote.trim() && (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))} placeholder="What needs to change?" />
-                      <button className="primary-btn sm" disabled={!backNote.trim()} onClick={() => (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))}>
-                        Send back
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button className="ghost-btn sm" onClick={() => setSendingBack(true)}>
-                        Send back
-                      </button>
-                      <button className="primary-btn sm" onClick={() => p.onStatus(t.id, 'done')}>
-                        Approve
-                      </button>
-                    </>
-                  )}
-                </span>
-              )}
-            </div>
-          )}
-          </SmoothHeight>
-
+  const fieldsBlock = (
           <dl className="fields">
             <dt>Status</dt>
             <dd>
@@ -330,6 +206,156 @@ export function TaskDrawer(p: Props) {
               />
             </dd>
           </dl>
+  );
+  const metaBlock = (
+          <div className="drawer-meta">
+            <span>
+              <src.icon size={12} /> {src.label}
+            </span>
+            {t.createdBy && <span>Created by {t.createdBy === p.me ? 'you' : (person(t.createdBy)?.name ?? 'someone')} {relative(t.createdAt)}</span>}
+            {t.done && t.doneAt && <span>Done by {t.doneBy === p.me ? 'you' : (person(t.doneBy)?.name ?? 'someone')} {relative(t.doneAt)}</span>}
+            {t.threadId && (
+              <button className="link-btn" onClick={() => p.onOpenThread(t.threadId!)}>
+                Open the email
+              </button>
+            )}
+            {t.clientId && p.onOpenChannel && (
+              <button className="link-btn" onClick={() => p.onOpenChannel!(t.clientId!)}>
+                <Hash size={12} /> {term.One} channel
+              </button>
+            )}
+          </div>
+  );
+
+  // A brief has a lot to read (goal, context, everyone's tasks): a large dialog in the middle. A task: the side panel.
+  const Shell = brief ? 'div' : 'aside';
+  return (
+    <div className={brief ? 'modal-scrim' : 'drawer-scrim'} onMouseDown={(e) => e.target === e.currentTarget && p.onClose()}>
+      <Shell className={brief ? 'modal big-modal brief-modal' : 'drawer'} role="dialog" aria-label={brief ? 'Brief' : 'Task'}>
+        <header className="drawer-head">
+          {brief ? (
+            <span className="brief-badge">
+              <FileText size={12} /> Brief
+            </span>
+          ) : (
+            <span className="drawer-kind">Task</span>
+          )}
+          <span className="spacer" />
+          {brief && p.onSaveTemplate && (
+            <button className="icon-btn sm" title="Save as a template" onClick={() => p.onSaveTemplate!(t.id)}>
+              <LayoutTemplate size={16} />
+            </button>
+          )}
+          {!brief && !t.done && (
+            <button className="icon-btn sm" title="Add to calendar" onClick={() => p.onToCalendar(t)}>
+              <CalendarPlus size={16} />
+            </button>
+          )}
+          <button className="icon-btn sm" title="Delete" onClick={() => (p.onDelete(t.id), p.onClose())}>
+            <Trash2 size={16} />
+          </button>
+          <button className="icon-btn sm" onClick={p.onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className={`drawer-body${brief ? ' brief-body' : ''}`}>
+          <div className={brief ? 'bf-main' : 'bf-flat'}>
+          <div className="drawer-title-row">
+            {!brief && (
+              <button className={`todo-check big ${t.done ? 'on' : ''}`} onClick={() => p.onStatus(t.id, t.done ? 'todo' : 'done')} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
+                {t.done && <span>✓</span>}
+              </button>
+            )}
+            <textarea ref={titleRef} className="drawer-title" rows={1} value={t.title} onChange={(e) => p.onPatch(t.id, { title: e.target.value })} aria-label="Title" />
+          </div>
+
+          {parent && (
+            <button className="parent-brief" onClick={() => p.onOpen(parent.id)}>
+              <span className="pb-head">
+                <FileText size={13} /> Part of <strong>{parent.title}</strong>
+              </span>
+              <span className="pb-owner">
+                {person(parent.userId) && <Avatar person={person(parent.userId)!} size={18} />}
+                {parent.userId === p.me ? 'You are' : `${person(parent.userId)?.name ?? 'Someone'} is`} in charge
+              </span>
+              {parent.context && <span className="pb-context">{parent.context.slice(0, 260)}{parent.context.length > 260 ? '…' : ''}</span>}
+              <span className="pb-open">Open the brief</span>
+            </button>
+          )}
+
+          {t.clientId && (
+            <div className={`client-vis ${t.visibleToClient ? 'on' : ''}`}>
+              <button className="cv-toggle" onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })}>
+                {t.visibleToClient ? <Eye size={15} /> : <EyeOff size={15} />}
+                <span>
+                  <strong>{t.visibleToClient ? `Visible to ${term.whos}` : 'Internal only'}</strong>
+                  <small>{t.visibleToClient ? `${p.clients.find((c) => c.id === t.clientId)?.name} can see this in their shared space` : 'Only your team can see this'}</small>
+                </span>
+              </button>
+              {!brief &&
+                (t.approval ? (
+                  <span className={`ap-tag ${t.approval.status}`}>
+                    {t.approval.status === 'waiting' ? (
+                      <>
+                        <Clock size={12} /> Waiting for {term.who} approval
+                      </>
+                    ) : t.approval.status === 'approved' ? (
+                      <>
+                        <CheckCircle2 size={12} /> Approved {t.approval.at ? relative(t.approval.at) : ''}
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw size={12} /> Changes asked: “{t.approval.note}”
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <button className="ghost-btn sm" onClick={() => p.onAskApproval(t.id)}>
+                    <CheckCircle2 size={13} /> Ask {term.who} to approve
+                  </button>
+                ))}
+              {t.approval && t.approval.status !== 'waiting' && (
+                <button className="link-btn small" onClick={() => p.onAskApproval(t.id)}>
+                  Ask again
+                </button>
+              )}
+            </div>
+          )}
+
+          <SmoothHeight>
+          {statusOf(t) === 'review' && (
+            <div className="review-banner">
+              <span>
+                <strong>Waiting for review</strong>
+                <small>{t.supervisorId === p.me ? 'You supervise this. Approve it, or send it back with a note.' : `${p.users.find((u) => u.id === t.supervisorId)?.name.split(' ')[0] ?? 'The supervisor'} checks it before it counts as done.`}</small>
+              </span>
+              {t.supervisorId === p.me && (
+                <span className="rb-actions">
+                  {sendingBack ? (
+                    <>
+                      <input autoFocus value={backNote} onChange={(e) => setBackNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && backNote.trim() && (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))} placeholder="What needs to change?" />
+                      <button className="primary-btn sm" disabled={!backNote.trim()} onClick={() => (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))}>
+                        Send back
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="ghost-btn sm" onClick={() => setSendingBack(true)}>
+                        Send back
+                      </button>
+                      <button className="primary-btn sm" onClick={() => p.onStatus(t.id, 'done')}>
+                        Approve
+                      </button>
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
+          </SmoothHeight>
+
+          {!brief && fieldsBlock}
 
           {brief ? (
             <>
@@ -459,25 +485,16 @@ export function TaskDrawer(p: Props) {
             </div>
           </div>
 
-          <div className="drawer-meta">
-            <span>
-              <src.icon size={12} /> {src.label}
-            </span>
-            {t.createdBy && <span>Created by {t.createdBy === p.me ? 'you' : (person(t.createdBy)?.name ?? 'someone')} {relative(t.createdAt)}</span>}
-            {t.done && t.doneAt && <span>Done by {t.doneBy === p.me ? 'you' : (person(t.doneBy)?.name ?? 'someone')} {relative(t.doneAt)}</span>}
-            {t.threadId && (
-              <button className="link-btn" onClick={() => p.onOpenThread(t.threadId!)}>
-                Open the email
-              </button>
-            )}
-            {t.clientId && p.onOpenChannel && (
-              <button className="link-btn" onClick={() => p.onOpenChannel!(t.clientId!)}>
-                <Hash size={12} /> {term.One} channel
-              </button>
-            )}
+          {!brief && metaBlock}
           </div>
+          {brief && (
+            <aside className="bf-side">
+              {fieldsBlock}
+              {metaBlock}
+            </aside>
+          )}
         </div>
-      </aside>
+      </Shell>
     </div>
   );
 }

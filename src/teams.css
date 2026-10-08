@@ -275,3 +275,10 @@ button.team-row:hover,
     min-height: 56px;
   }
 }
+.proj-workload {
+  padding: 4px 4px 32px;
+}
+.proj-workload .team-row {
+  margin: 0;
+  width: 100%;
+}

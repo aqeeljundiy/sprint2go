@@ -3938,3 +3938,160 @@ button.tl:hover,
   background: var(--accent-soft);
   font-size: 13.5px;
 }
+
+/* A task's body sits straight in the panel; a brief splits into the work (left) and its details (right). */
+.bf-flat {
+  display: contents;
+}
+.modal.brief-modal {
+  width: min(1100px, 100%);
+}
+.brief-modal .drawer-head {
+  padding: 12px 12px 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.drawer-body.brief-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+.bf-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 22px 28px 32px;
+}
+.bf-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  overflow: auto;
+  padding: 22px 20px 28px;
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.bf-side .fields {
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+.bf-side .drawer-meta {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.brief-modal .drawer-notes.tall {
+  min-height: 160px;
+}
+@media (max-width: 860px) {
+  .drawer-body.brief-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+  .bf-main,
+  .bf-side {
+    height: auto;
+    overflow: visible;
+  }
+  .bf-side {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .bf-main {
+    padding: 18px 16px 20px;
+  }
+}
+
+/* Briefs in a task list: one line each, under a heading that folds. */
+.brief-rows {
+  display: grid;
+  margin-bottom: 12px;
+}
+.brief-rows-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 8px 0 4px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.brief-rows-head:hover {
+  background: var(--hover);
+}
+.brief-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.15s ease;
+}
+.brief-row + .brief-row {
+  box-shadow: 0 -1px 0 var(--border);
+}
+.brief-row:hover {
+  background: var(--hover);
+}
+.brief-row.done {
+  opacity: 0.6;
+}
+.br-icon {
+  flex: none;
+  color: var(--accent);
+}
+.br-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.br-text strong,
+.br-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.br-text strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.brief-row .bc-progress {
+  flex: none;
+}
+@media (max-width: 600px) {
+  .brief-row .bc-progress .bar {
+    display: none;
+  }
+}
+.bf-side .fields {
+  display: grid;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0;
+}
+.bf-side .fields dt {
+  margin: 0;
+}
+.bf-side .fields dd {
+  margin: 0;
+  min-width: 0;
+}
+.bf-side .fields .sel,
+.bf-side .fields .people-btn {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}

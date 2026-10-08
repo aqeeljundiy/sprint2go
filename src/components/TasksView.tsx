@@ -132,7 +132,7 @@ interface Props {
   onOpenThread: (id: string) => void;
   onOpenChannel: (id: string) => void;
   messages: ChatMessage[]; // this workspace's chat, for the client page's Chat tab
-  clientTab?: 'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal';
+  clientTab?: 'overview' | 'tasks' | 'workload' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal';
   onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
@@ -158,6 +158,8 @@ const FIELD_DEFAULTS = { list: ['due', 'project', 'team', 'brief', 'priority', '
 export function TasksView(p: Props) {
   const [layout, setLayout] = usePersisted<'list' | 'board'>('s2g-task-layout', 'list');
   const [groupPref, setGroupBy] = usePersisted<GroupBy>('s2g-task-group', 'client');
+  const [briefsOpen, setBriefsOpen] = usePersisted('s2g-briefs-open', true);
+  const [projGroup, setProjGroup] = usePersisted<GroupBy>('s2g-project-group', 'team'); // a project's tasks: by team, person or not at all
   const [filter, setFilter] = useState<Filter>('open');
   const [showDone, setShowDone] = useState(true);
   const [title, setTitle] = useState('');
@@ -165,7 +167,7 @@ export function TasksView(p: Props) {
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal'>('overview');
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'workload' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal'>('overview');
   const [writingOv, setWritingOv] = useState(false);
   const scopeId = 'id' in p.scope ? p.scope.id : '';
   useEffect(() => {
@@ -269,7 +271,7 @@ export function TasksView(p: Props) {
   const overdue = open.filter(late).length;
   const shown = filter === 'open' ? open : filter === 'done' ? done : [...open, ...done];
 
-  const groupBy: GroupBy = scope.kind === 'team' ? 'person' : scope.kind === 'client' ? (scope.teamId ? 'none' : 'team') : groupPref;
+  const groupBy: GroupBy = scope.kind === 'team' ? 'person' : scope.kind === 'client' ? (scope.teamId ? 'none' : projGroup) : groupPref;
 
   const heading =
     scope.kind === 'supervising'
@@ -519,6 +521,33 @@ export function TasksView(p: Props) {
     );
   };
 
+  // A brief in a task list: one line (title, project, what's next, progress); the full card lives on the Briefs page.
+  const briefRow = (b: Todo) => {
+    const subs = p.tasks.filter((t) => t.briefId === b.id);
+    const doneN = subs.filter((t) => t.done).length;
+    const next = subs.filter((t) => !t.done).sort((a, c) => (a.due ?? '9').localeCompare(c.due ?? '9'))[0];
+    const c = clientOf(b.clientId);
+    const owner = person(b.userId);
+    return (
+      <button key={b.id} className={`brief-row ${b.done ? 'done' : ''}`} onClick={() => p.onOpenTask(b.id)}>
+        <FileText size={14} className="br-icon" />
+        <span className="br-text">
+          <strong>{b.title}</strong>
+          <small className="muted">
+            {[c && scope.kind !== 'client' ? c.name : '', next ? `Next: ${next.title}${next.due ? ` · ${dueLabel(next.due).text}` : ''}` : subs.length ? 'All tasks done' : 'No tasks yet'].filter(Boolean).join(' · ')}
+          </small>
+        </span>
+        <span className="bc-progress">
+          <span className="bar">
+            <span style={{ width: `${subs.length ? (doneN / subs.length) * 100 : 0}%` }} />
+          </span>
+          {doneN}/{subs.length}
+        </span>
+        {owner && <Avatar person={owner} size={22} />}
+      </button>
+    );
+  };
+
   // ---------- Team page header: workload per person ----------
   const workload = team
     ? team.members
@@ -747,6 +776,7 @@ export function TasksView(p: Props) {
             [
               ['overview', 'Overview', 'Overview'],
               ['tasks', overdue ? `Tasks · ${overdue} late` : 'Tasks', 'Tasks'],
+              ['workload', 'Workload', 'Workload'],
               ['chat', 'Chat', 'Chat'],
               ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail', 'Mail'],
               ['meetings', 'Meetings', 'Meetings'],
@@ -797,8 +827,17 @@ export function TasksView(p: Props) {
 
         {scope.kind === 'grid' && gridView()}
 
-        {briefs.length > 0 && (!client || clientTab === 'tasks') && scope.kind !== 'grid' && (
-          <div className="brief-list">{briefs.map(briefCard)}</div>
+        {briefs.length > 0 && scope.kind === 'briefs' && <div className="brief-list">{briefs.map(briefCard)}</div>}
+        {briefs.length > 0 && scope.kind !== 'briefs' && (!client || clientTab === 'tasks') && scope.kind !== 'grid' && (
+          <div className="brief-rows">
+            <button type="button" className="brief-rows-head" onClick={() => setBriefsOpen((x) => !x)} aria-expanded={briefsOpen}>
+              <ChevronRight size={14} className={`rot-chev ${briefsOpen ? 'open' : ''}`} />
+              Briefs <span className="muted">{briefs.length}</span>
+            </button>
+            <div className={`fold ${briefsOpen ? 'open' : ''}`}>
+              <div className="fold-in">{briefs.map(briefRow)}</div>
+            </div>
+          </div>
         )}
         {scope.kind === 'briefs' && briefs.length === 0 && (
           <div className="empty">
@@ -901,6 +940,20 @@ export function TasksView(p: Props) {
                     </button>
                   ))}
                 </div>
+                {scope.kind === 'client' && !scope.teamId && (
+                  <Select<GroupBy>
+                    value={projGroup}
+                    onChange={setProjGroup}
+                    label="Group by"
+                    className="sel-flat"
+                    renderValue={(o) => <span className="sel-text">Group: {o?.label}</span>}
+                    options={[
+                      { value: 'team', label: 'Team' },
+                      { value: 'person', label: 'Person' },
+                      { value: 'none', label: 'None' },
+                    ]}
+                  />
+                )}
                 {!['team', 'client'].includes(scope.kind) && (
                   <Select<GroupBy>
                     value={groupPref}
@@ -1162,6 +1215,7 @@ export function TasksView(p: Props) {
           </div>
         )}
 
+        {client && clientTab === 'workload' && <ProjectWorkload tasks={p.tasks.filter((t) => t.clientId === client.id && !isBrief(t))} people={[...new Set([client.ownerId, ...(client.members ?? []).map((m) => m.userId)].filter(Boolean) as string[])]} users={p.users} me={p.me} onOpenTask={p.onOpenTask} />}
         {client && clientTab === 'chat' && (
           <div className="hub-chat">
             {clientChannel ? (
@@ -1492,5 +1546,78 @@ export function TasksView(p: Props) {
         </TabPane>
       </div>
     </section>
+  );
+}
+
+/** Who on a project has how much of its open work: late first; open someone to see their list. */
+function ProjectWorkload({ tasks, people, users, me, onOpenTask }: { tasks: Todo[]; people: string[]; users: User[]; me: string; onOpenTask: (id: string) => void }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const today = dayStr(new Date());
+  const week = dayStr(new Date(Date.now() + 7 * 86_400_000));
+  const open = tasks.filter((t) => !t.done);
+  const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
+  const ids = [...new Set([...people, ...open.flatMap(doers)])];
+  const rows = ids
+    .map((id) => users.find((u) => u.id === id))
+    .filter(Boolean)
+    .map((u) => {
+      const mine = open.filter((t) => doers(t).includes(u!.id)).sort((a, b) => (a.due ?? '9').localeCompare(b.due ?? '9'));
+      return { u: u!, mine, late: mine.filter((t) => t.due && t.due < today).length, soon: mine.filter((t) => t.due && t.due >= today && t.due <= week).length };
+    })
+    .sort((a, b) => b.late - a.late || b.mine.length - a.mine.length);
+  const nobody = open.filter((t) => !doers(t).length);
+  const most = Math.max(1, ...rows.map((r) => r.mine.length));
+  const list = (items: Todo[]) => (
+    <div className="team-load-list">
+      {items.length === 0 && <p className="muted small">Nothing open.</p>}
+      {items.map((t) => (
+        <button key={t.id} type="button" className="team-mini" onClick={() => onOpenTask(t.id)}>
+          <span>{t.title}</span>
+          {t.due && <small className={t.due < today ? 'bad' : 'muted'}>{new Date(`${t.due}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</small>}
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <div className="team-sec proj-workload">
+      <p className="muted small">This project’s open work, per person. Late work first; open someone to see their list.</p>
+      <div className="team-block">
+        {rows.map(({ u, mine, late, soon }) => (
+          <div key={u.id} className="team-load">
+            <button type="button" className="team-row" onClick={() => setOpenId(openId === u.id ? null : u.id)} aria-expanded={openId === u.id}>
+              <Avatar person={u} size={30} />
+              <span className="team-row-text">
+                <strong>{u.id === me ? `${u.name} (me)` : u.name}</strong>
+                <small className="muted">{[late && `${late} late`, soon && `${soon} due this week`, !mine.length && 'Nothing open here'].filter(Boolean).join(' · ') || `${mine.length} open`}</small>
+              </span>
+              <span className="team-bar" aria-hidden>
+                <i style={{ width: `${(mine.length / most) * 100}%` }} className={late ? 'bad' : ''} />
+              </span>
+              <span className="team-count">{mine.length}</span>
+              <ChevronRight size={14} className={`rot-chev ${openId === u.id ? 'open' : ''}`} />
+            </button>
+            <div className={`fold ${openId === u.id ? 'open' : ''}`}>
+              <div className="fold-in">{list(mine)}</div>
+            </div>
+          </div>
+        ))}
+        {nobody.length > 0 && (
+          <div className="team-load">
+            <button type="button" className="team-row" onClick={() => setOpenId(openId === '-' ? null : '-')} aria-expanded={openId === '-'}>
+              <span className="avatar-empty">?</span>
+              <span className="team-row-text">
+                <strong>Not picked up yet</strong>
+                <small className="muted">Nobody is doing these</small>
+              </span>
+              <span className="team-count">{nobody.length}</span>
+              <ChevronRight size={14} className={`rot-chev ${openId === '-' ? 'open' : ''}`} />
+            </button>
+            <div className={`fold ${openId === '-' ? 'open' : ''}`}>
+              <div className="fold-in">{list(nobody)}</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
