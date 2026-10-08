@@ -4,8 +4,8 @@
 // the click address can't send anyone anywhere we didn't write ourselves.
 //
 // What comes back is honest about what it can know. Apple Mail Privacy Protection loads every picture by itself, often
-// right after delivery, and security filters do the same: those opens show as "maybe automatic" and don't count. Gmail
-// and Yahoo load pictures through their own servers, which hide the device: those show as "via Gmail". No IP address
+// right after delivery, and security filters do the same: those opens show as "maybe automatic" and don't count. Gmail,
+// Yahoo and Outlook.com load pictures through their own servers, which hide the device: those show as "via Gmail". No IP address
 // is kept; a place is shown only when the proxy in front of us names the country (GEO_COUNTRY_HEADER), never guessed.
 //
 // Teammates and the company's own addresses are never tracked, and a company can switch tracking off for everyone
@@ -19,10 +19,13 @@ db.db.exec(`
   CREATE INDEX IF NOT EXISTS mail_track_msg ON mail_track (thread_id, message_id);
   CREATE TABLE IF NOT EXISTS mail_track_events (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL, device TEXT, place TEXT, auto TEXT, via TEXT, url TEXT, label TEXT);
   CREATE INDEX IF NOT EXISTS mail_track_events_token ON mail_track_events (token, at);
+  CREATE TABLE IF NOT EXISTS mail_remind (thread_id TEXT NOT NULL, message_id TEXT NOT NULL, workspace_id TEXT NOT NULL, account_id TEXT, by_user TEXT, due_at TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (thread_id, message_id));
+  CREATE INDEX IF NOT EXISTS mail_remind_due ON mail_remind (state, due_at);
 `);
 
 type Doc = db.Doc;
-export type Open = { at: string; device: string; place?: string; auto?: 'apple' | 'scanner'; via?: 'gmail' | 'yahoo' };
+export type Via = 'gmail' | 'yahoo' | 'outlook';
+export type Open = { at: string; device: string; place?: string; auto?: 'apple' | 'scanner'; via?: Via };
 export type Click = { at: string; label: string; url: string; auto?: 'scanner' };
 export type Tracking = Record<string, { opens: Open[]; clicks: Click[] }>;
 type Row = { token: string; workspace_id: string; account_id: string | null; thread_id: string; message_id: string; recipient: string; opens: number; clicks: number; notify: number; by_user: string | null; links: string | null; created_at: string };
@@ -170,13 +173,21 @@ export function deviceOf(ua: string) {
 }
 
 /**
+ * Outlook.com and Outlook on the web load pictures through Microsoft's servers, like Gmail. Microsoft doesn't publish
+ * that proxy's user agent; it's recognised by what it's been seen sending: an old Edge build with a stray "Mozilla/5.0"
+ * at the end (no real browser sends that), or a name that says it outright.
+ */
+const OUTLOOK_PROXY = /OutlookImageProxy|Outlook-Image-Proxy|Edge\/12\.246 Mozilla\/5\.0$/i;
+
+/**
  * What a request for the picture (or a link) says about who made it. `via`: a mail provider loaded it for a person and
  * hid the device. `auto`: maybe nobody looked (Apple Mail Privacy Protection, a security filter, a script).
  */
-export function readAgent(userAgent: string, ip = ''): { device: string; auto?: 'apple' | 'scanner'; via?: 'gmail' | 'yahoo' } {
+export function readAgent(userAgent: string, ip = ''): { device: string; auto?: 'apple' | 'scanner'; via?: Via } {
   const ua = String(userAgent ?? '').trim();
   if (/GoogleImageProxy|ggpht\.com/i.test(ua)) return { device: '', via: 'gmail' };
   if (/YahooMailProxy/i.test(ua)) return { device: '', via: 'yahoo' };
+  if (OUTLOOK_PROXY.test(ua)) return { device: '', via: 'outlook' };
   if (ua === 'Mozilla/5.0' || appleIp(ip)) return { device: '', auto: 'apple' };
   if (!ua || SCANNER.test(ua)) return { device: '', auto: 'scanner' };
   return { device: deviceOf(ua) };
@@ -350,6 +361,8 @@ function echoSoon(threadId: string) {
 
 /* ---------- telling the sender ---------- */
 
+const PROXY_NAME: Record<Via, string> = { gmail: 'Gmail', yahoo: 'Yahoo Mail', outlook: 'Outlook' };
+
 const wantsOpens = (userId: string) => ((db.getDoc('prefs', userId) as any)?.value?.[`pm-settings:${userId}`]?.notifyOpens ?? true) !== false;
 
 /** The first time a person (not a machine) opens it: a notice for whoever sent it, if they want those. */
@@ -365,10 +378,73 @@ function tellSender(row: Row, ws: any, via?: string) {
   const at = now();
   const notices = who
     .filter((u) => wantsOpens(u) && (ws.members ?? []).some((m: any) => m.userId === u))
-    .map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId: ws.id, kind: 'mail', event: 'opened', text: `${name} opened “${subject}”${via === 'gmail' ? ' in Gmail' : via === 'yahoo' ? ' in Yahoo Mail' : ''}`, at, read: false, link: { app: 'mail', id: row.thread_id } }));
+    .map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId: ws.id, kind: 'mail', event: 'opened', text: `${name} opened “${subject}”${via ? ` in ${PROXY_NAME[via as Via] ?? 'their mail app'}` : ''}`, at, read: false, link: { app: 'mail', id: row.thread_id } }));
   if (!notices.length) return;
   db.writeDocs('notices', notices as Doc[], [], null);
   deps.broadcast('notices', notices as Doc[], []);
+}
+
+/* ---------- "Remind me if no reply" ---------- */
+
+/** The longest wait anyone can pick (Compose offers 1, 3 and 7 days). */
+const MAX_REMIND_DAYS = 30;
+
+/**
+ * Noted when a tracked email really goes out (queueSend, so an email taken back with Undo or refused is never
+ * reminded about): after `days`, its sender hears once if nobody wrote back in the thread. `by`: who pressed Send;
+ * none for mail the server sent later (a personal mailbox's people hear then).
+ */
+export function planReminder(p: { workspaceId: string; accountId: string; threadId: string; messageId: string; by: string | null; days: number }) {
+  const days = Math.round(Number(p.days) || 0);
+  if (days < 1 || days > MAX_REMIND_DAYS || !p.threadId || !p.messageId) return;
+  db.db
+    .prepare("INSERT INTO mail_remind (thread_id, message_id, workspace_id, account_id, by_user, due_at, state, created_at) VALUES (?, ?, ?, ?, ?, ?, 'waiting', ?) ON CONFLICT (thread_id, message_id) DO UPDATE SET due_at = excluded.due_at, by_user = excluded.by_user, state = 'waiting'")
+    .run(p.threadId, p.messageId, p.workspaceId, p.accountId, p.by, new Date(Date.now() + days * 86_400_000).toISOString(), now());
+}
+
+/** Someone other than the company wrote in the thread after the message (a reply, or an answer from someone they asked). */
+function repliedAfter(ws: any, t: any, messageId: string) {
+  const list = (t?.messages ?? []) as any[];
+  const i = list.findIndex((m) => m?.id === messageId);
+  return i >= 0 && list.slice(i + 1).some((m) => !!m?.from?.email && !isInternal(ws, m.from.email));
+}
+
+/**
+ * Every few minutes: reminders whose day has come. No reply in the thread yet: a notice for the sender (the bell, and a
+ * push like any notice), once. A reply came, or the email or its conversation is gone: nothing. `at` for tests.
+ */
+export function runReplyReminders(at = Date.now()) {
+  const due = db.db.prepare("SELECT * FROM mail_remind WHERE state = 'waiting' AND due_at <= ? ORDER BY due_at LIMIT 200").all(new Date(at).toISOString()) as { thread_id: string; message_id: string; workspace_id: string; account_id: string | null; by_user: string | null }[];
+  const settle = db.db.prepare('UPDATE mail_remind SET state = ? WHERE thread_id = ? AND message_id = ?');
+  const notices: Doc[] = [];
+  for (const r of due) {
+    const ws = db.getDoc('workspaces', r.workspace_id) as any;
+    const t = db.getDoc('threads', r.thread_id) as any;
+    const msg = (t?.messages ?? []).find((m: any) => m?.id === r.message_id);
+    if (!ws || !t || !msg || t.location === 'trash' || t.location === 'drafts') {
+      settle.run('gone', r.thread_id, r.message_id);
+      continue;
+    }
+    if (repliedAfter(ws, t, r.message_id)) {
+      settle.run('replied', r.thread_id, r.message_id);
+      continue;
+    }
+    // Taken in one step, so two servers (or two runs) never tell it twice.
+    if (!db.db.prepare("UPDATE mail_remind SET state = 'told' WHERE thread_id = ? AND message_id = ? AND state = 'waiting'").run(r.thread_id, r.message_id).changes) continue;
+    const account = (ws.accounts ?? []).find((a: any) => a.id === r.account_id);
+    const who: string[] = r.by_user ? [r.by_user] : account && account.kind !== 'shared' ? (account.users ?? []) : [];
+    const outside = ((msg.to ?? []) as any[]).filter((p) => p?.email && !isInternal(ws, p.email));
+    const name = outside.length === 1 ? outside[0].name || outside[0].email : '';
+    const subject = String(t.subject ?? '').slice(0, 120) || '(no subject)';
+    const text = `No reply yet${name ? ` from ${name}` : ''} to “${subject}”. Time to follow up?`;
+    for (const userId of who.filter((u) => (ws.members ?? []).some((m: any) => m.userId === u)))
+      notices.push({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId: ws.id, kind: 'mail', event: 'no-reply', text, at: new Date(at).toISOString(), read: false, link: { app: 'mail', id: r.thread_id } } as Doc);
+  }
+  if (notices.length) {
+    db.writeDocs('notices', notices, [], null);
+    deps.broadcast('notices', notices, []);
+  }
+  return notices;
 }
 
 /* ---------- the two public addresses ---------- */

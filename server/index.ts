@@ -1690,7 +1690,8 @@ createServer(async (req, res) => {
           inReplyTo: typeof b.inReplyTo === 'string' ? b.inReplyTo : undefined,
           references: Array.isArray(b.references) ? b.references.filter((x: unknown) => typeof x === 'string') : undefined,
           // Read tracking for the outside recipients, when the sender asked and the company allows it.
-          tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me } : undefined,
+          // "Remind me if no reply" comes with tracking (it's in the same menu): told once, by the server, after that many days.
+          tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me, remindDays: Number(b.trackOptions?.remindDays) || 0 } : undefined,
         };
         // Undo send (Settings, Mail): the email waits here for the sender's window before anything leaves.
         const undo = Math.min(mailer.MAX_UNDO_SECONDS, Math.max(0, Math.round(Number(b.undoSeconds) || 0)));
@@ -3253,6 +3254,15 @@ setInterval(() => {
   void digest.runDigests(deps).catch((e) => console.error('[digest]', e instanceof Error ? e.message : e));
 }, 10 * 60_000);
 
+// "Remind me if no reply" on email sent with tracking: when its day comes and nobody wrote back, the sender hears once.
+setInterval(() => {
+  try {
+    readTracking.runReplyReminders();
+  } catch (e) {
+    console.error('[reminders]', e instanceof Error ? e.message : e);
+  }
+}, 5 * 60_000);
+
 // Deleting old chat messages (Settings, Apps & chat): looked at every hour, run once a day per company.
 const retentionDeps: retention.RetentionDeps = { broadcast, notify: (ids, wsId, text, link) => tell(ids, wsId, 'team', text, link) };
 const retentionTick = () => {
@@ -3299,7 +3309,7 @@ setInterval(() => {
     const account = ws?.accounts?.find((a: any) => a.id === t.accountId);
     const m = t.messages[t.messages.length - 1];
     if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
-    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
+    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null, remindDays: Number(m.trackOptions.remindDays) || 0 } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
   if (due.length) {

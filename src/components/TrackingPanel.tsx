@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BellRing, Bot, ChevronDown, Eye, FileSearch, Forward, MousePointerClick, Reply } from 'lucide-react';
 import type { Message, Thread } from '../types';
-import { DEFAULT_TRACK_OPTIONS, autoWhy, fmtDuration, maybeForwarded, realClicks, realOpens, recipientLine, replyAfter, summarize } from '../tracking';
+import { DEFAULT_TRACK_OPTIONS, PROXY, autoWhy, fmtDuration, maybeForwarded, realClicks, realOpens, recipientLine, replyAfter, summarize } from '../tracking';
 import { fullDate, relative } from '../utils';
 import { Avatar } from './Avatar';
 
@@ -119,8 +119,8 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
                       {ev.kind === 'auto' && <span title={autoWhy(ev.o)}>Opened (maybe automatic){ev.o.auto === 'apple' ? ' by Apple Mail' : ''}, not counted</span>}
                       {ev.kind === 'open' &&
                         (ev.o.via ? (
-                          <span title={`${ev.o.via === 'gmail' ? 'Gmail' : 'Yahoo Mail'} loads pictures through its own servers, so the device isn’t known`}>
-                            Opened via <b>{ev.o.via === 'gmail' ? 'Gmail' : 'Yahoo Mail'}</b>
+                          <span title={`${PROXY[ev.o.via]} loads pictures through its own servers, so the device isn’t known`}>
+                            Opened via <b>{PROXY[ev.o.via]}</b>
                           </span>
                         ) : ev.o.device ? (
                           <>
@@ -149,7 +149,7 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
           {remindAt > new Date() ? `Reminder on ${remindAt.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} if there’s no reply` : 'No reply yet, time to follow up'}
         </div>
       )}
-      <p className="tp-note">Opens are a hint, not proof. Apple Mail and some mail filters load pictures by themselves, so those show as maybe automatic and don’t count. Gmail loads them through Google, which hides the device. Apps that block pictures never show an open. Clicks and replies are the surest signs.</p>
+      <p className="tp-note">Opens are a hint, not proof. Apple Mail and some mail filters load pictures by themselves, so those show as maybe automatic and don’t count. Gmail and Outlook.com load them through their own servers, which hide the device. Apps that block pictures never show an open. Clicks and replies are the surest signs.</p>
     </div>
   );
 }

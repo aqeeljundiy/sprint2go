@@ -320,7 +320,7 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
                 <div className="tm-remind">
                   <span>
                     <strong>Remind me if no reply</strong>
-                    <small>Moves it to “Waiting for a reply”</small>
+                    <small>Tells you, and moves it to “Waiting for a reply”</small>
                   </span>
                   <div className="segmented">
                     {[0, 1, 3, 7].map((d) => (
