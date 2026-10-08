@@ -211,6 +211,15 @@ function portalsOf(userId: string): { workspaceId: string; clientId: string }[] 
   if (me.clientOf && !found.some((f) => f.clientId === me.clientOf!.clientId)) found.push(me.clientOf);
   return found;
 }
+/** An operator opening the same ticket file again within ten minutes (a video seeking, a second tab) is one audit entry. */
+const fileOpens = new Map<string, number>();
+const firstOpenInAWhile = (key: string) => {
+  const now = Date.now();
+  if ((fileOpens.get(key) ?? 0) > now - 10 * 60_000) return false;
+  fileOpens.set(key, now);
+  if (fileOpens.size > 5000) for (const [k, at] of fileOpens) if (at < now - 10 * 60_000) fileOpens.delete(k);
+  return true;
+};
 /** Users (by id) who are people at this client, for the client's AI question limit. */
 const clientUserIds = (clientId: string) => {
   const client = db.getDoc('clients', clientId) as any;
@@ -2202,7 +2211,19 @@ createServer(async (req, res) => {
     if (fileReq && req.method === 'GET') {
       const f = db.fileInfo(fileReq[1]);
       if (!f) return json(res, 404, { error: 'No such file.' });
-      const team = memberOf(me).some((w) => w.id === f.workspaceId);
+      // What links the file: the documents it's on (a Drive file, a message, a task, a row, a mail thread).
+      const usedOn = () => db.db.prepare("SELECT coll, data FROM docs WHERE data LIKE ? ESCAPE '\\' LIMIT 500").all(`%/api/files/${f.id}%`) as { coll: string; data: string }[];
+      // A teammate opens their own uploads, files on something they can see, and files not on anything yet. A file in
+      // a project they can't see (or a private channel, someone's mailbox) stays closed, even with the address.
+      const team =
+        memberOf(me).some((w) => w.id === f.workspaceId) &&
+        (f.by === me ||
+          (() => {
+            const rows = usedOn();
+            if (!rows.length) return true;
+            const see = teamLens(me);
+            return rows.some((r) => !!see(r.coll, JSON.parse(r.data)));
+          })());
       // A guest opens their own uploads, and files on something they can see (a shared file, a message in their
       // channel, a request): never the rest of the company's files, even with the address.
       const guest =
@@ -2211,10 +2232,17 @@ createServer(async (req, res) => {
         (f.by === me ||
           (() => {
             const see = lens(me);
-            const rows = db.db.prepare("SELECT coll, data FROM docs WHERE data LIKE ? ESCAPE '\\' LIMIT 50").all(`%/api/files/${f.id}%`) as { coll: string; data: string }[];
-            return rows.some((r) => !!see(r.coll, JSON.parse(r.data)));
+            return usedOn().some((r) => !!see(r.coll, JSON.parse(r.data)));
           })());
-      if (!team && !guest) return json(res, 404, { error: 'No such file.' });
+      // Support tickets: the operators who work tickets (the support permission, past the console's two-step sign-in)
+      // open what customers attach, and each opening is in the audit log; whoever opened a ticket opens the files on
+      // its replies to them (never on internal notes).
+      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, m.internal, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; internal: number; number: number; requesterUser: string | null; requesterEmail: string }[]) : [];
+      const supportOp = !!tickets.length && !!opRecord && opRecord.totpOn && platform.permsOf(opRecord.role).includes('support') && platform.sessionVerified(token);
+      const myEmail = String(meDoc?.email ?? '').toLowerCase();
+      const requester = !supportOp && tickets.some((t) => !t.internal && (t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail)));
+      if (!team && !guest && !supportOp && !requester) return json(res, 404, { error: 'No such file.' });
+      if (supportOp && !/^bytes=[1-9]/.test(String(req.headers.range ?? '')) && firstOpenInAWhile(`${me}:${f.id}`)) db.audit(opRecord!.email, 'ticket.file-open', tickets[0].ticketId, `#${tickets[0].number}: ${String(f.name).slice(0, 120)}`);
       const path = db.filePath(f.id);
       if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });
       // Streamed, with ranges, so a long video plays and seeks without loading the whole file.
