@@ -22,6 +22,7 @@ import { Select } from './ui/Select';
 import { changePassword, server } from '../sync';
 import { EmailSetupGuide, providerLabel } from './EmailSetupGuide';
 import { caps } from '../caps';
+import { hasBranding } from '../data/pricing';
 import { relative } from '../utils';
 import { PROJECT_TYPES } from '../terms';
 import { AgencySection } from './admin/AgencySection';
@@ -628,7 +629,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               toast={admin.toast}
             />
           )}
-          {section === 'agency' && <AgencySection ws={ws} canManage={canManage} onWorkspace={onWorkspace} brandingAddon={!!plan.addons.branding} onBilling={() => onSection('billing')} />}
+          {section === 'agency' && <AgencySection ws={ws} canManage={canManage} onWorkspace={onWorkspace} brandingAddon={hasBranding(plan)} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'stages' && <TaskStagesSection ws={ws} canManage={canManage} tasks={admin.tasks} teams={admin.teams} me={me} onWorkspace={onWorkspace} onMoveTasks={admin.onMoveTasks} />}

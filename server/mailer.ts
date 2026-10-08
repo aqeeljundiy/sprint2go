@@ -182,8 +182,9 @@ const DNS_HOSTS: { re: RegExp; name: string; where: (d: string) => string }[] = 
   { re: /jagoanhosting/, name: 'Jagoan Hosting', where: sameHost('Jagoan Hosting') },
 ];
 const SECOND_LEVEL = new Set(['co', 'com', 'net', 'org', 'ac', 'or', 'web', 'my', 'go', 'sch', 'gov', 'edu', 'biz']);
-const dnsHostCache = new Map<string, { at: number; value: { dnsHost: DnsHost | null; nameservers: string[] } }>();
-export async function dnsHostOf(domain: string): Promise<{ dnsHost: DnsHost | null; nameservers: string[] }> {
+const dnsHostCache = new Map<string, { at: number; value: { dnsHost: DnsHost | null; nameservers: string[]; zone: string } }>();
+/** `zone` is the domain whose records hold this name (portal.agency.com lives in agency.com's records). */
+export async function dnsHostOf(domain: string): Promise<{ dnsHost: DnsHost | null; nameservers: string[]; zone: string }> {
   const d = lower(domain);
   const hit = dnsHostCache.get(d);
   if (hit && hit.at > Date.now() - 10 * 60_000) return hit.value;
@@ -197,7 +198,7 @@ export async function dnsHostOf(domain: string): Promise<{ dnsHost: DnsHost | nu
     name = labels.slice(1).join('.');
   }
   const known = DNS_HOSTS.find((h) => ns.some((n) => h.re.test(n.replace(/\.$/, ''))));
-  const value = { dnsHost: known ? { name: known.name, where: known.where(name) } : null, nameservers: ns };
+  const value = { dnsHost: known ? { name: known.name, where: known.where(name) } : null, nameservers: ns, zone: name };
   dnsHostCache.set(d, { at: Date.now(), value });
   return value;
 }

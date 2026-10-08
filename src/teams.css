@@ -327,13 +327,6 @@ button.team-row:hover,
   background: var(--surface-2);
   font-size: 12.5px;
 }
-.wl-check {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
 .wl-new {
   display: grid;
   gap: 8px;
@@ -362,6 +355,212 @@ button.team-row:hover,
 .wl-empty {
   padding: 12px;
   margin: 0;
+}
+/* The company's own address: the field, then four steps (record, found, certificate, live) and what to do now */
+.cd-fold > * {
+  padding: 4px; /* room for focus rings: a fold clips what's inside it */
+  margin: -4px;
+}
+.cd-address {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.cd-address input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cd-address input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.cd-address .primary-btn {
+  flex: none;
+  min-width: 84px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.cd-error {
+  margin: 4px 0 0;
+  color: #b42318;
+}
+:root[data-theme='dark'] .cd-error {
+  color: #f97066;
+}
+.cd-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.cd-confirm p {
+  margin: 0;
+  flex: 1 1 240px;
+}
+.cd-confirm-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.cd-note {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text-2);
+}
+.cd-state {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0 4px;
+}
+.cd-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cd-steps li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  text-align: center;
+  transition: color 0.2s ease;
+}
+/* The line from the step before */
+.cd-steps li + li::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: calc(-50% + 14px);
+  right: calc(50% + 14px);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+  transition: background 0.25s ease;
+}
+.cd-steps li.done::before,
+.cd-steps li.now::before,
+.cd-steps li.stuck::before {
+  background: var(--accent);
+}
+.cd-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.cd-steps li.done .cd-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.cd-steps li.now .cd-dot {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.cd-steps li.stuck .cd-dot {
+  border-color: #b45309;
+  color: #b45309;
+  background: color-mix(in srgb, #b45309 12%, var(--surface));
+}
+:root[data-theme='dark'] .cd-steps li.stuck .cd-dot {
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+.cd-steps li.done,
+.cd-steps li.now,
+.cd-steps li.stuck {
+  color: var(--text-2);
+}
+.cd-now {
+  display: grid;
+  gap: 4px;
+}
+.cd-now > strong {
+  font-size: 14px;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.cd-now p {
+  margin: 0;
+}
+.cd-now .ed-records {
+  margin: 6px 0;
+}
+.cd-k {
+  flex: none;
+  width: 64px;
+  color: var(--text-3);
+}
+.cd-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.cd-actions .ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.link-btn.cd-remove {
+  justify-self: start;
+  margin-top: 4px;
+  color: var(--text-3);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.link-btn.cd-remove:hover:not(:disabled) {
+  color: var(--danger);
+}
+@media (max-width: 760px) {
+  .cd-address input,
+  .cd-address .primary-btn {
+    min-height: 44px;
+  }
+  .cd-block .icon-btn.sm {
+    width: 40px;
+    height: 40px;
+  }
+  .cd-block .ghost-btn.sm,
+  .cd-confirm .primary-btn.sm {
+    min-height: 40px;
+  }
+  /* The name above its value, so the value gets the whole row and doesn't break mid-word */
+  .cd-block .ed-rec-value {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .cd-k {
+    width: 100%;
+  }
 }
 @media (max-width: 600px) {
   .wl-dns {

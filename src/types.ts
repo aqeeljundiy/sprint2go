@@ -230,9 +230,26 @@ export interface WhiteLabel {
   name: string; // shown wherever the app would say sprint2go
   logo?: string; // defaults to the workspace's logo
   color?: string;
-  domain?: string; // e.g. app.theiragency.com, pointed at us with one DNS record
-  domainStatus?: 'waiting' | 'verified';
+  domain?: string; // e.g. portal.theiragency.com, pointed at us with one DNS record; set through /api/white-label/domain
+  // Set by the server only: waiting (for the record) → found → issuing (the certificate) → live.
+  domainStatus?: DomainStatus;
+  domainCheck?: DomainCheck;
   slug?: string; // try it locally at <slug>.localhost
+}
+export type DomainStatus = 'waiting' | 'found' | 'issuing' | 'live';
+/** The server's last look at a company's own address (server/customDomains.ts). */
+export interface DomainCheck {
+  at: string;
+  record: { type: 'CNAME' | 'A'; host: string; value: string }; // the one record to add
+  zone: string; // the domain whose DNS holds it
+  dnsHost: { name: string; where: string } | null; // who runs that DNS
+  nameservers: string[];
+  found: string; // what the address points at now
+  problem?: string; // why it isn't right yet
+  blocked?: 'addon' | 'off'; // record found; going live waits for the branding add-on, or for sprint2go to turn custom addresses on
+  since?: string; // when the certificate was asked for
+  certError?: string;
+  liveAt?: string;
 }
 
 export type Industry = 'agency' | 'ecommerce' | 'consulting' | 'software' | 'events' | 'other';

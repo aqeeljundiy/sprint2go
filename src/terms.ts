@@ -1,5 +1,7 @@
 // What a company calls the things it works on. "Projects" by default (any kind of work), or "Clients" for
 // agencies that prefer it (Settings, General). Inside the code they're still "clients"; only the words change.
+import { hasBranding } from './data/pricing';
+
 export type TermWord = 'project' | 'client';
 
 const state: { word: TermWord } = { word: 'project' };
@@ -67,11 +69,11 @@ export const brand = {
 export function brandOf(ws?: { whiteLabel?: { enabled: boolean; name: string } }) {
   return ws?.whiteLabel?.enabled ? ws.whiteLabel.name : undefined;
 }
-/** Where this company's clients sign in: its own address when it has one, else here. */
-export function portalOrigin(ws?: { whiteLabel?: { enabled: boolean; domain?: string; domainStatus?: string; slug?: string } }) {
+/** Where this company's clients sign in: its own address once it's live (and the branding add-on is on), else here. */
+export function portalOrigin(ws?: { whiteLabel?: { enabled: boolean; domain?: string; domainStatus?: string; slug?: string }; plan?: { tier?: string; addons?: { branding?: boolean } } }) {
   const wl = ws?.whiteLabel;
   if (!wl?.enabled) return location.origin;
-  if (wl.domain && wl.domainStatus === 'verified') return `https://${wl.domain}`;
+  if (wl.domain && wl.domainStatus === 'live' && hasBranding(ws?.plan)) return `https://${wl.domain}`;
   if (wl.slug && location.hostname === 'localhost') return `${location.protocol}//${wl.slug}.localhost${location.port ? `:${location.port}` : ''}`;
   return location.origin;
 }
