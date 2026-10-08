@@ -189,6 +189,7 @@ export interface Ctx {
   issuer: string; // the name in the authenticator app (ours, or an agency's on its own address)
   /** Signs this person out everywhere (or everywhere but this session) and closes their live connections. */
   kick: (userId: string, keepToken?: string) => void;
+  operator: string | null; // an operator signed in as this person
   /** A security event in a company's log. */
   event: (type: string, workspaceId: string, userId: string | null, detail?: string) => void;
   eventsOf: (workspaceId: string) => { at: string; type: string; userId: string | null; detail: string | null }[];
@@ -216,6 +217,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     return { used };
   };
 
+  if (ctx.operator && p.startsWith('/api/2fa/') && POST) return send(403, { error: 'Two-step sign-in is theirs to change: you’re signed in as them.' });
   if (p === '/api/2fa' && req.method === 'GET') {
     const r = requirement(me, ctx.workspaces());
     return send(200, { ...status(me), required: r });
@@ -346,8 +348,11 @@ export function resetNeedsCode(userId: string, code: unknown): { status: number;
 
 /** Existing companies that already had the switch on before it did anything: their days to set it up start now. */
 export function startClocks() {
+  const started: string[] = [];
   for (const w of db.allDocs('workspaces') as any[]) {
     if (!w.security?.twoStep || w.security.twoStepSince) continue;
     db.writeDocs('workspaces', [{ ...w, security: { ...w.security, graceDays: w.security.graceDays ?? DEFAULT_GRACE, twoStepSince: now() } }], [], null);
+    started.push(w.id);
   }
+  return started;
 }

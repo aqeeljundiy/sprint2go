@@ -71,7 +71,9 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 
 platform.bootstrapOperators();
 admin.loadPricing();
-twostep.startClocks();
+// Companies that had "Require two-step sign-in" on before it did anything: their days start now, and people hear.
+const clocksStarted = twostep.startClocks();
+if (clocksStarted.length) setTimeout(() => clocksStarted.forEach((id) => tellTwoStepRequired(id, null)), 5_000);
 
 // Once, on a production server and only when S2G_PURGE_DEMO=1 is set: the demo companies that a start-up top-up put
 // into the live database by mistake go (with whatever was made inside them, and the demo people's sign-ins). A backup
@@ -463,6 +465,16 @@ function brandNameAt(req: IncomingMessage) {
   const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
   const w = (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
   return String(w?.whiteLabel?.name || 'sprint2go');
+}
+/** A company now requires two-step sign-in: everyone without it hears when it applies, with a link to set it up. */
+function tellTwoStepRequired(wsId: string, by: string | null) {
+  const w = db.getDoc('workspaces', wsId) as any;
+  if (!w?.security?.twoStep) return;
+  const ids = (w.members ?? []).map((m: any) => m.userId as string).filter((id: string) => id !== by);
+  const on = twostep.onAmong(ids);
+  const missing = ids.filter((id: string) => !on.has(id));
+  const due = new Date(twostep.deadline(w.security));
+  if (missing.length) notifyUsers(missing, `${w.name} now requires two-step sign-in. ${due.getTime() > Date.now() + 60_000 ? `Turn it on by ${due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : 'Turn it on now'} in Settings, Account.`, '/settings/account', w.id);
 }
 /** Signs someone out everywhere (or everywhere but one session) and closes their live connections. */
 function kick(userId: string, keepToken?: string) {
@@ -1127,6 +1139,7 @@ createServer(async (req, res) => {
         workspaces: workspaces as any,
         issuer: brandNameAt(req),
         kick,
+        operator: session?.operator ?? null,
         event: (type, wsId, userId, detail) => platform.event(type, wsId, userId, detail),
         eventsOf: (wsId) => platform.eventsOf(wsId, 300),
         notify: notifyUsers,
@@ -1879,14 +1892,7 @@ createServer(async (req, res) => {
       for (const id of emailChanged) soonReadiness(id);
       for (const c of securityChanges) {
         platform.event('security.rules', c.wsId, me, c.text);
-        if (!c.required) continue;
-        // Switched on: everyone without it hears when it starts to apply, with a link to set it up.
-        const w = db.getDoc('workspaces', c.wsId) as any;
-        const ids = (w?.members ?? []).map((m: any) => m.userId as string).filter((id: string) => id !== me);
-        const on = twostep.onAmong(ids);
-        const due = new Date(twostep.deadline(w.security));
-        const missing = ids.filter((id: string) => !on.has(id));
-        if (missing.length) notifyUsers(missing, `${w.name} now requires two-step sign-in. ${due.getTime() > Date.now() + 60_000 ? `Turn it on by ${due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : 'Turn it on now'} in Settings, Account.`, '/settings/account', w.id);
+        if (c.required) tellTwoStepRequired(c.wsId, me);
       }
       if (leavers.length) endGuestAccess(leavers);
       // Guests don't live in the app all day: a notice for them also goes out as an email (when mail is set up).

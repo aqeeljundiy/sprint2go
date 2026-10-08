@@ -368,7 +368,7 @@ export function Confirm({ title, text, action, danger, word, reason, why, onClos
             Cancel
           </button>
           <button
-            className={danger ? 'danger-btn' : 'primary-btn'}
+            className={danger ? 'primary-btn danger-btn' : 'primary-btn'}
             disabled={busy || !ok}
             onClick={() => {
               setBusy(true);
