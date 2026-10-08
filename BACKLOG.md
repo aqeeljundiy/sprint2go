@@ -2,21 +2,15 @@
 
 ## Working list (8 Oct 2026): everything asked so far, except going live
 
-Done 8 Oct (this round): Tables polish (Title tag, editable row title, sort rows), our dropdowns everywhere, the "Some of each" email onboarding (split delivery guide, routing test, invite warning, Settings routing block), per-type guest settings, guests play recordings, leavers lose guest access, "Shared with you" in every switcher, narrow Guests tab.
+Done 8 Oct (this round): Tables polish (Title tag, editable row title, sort rows, the name column's red fixed), our dropdowns everywhere, the "Some of each" email onboarding (split delivery guide, routing test, invite warning, Settings routing block), per-type guest settings, guests play recordings, leavers lose guest access, "Shared with you" in every switcher, narrow Guests tab, white label for agencies (brand, own address, client workspaces, onboarding option, landing section), server task visibility per person, smaller first download (1.06 MB to 450 KB), keyboard on clickable rows, prefs that follow you between devices, search inside everything, huddles, quotes and contracts, industry templates and starter tables, WhatsApp for guests, Vault end-to-end encryption, Mac and Windows app (desktop/), landing download section, pushed to GitHub.
 
-Still to do, in order:
-1. White-label for agencies, both sizes: a branded guest portal on the agency's subdomain, and full reselling (an Agency screen, client workspaces under the agency, the brand picked from the address). Plus an onboarding option ("We're an agency") and a landing page section. Certificates per subdomain, DNS checks and agency billing wait for going live.
-2. Server rules per person: private channels and task visibility checked on the server; an AI cost log per job.
-3. UI polish, second pass: fewer boxes and grey, no fields inside fields, a real dark palette with colour meanings, panels that don't make the page jump, one spacing scale.
-4. Speed and code: split the bundle, break up App.tsx, keyboard support for clickable rows, settings and Ask AI history synced across devices.
-5. New: smart search across everything, Huddles (voice in a channel), WhatsApp for guests (needs the WhatsApp Business API: built as far as it runs locally).
-6. Revenue ideas: quotes and contracts that turn into briefs, templates per industry. (Buying domains in onboarding needs a registrar and waits for going live.)
-7. Vault end-to-end encryption.
-8. Mac and Windows app (outside the App Store), with a download on the landing page.
-9. Landing page: About us (founded by Aqeel, Aqeel Group, AI systems, open source on GitHub), check the Indonesian version.
-10. Push to GitHub.
-
-Waiting on Aqeel: the word for clients and the Guest / Shared space naming (decide), trying drags and a Member login, the two "Untitled table"s, the screens to tidy.
+Still open:
+- The AI cost log per job already exists (Settings, AI, Spending), so nothing to build there.
+- White label: certificates per subdomain, DNS checks and agency billing (going live).
+- Desktop app: a GitHub release with the .dmg (desktop/release) and a Windows build (needs a Windows machine or CI); auto-update.
+- WhatsApp: needs a Meta Business number and the public webhook URL (going live); message templates for replies outside 24 hours.
+- Vault: a way to recover when someone forgets their passphrase (an admin re-share flow exists by editing and saving each login; a "re-share all" button would help).
+- Waiting on Aqeel: the word for clients and the Guest / Shared space naming, trying drags and a Member login, the two "Untitled table"s, the screens to tidy.
 
 Going live (not now): Dokploy deploy, real email (mail server and SES, connecting Google/Microsoft/Zoho mailboxes, the daily routing check sending for real), file storage, server write checks, AI cost caps, production setup, sign-up/reset/billing, security fixes, guest email notifications, external calendar sync, real payments.
 
