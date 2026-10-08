@@ -2895,3 +2895,20 @@ kbd {
   line-height: 1.6;
   padding: 0 8px;
 }
+
+/* Meeting page: the recording and "At a glance" sit side by side only when the pane has room for both,
+   and nothing in the recording column can push wider than its column. */
+.meet-page > .tracking-scroll {
+  container-type: inline-size;
+}
+.m-video {
+  grid-template-columns: minmax(0, 1fr);
+}
+.m-video > * {
+  min-width: 0;
+}
+@container (max-width: 720px) {
+  .m-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

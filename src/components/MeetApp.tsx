@@ -461,7 +461,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                   width={280}
                   options={(['audio', 'notes'] as const).map((k) => ({ value: k, label: KEEP_LABEL[k], hint: k === 'audio' ? `About ${sizeOf((m.minutes || 30) * 0.5)}` : 'Under 1 MB' }))}
                 />
-                {m.recording && <span className="muted small">{sizeOf(m.recording.sizeMb)} of team storage</span>}
+                {keep === 'audio' && m.recording && <span className="muted small">{sizeOf(m.recording.sizeMb)} of team storage</span>}
                 <button ref={accessBtn} className="link-btn small" onClick={() => setAccessOpen(true)}>
                   <Lock size={12} /> Who can see this
                 </button>
