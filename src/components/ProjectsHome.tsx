@@ -1,6 +1,8 @@
 import { ProjectBadge } from './ProjectBadge';
-import { useState } from 'react';
-import { ArrowRight, Check, Menu, Plus } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { usePersisted } from '../settings';
+import { Popover } from './ui/Popover';
+import { ArrowRight, Check, Menu, Plus, SlidersHorizontal } from 'lucide-react';
 import type { Client, Todo, User } from '../types';
 import { PROJECT_TYPES, term } from '../terms';
 import { localDay, relative } from '../utils';
@@ -17,6 +19,11 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
   const [adding, setAdding] = useState(!!startAdding);
   const [name, setName] = useState('');
   const [type, setType] = useState('');
+  // What each card shows, chosen by each person.
+  const [cardFields, setCardFields] = usePersisted<string[]>('s2g-project-card-fields', ['type', 'owner', 'state', 'next', 'updated']);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
+  const fieldsBtn = useRef<HTMLButtonElement>(null);
+  const on = (id: string) => cardFields.includes(id);
   const today = localDay();
   const live = projects.filter((c) => c.status !== 'ended');
   const stats = (c: Client) => {
@@ -29,7 +36,8 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
       .map((t) => t.history?.at(-1)?.at ?? t.createdAt)
       .sort()
       .pop();
-    return { late, nobody, guest, open: open.length, last };
+    const next = open.filter((t) => t.due && t.due >= today).sort((a, b) => a.due!.localeCompare(b.due!))[0];
+    return { late, nobody, guest, open: open.length, last, next };
   };
   const rows = live.map((c) => ({ c, s: stats(c) })).sort((a, b) => b.s.late - a.s.late || b.s.nobody - a.s.nobody || a.c.name.localeCompare(b.c.name));
   const save = () => {
@@ -49,6 +57,28 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
           <h1>{term.Many}</h1>
           <p>Everything about each one, in one place: tasks, chat, mail, meetings, files, notes and logins.</p>
         </div>
+        <button ref={fieldsBtn} className="icon-btn" onClick={() => setFieldsOpen(true)} title="What cards show" aria-label="Fields">
+          <SlidersHorizontal size={16} />
+        </button>
+        <Popover anchor={fieldsBtn} open={fieldsOpen} onClose={() => setFieldsOpen(false)} width={240} align="end" title="On each card">
+          <div className="tab-edit-list">
+            <p className="muted small">What each {term.one} card shows. Just for you.</p>
+            {(
+              [
+                ['type', 'Type and status'],
+                ['owner', 'Owner'],
+                ['people', 'People on it'],
+                ['state', 'What needs attention'],
+                ['next', 'Next deadline'],
+                ['updated', 'Last activity'],
+              ] as const
+            ).map(([id, name]) => (
+              <label key={id} className="check-row tb-field-toggle">
+                <input type="checkbox" checked={on(id)} onChange={(e) => setCardFields(e.target.checked ? [...cardFields, id] : cardFields.filter((x) => x !== id))} /> {name}
+              </label>
+            ))}
+          </div>
+        </Popover>
         <button className="primary-btn sm" onClick={() => setAdding((a) => !a)}>
           <Plus size={14} /> New {term.one}
         </button>
@@ -90,13 +120,28 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
                     <ProjectBadge p={c} kind="client-badge" />
                     <span className="proj-name">
                       <strong>{c.name}</strong>
-                      <small>
-                        {[c.type, c.status === 'lead' ? 'Lead' : c.status === 'paused' ? 'Paused' : null].filter(Boolean).join(' · ') || ' '}
-                      </small>
+                      {on('type') && (
+                        <small>
+                          {[c.type, c.status === 'lead' ? 'Lead' : c.status === 'paused' ? 'Paused' : null].filter(Boolean).join(' · ') || ' '}
+                        </small>
+                      )}
                     </span>
-                    {owner && <Avatar person={owner} size={24} />}
+                    {on('owner') && owner && <Avatar person={owner} size={24} />}
                   </span>
-                  <span className={`proj-state ${issues.length ? (s.late ? 'bad' : 'warn') : 'ok'}`}>
+                  {on('people') && (c.members?.length ?? 0) > 0 && (
+                    <span className="avatar-stack proj-card-people">
+                      {(c.members ?? []).slice(0, 5).map((m) => {
+                        const u = users.find((x) => x.id === m.userId);
+                        return u ? <Avatar key={u.id} person={u} size={20} /> : null;
+                      })}
+                    </span>
+                  )}
+                  {on('next') && s.next && (
+                    <span className="proj-next small">
+                      Next: {s.next.title} · {new Date(`${s.next.due}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
+                  {on('state') && <span className={`proj-state ${issues.length ? (s.late ? 'bad' : 'warn') : 'ok'}`}>
                     {issues.length ? (
                       issues.join(' · ')
                     ) : (
@@ -104,9 +149,9 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
                         <Check size={13} /> {s.open ? 'On track' : 'Nothing open'}
                       </>
                     )}
-                  </span>
+                  </span>}
                   <span className="proj-foot">
-                    <small>{s.last ? `Updated ${relative(s.last)}` : 'No activity yet'}</small>
+                    <small>{on('updated') ? (s.last ? `Updated ${relative(s.last)}` : 'No activity yet') : ''}</small>
                     <ArrowRight size={14} />
                   </span>
                 </button>

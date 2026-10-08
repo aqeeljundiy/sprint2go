@@ -3325,3 +3325,20 @@ p.trial-note > svg:first-child {
 .link-like:hover {
   color: var(--accent);
 }
+.proj-next {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proj-card-people {
+  display: inline-flex;
+}
+.proj-card-people > * {
+  margin-left: -5px;
+  box-shadow: 0 0 0 2px var(--surface);
+  border-radius: 50%;
+}
+.proj-card-people > :first-child {
+  margin-left: 0;
+}
