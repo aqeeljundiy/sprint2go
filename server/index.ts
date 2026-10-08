@@ -585,7 +585,7 @@ function siteRedirect(req: IncomingMessage, res: ServerResponse, p: string) {
   const to = (url: string) => (res.writeHead(301, { location: url, 'cache-control': 'max-age=3600' }), res.end(), true);
   if (host === `www.${SITE_HOST}`) return to(`${SITE_URL}${req.url ?? '/'}`);
   if (host !== SITE_HOST) return false;
-  const landingFile = /^\/(assets\/|favicon|apple-touch-icon|icon-|manifest\.webmanifest|robots\.txt)/.test(p);
+  const landingFile = /^\/(assets\/|favicon|apple-touch-icon|icon-|manifest\.webmanifest|robots\.txt|sw\.js$)/.test(p);
   if (p === '/' || p === '/welcome' || landingFile || p === '/api/pricing' || p === '/api/health') return false;
   return to(`${PUBLIC_URL}${req.url ?? '/'}`);
 }
@@ -721,6 +721,11 @@ function brandedHost(req: IncomingMessage) {
 function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
   const path = normalize(decodeURIComponent((req.url ?? '/').split('?')[0])).replace(/^(\.\.[/\\])+/, '');
   let file = join(DIST, path);
+  // The marketing site has no service worker. One left from when the app lived at this address removes itself.
+  if (site && path === '/sw.js') {
+    res.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-cache' });
+    return res.end("self.addEventListener('install', () => self.skipWaiting());\nself.addEventListener('activate', (e) => e.waitUntil(self.registration.unregister()));\n");
+  }
   const branded = brandedHost(req);
   // At a company's own address: its name on the install prompt and home-screen icon, never ours.
   if (path === '/manifest.webmanifest' && branded) {

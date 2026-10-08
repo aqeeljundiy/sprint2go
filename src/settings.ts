@@ -94,6 +94,8 @@ export function useSettings(user: { id: string; name: string; title: string; col
     const mq = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       root.dataset.theme = settings.theme === 'system' ? (mq.matches ? 'dark' : 'light') : settings.theme;
+      // The phone's status bar and the installed app's title bar match the theme picked here.
+      document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', root.dataset.theme === 'dark' ? '#0e1013' : '#f4f5f7'));
     };
     apply();
     mq.addEventListener('change', apply);
