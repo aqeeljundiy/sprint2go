@@ -873,6 +873,8 @@ createServer(async (req, res) => {
         .map((d) => ownProfile(d) ?? (asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
         .filter(Boolean)
         .map((d) => {
+          // A project's picture: a small image only (like profile photos).
+          if (coll === 'clients' && d && 'photo' in d && d.photo != null && !(typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000)) return { ...d, photo: undefined };
           // A meeting the recorder bot is still in: the bot's fields come from the bot, not from an older copy in someone's app.
           const before = coll === 'meetings' ? (db.getDoc(coll, d!.id) as any) : null;
           // Keeping less of a finished recording deletes it on the recorder, so the storage really comes back.

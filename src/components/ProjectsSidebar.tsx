@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { useState } from 'react';
 import { PROJECT_TYPES, term } from '../terms';
 import { Archive, LayoutGrid, Plus } from 'lucide-react';
@@ -90,9 +91,7 @@ export function ProjectsSidebar({ scope, tasks, clients: allClients, isAdmin, my
           const n = open.filter((t) => t.clientId === c.id && !!t.due && t.due < today).length; // late work only
           return (
             <button key={c.id} className={`nav-item ${is({ kind: 'client', id: c.id }) ? 'active' : ''}`} onClick={() => onScope({ kind: 'client', id: c.id })} title={c.name}>
-              <span className="client-dot" style={{ background: c.color }}>
-                {c.name.charAt(0)}
-              </span>
+              <ProjectBadge p={c} kind="client-dot" />
               <span className="sb-label">
                 {c.name}
                 {c.status === 'lead' && <em className="lead-tag">lead</em>}
@@ -110,9 +109,7 @@ export function ProjectsSidebar({ scope, tasks, clients: allClients, isAdmin, my
         {showPast &&
           past.map((c) => (
             <button key={c.id} className={`nav-item past ${is({ kind: 'client', id: c.id }) ? 'active' : ''}`} onClick={() => onScope({ kind: 'client', id: c.id })} title={c.name}>
-              <span className="client-dot" style={{ background: c.color }}>
-                {c.name.charAt(0)}
-              </span>
+              <ProjectBadge p={c} kind="client-dot" />
               <span className="sb-label">{c.name}</span>
             </button>
           ))}

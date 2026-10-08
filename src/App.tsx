@@ -955,6 +955,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           (c) =>
             c.workspaceId === ws.id &&
             (c.ownerId === user.id ||
+              (c.members ?? []).some((m) => m.userId === user.id) ||
               channels.some((ch) => ch.clientId === c.id && ch.members.includes(user.id)) ||
               allWsTasks.some((t) => t.clientId === c.id && (t.userId === user.id || t.assignees?.includes(user.id) || t.supervisorId === user.id))),
         )
@@ -1431,7 +1432,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
 
 
-  const patchClient = (id: string, patch: Partial<Client>) => setClients((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  const patchClient = (id: string, patch: Partial<Client>) => {
+    const before = clients.find((c) => c.id === id);
+    setClients((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    // Teammates added to a project hear about it (and it shows in their sidebar from now on).
+    if (before && patch.members)
+      for (const m of patch.members.filter((x) => x.userId !== user.id && !(before.members ?? []).some((y) => y.userId === x.userId)))
+        notify(m.userId, 'task', `${user.name.split(' ')[0]} added you to ${before.name}${m.role === 'lead' ? ' as lead' : ''}`, { app: 'projects', id: id });
+  };
   /** With the local server: a link where a client person sets their password and signs in to their portal. */
   const makeClientInvite = (clientId: string) => async (p: { name: string; email: string }) => {
     if (!server.on) return null;
@@ -1900,6 +1908,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setNoticesOpen(false);
     if (!n.link) return;
     if (n.link.app === 'tasks') return n.link.id ? openTask(n.link.id) : openTasks({ kind: 'mine' });
+    if (n.link.app === 'projects' && n.link.id) return openClient(n.link.id);
     if (n.link.app === 'chat') {
       if (n.link.msg) setFocusMsg(n.link.msg);
       return n.link.id ? openChannel(n.link.id) : go('chat');

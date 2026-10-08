@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { useEffect, useRef, useState } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
@@ -60,9 +61,7 @@ export function VaultSidebar({ items, clients, filter, onFilter, onNew }: { item
           <nav className="nav">
             {withItems.map((c) => (
               <button key={c.id} className={`nav-item ${filter === c.id ? 'active' : ''}`} onClick={() => onFilter(c.id)}>
-                <span className="client-dot" style={{ background: c.color }}>
-                  {c.name.charAt(0)}
-                </span>
+                <ProjectBadge p={c} kind="client-dot" />
                 <span className="sb-label">{c.name}</span>
               </button>
             ))}

@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { createContext, useContext } from 'react';
 import type { Client } from '../types';
 import { term } from '../terms';
@@ -38,7 +39,7 @@ export function ProjectPicker({
         value: c.id,
         label: c.name,
         hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? `Past ${term.one}` : c.type,
-        icon: <Dot color={c.color} />,
+        icon: c.photo ? <ProjectBadge p={c} kind="client-dot sm" className="pick-badge" /> : <Dot color={c.color} />,
       })),
   ];
   return (

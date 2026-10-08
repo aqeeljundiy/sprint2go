@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { Archive, RotateCcw } from 'lucide-react';
 import { term } from '../terms';
 import type { Client, Todo } from '../types';
@@ -56,9 +57,7 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
               const start = startedOf(c, tasks);
               return (
                 <div key={c.id} className="task past-row" onClick={(e) => !(e.target as HTMLElement).closest('button') && onOpen(c.id)}>
-                  <span className="client-dot" style={{ background: c.color }}>
-                    {c.name.charAt(0)}
-                  </span>
+                  <ProjectBadge p={c} kind="client-dot" />
                   <div className="task-main">
                     <span className="task-title-btn">{c.name}</span>
                     <div className="task-meta">

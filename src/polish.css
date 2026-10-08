@@ -3056,3 +3056,109 @@ p.trial-note > svg:first-child {
   vertical-align: -2px;
   margin-right: 6px;
 }
+
+/* Project pictures: a photo or logo fills the badge; the letter stays as the fallback. */
+.client-dot.has-photo,
+.client-badge.has-photo {
+  overflow: hidden;
+  background: var(--surface-2);
+  padding: 0;
+}
+.client-dot.has-photo img,
+.client-badge.has-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pick-badge {
+  width: 16px !important;
+  height: 16px !important;
+}
+.proj-photo-btn {
+  position: relative;
+  flex: none;
+  border-radius: 12px;
+  padding: 0;
+  line-height: 0;
+}
+.proj-photo-btn .pp-over {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.proj-photo-btn:hover .pp-over,
+.proj-photo-btn:focus-visible .pp-over {
+  opacity: 1;
+}
+
+/* People on a project: faces, then Invite. */
+.proj-people {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 4px;
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+.proj-people:hover {
+  background: var(--hover);
+}
+.proj-people .avatar-stack {
+  display: inline-flex;
+}
+.proj-people .avatar-stack > * {
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--surface);
+  border-radius: 50%;
+}
+.proj-people .avatar-stack > :first-child {
+  margin-left: 0;
+}
+.proj-people-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 550;
+}
+.pp-list {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+.pp-head {
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.pp-head:first-child {
+  margin-top: 0;
+}
+.pp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+.pp-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 640px) {
+  .proj-people .lbl {
+    display: none;
+  }
+}

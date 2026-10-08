@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { useState } from 'react';
 import { ArrowRight, Check, Menu, Plus } from 'lucide-react';
 import type { Client, Todo, User } from '../types';
@@ -86,9 +87,7 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
               return (
                 <button key={c.id} className="proj-card" style={{ ['--i' as string]: i }} onClick={() => onOpen(c.id)}>
                   <span className="proj-top">
-                    <span className="client-badge" style={{ background: c.color }}>
-                      {c.name.charAt(0)}
-                    </span>
+                    <ProjectBadge p={c} kind="client-badge" />
                     <span className="proj-name">
                       <strong>{c.name}</strong>
                       <small>

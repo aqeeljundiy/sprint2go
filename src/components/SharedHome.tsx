@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { useEffect } from 'react';
 import { ArrowRight, Check, LogOut, Plus } from 'lucide-react';
 import type { Channel, ChatMessage, Client, ClientPerson, Todo, Workspace } from '../types';
@@ -44,9 +45,7 @@ export function SharedHome({ name, portals, todos, channels, messages, onOpen, o
               const last = lastUpdate(p);
               return (
                 <button key={p.key} className="sh-card" onClick={() => onOpen(p.key)}>
-                  <span className="client-dot" style={{ background: p.client.color }}>
-                    {p.client.name.charAt(0)}
-                  </span>
+                  <ProjectBadge p={p.client} kind="client-dot" />
                   <span className="sh-text">
                     <strong>{p.client.name}</strong>
                     <small>

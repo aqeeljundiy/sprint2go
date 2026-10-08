@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { MEETING_LANGUAGES, languageName, languagesText } from '../data/languages';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ProjectPicker } from './ProjectPicker';
@@ -104,9 +105,7 @@ export function MeetSidebar({ page, meetings, clients, canSend, onPage, onSend, 
         {clients.map((c) => {
           return (
             <button key={c.id} className={`nav-item ${is('folder', c.id) ? 'active' : ''}`} onClick={() => onPage({ kind: 'folder', clientId: c.id })} title={c.name}>
-              <span className="client-dot" style={{ background: c.color }}>
-                {c.name.charAt(0)}
-              </span>
+              <ProjectBadge p={c} kind="client-dot" />
               <span className="sb-label">{c.name}</span>
             </button>
           );
@@ -860,9 +859,7 @@ function FolderPage(p: MeetProps & { clientId: string }) {
       <Head
         title={
           <>
-            <span className="client-dot sm" style={{ background: c.color }}>
-              {c.name.charAt(0)}
-            </span>{' '}
+            <ProjectBadge p={c} kind="client-dot sm" />{' '}
             {c.name}
           </>
         }

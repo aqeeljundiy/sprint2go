@@ -1,3 +1,5 @@
+import { ProjectPeople } from './ProjectPeople';
+import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
 import { useEffect, useMemo, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
@@ -477,9 +479,7 @@ export function TasksView(p: Props) {
                   <th>
                     {c ? (
                       <button onClick={() => p.onScope({ kind: 'client', id: c.id })}>
-                        <span className="client-dot sm" style={{ background: c.color }}>
-                          {c.name.charAt(0)}
-                        </span>
+                        <ProjectBadge p={c} kind="client-dot sm" />
                         {c.name}
                       </button>
                     ) : (
@@ -538,11 +538,7 @@ export function TasksView(p: Props) {
         <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
           <Menu size={18} />
         </button>
-        {client && (
-          <span className="client-badge" style={{ background: client.color }}>
-            {client.name.charAt(0)}
-          </span>
-        )}
+        {client && <ProjectPhotoButton p={client} onChange={(photo) => p.onPatchClient(client.id, { photo })} />}
         {team && (
           <span className="client-badge" style={{ background: team.color }}>
             <Users size={16} />
@@ -602,6 +598,7 @@ export function TasksView(p: Props) {
               </span>
             )
           ))}
+        {client && <ProjectPeople client={client} users={p.users} me={p.me} canEdit={p.canManage || client.ownerId === p.me || (client.members ?? []).some((m) => m.userId === p.me && m.role === 'lead')} onPatch={(x) => p.onPatchClient(client.id, x)} onGuests={() => setClientTab('portal')} />}
         <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
           <LayoutTemplate size={14} /> <span>Template</span>
         </button>

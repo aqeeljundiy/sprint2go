@@ -310,6 +310,8 @@ export interface Client {
   portalAfterEnd?: 'readonly' | 'off'; // what their people keep after the end
   archivedOnEnd?: string[]; // channels archived when ending (unarchived if they come back)
   ownerId: string;
+  photo?: string; // a small square picture or logo (data URL); otherwise the first letter on its colour
+  members?: { userId: string; role: 'lead' | 'member'; addedBy: string; at: string }[]; // teammates on this project
   overview?: { headline: string; summary: string; progress: string; wins: string[]; risks: string[]; next: string[]; at: string; from: number };
   people?: ClientPerson[]; // the client's own people who can sign in to their portal
   access?: Partial<ClientAccess>; // this client's own settings (otherwise the company's)

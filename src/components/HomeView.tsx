@@ -1,3 +1,4 @@
+import { ProjectBadge } from './ProjectBadge';
 import { useMemo, useState, type ReactNode } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
@@ -330,9 +331,7 @@ export function HomeView(p: Props) {
             {d.risk.slice(0, 5).map(({ c, late, waiting }) => (
               <li key={c.id}>
                 <button className="risk-row" onClick={() => p.onOpenClient(c.id)}>
-                  <span className="client-dot sm" style={{ background: c.color }}>
-                    {c.name.charAt(0)}
-                  </span>
+                  <ProjectBadge p={c} kind="client-dot sm" />
                   <strong>{c.name}</strong>
                   <span className="risk-why">
                     {late ? <b className="late">{late} late</b> : null}
@@ -572,9 +571,7 @@ export function HomeView(p: Props) {
             const late = open.filter(d.late).length;
             return (
               <button key={c.id} className="client-tile" onClick={() => p.onOpenClient(c.id)}>
-                <span className="client-badge" style={{ background: c.color }}>
-                  {c.name.charAt(0)}
-                </span>
+                <ProjectBadge p={c} kind="client-badge" />
                 <span className="ctl-text">
                   <strong>{c.name}</strong>
                   <small>

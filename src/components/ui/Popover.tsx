@@ -52,9 +52,15 @@ export function Popover({
     const down = (e: MouseEvent | TouchEvent) => {
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchor.current?.contains(t)) return;
+      // A picker opened from inside this one (a dropdown in a popover) isn't "outside".
+      const other = (t as Element).closest?.('.pop, .pop-scrim'); // (its own sheet scrim closes it by itself)
+      if (other && other !== ref.current && !other.classList.contains('is-leaving')) return;
       onClose();
     };
     const key = (e: KeyboardEvent) => {
+      // Escape closes only the top one.
+      const all = [...document.querySelectorAll('.pop:not(.is-leaving)')];
+      if (e.key === 'Escape' && all.length && all[all.length - 1] !== ref.current) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
