@@ -774,7 +774,7 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
               const owner = p.ownerName?.(t);
               const m = p.meetingFor(t);
               return (
-                <div key={t.id} className={`task m-task ${t.done ? 'done' : ''}`} onClick={() => selecting && toggle(t.id)}>
+                <div key={t.id} className={`task m-task ${t.done ? 'done' : ''}`} onClick={() => selecting && toggle(t.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), selecting && toggle(t.id))}>
                   {selecting && <input type="checkbox" checked={sel.has(t.id)} onChange={() => toggle(t.id)} onClick={(e) => e.stopPropagation()} />}
                   <button className="todo-check" onClick={(e) => (e.stopPropagation(), p.onToggleTask(t.id))} aria-label="Toggle done">
                     {t.done && <span>✓</span>}

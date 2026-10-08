@@ -37,7 +37,7 @@ import type { ClientActions } from '../clientActions';
 import { can, companyOf, guestRow, guestTable, requestStatus, teamLabel } from '../clientView';
 import { useStored } from '../store';
 import { server } from '../sync';
-import { TableScreen } from './tables/TablesApp';
+import { TableScreen } from './tables/TableScreen';
 import { relative } from '../utils';
 import { Avatar } from './Avatar';
 import { PhotoPicker } from './PhotoPicker';
@@ -291,7 +291,7 @@ export function ClientApp(p: Props) {
     const d = t.due && !t.done ? dueLabel(t.due) : null;
     const doers = [...new Set((t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []))];
     return (
-      <div key={t.id} className={`task ${t.done ? 'done' : ''}`} onClick={() => setOpenTask(t.id)}>
+      <div key={t.id} className={`task ${t.done ? 'done' : ''}`} onClick={() => setOpenTask(t.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), setOpenTask(t.id))}>
         <span className={`st-dot st-${t.done ? 'done' : statusOf(t)} task-dot`} />
         <div className="task-main">
           <button className="task-title-btn">{t.title}</button>

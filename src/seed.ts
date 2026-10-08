@@ -29,8 +29,9 @@ export const seed = () => ({
   notes: NOTES,
   tables: TABLES as DataTable[],
   rows: ROWS as TableRow[],
+  prefs: {} as Record<string, Record<string, unknown>>, // each person's settings and views, so they follow them between devices
 });
 export type Collections = ReturnType<typeof seed>;
 export type CollectionKey = keyof Collections;
 /** Collections stored as { id: value } maps rather than lists. */
-export const RECORD_KEYS: CollectionKey[] = ['statuses'];
+export const RECORD_KEYS: CollectionKey[] = ['statuses', 'prefs'];

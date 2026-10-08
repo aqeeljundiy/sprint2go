@@ -3431,3 +3431,9 @@ p.trial-note > svg:first-child {
   border-radius: 10px;
   object-fit: cover;
 }
+
+/* A screen still downloading: keeps its space so nothing jumps. */
+.lazy-wait {
+  flex: 1;
+  min-height: 240px;
+}

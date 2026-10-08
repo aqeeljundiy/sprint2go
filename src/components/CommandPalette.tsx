@@ -9,6 +9,7 @@ export interface PaletteItem {
   sub?: string;
   icon: LucideIcon;
   run: () => void;
+  keywords?: string; // what's inside it (an email's text, a note, a transcript, a row's cells): searched, shown as a snippet when it's the match
 }
 
 interface Props {
@@ -61,9 +62,17 @@ export function CommandPalette({ items, onClose, queryActions, recentKey = 's2g-
       .map((i) => {
         const title = i.title.toLowerCase().replace(/^#/, '');
         const hay = `${title} ${(i.sub ?? '').toLowerCase()} ${i.group.toLowerCase()}`;
-        if (!words.every((w) => hay.includes(w))) return null;
-        const score = (title.startsWith(t) ? 100 : 0) + (title.split(/[\s:·-]+/).some((x) => x.startsWith(words[0])) ? 40 : 0) + (title.includes(t) ? 20 : 0) + (recent.includes(i.id) ? 15 : 0) - Math.min(title.length, 60) / 10;
-        return { i, score };
+        const deep = (i.keywords ?? '').toLowerCase();
+        const onTop = words.every((w) => hay.includes(w));
+        if (!onTop && !words.every((w) => hay.includes(w) || deep.includes(w))) return null;
+        let score = (title.startsWith(t) ? 100 : 0) + (title.split(/[\s:·-]+/).some((x) => x.startsWith(words[0])) ? 40 : 0) + (title.includes(t) ? 20 : 0) + (recent.includes(i.id) ? 15 : 0) - Math.min(title.length, 60) / 10;
+        if (onTop) return { i, score };
+        // Found inside: show where, and rank under things that match by name.
+        const at = Math.max(0, deep.indexOf(words.find((w) => deep.includes(w))!));
+        const start = Math.max(0, at - 36);
+        const snippet = (start > 0 ? '…' : '') + (i.keywords ?? '').slice(start, at + 64).replace(/\s+/g, ' ').trim() + '…';
+        score -= 30;
+        return { i: { ...i, sub: snippet }, score };
       })
       .filter((x): x is { i: PaletteItem; score: number } => !!x)
       .sort((a, b) => b.score - a.score)

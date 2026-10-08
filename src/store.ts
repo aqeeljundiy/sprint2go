@@ -20,6 +20,13 @@ export function applyRemote<K extends CollectionKey>(key: K, value: Collections[
   listeners[key]?.forEach((fn) => (fn as (v: Collections[K]) => void)(value));
 }
 
+/** Sets a collection from outside React (e.g. a person's prefs): everyone showing it updates, and it's saved. */
+export function setStored<K extends CollectionKey>(key: K, value: Collections[K]) {
+  store[key] = value;
+  listeners[key]?.forEach((fn) => (fn as (v: Collections[K]) => void)(value));
+  pushChange(key, value);
+}
+
 export function useStored<K extends CollectionKey>(key: K) {
   const [value, setValue] = useState<Collections[K]>(() => store[key]);
   useEffect(() => {

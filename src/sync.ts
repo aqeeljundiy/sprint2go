@@ -57,6 +57,7 @@ export async function connect(apply: <K extends CollectionKey>(k: K, v: Collecti
     if (!first) void load(); // reconnected: catch up on anything missed
     first = false;
   });
+  es.addEventListener('signal', (e) => window.dispatchEvent(new CustomEvent('s2g:signal', { detail: JSON.parse((e as MessageEvent).data) })));
   es.addEventListener('change', (e) => {
     const { coll, upserts, deletes } = JSON.parse((e as MessageEvent).data) as { coll: CollectionKey; upserts: Doc[]; deletes: string[] };
     const base = synced[coll] ?? new Map();
@@ -94,4 +95,10 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
       synced[k] = before; // try again with the next change
     });
   }, 250);
+}
+
+/** Sends a huddle note (offer, answer, candidate) to one person; it reaches them through their live connection. */
+export function sendSignal(to: string, data: unknown) {
+  if (!server.on) return;
+  void fetch('/api/signal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, data }) }).catch(() => {});
 }

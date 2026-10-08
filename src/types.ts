@@ -423,6 +423,7 @@ export interface Channel {
   bookmarks?: { id: string; title: string; url: string; addedBy: string; at: string }[];
   materials?: Materials; // folders of files, links and docs for this channel
   archived?: boolean;
+  huddle?: { by: string; at: string; members: string[] }; // a quick voice call going on in this channel
   createdAt?: string;
 }
 

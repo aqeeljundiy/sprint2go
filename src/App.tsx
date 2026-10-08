@@ -1,6 +1,7 @@
 import { TabDefaultsCtx } from './components/ui/TabBar';
-import { NewTableDialog, TableScreen, TablesHome, TablesSidebar, makeTable } from './components/tables/TablesApp';
-import { NewTeamDialog, TeamPage, TeamsHome, TeamsSidebar, type TeamActions } from './components/teams/TeamsApp';
+import { Assistant, BlockDialog, BrainDump, CalendarView, ClientApp, ConnectCalendar, DriveView, EndClientDialog, EventEditor, MeetSidebar, MeetView, NewTeamDialog, NoteEditor, NotesList, Onboarding, SendBotDialog, SettingsPage, ShareDialog, SharedHome, SharedPage, TableScreen, TeamPage, TeamsHome, TeamsSidebar, TemplateDialog, TrackingDashboard, VaultSidebar, VaultView } from './lazy';
+import { NewTableDialog, TablesHome, TablesSidebar, makeTable } from './components/tables/TablesApp';
+import type { TeamActions } from './components/teams/TeamsApp';
 import type { TemplateId } from './components/tables/fields';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { term, setTermWord, brand as product, setBrandName, brandOf } from './terms';
@@ -12,46 +13,38 @@ import { ProjectsSidebar } from './components/ProjectsSidebar';
 import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
 import { SmoothHeight, TabPane } from './components/ui/Smooth';
-import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
+import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
 import type { Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp } from './data/pricing';
-import { ConnectCalendar } from './components/ConnectCalendar';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { fmtTime } from './calendarUtils';
 import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { BUILT_IN_TEMPLATES, type TaskTemplate } from './data/templates';
-import { TemplateDialog } from './components/TemplateDialog';
-import { EndClientDialog } from './components/EndClientDialog';
-import { NoteEditor, NotesList, type NotesFilter } from './components/NotesApp';
-import { VaultSidebar, VaultView, type VaultItem } from './components/VaultApp';
+import type { NotesFilter } from './components/NotesApp';
+import type { VaultItem } from './components/VaultApp';
 import { eventsOn } from './calendarUtils';
-import { useSettings, usePersisted } from './settings';
+import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
 import { server } from './sync';
 import { ai, aiLive } from './ai';
-import { Assistant, type AskChat } from './components/Assistant';
-import { BlockDialog } from './components/BlockDialog';
+import type { AskChat } from './components/Assistant';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { InviteMember, NewAccount } from './components/WorkspaceForms';
 import { applyBranding } from './components/WorkspaceLogo';
-import { TrackingDashboard } from './components/TrackingDashboard';
 import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, type Mode } from './components/Sidebar';
 import { MessageList } from './components/MessageList';
 import { Reader } from './components/Reader';
 import { Compose, type Outgoing } from './components/Compose';
-import { CalendarView, type CalView } from './components/CalendarView';
+import type { CalView } from './components/CalendarView';
 import { CalendarSidebar } from './components/CalendarSidebar';
-import { EventEditor } from './components/EventEditor';
 import { AccountMenu, type SettingsSection } from './components/AccountMenu';
-import { SettingsPage } from './components/SettingsPage';
 import { DriveSidebar } from './components/DriveSidebar';
-import { DriveView } from './components/DriveView';
 import { DrivePreview } from './components/DrivePreview';
 import { AppRail, APPS } from './components/AppRail';
 import { Avatar } from './components/Avatar';
@@ -61,20 +54,19 @@ import { HomeView } from './components/HomeView';
 import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
-import { BrainDump, type DumpResult } from './components/BrainDump';
+import type { DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
-import { ClientApp } from './components/ClientApp';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
 import { celebrate } from './components/ui/confetti';
-import { MeetSidebar, MeetView, SendBotDialog, ShareDialog, SharedPage, type AskScope, type MeetPage } from './components/MeetApp';
+import type { AskScope, MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS } from './data/workspaces';
 import { DEMO_SCRIPT } from './data/team';
-import { Onboarding } from './components/Onboarding';
-import { textToHtml } from './sanitize';
-import { SharedHome } from './components/SharedHome';
+import { htmlToText, textToHtml } from './sanitize';
+import { rowName } from './components/tables/core';
+import { Huddle } from './components/Huddle';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -186,6 +178,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Workspaces: one per business, each with its own brand and accounts.
   // A user only sees workspaces they're a member of, and only mailboxes they've been given.
   const workspaces = allWorkspaces.filter((w) => w.members.some((m) => m.userId === user.id));
+  usePrefsSync(user.id); // settings, saved views and Ask AI chats follow this person between devices
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
   session.wsId = ws?.id ?? '';
@@ -412,6 +405,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [focusMsg, setFocusMsg] = useState<string | null>(null); // a notification lands on this chat message
   const [viewAs, setViewAs] = useState<{ clientId: string; email: string } | null>(null); // "View as client"
   const [chatId, setChatId] = useState<string | null>(null);
+  const [huddleId, setHuddleId] = useState<string | null>(null); // the channel whose huddle I'm in
   const [meetPage, setMeetPage] = useState<MeetPage>({ kind: 'list' });
   const [sendBotOpen, setSendBotOpen] = useState(false);
   const [shareFor, setShareFor] = useState<string | null>(null);
@@ -965,6 +959,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // their teams' work, the clients they work on, and the channels they're in.
   const isAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  /** Out of the huddle: off the channel's list; the huddle ends when nobody is left. */
+  const leaveHuddle = () => {
+    const id = huddleId;
+    setHuddleId(null);
+    if (!id) return;
+    setChannels((cs) =>
+      cs.map((c) => {
+        if (c.id !== id || !c.huddle) return c;
+        const members = c.huddle.members.filter((m) => m !== user.id);
+        return { ...c, huddle: members.length ? { ...c.huddle, members } : undefined };
+      }),
+    );
+  };
+  const huddleChannel = huddleId ? channels.find((c) => c.id === huddleId) : undefined;
+  // Dropped from the list elsewhere (the huddle ended, or this account left on another device): stop here too.
+  useEffect(() => {
+    if (huddleId && !huddleChannel?.huddle?.members.includes(user.id)) setHuddleId(null);
+  }, [huddleId, huddleChannel?.huddle?.members, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // When the agency changes its brand, the client workspaces it runs follow.
   useEffect(() => {
     const want = agencyCopy(ws);
@@ -2397,6 +2409,29 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // ⌘K: everything you can jump to
   const today0 = localDay();
+  // Search inside tables and chat too. Built only when they change: they're the biggest part of the list.
+  const deepItems = useMemo<PaletteItem[]>(() => {
+    const chanIds = new Set(wsChannels.map((c) => c.id));
+    const rows = wsTableRows.slice(0, 3000).map((r) => {
+      const t = wsTables.find((x) => x.id === r.tableId);
+      const name = t ? rowName(t, r) : 'Row';
+      const cells = (Object.values(r.values) as unknown[])
+        .flatMap((v) => (Array.isArray(v) ? (v as unknown[]) : [v]))
+        .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
+        .join(' ');
+      return { id: 'row-' + r.id, group: 'Rows', title: name || 'Untitled row', sub: t?.name, icon: Table2, keywords: cells.slice(0, 1200), run: () => openTable(r.tableId, r.id) };
+    });
+    const msgs = messages
+      .filter((m) => chanIds.has(m.channelId) && m.text)
+      .slice(-800)
+      .reverse()
+      .map((m) => {
+        const c = wsChannels.find((x) => x.id === m.channelId)!;
+        return { id: 'msg-' + m.id, group: 'Messages', title: m.text.replace(/\s+/g, ' ').slice(0, 90), sub: `${c.kind === 'dm' ? 'Direct message' : '#' + c.name} · ${firstOf(m.userId)}`, icon: MessagesSquare, keywords: m.text.slice(0, 1500), run: () => (setFocusMsg(m.id), openChannel(m.channelId)) };
+      });
+    return [...rows, ...msgs];
+  }, [wsTableRows, wsTables, messages, wsChannels]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const paletteItems: PaletteItem[] = [
     // What needs you, so an empty search is already useful.
     ...wsTasks
@@ -2408,12 +2443,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, run: () => { go('calendar'); openNewEvent(); } }] : []),
     ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
     ...wsClientsAll.map((c) => ({ id: 'c-' + c.id, group: `${term.Many}`, title: c.name, sub: c.status === 'ended' ? `Past ${term.one}` : c.domain, icon: Building2, run: () => openClient(c.id) })),
-    ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.userId ? firstOf(t.userId) : 'nobody yet'].filter(Boolean).join(' · '), icon: ListChecks, run: () => openTask(t.id) })),
+    ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.userId ? firstOf(t.userId) : 'nobody yet'].filter(Boolean).join(' · '), icon: ListChecks, keywords: [t.notes, t.context].filter(Boolean).join(' ').slice(0, 1500), run: () => openTask(t.id) })),
     ...members.filter((u) => u.id !== user.id).map((u) => ({ id: 'p-' + u.id, group: 'People', title: u.name, sub: u.title || u.email, icon: UserIcon, run: () => openChannel(dmWith(u.id)) })),
     ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ id: 'ch-' + c.id, group: 'Channels', title: '#' + c.name, icon: Hash, run: () => openChannel(c.id) })),
-    ...wsThreads.slice(0, 60).map((t) => ({ id: 'm-' + t.id, group: 'Emails', title: t.subject, sub: t.messages[t.messages.length - 1].from.name, icon: Mail, run: () => openThread(t.id) })),
-    ...wsNotes.map((n) => ({ id: 'no-' + n.id, group: 'Notes', title: n.title || 'Untitled note', sub: wsClientsAll.find((c) => c.id === n.clientId)?.name, icon: FileText, run: () => openNote(n.id) })),
-    ...wsMeetings.map((m) => ({ id: 'mt-' + m.id, group: 'Meetings', title: m.title, icon: Video, run: () => openMeeting(m.id) })),
+    ...wsThreads.slice(0, 200).map((t) => ({ id: 'm-' + t.id, group: 'Emails', title: t.subject, sub: t.messages[t.messages.length - 1].from.name, icon: Mail, keywords: t.messages.slice(-2).map((m) => m.body).join(' ').slice(0, 1500), run: () => openThread(t.id) })),
+    ...wsNotes.map((n) => ({ id: 'no-' + n.id, group: 'Notes', title: n.title || 'Untitled note', sub: wsClientsAll.find((c) => c.id === n.clientId)?.name, icon: FileText, keywords: htmlToText(n.html).slice(0, 2000), run: () => openNote(n.id) })),
+    ...wsMeetings.map((m) => ({ id: 'mt-' + m.id, group: 'Meetings', title: m.title, icon: Video, keywords: [m.summary, ...(m.keyPoints ?? []), ...(m.decisions ?? []), ...(m.transcript ?? []).map((l) => l.text)].join(' ').slice(0, 6000), run: () => openMeeting(m.id) })),
+    ...deepItems,
     ...wsDrive.filter((i) => i.kind !== 'folder' && !i.trashed).map((i) => ({ id: 'f-' + i.id, group: 'Files', title: i.name, icon: FileText, run: () => { go('drive'); setPreview({ item: i, list: [i] }); } })),
   ];
 
@@ -2993,6 +3029,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
         {mode === 'chat' && (!mobile || chatId) && (
           <ChatView
+            huddle={
+              server.on && chatId
+                ? {
+                    joined: huddleId === chatId,
+                    onJoin: () => {
+                      if (huddleId && huddleId !== chatId) leaveHuddle();
+                      setChannels((cs) => cs.map((c) => (c.id === chatId ? { ...c, huddle: { by: c.huddle?.by ?? user.id, at: c.huddle?.at ?? nowIso(), members: [...new Set([...(c.huddle?.members ?? []), user.id])] } } : c)));
+                      setHuddleId(chatId);
+                    },
+                  }
+                : undefined
+            }
             focusId={focusMsg}
             onFocused={() => setFocusMsg(null)}
             channel={wsChannels.find((c) => c.id === chatId) ?? null}
@@ -3767,6 +3815,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {sharedPreview && meetings.some((m) => m.id === sharedPreview) && (
         <SharedPage m={meetings.find((m) => m.id === sharedPreview)!} brand={ws.name} tasks={wsTasks.filter((t) => t.meetingId === sharedPreview)} users={members} onClose={() => setSharedPreview(null)} />
       )}
+      {huddleChannel?.huddle?.members.includes(user.id) && <Huddle key={huddleChannel.id} channel={huddleChannel} users={allUsers} me={user.id} onLeave={leaveHuddle} />}
       {askScope && (
         <Assistant
           scope={askScope}

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { setStored, store, useStored } from './store';
+import { server } from './sync';
 
 export type ThemePref = 'light' | 'dark' | 'system';
 export type Density = 'comfortable' | 'compact';
@@ -75,7 +77,16 @@ export function useSettings(user: { id: string; name: string; title: string; col
     try {
       localStorage.setItem(key, JSON.stringify(settings));
     } catch {}
+    shared.set(key, settings);
+    pushPref(key, settings);
   }, [key, settings]);
+  // Settings saved on another device arrive through the prefs sync.
+  useEffect(() => {
+    const set = subs.get(key) ?? new Set();
+    subs.set(key, set);
+    set.add(setSettings as (v: never) => void);
+    return () => void set.delete(setSettings as (v: never) => void);
+  }, [key]);
 
   // Apply theme, accent and density to the page.
   useEffect(() => {
@@ -122,6 +133,54 @@ export function usePersisted<T>(key: string, initial: T) {
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch {}
+    pushPref(key, value);
   }, [key, value]);
   return [value, setValue] as const;
+}
+
+/* ---------- prefs that follow you between devices ---------- */
+
+// What's worth carrying to another device: your settings, saved views, tab orders and Ask AI chats.
+// Panel widths, the collapsed sidebar and "which table was open" stay with the device.
+const SYNCED = [/^pm-settings:/, /^s2g-ask-chats:/, /^s2g-task-views$/, /^s2g-tabs:/, /^s2g-tabbar:/, /^s2g-task-(fields|group|layout)$/, /^s2g-project-(group|card-fields|type)$/, /^s2g-briefs-open$/, /^s2g-home:/, /^s2g-chat-(views|view|starred|collapsed):/, /^s2g-join:/, /^s2g-read:/, /^pm-drive-layout$/, /^s2g-table-view:/];
+const isSynced = (k: string) => SYNCED.some((r) => r.test(k));
+let prefUser = '';
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Saves one key to the person's prefs on the server (when it's one that should follow them). */
+function pushPref(key: string, value: unknown) {
+  if (!prefUser || !server.on || !isSynced(key)) return;
+  const all = store.prefs;
+  const mine = all[prefUser] ?? {};
+  if (same(mine[key], value)) return;
+  setStored('prefs', { ...all, [prefUser]: { ...mine, [key]: value } });
+}
+
+/** Keeps this person's prefs in step with the server: what arrives is applied here, what's only here is sent. */
+export function usePrefsSync(userId: string) {
+  const [prefs] = useStored('prefs');
+  useEffect(() => {
+    prefUser = userId;
+    if (!server.on) return;
+    const mine = prefs[userId] ?? {};
+    for (const [k, v] of Object.entries(mine)) {
+      if (same(shared.get(k), v)) continue;
+      shared.set(k, v);
+      try {
+        localStorage.setItem(k, JSON.stringify(v));
+      } catch {}
+      subs.get(k)?.forEach((fn) => (fn as (x: unknown) => void)(v));
+    }
+    // First time on the server: what this device already had goes up.
+    const missing: Record<string, unknown> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      if (!isSynced(k) || k in mine) continue;
+      if (/:u-|:[a-z0-9]{8,}/.test(k) && !k.includes(userId) && /^(pm-settings|s2g-ask-chats|s2g-tabbar|s2g-home|s2g-join|s2g-read|s2g-chat-)/.test(k)) continue; // another person's
+      try {
+        missing[k] = JSON.parse(localStorage.getItem(k)!);
+      } catch {}
+    }
+    if (Object.keys(missing).length) setStored('prefs', { ...prefs, [userId]: { ...mine, ...missing } });
+  }, [prefs, userId]);
 }

@@ -155,6 +155,8 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
         return mine.has(d.id);
       case 'statuses':
         return people.has(d.id);
+      case 'prefs':
+        return d.id === userId; // your own settings only
       case 'notes':
         return mine.has(d.workspaceId) && (d.visibility !== 'private' || d.ownerId === userId); // private notes: only their owner
       case 'channels':
@@ -196,6 +198,8 @@ function clientLens(me: Person) {
   const team = new Set(w.members.map((m: any) => m.userId));
   return (coll: string, d: any): any | null => {
     switch (coll) {
+      case 'prefs':
+        return d.id === me.id ? d : null;
       case 'workspaces':
         return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: d.clientAccess, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
       case 'users':
@@ -1059,6 +1063,16 @@ createServer(async (req, res) => {
       // A deleted meeting takes its recording with it.
       if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
       return json(res, 200, { saved: ok.length });
+    }
+
+    // Huddles: WebRTC offers, answers and candidates relayed to one person in a company you share. Audio goes
+    // straight between browsers; the server only passes these notes along.
+    if (p === '/api/signal' && req.method === 'POST') {
+      const { to, data } = await body(req);
+      const peers = new Set(memberOf(me).flatMap((w) => w.members.map((m) => m.userId)));
+      if (typeof to !== 'string' || !peers.has(to)) return json(res, 403, { error: 'Not someone you work with.' });
+      for (const c of clients.values()) if (c.userId === to) c.res.write(`event: signal\ndata: ${JSON.stringify({ from: me, data })}\n\n`);
+      return json(res, 200, {});
     }
 
     if (p === '/api/events') {

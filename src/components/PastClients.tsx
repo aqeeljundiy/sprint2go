@@ -56,7 +56,7 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
             {past.map((c) => {
               const start = startedOf(c, tasks);
               return (
-                <div key={c.id} className="task past-row" onClick={(e) => !(e.target as HTMLElement).closest('button') && onOpen(c.id)}>
+                <div key={c.id} className="task past-row" onClick={(e) => !(e.target as HTMLElement).closest('button') && onOpen(c.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), onOpen(c.id))}>
                   <ProjectBadge p={c} kind="client-dot" />
                   <div className="task-main">
                     <span className="task-title-btn">{c.name}</span>

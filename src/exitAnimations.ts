@@ -21,6 +21,7 @@ const LEAVING = [
   '.chat-side',
   '.ask-drawer',
   '.ask-pill',
+  '.huddle',
   '.later-menu',
   '.track-menu',
   '.tb-popup',

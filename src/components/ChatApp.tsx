@@ -3,42 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
 import { companyOf } from '../clientView';
-import { FolderPlus, ChevronUp, Handshake,
-  ArrowLeft,
-  ArrowUp,
-  BarChart3,
-  ChevronDown,
-  ChevronRight,
-  Check,
-  LayoutList,
-  Pencil,
-  Compass,
-  FileText,
-  Hash,
-  Image as ImageIcon,
-  ListChecks,
-  Lock,
-  Mail,
-  Menu,
-  MessageSquareReply,
-  Mic,
-  MoreHorizontal,
-  Paperclip,
-  HardDrive,
-  Pin,
-  Pause,
-  Play,
-  Plus,
-  Settings,
-  SmilePlus,
-  Sparkles,
-  SquareCheck,
-  Star,
-  Trash2,
-  Users,
-  Video,
-  X,
-} from 'lucide-react';
+import { FolderPlus, ChevronUp, Handshake, ArrowLeft, ArrowUp, BarChart3, ChevronDown, ChevronRight, Check, LayoutList, Pencil, Compass, FileText, Hash, Image as ImageIcon, ListChecks, Lock, Mail, Menu, MessageSquareReply, Mic, MoreHorizontal, Paperclip, HardDrive, Pin, Pause, Play, Plus, Settings, SmilePlus, Sparkles, SquareCheck, Star, Trash2, Users, Video, X, Headphones } from 'lucide-react';
 import type { Channel, ChannelCategory, ChatLayout, ChatSection, ChatFile, ChatMessage, ChatView as ChatViewDef, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../types';
 import { localDay, relative } from '../utils';
 import { usePersisted } from '../settings';
@@ -739,6 +704,7 @@ interface ViewProps {
   onBack?: () => void; // phones: back to the channel list
   /** Someone at a client (their portal): messages and materials only, none of the team's tools. */
   guest?: { canPost: boolean };
+  huddle?: { joined: boolean; onJoin: () => void }; // a quick voice call in this channel
   /** Land on this message (from a notification): open its thread if it's a reply, scroll to it and highlight it. */
   focusId?: string | null;
   onFocused?: () => void;
@@ -1301,6 +1267,12 @@ export function ChatView(p: ViewProps) {
               {channel.sharedWith ? ` · shared with ${channel.sharedWith.workspaceName}${channel.sharedWith.status === 'pending' ? ' (waiting)' : ''}` : ''}
             </p>
           </div>
+          {p.huddle && !guest && (
+            <button className={`ghost-btn sm huddle-btn${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.onJoin} title={p.huddle.joined ? 'You’re in this huddle' : 'Talk, right here'} disabled={p.huddle.joined}>
+              <Headphones size={14} />
+              <span className="lbl">{p.huddle.joined ? 'In the huddle' : channel.huddle?.members.length ? `Join huddle · ${channel.huddle.members.length}` : 'Huddle'}</span>
+            </button>
+          )}
           {channel.kind === 'channel' && !guest && (
             <button className="chat-members" onClick={p.onSettings} title="People and settings">
               {channel.members.slice(0, 4).map((id) => person(id) && <Avatar key={id} person={person(id)!} size={24} />)}

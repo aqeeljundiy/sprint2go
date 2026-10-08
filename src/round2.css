@@ -4115,3 +4115,101 @@ button.tl:hover,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* A huddle: docked bottom-left, out of the way of Ask AI on the right. */
+.huddle {
+  position: fixed;
+  left: 88px;
+  bottom: 16px;
+  z-index: calc(var(--z-panel) + 10);
+  width: 300px;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  animation: ask-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: bottom left;
+}
+.huddle header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  font-size: 13.5px;
+}
+.huddle header svg {
+  color: var(--accent);
+}
+.huddle header small {
+  grid-column: 2;
+  font-size: 12px;
+}
+.huddle-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.huddle-av {
+  position: relative;
+  display: inline-flex;
+}
+.huddle-av.muted::after {
+  content: '';
+}
+.huddle-av svg {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  padding: 2px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: #d14343;
+}
+.huddle-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.huddle-actions .primary-btn.danger {
+  background: #d14343;
+}
+.huddle-btn.live {
+  color: var(--ok, #0f9d6b);
+}
+.huddle-btn.live .lbl::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--ok, #0f9d6b);
+  animation: huddle-pulse 1.4s ease-in-out infinite;
+}
+@keyframes huddle-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .huddle-btn.live .lbl::before {
+    animation: none;
+  }
+}
+.is-leaving.huddle {
+  animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+@media (max-width: 760px) {
+  .huddle {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  .huddle-btn .lbl {
+    display: none;
+  }
+}

@@ -197,4 +197,3 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
   );
 }
 
-export { TableScreen } from './TableScreen';

@@ -212,7 +212,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
               {waiting.map((e) => (
                 <div key={e.message.id} className={`wait-row ${e.remindDue ? 'due' : ''}`}>
                   <Avatar person={e.waiting[0]} size={28} />
-                  <div className="wait-main" onClick={() => onOpenThread(e.thread.id)}>
+                  <div className="wait-main" onClick={() => onOpenThread(e.thread.id)} role="button" tabIndex={0} onKeyDown={(ev) => (ev.key === 'Enter' || ev.key === ' ') && ev.target === ev.currentTarget && (ev.preventDefault(), onOpenThread(e.thread.id))}>
                     <strong>{e.waiting.map((p) => p.name.split(' ')[0]).join(', ')}</strong>
                     <small>
                       {e.thread.subject} · {relative(e.message.date)}

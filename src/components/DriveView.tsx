@@ -235,7 +235,7 @@ export function DriveView(props: Props) {
               <span />
             </div>
             {shown.map((i, n) => (
-              <div key={i.id} className="d-tr" style={{ ['--i' as string]: Math.min(n, 12) }} onClick={() => open(i)}>
+              <div key={i.id} className="d-tr" style={{ ['--i' as string]: Math.min(n, 12) }} onClick={() => open(i)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), open(i))}>
                 <span className="d-cell-name">
                   {i.thumb ? <img className="mini-thumb" src={i.thumb} alt="" /> : <FileIcon kind={i.kind} size={14} />}
                   {name(i)}
@@ -256,7 +256,7 @@ export function DriveView(props: Props) {
                 <div className="d-heading">Folders</div>
                 <div className="folder-grid">
                   {folders.map((f, n) => (
-                    <div key={f.id} className="folder-card" style={{ ['--i' as string]: n }} onClick={() => open(f)}>
+                    <div key={f.id} className="folder-card" style={{ ['--i' as string]: n }} onClick={() => open(f)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), open(f))}>
                       <FileIcon kind="folder" size={16} />
                       <span className="fc-text">
                         {name(f)}
@@ -275,7 +275,7 @@ export function DriveView(props: Props) {
                 {folders.length > 0 && <div className="d-heading">Files</div>}
                 <div className={section === 'media' && !q ? 'media-grid' : 'file-grid'}>
                   {files.map((f, n) => (
-                    <div key={f.id} className="file-card" style={{ ['--i' as string]: Math.min(n, 16) }} onClick={() => open(f)}>
+                    <div key={f.id} className="file-card" style={{ ['--i' as string]: Math.min(n, 16) }} onClick={() => open(f)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), open(f))}>
                       {thumb(f)}
                       {section !== 'media' || q ? (
                         <span className="fc-text">
