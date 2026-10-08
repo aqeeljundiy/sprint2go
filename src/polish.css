@@ -4288,6 +4288,18 @@ a.help-file:hover {
 .esg-check small {
   animation: viewIn 0.2s ease-out backwards;
 }
+/* Two ways to check routing side by side ("Send a test", "I sent it"); they stack on narrow cards. */
+.esg-checks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  justify-self: stretch;
+}
+.esg-checks .esg-check {
+  flex: 1 1 200px;
+  min-width: 0;
+}
 @media (prefers-reduced-motion: reduce) {
   .esg-check small {
     animation: none;

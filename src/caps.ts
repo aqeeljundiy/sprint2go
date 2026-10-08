@@ -13,6 +13,7 @@ export const caps = {
   payments: false,
   desktopUrl: null as string | null,
   mailHost: '',
+  routingCheck: false, // the server can send "Some of each" routing tests (daily and "Send a test")
 };
 export function loadCaps() {
   if (!location.protocol.startsWith('http')) return Promise.resolve(caps);

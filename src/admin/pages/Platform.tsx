@@ -56,6 +56,8 @@ interface System {
   dbBytes: number;
   backups: { file: string; bytes: number; at: string }[];
   lastBackupAt: string | null;
+  systemMail: 'ses' | 'own' | 'log';
+  noreply: string;
   mailOn: boolean;
   mailHost: string;
   supportEmail: string;
@@ -100,6 +102,11 @@ function Health() {
             rows={[
               { label: 'Address', value: data.publicUrl, ok: data.https || !data.production },
               { label: 'Mail', value: `Our server at ${data.mailHost}${data.mailOn ? ' · Boosted available' : ''}` },
+              {
+                label: 'Codes and notices',
+                value: data.systemMail === 'ses' ? 'Sent through Amazon SES' : data.systemMail === 'own' ? `Sent from ${data.noreply} by our mail server` : 'Not sent: sign-up codes go to the server log',
+                ok: data.systemMail !== 'log' || !data.production,
+              },
               { label: 'Support address', value: data.supportEmail },
               { label: 'Meeting recorder', value: !data.recorder.configured ? 'Not set up' : data.recorder.reachable ? `Answering · ${data.recorder.bots ?? 0} bots busy` : 'Not answering', ok: !data.recorder.configured || data.recorder.reachable },
               { label: 'Built', value: data.built ? `${dateTime(data.built)} · Node ${data.node}` : 'unknown' },

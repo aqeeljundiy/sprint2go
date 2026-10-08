@@ -17,7 +17,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { mailConfigured, sendRaw, sesIdentity } from './mail.ts';
+import { mailConfigured, sendMail, sendRaw, sesIdentity } from './mail.ts';
 import { domainKey, mayUse, ownership, ownersMap, settle as settleDomain, type Ownership } from './domains.ts';
 export { domainKey };
 
@@ -290,6 +290,11 @@ function tlsOptions() {
   return { key: readFileSync(k), cert: readFileSync(c) };
 }
 
+/** "Some of each" routing tests (server/routing.ts): their addresses are accepted, then swallowed. */
+type ProbeHook = { accepts: (address: string) => boolean; arrived: (address: string) => void };
+let probeHook: ProbeHook | null = null;
+export const onRoutingProbe = (hook: ProbeHook) => (probeHook = hook);
+
 export function startMailer(d: MailerDeps) {
   deps = d;
   if (process.env.MAIL_ENABLED === '0') return;
@@ -302,7 +307,7 @@ export function startMailer(d: MailerDeps) {
     hideSTARTTLS: !tls,
     ...(tls ?? {}),
     onRcptTo(address, _session, cb) {
-      if (accountFor(address.address) || supportAddresses().includes(lower(address.address))) return cb();
+      if (accountFor(address.address) || supportAddresses().includes(lower(address.address)) || probeHook?.accepts(lower(address.address))) return cb();
       cb(Object.assign(new Error('No such mailbox here'), { responseCode: 550 }));
     },
     onData(stream, session, cb) {
@@ -355,6 +360,11 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
   const unsubUrl = ([] as string[]).concat(list?.unsubscribe?.url ?? []).find((u) => /^https?:\/\//i.test(u)) ?? rawUnsub.match(/<(https?:[^>]+)>/i)?.[1];
   const unsubOneClick = !!list?.['unsubscribe-post'] || parsed.headerLines.some((h) => h.key === 'list-unsubscribe-post');
   for (const rcpt of session.envelope.rcptTo) {
+    // A routing test: it proves the provider passed it on, and nobody ever sees it.
+    if (probeHook?.accepts(lower(rcpt.address))) {
+      probeHook.arrived(lower(rcpt.address));
+      continue;
+    }
     if (supportAddresses().includes(lower(rcpt.address)) && supportHandler) {
       const attachments = parsed.attachments.map((a) => {
         const id = randomBytes(16).toString('hex');
@@ -620,7 +630,12 @@ export const mailStatsAll = (since: string) =>
 
 /* ---------- mail from sprint2go itself (support replies, invoices, alerts, broadcasts) ---------- */
 
-export async function sendSystemMail(m: { fromName: string; from?: string; to: string[]; subject: string; text: string; html?: string; inReplyTo?: string; references?: string[]; attachments?: { filename: string; content: Buffer; contentType?: string }[] }) {
+type SystemMail = { fromName: string; from?: string; to: string[]; subject: string; text: string; html?: string; inReplyTo?: string; references?: string[]; attachments?: { filename: string; content: Buffer; contentType?: string }[] };
+export async function sendSystemMail(m: SystemMail) {
+  return (await queueSystemMail(m)).mid;
+}
+/** The same, also returning the outbox rows it made (one per recipient), for callers that follow the delivery. */
+export async function queueSystemMail(m: SystemMail) {
   const from = lower(m.from ?? SUPPORT_EMAIL);
   const domain = from.split('@')[1] ?? MAIL_HOST;
   const mid = `<${randomBytes(12).toString('hex')}@${domain}>`;
@@ -633,9 +648,42 @@ export async function sendSystemMail(m: { fromName: string; from?: string; to: s
     raw = Buffer.concat([Buffer.from(signatures), raw]);
   }
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
-  for (const to of m.to) ins.run(randomBytes(8).toString('hex'), 'platform', route, from, lower(to), raw, now(), 'queued', now());
+  const ids = m.to.map((to) => {
+    const id = randomBytes(8).toString('hex');
+    ins.run(id, 'platform', route, from, lower(to), raw, now(), 'queued', now());
+    return id;
+  });
   void pump();
-  return mid;
+  return { mid, ids };
+}
+/** Where an outbox row stands: still trying, delivered, or given up (with the receiving server's last answer). */
+export const outboxState = (id: string) => db.db.prepare('SELECT state, error, attempts FROM outbox WHERE id = ?').get(id) as { state: 'queued' | 'sent' | 'failed'; error: string | null; attempts: number } | undefined;
+
+/* ---------- the app's own notes (sign-up codes, guest notices): Amazon SES when set up, else our own engine ---------- */
+
+/** The address notes come from: no-reply at the support domain, whose DKIM key the platform already publishes. */
+export const NOREPLY = `no-reply@${SUPPORT_EMAIL.split('@')[1] ?? MAIL_HOST}`;
+const realDomain = (d: string) => d.includes('.') && !/(^|\.)(localhost|local|test|invalid|example|internal)$/.test(d);
+/**
+ * How the app's own notes go out: 'ses' when Amazon SES is configured, 'own' when this server can send them itself
+ * (the mail engine is on and the support domain is a real one), else 'log' (local development: codes go to the log).
+ */
+export function systemMailPath(): 'ses' | 'own' | 'log' {
+  if (mailConfigured()) return 'ses';
+  if (process.env.MAIL_ENABLED !== '0' && realDomain(NOREPLY.split('@')[1])) return 'own';
+  return 'log';
+}
+/**
+ * Sends one note (text and HTML as given). True when it's on its way. False when no path works: no SES, and our own
+ * engine can't get mail out (local development, or port 25 blocked without a relay); the caller logs instead.
+ */
+export async function sendNote(to: string, subject: string, text: string, html?: string, fromName = 'sprint2go'): Promise<boolean> {
+  const path = systemMailPath();
+  if (path === 'ses') return sendMail(to, subject, text, html);
+  if (path === 'log') return false;
+  if (!process.env.MAIL_RELAY_URL && !(await serverHealth()).port25.ok) return false;
+  await sendSystemMail({ fromName, from: NOREPLY, to: [to], subject, text, html });
+  return true;
 }
 
 export const queue = (state: 'queued' | 'failed', limit = 200) =>

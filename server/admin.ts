@@ -178,6 +178,8 @@ function systemInfo(ctx: AdminCtx) {
     dbBytes: existsSync(db.dbPath) ? statSync(db.dbPath).size : 0,
     backups: backups.slice(0, 20),
     lastBackupAt: backups[0]?.at ?? null,
+    systemMail: mailer.systemMailPath(),
+    noreply: mailer.NOREPLY,
     mailOn: ctx.mailOn,
     mailHost: mailer.MAIL_HOST,
     supportEmail: mailer.SUPPORT_EMAIL,

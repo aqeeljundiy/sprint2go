@@ -273,13 +273,17 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                           ? `Checked ${relative(ws.mailRouting.verifiedAt)} during setup.`
                           : `Not checked yet: mail to ${product.name} mailboxes may not arrive.`}
                     </p>
-                    {/* The demo plays a daily test; the server doesn't send one, so the real app doesn't offer it. */}
-                    {!realMail && (
+                    {/* The server sends a real test each day when it can send mail (caps.routingCheck); the demo plays it. */}
+                    {(!realMail || caps.routingCheck) && (
                       <Toggle
                         on={ws.mailRouting?.dailyCheck ?? true}
                         onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
                         label="Check every day"
-                        hint={`A test email each morning. If it stops arriving, admins hear about it straight away. Runs once ${product.name} mail is live.`}
+                        hint={
+                          realMail
+                            ? `Once a day we send a test to an address at ${ws.domains[0] ?? 'your domain'} that only ${product.name} knows. If two tests in a row don’t arrive, admins get a notice and an email.${ws.mailRouting?.verifiedAt ? '' : ' It starts once routing has worked.'}`
+                            : `A test email each morning. If it stops arriving, admins hear about it straight away. Runs once ${product.name} mail is live.`
+                        }
                       />
                     )}
                     <button type="button" className="link-btn small" onClick={() => setRoutingGuide((x) => !x)}>
