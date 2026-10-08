@@ -1,6 +1,6 @@
 /* ==========================================================================
-   Tasks: the company's own stages (src/stages.ts) and their settings.
-   Loaded after polish.css.
+   Tasks: the company's own stages (src/stages.ts), quick capture and the
+   stage settings. Loaded after polish.css.
    ========================================================================== */
 
 /* ---------- Stage colours ---------- */
@@ -68,6 +68,57 @@
 }
 .board-head .stage-dot {
   margin: 0 1px 0 0;
+}
+
+/* ---------- Quick capture: "New task" opens the field in place ---------- */
+.new-task-btn kbd {
+  margin-left: 2px;
+}
+.task-add-fold > .fold-in {
+  margin: 0 -3px; /* room for the focus ring, which the fold would otherwise clip */
+}
+.task-add-fold .todo-add {
+  margin: 3px 3px 15px;
+}
+.new-task-slim {
+  display: none;
+}
+@media (max-width: 760px) {
+  .tasks-head .new-task-btn {
+    display: none !important;
+  }
+  .new-task-slim {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    max-height: 44px;
+    margin-bottom: 12px;
+    padding: 0 14px;
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-weight: 600;
+    overflow: hidden;
+    transition: max-height 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), min-height 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), margin 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+  }
+  .new-task-slim:active {
+    background: var(--hover);
+  }
+  .new-task-slim.gone {
+    min-height: 0;
+    max-height: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    border-color: transparent;
+    pointer-events: none;
+  }
+}
+.empty .primary-btn {
+  margin-top: 4px;
 }
 
 /* ---------- Settings: Task stages ---------- */
@@ -290,8 +341,22 @@
   .stage-dot,
   .stage-name,
   .stage-swatch,
-  .stage-colors button {
+  .stage-colors button,
+  .new-task-slim {
     transition: none;
   }
 }
 
+/* Brain dump next to "New task": the same AI button, quieter, so New task is the one primary action. */
+.tasks-head .ghost-btn.brain-btn {
+  background: none;
+  box-shadow: none;
+  color: var(--text-2);
+}
+.tasks-head .ghost-btn.brain-btn svg {
+  color: #8b5cf6;
+}
+.tasks-head .ghost-btn.brain-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}

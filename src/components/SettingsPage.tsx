@@ -68,6 +68,7 @@ const SHORTCUTS: [string, string[]][] = [
   ['Ask AI', ['⌘', 'J']],
   ['Go to Home / Mail / Chat / Tasks', ['G', 'then H / M / C / T']],
   ['Go to Calendar / Drive / Meet', ['G', 'then L / D / E']],
+  ['Tasks: new task', ['N']],
   ['Calendar: today', ['T']],
   ['Calendar: day / week / month', ['D', 'W', 'M']],
 ];

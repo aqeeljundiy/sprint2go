@@ -310,7 +310,23 @@ export function TasksView(p: Props) {
     p.onAdd({ title: title.trim(), clientId: client?.id, teamId: addTeam || undefined, userId: addAssignee, due: due || undefined });
     setTitle('');
     setDue('');
+    addInput.current?.focus(); // ready for the next one
   };
+  // Quick capture: a "New task" button (or N) opens the field in place; Escape, or leaving it empty, folds it away.
+  const [adding, setAdding] = useState(false);
+  const addInput = useRef<HTMLInputElement>(null);
+  const addRow = useRef<HTMLDivElement>(null);
+  const newBtn = useRef<HTMLButtonElement>(null);
+  const openAdd = () => {
+    setAdding(true);
+    requestAnimationFrame(() => addInput.current?.focus());
+  };
+  const onAddBlur = () =>
+    setTimeout(() => {
+      const a = document.activeElement;
+      if (addRow.current?.contains(a) || a?.closest('.pop')) return; // still in the row, or picking who or when
+      if (!addInput.current?.value.trim()) setAdding(false);
+    }, 0);
 
   const groups: { key: string; label: React.ReactNode; items: Todo[]; extra?: React.ReactNode }[] = useMemo(() => {
     if (groupBy === 'none') return [{ key: 'all', label: null, items: shown }];
@@ -650,6 +666,18 @@ export function TasksView(p: Props) {
   const teamChannel = team ? p.channels.find((c) => c.name === team.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')) : undefined;
 
   const showTaskList = scope.kind !== 'grid' && scope.kind !== 'briefs' && (!client || clientTab === 'tasks');
+  useEffect(() => {
+    if (!showTaskList) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== 'n' && e.key !== 'N') || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      if ((document.activeElement as HTMLElement | null)?.closest('input, textarea, select, [contenteditable]')) return;
+      if (document.querySelector('.modal-scrim:not(.is-leaving), .palette-scrim:not(.is-leaving), .pop:not(.is-leaving)')) return; // a dialog or menu is open
+      e.preventDefault();
+      openAdd();
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [showTaskList]);
   const subtitle = client
     ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : client.status === 'ended' ? `Past ${term.one}${client.endReason ? ` · ${client.endReason}` : ''}` : 'Active'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
     : team
@@ -735,9 +763,14 @@ export function TasksView(p: Props) {
         <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
           <LayoutTemplate size={14} /> <span>Template</span>
         </button>
-        <button className="primary-btn sm brain-btn" onClick={p.onBrainDump}>
+        <button className={`${showTaskList ? 'ghost-btn' : 'primary-btn'} sm brain-btn`} onClick={p.onBrainDump}>
           <Sparkles size={14} /> Brain dump
         </button>
+        {showTaskList && (
+          <button ref={newBtn} className="primary-btn sm new-task-btn" onClick={() => (adding ? setAdding(false) : openAdd())} aria-expanded={adding} title="New task (N)">
+            <Plus size={14} /> New task <kbd>N</kbd>
+          </button>
+        )}
         {showTaskList && (
           <>
             <button ref={fieldsBtn} className="icon-btn" onClick={() => setFieldsOpen(true)} title={`What ${layout === 'board' ? 'cards' : 'rows'} show`} aria-label="Fields">
@@ -867,21 +900,33 @@ export function TasksView(p: Props) {
 
         {showTaskList && (
           <>
-            <div className="todo-add task-add">
-              <Plus size={16} />
-              <input
-                id="new-task"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && add()}
-                placeholder={client ? `Add a task for ${client.name}…` : team ? `Add to ${team.name}’s queue…` : 'Add a task…'}
-              />
-              <Select value={addAssignee} options={peopleOptions(p.users, p.me)} onChange={setAssignee} label="Assign to" className="sel-flat" />
-              <Select value={addTeam} options={teamOptions(p.teams)} onChange={setTeamPick} label="Team" className="sel-flat hide-sm" />
-              <DatePicker value={due} onChange={setDue} label="Due date" placeholder="Due" className="sel-flat" />
-              <button className="primary-btn sm" onClick={add} disabled={!title.trim()}>
-                Add
-              </button>
+            <button type="button" className={`new-task-slim ${adding ? 'gone' : ''}`} onClick={openAdd} aria-expanded={adding} tabIndex={adding ? -1 : 0}>
+              <Plus size={16} /> New task
+            </button>
+            <div className={`fold task-add-fold ${adding ? 'open' : ''}`}>
+              <div className="fold-in">
+                <div className="todo-add task-add" ref={addRow} onBlur={onAddBlur}>
+                  <Plus size={16} />
+                  <input
+                    ref={addInput}
+                    id="new-task"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') add();
+                      if (e.key === 'Escape') (e.preventDefault(), setAdding(false), newBtn.current?.offsetParent && newBtn.current.focus()); // focus goes back to the button
+                    }}
+                    placeholder={client ? `Add a task for ${client.name}…` : team ? `Add to ${team.name}’s queue…` : 'Add a task…'}
+                    aria-label="New task"
+                  />
+                  <Select value={addAssignee} options={peopleOptions(p.users, p.me)} onChange={setAssignee} label="Assign to" className="sel-flat" />
+                  <Select value={addTeam} options={teamOptions(p.teams)} onChange={setTeamPick} label="Team" className="sel-flat hide-sm" />
+                  <DatePicker value={due} onChange={setDue} label="Due date" placeholder="Due" className="sel-flat" />
+                  <button className="primary-btn sm" onClick={add} disabled={!title.trim()}>
+                    Add
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="task-views">
@@ -1070,7 +1115,12 @@ export function TasksView(p: Props) {
                   <div className="empty">
                     <div className="empty-art">✓</div>
                     <p className="empty-title">{filter === 'done' ? 'Nothing finished yet' : 'Nothing open'}</p>
-                    <p className="empty-sub">Add a task above, or use Brain dump to turn your thoughts into tasks.</p>
+                    <p className="empty-sub">Add one, or use Brain dump to turn your thoughts into tasks.</p>
+                    {filter !== 'done' && (
+                      <button type="button" className="primary-btn sm" onClick={openAdd}>
+                        <Plus size={14} /> New task
+                      </button>
+                    )}
                   </div>
                 )}
                 {groups.map((g) => (
