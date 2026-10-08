@@ -17,7 +17,7 @@ import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 import { ChannelMaterials } from './ChannelMaterials';
 import { personOption } from './ui/PeopleList';
-import { uploadFile } from '../sync';
+import { server, uploadFile, wasSkipped } from '../sync';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -939,8 +939,11 @@ export function ChatView(p: ViewProps) {
       try {
         const up = await uploadFile(f, channel.workspaceId);
         files.push({ name: f.name, size: f.size, type: up.type, url: up.url });
-      } catch {
-        files.push({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', url: URL.createObjectURL(f) }); // the upload failed: at least this session sees it
+      } catch (e) {
+        if (wasSkipped(e)) continue; // they chose not to upload a big file
+        // On a real server a file only this browser has would look sent but nobody else could open it: say why instead.
+        if (server.on) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { error: `${f.name}: ${(e as Error).message}` } }));
+        else files.push({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', url: URL.createObjectURL(f) });
       }
     }
     if (!files.length) return;

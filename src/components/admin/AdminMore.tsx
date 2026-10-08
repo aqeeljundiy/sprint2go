@@ -65,7 +65,9 @@ export function PermissionsSection({ ws, canManage, onWorkspace }: { ws: Workspa
 
 /* ---------------- Storage ---------------- */
 
-export function StorageSection({ ws, people, plan, drive, users, byChannel, canManage, onStorage, onBilling, toast }: {
+type Room = { used: number; total: number; left: number; video?: number; byPerson?: { userId: string; bytes: number }[] };
+
+export function StorageSection({ ws, people, plan, drive, users, byChannel, canManage, onStorage, onBilling }: {
   ws: Workspace;
   byChannel: { name: string; size: number }[];
   people: number;
@@ -78,32 +80,54 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
   toast: (t: string) => void;
 }) {
   const st = ws.storage ?? { askOver: 500 };
-  const pool = storageGB(plan, people) * 1024 ** 3;
   const files = drive.filter((d) => !d.trashed && d.kind !== 'folder');
   const sum = (list: DriveItem[]) => list.reduce((s, d) => s + d.size, 0);
-  const parts = [
-    { name: 'Mail', size: 1.3 * 1024 ** 3 * Math.max(1, people / 3), color: 'var(--accent)' },
-    { name: 'Files', size: sum(files.filter((d) => !d.channelId && d.kind !== 'video' && d.kind !== 'audio')), color: '#10b981' },
-    { name: 'Videos', size: sum(files.filter((d) => d.kind === 'video')), color: '#f97316' },
-    { name: 'Chat files', size: sum(files.filter((d) => d.channelId)), color: '#8b5cf6' },
-    { name: 'Meeting recordings', size: 3 * 1.1 * 1024 ** 3, color: '#ec4899' },
-  ];
-  const used = parts.reduce((s, x) => s + x.size, 0);
   const biggest = [...files].sort((a, b) => b.size - a.size).slice(0, 5);
-  const [connecting, setConnecting] = useState<'gdrive' | 'dropbox' | 'b2' | null>(null);
-  const [acct, setAcct] = useState('');
+  // On a real server the numbers are what the company's uploaded files really take; the demo shows an example.
+  const live = server.on;
+  const [room, setRoom] = useState<Room | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    void fetch(`/api/storage?workspaceId=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<Room>) : null))
+      .then(setRoom)
+      .catch(() => {});
+  }, [ws.id, live]);
+  const pool = live ? room?.total ?? storageGB(plan, people) * 1024 ** 3 : storageGB(plan, people) * 1024 ** 3;
+  const mailBytes = room?.byPerson?.find((x) => x.userId === 'mail')?.bytes ?? 0;
+  const parts = live
+    ? [
+        { name: 'Files', size: Math.max(0, (room?.used ?? 0) - (room?.video ?? 0) - mailBytes), color: '#10b981' },
+        { name: 'Videos', size: room?.video ?? 0, color: '#f97316' },
+        { name: 'Email attachments', size: mailBytes, color: 'var(--accent)' },
+      ]
+    : [
+        { name: 'Mail', size: 1.3 * 1024 ** 3 * Math.max(1, people / 3), color: 'var(--accent)' },
+        { name: 'Files', size: sum(files.filter((d) => !d.channelId && d.kind !== 'video' && d.kind !== 'audio')), color: '#10b981' },
+        { name: 'Videos', size: sum(files.filter((d) => d.kind === 'video')), color: '#f97316' },
+        { name: 'Chat files', size: sum(files.filter((d) => d.channelId)), color: '#8b5cf6' },
+        { name: 'Meeting recordings', size: 3 * 1.1 * 1024 ** 3, color: '#ec4899' },
+      ];
+  const used = live ? room?.used ?? 0 : parts.reduce((s, x) => s + x.size, 0);
+  const byPerson = live
+    ? (room?.byPerson ?? [])
+        .filter((x) => x.userId !== 'mail')
+        .map((x) => ({ user: users.find((u) => u.id === x.userId), bytes: x.bytes }))
+        .filter((x): x is { user: User; bytes: number } => !!x.user)
+        .sort((a, b) => b.bytes - a.bytes)
+        .slice(0, 6)
+    : users.slice(0, 6).map((u, i) => ({ user: u, bytes: (1.3 + ((i * 7) % 5) * 2.1) * 1024 ** 3 }));
   const pct = (n: number) => `${Math.max(0.5, (n / pool) * 100)}%`;
-  const OWN = { gdrive: 'Google Drive', dropbox: 'Dropbox', b2: 'Backblaze B2' } as const;
 
   return (
     <>
       <h2>Storage</h2>
       <p className="set-intro">
-        {fmtSize(used)} of {fmtSize(pool)} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.
+        {live && !room ? 'Adding up what your files take…' : `${fmtSize(used)} of ${fmtSize(pool)} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.`}
       </p>
       <div className="stack-bar">
         {parts.map((x) => (
-          <span key={x.name} style={{ width: pct(x.size), background: x.color }} />
+          <span key={x.name} style={{ width: x.size > 0 ? pct(x.size) : 0, background: x.color }} />
         ))}
       </div>
       <div className="legend">
@@ -113,6 +137,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
           </span>
         ))}
       </div>
+      {live && <p className="muted small">Counts files uploaded to Drive, chat, tables and the shared spaces, and email attachments. The text of emails and meeting recordings aren’t counted.</p>}
       {used / pool > 0.8 && (
         <p className="trial-note">
           You’ve used {Math.round((used / pool) * 100)}%. Add 50 GB for {rp(39_000)} a month, or{' '}
@@ -124,40 +149,12 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
       )}
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
-          <h3>Use your own storage for big files</h3>
-          <p className="muted small">Raw footage and huge files can live in your own cloud. They still show on the {term.one} page, but they don’t use {product.name} storage.</p>
-          {st.own ? (
-            <Row title={<><Cloud size={14} /> {OWN[st.own.provider]} · {st.own.account}</>} hint={`Files over ${st.own.forFilesOver >= 1000 ? `${st.own.forFilesOver / 1000} GB` : `${st.own.forFilesOver} MB`} are saved there`}>
-              <button type="button" className="ghost-btn sm" onClick={() => (onStorage({ ...st, own: undefined }), toast('Disconnected. Files already there stay there'))}>
-                Disconnect
-              </button>
-            </Row>
-          ) : connecting ? (
-            <div className="add-prov">
-              <input autoFocus value={acct} onChange={(e) => setAcct(e.target.value)} placeholder={connecting === 'b2' ? 'Bucket name' : 'Account email'} />
-              <div className="add-prov-foot">
-                <button type="button" className="ghost-btn sm" onClick={() => setConnecting(null)}>
-                  Cancel
-                </button>
-                <button type="button" className="primary-btn sm" disabled={!acct.trim()} onClick={() => (onStorage({ ...st, own: { provider: connecting, account: acct.trim(), forFilesOver: 1000 } }), setConnecting(null), toast(`${OWN[connecting]} connected`))}>
-                  Connect {OWN[connecting]}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="chip-pick">
-              {(Object.keys(OWN) as (keyof typeof OWN)[]).map((k) => (
-                <button key={k} type="button" onClick={() => setConnecting(k)}>
-                  <Cloud size={13} /> {OWN[k]}
-                </button>
-              ))}
-            </div>
-          )}
-          <Row title="Ask before saving big files here" hint="Uploading something bigger shows: save to your own cloud, keep it here, or cancel">
+          <h3>Big files</h3>
+          <Row title="Ask before saving big files" hint="Anyone uploading something bigger is asked first, with its size and the storage the company has left.">
             <Select
               value={String(st.askOver)}
               onChange={(v) => onStorage({ ...st, askOver: Number(v) as StorageSettings['askOver'] })}
-              label="Ask over"
+              label="Ask before saving big files"
               options={[
                 { value: '200', label: 'Over 200 MB' },
                 { value: '500', label: 'Over 500 MB' },
@@ -166,11 +163,16 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
               ]}
             />
           </Row>
+          {live && caps.maxUploadMb > 0 && <p className="muted small">One file can be up to {caps.maxUploadMb >= 1024 ? `${+(caps.maxUploadMb / 1024).toFixed(1)} GB` : `${caps.maxUploadMb} MB`}.</p>}
+          <Row title={<><Cloud size={14} /> Use your own storage</>} hint={`Coming soon: raw footage and huge files kept in your own Google Drive, Dropbox or Backblaze B2, still showing on the ${term.one} page. Until then everything is saved in ${product.name}.`}>
+            <span className="badge-soon">Not yet</span>
+          </Row>
         </div>
       </fieldset>
 
       <div className="set-block">
         <h3>Biggest files</h3>
+        {biggest.length === 0 && <p className="muted small">No files in Drive yet.</p>}
         {biggest.map((f) => (
           <div key={f.id} className="pa-row">
             <span className="cf-icon">{f.kind === 'video' ? <Video size={15} /> : <FileText size={15} />}</span>
@@ -191,11 +193,12 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
       </div>
       <div className="set-block">
         <h3>By person</h3>
-        {users.slice(0, 6).map((u, i) => (
+        {live && room && byPerson.length === 0 && <p className="muted small">Nobody has uploaded anything yet.</p>}
+        {byPerson.map(({ user: u, bytes }) => (
           <div key={u.id} className="pa-row">
             <Avatar person={u} size={22} />
             <span className="pa-title">{u.name}</span>
-            <span className="muted small">{fmtSize((1.3 + ((i * 7) % 5) * 2.1) * 1024 ** 3)}</span>
+            <span className="muted small">{fmtSize(bytes)}</span>
           </div>
         ))}
       </div>
@@ -582,6 +585,8 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
     .filter((x): x is typeof x & { user: User } => !!x.user)
     .sort((a, b) => Number(a.on) - Number(b.on) || a.user.name.localeCompare(b.user.name));
   const missing = people.filter((x) => !x.on && x.userId !== me);
+  const myRole = ws.members.find((m) => m.userId === me)?.role;
+  const canReset = (x: { on: boolean; userId: string; role: string }) => x.on && x.userId !== me && !(x.role === 'owner' && myRole !== 'owner');
   const remind = () => {
     setBusy(true);
     void fetch('/api/security/remind', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) })
@@ -589,7 +594,6 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
       .then((d: { sent?: number; error?: string }) => (toast(d.error ?? `Reminded ${d.sent} ${d.sent === 1 ? 'person' : 'people'}`), load()))
       .finally(() => setBusy(false));
   };
-  const myRole = ws.members.find((m) => m.userId === me)?.role;
   const OTHER = [
     { k: 'google', title: 'Sign in with Google', why: caps.signIn.googleApp ? 'Coming soon.' : `Coming soon. Needs a Google sign-in app set up by ${product.name}.` },
     { k: 'microsoft', title: 'Sign in with Microsoft', why: caps.signIn.microsoftApp ? 'Coming soon.' : `Coming soon. Needs a Microsoft sign-in app set up by ${product.name}.` },
@@ -650,9 +654,8 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
                   </button>
                 </div>
               )}
-              <div className="ts-people">
+              <div className={`ts-people ${people.some(canReset) ? 'has-actions' : ''}`}>
                 {people.map((x) => {
-                  const canReset = x.on && x.userId !== me && !(x.role === 'owner' && myRole !== 'owner');
                   return (
                     <div key={x.userId} className="pa-row ts-person">
                       <Avatar person={x.user} size={24} />
@@ -662,7 +665,7 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
                       </span>
                       <span className={`acct-status ${x.on ? 'ok' : ''}`}>{x.on ? 'On' : 'Not yet'}</span>
                       <span className="ts-person-act">
-                        {canReset && (
+                        {canReset(x) && (
                           <button type="button" className="ghost-btn sm" onClick={() => setResetting(x.user)}>
                             Reset
                           </button>
@@ -701,7 +704,7 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
             info.log.map((e, i) => {
               const u = e.userId ? users.find((x) => x.id === e.userId) : undefined;
               return (
-                <div key={i} className="pa-row">
+                <div key={i} className="pa-row ts-log">
                   {u && <Avatar person={u} size={20} />}
                   <span className="pa-title">
                     <b>{nameOf(e.userId)}</b>&nbsp;{e.detail}

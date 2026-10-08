@@ -19,7 +19,7 @@ import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
-import { rp } from './data/pricing';
+import { rp, storageGB } from './data/pricing';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { fmtTime } from './calendarUtils';
 import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
@@ -31,7 +31,7 @@ import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
-import { server, uploadFile } from './sync';
+import { server, uploadFile, uploadPolicy, wasSkipped } from './sync';
 import { caps } from './caps';
 import { EmailDeliverySection } from './components/admin/EmailDelivery';
 import { ai, aiLive } from './ai';
@@ -64,7 +64,7 @@ import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
 import { celebrate } from './components/ui/confetti';
 import type { AskScope, MeetPage } from './components/MeetApp';
-import { DEFAULT_MEETINGS } from './data/workspaces';
+import { DEFAULT_MEETINGS, trialPlan } from './data/workspaces';
 import { DEMO_SCRIPT } from './data/team';
 import { htmlToText, textToHtml } from './sanitize';
 import { rowName } from './components/tables/core';
@@ -184,6 +184,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
   session.wsId = ws?.id ?? '';
+  // Uploads ask before big files (Settings, Storage); the demo has no server to ask, so it uses these.
+  uploadPolicy.askOverMb = ws?.storage?.askOver ?? 500;
+  uploadPolicy.storageTotal = ws ? storageGB(ws.plan ?? trialPlan(ws.name, ''), ws.members.length) * 1024 ** 3 : 0;
   setBrandName(brandOf(ws)); // white label: an agency's name in place of ours
   setTermWord(ws?.terms?.word); // "Projects" or "Clients", before anything below renders words
   // Companies this person is a client of (same sign-in): their portals sit in the workspace switcher.
@@ -2295,7 +2298,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const up = await uploadFile(f, ws.id);
         added.push({ id: uid(), name: f.name, kind, parentId, size: f.size, modified: new Date().toISOString(), url: up.url, thumb: kind === 'image' || kind === 'video' ? up.url : undefined, workspaceId: ws.id, uploadedBy: user.id });
       } catch (e) {
-        showToast({ text: `${f.name}: ${(e as Error).message}` });
+        if (!wasSkipped(e)) showToast({ text: `${f.name}: ${(e as Error).message}` });
       }
     }
     if (!added.length) return;

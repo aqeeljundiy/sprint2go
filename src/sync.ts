@@ -2,6 +2,8 @@
 // loads everything on sign-in, saves each change as it happens, and applies other people's changes live.
 // Without a server (the standalone demo file) none of this runs and data stays in memory.
 import { RECORD_KEYS, type Collections, type CollectionKey } from './seed';
+import { askBigFile } from './components/BigFileDialog';
+import { store } from './store';
 
 type Doc = { id: string; [k: string]: unknown };
 
@@ -143,12 +145,46 @@ export function sendSignal(to: string, data: unknown) {
   void fetch('/api/signal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, data }) }).catch(() => {});
 }
 
+/** Someone chose not to upload a big file (Settings, Storage: "Ask before saving big files"). Not an error to show. */
+export class UploadSkipped extends Error {
+  skipped = true;
+  constructor(name: string) {
+    super(`${name} wasn’t uploaded.`);
+  }
+}
+export const wasSkipped = (e: unknown) => !!(e as { skipped?: boolean } | null)?.skipped;
+const MB = 1024 * 1024;
+const size = (n: number) => (n >= 1024 * MB ? `${+(n / (1024 * MB)).toFixed(1)} GB` : `${Math.max(0, Math.round(n / MB))} MB`);
+/** The company's room and its "ask over" size, read from the server (only for files big enough to matter). */
+async function roomFor(workspaceId: string): Promise<{ askOverMb: number; left: number; total: number; maxUpload: number } | null> {
+  if (!server.on) {
+    // The demo: the company's setting and plan, and the files in its Drive.
+    const total = uploadPolicy.storageTotal;
+    const used = store.drive.filter((d) => d.workspaceId === workspaceId && !d.trashed).reduce((n, d) => n + d.size, 0);
+    return { askOverMb: uploadPolicy.askOverMb, total, left: Math.max(0, total - used), maxUpload: Infinity };
+  }
+  return fetch(`/api/storage?workspaceId=${encodeURIComponent(workspaceId)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+}
+/** Set by the app for the company on screen (the demo has no server to ask). */
+export const uploadPolicy = { askOverMb: 500, storageTotal: 0 };
+
 /**
  * Puts a file on the server and returns where it lives. Without a server (the demo) the file stays in the browser
- * as a data URL, as before.
+ * as a data URL, as before. A file over the company's "ask over" size asks first (UploadSkipped when they say no);
+ * one that's over the limit or doesn't fit in the company's storage fails straight away, before anything is sent.
  */
 export async function uploadFile(file: File | Blob, workspaceId: string, name = (file as File).name ?? 'file'): Promise<{ url: string; name: string; type: string; size: number }> {
   const type = file.type || 'application/octet-stream';
+  if (file.size >= 10 * MB) {
+    const room = await roomFor(workspaceId);
+    if (room) {
+      if (file.size > room.maxUpload) throw new Error(`Files up to ${size(room.maxUpload)}.`);
+      if (server.on && file.size > room.left) throw new Error(`It doesn’t fit: the company has ${size(room.left)} left of its ${size(room.total)}. An admin can add more in Settings, Plan & billing.`);
+      if (room.askOverMb > 0 && file.size > room.askOverMb * MB && !(await askBigFile({ name, size: file.size, left: room.total ? room.left : null, total: room.total || null }))) throw new UploadSkipped(name);
+    }
+  }
   if (!server.on) {
     const url = await new Promise<string>((res, rej) => {
       const r = new FileReader();

@@ -313,6 +313,16 @@ export function fileData(id: string): Buffer | null {
   const f = join(FILES, id);
   return existsSync(f) ? readFileSync(f) : null;
 }
+/** Where an uploaded file lives on disk (big uploads are streamed straight there, then recorded). */
+export const filePath = (id: string) => (mkdirSync(FILES, { recursive: true }), join(FILES, id));
+export function recordFile(f: { id: string; workspaceId: string; by: string; name: string; type: string; size: number }) {
+  db.prepare('INSERT INTO files (id, workspace_id, uploaded_by, name, type, size, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(f.id, f.workspaceId, f.by, f.name, f.type, f.size, new Date().toISOString());
+}
+/** What a company's uploaded files take: in all, videos, and per person (mail attachments count as 'mail'). */
+export function storageOf(workspaceId: string) {
+  const rows = db.prepare("SELECT uploaded_by AS by, SUM(size) AS bytes, SUM(CASE WHEN type LIKE 'video/%' THEN size ELSE 0 END) AS video FROM files WHERE workspace_id = ? GROUP BY uploaded_by").all(workspaceId) as { by: string; bytes: number; video: number }[];
+  return { used: rows.reduce((n, r) => n + r.bytes, 0), video: rows.reduce((n, r) => n + r.video, 0), byPerson: rows.map((r) => ({ userId: r.by, bytes: r.bytes })) };
+}
 /** One person's usage this period (for their own monthly cap). */
 export function usageSinceFor(workspaceId: string, userId: string, since: string) {
   return db.prepare('SELECT job, provider, model, SUM(in_tokens) AS inTokens, SUM(out_tokens) AS outTokens FROM ai_usage WHERE workspace_id = ? AND user_id = ? AND at >= ? GROUP BY job, provider, model').all(workspaceId, userId, since);

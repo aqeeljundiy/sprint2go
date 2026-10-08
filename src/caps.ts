@@ -14,6 +14,7 @@ export const caps = {
   /** Sign-in methods that work on this server (none yet), and whether its Google and Microsoft sign-in apps exist. */
   signIn: { google: false, microsoft: false, saml: false, googleApp: false, microsoftApp: false },
   ownStorage: false, // saving big files to a company's own cloud
+  maxUploadMb: 0, // the largest single upload this server takes
   desktopUrl: null as string | null,
   mailHost: '',
 };

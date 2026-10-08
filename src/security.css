@@ -196,6 +196,9 @@
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
 }
+.ts-card .signin-sub {
+  text-wrap: pretty;
+}
 .ts-card .signin-switch {
   font-size: 13px;
   line-height: 1.5;
@@ -278,10 +281,25 @@
   flex: none;
 }
 .ts-person-act {
+  display: none;
+}
+.ts-people.has-actions .ts-person-act {
   flex: none;
   width: 64px; /* rows line up whether or not they have a Reset button */
   display: flex;
   justify-content: flex-end;
+}
+.ts-log {
+  align-items: flex-start;
+}
+.ts-log .avatar {
+  margin-top: 1px;
+}
+.ts-log .pa-title {
+  white-space: normal;
+}
+.ts-log > .muted {
+  flex: none;
 }
 
 @media (max-width: 560px) {
@@ -297,4 +315,42 @@
   .ts-qr img {
     animation: none;
   }
+}
+
+/* ---------- "Save a big file?" (BigFileDialog) ---------- */
+
+.big-file-modal {
+  width: min(440px, 100%);
+}
+.bf-name {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.bf-name strong {
+  color: var(--text);
+}
+.bf-meter {
+  display: flex;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+}
+.bf-meter span {
+  height: 100%;
+}
+.bf-used {
+  background: var(--accent);
+}
+.bf-this {
+  background: #f59e0b;
+}
+.bf-room {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-3);
+  line-height: 1.5;
 }

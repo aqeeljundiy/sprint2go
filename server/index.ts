@@ -2,7 +2,8 @@
 // Run:  npm run server   (after `npm run build`), then open http://localhost:8787
 // In development, `npm run dev` proxies /api here, so run both.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { once } from 'node:events';
 import { extname, join, normalize } from 'node:path';
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Readable } from 'node:stream';
@@ -11,6 +12,7 @@ import * as ai from './ai.ts';
 import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { DEFAULT_PERMISSIONS } from '../src/types.ts';
+import { storageGB } from '../src/data/pricing.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
@@ -441,6 +443,17 @@ function tooMany(key: string, max: number, windowMs: number) {
   return list.length > max;
 }
 const ipOf = (req: IncomingMessage) => String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+/** The largest single upload (S2G_MAX_UPLOAD_MB, 2 GB unless set); a company's storage left can lower it. */
+const MAX_UPLOAD = Math.max(1, Number(process.env.S2G_MAX_UPLOAD_MB) || 2048) * 1024 * 1024;
+const mb = (n: number) => (n >= 1024 ** 3 ? `${+(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(0, Math.round(n / 1024 ** 2))} MB`);
+/** A company's storage: its plan's pool (shared by everyone) and what its uploaded files take. */
+function storageRoom(wsId: string) {
+  const w = workspaces().find((x) => x.id === wsId) as any;
+  const plan = w?.plan ?? { tier: 'studio', addons: { storage50: 0, mailboxes: 0 } }; // no plan yet: the Studio trial
+  const total = storageGB(plan, Math.max(1, w?.members?.length ?? 1)) * 1024 ** 3;
+  const used = db.storageOf(wsId);
+  return { total, ...used, left: Math.max(0, total - used.used) };
+}
 /** The brand people see at this address: an agency's name on its own (verified) domain, otherwise ours. */
 function brandNameAt(req: IncomingMessage) {
   const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
@@ -1604,6 +1617,7 @@ createServer(async (req, res) => {
     }
 
     // Files: uploads land on disk under data/files, served back to people in the same company (or guests of it).
+    // Streamed to disk (big videos never sit in memory), up to the per-file limit and the company's storage left.
     if (p === '/api/upload' && req.method === 'POST') {
       const wsId = String(req.headers['x-workspace'] ?? '');
       const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'file')).slice(0, 200);
@@ -1611,16 +1625,42 @@ createServer(async (req, res) => {
       const team = memberOf(me).some((w) => w.id === wsId);
       const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === wsId);
       if (!team && !guest) return json(res, 403, { error: 'Not in this company.' });
-      const chunks: Buffer[] = [];
-      let size = 0;
-      for await (const c of req) {
-        size += (c as Buffer).length;
-        if (size > 25 * 1024 * 1024) return json(res, 413, { error: 'Files up to 25 MB.' });
-        chunks.push(c as Buffer);
-      }
+      const room = storageRoom(wsId);
+      const cap = Math.min(MAX_UPLOAD, room.left);
+      const tooBig = () => (room.left < MAX_UPLOAD ? `It doesn’t fit: the company has ${mb(room.left)} left of its ${mb(room.total)}. An admin can add more in Settings, Plan & billing.` : `Files up to ${mb(MAX_UPLOAD)}.`);
+      if (Number(req.headers['content-length'] ?? 0) > cap) return json(res, 413, { error: tooBig() });
       const id = randomBytes(16).toString('hex');
-      db.saveFile({ id, workspaceId: wsId, by: me, name, type, size }, Buffer.concat(chunks));
+      const path = db.filePath(id);
+      const out = createWriteStream(path);
+      let size = 0;
+      let over = false;
+      try {
+        for await (const c of req) {
+          size += (c as Buffer).length;
+          if (size > cap) {
+            over = true;
+            break;
+          }
+          if (!out.write(c)) await once(out, 'drain');
+        }
+      } finally {
+        await new Promise<void>((done) => out.end(done));
+      }
+      if (over) {
+        rmSync(path, { force: true });
+        return json(res, 413, { error: tooBig() });
+      }
+      db.recordFile({ id, workspaceId: wsId, by: me, name, type, size });
       return json(res, 200, { id, url: `/api/files/${id}`, name, type, size });
+    }
+    // How much room a company has, and when to ask before an upload (Settings, Storage).
+    if (p === '/api/storage' && req.method === 'GET') {
+      const wsId = String(url.searchParams.get('workspaceId') ?? '');
+      const team = memberOf(me).some((w) => w.id === wsId);
+      if (!team && !portalsOf(me).some((pt) => pt.workspaceId === wsId)) return json(res, 403, { error: 'Not in this company.' });
+      const room = storageRoom(wsId);
+      const w = workspaces().find((x) => x.id === wsId) as any;
+      return json(res, 200, { askOverMb: w?.storage?.askOver ?? 500, used: room.used, total: room.total, left: room.left, maxUpload: MAX_UPLOAD, ...(team ? { video: room.video, byPerson: room.byPerson } : {}) });
     }
     const fileReq = p.match(/^\/api\/files\/([a-f0-9]{32})$/);
     if (fileReq && req.method === 'GET') {
@@ -1629,10 +1669,21 @@ createServer(async (req, res) => {
       const team = memberOf(me).some((w) => w.id === f.workspaceId);
       const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === f.workspaceId);
       if (!team && !guest) return json(res, 404, { error: 'No such file.' });
-      const data = db.fileData(f.id);
-      if (!data) return json(res, 404, { error: 'The file is gone.' });
-      res.writeHead(200, { 'content-type': f.type, 'content-length': data.length, 'cache-control': 'private, max-age=86400', 'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}` });
-      return res.end(data);
+      const path = db.filePath(f.id);
+      if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });
+      // Streamed, with ranges, so a long video plays and seeks without loading the whole file.
+      const total = statSync(path).size;
+      const head = { 'content-type': f.type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=86400', 'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}` };
+      const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
+      if (range && total > 0) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, total - Number(range[2]));
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), total - 1) : total - 1;
+        if (start > end || start >= total) return (res.writeHead(416, { 'content-range': `bytes */${total}` }), res.end());
+        res.writeHead(206, { ...head, 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${total}` });
+        return createReadStream(path, { start, end }).pipe(res);
+      }
+      res.writeHead(200, { ...head, 'content-length': total });
+      return createReadStream(path).pipe(res);
     }
 
     if (p === '/api/sync' && req.method === 'POST') {
@@ -2063,7 +2114,7 @@ createServer(async (req, res) => {
 }).listen(PORT, HOST, () => {
   console.log(`sprint2go on http://localhost:${PORT}${mailConfigured() ? ' (email on)' : ' (no email: codes go to this log)'}`);
   mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
-});
+}).requestTimeout = 60 * 60_000; // a big upload on a slow line can take a while (Node's own limit is 5 minutes)
 
 /** Whether the meeting recorder answers, checked every few minutes (the app asks often). */
 let recorderUp = false;
@@ -2084,6 +2135,7 @@ function caps() {
     // provider), so Settings shows them switched off with the reason instead of switches that do nothing.
     signIn: { google: false, microsoft: false, saml: false, googleApp: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET), microsoftApp: !!((process.env.MICROSOFT_CLIENT_ID || process.env.MS_CLIENT_ID) && (process.env.MICROSOFT_CLIENT_SECRET || process.env.MS_CLIENT_SECRET)) },
     ownStorage: false, // files can't be saved to a company's own cloud yet
+    maxUploadMb: Math.round(MAX_UPLOAD / 1024 ** 2),
     desktopUrl: process.env.DESKTOP_URL || null,
     mailHost: mailer.MAIL_HOST,
   };
