@@ -19,6 +19,7 @@ import { domainKey, mayUse, ownership, ownersMap, settle as settleDomain, type O
 import { loadTls, onCertChange, startCertKeeper } from './mailcert.ts';
 import { applyInbound, readInvite } from './invites.ts';
 import { maybeAnswer, type Away } from './away.ts';
+import * as track from './readTracking.ts';
 export { domainKey };
 
 db.db.exec(`
@@ -464,6 +465,8 @@ export interface Outgoing {
   references?: string[];
   ical?: { method: string; content: string }; // a calendar part, e.g. the REPLY to an invite
   headers?: Record<string, string>; // extra headers (Auto-Submitted on an out-of-office answer)
+  /** Read tracking (server/readTracking.ts): what to track for outside recipients, and who sent it (for the notice). */
+  tracking?: { opens: boolean; clicks: boolean; notify: boolean; by: string | null };
 }
 
 const fileBuffer = (url: string): Buffer | null => {
@@ -500,7 +503,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
       db.writeDocs('workspaces', [{ ...(ws as any), mailCreditsNotified: true }], [], null);
     }
   }
-  const composer = new MailComposer({
+  const message = {
     from: { name: o.from.name, address: o.from.email },
     to: o.to.map((p) => ({ name: p.name, address: p.email })),
     cc: o.cc.length ? o.cc.map((p) => ({ name: p.name, address: p.email })) : undefined,
@@ -513,13 +516,18 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url) ?? Buffer.alloc(0) })),
     icalEvent: o.ical ? { method: o.ical.method, content: o.ical.content, filename: 'invite.ics' } : undefined,
     headers: { 'X-Mailer': 'sprint2go', ...(o.headers ?? {}) },
-  });
-  let raw: Buffer = await composer.compile().build();
-  if (route === 'own' && domain && domain !== MAIL_HOST) {
-    const key = domainKey(domain, ws.id);
-    const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed' });
-    raw = Buffer.concat([Buffer.from(signatures), raw]);
-  }
+  };
+  /** Builds the message with this HTML and signs it: every copy that leaves is signed on its own. */
+  const build = async (html: string | undefined) => {
+    let raw: Buffer = await new MailComposer({ ...message, html }).compile().build();
+    if (route === 'own' && domain && domain !== MAIL_HOST) {
+      const key = domainKey(domain, ws.id);
+      const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed' });
+      raw = Buffer.concat([Buffer.from(signatures), raw]);
+    }
+    return raw;
+  };
+  const raw = await build(o.html);
   // Our own mailboxes get a copy straight away (an alias: each of its mailboxes), here or in other companies; never the
   // mailbox it was sent from.
   let localCount = 0;
@@ -540,21 +548,66 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     // A colleague away gets to answer too (their answer carries Auto-Submitted, so it never answers back).
     if (!shared) void maybeAnswer({ workspaceId: hit.ws.id, account: hit.account, canSend: !!(hit.ws as any).mailReady?.mailboxes?.[hit.account.id]?.send, parsed, envelopeFrom: o.from.email, mid, refs: o.references ?? [], spam: false, send: queueSend, log: deps.log });
   }
+  // Read tracking: each tracked outside recipient gets a copy of their own (their picture, their links); everyone else,
+  // teammates included, gets the plain one.
+  const tracked = o.tracking ? track.prepare({ ws, accountId: o.accountId, threadId: o.threadId, messageId: o.messageId, by: o.tracking.by, html: o.html, recipients: remote.map((p) => p.email), opens: o.tracking.opens, clicks: o.tracking.clicks, notify: o.tracking.notify }) : null;
+  const copies = new Map<string, Buffer>();
+  for (const [email, html] of tracked ?? []) copies.set(email, await build(html));
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
-  for (const p of remote) ins.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, raw, now(), 'queued', now());
+  for (const p of remote) ins.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, copies.get(p.email) ?? raw, now(), 'queued', now());
   if (route === 'boosted' && remote.length) {
     db.writeDocs('workspaces', [{ ...(ws as any), mailCredits: Math.max(0, (ws.mailCredits ?? 0) - remote.length) }], [], null);
     deps.broadcast('workspaces', [db.getDoc('workspaces', ws.id)!], []);
   }
   markDelivery(o.threadId, o.messageId, mid, remote.length ? 'sending' : 'sent');
+  if (o.tracking) track.syncMessage(o.threadId, o.messageId, true);
   void pump();
   return { mid, queued: remote.length, local: localCount, route };
+}
+
+/**
+ * Marks for a message the app hasn't saved yet: it asks to send right away and saves the thread a moment later, so
+ * the Message-ID and delivery state wait here and go on when it arrives (guardDelivery).
+ */
+const early = new Map<string, { mid: string | null; delivery: unknown; at: number }>();
+/** The sync guard for threads: a message's Message-ID and delivery state are the mail engine's, not the app's. */
+export function guardDelivery(d: db.Doc, before: db.Doc | undefined): db.Doc {
+  const list = (d as any).messages;
+  if (!Array.isArray(list)) return d;
+  const prev = new Map(((before as any)?.messages ?? []).map((m: any) => [m?.id, m]));
+  const messages = list.map((m: any) => {
+    if (!m || typeof m !== 'object') return m;
+    const b = prev.get(m.id) as any;
+    if (b) return { ...m, mid: b.mid, delivery: b.delivery };
+    const e = early.get(`${d.id} ${m.id}`);
+    if (!e) return m;
+    early.delete(`${d.id} ${m.id}`);
+    echoSoon(d.id); // the app that saved it hasn't heard these yet
+    return { ...m, mid: e.mid ?? m.mid, delivery: e.delivery };
+  });
+  return { ...d, messages } as db.Doc;
+}
+/** Once the save is written: the thread as stored goes to everyone, the app that saved it too. */
+const echoing = new Set<string>();
+function echoSoon(threadId: string) {
+  if (echoing.has(threadId)) return;
+  echoing.add(threadId);
+  setTimeout(() => {
+    echoing.delete(threadId);
+    const t = db.getDoc('threads', threadId);
+    if (t) deps?.broadcast('threads', [t], []);
+  }, 0);
 }
 
 /** Writes the delivery state on the message inside its thread, so the app can show "sending", "sent" or "failed". */
 function markDelivery(threadId: string, messageId: string, mid: string | null, state: 'sending' | 'sent' | 'failed', error?: string) {
   const t = db.getDoc('threads', threadId) as any;
-  if (!t) return;
+  if (!t || !(t.messages ?? []).some((m: any) => m.id === messageId)) {
+    const k = `${threadId} ${messageId}`;
+    early.set(k, { mid: mid ?? early.get(k)?.mid ?? null, delivery: { state, at: now(), ...(error ? { error } : {}) }, at: Date.now() });
+    for (const [x, v] of early) if (Date.now() - v.at > 30 * 60_000) early.delete(x);
+    return;
+  }
   const messages = (t.messages ?? []).map((m: any) => (m.id === messageId ? { ...m, mid: mid ?? m.mid, delivery: { state, at: now(), ...(error ? { error } : {}) } } : m));
   const next = { ...t, messages };
   db.writeDocs('threads', [next], [], null);

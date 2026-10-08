@@ -153,6 +153,75 @@ await test('Domains: copies from kept mailboxes at a shared address (gmail.com) 
   assert.equal(mailer.localAccounts().get(`someone.w-f@${mailer.MAIL_HOST}`)?.ws.id, 'w-f');
 });
 
+/* ---------- read tracking (server/readTracking.ts) ---------- */
+
+const track = await import('../server/readTracking.ts');
+await test('Tracking: links go through a signed click address, mail links stay, the picture goes at the end', () => {
+  const html = '<p>Hi <a href="https://shop.example/a?x=1&amp;y=2">the shop</a>, <a href="mailto:me@x.example">mail me</a> or <a class="b" href=\'https://example.org/\'>https://example.org/</a></p>';
+  const token = 'a'.repeat(32);
+  const { html: out, links } = track.instrument(html, token, 'https://app.example', { opens: true, clicks: true });
+  assert.match(out, /href="https:\/\/app\.example\/t\/c\/a{32}\?u=https%3A%2F%2Fshop\.example%2Fa%3Fx%3D1%26y%3D2&amp;s=[a-f0-9]{32}"/);
+  assert.match(out, /<a class="b" href="https:\/\/app\.example\/t\/c\//, 'other attributes stay');
+  assert.match(out, /href="mailto:me@x\.example"/);
+  assert.ok(out.endsWith(`<img src="https://app.example/t/o/${token}.gif" width="1" height="1" alt="" style="width:1px;height:1px;border:0;margin:0;padding:0;display:block">`));
+  assert.deepEqual(links, [{ u: 'https://shop.example/a?x=1&y=2', l: 'the shop' }, { u: 'https://example.org/', l: 'example.org' }]);
+  const plain = track.instrument(html, token, 'https://app.example', { opens: false, clicks: false }).html;
+  assert.equal(plain, html, 'nothing asked, nothing changed');
+});
+await test('Tracking: web addresses typed as text become links (never inside a tag or a link)', () => {
+  assert.equal(track.linkify('<p>See https://a.example/x?y=1&amp;z=2.</p>'), '<p>See <a href="https://a.example/x?y=1&amp;z=2">https://a.example/x?y=1&amp;z=2</a>.</p>');
+  assert.equal(track.linkify('<p><a href="https://b.example/">https://b.example/</a> <img src="https://c.example/i.png"></p>'), '<p><a href="https://b.example/">https://b.example/</a> <img src="https://c.example/i.png"></p>');
+  assert.equal(track.linkify('<p>here: https://d.example/q4&nbsp;</p><p>&lt;https://e.example/&gt;</p>'), '<p>here: <a href="https://d.example/q4">https://d.example/q4</a>&nbsp;</p><p>&lt;<a href="https://e.example/">https://e.example/</a>&gt;</p>');
+});
+await test('Tracking: a click address works only for the token and address it was made for', () => {
+  const t = 'b'.repeat(32);
+  const out = track.instrument('<a href="https://ok.example/">x</a>', t, 'https://app.example', { opens: false, clicks: true }).html;
+  const sig = /s=([a-f0-9]{32})/.exec(out)[1];
+  assert.equal(track.validSig(t, 'https://ok.example/', sig), true);
+  assert.equal(track.validSig(t, 'https://evil.example/', sig), false, 'another address');
+  assert.equal(track.validSig('c'.repeat(32), 'https://ok.example/', sig), false, 'another token');
+  assert.equal(track.validSig(t, 'https://ok.example/', ''), false);
+});
+await test('Tracking: Gmail’s proxy is a person without a device, Apple’s and filters maybe automatic, apps give a rough device', () => {
+  assert.deepEqual(track.readAgent('Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)'), { device: '', via: 'gmail' });
+  assert.deepEqual(track.readAgent('YahooMailProxy; https://help.yahoo.com/kb/yahoo-mail-proxy-SLN28749.html'), { device: '', via: 'yahoo' });
+  assert.equal(track.readAgent('Mozilla/5.0').auto, 'apple');
+  assert.equal(track.readAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148', '17.58.1.2').auto, 'apple', 'from Apple’s network');
+  assert.equal(track.readAgent('').auto, 'scanner');
+  assert.equal(track.readAgent('curl/8.4.0').auto, 'scanner');
+  assert.equal(track.readAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148', '203.0.113.9').device, 'iPhone · Apple Mail');
+  assert.equal(track.readAgent('Microsoft Office/16.0 (Windows NT 10.0; Microsoft Outlook 16.0.17328; Pro)').device, 'Windows PC · Outlook');
+  assert.equal(track.readAgent('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36').device, 'Android phone · browser');
+});
+await test('Tracking: teammates, the company’s domains and its mailboxes are never tracked; a switched-off company tracks nobody', () => {
+  db.writeDocs('users', [{ id: 'u-t1', name: 'Tia', email: 'tia@personal.example' }], [], null);
+  const w = { id: 'w-t', name: 'T', domains: ['team.example'], members: [{ userId: 'u-t1', role: 'member' }], accounts: [{ id: 't1', email: 'tia@gmail.com', users: ['u-t1'] }] };
+  assert.equal(track.isInternal(w, 'anyone@team.example'), true);
+  assert.equal(track.isInternal(w, 'TIA@personal.example'), true);
+  assert.equal(track.isInternal(w, 'tia@gmail.com'), true);
+  assert.equal(track.isInternal(w, 'client@outside.example'), false);
+  const base = { accountId: 't1', threadId: 't-x', messageId: 'm-x', by: 'u-t1', html: '<p>hi</p>', recipients: ['client@outside.example', 'anyone@team.example'], opens: true, clicks: true, notify: true };
+  const copies = track.prepare({ ...base, ws: w });
+  assert.deepEqual([...copies.keys()], ['client@outside.example']);
+  assert.equal(track.prepare({ ...base, ws: { ...w, readTracking: false }, messageId: 'm-y' }).size, 0);
+  assert.equal(track.prepare({ ...base, ws: w, messageId: 'm-z', html: undefined }).size, 0, 'no HTML, no picture');
+});
+await test('Tracking: the app can’t write opens; a tracked message shows what the server has', () => {
+  db.writeDocs('workspaces', [{ id: 'w-t', name: 'T', domains: ['team.example'], members: [], accounts: [{ id: 't1', email: 'tia@team.example', users: [] }] }], [], null);
+  const thread = { id: 't-x', accountId: 't1', workspaceId: 'w-t', messages: [{ id: 'm-x', to: [{ name: 'Client', email: 'client@outside.example' }] }] };
+  db.writeDocs('threads', [thread], [], null);
+  const token = db.db.prepare("SELECT token FROM mail_track WHERE message_id = 'm-x'").get().token;
+  const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)';
+  assert.equal(track.recordOpen(token, { userAgent: ua, ip: '203.0.113.9', headers: {} }), true);
+  assert.equal(track.recordOpen(token, { userAgent: ua, ip: '203.0.113.9', headers: {} }), false, 'the same open again within a minute');
+  const fake = { ...thread, messages: [{ ...thread.messages[0], tracking: { 'client@outside.example': { opens: [{ at: '2020-01-01T00:00:00Z', device: 'x' }, { at: '2020-01-02T00:00:00Z', device: 'x' }], clicks: [] } } }] };
+  const kept = track.guardThread(fake, db.getDoc('threads', 't-x'), false);
+  assert.equal(kept.messages[0].tracking['client@outside.example'].opens.length, 1);
+  assert.equal(kept.messages[0].tracking['client@outside.example'].opens[0].device, 'Mac · Apple Mail');
+  const fresh = track.guardThread({ id: 't-new', messages: [{ id: 'm-new', tracking: { 'a@b.example': { opens: [{ at: 'x', device: 'y' }], clicks: [{ at: 'x', label: 'l', url: 'u' }] } } }] }, undefined, false);
+  assert.deepEqual(fresh.messages[0].tracking, { 'a@b.example': { opens: [], clicks: [] } }, 'a new message only names who will be tracked');
+});
+
 /* ---------- backups (server/db.ts) ---------- */
 
 await test('Backups: a labelled one-off sits next to the daily copy and outside its rotation', async () => {

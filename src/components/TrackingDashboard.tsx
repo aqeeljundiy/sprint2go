@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BellRing, Eye, FileSearch, Menu, MousePointerClick, Reply, Send, Timer } from 'lucide-react';
 import type { Message, Person, Thread } from '../types';
-import { DEFAULT_TRACK_OPTIONS, fmtDuration, realOpens, replyAfter, summarize } from '../tracking';
+import { DEFAULT_TRACK_OPTIONS, fmtDuration, realClicks, realOpens, replyAfter, summarize } from '../tracking';
 import { fullDate, relative } from '../utils';
 import { Avatar } from './Avatar';
 import { isMine } from '../identity';
@@ -60,7 +60,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
           const rep = replyAfter(t, m, p.email);
           recipients++;
           if (real.length) opened++;
-          if (r.clicks.length) clicked++;
+          if (realClicks(r).length) clicked++;
           if (rep) {
             repliedN++;
             replied.push(p);
@@ -69,7 +69,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
           } else waiting.push(p);
           if (real[0]) firstOpenDelays.push(new Date(real[0].at).getTime() - new Date(m.date).getTime());
           for (const o of real) feed.push({ at: o.at, who: p, kind: 'open', text: 'opened', threadId: t.id });
-          for (const c of r.clicks) {
+          for (const c of realClicks(r)) {
             feed.push({ at: c.at, who: p, kind: 'click', text: `clicked “${c.label}” in`, threadId: t.id });
             if (!last || c.at > last) last = c.at;
           }
@@ -165,7 +165,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
                     : e.opens
                       ? { cls: 'seen', icon: Eye, text: `Seen ${e.opens}×` }
                       : e.autoOnly
-                        ? { cls: 'auto', icon: Eye, text: 'Auto-opened' }
+                        ? { cls: 'auto', icon: Eye, text: 'Opened (maybe automatic)' }
                         : { cls: 'none', icon: Eye, text: 'Not opened' };
                 return (
                   <button key={e.message.id} className="te-row" style={{ ['--i' as string]: Math.min(n, 12) }} onClick={() => onOpenThread(e.thread.id)}>

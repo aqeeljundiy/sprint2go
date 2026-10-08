@@ -202,7 +202,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
             const client = props.clientOf(t);
             const hasFiles = t.messages.some((m) => m.attachments?.length);
             const tracked = lastTracked(t, me);
-            const sum = tracked?.tracking ? summarize(tracked.tracking) : null;
+            const sum = tracked?.tracking && !t.sendAt ? summarize(tracked.tracking) : null; // not sent yet: nothing to see
             return (
               <li
                 key={t.id}
@@ -231,17 +231,19 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
                       {hasFiles && <Paperclip size={13} className="clip" />}
                       {sum && (
                         <span
-                          className={`seen-chip ${sum.opens ? 'yes' : sum.autoOnly ? 'auto' : ''}`}
+                          className={`seen-chip ${sum.opens || sum.clicks ? 'yes' : sum.autoOnly ? 'auto' : ''}`}
                           title={
                             sum.opens
                               ? `Opened by ${sum.openedBy} of ${sum.recipients} · last ${relative(sum.lastOpen!)}${sum.clicks ? ` · ${sum.clicks} link click${sum.clicks > 1 ? 's' : ''}` : ''}`
-                              : sum.autoOnly
-                                ? 'Loaded automatically by Apple Mail, may not have been read'
-                                : 'Not opened yet'
+                              : sum.clicks
+                                ? 'A link in it was clicked; their mail app doesn’t load pictures, so opens don’t show'
+                                : sum.autoOnly
+                                  ? 'Apple Mail or a mail filter loaded it by itself, so it may not have been read yet'
+                                  : 'Not opened yet'
                           }
                         >
-                          {sum.opens ? <Eye size={12} /> : <EyeOff size={12} />}
-                          {sum.opens ? `Seen ${sum.opens}×` : sum.autoOnly ? 'Auto-opened' : 'Not opened'}
+                          {sum.opens || sum.clicks ? <Eye size={12} /> : <EyeOff size={12} />}
+                          {sum.opens ? `Seen ${sum.opens}×` : sum.clicks ? 'Clicked' : sum.autoOnly ? 'Opened (maybe automatic)' : 'Not opened'}
                         </span>
                       )}
                     </div>

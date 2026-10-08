@@ -22,6 +22,7 @@ import * as tablesEngine from './tables.ts';
 import { mailConfigured, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
+import * as readTracking from './readTracking.ts';
 import * as routing from './routing.ts';
 import * as offsite from './offsite.ts';
 import { certState } from './mailcert.ts';
@@ -985,6 +986,9 @@ createServer(async (req, res) => {
   if (secureCookies()) res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');
   if (siteRedirect(req, res, p)) return;
   if (strangerHost(req, res, p)) return;
+  // Read tracking's picture and links in mail people sent (server/readTracking.ts): public, rate limited, and they
+  // answer the same whatever happened.
+  if (p.startsWith('/t/') && readTracking.serveTracking(req, res, url, ipOf(req), tooMany(`track:${ipOf(req)}`, 600, 60_000))) return;
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
   if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString(), build: BUILD });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
@@ -1579,6 +1583,8 @@ createServer(async (req, res) => {
           files: (Array.isArray(b.files) ? b.files : []).filter((f: any) => f && typeof f.url === 'string').map((f: any) => ({ name: String(f.name ?? 'file').slice(0, 200), url: String(f.url) })),
           inReplyTo: typeof b.inReplyTo === 'string' ? b.inReplyTo : undefined,
           references: Array.isArray(b.references) ? b.references.filter((x: unknown) => typeof x === 'string') : undefined,
+          // Read tracking for the outside recipients, when the sender asked and the company allows it.
+          tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me } : undefined,
         });
         return json(res, 200, r);
       } catch (e) {
@@ -2220,6 +2226,8 @@ createServer(async (req, res) => {
           const { clientOf: _c, vaultKey: _v, ...rest } = d as any;
           return rest as db.Doc;
         }
+        // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts).
+        if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
         if (before) return d;
         // New things carry who made them.
         if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
@@ -2611,6 +2619,8 @@ createServer(async (req, res) => {
   const mailPath = mailer.systemMailPath();
   console.log(`sprint2go on http://localhost:${PORT}${mailPath === 'ses' ? ' (email through Amazon SES)' : mailPath === 'own' ? ` (email from ${mailer.NOREPLY} through our mail server)` : ' (no email: codes go to this log)'}`);
   mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
+  // A company's tracked mail points at its own live address when it has one, so its clients never see ours.
+  readTracking.initTracking({ broadcast: (c, u, d) => broadcast(c, u, d), origin: (wsId) => { const w = db.getDoc('workspaces', wsId) as any; return customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL || `http://localhost:${PORT}`; } });
   routing.startRouting({ notify: notifyPeople, broadcast, log: (line) => console.log(line) });
   customDomains.start({
     broadcast,
@@ -2873,7 +2883,7 @@ setInterval(() => {
     const m = t.messages[t.messages.length - 1];
     if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
     void mailer
-      .queueSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })) })
+      .queueSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null } : undefined })
       .catch((e) => console.error('[mail] scheduled send', e instanceof Error ? e.message : e));
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);

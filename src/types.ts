@@ -67,16 +67,20 @@ export interface MailInvite {
 
 export interface OpenEvent {
   at: string; // ISO
-  device: string; // e.g. "iPhone · Apple Mail"
-  place?: string; // rough location from IP
-  /** Opened by a machine (Apple Mail Privacy Protection, a security scanner), not a person. */
+  device: string; // a rough device from the mail app, e.g. "iPhone · Apple Mail"; empty when it's hidden
+  place?: string; // a country, only when the server knows it for sure (never guessed)
+  /** Maybe opened by a machine, not a person: Apple Mail Privacy Protection, a security filter. Not counted. */
   auto?: 'apple' | 'scanner';
+  /** Opened through the provider's picture proxy: a person opened it, the device is hidden. */
+  via?: 'gmail' | 'yahoo';
 }
 
 export interface ClickEvent {
   at: string;
   label: string;
   url: string;
+  /** A link checked by a mail filter, not followed by a person. Not counted. */
+  auto?: 'scanner';
 }
 
 /** An attachment sent as a tracked link and viewed online. */
@@ -97,7 +101,7 @@ export interface TrackOptions {
   opens: boolean;
   clicks: boolean;
   attachments: boolean; // send attachments as tracked links
-  details: boolean; // device, email app and rough location
+  details: boolean; // not offered: the rough device always shows, a place only when it's known for sure
   remindDays: number; // 0 = no follow-up reminder
   notify: boolean;
 }
@@ -284,6 +288,8 @@ export interface Workspace {
   createdAt?: string;
   suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string }; // WhatsApp Business (Meta Cloud API); the token stays on the server
+  /** Read tracking on mail to people outside the company (Settings, Security & data). Off: nobody can track. */
+  readTracking?: boolean;
 }
 
 /** The company's own brand in place of sprint2go: for its team and, above all, for its clients at its own address. */
@@ -648,6 +654,7 @@ export interface Notice {
   link?: { app: AppId | 'settings'; id?: string; msg?: string }; // msg: the exact chat message to land on; settings: id is the section
   url?: string; // a page outside the app (operators: a ticket in the backend)
   fromGuest?: boolean; // written by a guest (set by the server), for the "Guests" choice in Settings, Notifications
+  event?: 'opened'; // someone opened an email you sent (server/readTracking.ts): also a toast while you're in the app
 }
 
 export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';
