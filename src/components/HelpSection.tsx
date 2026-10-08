@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, Loader2, Paperclip, Send, X } from 'lucide-react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
-import { uploadFile } from '../sync';
+import { uploadFile, wasSkipped } from '../sync';
 import { diagnostics } from '../diagnostics';
 import { relative } from '../utils';
 
@@ -119,8 +119,8 @@ function Attach({ files, setFiles, workspaceId, toast }: { files: File2[]; setFi
           try {
             const up = await Promise.all(picked.map((f) => uploadFile(f, workspaceId)));
             setFiles([...files, ...up.map((u) => ({ name: u.name, url: u.url }))]);
-          } catch {
-            toast('That file couldn’t be uploaded. Files up to 25 MB.');
+          } catch (err) {
+            if (!wasSkipped(err)) toast(`That file couldn’t be uploaded. ${(err as Error).message}`);
           } finally {
             setBusy(false);
           }

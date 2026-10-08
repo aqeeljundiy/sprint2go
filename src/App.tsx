@@ -19,7 +19,7 @@ import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
-import { rp } from './data/pricing';
+import { rp, storageGB } from './data/pricing';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { fmtTime } from './calendarUtils';
 import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
@@ -34,7 +34,7 @@ import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
-import { live, resync, server, uploadFile } from './sync';
+import { live, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
 import { InviteCard, type InviteState } from './components/InviteCard';
 import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
@@ -71,7 +71,7 @@ import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStat
 import { firstOf as firstStage, kindOf as stageKind, registerStages, stageIdFor, stageName, stageOf, stagesFor } from './stages';
 import { celebrate } from './components/ui/confetti';
 import type { AskScope, MeetPage } from './components/MeetApp';
-import { DEFAULT_MEETINGS } from './data/workspaces';
+import { DEFAULT_MEETINGS, trialPlan } from './data/workspaces';
 import { DEMO_SCRIPT } from './data/team';
 import { htmlToText, textToHtml } from './sanitize';
 import { rowName } from './components/tables/core';
@@ -192,6 +192,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
   session.wsId = ws?.id ?? '';
+  // Uploads ask before big files (Settings, Storage); the demo has no server to ask, so it uses these.
+  uploadPolicy.askOverMb = ws?.storage?.askOver ?? 500;
+  uploadPolicy.storageTotal = ws ? storageGB(ws.plan ?? trialPlan(ws.name, ''), ws.members.length) * 1024 ** 3 : 0;
   setBrandName(brandOf(ws)); // white label: an agency's name in place of ours
   setTermWord(ws?.terms?.word); // "Projects" or "Clients", before anything below renders words
   registerStages(allWorkspaces, ws?.id); // each company's task stages, so every screen reads a task's stage from its company
@@ -759,7 +762,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
     // With the server: the mail engine really sends it (our own mailboxes already have their copies).
-    if (server.on && from && (!from.provider || from.provider === 'sprint2go')) {
+    const handedOver = server.on && !!from && (!from.provider || from.provider === 'sprint2go');
+    if (handedOver) {
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -771,10 +775,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         () => showToast({ text: 'No connection: the mail was not sent.' }),
       );
     } else if (demoOk && thread.messages[0].tracking) simulateOpen(thread);
+    // Undo only where it can really take the mail back: once the mail engine has it, it's gone (Settings says so).
+    const canUndo = !!settings.undoSend && !handedOver;
     showToast({
       text: 'Message sent',
-      ms: settings.undoSend ? settings.undoSend * 1000 : 4000,
-      action: settings.undoSend
+      ms: canUndo ? settings.undoSend * 1000 : 4000,
+      action: canUndo
         ? {
             label: 'Undo',
             run: () => {
@@ -1634,6 +1640,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     );
   }, [channels, ws.chat?.layout, wsTeams]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Settings, Apps & chat: "Who can create channels" (the server checks it too). */
+  const canStartChannels = myRole !== 'member' || ws.chat?.whoCanCreate !== 'admins';
   /** The channel owner and admins can change a channel's category for everyone. */
   const canManageChannel = (c: Channel) => myRole !== 'member' || c.ownerId === user.id;
   /** Moves a channel to another category (sidebar menu or drag and drop). */
@@ -2513,7 +2521,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const up = await uploadFile(f, ws.id);
         added.push({ id: uid(), name: f.name, kind, parentId, size: f.size, modified: new Date().toISOString(), url: up.url, thumb: kind === 'image' || kind === 'video' ? up.url : undefined, workspaceId: ws.id, uploadedBy: user.id });
       } catch (e) {
-        showToast({ text: `${f.name}: ${(e as Error).message}` });
+        if (!wasSkipped(e)) showToast({ text: `${f.name}: ${(e as Error).message}` });
       }
     }
     if (!added.length) return;
@@ -2684,7 +2692,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             ? { icon: Plus, label: `New ${term.one}`, run: () => newProjectFlow() }
           : (mode === 'tasks' || mode === 'home') && aiOn
             ? { icon: Sparkles, label: 'Brain dump', run: () => openDump('') }
-            : mode === 'chat' && !chatId
+            : mode === 'chat' && !chatId && canStartChannels
               ? { icon: Plus, label: 'New channel', run: () => setChanDialog({}) }
               : mode === 'meet' && botOn
                 ? { icon: Video, label: 'Send bot to a meeting', run: () => openSendBot() }
@@ -3157,7 +3165,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setChatId(id);
               setSidebarOpen(false);
             }}
-            onNewChannel={() => setChanDialog({})}
+            onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
             onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
             canManage={canManageChannel}
             onMove={moveChannel}
@@ -3247,7 +3255,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...c.members, user.id] } : c)));
                 setChatId(id);
               }}
-              onNewChannel={() => setChanDialog({})}
+              onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
               onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
               canManage={canManageChannel}
               onMove={moveChannel}

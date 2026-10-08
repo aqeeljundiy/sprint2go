@@ -285,6 +285,32 @@ export function totpCode(secret: string, now = Date.now()) {
   return { code: String(n % 1_000_000).padStart(6, '0'), secondsLeft: 30 - (Math.floor(now / 1000) % 30) };
 }
 
+/* ---------- two-step sign-in (TOTP), shared by operators and everyone's own accounts ---------- */
+
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32(buf: Buffer) {
+  let bits = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  return (bits.match(/.{1,5}/g) ?? []).map((c) => B32[parseInt(c.padEnd(5, '0'), 2)]).join('');
+}
+/** A new authenticator secret (160 bits, base32). */
+export const newTotpSecret = () => base32(randomBytes(20));
+/**
+ * Which 30-second step a 6-digit code belongs to, allowing one step of clock drift either way; null when it doesn't
+ * match. Steps at or before `after` don't count, so a code that was already used can't be used again.
+ */
+export function totpStep(secret: string, code: string, after = -1): number | null {
+  const c = String(code ?? '').replace(/\D/g, '');
+  if (c.length !== 6) return null;
+  const now = Date.now();
+  for (const d of [-1, 0, 1]) {
+    const t = now + d * 30_000;
+    const step = Math.floor(t / 30_000);
+    if (step > after && timingSafeEqual(Buffer.from(totpCode(secret, t).code), Buffer.from(c))) return step;
+  }
+  return null;
+}
+
 /* ---------- files on disk ---------- */
 
 const FILES = join(DIR, 'files');
@@ -300,6 +326,16 @@ export function fileInfo(id: string) {
 export function fileData(id: string): Buffer | null {
   const f = join(FILES, id);
   return existsSync(f) ? readFileSync(f) : null;
+}
+/** Where an uploaded file lives on disk (big uploads are streamed straight there, then recorded). */
+export const filePath = (id: string) => (mkdirSync(FILES, { recursive: true }), join(FILES, id));
+export function recordFile(f: { id: string; workspaceId: string; by: string; name: string; type: string; size: number }) {
+  db.prepare('INSERT INTO files (id, workspace_id, uploaded_by, name, type, size, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(f.id, f.workspaceId, f.by, f.name, f.type, f.size, new Date().toISOString());
+}
+/** What a company's uploaded files take: in all, videos, and per person (mail attachments count as 'mail'). */
+export function storageOf(workspaceId: string) {
+  const rows = db.prepare("SELECT uploaded_by AS by, SUM(size) AS bytes, SUM(CASE WHEN type LIKE 'video/%' THEN size ELSE 0 END) AS video FROM files WHERE workspace_id = ? GROUP BY uploaded_by").all(workspaceId) as { by: string; bytes: number; video: number }[];
+  return { used: rows.reduce((n, r) => n + r.bytes, 0), video: rows.reduce((n, r) => n + r.video, 0), byPerson: rows.map((r) => ({ userId: r.by, bytes: r.bytes })) };
 }
 /** One person's usage this period (for their own monthly cap). */
 export function usageSinceFor(workspaceId: string, userId: string, since: string) {

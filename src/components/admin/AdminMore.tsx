@@ -1,7 +1,8 @@
 import { LanguagePicker } from '../LanguagePicker';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { term, brand as product } from '../../terms';
-import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, Lock, ShieldCheck, Users, Video } from 'lucide-react';
+import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, ShieldCheck, Users, Video, X } from 'lucide-react';
 import { DEFAULT_PERMISSIONS, type MemberPermissions } from '../../types';
 import type { AppId, DriveItem, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
 import { fmtSize } from '../../data/drive';
@@ -10,9 +11,13 @@ import { DEFAULT_MEETINGS } from '../../data/workspaces';
 import { APPS, useAppOrder } from '../AppRail';
 import { Avatar } from '../Avatar';
 import { Select } from '../ui/Select';
+import { server } from '../../sync';
+import { caps } from '../../caps';
+import { relative } from '../../utils';
+import { loadTwoStep } from '../TwoStep';
 
-const Switch = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
-  <button type="button" role="switch" aria-checked={on} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
+const Switch = ({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
+  <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
     <span />
   </button>
 );
@@ -60,7 +65,9 @@ export function PermissionsSection({ ws, canManage, onWorkspace }: { ws: Workspa
 
 /* ---------------- Storage ---------------- */
 
-export function StorageSection({ ws, people, plan, drive, users, byChannel, canManage, onStorage, onBilling, toast }: {
+type Room = { used: number; total: number; left: number; video?: number; byPerson?: { userId: string; bytes: number }[] };
+
+export function StorageSection({ ws, people, plan, drive, users, byChannel, canManage, onStorage, onBilling }: {
   ws: Workspace;
   byChannel: { name: string; size: number }[];
   people: number;
@@ -73,32 +80,54 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
   toast: (t: string) => void;
 }) {
   const st = ws.storage ?? { askOver: 500 };
-  const pool = storageGB(plan, people) * 1024 ** 3;
   const files = drive.filter((d) => !d.trashed && d.kind !== 'folder');
   const sum = (list: DriveItem[]) => list.reduce((s, d) => s + d.size, 0);
-  const parts = [
-    { name: 'Mail', size: 1.3 * 1024 ** 3 * Math.max(1, people / 3), color: 'var(--accent)' },
-    { name: 'Files', size: sum(files.filter((d) => !d.channelId && d.kind !== 'video' && d.kind !== 'audio')), color: '#10b981' },
-    { name: 'Videos', size: sum(files.filter((d) => d.kind === 'video')), color: '#f97316' },
-    { name: 'Chat files', size: sum(files.filter((d) => d.channelId)), color: '#8b5cf6' },
-    { name: 'Meeting recordings', size: 3 * 1.1 * 1024 ** 3, color: '#ec4899' },
-  ];
-  const used = parts.reduce((s, x) => s + x.size, 0);
   const biggest = [...files].sort((a, b) => b.size - a.size).slice(0, 5);
-  const [connecting, setConnecting] = useState<'gdrive' | 'dropbox' | 'b2' | null>(null);
-  const [acct, setAcct] = useState('');
+  // On a real server the numbers are what the company's uploaded files really take; the demo shows an example.
+  const live = server.on;
+  const [room, setRoom] = useState<Room | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    void fetch(`/api/storage?workspaceId=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<Room>) : null))
+      .then(setRoom)
+      .catch(() => {});
+  }, [ws.id, live]);
+  const pool = live ? room?.total ?? storageGB(plan, people) * 1024 ** 3 : storageGB(plan, people) * 1024 ** 3;
+  const mailBytes = room?.byPerson?.find((x) => x.userId === 'mail')?.bytes ?? 0;
+  const parts = live
+    ? [
+        { name: 'Files', size: Math.max(0, (room?.used ?? 0) - (room?.video ?? 0) - mailBytes), color: '#10b981' },
+        { name: 'Videos', size: room?.video ?? 0, color: '#f97316' },
+        { name: 'Email attachments', size: mailBytes, color: '#8b5cf6' },
+      ]
+    : [
+        { name: 'Mail', size: 1.3 * 1024 ** 3 * Math.max(1, people / 3), color: 'var(--accent)' },
+        { name: 'Files', size: sum(files.filter((d) => !d.channelId && d.kind !== 'video' && d.kind !== 'audio')), color: '#10b981' },
+        { name: 'Videos', size: sum(files.filter((d) => d.kind === 'video')), color: '#f97316' },
+        { name: 'Chat files', size: sum(files.filter((d) => d.channelId)), color: '#8b5cf6' },
+        { name: 'Meeting recordings', size: 3 * 1.1 * 1024 ** 3, color: '#ec4899' },
+      ];
+  const used = live ? room?.used ?? 0 : parts.reduce((s, x) => s + x.size, 0);
+  const byPerson = live
+    ? (room?.byPerson ?? [])
+        .filter((x) => x.userId !== 'mail')
+        .map((x) => ({ user: users.find((u) => u.id === x.userId), bytes: x.bytes }))
+        .filter((x): x is { user: User; bytes: number } => !!x.user)
+        .sort((a, b) => b.bytes - a.bytes)
+        .slice(0, 6)
+    : users.slice(0, 6).map((u, i) => ({ user: u, bytes: (1.3 + ((i * 7) % 5) * 2.1) * 1024 ** 3 }));
   const pct = (n: number) => `${Math.max(0.5, (n / pool) * 100)}%`;
-  const OWN = { gdrive: 'Google Drive', dropbox: 'Dropbox', b2: 'Backblaze B2' } as const;
 
   return (
     <>
       <h2>Storage</h2>
       <p className="set-intro">
-        {fmtSize(used)} of {fmtSize(pool)} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.
+        {live && !room ? 'Adding up what your files take…' : `${fmtSize(used)} of ${fmtSize(pool)} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.`}
       </p>
       <div className="stack-bar">
         {parts.map((x) => (
-          <span key={x.name} style={{ width: pct(x.size), background: x.color }} />
+          <span key={x.name} style={{ width: x.size > 0 ? pct(x.size) : 0, background: x.color }} />
         ))}
       </div>
       <div className="legend">
@@ -108,6 +137,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
           </span>
         ))}
       </div>
+      {live && <p className="muted small">Counts files uploaded to Drive, chat, tables and the shared spaces, and email attachments. The text of emails and meeting recordings aren’t counted.</p>}
       {used / pool > 0.8 && (
         <p className="trial-note">
           You’ve used {Math.round((used / pool) * 100)}%. Add 50 GB for {rp(39_000)} a month, or{' '}
@@ -119,40 +149,12 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
       )}
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
-          <h3>Use your own storage for big files</h3>
-          <p className="muted small">Raw footage and huge files can live in your own cloud. They still show on the {term.one} page, but they don’t use {product.name} storage.</p>
-          {st.own ? (
-            <Row title={<><Cloud size={14} /> {OWN[st.own.provider]} · {st.own.account}</>} hint={`Files over ${st.own.forFilesOver >= 1000 ? `${st.own.forFilesOver / 1000} GB` : `${st.own.forFilesOver} MB`} are saved there`}>
-              <button type="button" className="ghost-btn sm" onClick={() => (onStorage({ ...st, own: undefined }), toast('Disconnected. Files already there stay there'))}>
-                Disconnect
-              </button>
-            </Row>
-          ) : connecting ? (
-            <div className="add-prov">
-              <input autoFocus value={acct} onChange={(e) => setAcct(e.target.value)} placeholder={connecting === 'b2' ? 'Bucket name' : 'Account email'} />
-              <div className="add-prov-foot">
-                <button type="button" className="ghost-btn sm" onClick={() => setConnecting(null)}>
-                  Cancel
-                </button>
-                <button type="button" className="primary-btn sm" disabled={!acct.trim()} onClick={() => (onStorage({ ...st, own: { provider: connecting, account: acct.trim(), forFilesOver: 1000 } }), setConnecting(null), toast(`${OWN[connecting]} connected`))}>
-                  Connect {OWN[connecting]}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="chip-pick">
-              {(Object.keys(OWN) as (keyof typeof OWN)[]).map((k) => (
-                <button key={k} type="button" onClick={() => setConnecting(k)}>
-                  <Cloud size={13} /> {OWN[k]}
-                </button>
-              ))}
-            </div>
-          )}
-          <Row title="Ask before saving big files here" hint="Uploading something bigger shows: save to your own cloud, keep it here, or cancel">
+          <h3>Big files</h3>
+          <Row title="Ask before saving big files" hint="Anyone uploading something bigger is asked first, with its size and the storage the company has left.">
             <Select
               value={String(st.askOver)}
               onChange={(v) => onStorage({ ...st, askOver: Number(v) as StorageSettings['askOver'] })}
-              label="Ask over"
+              label="Ask before saving big files"
               options={[
                 { value: '200', label: 'Over 200 MB' },
                 { value: '500', label: 'Over 500 MB' },
@@ -161,11 +163,16 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
               ]}
             />
           </Row>
+          {live && caps.maxUploadMb > 0 && <p className="muted small">One file can be up to {caps.maxUploadMb >= 1024 ? `${+(caps.maxUploadMb / 1024).toFixed(1)} GB` : `${caps.maxUploadMb} MB`}.</p>}
+          <Row title={<><Cloud size={14} /> Use your own storage</>} hint={`Coming soon: raw footage and huge files kept in your own Google Drive, Dropbox or Backblaze B2, still showing on the ${term.one} page. Until then everything is saved in ${product.name}.`}>
+            <span className="badge-soon">Not yet</span>
+          </Row>
         </div>
       </fieldset>
 
       <div className="set-block">
         <h3>Biggest files</h3>
+        {biggest.length === 0 && <p className="muted small">No files in Drive yet.</p>}
         {biggest.map((f) => (
           <div key={f.id} className="pa-row">
             <span className="cf-icon">{f.kind === 'video' ? <Video size={15} /> : <FileText size={15} />}</span>
@@ -186,11 +193,12 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
       </div>
       <div className="set-block">
         <h3>By person</h3>
-        {users.slice(0, 6).map((u, i) => (
+        {live && room && byPerson.length === 0 && <p className="muted small">Nobody has uploaded anything yet.</p>}
+        {byPerson.map(({ user: u, bytes }) => (
           <div key={u.id} className="pa-row">
             <Avatar person={u} size={22} />
             <span className="pa-title">{u.name}</span>
-            <span className="muted small">{fmtSize((1.3 + ((i * 7) % 5) * 2.1) * 1024 ** 3)}</span>
+            <span className="muted small">{fmtSize(bytes)}</span>
           </div>
         ))}
       </div>
@@ -269,8 +277,8 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         </div>
         <div className="set-block">
           <h3>Notetaker</h3>
-          <Row title="Join meetings from calendars automatically" hint={`From Google, Outlook and ${product.name} calendars`}>
-            <Switch on={m.autoJoin} onChange={(v) => set({ autoJoin: v })} />
+          <Row title="Join meetings from calendars automatically" hint="Coming soon. For now, send the notetaker to a meeting from Meet.">
+            <span className="badge-soon">Not yet</span>
           </Row>
           <Row title="Announce recording" hint="The bot says it’s recording when it joins. The host can stop it at any time">
             <Switch on={m.announce} onChange={(v) => set({ announce: v })} />
@@ -337,17 +345,14 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
         <WhatsAppBlock ws={ws} canManage={canManage} />
         <div className="set-block">
           <h3>Chat</h3>
-          <Row title="GIFs and stickers" hint="Off for a more formal workspace">
-            <Switch on={chat.gifs} onChange={(v) => onWorkspace({ chat: { ...chat, gifs: v } })} />
-          </Row>
           <Row title="Celebrate finished work" hint={`A small confetti and a note in the ${term.one}’s channel when a task is done`}>
             <Switch on={chat.celebrations} onChange={(v) => onWorkspace({ chat: { ...chat, celebrations: v } })} />
           </Row>
-          <Row title="Who can create channels">
+          <Row title="Who can create channels" hint={chat.whoCanCreate === 'admins' ? 'Members can still message people directly, and teams get their own channel.' : undefined}>
             <Select value={chat.whoCanCreate} onChange={(v) => onWorkspace({ chat: { ...chat, whoCanCreate: v } })} label="Who can create channels" options={[{ value: 'everyone', label: 'Everyone' }, { value: 'admins', label: 'Only admins' }]} />
           </Row>
-          <Row title="Keep chat history" hint="Older messages are deleted for everyone">
-            <Select value={chat.history} onChange={(v) => onWorkspace({ chat: { ...chat, history: v } })} label="Keep chat history" options={[{ value: 'forever', label: 'Forever' }, { value: '1y', label: '1 year' }, { value: '90d', label: '90 days' }]} />
+          <Row title="Delete old messages" hint="Coming soon: deleting messages older than a year or 90 days, for everyone. Until then chat history is kept.">
+            <span className="badge-soon">Not yet</span>
           </Row>
         </div>
       </fieldset>
@@ -520,57 +525,195 @@ export function MyAppsSection({ ws, hidden, isAdmin, asked, onHidden, onCompanyA
 
 /* ---------------- Security & data ---------------- */
 
-export function SecuritySection({ ws, isOwner, onWorkspace, onExport, onDelete, users }: {
+type SecurityInfo = {
+  people: { userId: string; role: string; on: boolean }[];
+  required: { since: string | null; from: string; graceDays: number } | null;
+  log: { at: string; type: string; userId: string | null; detail: string | null }[];
+};
+const GRACE = [
+  { value: '0', label: 'Right away', hint: 'At their next sign-in' },
+  { value: '3', label: '3 days' },
+  { value: '7', label: '7 days' },
+  { value: '14', label: '14 days' },
+];
+const longDay = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'long' });
+
+export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExport, onDelete, onAccount, users, toast }: {
   ws: Workspace;
+  me: string;
   isOwner: boolean;
+  canManage: boolean; // owners and admins
   onWorkspace: (p: Partial<Workspace>) => void;
   onExport: () => void;
   onDelete: () => void;
+  onAccount: () => void;
   users: User[];
+  toast: (t: string) => void;
 }) {
-  const sec = ws.security ?? { twoStep: false, google: true, microsoft: true, sso: false };
+  const sec = { twoStep: false, google: false, microsoft: false, sso: false, ...ws.security };
+  const grace = sec.graceDays ?? 7;
   const [typed, setTyped] = useState('');
-  const business = ws.plan?.tier === 'business';
-  const audit = [
-    ['Aqeel', 'changed the AI setup to Balanced', '2 hours ago'],
-    ['Faisal', 'added an Anthropic key', '3 days ago'],
-    ['Aqeel', 'invited Nadia Putri as a guest in #kopikita', '2 weeks ago'],
-    ['Dewi', 'downloaded the September invoice', '1 month ago'],
-  ];
+  const [info, setInfo] = useState<SecurityInfo | null>(null);
+  const [resetting, setResetting] = useState<User | null>(null);
+  const [busy, setBusy] = useState(false);
+  const live = server.on;
+  // Requiring it needs your own on first (the server checks too), so nobody locks themselves out.
+  const [mine, setMine] = useState<boolean | null>(live ? null : true);
+  useEffect(() => {
+    if (live && isOwner) void loadTwoStep().then((st) => setMine(!!st?.on));
+  }, [live, isOwner]);
+  const load = () =>
+    void fetch(`/api/security?workspaceId=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<SecurityInfo>) : null))
+      .then((d) => d && setInfo(d))
+      .catch(() => {});
+  // A switch just changed: the save goes out a moment later, then the list and the log are read again.
+  useEffect(() => {
+    if (!live || !canManage) return;
+    const t = setTimeout(load, info ? 700 : 0);
+    return () => clearTimeout(t);
+  }, [ws.id, sec.twoStep, grace, live, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
+  // When it starts to apply: the day it was switched on (now, if it just was) plus the days people were given.
+  const from = new Date(Date.parse(sec.twoStepSince ?? new Date().toISOString()) + grace * 86_400_000).toISOString();
+  const biting = from <= new Date().toISOString();
+  const nameOf = (id: string | null) => (id === null ? `${product.name} support` : id === me ? 'You' : users.find((u) => u.id === id)?.name ?? 'Someone who left');
+  const people = (info?.people ?? [])
+    .map((x) => ({ ...x, user: users.find((u) => u.id === x.userId) }))
+    .filter((x): x is typeof x & { user: User } => !!x.user)
+    .sort((a, b) => Number(a.on) - Number(b.on) || a.user.name.localeCompare(b.user.name));
+  const missing = people.filter((x) => !x.on && x.userId !== me);
+  const myRole = ws.members.find((m) => m.userId === me)?.role;
+  const canReset = (x: { on: boolean; userId: string; role: string }) => x.on && x.userId !== me && !(x.role === 'owner' && myRole !== 'owner');
+  const remind = () => {
+    setBusy(true);
+    void fetch('/api/security/remind', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) })
+      .then((r) => r.json())
+      .then((d: { sent?: number; error?: string }) => (toast(d.error ?? `Reminded ${d.sent} ${d.sent === 1 ? 'person' : 'people'}`), load()))
+      .finally(() => setBusy(false));
+  };
+  const OTHER = [
+    { k: 'google', title: 'Sign in with Google', why: caps.signIn.googleApp ? 'Coming soon.' : `Coming soon. Needs a Google sign-in app set up by ${product.name}.` },
+    { k: 'microsoft', title: 'Sign in with Microsoft', why: caps.signIn.microsoftApp ? 'Coming soon.' : `Coming soon. Needs a Microsoft sign-in app set up by ${product.name}.` },
+    { k: 'saml', title: 'Single sign-on (SAML)', why: 'Coming soon: Okta, Azure AD or Google Workspace as your company’s sign-in.' },
+  ] as const;
+
   return (
     <>
       <h2>Security & data</h2>
-      <fieldset className="plain" disabled={!isOwner}>
+      <p className="set-intro">How people sign in to {ws.name || 'the company'}, and the company’s data.</p>
+      <div className="set-block">
+        <h3>Sign-in</h3>
+        {canManage ? (
+          <>
+            <Row title="Require two-step sign-in" hint={`Everyone in the company signs in with a code from an authenticator app, not just a password.${!isOwner ? ' Only owners change this.' : !sec.twoStep && mine === false ? ' Turn it on for your own account first.' : ''}`}>
+              {isOwner && !sec.twoStep && mine === false ? (
+                <button type="button" className="ghost-btn outline sm" onClick={onAccount}>
+                  Turn yours on
+                </button>
+              ) : (
+                <Switch on={sec.twoStep} disabled={!isOwner || mine === null} onChange={(v) => onWorkspace({ security: { ...sec, twoStep: v, graceDays: grace } })} />
+              )}
+            </Row>
+            <div className={`fold ${sec.twoStep ? 'open' : ''}`}>
+              <div className="fold-in">
+                <Row title="Time to set it up" hint={sec.twoStep ? (biting ? 'It applies now: anyone without it sets it up before they can go on.' : `From ${longDay(from)}, anyone without it sets it up at sign-in before they can go on. They got a notification.`) : undefined}>
+                  <Select value={String(grace)} disabled={!isOwner} onChange={(v) => onWorkspace({ security: { ...sec, graceDays: Number(v) } })} label="Time to set it up" options={GRACE} width={200} />
+                </Row>
+              </div>
+            </div>
+            {OTHER.map((o) => (
+              <Row key={o.k} title={o.title} hint={o.why}>
+                <span className="badge-soon">Not yet</span>
+              </Row>
+            ))}
+          </>
+        ) : (
+          <Row title="Two-step sign-in" hint={sec.twoStep ? `${ws.name} requires a code from an authenticator app when you sign in${biting ? '.' : `, from ${longDay(from)}.`}` : 'A code from an authenticator app when you sign in. Turn it on for your own account.'}>
+            <button type="button" className="ghost-btn outline sm" onClick={onAccount}>
+              Your settings
+            </button>
+          </Row>
+        )}
+      </div>
+
+      {canManage && live && (
         <div className="set-block">
-          <h3>Sign-in</h3>
-          <Row title="Require two-step sign-in" hint="Everyone in the company confirms sign-ins with an app or passkey">
-            <Switch on={sec.twoStep} onChange={(v) => onWorkspace({ security: { ...sec, twoStep: v } })} />
-          </Row>
-          <Row title="Sign in with Google">
-            <Switch on={sec.google} onChange={(v) => onWorkspace({ security: { ...sec, google: v } })} />
-          </Row>
-          <Row title="Sign in with Microsoft">
-            <Switch on={sec.microsoft} onChange={(v) => onWorkspace({ security: { ...sec, microsoft: v } })} />
-          </Row>
-          <Row title={<><Lock size={14} /> Single sign-on (SAML)</>} hint={business ? 'Okta, Azure AD, Google Workspace' : 'Included in Business'}>
-            <Switch on={sec.sso && business} onChange={(v) => business && onWorkspace({ security: { ...sec, sso: v } })} />
-          </Row>
+          <h3>Two-step sign-in by person</h3>
+          {!info ? (
+            <p className="muted small">Loading…</p>
+          ) : (
+            <>
+              {missing.length > 0 && (
+                <div className="ts-remind">
+                  <span>{missing.length === 1 ? `${missing[0].user.name.split(' ')[0]} hasn’t turned it on yet.` : `${missing.length} people haven’t turned it on yet.`}</span>
+                  <button type="button" className="ghost-btn outline sm" disabled={busy} onClick={remind}>
+                    {busy ? 'Sending…' : 'Send a reminder'}
+                  </button>
+                </div>
+              )}
+              <div className={`ts-people ${people.some(canReset) ? 'has-actions' : ''}`}>
+                {people.map((x) => {
+                  return (
+                    <div key={x.userId} className="pa-row ts-person">
+                      <Avatar person={x.user} size={24} />
+                      <span className="pa-title">
+                        {x.user.name}
+                        {x.userId === me && <span className="you-tag">You</span>}
+                      </span>
+                      <span className={`acct-status ${x.on ? 'ok' : ''}`}>{x.on ? 'On' : 'Not yet'}</span>
+                      <span className="ts-person-act">
+                        {canReset(x) && (
+                          <button type="button" className="ghost-btn sm" onClick={() => setResetting(x.user)}>
+                            Reset
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="muted small">Someone lost their phone and their backup codes? Reset theirs: they sign in with just their password, then set it up again{sec.twoStep ? '' : ' if they want'}.</p>
+            </>
+          )}
         </div>
+      )}
+
+      {canManage && (
         <div className="set-block">
           <h3>
-            <ShieldCheck size={15} /> Audit log {business ? '' : <span className="muted small">· full log in Business</span>}
+            <ShieldCheck size={15} /> Security log
           </h3>
-          {audit.map(([who, what, when], i) => (
-            <div key={i} className="pa-row">
-              {users.find((u) => u.name.startsWith(who)) && <Avatar person={users.find((u) => u.name.startsWith(who))!} size={20} />}
-              <span className="pa-title">
-                <b>{who}</b>&nbsp;{what}
-              </span>
-              <span className="muted small">{when}</span>
-            </div>
-          ))}
+          {!live ? (
+            DEMO_LOG.map(([who, what, when], i) => (
+              <div key={i} className="pa-row">
+                {users.find((u) => u.name.startsWith(who)) && <Avatar person={users.find((u) => u.name.startsWith(who))!} size={20} />}
+                <span className="pa-title">
+                  <b>{who}</b>&nbsp;{what}
+                </span>
+                <span className="muted small">{when}</span>
+              </div>
+            ))
+          ) : !info ? (
+            <p className="muted small">Loading…</p>
+          ) : info.log.length === 0 ? (
+            <p className="muted small">Nothing yet. Changes to the sign-in rules and to people’s two-step sign-in show up here.</p>
+          ) : (
+            info.log.map((e, i) => {
+              const u = e.userId ? users.find((x) => x.id === e.userId) : undefined;
+              return (
+                <div key={i} className="pa-row ts-log">
+                  {u && <Avatar person={u} size={20} />}
+                  <span className="pa-title">
+                    <b>{nameOf(e.userId)}</b>&nbsp;{e.detail}
+                  </span>
+                  <span className="muted small">{relative(e.at)}</span>
+                </div>
+              );
+            })
+          )}
         </div>
-      </fieldset>
+      )}
+
       <div className="set-block">
         <h3>Your data</h3>
         <Row title={<><Download size={14} /> Export everything</>} hint={`Mail, chat, tasks, ${term.many}, calendars and file lists as one download. Always free, on every plan`}>
@@ -591,7 +734,66 @@ export function SecuritySection({ ws, isOwner, onWorkspace, onExport, onDelete, 
           </div>
         )}
       </div>
+      {resetting && (
+        <ResetTwoStep
+          person={resetting}
+          required={sec.twoStep}
+          onClose={() => setResetting(null)}
+          onReset={async () => {
+            const r = await fetch('/api/security/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, userId: resetting.id }) });
+            const d = (await r.json().catch(() => ({}))) as { error?: string };
+            if (!r.ok) throw new Error(d.error ?? 'Couldn’t reset it.');
+            toast(`Two-step sign-in reset for ${resetting.name.split(' ')[0]}`);
+            setResetting(null);
+            load();
+          }}
+        />
+      )}
     </>
   );
 }
 
+/** The demo's sample log (no server: nothing has really happened). */
+const DEMO_LOG = [
+  ['Aqeel', 'changed the AI setup to Balanced', '2 hours ago'],
+  ['Faisal', 'added an Anthropic key', '3 days ago'],
+  ['Aqeel', 'invited Nadia Putri as a guest in #kopikita', '2 weeks ago'],
+  ['Dewi', 'downloaded the September invoice', '1 month ago'],
+];
+
+/** Confirming a reset: what happens to them, and a nudge to be sure it's really them asking. */
+function ResetTwoStep({ person, required, onClose, onReset }: { person: User; required: boolean; onClose: () => void; onReset: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const first = person.name.split(' ')[0];
+  return createPortal(
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal ts-modal sm" role="dialog" aria-label={`Reset two-step sign-in for ${person.name}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <ShieldCheck size={15} /> Reset two-step sign-in
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body">
+          <p className="ts-text">
+            {first} is signed out everywhere and signs in next time with just their password{required ? ', then sets two-step sign-in up again, since the company requires it' : ''}. They get an email about it.
+          </p>
+          <p className="muted small">Only do this when you’re sure it’s {first} asking, for example on a call or in person.</p>
+          {error && <p className="err small">{error}</p>}
+        </div>
+        <footer className="modal-foot">
+          <button type="button" className="ghost-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="primary-btn danger-btn" disabled={busy} onClick={() => (setBusy(true), setError(''), void onReset().catch((e: Error) => (setError(e.message), setBusy(false))))}>
+            {busy ? 'Resetting…' : `Reset for ${first}`}
+          </button>
+        </footer>
+      </div>
+    </div>,
+    document.body,
+  );
+}

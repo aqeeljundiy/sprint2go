@@ -1,0 +1,356 @@
+/* Two-step sign-in (src/components/TwoStep.tsx), the Security settings (admin/AdminMore.tsx: SecuritySection) and the
+   "big file" question before an upload (BigFileDialog). Same tokens as the rest of the app; works in both themes. */
+
+/* ---------- the code field ---------- */
+
+.ts-code,
+.modal-body input.ts-code {
+  width: 100%;
+  height: 52px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+  outline: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ts-code.backup,
+.modal-body input.ts-code.backup {
+  font-size: 19px;
+  letter-spacing: 0.12em;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-weight: 600;
+}
+.ts-code.compact,
+.modal-body input.ts-code.compact {
+  height: 44px;
+  font-size: 20px;
+}
+.ts-code::placeholder {
+  color: var(--text-3);
+  opacity: 0.45;
+}
+.ts-code:focus,
+.modal-body input.ts-code:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- steps: scan, confirm, backup codes ---------- */
+
+.ts-step {
+  display: grid;
+  gap: 12px;
+  container-type: inline-size;
+}
+.ts-form {
+  display: grid;
+  gap: 10px;
+}
+.ts-submit {
+  width: 100%;
+  justify-content: center;
+  padding: 11px;
+}
+.ts-form .ts-switch {
+  justify-self: center;
+}
+.ts-text {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.ts-lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 600;
+  color: #059669;
+}
+:root[data-theme='dark'] .ts-lead {
+  color: #34d399;
+}
+.ts-scan {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+.ts-qr {
+  display: grid;
+  place-items: center;
+  width: 184px;
+  height: 184px;
+  border-radius: 14px;
+  background: #fff; /* the code is black on white in both themes, so phones can read it */
+  border: 1px solid var(--border);
+}
+.ts-qr img {
+  display: block;
+  border-radius: 4px;
+  animation: fadeIn 0.2s ease-out;
+}
+.ts-qr-wait {
+  width: 168px;
+  height: 168px;
+  border-radius: 8px;
+  background: #f1f1f5;
+}
+.ts-how {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.45;
+  text-align: left;
+}
+.ts-key {
+  display: grid;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  min-height: 42px; /* the key arrives a moment after the dialog opens: its space is kept */
+}
+.ts-key-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ts-key code {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.ts-key .ts-open-app {
+  display: none;
+  justify-self: start;
+}
+@media (pointer: coarse) {
+  /* On a phone the QR code can't be scanned by the same phone: open the authenticator app instead. */
+  .ts-key .ts-open-app {
+    display: inline;
+  }
+}
+.ts-backup {
+  list-style: none;
+  margin: 0;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.ts-backup code {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+.ts-backup-actions {
+  display: flex;
+  gap: 8px;
+}
+
+@container (max-width: 400px) {
+  .ts-scan {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+}
+
+/* ---------- the full screen after the password ---------- */
+
+.ts-card.wide {
+  width: min(460px, 100%);
+}
+.ts-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 12px auto 0;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ts-card h1 {
+  margin-top: 10px;
+}
+.ts-card .ts-form,
+.ts-gate-body {
+  width: 100%;
+  text-align: left;
+}
+.ts-card .ts-scan {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+.ts-card .signin-sub {
+  text-wrap: pretty;
+}
+.ts-card .signin-switch {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---------- Settings, Account ---------- */
+
+.ts-row strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ts-row .ghost-btn.on {
+  background: var(--hover);
+}
+.ts-manage {
+  margin: 2px 0 10px;
+  padding: 2px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.ts-manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+.ts-manage-row + .ts-manage-row {
+  border-top: 1px solid var(--border);
+}
+.ts-manage-row strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.ts-manage-row small {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.ts-manage-row > button {
+  flex: none;
+  white-space: nowrap;
+}
+.ts-modal {
+  width: min(500px, 100%);
+}
+.ts-modal.sm {
+  width: min(420px, 100%);
+}
+.ts-modal .field {
+  margin: 0;
+}
+
+/* ---------- Security & data ---------- */
+
+.ts-remind {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #f59e0b 11%, transparent);
+  font-size: 13px;
+  color: var(--text-2);
+}
+.ts-remind .ghost-btn {
+  flex: none;
+  background: var(--surface);
+}
+.ts-people {
+  display: grid;
+  gap: 2px;
+}
+.ts-person {
+  min-height: 40px;
+}
+.ts-person .acct-status {
+  flex: none;
+}
+.ts-person-act {
+  display: none;
+}
+.ts-people.has-actions .ts-person-act {
+  flex: none;
+  width: 64px; /* rows line up whether or not they have a Reset button */
+  display: flex;
+  justify-content: flex-end;
+}
+.ts-log {
+  align-items: flex-start;
+}
+.ts-log .avatar {
+  margin-top: 1px;
+}
+.ts-log .pa-title {
+  white-space: normal;
+}
+.ts-log > .muted {
+  flex: none;
+}
+
+@media (max-width: 560px) {
+  .ts-remind {
+    flex-wrap: wrap;
+  }
+  .ts-backup {
+    gap: 8px 10px;
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-qr img {
+    animation: none;
+  }
+}
+
+/* ---------- "Save a big file?" (BigFileDialog) ---------- */
+
+.big-file-modal {
+  width: min(440px, 100%);
+}
+.bf-name {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.bf-name strong {
+  color: var(--text);
+}
+.bf-meter {
+  display: flex;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+}
+.bf-meter span {
+  height: 100%;
+}
+.bf-used {
+  background: var(--accent);
+}
+.bf-this {
+  background: #f59e0b;
+}
+.bf-room {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-3);
+  line-height: 1.5;
+}

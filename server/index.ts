@@ -2,7 +2,8 @@
 // Run:  npm run server   (after `npm run build`), then open http://localhost:8787
 // In development, `npm run dev` proxies /api here, so run both.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { once } from 'node:events';
 import { extname, join, normalize } from 'node:path';
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Readable } from 'node:stream';
@@ -12,6 +13,7 @@ import { AIError, keyHint, testKey, type AIConfig } from './llm.ts';
 import * as aiplan from './aiplan.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { DEFAULT_PERMISSIONS } from '../src/types.ts';
+import { storageGB } from '../src/data/pricing.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { TOP_UP } from '../src/data/pricing.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
@@ -34,6 +36,7 @@ import * as pushRules from './notifyPush.ts';
 import * as turn from './turn.ts';
 import * as feeds from './calendarFeeds.ts';
 import { FetchError } from './safeFetch.ts';
+import * as twostep from './twostep.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
@@ -92,6 +95,9 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 
 platform.bootstrapOperators();
 admin.loadPricing();
+// Companies that had "Require two-step sign-in" on before it did anything: their days start now, and people hear.
+const clocksStarted = twostep.startClocks();
+if (clocksStarted.length) setTimeout(() => clocksStarted.forEach((id) => tellTwoStepRequired(id, null)), 5_000);
 
 // Once, on a production server and only when S2G_PURGE_DEMO=1 is set: the demo companies that a start-up top-up put
 // into the live database by mistake go (with whatever was made inside them, and the demo people's sign-ins). A backup
@@ -320,12 +326,17 @@ function clientLens(me: Person) {
       case 'prefs':
         return d.id === me.id ? d : null;
       case 'workspaces':
-        // Task stages (ids and kinds only, the names stay with the team): the portal tells planned, in progress, waiting on them and done.
-        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: d.clientAccess, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
+        // Their access already worked out (company, project type and project settings), the company's word for the work,
+        // and the task stages (ids and kinds only, the names stay with the team): the portal tells planned, in progress,
+        // waiting on them and done.
+        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: access, terms: d.terms, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
       case 'users':
         if (d.id === me.id || d.clientOf?.clientId === clientId || people.some((p) => p.email.toLowerCase() === String(d.email ?? '').toLowerCase()))
           return { id: d.id, name: d.name, email: d.email, color: d.color, title: d.title, photo: d.photo, clientOf: d.clientOf };
-        return team.has(d.id) ? { id: d.id, name: d.name, color: d.color, title: d.title, photo: d.photo, email: '' } : null;
+        if (!team.has(d.id)) return null;
+        // Guest access, "Show who's doing the work": hidden names never leave the server, first names only when asked.
+        if (access.teamNames === 'hide') return { id: d.id, name: `${w.name} team`, color: w.color, email: '' };
+        return { id: d.id, name: access.teamNames === 'first' ? String(d.name ?? '').split(' ')[0] : d.name, color: d.color, title: d.title, photo: d.photo, email: '' };
       case 'clients':
         return d.id === clientId ? d : null;
       case 'teams':
@@ -475,6 +486,39 @@ function tooMany(key: string, max: number, windowMs: number) {
   return list.length > max;
 }
 const ipOf = (req: IncomingMessage) => String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+/** The largest single upload (S2G_MAX_UPLOAD_MB, 2 GB unless set); a company's storage left can lower it. */
+const MAX_UPLOAD = Math.max(1, Number(process.env.S2G_MAX_UPLOAD_MB) || 2048) * 1024 * 1024;
+const mb = (n: number) => (n >= 1024 ** 3 ? `${+(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(0, Math.round(n / 1024 ** 2))} MB`);
+/** A company's storage: its plan's pool (shared by everyone) and what its uploaded files take. */
+function storageRoom(wsId: string) {
+  const w = workspaces().find((x) => x.id === wsId) as any;
+  const plan = w?.plan ?? { tier: 'studio', addons: { storage50: 0, mailboxes: 0 } }; // no plan yet: the Studio trial
+  const total = storageGB(plan, Math.max(1, w?.members?.length ?? 1)) * 1024 ** 3;
+  const used = db.storageOf(wsId);
+  return { total, ...used, left: Math.max(0, total - used.used) };
+}
+/** The brand people see at this address: an agency's name on its own (verified) domain, otherwise ours. */
+function brandNameAt(req: IncomingMessage) {
+  const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
+  const w = (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && customDomains.isLive(x)) || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
+  return String(w?.whiteLabel?.name || 'sprint2go');
+}
+/** A company now requires two-step sign-in: everyone without it hears when it applies, with a link to set it up. */
+function tellTwoStepRequired(wsId: string, by: string | null) {
+  const w = db.getDoc('workspaces', wsId) as any;
+  if (!w?.security?.twoStep) return;
+  const ids = (w.members ?? []).map((m: any) => m.userId as string).filter((id: string) => id !== by);
+  const on = twostep.onAmong(ids);
+  const missing = ids.filter((id: string) => !on.has(id));
+  const due = new Date(twostep.deadline(w.security));
+  if (missing.length) notifyUsers(missing, `${w.name} now requires two-step sign-in. ${due.getTime() > Date.now() + 60_000 ? `Turn it on by ${due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : 'Turn it on now'} in Settings, Account.`, '/settings/account', w.id);
+}
+/** Signs someone out everywhere (or everywhere but one session) and closes their live connections. */
+function kick(userId: string, keepToken?: string) {
+  if (keepToken) twostep.endOtherSessions(userId, keepToken);
+  else db.endSessions(userId);
+  for (const [id, c] of clients) if (c.userId === userId && c.token !== keepToken) (c.res.end(), clients.delete(id));
+}
 /**
  * Six digits, sent by email: through Amazon SES when it's set up, else from no-reply@ our support domain through our
  * own mail engine. Only when neither can send (local development) the code goes to the log (and on screen outside
@@ -1017,8 +1061,12 @@ createServer(async (req, res) => {
       const good = login && typeof password === 'string' ? await db.checkPassword(password, login.pw_hash) : (await db.burnPasswordTime(String(password ?? '')), false);
       if (!good || !login) return json(res, 401, { error: 'Wrong email or password.' });
       if ((db.getDoc('users', login.user_id) as any)?.suspended) return json(res, 403, { error: 'This account is suspended. Contact support.' });
-      setSession(res, db.newSession(login.user_id));
-      return json(res, 200, { me: login.user_id });
+      const t = db.newSession(login.user_id);
+      setSession(res, t);
+      // Two-step sign-in: the session waits for its code (15 minutes), or for setting it up when a company requires it.
+      const g = twostep.gate(login.user_id, t, null, workspaces() as any);
+      if (g?.need === 'code') twostep.markWaiting(t);
+      return json(res, 200, { me: login.user_id, ...(g ? { twoStep: g.need, companies: g.need === 'setup' ? g.companies : undefined } : {}) });
     }
     // Sign-up: name, email and password, then a 6-digit code sent to the email. Until real email is wired up, the code
     // is printed in the server log and (outside production) shown on screen so the flow can be tried.
@@ -1102,7 +1150,7 @@ createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (p === '/api/reset/verify' && req.method === 'POST') {
-      const { email, code, password } = await body(req);
+      const { email, code, password, twoStep } = await body(req);
       const mail = String(email ?? '').trim().toLowerCase();
       const c = codes.get(`reset:${mail}`);
       if (!c || c.until < Date.now()) return json(res, 410, { error: 'That code has expired. Ask for a new one.' });
@@ -1111,10 +1159,15 @@ createServer(async (req, res) => {
       if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
       const login = db.findLogin(mail);
       if (!login) return json(res, 404, { error: 'No account with this email.' });
+      // An email code alone doesn't get past two-step sign-in: the code from the app (or a backup code) comes first.
+      const second = twostep.resetNeedsCode(login.user_id, twoStep);
+      if (second) return json(res, second.status, second.body);
       codes.delete(`reset:${mail}`);
       await db.setLogin(login.user_id, mail, password);
       db.endSessions(login.user_id);
-      setSession(res, db.newSession(login.user_id));
+      const t = db.newSession(login.user_id);
+      if (twostep.isOn(login.user_id)) twostep.markPassed(t);
+      setSession(res, t);
       return json(res, 200, { me: login.user_id });
     }
 
@@ -1183,6 +1236,13 @@ createServer(async (req, res) => {
     const meDoc = personOf(me) as any;
     // A suspended person can still see that they're suspended; nothing else.
     if (meDoc?.suspended) return p === '/api/me' ? json(res, 200, { me, suspended: meDoc.suspended }) : json(res, 403, { error: 'This account is suspended.' });
+    // Two-step sign-in still to do (a code, or setting it up): only that, and signing out.
+    const gate = twostep.gate(me, token, session?.operator ?? null, workspaces() as any);
+    if (gate) {
+      if (p === '/api/me') return json(res, 200, { me, twoStep: gate.need, email: meDoc?.email, companies: gate.need === 'setup' ? gate.companies : undefined });
+      if (!twostep.allowedWhileGated(gate, p, req.method ?? 'GET'))
+        return json(res, gate.need === 'code' ? 401 : 403, { error: gate.need === 'code' ? 'Enter the code from your authenticator app first.' : 'Set up two-step sign-in first. Your company requires it.', twoStep: gate.need });
+    }
     const opRecord = session?.operator ? null : platform.operator(meDoc?.email);
     const pset = platform.settings();
 
@@ -1203,10 +1263,31 @@ createServer(async (req, res) => {
       const op = (db.allDocs('users') as any[]).find((u) => String(u.email ?? '').toLowerCase() === session.operator);
       db.endSession(token!);
       const t = op ? db.newSession(op.id) : null;
-      if (t) platform.markSessionVerified(t);
+      if (t) (platform.markSessionVerified(t), twostep.markPassed(t)); // past both their own and the console's second step
       setSession(res, t);
       db.audit(session.operator, 'person.signin-as.stop', me);
       return json(res, 200, { ok: true });
+    }
+    // Two-step sign-in: each person's own (/api/2fa…), and what company admins see and do (/api/security…).
+    if (p.startsWith('/api/2fa') || p.startsWith('/api/security')) {
+      const handled = await twostep.handle(p, {
+        req,
+        res,
+        url,
+        me,
+        token: token!,
+        json,
+        body,
+        workspaces: workspaces as any,
+        issuer: brandNameAt(req),
+        kick,
+        operator: session?.operator ?? null,
+        event: (type, wsId, userId, detail) => platform.event(type, wsId, userId, detail),
+        eventsOf: (wsId) => platform.eventsOf(wsId, 300),
+        notify: notifyUsers,
+        mail: (to, subject, lines) => mailer.sendNote(to, subject, lines.join('\n\n'), simpleHtml(brandNameAt(req), lines), brandNameAt(req)),
+      });
+      if (handled) return;
     }
     if (p.startsWith('/api/admin/')) {
       if (!opRecord) return json(res, 403, { error: 'Operators only.' });
@@ -1669,10 +1750,13 @@ createServer(async (req, res) => {
       if (!login || !(await db.checkPassword(String(current ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your current password is wrong.' });
       if (typeof next !== 'string' || next.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
       await db.setLogin(me, u.email!, next);
-      // Everywhere else signs out; this device gets a fresh session.
+      // Everywhere else signs out; this device gets a fresh session (still past its second step).
+      const passed = twostep.sessionPassed(cookie(req, 's2g'));
       db.endSessions(me);
       for (const [id, c] of clients) if (c.userId === me && c.token !== cookie(req, 's2g')) (c.res.end(), clients.delete(id));
-      setSession(res, db.newSession(me));
+      const fresh = db.newSession(me);
+      if (passed) twostep.markPassed(fresh);
+      setSession(res, fresh);
       return json(res, 200, {});
     }
 
@@ -1687,6 +1771,7 @@ createServer(async (req, res) => {
       const left = memberOf(me).map((w) => ({ ...w, members: w.members.filter((m) => m.userId !== me) }));
       if (left.length) (db.writeDocs('workspaces', left as any, [], me), broadcast('workspaces', left as any, []));
       db.deleteLogin(me);
+      twostep.forget(me);
       db.endSessions(me);
       feeds.forgetPerson(me); // their calendar links (private addresses) and the events read from them
       for (const [id, c] of clients) if (c.userId === me) (c.res.end(), clients.delete(id));
@@ -1706,6 +1791,9 @@ createServer(async (req, res) => {
       const client = db.getDoc('clients', String(clientId)) as any;
       const w = workspaces().find((x) => x.id === workspaceId) as any;
       if (!client || !w || client.workspaceId !== w.id) return json(res, 404, { error: 'No such project.' });
+      // Settings, Permissions, "Invite guests": a Member needs it, unless they lead this project.
+      const leads = client.ownerId === me || (client.members ?? []).some((m: any) => m.userId === me && m.role === 'lead');
+      if (memberOf(me).some((x) => x.id === w.id) && !isAdminOf(me, w.id) && !leads && !{ ...DEFAULT_PERMISSIONS, ...(w.permissions ?? {}) }.inviteGuests) return json(res, 403, { error: 'Only admins and its Lead can invite guests here.' });
       if (!memberOf(me).some((x) => x.id === w.id)) {
         // A client person inviting a colleague.
         const access = accessFor(w, client);
@@ -1756,7 +1844,7 @@ createServer(async (req, res) => {
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
       const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...wClean } = w as any;
       if (!DEMO) wClean.mailRouting = serverRouting(wClean.mailRouting, undefined);
-      const ws = { ...wClean, plan: planFromApp(wClean.plan, undefined), whiteLabel: ownAddress(wClean.whiteLabel, undefined), name: String(w.name).trim().slice(0, 80), members, accounts };
+      const ws = { ...wClean, plan: planFromApp(wClean.plan, undefined), whiteLabel: ownAddress(wClean.whiteLabel, undefined), security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
       db.writeDocs('users', people, [], me);
       (ws as any).createdAt ??= new Date().toISOString();
@@ -1903,6 +1991,7 @@ createServer(async (req, res) => {
     }
 
     // Files: uploads land on disk under data/files, served back to people in the same company (or guests of it).
+    // Streamed to disk (big videos never sit in memory), up to the per-file limit and the company's storage left.
     if (p === '/api/upload' && req.method === 'POST') {
       const wsId = String(req.headers['x-workspace'] ?? '');
       const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'file')).slice(0, 200);
@@ -1910,16 +1999,42 @@ createServer(async (req, res) => {
       const team = memberOf(me).some((w) => w.id === wsId);
       const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === wsId);
       if (!team && !guest) return json(res, 403, { error: 'Not in this company.' });
-      const chunks: Buffer[] = [];
-      let size = 0;
-      for await (const c of req) {
-        size += (c as Buffer).length;
-        if (size > 25 * 1024 * 1024) return json(res, 413, { error: 'Files up to 25 MB.' });
-        chunks.push(c as Buffer);
-      }
+      const room = storageRoom(wsId);
+      const cap = Math.min(MAX_UPLOAD, room.left);
+      const tooBig = () => (room.left < MAX_UPLOAD ? `It doesn’t fit: the company has ${mb(room.left)} left of its ${mb(room.total)}. An admin can add more in Settings, Plan & billing.` : `Files up to ${mb(MAX_UPLOAD)}.`);
+      if (Number(req.headers['content-length'] ?? 0) > cap) return json(res, 413, { error: tooBig() });
       const id = randomBytes(16).toString('hex');
-      db.saveFile({ id, workspaceId: wsId, by: me, name, type, size }, Buffer.concat(chunks));
+      const path = db.filePath(id);
+      const out = createWriteStream(path);
+      let size = 0;
+      let over = false;
+      try {
+        for await (const c of req) {
+          size += (c as Buffer).length;
+          if (size > cap) {
+            over = true;
+            break;
+          }
+          if (!out.write(c)) await once(out, 'drain');
+        }
+      } finally {
+        await new Promise<void>((done) => out.end(done));
+      }
+      if (over) {
+        rmSync(path, { force: true });
+        return json(res, 413, { error: tooBig() });
+      }
+      db.recordFile({ id, workspaceId: wsId, by: me, name, type, size });
       return json(res, 200, { id, url: `/api/files/${id}`, name, type, size });
+    }
+    // How much room a company has, and when to ask before an upload (Settings, Storage).
+    if (p === '/api/storage' && req.method === 'GET') {
+      const wsId = String(url.searchParams.get('workspaceId') ?? '');
+      const team = memberOf(me).some((w) => w.id === wsId);
+      if (!team && !portalsOf(me).some((pt) => pt.workspaceId === wsId)) return json(res, 403, { error: 'Not in this company.' });
+      const room = storageRoom(wsId);
+      const w = workspaces().find((x) => x.id === wsId) as any;
+      return json(res, 200, { askOverMb: w?.storage?.askOver ?? 500, used: room.used, total: room.total, left: room.left, maxUpload: MAX_UPLOAD, ...(team ? { video: room.video, byPerson: room.byPerson } : {}) });
     }
     const fileReq = p.match(/^\/api\/files\/([a-f0-9]{32})$/);
     if (fileReq && req.method === 'GET') {
@@ -1928,10 +2043,21 @@ createServer(async (req, res) => {
       const team = memberOf(me).some((w) => w.id === f.workspaceId);
       const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === f.workspaceId);
       if (!team && !guest) return json(res, 404, { error: 'No such file.' });
-      const data = db.fileData(f.id);
-      if (!data) return json(res, 404, { error: 'The file is gone.' });
-      res.writeHead(200, { 'content-type': f.type, 'content-length': data.length, 'cache-control': 'private, max-age=86400', 'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}` });
-      return res.end(data);
+      const path = db.filePath(f.id);
+      if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });
+      // Streamed, with ranges, so a long video plays and seeks without loading the whole file.
+      const total = statSync(path).size;
+      const head = { 'content-type': f.type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=86400', 'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}` };
+      const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
+      if (range && total > 0) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, total - Number(range[2]));
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), total - 1) : total - 1;
+        if (start > end || start >= total) return (res.writeHead(416, { 'content-range': `bytes */${total}` }), res.end());
+        res.writeHead(206, { ...head, 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${total}` });
+        return createReadStream(path, { start, end }).pipe(res);
+      }
+      res.writeHead(200, { ...head, 'content-length': total });
+      return createReadStream(path).pipe(res);
     }
 
     if (p === '/api/sync' && req.method === 'POST') {
@@ -2038,6 +2164,8 @@ createServer(async (req, res) => {
       };
       const admin = memberOf(me).some((w) => isAdminOf(me, w.id));
       const now = new Date().toISOString();
+      // Sign-in rules that changed (owners only), for the company's security log and the people they affect.
+      const securityChanges: { wsId: string; text: string; required: boolean }[] = [];
       /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
       const guard = (d: db.Doc): db.Doc | null => {
         const before = db.getDoc(coll, d.id) as any;
@@ -2058,17 +2186,20 @@ createServer(async (req, res) => {
             // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
             if (Array.isArray((d as any).accounts)) (d as any).accounts = (d as any).accounts.map((a: any) => ({ ...a, away: (before.accounts ?? []).find((b: any) => b.id === a.id)?.away }));
             const plan = planFromApp((d as any).plan, before.plan);
+            const owner = (before.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
+            const sec = twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
+            if (sec.changed) securityChanges.push({ wsId: d.id, text: sec.changed, required: !!sec.security?.twoStep && !before.security?.twoStep });
             // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
             // that isn't keeps what was there; an empty one means the usual stages.
             const asked = (d as any).taskStages;
             const clean = asked === undefined ? undefined : cleanStages(asked);
             const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(asked) && asked.length ? before.taskStages : undefined) : clean;
-            return { ...d, ...own, plan, taskStages, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel) } as db.Doc;
+            return { ...d, ...own, plan, taskStages, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
           const plan = planFromApp(fresh.plan, undefined);
           if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
-          return { ...fresh, plan, whiteLabel: ownAddress(fresh.whiteLabel, undefined), createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+          return { ...fresh, plan, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
           if (d.id === me) return d; // own profile: already shaped
@@ -2083,6 +2214,7 @@ createServer(async (req, res) => {
         // Your own message; a guest's message is theirs when it carries their own email (checked by clientWrite too).
         if (coll === 'messages') return d.userId === me || (d.userId === 'guest' && String((d as any).guestEmail ?? '').toLowerCase() === String(person.email ?? '').toLowerCase()) ? d : null;
         if (coll === 'notes') return { ...d, ownerId: me } as db.Doc;
+        if (coll === 'channels' && d.kind === 'channel' && !d.teamId && limited(d.workspaceId) && (db.getDoc('workspaces', String(d.workspaceId)) as any)?.chat?.whoCanCreate === 'admins') return null; // only admins start channels here
         if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
         if (coll === 'drive') return { ...d, uploadedBy: (d as any).uploadedBy ?? me } as db.Doc;
         if (coll === 'events') return { ...d, createdBy: (d as any).createdBy ?? me } as db.Doc;
@@ -2138,6 +2270,10 @@ createServer(async (req, res) => {
       for (const id of emailChanged) soonReadiness(id);
       for (const id of addressChanged) customDomains.soon(id);
       for (const id of holidaysChanged) void feeds.syncHolidays(id).catch((e) => console.error('[holidays]', e instanceof Error ? e.message : e));
+      for (const c of securityChanges) {
+        platform.event('security.rules', c.wsId, me, c.text);
+        if (c.required) tellTwoStepRequired(c.wsId, me);
+      }
       if (leavers.length) endGuestAccess(leavers);
       // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
       if (coll === 'notices' && mailer.systemMailPath() !== 'log')
@@ -2470,7 +2606,7 @@ createServer(async (req, res) => {
     notifyAdmins: (wsId, text) => notifyUsers((workspaces().find((w) => w.id === wsId)?.members ?? []).filter((m) => m.role !== 'member').map((m) => m.userId), text, '/settings/agency', wsId),
   });
   feeds.startCalendarFeeds({ broadcast });
-});
+}).requestTimeout = 60 * 60_000; // a big upload on a slow line can take a while (Node's own limit is 5 minutes)
 
 /** Whether the meeting recorder answers, checked every few minutes (the app asks often). */
 let recorderUp = false;
@@ -2493,6 +2629,11 @@ function caps() {
     desktopMac: process.env.DESKTOP_URL ? null : (desktopRelease?.mac ?? null),
     desktopWin: process.env.DESKTOP_URL ? null : (desktopRelease?.windows ?? null),
     push: true, // notifications on phones and computers (web push)
+    // Other ways to sign in. None is built yet (Google and Microsoft need their sign-in apps, SAML an identity
+    // provider), so Settings shows them switched off with the reason instead of switches that do nothing.
+    signIn: { google: false, microsoft: false, saml: false, googleApp: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET), microsoftApp: !!((process.env.MICROSOFT_CLIENT_ID || process.env.MS_CLIENT_ID) && (process.env.MICROSOFT_CLIENT_SECRET || process.env.MS_CLIENT_SECRET)) },
+    ownStorage: false, // files can't be saved to a company's own cloud yet
+    maxUploadMb: Math.round(MAX_UPLOAD / 1024 ** 2),
     mailHost: mailer.MAIL_HOST,
     trustedCert: certState(mailer.MAIL_HOST).trusted, // providers may require a CA-signed certificate from our mail server
     routingCheck: process.env.MAIL_ENABLED !== '0' && mailer.systemMailPath() !== 'log', // the server can send "Some of each" routing tests

@@ -16,6 +16,10 @@ export const caps = {
   desktopMac: null as string | null, // its installers, when the newest release has them
   desktopWin: null as string | null,
   push: false, // notifications on phones and computers (needs the server)
+  /** Sign-in methods that work on this server (none yet), and whether its Google and Microsoft sign-in apps exist. */
+  signIn: { google: false, microsoft: false, saml: false, googleApp: false, microsoftApp: false },
+  ownStorage: false, // saving big files to a company's own cloud
+  maxUploadMb: 0, // the largest single upload this server takes
   mailHost: '',
   trustedCert: false, // our mail server's certificate is CA-signed, so providers may require that
   routingCheck: false, // the server can send "Some of each" routing tests (daily and "Send a test")

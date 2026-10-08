@@ -18,7 +18,7 @@ import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 import { ChannelMaterials } from './ChannelMaterials';
 import { personOption } from './ui/PeopleList';
-import { uploadFile } from '../sync';
+import { server, uploadFile, wasSkipped } from '../sync';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -66,7 +66,7 @@ interface SidebarProps {
   presence: (id: string) => Presence;
   onOpen: (id: string) => void;
   onJoin: (id: string) => void;
-  onNewChannel: () => void;
+  onNewChannel?: () => void; // missing: only admins start channels in this company
   onNewDm: (userId: string) => void;
   onStatus: (s: Status | null) => void;
   canManage: (c: Channel) => boolean; // owner or admin: may change the channel's category
@@ -365,10 +365,12 @@ export function ChatSidebar(p: SidebarProps) {
       )}
       {body}
       <nav className="nav">
-        <button className="nav-item" onClick={p.onNewChannel} title="New channel">
-          <Plus size={16} />
-          <span className="sb-label">New channel</span>
-        </button>
+        {p.onNewChannel && (
+          <button className="nav-item" onClick={p.onNewChannel} title="New channel">
+            <Plus size={16} />
+            <span className="sb-label">New channel</span>
+          </button>
+        )}
         {!custom &&
           p.isAdmin &&
           (newSection ? (
@@ -940,8 +942,11 @@ export function ChatView(p: ViewProps) {
       try {
         const up = await uploadFile(f, channel.workspaceId);
         files.push({ name: f.name, size: f.size, type: up.type, url: up.url });
-      } catch {
-        files.push({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', url: URL.createObjectURL(f) }); // the upload failed: at least this session sees it
+      } catch (e) {
+        if (wasSkipped(e)) continue; // they chose not to upload a big file
+        // On a real server a file only this browser has would look sent but nobody else could open it: say why instead.
+        if (server.on) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { error: `${f.name}: ${(e as Error).message}` } }));
+        else files.push({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', url: URL.createObjectURL(f) });
       }
     }
     if (!files.length) return;

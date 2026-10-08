@@ -5,7 +5,6 @@ import { existsSync, readdirSync, readFileSync, statSync, statfsSync } from 'nod
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import QRCode from 'qrcode';
 import * as db from './db.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
@@ -14,6 +13,7 @@ import * as aiplan from './aiplan.ts';
 import { offsiteState } from './offsite.ts';
 import { certState } from './mailcert.ts';
 import * as turn from './turn.ts';
+import * as twostep from './twostep.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
 
@@ -316,9 +316,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   if (sub === 'me') return (json(res, 200, { email, name: meDoc?.name, role: op.role, perms, totpOn: op.totpOn, verified, supportEmail: mailer.SUPPORT_EMAIL }), true);
   if (sub === '2fa/setup' && POST) {
     if (op.totpOn && !verified) return (json(res, 403, { error: 'Confirm your current code first.' }), true);
-    const secret = platform.startTotp(email);
-    const otpauth = `otpauth://totp/sprint2go:${encodeURIComponent(email)}?secret=${secret}&issuer=sprint2go&period=30&digits=6`;
-    return (json(res, 200, { secret, otpauth, qr: await QRCode.toDataURL(otpauth, { margin: 1, width: 220 }) }), true);
+    return (json(res, 200, await twostep.totpSetup('sprint2go', email, platform.startTotp(email))), true);
   }
   if (sub === '2fa/verify' && POST) {
     const { code } = await body(req);
@@ -688,6 +686,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         guestOf: u.clientOf ? [wss.find((w) => w.id === u.clientOf.workspaceId)?.name].filter(Boolean) : clients.filter((c) => (c.people ?? []).some((p: any) => p.email?.toLowerCase() === emailOf(u) && p.status === 'joined')).map((c) => wss.find((w) => w.id === c.workspaceId)?.name).filter(Boolean),
         lastSeen: seen.get(u.id) ?? null,
         hasLogin: db.hasLogin(u.id),
+        twoStep: twostep.isOn(u.id),
         suspended: u.suspended ?? null,
         operator: ops.get(emailOf(u)) ?? null,
         disposable: platform.isDisposable(emailOf(u)),
@@ -712,6 +711,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
           deleted: !!u.deletedAt,
           suspended: u.suspended ?? null,
           hasLogin: db.hasLogin(u.id),
+          twoStep: twostep.isOn(u.id),
           lastSeen: db.lastSeen().get(u.id) ?? null,
           operator: platform.operator(emailOf(u))?.role ?? null,
           disposable: platform.isDisposable(emailOf(u)),
@@ -736,6 +736,23 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     ctx.codes.set(`reset:${emailOf(u)}`, { code, until: Date.now() + 15 * 60_000, tries: 0 } as any);
     log('person.reset-code', u.id, emailOf(u));
     return (json(res, 200, { code, until: new Date(Date.now() + 15 * 60_000).toISOString() }), true);
+  }
+  // Lost their phone and their backup codes: two-step sign-in comes off, they're signed out everywhere, and told by email.
+  if (sub === 'person/2fa-reset' && POST) {
+    if (deny('impersonate')) return true;
+    const b = await body(req);
+    const u = db.getDoc('users', String(b.userId ?? '')) as any;
+    if (!u) return (json(res, 404, { error: 'No such person.' }), true);
+    if (!twostep.isOn(u.id)) return (json(res, 409, { error: 'Two-step sign-in isn’t on for them.' }), true);
+    twostep.forget(u.id);
+    db.endSessions(u.id);
+    log('person.2fa-reset', u.id, `${emailOf(u)}${b.reason ? `: ${b.reason}` : ''}`);
+    for (const w of db.allDocs('workspaces') as any[]) if ((w.members ?? []).some((m: any) => m.userId === u.id)) platform.event('security.2fa-reset', w.id, null, `${platform.settings().supportName} reset two-step sign-in for ${u.name}`);
+    if (u.email)
+      void mailer
+        .sendSystemMail({ fromName: platform.settings().supportName, to: [emailOf(u)], subject: 'Your two-step sign-in was reset', text: `Hi ${String(u.name ?? '').split(' ')[0]},\n\nWe reset two-step sign-in on your sprint2go account, as you asked, so it no longer asks for a code from your authenticator app. You can turn it on again in Settings, Account (your company may ask you to straight away).\n\nIf you didn’t ask for this, reply to this email now.` })
+        .catch(() => {});
+    return (json(res, 200, { ok: true }), true);
   }
   if (sub === 'person/invite' && POST) {
     if (deny('impersonate')) return true;

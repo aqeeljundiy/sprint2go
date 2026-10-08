@@ -13,6 +13,7 @@ import { ActingBanner, AdminApp, ClientApp, Onboarding, SharedHome } from './laz
 import { setPhotos } from './photos';
 import { Wordmark } from './components/Logo';
 import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
+import { TwoStepGate } from './components/TwoStep';
 import { InstallPrompt } from './components/InstallPrompt';
 import { brand as product, brandOf, setBrandName } from './terms';
 import { registerStages } from './stages';
@@ -24,11 +25,22 @@ import { loadCaps } from './caps';
  * Without it (the standalone demo file): pick any demo person, data stays in this tab.
  */
 export default function Root() {
-  const [mode, setMode] = useState<'probing' | 'demo' | 'signed-out' | 'ready'>('probing');
+  const [mode, setMode] = useState<'probing' | 'demo' | 'signed-out' | 'two-step' | 'ready'>('probing');
   const [session, setSession] = useState<Session | null>(null);
   const invite = new URLSearchParams(location.search).get('invite');
   const [signingUp, setSigningUp] = useState(() => location.pathname === '/signup');
   const admin = location.pathname.startsWith('/admin'); // the operator backend: its own screens, its own API
+
+  // Before the app opens (sign-in, the two-step code, an invite), nobody's settings apply yet: follow the device.
+  const preApp = mode === 'signed-out' || mode === 'two-step' || !!invite;
+  useEffect(() => {
+    if (!preApp) return;
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => (document.documentElement.dataset.theme = mq.matches ? 'dark' : 'light');
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [preApp]);
 
   useEffect(() => {
     if (invite) return;
@@ -41,6 +53,7 @@ export default function Root() {
       await loadCaps(); // what this server can do, before anything shows (features that can't work stay hidden)
       if (r === 'signed-out') return setMode('signed-out');
       setSession(r);
+      if (r.twoStep) return setMode('two-step'); // the password is done; the code (or setting it up) comes first
       server.operator = !!r.operator;
       server.flags = r.flags ?? [];
       void loadMailInfo();
@@ -62,12 +75,16 @@ export default function Root() {
         onPick={() => {}}
         onForget={() => {}}
         onSignIn={async (email, password) => {
-          const err = await signIn(email, password);
-          if (!err) location.reload();
-          return err;
+          const r = await signIn(email, password);
+          if ('error' in r) return r.error;
+          // Two-step sign-in next: straight to the code (or setup) screen, without reloading.
+          if (r.twoStep) return (setSession({ me: r.me, twoStep: r.twoStep, email, companies: r.companies }), setMode('two-step'), null);
+          location.reload();
+          return null;
         }}
       />
     );
+  if (mode === 'two-step' && session?.twoStep) return <TwoStepGate need={session.twoStep} email={session.email} companies={session.companies} />;
   if (mode === 'ready' && session?.suspended) return <Suspended reason={session.suspended.reason} />;
   if (admin && (mode === 'ready' || mode === 'demo')) return <AdminApp />;
   if (mode === 'ready' && session)

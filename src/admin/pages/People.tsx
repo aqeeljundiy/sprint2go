@@ -76,6 +76,7 @@ interface Person {
   deleted: boolean;
   suspended: { at: string; by: string; reason: string } | null;
   hasLogin: boolean;
+  twoStep: boolean;
   lastSeen: string | null;
   operator: string | null;
   disposable: boolean;
@@ -99,6 +100,7 @@ export function PersonPage({ id }: { id: string }) {
   const { data, error, reload } = useApi<{ person: Person }>(`person?id=${encodeURIComponent(id)}`);
   const act = useAct();
   const [suspending, setSuspending] = useState(false);
+  const [resetting2fa, setResetting2fa] = useState(false);
   const [shown, setShown] = useState<{ title: string; value: string; text: string } | null>(null);
   if (error) return <Page title="Person" back={{ label: 'People', to: '/admin/people' }}><Failed error={error} retry={reload} /></Page>;
   if (!data) return <Page title="Person" back={{ label: 'People', to: '/admin/people' }}><Loading rows={6} /></Page>;
@@ -118,6 +120,7 @@ export function PersonPage({ id }: { id: string }) {
           {u.operator && <Badge tone="accent">{ROLE_LABEL[u.operator as keyof typeof ROLE_LABEL]}</Badge>}
           {u.deleted && <Badge tone="neutral">Deleted account</Badge>}
           {u.disposable && <Badge tone="warn">Throwaway email</Badge>}
+          {u.twoStep && <Badge tone="good">Two-step on</Badge>}
           <span className="muted">{!u.hasLogin ? 'Never signed in' : u.lastSeen ? `Seen ${rel(u.lastSeen)}` : 'Has a sign-in'}</span>
         </span>
       }
@@ -136,6 +139,7 @@ export function PersonPage({ id }: { id: string }) {
                   (u.hasLogin
                     ? { label: 'Give a reset code', run: () => void post<{ code: string }>('person/reset-code', { userId: u.id }).then((r) => setShown({ title: 'Reset code', value: r.code, text: `Tell ${first} this code; they enter it with a new password at “Forgot your password?”. Good for 15 minutes.` })).catch((e: Error) => toast(e.message)) }
                     : { label: 'Make an invite link', run: () => void post<{ link: string }>('person/invite', { userId: u.id }).then((r) => setShown({ title: 'Invite link', value: r.link, text: `Send ${first} this link to pick a password (valid 7 days).` })).catch((e: Error) => toast(e.message)) }),
+                may('impersonate') && u.twoStep && { label: 'Reset two-step sign-in', run: () => setResetting2fa(true), danger: true },
                 may('customers') && !u.operator && (u.suspended ? { label: 'Lift the suspension', run: () => void act(() => post('person/suspend', { userId: u.id, on: false }), 'Suspension lifted').then(reload) } : { label: 'Suspend', run: () => setSuspending(true), danger: true }),
               ]}
             />
@@ -227,6 +231,17 @@ export function PersonPage({ id }: { id: string }) {
         </div>
       </div>
       {suspending && <Confirm title={`Suspend ${first}`} action="Suspend" danger reason="Why (they see it)" text={`${u.name} is signed out everywhere and can’t sign in until you lift it. Their work stays.`} onClose={() => setSuspending(false)} onConfirm={(v) => act(() => post('person/suspend', { userId: u.id, reason: v.reason }), 'Suspended').then(() => (setSuspending(false), reload()))} />}
+      {resetting2fa && (
+        <Confirm
+          title={`Reset ${first}’s two-step sign-in`}
+          action="Reset"
+          danger
+          reason="How you checked it’s them (logged)"
+          text={`${first} lost their authenticator app and backup codes? This turns two-step sign-in off for their account and signs them out everywhere; they get an email. If a company requires it, they set it up again at their next sign-in. Only do this after checking it’s really them.`}
+          onClose={() => setResetting2fa(false)}
+          onConfirm={(v) => act(() => post('person/2fa-reset', { userId: u.id, reason: v.reason }), 'Two-step sign-in reset').then(() => (setResetting2fa(false), reload()))}
+        />
+      )}
       {shown && (
         <Dialog title={shown.title} size="sm" onClose={() => setShown(null)} foot={<button className="primary-btn" onClick={() => setShown(null)}>Done</button>}>
           <div className="adm-form">
