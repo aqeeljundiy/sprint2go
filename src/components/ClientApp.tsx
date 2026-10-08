@@ -882,10 +882,18 @@ function FileRow({ f, by, say }: { f: DriveItem; by: string; say: (t: string) =>
 function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; recording: ClientAccess['recordings'] }) {
   return (
     <div className="client-notes">
-      {recording !== 'off' && (
+      {recording !== 'off' && m.recording?.url && (
         <div className="client-recording">
-          <Video size={16} /> Audio recording
-          <small className="muted">Plays here once recordings are stored on the server.</small>
+          {recording === 'video' && m.recording.videoUrl ? (
+            <video className="client-video" src={m.recording.videoUrl} controls preload="metadata" playsInline />
+          ) : (
+            <>
+              <span className="client-rec-label">
+                <Video size={16} /> Recording
+              </span>
+              <audio src={m.recording.url} controls preload="metadata" />
+            </>
+          )}
         </div>
       )}
       {notes ? (

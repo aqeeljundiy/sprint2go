@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Bell, ChevronDown, Search } from 'lucide-react';
+import { Bell, ChevronDown, LayoutGrid, Search } from 'lucide-react';
 import type { Client, Workspace } from '../types';
 import { WorkspaceLogo } from './WorkspaceLogo';
 import { Popover } from './ui/Popover';
@@ -21,6 +21,7 @@ export function MobileTop({
   onBell,
   portals = [],
   onPortal,
+  onShared,
 }: {
   title: string;
   switcher?: { value: string; options: Option[]; onChange: (v: string) => void; label: string };
@@ -33,6 +34,7 @@ export function MobileTop({
   onBell: () => void;
   portals?: { key: string; ws: Workspace; client: Client }[];
   onPortal?: (key: string) => void;
+  onShared?: () => void; // everything shared with you, on one page
 }) {
   const wsBtn = useRef<HTMLButtonElement>(null);
   const [wsOpen, setWsOpen] = useState(false);
@@ -55,6 +57,17 @@ export function MobileTop({
             </button>
           ))}
           {portals.length > 0 && <div className="sel-group">Shared with you</div>}
+          {onShared && (
+            <button className="sel-opt" onClick={() => (onShared(), setWsOpen(false))}>
+              <span className="sel-icon">
+                <LayoutGrid size={18} />
+              </span>
+              <span className="sel-label">
+                See everything shared with you
+                <small>{portals.length} shared spaces</small>
+              </span>
+            </button>
+          )}
           {portals.map((pt) => (
             <button key={pt.key} className="sel-opt" onClick={() => (onPortal?.(pt.key), setWsOpen(false))}>
               <span className="sel-icon">

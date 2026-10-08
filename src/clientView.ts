@@ -1,9 +1,10 @@
 // What a client can see and do. One set of rules for the client app, "View as client" and the local server.
 import { DEFAULT_CLIENT_ACCESS, type Channel, type Client, type ClientAccess, type ClientPerson, type DataTable, type DriveItem, type Meeting, type TableRow, type Todo, type User, type Workspace } from './types';
 
-/** The client's settings: the company's Client access settings, with this client's own changes on top. */
-export const accessFor = (ws: Pick<Workspace, 'clientAccess' | 'plan'>, client: Pick<Client, 'access'>): ClientAccess => {
-  const a = { ...DEFAULT_CLIENT_ACCESS, ...(ws.clientAccess ?? {}), ...(client.access ?? {}) };
+/** A project's guest settings: the company's, then its type's (e.g. Partners see more), then the project's own changes. */
+export const accessFor = (ws: Pick<Workspace, 'clientAccess' | 'plan'> & { clientAccessByType?: Workspace['clientAccessByType'] }, client: Pick<Client, 'access'> & { type?: string }): ClientAccess => {
+  const byType = client.type ? ws.clientAccessByType?.[client.type] : undefined;
+  const a = { ...DEFAULT_CLIENT_ACCESS, ...(ws.clientAccess ?? {}), ...(byType ?? {}), ...(client.access ?? {}) };
   // Hiding "Made with Sprint2go" needs the branding add-on.
   return { ...a, hideBranding: a.hideBranding && !!ws.plan?.addons.branding };
 };

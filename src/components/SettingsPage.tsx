@@ -22,6 +22,7 @@ import { changePassword, server } from '../sync';
 import { EmailSetupGuide } from './EmailSetupGuide';
 import { providerName } from './Onboarding';
 import { relative } from '../utils';
+import { PROJECT_TYPES } from '../terms';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -124,6 +125,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
   const [routingGuide, setRoutingGuide] = useState(false);
+  const [accessType, setAccessType] = useState(''); // Guest access: '' = every project, or one project type
   const canManage = myRole !== 'member';
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
@@ -549,12 +551,37 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             <>
               <h2>{term.Who} access</h2>
               <p className="set-intro">What your clients see and can do when they sign in to their portal. You can change any of these for one client on its client page (Portal tab).</p>
+              <div className="access-types">
+                <span className="muted small">Settings for</span>
+                <div className="segmented sm">
+                  {['', ...PROJECT_TYPES].map((tp) => (
+                    <button key={tp || 'all'} type="button" className={accessType === tp ? 'on' : ''} onClick={() => setAccessType(tp)}>
+                      {tp ? `${tp}${ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? ' •' : ''}` : `Every ${term.one}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {accessType && (
+                <p className="muted small">
+                  Changes here apply to {term.many} of the type {accessType}, on top of the settings for every {term.one}.{' '}
+                  {ws.clientAccessByType?.[accessType] && Object.keys(ws.clientAccessByType[accessType]).length > 0 && canManage && (
+                    <button type="button" className="link-btn small" onClick={() => onWorkspace({ clientAccessByType: { ...ws.clientAccessByType, [accessType]: {} } })}>
+                      Use the settings for every {term.one}
+                    </button>
+                  )}
+                </p>
+              )}
               <ClientAccessForm
-                value={accessFor(ws, {})}
+                key={accessType || 'all'}
+                value={accessFor(ws, { type: accessType || undefined })}
                 teams={admin.teams.filter((t) => t.workspaceId === ws.id)}
                 canManage={canManage}
                 brandingAvailable={!!plan.addons.branding}
-                onChange={(p) => onWorkspace({ clientAccess: { ...accessFor(ws, {}), ...p } })}
+                onChange={(p) =>
+                  accessType
+                    ? onWorkspace({ clientAccessByType: { ...ws.clientAccessByType, [accessType]: { ...(ws.clientAccessByType?.[accessType] ?? {}), ...p } } })
+                    : onWorkspace({ clientAccess: { ...accessFor(ws, {}), ...p } })
+                }
               />
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>

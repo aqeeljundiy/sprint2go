@@ -4095,3 +4095,23 @@ button.tl:hover,
   max-width: 100%;
   min-width: 0;
 }
+.access-types {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.access-types .segmented {
+  flex-wrap: wrap;
+}
+
+/* The project's Guests tab: two columns only when the pane has room (it can be narrow beside a sidebar). */
+.portal-admin {
+  container-type: inline-size;
+}
+@container (max-width: 860px) {
+  .pa-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

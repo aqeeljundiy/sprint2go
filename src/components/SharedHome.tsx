@@ -12,7 +12,7 @@ type Portal = { key: string; ws: Workspace; client: Client; person: ClientPerson
  * A guest's home when more than one company shares work with them: grouped by the company that invited them,
  * each project saying what's waiting on this person. Opening one goes into its shared space.
  */
-export function SharedHome({ name, portals, todos, channels, messages, onOpen, onStart, onSignOut }: { name: string; portals: Portal[]; todos: Todo[]; channels: Channel[]; messages: ChatMessage[]; onOpen: (key: string) => void; onStart: () => void; onSignOut: () => void }) {
+export function SharedHome({ name, portals, todos, channels, messages, onOpen, onStart, onSignOut, ownWorkspace }: { name: string; portals: Portal[]; todos: Todo[]; channels: Channel[]; messages: ChatMessage[]; onOpen: (key: string) => void; onStart: () => void; onSignOut: () => void; ownWorkspace?: string /* someone with a company of their own: the button goes back there */ }) {
   const byCompany = [...new Set(portals.map((p) => p.ws.id))].map((id) => portals.filter((p) => p.ws.id === id));
   const waiting = (p: Portal) => (p.person.role === 'approver' && p.client.status !== 'ended' ? tasksFor(p.client, todos).filter((t) => t.approval?.status === 'waiting').length : 0);
   const lastUpdate = (p: Portal) => {
@@ -62,10 +62,17 @@ export function SharedHome({ name, portals, todos, channels, messages, onOpen, o
       ))}
       <button className="sh-start" onClick={onStart}>
         <Plus size={16} />
-        <span>
-          <strong>Start your own workspace</strong>
-          <small>Free. Mail, chat, tasks and files for your own team. You keep access to everything shared with you here.</small>
-        </span>
+        {ownWorkspace ? (
+          <span>
+            <strong>Back to {ownWorkspace}</strong>
+            <small>Your own company’s apps. Everything shared with you stays in the workspace switcher.</small>
+          </span>
+        ) : (
+          <span>
+            <strong>Start your own workspace</strong>
+            <small>Free. Mail, chat, tasks and files for your own team. You keep access to everything shared with you here.</small>
+          </span>
+        )}
       </button>
     </div>
   );

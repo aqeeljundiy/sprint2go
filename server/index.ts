@@ -190,7 +190,9 @@ function clientLens(me: Person) {
       case 'meetings': {
         if (!meetings.has(d.id)) return null;
         const notes = meetings.get(d.id);
-        const base = { id: d.id, workspaceId: d.workspaceId, title: d.title, at: d.at, minutes: d.minutes, clientId: d.clientId, attendees: d.attendees, status: d.status, sharedWithClient: d.sharedWithClient, actions: [] as any[], summary: '' };
+        // The recording only when the guest settings allow it, and only as the server's playback links.
+        const rec = d.bot && d.recording?.url && access.recordings !== 'off' ? { url: `/api/meet/audio/${d.id}`, ...(access.recordings === 'video' && d.recording.videoUrl ? { videoUrl: `/api/meet/video/${d.id}` } : {}) } : undefined;
+        const base = { id: d.id, workspaceId: d.workspaceId, title: d.title, at: d.at, minutes: d.minutes, clientId: d.clientId, attendees: d.attendees, status: d.status, sharedWithClient: d.sharedWithClient, actions: [] as any[], summary: '', ...(rec ? { bot: true, recording: rec } : {}) };
         return notes ? { ...base, summary: d.summary, decisions: d.decisions, keyPoints: d.keyPoints, actions: (d.actions ?? []).map((a: any) => ({ title: a.title, due: a.due })) } : base;
       }
       case 'drive':
@@ -305,6 +307,48 @@ const json = (res: ServerResponse, status: number, data: unknown) => {
 
 const clients = new Map<string, { res: ServerResponse; userId: string }>();
 /** Sends a change to every open window, each getting only what that person may see. */
+
+/**
+ * People removed from a company, at the company's own domain: their guest access to other companies' projects
+ * ends too (the company vouches for its domain; a personal gmail address isn't theirs to end).
+ */
+function leftCompany(updated: db.Doc[]): { email: string; company: string }[] {
+  const out: { email: string; company: string }[] = [];
+  for (const w of updated as any[]) {
+    const before = db.getDoc('workspaces', w.id) as any;
+    if (!before) continue;
+    const now = new Set((w.members ?? []).map((m: any) => m.userId));
+    for (const m of before.members ?? []) {
+      if (now.has(m.userId)) continue;
+      const email = String((db.getDoc('users', m.userId) as any)?.email ?? '').toLowerCase();
+      const domain = email.split('@')[1];
+      if (domain && (before.domains ?? []).map((d: string) => d.toLowerCase()).includes(domain)) out.push({ email, company: String(before.name ?? 'their company') });
+    }
+  }
+  return out;
+}
+function endGuestAccess(leavers: { email: string; company: string }[]) {
+  const gone = new Map(leavers.map((l) => [l.email, l.company]));
+  const clients: db.Doc[] = [];
+  const channels: db.Doc[] = [];
+  const notices: db.Doc[] = [];
+  for (const c of db.allDocs('clients') as any[]) {
+    const out = (c.people ?? []).filter((p: any) => gone.has(String(p.email).toLowerCase()));
+    if (!out.length) continue;
+    clients.push({ ...c, people: c.people.filter((p: any) => !gone.has(String(p.email).toLowerCase())) });
+    for (const p of out)
+      if (c.ownerId)
+        notices.push({ id: randomBytes(8).toString('hex'), userId: c.ownerId, workspaceId: c.workspaceId, kind: 'team', text: `${p.name ?? p.email} left ${gone.get(String(p.email).toLowerCase())}, so their guest access to ${c.name} ended`, at: new Date().toISOString(), read: false, link: { app: 'projects', id: c.id } } as db.Doc);
+  }
+  for (const ch of db.allDocs('channels') as any[]) {
+    if (!(ch.guests ?? []).some((g: any) => gone.has(String(g.email).toLowerCase()))) continue;
+    channels.push({ ...ch, guests: ch.guests.filter((g: any) => !gone.has(String(g.email).toLowerCase())) });
+  }
+  if (clients.length) (db.writeDocs('clients', clients, [], null), broadcast('clients', clients, []));
+  if (channels.length) (db.writeDocs('channels', channels, [], null), broadcast('channels', channels, []));
+  if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
+}
+
 function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: string) {
   if (!upserts.length && !deletes.length) return;
   const views = new Map<string, ReturnType<typeof lens>>();
@@ -802,7 +846,21 @@ createServer(async (req, res) => {
     const meetId = p.match(/^\/api\/meet\/(stop|audio|video|again)\/([\w-]+)$/);
     if (meetId) {
       const m = db.getDoc('meetings', meetId[2]) as any;
-      if (!m?.bot || !memberOf(me).some((w) => w.id === m.workspaceId)) return json(res, 404, { error: 'No such meeting.' });
+      const staff = !!m?.bot && memberOf(me).some((w) => w.id === m.workspaceId);
+      // A guest may play a recording of their project's meeting when its guest settings allow recordings.
+      const guestPlays = () => {
+        if (!m?.bot || !m.clientId || (meetId[1] !== 'audio' && meetId[1] !== 'video')) return false;
+        if (!portalsOf(me).some((pt) => pt.workspaceId === m.workspaceId && pt.clientId === m.clientId)) return false;
+        const w = workspaces().find((x) => x.id === m.workspaceId) as any;
+        const client = db.getDoc('clients', m.clientId) as any;
+        if (!w || !client) return false;
+        const access = accessFor(w, client);
+        if (access.recordings === 'off' || (meetId[1] === 'video' && access.recordings !== 'video')) return false;
+        const people = clientPeople(client, db.allDocs('channels') as any[]);
+        return meetingsFor(client, people, [m], access).length > 0;
+      };
+      if (!staff && !guestPlays()) return json(res, 404, { error: 'No such meeting.' });
+      if (!staff && meetId[1] !== 'audio' && meetId[1] !== 'video') return json(res, 404, { error: 'No such meeting.' });
       if (meetId[1] === 'stop' && req.method === 'POST') {
         const r = await recorder(`/bots/${m.id}/stop`, { method: 'POST' }).catch(() => null);
         // Not running any more (the recorder restarted, say): close it here so it doesn't spin forever.
@@ -827,7 +885,7 @@ createServer(async (req, res) => {
       if (meetId[1] === 'audio' || meetId[1] === 'video') {
         const watch = m.access?.watch ?? 'everyone';
         const me2 = (db.getDoc('users', me) as any)?.name;
-        if ((watch === 'admins' && !isAdminOf(me, m.workspaceId)) || (watch === 'attendees' && !isAdminOf(me, m.workspaceId) && m.createdBy !== me && !(m.attendees ?? []).includes(me2))) return json(res, 403, { error: 'You can’t play this recording.' });
+        if (staff && ((watch === 'admins' && !isAdminOf(me, m.workspaceId)) || (watch === 'attendees' && !isAdminOf(me, m.workspaceId) && m.createdBy !== me && !(m.attendees ?? []).includes(me2)))) return json(res, 403, { error: 'You can’t play this recording.' });
         const r = await recorder(`/recordings/${m.id}${meetId[1] === 'video' ? '/video' : ''}`, { headers: req.headers.range ? { range: String(req.headers.range) } : {} }).catch(() => null);
         if (!r?.ok || !r.body) return json(res, r?.status === 404 ? 404 : 502, { error: 'Recording not available.' });
         const h: Record<string, string> = { 'cache-control': 'private, max-age=3600' };
@@ -958,7 +1016,9 @@ createServer(async (req, res) => {
           const listening = !!d.intake?.listening && String(d.intake?.listenFrom ?? '') > String(before.intake?.testAt ?? '');
           ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
         }
+      const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
       db.writeDocs(coll, ok, dels, me);
+      if (leavers.length) endGuestAccess(leavers);
       broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);
       if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
       // A deleted meeting takes its recording with it.

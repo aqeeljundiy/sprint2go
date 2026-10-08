@@ -187,6 +187,7 @@ export interface Workspace {
   meetUrl?: string;
   meetingRules?: MeetingRule[];
   clientAccess?: ClientAccess; // what guests see and do in the shared space
+  clientAccessByType?: Record<string, Partial<ClientAccess>>; // changes for one project type (Partner, Vendor…) on top of the company's
   terms?: { word: 'project' | 'client' }; // what the company calls its work: Projects (default) or Clients
   chat?: {
     gifs: boolean;

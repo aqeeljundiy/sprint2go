@@ -74,6 +74,7 @@ import { DEFAULT_MEETINGS } from './data/workspaces';
 import { DEMO_SCRIPT } from './data/team';
 import { Onboarding } from './components/Onboarding';
 import { textToHtml } from './sanitize';
+import { SharedHome } from './components/SharedHome';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -2389,6 +2390,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...wsDrive.filter((i) => i.kind !== 'folder' && !i.trashed).map((i) => ({ id: 'f-' + i.id, group: 'Files', title: i.name, icon: FileText, run: () => { go('drive'); setPreview({ item: i, list: [i] }); } })),
   ];
 
+  // Everything shared with this person by other companies, on one page (from the switcher, also on phones).
+  if (portalKey === '*' && myPortals.length)
+    return <SharedHome name={user.name} portals={myPortals} todos={todos} channels={channels} messages={messages} onOpen={setPortalKey} onStart={() => setPortalKey('')} onSignOut={onSignOut} ownWorkspace={ws.name} />;
+
   // A company this person is a client of: their portal, with the same sign-in.
   const portal = myPortals.find((pt) => pt.key === portalKey);
   if (portal) {
@@ -2438,7 +2443,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         onReadNotices={() => setNotices((ns) => ns.map((n) => (n.workspaceId === pws.id && inbox.includes(n.userId) ? { ...n, read: true } : n)))}
         onSignOut={onSignOut}
         account={{ me: user, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => (patch.name !== undefined && updateSettings({ name: patch.name, title: patch.title ?? settings.title, avatarColor: patch.color ?? settings.avatarColor }), onUpdateUser(patch)) }}
-        switcher={<WorkspaceSwitcher workspaces={workspaces} current={pws} currentPortal={portal.key} unread={wsUnread} portals={portalItems} onPortal={setPortalKey} onSwitch={(id) => (setPortalKey(''), switchWorkspace(id))} />}
+        switcher={<WorkspaceSwitcher onHome={myPortals.length > 1 ? () => setPortalKey('*') : undefined} workspaces={workspaces} current={pws} currentPortal={portal.key} unread={wsUnread} portals={portalItems} onPortal={setPortalKey} onSwitch={(id) => (setPortalKey(''), switchWorkspace(id))} />}
         mobileSwitch={{ workspaces: [...workspaces, pws], onWorkspace: (id) => id !== pws.id && (setPortalKey(''), switchWorkspace(id)) }}
       />
     );
@@ -2481,7 +2486,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         enabled={enabledApps}
         badges={{ mail: accountUnread.all, chat: chatUnreadTotal, tasks: wsTasks.filter((t) => t.userId === user.id && !t.done && t.due && t.due <= localDay()).length }}
         workspace={
-          <WorkspaceSwitcher
+          <WorkspaceSwitcher onHome={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             workspaces={workspaces}
             current={ws}
             unread={wsUnread}
@@ -2538,7 +2543,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         onWidth={setSidebarW}
         mobileTop={
           <div className="drawer-top">
-          <WorkspaceSwitcher
+          <WorkspaceSwitcher onHome={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             workspaces={workspaces}
             current={ws}
             unread={wsUnread}
@@ -2764,6 +2769,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onAddWorkspace={() => setNewWs(true)}
             portals={portalItems}
             onPortal={setPortalKey}
+            onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             onSearch={() => setPaletteOpen(true)}
             onBell={() => setNoticesOpen(true)}
           />

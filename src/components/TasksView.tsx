@@ -1375,7 +1375,7 @@ export function TasksView(p: Props) {
         )}
         {client && clientTab === 'portal' && (() => {
           const access = accessFor(p.workspace, client);
-          const company = accessFor(p.workspace, {});
+          const company = accessFor(p.workspace, { type: client.type }); // what this project would have without its own changes
           const people = clientPeople(client, p.channels);
           const visible = p.tasks.filter((t) => t.clientId === client.id && (t.visibleToClient || t.source === 'request'));
           const waiting = visible.filter((t) => t.approval?.status === 'waiting');
