@@ -71,6 +71,7 @@ import { DEMO_SCRIPT } from './data/team';
 import { htmlToText, textToHtml } from './sanitize';
 import { rowName } from './components/tables/core';
 import { Huddle } from './components/Huddle';
+import { usePushBridge } from './pushBridge';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -2170,8 +2171,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (n.link.app === 'tables' && n.link.id) return openTable(n.link.id, n.link.msg);
     if (n.link.app === 'teams') return (setTeamId(n.link.id ?? null), go('teams'));
     if (n.link.app === 'settings') return (setSettingsSection((n.link.id ?? 'account') as SettingsSection), go('settings'));
+    if (n.link.app === 'calendar' && n.link.id) {
+      const ev = events.find((e) => e.id === n.link!.id);
+      if (ev) (setCalCursor(new Date(ev.start)), setSelectedEventId(ev.id));
+    }
     go(n.link.app);
   };
+  // Notifications on phones and computers: a tap opens the item, the icon shows the unread count (pushBridge.ts).
+  usePushBridge({ userId: user.id, wsId: ws.id, workspaceIds: workspaces.map((w) => w.id), notices, switchWs: setWsId, open: openNotice, toast: showToast });
 
   /* ---------------- Calendar ---------------- */
 

@@ -753,10 +753,10 @@ function Page() {
             {t.download.p}
           </p>
           <div className="ln-dl rv" style={{ ['--i' as string]: 2 }}>
-            <a className="ln-btn" href={caps.desktopUrl} target="_blank" rel="noreferrer">
+            <a className="ln-btn" href={caps.desktopMac ?? caps.desktopUrl} target="_blank" rel="noreferrer">
               <Download size={16} /> {t.download.mac}
             </a>
-            <a className="ln-btn outline" href={caps.desktopUrl} target="_blank" rel="noreferrer">
+            <a className="ln-btn outline" href={caps.desktopWin ?? caps.desktopUrl} target="_blank" rel="noreferrer">
               <Download size={16} /> {t.download.win}
             </a>
           </div>

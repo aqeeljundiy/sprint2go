@@ -16,6 +16,7 @@ import './teams.css';
 import './polish.css';
 import './tasks.css';
 import './admin.css';
+import './notify.css';
 
 startExitAnimations();
 startSlidingTabs();

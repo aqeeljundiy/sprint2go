@@ -35,6 +35,21 @@ The key is tested with one tiny request, then stored encrypted in the database (
 Each AI job (brain dump, Ask AI, meeting notes, drafts, summaries…) uses the provider and model picked for it.
 Optionally set `ANTHROPIC_API_KEY` in `.env` for the "included" AI that sprint2go pays for.
 
+## Notifications on phones and computers
+
+People turn them on per device in Settings, Notifications (on iPhone and iPad, after adding the app to the Home Screen). They go out only while the person is away from the app, for the kinds they picked: messages and mentions, email to them (never newsletters or spam), tasks, guests' replies, calendar reminders and meeting notes.
+
+- Web push needs no setup: the server makes its keys on first start and keeps them in the database (the private one encrypted with `data/secret.key`). Changing that key means everyone turns notifications on again.
+- It works on `localhost` and on https addresses; browsers refuse it on plain http elsewhere.
+- The service worker (`src/sw.js`, built to `/sw.js`) only adds an offline page and notifications. Pages always come from the server, so a deploy shows at once.
+
+## The desktop app
+
+`desktop/` wraps the hosted app for Mac and Windows. Push a tag (`git tag v0.1.1 && git push --tags`) and `.github/workflows/desktop.yml` builds it and publishes a GitHub release with the installers and the update files, which installed apps check every few hours to update themselves.
+
+- The landing page offers the download when `DESKTOP_URL` is set, or else when the newest release of `DESKTOP_REPO` (default `aqeeljundiy/sprint2go`) has installers. The repo must be public for that.
+- Windows updates work unsigned. Mac updates need a signed and notarized app (an Apple Developer ID certificate); until then the Mac app doesn't look for updates, and people download new versions from the site.
+
 ## The demo file
 
 `npm run standalone` writes `dist/sprint2go.html`, a single file that opens without a server. Data there resets when you reload.

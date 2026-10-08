@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)" />
+    <title>You’re offline</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f5f7;
+        --card: #ffffff;
+        --text: #15171b;
+        --muted: #5d6470;
+        --line: #e3e5ea;
+        --accent: #2448ff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0e1013;
+          --card: #15171b;
+          --text: #eef0f3;
+          --muted: #9aa1ad;
+          --line: #262a31;
+          --accent: #6f86ff;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+      }
+      .card {
+        width: 100%;
+        max-width: 400px;
+        padding: 32px 24px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--card);
+        text-align: center;
+        animation: rise 240ms ease-out backwards;
+      }
+      .icon {
+        display: inline-grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        margin-bottom: 16px;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+        color: var(--accent);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        font-weight: 700;
+        text-wrap: balance;
+      }
+      p {
+        margin: 0 0 24px;
+        color: var(--muted);
+        text-wrap: pretty;
+      }
+      button {
+        min-height: 40px;
+        padding: 0 20px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition: filter 160ms ease, transform 160ms ease;
+      }
+      button:hover {
+        filter: brightness(1.08);
+      }
+      button:active {
+        transform: scale(0.98);
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .card {
+          animation: fade 1ms backwards;
+        }
+        button {
+          transition: none;
+        }
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card" role="status">
+        <span class="icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01" /><path d="M8.5 16.43a5 5 0 0 1 7 0" /><path d="M5 12.86a10 10 0 0 1 5.17-2.69" /><path d="M19 12.86a10 10 0 0 0-2.01-1.52" /><path d="M2 8.82a15 15 0 0 1 4.18-2.65" /><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76" /><path d="m2 2 20 20" /></svg>
+        </span>
+        <h1>You’re offline</h1>
+        <p>The app needs a connection to show your work. Check your Wi‑Fi or mobile data. This page opens the app again by itself once you’re back online.</p>
+        <button type="button" id="retry">Try again</button>
+      </div>
+    </main>
+    <script src="/offline.js"></script>
+  </body>
+</html>

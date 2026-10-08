@@ -14,9 +14,13 @@ export interface Settings {
   accent: string;
   density: Density;
   undoSend: number; // seconds
-  notifyNewMail: boolean;
-  notifyEvents: boolean;
-  notifySound: boolean;
+  // What alerts this person's phones and computers when they're away (the server reads these: server/notifyPush.ts).
+  notifyMessages: boolean; // direct messages, mentions, replies
+  notifyNewMail: boolean; // mail to them (not newsletters or spam)
+  notifyTasks: boolean; // given to them, due, comments, reviews
+  notifyGuests: boolean; // guests' messages, comments and approvals
+  notifyEvents: boolean; // calendar reminders (10 minutes ahead) and meeting notes
+  notifyOther: boolean; // finished work, teams and the rest
   showSnippets: boolean;
   trackByDefault: boolean;
   notifyOpens: boolean;
@@ -34,9 +38,12 @@ export const DEFAULT_SETTINGS: Settings = {
   accent: '#5b5bf6',
   density: 'comfortable',
   undoSend: 5,
+  notifyMessages: true,
   notifyNewMail: true,
+  notifyTasks: true,
+  notifyGuests: true,
   notifyEvents: true,
-  notifySound: false,
+  notifyOther: false,
   showSnippets: true,
   trackByDefault: true,
   notifyOpens: true,
@@ -94,6 +101,8 @@ export function useSettings(user: { id: string; name: string; title: string; col
     const mq = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       root.dataset.theme = settings.theme === 'system' ? (mq.matches ? 'dark' : 'light') : settings.theme;
+      // The phone's status bar and the installed app's title bar match the theme picked here.
+      document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', root.dataset.theme === 'dark' ? '#0e1013' : '#f4f5f7'));
     };
     apply();
     mq.addEventListener('change', apply);
@@ -142,7 +151,7 @@ export function usePersisted<T>(key: string, initial: T) {
 
 // What's worth carrying to another device: your settings, saved views, tab orders and Ask AI chats.
 // Panel widths, the collapsed sidebar and "which table was open" stay with the device.
-const SYNCED = [/^pm-settings:/, /^s2g-ask-chats:/, /^s2g-task-views$/, /^s2g-tabs:/, /^s2g-tabbar:/, /^s2g-task-(fields|group|layout)$/, /^s2g-project-(group|card-fields|type)$/, /^s2g-briefs-open$/, /^s2g-home:/, /^s2g-chat-(views|view|starred|collapsed):/, /^s2g-join:/, /^s2g-read:/, /^pm-drive-layout$/, /^s2g-table-view:/];
+const SYNCED = [/^pm-settings:/, /^pm-blocked:/, /^s2g-ask-chats:/, /^s2g-task-views$/, /^s2g-tabs:/, /^s2g-tabbar:/, /^s2g-task-(fields|group|layout)$/, /^s2g-project-(group|card-fields|type)$/, /^s2g-briefs-open$/, /^s2g-home:/, /^s2g-chat-(views|view|starred|collapsed):/, /^s2g-join:/, /^s2g-read:/, /^pm-drive-layout$/, /^s2g-table-view:/];
 const isSynced = (k: string) => SYNCED.some((r) => r.test(k));
 let prefUser = '';
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -176,7 +185,7 @@ export function usePrefsSync(userId: string) {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)!;
       if (!isSynced(k) || k in mine) continue;
-      if (/:u-|:[a-z0-9]{8,}/.test(k) && !k.includes(userId) && /^(pm-settings|s2g-ask-chats|s2g-tabbar|s2g-home|s2g-join|s2g-read|s2g-chat-)/.test(k)) continue; // another person's
+      if (/:u-|:[a-z0-9]{8,}/.test(k) && !k.includes(userId) && /^(pm-settings|pm-blocked|s2g-ask-chats|s2g-tabbar|s2g-home|s2g-join|s2g-read|s2g-chat-)/.test(k)) continue; // another person's
       try {
         missing[k] = JSON.parse(localStorage.getItem(k)!);
       } catch {}

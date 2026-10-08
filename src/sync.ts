@@ -2,6 +2,7 @@
 // loads everything on sign-in, saves each change as it happens, and applies other people's changes live.
 // Without a server (the standalone demo file) none of this runs and data stays in memory.
 import { RECORD_KEYS, type Collections, type CollectionKey } from './seed';
+import { startPresence } from './presence';
 
 type Doc = { id: string; [k: string]: unknown };
 
@@ -50,7 +51,16 @@ export async function signIn(email: string, password: string): Promise<string | 
   const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
   return r.ok ? null : ((await r.json().catch(() => null))?.error ?? 'Could not sign in.');
 }
-export const signOut = () => fetch('/api/logout', { method: 'POST' }).then(() => location.reload());
+/** This browser stops getting the person's notifications when they sign out (the next person turns their own on). */
+const forgetPushDevice = () =>
+  Promise.race([
+    navigator.serviceWorker
+      ?.getRegistration()
+      .then((r) => r?.pushManager?.getSubscription())
+      .then((s) => s?.unsubscribe()),
+    new Promise((r) => setTimeout(r, 1500)),
+  ]).catch(() => {});
+export const signOut = () => forgetPushDevice().then(() => fetch('/api/logout', { method: 'POST' })).then(() => location.reload());
 export async function changePassword(current: string, next: string): Promise<string | null> {
   const r = await fetch('/api/password', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ current, next }) });
   return r.ok ? null : ((await r.json().catch(() => null))?.error ?? 'Could not change the password.');
@@ -71,9 +81,12 @@ export async function connect(apply: <K extends CollectionKey>(k: K, v: Collecti
   const es = new EventSource('/api/events');
   es.addEventListener('hello', (e) => {
     server.conn = JSON.parse((e as MessageEvent).data).conn;
+    startPresence(server.conn); // so notifications go to phones only while the person is away
     if (!first) void load(); // reconnected: catch up on anything missed
     first = false;
   });
+  // The desktop app's notifications (it can't take web push): shown by the app itself (pushBridge.ts).
+  es.addEventListener('alert', (e) => window.dispatchEvent(new CustomEvent('s2g:alert', { detail: JSON.parse((e as MessageEvent).data) })));
   es.addEventListener('signal', (e) => window.dispatchEvent(new CustomEvent('s2g:signal', { detail: JSON.parse((e as MessageEvent).data) })));
   es.addEventListener('change', (e) => {
     const { coll, upserts, deletes } = JSON.parse((e as MessageEvent).data) as { coll: CollectionKey; upserts: Doc[]; deletes: string[] };
