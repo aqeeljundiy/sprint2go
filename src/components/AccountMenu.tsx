@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { HardDrive, Keyboard, LogOut, Monitor, Moon, ServerCog, Settings as Cog, Sun, UserPlus, UserRound } from 'lucide-react';
+import { HardDrive, Keyboard, LogOut, Monitor, Moon, ServerCog, Settings as Cog, Sun, UserPlus, UserRound, LifeBuoy } from 'lucide-react';
 import { server } from '../sync';
 import type { Person, User } from '../types';
 import type { Settings, ThemePref } from '../settings';
 import { fmtSize } from '../data/drive';
 import { Avatar } from './Avatar';
 
-export type SettingsSection = 'workspace' | 'email' | 'agency' | 'permissions' | 'teams' | 'clients' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'developer' | 'myapps';
+export type SettingsSection = 'workspace' | 'email' | 'agency' | 'permissions' | 'teams' | 'clients' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'developer' | 'myapps' | 'help';
 
 interface Props {
   me: Person & { color?: string };
@@ -68,6 +68,9 @@ export function AccountMenu({ me, settings, used, quota, onSettings, onTheme, on
       </button>
       <button className="am-item" onClick={() => onSettings('appearance')}>
         <Cog size={16} /> Settings
+      </button>
+      <button className="am-item" onClick={() => onSettings('help')}>
+        <LifeBuoy size={16} /> Help & support
       </button>
       <button className="am-item" onClick={() => onSettings('shortcuts')}>
         <Keyboard size={16} /> Keyboard shortcuts

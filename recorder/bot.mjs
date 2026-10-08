@@ -1,6 +1,6 @@
 // One bot = one process = one meeting. The recorder server forks this with the job in a file
 // (deleted as soon as it's read) and tells it to stop over IPC. Everything the bot learns goes
-// back to Sprint2go by HTTP: status, log lines, live captions, and at the end the transcript.
+// back to sprint2go by HTTP: status, log lines, live captions, and at the end the transcript.
 // Audio only: the meeting's mixed sound, recorded as Opus in WebM.
 import { chromium } from 'playwright';
 import { createWriteStream, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -24,7 +24,7 @@ const HEADLESS = process.env.BOT_HEADLESS === '1';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* ---------- talking to Sprint2go ---------- */
+/* ---------- talking to sprint2go ---------- */
 
 // Log lines and captions are batched and sent every 2 seconds; status changes go at once.
 let pending = { log: [], utterances: [] };
@@ -37,7 +37,7 @@ function post(body) {
       if (ok) return;
       await sleep(1000 * 2 ** i);
     }
-    console.error(`[${id}] Could not reach Sprint2go`);
+    console.error(`[${id}] Could not reach sprint2go`);
   });
   return sending;
 }

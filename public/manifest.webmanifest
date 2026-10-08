@@ -1,6 +1,6 @@
 {
-  "name": "Sprint2go",
-  "short_name": "Sprint2go",
+  "name": "sprint2go",
+  "short_name": "sprint2go",
   "description": "Mail, chat, tasks, calendar, files, meetings and passwords for your team in one app.",
   "id": "/",
   "start_url": "/?source=app",

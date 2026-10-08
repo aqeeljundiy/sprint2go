@@ -6,7 +6,7 @@ import { Avatar } from './Avatar';
 import { SmoothHeight } from './ui/Smooth';
 import { Select } from './ui/Select';
 
-/** Throwaway addresses live on a Sprint2go domain, so they work at once whatever the company's own email setup. */
+/** Throwaway addresses live on a sprint2go domain, so they work at once whatever the company's own email setup. */
 export const tempDomain = (ws: Workspace) => {
   const base = (ws.domains[0]?.split('.')[0] ?? ws.name).toLowerCase().replace(/[^a-z0-9]/g, '') || 'team';
   return `${base}.s2g.email`;

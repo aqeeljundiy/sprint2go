@@ -121,7 +121,7 @@ function Nav() {
   return (
     <header className={`ln-nav ${scrolled || open ? 'scrolled' : ''} ${open ? 'open' : ''}`}>
       <div className="ln-wrap ln-nav-in">
-        <a href="#top" className="ln-brand" aria-label="Sprint2go" onClick={() => setOpen(false)}>
+        <a href="#top" className="ln-brand" aria-label="sprint2go" onClick={() => setOpen(false)}>
           <Logo size={28} />
           <span>
             sprint<b>2</b>go
@@ -803,7 +803,7 @@ function Page() {
             <a href={APP}>{t.nav.signin}</a>
           </nav>
           <small>
-            © {new Date().getFullYear()} Sprint2go · {t.foot}
+            © {new Date().getFullYear()} sprint2go · {t.foot}
           </small>
         </div>
       </footer>
@@ -831,7 +831,7 @@ export function Landing() {
   );
   useEffect(() => {
     document.documentElement.lang = lang;
-    document.title = lang === 'id' ? 'Sprint2go · Satu aplikasi untuk seluruh hari kerja' : 'Sprint2go · One app for the whole workday';
+    document.title = lang === 'id' ? 'sprint2go · Satu aplikasi untuk seluruh hari kerja' : 'sprint2go · One app for the whole workday';
   }, [lang]);
   return (
     <LangCtx.Provider value={ctx}>

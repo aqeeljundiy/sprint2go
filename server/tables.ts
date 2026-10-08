@@ -145,7 +145,7 @@ export async function sendHook(t: DataTable, url: string, payload: unknown): Pro
   for (const w of waits) {
     if (w) await new Promise((r) => setTimeout(r, w));
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'Sprint2go-Webhooks', ...(sig ? { 'x-sprint2go-signature': `sha256=${sig}` } : {}) }, body, signal: AbortSignal.timeout(10_000) });
+      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'sprint2go-Webhooks', ...(sig ? { 'x-sprint2go-signature': `sha256=${sig}` } : {}) }, body, signal: AbortSignal.timeout(10_000) });
       const text = await res.text().catch(() => '');
       let reply: unknown = text;
       try {

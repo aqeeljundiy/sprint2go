@@ -71,7 +71,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
   const [agency, setAgency] = useState(false);
   const [industry, setIndustry] = useState<Industry>('agency'); // white label: the company's own brand in place of ours
   const [mixPart, setMixPart] = useState<'split' | 'keep'>('split'); // "Some of each": which people the guide is about
-  const [routingOk, setRoutingOk] = useState(false); // the routing test reached Sprint2go
+  const [routingOk, setRoutingOk] = useState(false); // the routing test reached sprint2go
   const [team, setTeam] = useState<Invite[]>([{ key: 1, name: '', email: '', role: 'member', where: 'sprint2go' }]);
 
   const d = domain.trim().toLowerCase().replace(/^@/, '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -224,7 +224,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
               <label className={`ob-agency ${agency ? 'on' : ''}`}>
                 <input type="checkbox" checked={agency} onChange={(e) => setAgency(e.target.checked)} />
                 <span>
-                  <strong>Our clients should see our brand, not Sprint2go’s</strong>
+                  <strong>Our clients should see our brand, not sprint2go’s</strong>
                   <small>Clients sign in at your own address (like portal.youragency.com) and see your name and logo, never ours. Change it any time in Settings, Client portal & brand.</small>
                 </span>
               </label>

@@ -21,7 +21,7 @@ const snoozed = () => {
 };
 
 /**
- * On a phone, nudges people to add Sprint2go to their home screen (there's no App Store app yet). Android and
+ * On a phone, nudges people to add sprint2go to their home screen (there's no App Store app yet). Android and
  * Chrome get a real Install button; iPhone gets the three taps for Safari. "Not now" waits two weeks.
  * Add ?install=1 to the address to see it on any screen.
  */

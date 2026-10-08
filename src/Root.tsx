@@ -15,6 +15,7 @@ import { Wordmark } from './components/Logo';
 import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
 import { InstallPrompt } from './components/InstallPrompt';
 import { brand as product, brandOf, setBrandName } from './terms';
+import { applyPricing, type PricingOverride } from './data/pricing';
 
 /**
  * With the local server: real sign-in, data from the database, live updates.
@@ -29,11 +30,16 @@ export default function Root() {
 
   useEffect(() => {
     if (invite) return;
+    // Prices changed from the backend apply before anything shows a price.
+    void fetch('/api/pricing')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { pricing?: PricingOverride } | null) => applyPricing(d?.pricing), () => {});
     void probe().then(async (r) => {
       if (r === 'none') return setMode('demo');
       if (r === 'signed-out') return setMode('signed-out');
       setSession(r);
       server.operator = !!r.operator;
+      server.flags = r.flags ?? [];
       void loadMailInfo();
       if (!r.suspended && !admin) await connect(applyRemote);
       setMode('ready');
@@ -67,6 +73,11 @@ export default function Root() {
         <ServerRoot me={session.me} />
         <InstallPrompt />
         {session.actingAs && <ActingBanner operator={session.actingAs} />}
+        {session.maintenance && (
+          <div className="maint-banner" role="status">
+            {session.maintenance}
+          </div>
+        )}
         {!session.actingAs && !!session.suspendedIn?.length && (
           <div className="op-banner warn" role="status">
             <span>

@@ -2,7 +2,7 @@
   "name": "sprint2go-recorder",
   "private": true,
   "type": "module",
-  "description": "Meeting recorder for Sprint2go: a bot joins Google Meet or Zoom, records the audio and transcribes it.",
+  "description": "Meeting recorder for sprint2go: a bot joins Google Meet or Zoom, records the audio and transcribes it.",
   "scripts": {
     "start": "node server.mjs"
   },

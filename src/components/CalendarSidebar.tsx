@@ -9,7 +9,7 @@ import { SourceMark } from './ConnectCalendar';
 
 interface Props {
   cursor: Date;
-  calendars: CalendarDef[]; // Sprint2go calendars
+  calendars: CalendarDef[]; // sprint2go calendars
   external: CalendarDef[]; // my connected calendars
   teammates: User[];
   shownMates: Set<string>;

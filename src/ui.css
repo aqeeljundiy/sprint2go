@@ -1,4 +1,4 @@
-/* Sprint2go controls: dropdowns, date picker and popovers. These replace the browser's own controls. */
+/* sprint2go controls: dropdowns, date picker and popovers. These replace the browser's own controls. */
 
 .pop {
   position: fixed;
@@ -283,7 +283,7 @@
   font-size: 15px;
 }
 
-/* checkboxes everywhere: Sprint2go style instead of the browser's */
+/* checkboxes everywhere: sprint2go style instead of the browser's */
 input[type='checkbox'] {
   appearance: none;
   -webkit-appearance: none;

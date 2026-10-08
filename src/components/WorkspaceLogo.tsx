@@ -43,7 +43,7 @@ export function readLogo(file: File): Promise<string> {
 
 /** Sets the browser tab title and icon to the workspace's brand. */
 export function applyBranding(ws: Workspace) {
-  document.title = brand.white ? ws.name : `${ws.name} · Sprint2go`; // an agency's clients see only names they know
+  document.title = brand.white ? ws.name : `${ws.name} · sprint2go`; // an agency's clients see only names they know
   const icon =
     ws.logo ??
     `data:image/svg+xml;charset=utf-8,${encodeURIComponent(

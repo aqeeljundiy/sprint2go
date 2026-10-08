@@ -5,7 +5,8 @@ import { RECORD_KEYS, type Collections, type CollectionKey } from './seed';
 
 type Doc = { id: string; [k: string]: unknown };
 
-export const server = { on: false, conn: '', operator: false }; // operator: this person may open /admin
+export const server = { on: false, conn: '', operator: false, flags: [] as string[] }; // operator: may open /admin; flags: features switched on from the backend
+export const hasFlag = (key: string) => server.flags.includes(key);
 /** This server's mail name and address (for the records a company adds), and whether Boosted sending exists here. */
 export const mailInfo = { host: '', ip: '', boosted: false };
 export const loadMailInfo = () =>
@@ -30,6 +31,8 @@ export interface Session {
   operator?: boolean; // this person may open the operator backend
   suspended?: { at: string; by: string; reason: string }; // this account can't do anything
   suspendedIn?: { id: string; name: string; reason: string }[]; // companies that are read-only right now
+  maintenance?: string; // changes are paused, with this message
+  flags?: string[]; // feature flags on for this person's companies
 }
 export async function probe(): Promise<'none' | 'signed-out' | Session> {
   if (!location.protocol.startsWith('http')) return 'none';

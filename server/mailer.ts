@@ -1,4 +1,4 @@
-// Sprint2go's own mail engine: receives mail for the companies' addresses over SMTP, sends their mail straight to the
+// sprint2go's own mail engine: receives mail for the companies' addresses over SMTP, sends their mail straight to the
 // world (signed with DKIM) or, when a company chose "Boosted sending", through Amazon on our account. Everything lands in
 // the same `threads` documents the Mail app already uses, so the app needs no second store.
 //
@@ -66,6 +66,13 @@ export function localAccounts() {
   return map;
 }
 export const accountFor = (email: string) => localAccounts().get(lower(email)) ?? null;
+
+/** Addresses that become support tickets instead of landing in a mailbox. */
+export const SUPPORT_EMAIL = lower(process.env.SUPPORT_EMAIL ?? `support@${MAIL_HOST}`);
+export const supportAddresses = () => [SUPPORT_EMAIL, `abuse@${MAIL_HOST}`, `postmaster@${MAIL_HOST}`];
+export type SupportMail = { to: string; parsed: ParsedMail; mid: string; refs: string[]; spam: boolean; attachments: { name: string; url: string; size: string }[] };
+let supportHandler: ((m: SupportMail) => Promise<void>) | null = null;
+export const onSupportMail = (fn: (m: SupportMail) => Promise<void>) => (supportHandler = fn);
 /** The company's own mail domain (its first domain), else addresses live at this server's name. */
 export const mailDomainOf = (ws: Ws) => lower(ws.domains?.[0] ?? '') || MAIL_HOST;
 export const boostedAvailable = () => mailConfigured();
@@ -111,7 +118,7 @@ export async function expectedRecords(ws: Ws): Promise<DnsRecord[]> {
     const ses = await sesIdentity(domain).catch(() => null);
     for (const t of ses?.tokens ?? []) out.push({ type: 'CNAME', host: `${t}._domainkey`, value: `${t}.dkim.amazonses.com`, note: 'Signs mail sent through Boosted sending.', key: 'dkim' });
     if (!ses?.tokens?.length) out.push({ type: 'CNAME', host: '(3 records)', value: 'given once Amazon knows the domain', note: 'Signs mail sent through Boosted sending.', key: 'dkim' });
-  } else out.push({ type: 'TXT', host: `${SELECTOR}._domainkey`, value: dkimRecord(domain, ws.id), note: 'Signs mail sent from Sprint2go so Gmail and Outlook trust it.', key: 'dkim' });
+  } else out.push({ type: 'TXT', host: `${SELECTOR}._domainkey`, value: dkimRecord(domain, ws.id), note: 'Signs mail sent from sprint2go so Gmail and Outlook trust it.', key: 'dkim' });
   out.push({ type: 'TXT', host: '_dmarc', value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, note: 'Tells receivers what to do with mail that fails the checks.', key: 'dmarc' });
   return out;
 }
@@ -195,13 +202,13 @@ export function startMailer(d: MailerDeps) {
   const tls = tlsOptions();
   const server = new SMTPServer({
     name: MAIL_HOST,
-    banner: 'Sprint2go mail',
+    banner: 'sprint2go mail',
     size: MAX_SIZE,
     disabledCommands: ['AUTH'],
     hideSTARTTLS: !tls,
     ...(tls ?? {}),
     onRcptTo(address, _session, cb) {
-      if (accountFor(address.address)) return cb();
+      if (accountFor(address.address) || supportAddresses().includes(lower(address.address))) return cb();
       cb(Object.assign(new Error('No such mailbox here'), { responseCode: 550 }));
     },
     onData(stream, session, cb) {
@@ -251,6 +258,16 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
   const unsub = parsed.headers.get('list-unsubscribe') as unknown as string | undefined;
   const unsubUrl = typeof unsub === 'string' ? unsub.match(/<(https?:[^>]+)>/)?.[1] : undefined;
   for (const rcpt of session.envelope.rcptTo) {
+    if (supportAddresses().includes(lower(rcpt.address)) && supportHandler) {
+      const attachments = parsed.attachments.map((a) => {
+        const id = randomBytes(16).toString('hex');
+        db.saveFile({ id, workspaceId: 'platform', by: 'mail', name: a.filename ?? 'attachment', type: a.contentType ?? 'application/octet-stream', size: a.size }, a.content);
+        return { name: a.filename ?? 'attachment', size: fmtSize(a.size), url: `/api/files/${id}` };
+      });
+      await supportHandler({ to: lower(rcpt.address), parsed, mid, refs, spam, attachments });
+      db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('platform', 'in', spam ? 'spam' : 'support', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
+      continue;
+    }
     const hit = accountFor(rcpt.address);
     if (!hit) continue;
     const { ws, account } = hit;
@@ -312,6 +329,13 @@ const fileBuffer = (url: string): Buffer | null => {
 export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: number; local: number; route: 'own' | 'boosted' }> {
   const ws = workspaces().find((w) => w.id === o.workspaceId);
   if (!ws) throw new Error('No such company');
+  const acct = (ws.accounts ?? []).find((a) => a.id === o.accountId) as (Account & { sendPaused?: { reason: string } }) | undefined;
+  if (acct?.sendPaused) throw new Error(`Sending from this mailbox is paused: ${acct.sendPaused.reason} Ask your admin or sprint2go support.`);
+  const recipientsCount = [...o.to, ...o.cc].length;
+  const sentLastHour = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 3600_000).toISOString()) as { n: number }).n;
+  const sentLastDay = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
+  if (sentLastHour + recipientsCount > LIMITS.hour || sentLastDay + recipientsCount > LIMITS.day)
+    throw new Error(`This mailbox has reached its sending limit (${LIMITS.hour} an hour, ${LIMITS.day} a day). Try again later, or use Boosted sending for bigger sends.`);
   const domain = lower(o.from.email.split('@')[1] ?? '');
   const mid = `<${randomBytes(12).toString('hex')}@${domain || MAIL_HOST}>`;
   let route: 'own' | 'boosted' = ws.mailRoute === 'boosted' && boostedAvailable() ? 'boosted' : 'own';
@@ -323,7 +347,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     route = 'own';
     if (!ws.mailCreditsNotified) {
       const admins = ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
-      deps.notify(admins, ws.id, 'Boosted sending has no credits left; mail goes out from the Sprint2go server until you top up.', '/settings/email');
+      deps.notify(admins, ws.id, 'Boosted sending has no credits left; mail goes out from the sprint2go server until you top up.', '/settings/email');
       db.writeDocs('workspaces', [{ ...(ws as any), mailCreditsNotified: true }], [], null);
     }
   }
@@ -338,7 +362,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     inReplyTo: o.inReplyTo,
     references: o.references,
     attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url) ?? Buffer.alloc(0) })),
-    headers: { 'X-Mailer': 'Sprint2go' },
+    headers: { 'X-Mailer': 'sprint2go' },
   });
   let raw: Buffer = await composer.compile().build();
   if (route === 'own' && domain && domain !== MAIL_HOST) {
@@ -380,6 +404,37 @@ function markDelivery(threadId: string, messageId: string, mid: string | null, s
 }
 
 const BACKOFF = [60, 300, 900, 3600, 4 * 3600, 8 * 3600];
+/** Per mailbox: protects the server's reputation from one runaway or hacked account. */
+export const LIMITS = { hour: Number(process.env.MAIL_LIMIT_HOUR ?? 200), day: Number(process.env.MAIL_LIMIT_DAY ?? 1000) };
+
+/** After a failure: a mailbox whose recent mail mostly bounces is paused, and its company is told. */
+function watchBounces(row: any) {
+  if (!row.account_id || row.workspace_id === 'platform') return;
+  const recent = db.db.prepare("SELECT state FROM outbox WHERE account_id = ? AND state IN ('sent', 'failed') ORDER BY created_at DESC LIMIT 50").all(row.account_id) as { state: string }[];
+  const failed = recent.filter((r) => r.state === 'failed').length;
+  if (recent.length < 20 || failed / recent.length < 0.1) return;
+  const ws = db.getDoc('workspaces', row.workspace_id) as any;
+  const acct = ws?.accounts?.find((a: any) => a.id === row.account_id);
+  if (!ws || !acct || acct.sendPaused) return;
+  const reason = `${failed} of the last ${recent.length} emails bounced, which can get the server blocked.`;
+  const next = { ...ws, accounts: ws.accounts.map((a: any) => (a.id === acct.id ? { ...a, sendPaused: { at: now(), reason } } : a)) };
+  db.writeDocs('workspaces', [next], [], null);
+  deps.broadcast('workspaces', [next], []);
+  deps.notify(ws.members.filter((m: any) => m.role !== 'member').map((m: any) => m.userId), ws.id, `Sending from ${acct.email} is paused: ${reason} Check the addresses, then ask support to lift it.`, '/settings/email');
+  onPaused?.(ws, acct, reason);
+}
+let onPaused: ((ws: any, account: any, reason: string) => void) | null = null;
+export const onMailboxPaused = (fn: (ws: any, account: any, reason: string) => void) => (onPaused = fn);
+export function unpauseMailbox(workspaceId: string, accountId: string) {
+  const ws = db.getDoc('workspaces', workspaceId) as any;
+  if (!ws) return false;
+  const next = { ...ws, accounts: (ws.accounts ?? []).map((a: any) => (a.id === accountId ? { ...a, sendPaused: undefined } : a)) };
+  db.writeDocs('workspaces', [next], [], null);
+  deps.broadcast('workspaces', [next], []);
+  return true;
+}
+export const pausedMailboxes = () =>
+  workspaces().flatMap((w) => (w.accounts ?? []).filter((a: any) => a.sendPaused).map((a: any) => ({ workspaceId: w.id, company: w.name, accountId: a.id, email: a.email, ...a.sendPaused })));
 let pumping = false;
 /** Delivers what's due in the outbox: one SMTP conversation per recipient, retried with backoff for about a day. */
 export async function pump() {
@@ -402,6 +457,7 @@ export async function pump() {
           db.db.prepare("UPDATE outbox SET state = 'failed', attempts = ?, error = ?, raw = x'' WHERE id = ?").run(attempts, err.message.slice(0, 300), row.id);
           db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(row.workspace_id, 'out', row.route, row.to_addr, (row.raw as Buffer).length, 'failed', err.message.slice(0, 300), now());
           settle(row, err.message);
+          watchBounces(row);
         } else {
           db.db.prepare("UPDATE outbox SET attempts = ?, next_at = ?, error = ? WHERE id = ?").run(attempts, new Date(Date.now() + BACKOFF[attempts - 1] * 1000).toISOString(), err.message.slice(0, 300), row.id);
         }
@@ -415,6 +471,7 @@ export async function pump() {
 
 /** When every recipient of a message is settled, the message shows sent or failed, and failures tell the sender. */
 function settle(row: any, error?: string) {
+  if (row.workspace_id === 'platform') return;
   const open = db.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'queued'").get(row.thread_id, row.message_id) as { n: number };
   if (open.n) return;
   const failed = db.db.prepare("SELECT to_addr, error FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'failed'").all(row.thread_id, row.message_id) as { to_addr: string; error: string }[];
@@ -460,3 +517,61 @@ export function mailStats(workspaceId: string, since: string) {
 }
 export const mailStatsAll = (since: string) =>
   db.db.prepare('SELECT workspace_id AS workspaceId, direction, route, state, COUNT(*) AS n FROM mail_log WHERE at >= ? GROUP BY workspace_id, direction, route, state').all(since) as { workspaceId: string; direction: string; route: string; state: string; n: number }[];
+
+/* ---------- mail from sprint2go itself (support replies, invoices, alerts, broadcasts) ---------- */
+
+export async function sendSystemMail(m: { fromName: string; from?: string; to: string[]; subject: string; text: string; html?: string; inReplyTo?: string; references?: string[]; attachments?: { filename: string; content: Buffer; contentType?: string }[] }) {
+  const from = lower(m.from ?? SUPPORT_EMAIL);
+  const domain = from.split('@')[1] ?? MAIL_HOST;
+  const mid = `<${randomBytes(12).toString('hex')}@${domain}>`;
+  const composer = new MailComposer({ from: { name: m.fromName, address: from }, to: m.to, subject: m.subject, text: m.text, html: m.html, messageId: mid, inReplyTo: m.inReplyTo, references: m.references, attachments: m.attachments, headers: { 'X-Mailer': 'sprint2go' } });
+  let raw: Buffer = await composer.compile().build();
+  const route: 'own' | 'boosted' = mailConfigured() ? 'boosted' : 'own';
+  if (route === 'own') {
+    const key = domainKey(domain, 'platform');
+    const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed' });
+    raw = Buffer.concat([Buffer.from(signatures), raw]);
+  }
+  const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
+  for (const to of m.to) ins.run(randomBytes(8).toString('hex'), 'platform', route, from, lower(to), raw, now(), 'queued', now());
+  void pump();
+  return mid;
+}
+
+export const queue = (state: 'queued' | 'failed', limit = 200) =>
+  db.db.prepare('SELECT id, workspace_id AS workspaceId, account_id AS accountId, route, from_addr AS fromAddr, to_addr AS toAddr, attempts, next_at AS nextAt, error, created_at AS createdAt FROM outbox WHERE state = ? ORDER BY created_at DESC LIMIT ?').all(state, limit) as {
+    id: string;
+    workspaceId: string;
+    accountId: string | null;
+    route: string;
+    fromAddr: string;
+    toAddr: string;
+    attempts: number;
+    nextAt: string;
+    error: string | null;
+    createdAt: string;
+  }[];
+export function retryNow(id: string) {
+  const r = db.db.prepare("UPDATE outbox SET next_at = ? WHERE id = ? AND state = 'queued'").run(now(), id);
+  void pump();
+  return r.changes > 0;
+}
+export const dropQueued = (id: string) => db.db.prepare("UPDATE outbox SET state = 'failed', error = 'Dropped by an operator', raw = x'' WHERE id = ? AND state = 'queued'").run(id).changes > 0;
+
+/** Whether the server's address is on the big blocklists. 'unknown' when a list refuses to answer (public resolvers). */
+export async function blocklists(): Promise<{ list: string; listed: boolean | 'unknown' }[]> {
+  if (!MAIL_IP) return [];
+  const rev = MAIL_IP.split('.').reverse().join('.');
+  const lists = ['zen.spamhaus.org', 'b.barracudacentral.org', 'bl.spamcop.net', 'dnsbl.sorbs.net'];
+  return Promise.all(
+    lists.map(async (list) => {
+      try {
+        const a = await dns.resolve4(`${rev}.${list}`);
+        if (a.some((x) => x.startsWith('127.255.255.'))) return { list, listed: 'unknown' as const };
+        return { list, listed: a.length > 0 };
+      } catch (e) {
+        return { list, listed: (e as { code?: string }).code === 'ENOTFOUND' ? false : ('unknown' as const) };
+      }
+    }),
+  );
+}

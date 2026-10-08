@@ -2,7 +2,7 @@ import { Children, isValidElement, type ReactElement, type ReactNode } from 'rea
 import { Select, type Option } from './Select';
 
 /**
- * Sprint2go's own dropdown, written like a plain <select>: give it <option> (and <optgroup>) children and an
+ * sprint2go's own dropdown, written like a plain <select>: give it <option> (and <optgroup>) children and an
  * onChange that reads e.target.value. It shows the app's searchable list instead of the browser's.
  */
 export function PickSelect({

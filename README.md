@@ -1,4 +1,4 @@
-# Sprint2go
+# sprint2go
 
 One app for a team's whole workday: mail, chat, tasks and clients, calendar, drive, meetings and one AI assistant.
 
@@ -33,7 +33,7 @@ Without a key the app uses a small built-in demo AI (marked "Demo AI").
 To use a real AI, an admin adds a key in Settings, AI: Claude, ChatGPT, Gemini, DeepSeek, SumoPod, OpenRouter, Qwen, Mistral or any OpenAI-compatible server.
 The key is tested with one tiny request, then stored encrypted in the database (the encryption key is `data/secret.key`); the browser only sees the last 4 characters.
 Each AI job (brain dump, Ask AI, meeting notes, drafts, summaries…) uses the provider and model picked for it.
-Optionally set `ANTHROPIC_API_KEY` in `.env` for the "included" AI that Sprint2go pays for.
+Optionally set `ANTHROPIC_API_KEY` in `.env` for the "included" AI that sprint2go pays for.
 
 ## The demo file
 

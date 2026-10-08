@@ -46,12 +46,12 @@ export const PROJECT_TYPES = ['Client', 'Internal', 'Partner', 'Vendor', 'Event'
 export type ProjectType = (typeof PROJECT_TYPES)[number];
 
 /**
- * The product's name as people see it: "Sprint2go", or an agency's own name when it runs the app under its brand
+ * The product's name as people see it: "sprint2go", or an agency's own name when it runs the app under its brand
  * (white label). Set from the workspace on screen, or from the address the app was opened at.
  */
-const brandState: { name: string } = { name: 'Sprint2go' };
+const brandState: { name: string } = { name: 'sprint2go' };
 export function setBrandName(n: string | undefined) {
-  brandState.name = n?.trim() || 'Sprint2go';
+  brandState.name = n?.trim() || 'sprint2go';
 }
 export const brand = {
   get name() {
@@ -59,7 +59,7 @@ export const brand = {
   },
   /** True when an agency's name replaces ours. */
   get white() {
-    return brandState.name !== 'Sprint2go';
+    return brandState.name !== 'sprint2go';
   },
 };
 

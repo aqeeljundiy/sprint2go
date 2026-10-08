@@ -1,8 +1,8 @@
 {
   "name": "sprint2go-desktop",
-  "productName": "Sprint2go",
+  "productName": "sprint2go",
   "version": "0.1.0",
-  "description": "Sprint2go for Mac and Windows",
+  "description": "sprint2go for Mac and Windows",
   "private": true,
   "main": "main.cjs",
   "scripts": {
@@ -16,7 +16,7 @@
   },
   "build": {
     "appId": "com.sprint2go.desktop",
-    "productName": "Sprint2go",
+    "productName": "sprint2go",
     "directories": { "output": "release" },
     "publish": { "provider": "github", "owner": "aqeeljundiy", "repo": "sprint2go", "releaseType": "release" },
     "files": ["main.cjs", "preload.cjs", "icon.png"],

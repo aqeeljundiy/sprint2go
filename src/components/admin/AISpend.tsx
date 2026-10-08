@@ -46,7 +46,7 @@ function costWith(rows: Row[], pick: (job: AIJobId, row: Row) => { provider: str
 
 /**
  * Spending: tokens and estimated cost per job on your own keys (from the server's log of every AI call),
- * and the same work priced on other setups and on Sprint2go's "AI included" plan.
+ * and the same work priced on other setups and on sprint2go's "AI included" plan.
  */
 export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AISettings; plan?: Plan; people: number; typical: Partial<Record<AIJobId, number>> }) {
   const [real, setReal] = useState<Row[] | null>(null);
@@ -93,7 +93,7 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
   const cheap = costWith(rows, (job) => ({ provider: '', model: JOBS.find((j) => j.id === job)!.rec.cheap }));
   const best = costWith(rows, (job) => ({ provider: '', model: JOBS.find((j) => j.id === job)!.rec.best }));
 
-  // Sprint2go "AI included": the difference between the two plan tracks for the same team, plus top-ups if the allowance runs out.
+  // sprint2go "AI included": the difference between the two plan tracks for the same team, plus top-ups if the allowance runs out.
   const tier = plan && plan.tier !== 'free' ? plan.tier : (options('own', people)[0]?.tier ?? 'studio');
   const ownPrice = priceFor('own', tier, people) ?? 0;
   const aiPrice = priceFor('ai', tier, people) ?? 0;

@@ -106,7 +106,7 @@ export interface CalendarDef {
   id: string;
   name: string;
   color: string;
-  source?: CalendarSource; // missing = a Sprint2go calendar
+  source?: CalendarSource; // missing = a sprint2go calendar
   account?: string; // the connected account, e.g. aqeel@gmail.com
   ownerId?: string; // whose connection it is (outside calendars are personal)
   readOnly?: boolean; // calendar links and holidays
@@ -186,10 +186,10 @@ export interface Workspace {
   members: Member[];
   apps?: AppId[]; // switched-on apps (default: all)
   emailSetup?: EmailSetup; // what the company chose at onboarding
-  /** "Some of each": the domain stays with Google or Microsoft, which passes unknown addresses on to Sprint2go. */
+  /** "Some of each": the domain stays with Google or Microsoft, which passes unknown addresses on to sprint2go. */
   mailRouting?: { verifiedAt?: string; dailyCheck: boolean; lastCheck?: { at: string; ok: boolean } };
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
-  mailRoute?: 'own' | 'boosted'; // how mail goes out: from the Sprint2go server, or through Amazon on our account
+  mailRoute?: 'own' | 'boosted'; // how mail goes out: from the sprint2go server, or through Amazon on our account
   mailCredits?: number; // emails left on Boosted sending
   mailCreditsNotified?: boolean;
   mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
@@ -221,10 +221,10 @@ export interface Workspace {
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string }; // WhatsApp Business (Meta Cloud API); the token stays on the server
 }
 
-/** The company's own brand in place of Sprint2go: for its team and, above all, for its clients at its own address. */
+/** The company's own brand in place of sprint2go: for its team and, above all, for its clients at its own address. */
 export interface WhiteLabel {
   enabled: boolean;
-  name: string; // shown wherever the app would say Sprint2go
+  name: string; // shown wherever the app would say sprint2go
   logo?: string; // defaults to the workspace's logo
   color?: string;
   domain?: string; // e.g. app.theiragency.com, pointed at us with one DNS record
@@ -283,7 +283,7 @@ export interface Member {
   role: Role;
 }
 
-/** A person who signs in to Sprint2go. */
+/** A person who signs in to sprint2go. */
 export interface User {
   id: string;
   name: string;
@@ -465,7 +465,7 @@ export interface Channel {
   postPolicy?: Policy; // who can post ('admins' = announcements)
   invitePolicy?: Policy; // who can add people
   guests?: Guest[]; // people from outside the company (clients)
-  sharedWith?: { workspaceName: string; domain: string; status: 'pending' | 'connected' }; // shared channel with another Sprint2go company
+  sharedWith?: { workspaceName: string; domain: string; status: 'pending' | 'connected' }; // shared channel with another sprint2go company
   digest?: boolean; // old name for summary.schedule === 'daily'
   summary?: ChannelSummary;
   bookmarks?: { id: string; title: string; url: string; addedBy: string; at: string }[];
@@ -549,6 +549,7 @@ export interface Notice {
   at: string;
   read: boolean;
   link?: { app: AppId | 'settings'; id?: string; msg?: string }; // msg: the exact chat message to land on; settings: id is the section
+  url?: string; // a page outside the app (operators: a ticket in the backend)
 }
 
 export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';
@@ -637,6 +638,7 @@ export interface Plan {
   trialEnds?: string; // reverse trial of Studio AI
   paused?: boolean;
   comp?: { until: string; note?: string; by?: string }; // free months given by an operator
+  discount?: { code: string; kind: 'percent' | 'amount'; value: number; until?: string }; // from a coupon
   addons: { mailboxes: number; storage50: number; meetHours10: number; branding: boolean };
   autoTopUp?: { on: boolean; limit: number }; // rupiah per month
   topUps?: number; // bought this month
@@ -854,7 +856,7 @@ export interface DataTable {
   views: TableViewDef[];
   rules?: TableRule[];
   intake?: TableIntake;
-  signingSecret?: string; // signs outgoing webhooks (X-Sprint2go-Signature)
+  signingSecret?: string; // signs outgoing webhooks (X-sprint2go-Signature)
   share?: TableShare; // shown to the project's guests
   page?: { order?: string[]; hidden?: string[]; hideEmpty?: boolean }; // the row page: field order, fields kept off it, empty ones folded
   ruleRuns?: Record<string, string>; // scheduled rule id -> the day it last ran (the server's)

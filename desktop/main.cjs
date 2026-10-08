@@ -1,4 +1,4 @@
-// Sprint2go for Mac and Windows: the web app in its own window, with the system's notifications and dock badge.
+// sprint2go for Mac and Windows: the web app in its own window, with the system's notifications and dock badge.
 // It loads the hosted app (S2G_URL), so updates arrive without reinstalling. Not from the App Store: installed
 // from the download on the site.
 const { app, BrowserWindow, shell, Menu, nativeTheme } = require('electron');
@@ -17,7 +17,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true },
   });
   win.loadURL(URL);
-  // Links to other sites open in the browser; the app stays on Sprint2go.
+  // Links to other sites open in the browser; the app stays on sprint2go.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(URL)) return { action: 'allow' };
     shell.openExternal(url);

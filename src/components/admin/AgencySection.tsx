@@ -4,7 +4,7 @@ import type { WhiteLabel, Workspace } from '../../types';
 import { term } from '../../terms';
 
 /**
- * Client portal & brand: the company's own name and look in place of Sprint2go, and its own address where clients
+ * Client portal & brand: the company's own name and look in place of sprint2go, and its own address where clients
  * sign in. Clients see the brand on the sign-in page, in their shared space and on the phone app; the team keeps
  * the full app. One workspace, no reselling: the clients are this company's guests.
  */
@@ -34,7 +34,7 @@ export function AgencySection({ ws, canManage, brandingAddon, onWorkspace, onBil
         <div className="set-block">
           <label className="set-row toggle-row">
             <span>
-              <strong>Show our brand instead of Sprint2go</strong>
+              <strong>Show our brand instead of sprint2go</strong>
               <small>Sign-in page, the app, the shared space, invites and the install prompt.</small>
             </span>
             <button type="button" role="switch" aria-checked={wl.enabled} className={`switch ${wl.enabled ? 'on' : ''}`} onClick={() => set({ enabled: !wl.enabled, slug })}>
@@ -100,7 +100,7 @@ export function AgencySection({ ws, canManage, brandingAddon, onWorkspace, onBil
                   {wl.domainStatus === 'verified'
                     ? `Live at ${wl.domain}, with its own secure connection.`
                     : wl.domainStatus === 'waiting'
-                      ? 'Saved. We check the record and set up the secure connection once Sprint2go is online; until then the local address below works.'
+                      ? 'Saved. We check the record and set up the secure connection once sprint2go is online; until then the local address below works.'
                       : 'DNS changes can take up to an hour to show.'}
                 </small>
               </div>

@@ -312,12 +312,13 @@ export const auditList = (limit = 200, target?: string) =>
     : db.prepare('SELECT id, at, operator, action, target, detail FROM audit ORDER BY id DESC LIMIT ?').all(limit)) as { id: number; at: string; operator: string; action: string; target: string | null; detail: string | null }[];
 
 const touched = new Map<string, number>();
-/** Remembers that this person was here (at most once every few minutes, so it costs nothing). */
+/** Remembers that this person was here (at most once every few minutes). True when it wrote. */
 export function touch(userId: string) {
   const now = Date.now();
-  if ((touched.get(userId) ?? 0) > now - 5 * 60_000) return;
+  if ((touched.get(userId) ?? 0) > now - 5 * 60_000) return false;
   touched.set(userId, now);
   db.prepare('INSERT INTO activity (user_id, at) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET at = excluded.at').run(userId, new Date(now).toISOString());
+  return true;
 }
 export const lastSeen = () => new Map((db.prepare('SELECT user_id, at FROM activity').all() as { user_id: string; at: string }[]).map((r) => [r.user_id, r.at]));
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term, brand as product } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import { DEFAULT_PERMISSIONS } from '../types';
 import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
@@ -25,6 +25,7 @@ import { relative } from '../utils';
 import { PROJECT_TYPES } from '../terms';
 import { AgencySection } from './admin/AgencySection';
 import { EmailDeliverySection } from './admin/EmailDelivery';
+import { HelpSection } from './HelpSection';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -44,6 +45,7 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'myapps', name: 'Your apps', icon: LayoutGrid, group: 'You' },
   { id: 'mail', name: 'Mail & signature', icon: PenLine, group: 'You' },
   { id: 'notifications', name: 'Notifications', icon: Bell, group: 'You' },
+  { id: 'help', name: 'Help & support', icon: LifeBuoy, group: 'You' },
   { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard, group: 'You' },
   { id: 'developer', name: 'Developer', icon: FlaskConical, group: 'You' },
 ];
@@ -591,6 +593,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
+          {section === 'help' && <HelpSection workspaceId={ws.id} toast={admin.toast} />}
           {section === 'email' && <EmailDeliverySection ws={ws} canManage={canManage} firstName={users.find((u) => u.id === me)?.name.split(' ')[0] ?? 'you'} onWorkspace={onWorkspace} toast={admin.toast} />}
           {section === 'agency' && <AgencySection ws={ws} canManage={canManage} onWorkspace={onWorkspace} brandingAddon={!!plan.addons.branding} onBilling={() => onSection('billing')} />}
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}

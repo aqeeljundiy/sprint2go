@@ -6,12 +6,12 @@ import { mailInfo } from '../sync';
 import { brand as product } from '../terms';
 
 /**
- * How mail gets into Sprint2go, step by step. Two ways:
- *  - forward: mail stays at Gmail or Outlook; a copy of everything is forwarded to the person's Sprint2go address,
- *    and replies go out through Sprint2go (Amazon SES) from their own address.
- *  - move: the domain's mail moves to Sprint2go (MX records), old mail is imported, the old provider is cancelled.
+ * How mail gets into sprint2go, step by step. Two ways:
+ *  - forward: mail stays at Gmail or Outlook; a copy of everything is forwarded to the person's sprint2go address,
+ *    and replies go out through sprint2go (Amazon SES) from their own address.
+ *  - move: the domain's mail moves to sprint2go (MX records), old mail is imported, the old provider is cancelled.
  *  - split: "some of each". The domain stays with Google or Microsoft; one routing rule there passes mail for
- *    addresses it doesn't know on to Sprint2go, so people without a licence get a real name@domain mailbox here.
+ *    addresses it doesn't know on to sprint2go, so people without a licence get a real name@domain mailbox here.
  * Until the mail server runs, the waits (Gmail's code, the DNS check, the import, the test email) are simulated.
  */
 export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: { mode: 'forward' | 'move' | 'split'; provider: MailProvider; domain: string; first: string; onVerified?: () => void }) {

@@ -13,7 +13,7 @@ export interface Option<V extends string = string> {
 }
 
 /**
- * Sprint2go's dropdown. Replaces the browser's <select> everywhere:
+ * sprint2go's dropdown. Replaces the browser's <select> everywhere:
  * search when there are many options, avatars and colours, keyboard support, bottom sheet on phones.
  */
 export function Select<V extends string = string>({

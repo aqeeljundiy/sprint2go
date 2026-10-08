@@ -843,7 +843,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                 <h4 className="tb-auto-h">
                   <KeyRound size={13} /> Signing webhooks this table sends
                 </h4>
-                <p className="muted small">Webhooks sent by buttons and rules carry an <code>X-Sprint2go-Signature</code> header: an HMAC-SHA256 of the body with this secret, so the other side can check it came from you.</p>
+                <p className="muted small">Webhooks sent by buttons and rules carry an <code>X-sprint2go-Signature</code> header: an HMAC-SHA256 of the body with this secret, so the other side can check it came from you.</p>
                 {t.signingSecret ? (
                   <div className="tb-url">
                     <code>{t.signingSecret.slice(0, 6)}••••••••••••</code>

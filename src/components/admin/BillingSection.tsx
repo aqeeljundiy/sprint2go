@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { server } from '../../sync';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, CreditCard, Download, Minus, PauseCircle, Plus, Sparkles, Users, XCircle } from 'lucide-react';
 import type { Plan, Tier, Track, Workspace } from '../../types';
 import { ADDONS, ALLOWANCE, PLAN_FEATURES, PRICES, TIER_NAME, TOP_UP, TRACK_NAME, meetHours, monthlyTotal, options, planName, priceFor, rp, seatsFor, storageGB } from '../../data/pricing';
@@ -17,7 +18,7 @@ interface Props {
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
 
-/** Workspace settings → Billing: the company's own Sprint2go subscription. */
+/** Workspace settings → Billing: the company's own sprint2go subscription. */
 export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }: Props) {
   const plan = ws.plan ?? trialPlan(ws.name, '');
   const [track, setTrack] = useState<Track>(plan.track);
@@ -33,8 +34,26 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
   const nextInvoice = new Date();
   nextInvoice.setMonth(nextInvoice.getMonth() + 1, 1);
 
-  // Sample invoice history (the backend creates these from Xendit payments).
-  const invoices = plan.tier === 'free' || plan.trialEnds
+  // Real invoices from the server; the demo (no server) shows a sample history.
+  const [real, setReal] = useState<{ id: string; number: string; period: string; total: number; status: string; dueAt: string; paidAt: string | null; overdue: boolean }[] | null>(null);
+  const [code, setCode] = useState('');
+  const [codeBusy, setCodeBusy] = useState(false);
+  useEffect(() => {
+    if (!server.on) return;
+    fetch(`/api/billing/invoices?ws=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? r.json() : { invoices: [] }))
+      .then((d: { invoices: typeof real }) => setReal(d.invoices ?? []), () => setReal([]));
+  }, [ws.id]);
+  const applyCode = async () => {
+    setCodeBusy(true);
+    const r = await fetch('/api/billing/coupon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, code }) }).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : {};
+    setCodeBusy(false);
+    if (!r?.ok) return toast((d as { error?: string }).error ?? 'That code didn’t work.');
+    setCode('');
+    toast('Code applied. You’ll see it on your next invoice.');
+  };
+  const sample = server.on ? [] : plan.tier === 'free' || plan.trialEnds
     ? []
     : [0, 1, 2].map((i) => {
         const d = new Date();
@@ -288,11 +307,50 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
 
       <div className="set-block">
         <h3>Invoices</h3>
-        {invoices.length === 0 ? (
+        {isOwner && plan.tier !== 'free' && (
+          <div className="bill-code">
+            {plan.discount ? (
+              <span className="small">
+                Code <strong>{plan.discount.code}</strong>: {plan.discount.kind === 'percent' ? `${plan.discount.value}% off` : `${rp(plan.discount.value)} off a month`}
+                {plan.discount.until ? ` until ${fmtDate(plan.discount.until)}` : ''}
+              </span>
+            ) : plan.comp?.until && plan.comp.until > new Date().toISOString() ? (
+              <span className="small">Free until {fmtDate(plan.comp.until)}{plan.comp.note ? ` (${plan.comp.note})` : ''}</span>
+            ) : (
+              <>
+                <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Have a code?" aria-label="Discount code" onKeyDown={(e) => e.key === 'Enter' && code.trim() && void applyCode()} />
+                <button type="button" className="ghost-btn sm" disabled={!code.trim() || codeBusy || !server.on} onClick={() => void applyCode()}>
+                  Apply
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {server.on && real === null ? (
+          <p className="muted small">Loading invoices…</p>
+        ) : server.on && real ? (
+          real.length === 0 ? (
+            <p className="muted small">No invoices yet{plan.trialEnds ? ' (you’re on the free trial)' : ''}.</p>
+          ) : (
+            <div className="inv-table">
+              {real.map((i) => (
+                <div key={i.id} className="inv-row">
+                  <span>{fmtDate(i.period + '-01')}</span>
+                  <span className="mono">{i.number}</span>
+                  <span>{rp(i.total)}</span>
+                  <span className={`ap-tag ${i.status === 'paid' ? 'approved' : i.overdue ? 'changes' : ''}`}>{i.status === 'paid' ? 'Paid' : i.overdue ? 'Overdue' : i.status === 'void' ? 'Void' : `Due ${new Date(i.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}</span>
+                  <a className="icon-btn sm" title="Open the invoice" aria-label="Open the invoice" href={`/api/billing/invoice?id=${encodeURIComponent(i.id)}`} target="_blank" rel="noreferrer">
+                    <Download size={14} />
+                  </a>
+                </div>
+              ))}
+            </div>
+          )
+        ) : sample.length === 0 ? (
           <p className="muted small">No invoices yet{plan.trialEnds ? ' (you’re on the free trial)' : ''}.</p>
         ) : (
           <div className="inv-table">
-            {invoices.map((i) => (
+            {sample.map((i) => (
               <div key={i.no} className="inv-row">
                 <span>{fmtDate(i.date)}</span>
                 <span className="mono">{i.no}</span>

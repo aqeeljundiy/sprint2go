@@ -34,6 +34,27 @@ export const ALLOWANCE = { braindump: 10, ask: 20, meetingHours: 6, summary: 50,
 
 export const rp = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
 
+/** Prices can be changed from the operator backend without a release: the server and the app apply the same override. */
+export interface PricingOverride {
+  prices?: Partial<Record<Track, Partial<Record<Exclude<Tier, 'free'>, Partial<{ base: number; included: number; extra: number }>>>>>;
+  addons?: Partial<Record<keyof typeof ADDONS, number>>;
+  topUp?: number;
+}
+export const DEFAULT_PRICES = JSON.parse(JSON.stringify({ prices: PRICES, addons: Object.fromEntries(Object.entries(ADDONS).map(([k, v]) => [k, v.price])), topUp: TOP_UP.price }));
+export function applyPricing(o: PricingOverride | null | undefined) {
+  if (!o) return;
+  for (const t of Object.keys(o.prices ?? {}) as Track[]) for (const tier of Object.keys(o.prices![t] ?? {}) as Exclude<Tier, 'free'>[]) Object.assign(PRICES[t][tier], o.prices![t]![tier]);
+  for (const [k, v] of Object.entries(o.addons ?? {})) if (typeof v === 'number' && k in ADDONS) (ADDONS as unknown as Record<string, { price: number }>)[k].price = v;
+  if (typeof o.topUp === 'number') (TOP_UP as { price: number }).price = o.topUp;
+}
+
+/** What a discount takes off a monthly total (a code applied by the company or given by Sprint2go). */
+export function discountOf(plan: Plan, total: number, at = new Date().toISOString()) {
+  const d = plan.discount;
+  if (!d || (d.until && d.until < at)) return 0;
+  return Math.min(total, d.kind === 'percent' ? Math.round((total * d.value) / 100) : d.value);
+}
+
 /** Price of one package for n people (null when the package can't hold them). */
 export function priceFor(track: Track, tier: Tier, people: number): number | null {
   if (tier === 'free') return track === 'own' && people <= 5 ? 0 : null;

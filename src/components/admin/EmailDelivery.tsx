@@ -21,9 +21,10 @@ interface Setup {
   health: Record<'ptr' | 'a' | 'port25' | 'inbound', { ok: boolean; found: string; want: string }>;
 }
 
-const RECEIVE: { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] = [
-  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook', body: 'Mail stays where it is. Sprint2go sends from your domain; nothing incoming shows here.' },
-  { id: 'mix', icon: Shuffle, title: 'Some of each', body: 'Google or Microsoft keeps the domain and passes the addresses it doesn’t know to Sprint2go.' },
+/** Built when shown, so a white-labelled company sees its own name. */
+const receive = (): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
+  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook', body: `Mail stays where it is. ${product.name} sends from your domain; nothing incoming shows here.` },
+  { id: 'mix', icon: Shuffle, title: 'Some of each', body: `Google or Microsoft keeps the domain and passes the addresses it doesn’t know to ${product.name}.` },
   { id: 'hosted', icon: Server, title: `Move to ${product.name}`, body: 'The domain’s mail comes here. Cancel the other licences.' },
   { id: 'none', icon: MailX, title: 'No email here', body: 'Mail stays off. Chat, Tasks, Calendar and the rest keep working.' },
 ];
@@ -83,7 +84,7 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
     setBusy(true);
     try {
       await post('route', { workspaceId: ws.id, route });
-      toast(route === 'boosted' ? 'Boosted sending is on. Add the three signing records.' : 'Mail goes out from the Sprint2go server.');
+      toast(route === 'boosted' ? 'Boosted sending is on. Add the three signing records.' : 'Mail goes out from the sprint2go server.');
       await load();
     } catch (e) {
       toast((e as Error).message);
@@ -118,7 +119,7 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
         <div className="set-block">
           <h3>Where your mail lives</h3>
           <div className="ob-setups ed-cards">
-            {RECEIVE.map(({ id, icon: Icon, title, body }) => (
+            {receive().map(({ id, icon: Icon, title, body }) => (
               <button key={id} type="button" className={`ob-setup ${setup === id ? 'on' : ''}`} onClick={() => onWorkspace({ emailSetup: id, mailChecks: undefined })}>
                 <Icon size={20} />
                 <span>

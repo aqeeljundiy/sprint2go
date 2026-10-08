@@ -2,7 +2,7 @@ import { ProjectBadge } from './ProjectBadge';
 import { useMemo, useState, type ReactNode } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
-import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, FileText, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, FileText, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search, Megaphone } from 'lucide-react';
 import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, Todo, User } from '../types';
 import { fmtTime } from '../calendarUtils';
 import { isMine } from '../identity';
@@ -118,6 +118,9 @@ interface Props {
   onOpenMeeting: (id: string) => void;
   onNotice: (n: Notice) => void;
   onMenu: () => void;
+  /** News and warnings from the sprint2go team, until they end or this person dismisses them. */
+  news?: { id: string; text: string; link?: string; kind: 'news' | 'warning' }[];
+  onDismissNews?: (id: string) => void;
   /** What the company hasn't set up yet (admins only): each row opens the right place. */
   setup?: { key: string; label: string; hint: string; done: boolean; onOpen: () => void }[];
 }
@@ -678,6 +681,34 @@ export function HomeView(p: Props) {
           <span>Jump to a {term.one}, task, person or file, or ask anything</span>
           <kbd>⌘K</kbd>
         </button>
+
+        {p.news?.map((n) => (
+          <div key={n.id} className={`news-card ${n.kind}`} role="status">
+            {n.kind === 'warning' ? <AlertTriangle size={16} /> : <Megaphone size={16} />}
+            <span>
+              {n.text}
+              {n.link && (
+                <a href={n.link} target="_blank" rel="noreferrer">
+                  Read more
+                </a>
+              )}
+            </span>
+            {p.onDismissNews && (
+              <button
+                type="button"
+                className="icon-btn sm"
+                aria-label="Dismiss"
+                onClick={(e) => {
+                  const card = (e.currentTarget as HTMLElement).closest('.news-card');
+                  card?.classList.add('leaving');
+                  setTimeout(() => p.onDismissNews!(n.id), 180);
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        ))}
 
         {p.setup && p.setup.some((x) => !x.done) && (
           <section className="setup-card">

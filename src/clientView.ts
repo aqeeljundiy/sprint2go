@@ -5,7 +5,7 @@ import { DEFAULT_CLIENT_ACCESS, type Channel, type Client, type ClientAccess, ty
 export const accessFor = (ws: Pick<Workspace, 'clientAccess' | 'plan'> & { clientAccessByType?: Workspace['clientAccessByType'] }, client: Pick<Client, 'access'> & { type?: string }): ClientAccess => {
   const byType = client.type ? ws.clientAccessByType?.[client.type] : undefined;
   const a = { ...DEFAULT_CLIENT_ACCESS, ...(ws.clientAccess ?? {}), ...(byType ?? {}), ...(client.access ?? {}) };
-  // Hiding "Made with Sprint2go" needs the branding add-on.
+  // Hiding "Made with sprint2go" needs the branding add-on.
   return { ...a, hideBranding: a.hideBranding && !!ws.plan?.addons.branding };
 };
 

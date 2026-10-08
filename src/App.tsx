@@ -260,6 +260,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('account');
   const [toast, setToast] = useState<Toast | null>(null);
   const showToast = (t: Omit<Toast, 'id'>) => setToast({ ...t, id: Date.now() });
+  // News from the sprint2go team (operator backend, Product), minus what this person dismissed on this device.
+  const [news, setNews] = useState<{ id: string; text: string; link?: string; kind: 'news' | 'warning' }[]>([]);
+  const [newsSeen, setNewsSeen] = usePersisted<string[]>('s2g-news-dismissed', []);
+  useEffect(() => {
+    if (!server.on) return;
+    const load = () =>
+      fetch('/api/announcements')
+        .then((r) => (r.ok ? r.json() : { announcements: [] }))
+        .then((d: { announcements: typeof news }) => setNews(d.announcements), () => {});
+    void load();
+    const t = setInterval(() => document.visibilityState === 'visible' && void load(), 15 * 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Mail
   const [threads, setThreads] = useStored('threads');
@@ -307,7 +320,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         starred: false,
         unread: true,
         labels: [],
-        messages: [{ id: uid(), from: { name: 'Sprint2go test', email: 'test@s2g.email' }, to: [{ name: a.email, email: a.email }], date: nowIso(), body: `This is a test message for ${a.email}.\n\nYour verification code is ${code}. It expires in 10 minutes.` }],
+        messages: [{ id: uid(), from: { name: 'sprint2go test', email: 'test@s2g.email' }, to: [{ name: a.email, email: a.email }], date: nowIso(), body: `This is a test message for ${a.email}.\n\nYour verification code is ${code}. It expires in 10 minutes.` }],
       },
       ...ts,
     ]);
@@ -2038,6 +2051,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const openNotice = (n: Notice) => {
     setNotices((ns) => ns.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
     setNoticesOpen(false);
+    if (n.url) return void location.assign(n.url);
     if (!n.link) return;
     if (n.link.app === 'tasks') return n.link.id ? openTask(n.link.id) : openTasks({ kind: 'mine' });
     if (n.link.app === 'projects' && n.link.id) return openClient(n.link.id);
@@ -2982,13 +2996,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenMeeting={openMeeting}
             onNotice={openNotice}
             onMenu={() => setSidebarOpen(true)}
+            news={news.filter((n) => !newsSeen.includes(n.id))}
+            onDismissNews={(id) => setNewsSeen((s) => [...s.slice(-50), id])}
             setup={
               ws.members.some((m) => m.userId === user.id && m.role !== 'member')
                 ? [
                     {
                       key: 'email',
                       label: 'Email',
-                      hint: ws.emailSetup === 'none' ? 'Mail is off for this company' : !ws.domains[0] ? 'Addresses live on the Sprint2go server; add your own domain when you have one' : ws.mailChecks?.allOk ? 'Records in place; mail from your domain is trusted' : 'Add the records so mail from your domain is trusted',
+                      hint: ws.emailSetup === 'none' ? 'Mail is off for this company' : !ws.domains[0] ? 'Addresses live on the sprint2go server; add your own domain when you have one' : ws.mailChecks?.allOk ? 'Records in place; mail from your domain is trusted' : 'Add the records so mail from your domain is trusted',
                       done: ws.emailSetup === 'none' || !ws.domains[0] || !!ws.mailChecks?.allOk,
                       onOpen: () => (setSettingsSection('email'), go('settings')),
                     },

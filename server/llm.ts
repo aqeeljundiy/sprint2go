@@ -8,7 +8,7 @@ export interface AIConfig {
   model: string;
   apiKey: string;
   baseUrl?: string;
-  included?: boolean; // Sprint2go's own key (the plan's allowance), not the company's
+  included?: boolean; // sprint2go's own key (the plan's allowance), not the company's
   onUsage?: (inTokens: number, outTokens: number) => void; // every call reports its tokens (for the cost estimate)
 }
 

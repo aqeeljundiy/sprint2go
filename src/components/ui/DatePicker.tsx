@@ -22,7 +22,7 @@ export function shortDate(v: string) {
   return new Date(v + 'T12:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-/** Sprint2go's date field: quick picks plus a month grid. Value is YYYY-MM-DD or '' for none. */
+/** sprint2go's date field: quick picks plus a month grid. Value is YYYY-MM-DD or '' for none. */
 export function DatePicker({
   value,
   onChange,

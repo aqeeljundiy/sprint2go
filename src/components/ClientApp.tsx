@@ -502,7 +502,7 @@ export function ClientApp(p: Props) {
           </div>
           {!access.hideBranding && !product.white && (
             <p className="client-made">
-              Made with <Logo size={12} /> Sprint2go
+              Made with <Logo size={12} /> sprint2go
             </p>
           )}
         </div>

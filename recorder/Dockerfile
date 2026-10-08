@@ -1,4 +1,4 @@
-# Sprint2go meeting recorder. Bots are real Google Chrome windows on a virtual screen (Xvfb),
+# sprint2go meeting recorder. Bots are real Google Chrome windows on a virtual screen (Xvfb),
 # with a PulseAudio null sink so Chrome has an audio device in the container.
 FROM node:24-bookworm-slim
 

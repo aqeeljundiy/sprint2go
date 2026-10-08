@@ -1,5 +1,5 @@
-// Sprint2go's meeting recorder. Sprint2go asks it to send a bot to a meeting; each bot is its own
-// process (bot.mjs) that reports back to Sprint2go by HTTP. Recordings stay here and Sprint2go
+// sprint2go's meeting recorder. sprint2go asks it to send a bot to a meeting; each bot is its own
+// process (bot.mjs) that reports back to sprint2go by HTTP. Recordings stay here and sprint2go
 // streams them through its own server, so people never talk to this service directly.
 //
 //   POST   /bots                 { id, url, botName, callback, stt?, names?, announce? }  start a bot
