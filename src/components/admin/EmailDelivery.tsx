@@ -104,6 +104,16 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
       setBusy(false);
     }
   };
+  // The mailboxes follow the choice: moving here hosts every mailbox on the company's domains; keeping the provider
+  // hands them back to it. "Some of each" leaves each mailbox where it is (set per person under General & email).
+  const accountsFor = (next: EmailSetup) =>
+    ws.accounts.map((a) => {
+      const ours = ws.domains.some((d) => a.email.toLowerCase().endsWith('@' + d.toLowerCase()));
+      if (!ours || a.temp) return a;
+      if (next === 'hosted') return { ...a, provider: 'sprint2go' as MailProvider };
+      if (next === 'keep') return { ...a, provider: (ws.emailProvider ?? 'google') as MailProvider };
+      return a;
+    });
   const setup = ws.emailSetup ?? 'none';
   const provider = ws.emailProvider ?? 'google';
   const route = info?.route ?? ws.mailRoute ?? 'own';
@@ -120,7 +130,7 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
           <h3>Where your mail lives</h3>
           <div className="ob-setups ed-cards">
             {receive().map(({ id, icon: Icon, title, body }) => (
-              <button key={id} type="button" className={`ob-setup ${setup === id ? 'on' : ''}`} onClick={() => onWorkspace({ emailSetup: id, mailChecks: undefined })}>
+              <button key={id} type="button" className={`ob-setup ${setup === id ? 'on' : ''}`} onClick={() => onWorkspace({ emailSetup: id, mailChecks: undefined, accounts: accountsFor(id) })}>
                 <Icon size={20} />
                 <span>
                   <strong>{title}</strong>
