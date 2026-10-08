@@ -1,6 +1,6 @@
 /* ==========================================================================
-   Tasks: the company's own stages (src/stages.ts), quick capture and the
-   stage settings. Loaded after polish.css.
+   Tasks: the company's own stages (src/stages.ts), quick capture, the stage
+   settings, and the settings button each app has. Loaded after polish.css.
    ========================================================================== */
 
 /* ---------- Stage colours ---------- */
@@ -333,6 +333,47 @@
   }
 }
 
+/* ---------- Each app's settings button ---------- */
+.sb-top .sb-settings {
+  margin-left: auto;
+}
+.sb-top .sb-settings + .collapse-btn {
+  margin-left: 0;
+}
+.sidebar.collapsed .sb-top .sb-settings {
+  margin: 0;
+}
+.app-settings-menu {
+  display: grid;
+  padding: 4px;
+}
+.app-settings-menu button {
+  display: grid;
+  gap: 1px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.app-settings-menu button:hover,
+.app-settings-menu button:focus-visible {
+  background: var(--hover);
+  outline: 0;
+}
+.app-settings-menu strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.app-settings-menu small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stage-row.fresh,
   .stage-row.leaving {
@@ -342,7 +383,8 @@
   .stage-name,
   .stage-swatch,
   .stage-colors button,
-  .new-task-slim {
+  .new-task-slim,
+  .app-settings-menu button {
     transition: none;
   }
 }

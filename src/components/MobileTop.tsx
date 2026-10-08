@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Bell, ChevronDown, LayoutGrid, Search } from 'lucide-react';
 import type { Client, Workspace } from '../types';
 import { WorkspaceLogo } from './WorkspaceLogo';
@@ -22,6 +22,7 @@ export function MobileTop({
   portals = [],
   onPortal,
   onShared,
+  settings,
 }: {
   title: string;
   switcher?: { value: string; options: Option[]; onChange: (v: string) => void; label: string };
@@ -35,6 +36,7 @@ export function MobileTop({
   portals?: { key: string; ws: Workspace; client: Client }[];
   onPortal?: (key: string) => void;
   onShared?: () => void; // everything shared with you, on one page
+  settings?: ReactNode; // this app's settings button
 }) {
   const wsBtn = useRef<HTMLButtonElement>(null);
   const [wsOpen, setWsOpen] = useState(false);
@@ -105,6 +107,7 @@ export function MobileTop({
       )}
 
       <span className="spacer" />
+      {settings}
       <button className="icon-btn" onClick={onSearch} aria-label="Search everything">
         <Search size={20} />
       </button>

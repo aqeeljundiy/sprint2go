@@ -49,6 +49,7 @@ import { AccountMenu, type SettingsSection } from './components/AccountMenu';
 import { DriveSidebar } from './components/DriveSidebar';
 import { DrivePreview } from './components/DrivePreview';
 import { AppRail, APPS } from './components/AppRail';
+import { AppSettingsButton, appSettingsLinks } from './components/AppSettings';
 import { Avatar } from './components/Avatar';
 import { Notifications } from './components/Notifications';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
@@ -2482,6 +2483,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? { icon: Video, label: 'Send bot to a meeting', run: () => openSendBot() }
                 : null;
 
+  /** Each app's gear: Settings at that app's section (only sections this person can use). */
+  const appSettings = (app: Mode, place: 'sidebar' | 'phone') => (
+    <AppSettingsButton
+      app={APPS.find((a) => a.id === app)?.name ?? 'App'}
+      links={appSettingsLinks(app, { admin: isAdmin, perms })}
+      onOpen={(id) => (setSettingsSection(id), setSidebarOpen(false), go('settings'))}
+      className={place === 'sidebar' ? 'sb-settings' : 'mt-settings'}
+      big={place === 'phone'}
+    />
+  );
+
   /** The phone's title switcher for each app. */
   const mobileSwitcher = (() => {
     if (mode === 'mail')
@@ -2752,6 +2764,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[appMode]}
         collapsed={collapsed && !mobile}
         onCollapse={setCollapsed}
+        settings={appSettings(appMode, 'sidebar')}
         width={Math.min(Math.max(sidebarW, SIDEBAR_MIN), SIDEBAR_MAX)}
         onWidth={setSidebarW}
         mobileTop={
@@ -2986,6 +2999,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             onSearch={() => setPaletteOpen(true)}
             onBell={() => setNoticesOpen(true)}
+            settings={appSettings(mode, 'phone')}
           />
         )}
         {mobile && mode === 'chat' && !chatId && (

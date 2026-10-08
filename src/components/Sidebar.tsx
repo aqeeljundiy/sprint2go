@@ -48,6 +48,8 @@ interface Props {
   panel?: ReactNode;
   /** Workspace switcher + account, shown in the phone drawer (the rail is hidden there). */
   mobileTop?: ReactNode;
+  /** The app's settings button (a gear that opens Settings at this app's section), next to the title. */
+  settings?: ReactNode;
   accounts: Account[];
   activeAccount: string; // 'all' or an account id
   accountUnread: Record<string, number>;
@@ -108,6 +110,7 @@ export function Sidebar(props: Props) {
         {props.mobileTop && <div className="sb-mobile-top">{props.mobileTop}</div>}
         <div className="sb-top">
           <h2 className="sb-title sb-label">{props.title}</h2>
+          {props.settings}
           <button
             className="icon-btn sm collapse-btn"
             onClick={() => props.onCollapse(!collapsed)}
