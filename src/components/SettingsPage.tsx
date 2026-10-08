@@ -541,14 +541,18 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               )}
 
               <h3>Read tracking</h3>
-              {realMail ? (
-                // Mail sent from a real server isn't tracked yet (Compose only offers it in the demo).
+              {ws.readTracking === false ? (
+                // The company switched it off for everyone (Settings, Security & data).
                 <div className="set-row">
                   <span>
-                    <strong>Track opens and clicks</strong>
-                    <small>Coming soon: see who opened your email and which links they clicked.</small>
+                    <strong>Read tracking is off for {ws.name || 'your company'}</strong>
+                    <small>{canManage ? 'You can turn it back on in Security & data.' : 'An owner or admin turned it off for everyone.'}</small>
                   </span>
-                  <span className="badge-soon">Not yet</span>
+                  {canManage && (
+                    <button type="button" className="ghost-btn outline sm" onClick={() => onSection('security')}>
+                      Change
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
@@ -556,9 +560,9 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                     on={s.trackByDefault}
                     onChange={(v) => update({ trackByDefault: v })}
                     label="Track opens on emails to people outside the team"
-                    hint="See who opened your email, how often, and which links they clicked. You can switch it off per email."
+                    hint="See when they open your email and which links they click. You can switch it off per email. Apple Mail can open pictures by itself, so those opens show as maybe automatic."
                   />
-                  <Toggle on={s.notifyOpens} onChange={(v) => update({ notifyOpens: v })} label="Tell me when someone opens" hint="A quick notification the moment it happens." />
+                  <Toggle on={s.notifyOpens} onChange={(v) => update({ notifyOpens: v })} label="Tell me when someone opens" hint="A notification the first time each person opens it." />
                 </>
               )}
               {/* Pictures that load from elsewhere never load in mail you receive, so this is always on. */}
@@ -569,7 +573,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 </span>
                 <span className="acct-status ok">Always on</span>
               </div>
-              {!realMail && <small className="set-hint">Your team’s internal email is never tracked. If you email people in the EU, mention tracking in your privacy policy.</small>}
+              {ws.readTracking !== false && <small className="set-hint">Your team’s internal email is never tracked. If you email people in the EU, mention tracking in your privacy policy.</small>}
 
               <h3>Blocked senders</h3>
               {blocked.length === 0 ? (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BellRing, Bot, ChevronDown, Eye, FileSearch, Forward, MousePointerClick, Reply } from 'lucide-react';
 import type { Message, Thread } from '../types';
-import { DEFAULT_TRACK_OPTIONS, fmtDuration, maybeForwarded, realOpens, replyAfter, summarize } from '../tracking';
+import { DEFAULT_TRACK_OPTIONS, autoWhy, fmtDuration, maybeForwarded, realClicks, realOpens, recipientLine, replyAfter, summarize } from '../tracking';
 import { fullDate, relative } from '../utils';
 import { Avatar } from './Avatar';
 
@@ -30,7 +30,11 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
         <span>
           {sum.opens
             ? `Opened by ${sum.openedBy} of ${sum.recipients} · ${sum.opens} open${sum.opens > 1 ? 's' : ''}${sum.clicks ? ` · ${sum.clicks} click${sum.clicks > 1 ? 's' : ''}` : ''}`
-            : 'Not opened yet'}
+            : sum.clicks
+              ? `${sum.clicks} click${sum.clicks > 1 ? 's' : ''}`
+              : sum.autoOnly
+                ? 'Opened (maybe automatic)'
+                : 'Not opened yet'}
         </span>
       </div>
 
@@ -38,12 +42,12 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
         const r = tracking[email];
         const person = message.to.find((p) => p.email === email) ?? { name: email, email };
         const real = realOpens(r);
-        const last = real[real.length - 1];
+        const clicks = realClicks(r);
         const replied = replyAfter(thread, message, email);
         const forwarded = maybeForwarded(r);
         const events = [
           ...r.opens.map((o) => ({ kind: o.auto ? ('auto' as const) : ('open' as const), at: o.at, o })),
-          ...r.clicks.map((c) => ({ kind: 'click' as const, at: c.at, c })),
+          ...r.clicks.map((c) => ({ kind: c.auto ? ('checked' as const) : ('click' as const), at: c.at, c })),
           ...(r.docs ?? []).map((d) => ({ kind: 'doc' as const, at: d.at, d })),
           ...(replied ? [{ kind: 'reply' as const, at: replied }] : []),
         ].sort((a, b) => b.at.localeCompare(a.at));
@@ -55,14 +59,8 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
               <Avatar person={person} size={28} />
               <span className="tp-who">
                 <strong>{person.name}</strong>
-                <small className={replied || real.length ? 'ok' : r.opens.length ? 'auto' : ''}>
-                  {replied
-                    ? `Replied ${relative(replied)}`
-                    : real.length
-                      ? `Opened ${real.length}× · last ${relative(last.at)}${opts.details && last.device ? ` on ${last.device.split(' · ')[0]}` : ''}`
-                      : r.opens.length
-                        ? 'Auto-opened by Apple Mail, may not be read yet'
-                        : 'Not opened yet'}
+                <small className={replied || real.length || clicks.length ? 'ok' : r.opens.length ? 'auto' : ''} title={!replied && !real.length && !clicks.length && r.opens.length ? autoWhy(r.opens[r.opens.length - 1]) : undefined}>
+                  {replied ? `Replied ${relative(replied)}` : recipientLine(r)}
                 </small>
               </span>
               {forwarded && (
@@ -75,9 +73,9 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
                   <FileSearch size={12} /> {r.docs!.length}
                 </span>
               )}
-              {r.clicks.length > 0 && (
+              {clicks.length > 0 && (
                 <span className="tp-tag" title="Link clicks">
-                  <MousePointerClick size={12} /> {r.clicks.length}
+                  <MousePointerClick size={12} /> {clicks.length}
                 </span>
               )}
               {events.length > 0 && <ChevronDown size={16} className="tp-chev" />}
@@ -90,7 +88,7 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
                     <span className="tp-icon">
                       {ev.kind === 'click' ? (
                         <MousePointerClick size={13} />
-                      ) : ev.kind === 'auto' ? (
+                      ) : ev.kind === 'auto' || ev.kind === 'checked' ? (
                         <Bot size={13} />
                       ) : ev.kind === 'doc' ? (
                         <FileSearch size={13} />
@@ -113,15 +111,27 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
                         </>
                       )}
                       {ev.kind === 'reply' && <b>Replied</b>}
-                      {ev.kind === 'auto' && <>Loaded automatically ({ev.o.auto === 'apple' ? 'Apple Mail Privacy' : 'security scanner'}), not counted</>}
+                      {ev.kind === 'checked' && (
+                        <span title="Some mail filters open every link to check it before the person sees the email">
+                          Link checked by a mail filter: {ev.c.label}, not counted
+                        </span>
+                      )}
+                      {ev.kind === 'auto' && <span title={autoWhy(ev.o)}>Opened (maybe automatic){ev.o.auto === 'apple' ? ' by Apple Mail' : ''}, not counted</span>}
                       {ev.kind === 'open' &&
-                        (opts.details ? (
+                        (ev.o.via ? (
+                          <span title={`${ev.o.via === 'gmail' ? 'Gmail' : 'Yahoo Mail'} loads pictures through its own servers, so the device isn’t known`}>
+                            Opened via <b>{ev.o.via === 'gmail' ? 'Gmail' : 'Yahoo Mail'}</b>
+                          </span>
+                        ) : ev.o.device ? (
                           <>
                             Opened on <b>{ev.o.device}</b>
                             {ev.o.place && ` · ${ev.o.place}`}
                           </>
                         ) : (
-                          <b>Opened</b>
+                          <>
+                            <b>Opened</b>
+                            {ev.o.place && ` · ${ev.o.place}`}
+                          </>
                         ))}
                     </span>
                     <time title={fullDate(ev.at)}>{relative(ev.at)}</time>
@@ -139,7 +149,7 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
           {remindAt > new Date() ? `Reminder on ${remindAt.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} if there’s no reply` : 'No reply yet, time to follow up'}
         </div>
       )}
-      <p className="tp-note">Opens are a good signal, not proof. Some apps load images automatically, others block them. Clicks, file views and replies are reliable.</p>
+      <p className="tp-note">Opens are a hint, not proof. Apple Mail and some mail filters load pictures by themselves, so those show as maybe automatic and don’t count. Gmail loads them through Google, which hides the device. Apps that block pictures never show an open. Clicks and replies are the surest signs.</p>
     </div>
   );
 }

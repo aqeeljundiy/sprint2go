@@ -695,7 +695,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     } else showToast({ text: 'Reply sent' });
   };
 
-  const toThread = (m: Outgoing, location: Location, id = uid()): Thread => ({
+  /** `scheduled`: a "send later" draft keeps its tracking, so the server tracks it when it goes out. */
+  const toThread = (m: Outgoing, location: Location, id = uid(), scheduled = false): Thread => ({
     id,
     accountId: m.fromId,
     subject: m.subject || '(no subject)',
@@ -712,9 +713,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         body: m.text,
         html: m.html,
         attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: fmtSize(f.size) })) : undefined,
-        trackOptions: m.track && location !== 'drafts' ? m.trackOptions : undefined,
+        trackOptions: m.track && (location !== 'drafts' || scheduled) ? m.trackOptions : undefined,
         tracking:
-          m.track && location !== 'drafts'
+          m.track && (location !== 'drafts' || scheduled)
             ? Object.fromEntries([...m.to, ...m.cc].filter((p) => !isTeam(p.email)).map((p) => [p.email, { opens: [], clicks: [] }]))
             : undefined,
       },
@@ -747,7 +748,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const send = (m: Outgoing) => {
     if (m.sendAt) {
       // Send later: kept as a scheduled draft until its time (the server does this for real).
-      const t = { ...toThread(m, 'drafts'), sendAt: m.sendAt };
+      const t = { ...toThread(m, 'drafts', undefined, true), sendAt: m.sendAt };
       setThreads((ts) => [t, ...ts.filter((x) => x.id !== compose?.draftId)]);
       setCompose(null);
       showToast({ text: `Scheduled for ${new Date(m.sendAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`, action: { label: 'Undo', run: () => setThreads((ts) => ts.filter((x) => x.id !== t.id)) } });
@@ -767,7 +768,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })) }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify } : undefined }),
       }).then(
         async (r) => {
           if (!r.ok) showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The mail could not be handed to the mail engine.' });
@@ -805,7 +806,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const who = msg.to.find((p) => p.email === email)?.name ?? email;
     setTimeout(() => {
       if (!latest.current.threads.some((t) => t.id === thread.id)) return; // send was undone
-      const open = { at: new Date().toISOString(), device: 'iPhone · Gmail', place: 'Jakarta, ID' };
+      const open = { at: new Date().toISOString(), device: 'Windows PC · Outlook' };
       setThreads((ts) =>
         ts.map((t) =>
           t.id !== thread.id
@@ -821,7 +822,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ),
       );
       if (latest.current.notifyOpens)
-        showToast({ text: `👀 ${who} just opened “${thread.subject}”`, action: { label: 'View', run: () => openThread(thread.id) } });
+        showToast({ text: `${who} just opened “${thread.subject}”`, action: { label: 'View', run: () => openThread(thread.id) } });
     }, 9000);
   };
 
@@ -2222,6 +2223,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   // Notifications on phones and computers: a tap opens the item, the icon shows the unread count (pushBridge.ts).
   usePushBridge({ userId: user.id, wsId: ws.id, workspaceIds: workspaces.map((w) => w.id), notices, switchWs: setWsId, open: openNotice, toast: showToast });
+  // Someone just opened an email you sent (the server's notice, server/readTracking.ts): a toast too while you're here.
+  const openedSeen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const opened = myNotices.filter((n) => n.event === 'opened');
+    if (!openedSeen.current) return void (openedSeen.current = new Set(opened.map((n) => n.id)));
+    for (const n of opened) {
+      if (openedSeen.current.has(n.id)) continue;
+      openedSeen.current.add(n.id);
+      if (!n.read && Date.now() - Date.parse(n.at) < 120_000) showToast({ text: n.text, action: { label: 'View', run: () => openNotice(n) } });
+    }
+  }, [myNotices]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------------- Calendar ---------------- */
 
@@ -4127,7 +4139,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           contacts={contacts}
           signature={settings.signature}
           trackByDefault={settings.trackByDefault}
-          canTrack={demoOk}
+          canTrack={ws.readTracking !== false}
           accounts={sendable.length ? sendable : myAccounts}
           defaultFrom={activeAccount !== 'all' && sendable.some((a) => a.id === activeAccount) ? activeAccount : (sendable[0] ?? myAccounts[0])?.id}
           initial={compose.initial}
