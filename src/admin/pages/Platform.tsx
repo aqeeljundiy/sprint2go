@@ -56,6 +56,8 @@ interface System {
   dbBytes: number;
   backups: { file: string; bytes: number; at: string }[];
   lastBackupAt: string | null;
+  build: { builtAt: string; bundle: string | null; commit: string | null } | null;
+  offsite: { configured: boolean; where: string | null; last: { at: string; file: string; bytes: number; kept: number } | null; error: { at: string; message: string } | null };
   cert: Cert;
   systemMail: 'ses' | 'own' | 'log';
   noreply: string;
@@ -93,6 +95,8 @@ const certRow = (c: Cert) => ({
           : 'Self-signed: Google routes that require a CA-signed one bounce. Set CF_DNS_TOKEN or MAIL_TLS_CERT',
   ok: c.trusted,
 });
+/** The newest off-site upload failed (or there's none yet while it's set up). */
+const offsiteFailing = (o: System['offsite']) => !!o.error && (!o.last || o.error.at > o.last.at);
 const uptime = (s: number) => (s > 86400 ? `${Math.floor(s / 86400)} d ${Math.floor((s % 86400) / 3600)} h` : s > 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.floor(s / 60)} min`);
 
 function Health() {
@@ -134,7 +138,12 @@ function Health() {
               certRow(data.cert),
               { label: 'Support address', value: data.supportEmail },
               { label: 'Meeting recorder', value: !data.recorder.configured ? 'Not set up' : data.recorder.reachable ? `Answering · ${data.recorder.bots ?? 0} bots busy` : 'Not answering', ok: !data.recorder.configured || data.recorder.reachable },
-              { label: 'Built', value: data.built ? `${dateTime(data.built)} · Node ${data.node}` : 'unknown' },
+              {
+                label: 'Off-site backups',
+                value: !data.offsite.configured ? 'Not set up: add S3_* to keep a copy off this server' : offsiteFailing(data.offsite) ? `Failing: ${data.offsite.error!.message}` : data.offsite.last ? `Copied ${rel(data.offsite.last.at)}, ${bytes(data.offsite.last.bytes)}` : 'Set up: the first copy goes with the next daily backup',
+                ok: data.offsite.configured && !offsiteFailing(data.offsite),
+              },
+              { label: 'Build', value: data.build ? `Running build from ${dateTime(data.build.builtAt)}${data.build.commit ? ` · ${data.build.commit.slice(0, 7)}` : ''} · Node ${data.node}` : data.built ? `Built ${dateTime(data.built)} · Node ${data.node}` : 'unknown' },
             ]}
           />
         </Section>
@@ -399,7 +408,33 @@ function Backups() {
             ))}
           </div>
         )}
-        <p className="adm-note">Keep a copy off this server too: download one a week, or set up an off-site copy of the data volume in Dokploy.</p>
+        <p className="adm-note">Labelled copies (before a cleanup, or made with Back up now) sit outside the 14-day rotation.</p>
+      </Section>
+      <Section title="Off-site copy" hint={data.offsite.where ?? 'S3, Cloudflare R2 or Backblaze B2'}>
+        {!data.offsite.configured ? (
+          <Empty title="Not set up" text="Add S3_ENDPOINT, S3_BUCKET, S3_REGION, S3_KEY and S3_SECRET on the server to keep a copy off this server. Each daily backup then goes there gzipped, and the last 30 are kept." />
+        ) : (
+          <>
+            {offsiteFailing(data.offsite) && (
+              <div className="adm-banner bad">
+                <AlertTriangle size={15} />
+                <span>
+                  The last copy failed {rel(data.offsite.error!.at)}: {data.offsite.error!.message}
+                </span>
+              </div>
+            )}
+            {data.offsite.last ? (
+              <Rows
+                rows={[
+                  { label: 'Last copy', value: `${data.offsite.last.file}, ${bytes(data.offsite.last.bytes)}, ${rel(data.offsite.last.at)}`, ok: !offsiteFailing(data.offsite) },
+                  { label: 'Kept there', value: `${data.offsite.last.kept} daily copies (up to 30)` },
+                ]}
+              />
+            ) : (
+              !offsiteFailing(data.offsite) && <Empty title="No copy yet" text="The first one goes up with the next daily backup." />
+            )}
+          </>
+        )}
       </Section>
     </>
   );

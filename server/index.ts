@@ -18,6 +18,7 @@ import { mailConfigured, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as routing from './routing.ts';
+import * as offsite from './offsite.ts';
 import { certState } from './mailcert.ts';
 import { ownership as domainOwnership } from './domains.ts';
 import * as platform from './platform.ts';
@@ -30,6 +31,14 @@ const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1'; // localhost only, unless hosted (HOST=0.0.0.0 in the container)
 const DIST = join(process.cwd(), 'dist');
 const STARTED = Date.now();
+/** Which build is running: dist/version.json, written by `npm run build` (scripts/build-stamp.mjs). */
+const BUILD = (() => {
+  try {
+    return JSON.parse(readFileSync(join(DIST, 'version.json'), 'utf8')) as { builtAt: string; bundle: string | null; commit: string | null };
+  } catch {
+    return null;
+  }
+})();
 /** Sign-ups waiting for their email code (in memory: a restart just means starting again). */
 const signups = new Map<string, { name: string; hash: string; code: string; tries: number; until: number }>();
 
@@ -77,7 +86,7 @@ admin.loadPricing();
 // is taken first; real companies stay.
 if (process.env.S2G_PURGE_DEMO === '1' && process.env.NODE_ENV === 'production' && process.env.S2G_DEMO !== '1' && !(platform.settings() as any).demoPurged) {
   void db
-    .backup()
+    .backup('before-demo-cleanup')
     .then((file) => {
       const s = seed();
       const demoWsIds = new Set((s.workspaces as any[]).map((w) => w.id));
@@ -808,7 +817,7 @@ createServer(async (req, res) => {
   if (secureCookies()) res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');
   if (siteRedirect(req, res, p)) return;
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
-  if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString() });
+  if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString(), build: BUILD });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
   // What this server can really do. The app hides or disables what depends on something that isn't there.
   if (p === '/api/caps' && req.method === 'GET') return json(res, 200, caps());
@@ -2130,14 +2139,22 @@ function notifyPeople(userIds: string[], workspaceId: string, text: string, link
   if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
 }
 
-// Once a day: expired sessions go, and a copy of the database lands in data/backups (the last 14 are kept).
+// Once a day: expired sessions go, and a copy of the database lands in data/backups (the last 14 are kept), with a
+// gzipped copy off this server when S3_* is set (the last 30 there).
 const housekeeping = () => {
   try {
     db.purgeSessions();
   } catch (e) {
     console.error('[sessions]', e);
   }
-  db.backup().then((f) => console.log(`Backup: ${f}`)).catch((e) => console.error('[backup]', e instanceof Error ? e.message : e));
+  db.backup()
+    .then(async (f) => {
+      console.log(`Backup: ${f}`);
+      if (!offsite.offsiteConfigured()) return;
+      const up = await offsite.uploadBackup(f);
+      console.log(`Backup copied off-site: ${up.file}, ${Math.round(up.bytes / 1024)} KB`);
+    })
+    .catch((e) => console.error('[backup]', e instanceof Error ? e.message : e));
 };
 setTimeout(housekeeping, 60_000);
 setInterval(housekeeping, 24 * 60 * 60_000);

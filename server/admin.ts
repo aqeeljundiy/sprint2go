@@ -10,6 +10,7 @@ import * as db from './db.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
 import * as mailer from './mailer.ts';
+import { offsiteState } from './offsite.ts';
 import { certState } from './mailcert.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
@@ -165,11 +166,19 @@ function systemInfo(ctx: AdminCtx) {
     /* fine */
   }
   const built = existsSync(join(process.cwd(), 'dist', 'index.html')) ? statSync(join(process.cwd(), 'dist', 'index.html')).mtime.toISOString() : null;
-  const flags = ['PUBLIC_URL', 'S2G_OPERATORS', 'S2G_DEMO', 'MAIL_HOST', 'MAIL_IP', 'SUPPORT_EMAIL', 'SES_KEY', 'SES_SECRET', 'MAIL_FROM', 'RECORDER_URL', 'RECORDER_SECRET', 'S2G_SECRET', 'CF_DNS_TOKEN', 'MAIL_TLS_CERT'].map((k) => ({ key: k, set: !!process.env[k] }));
+  // The build stamp (scripts/build-stamp.mjs): when this build was made and from which commit, even without .git.
+  let build: { builtAt: string; bundle: string | null; commit: string | null } | null = null;
+  try {
+    build = JSON.parse(readFileSync(join(process.cwd(), 'dist', 'version.json'), 'utf8'));
+  } catch {
+    /* built before the stamp existed */
+  }
+  const flags = ['PUBLIC_URL', 'S2G_OPERATORS', 'S2G_DEMO', 'MAIL_HOST', 'MAIL_IP', 'SUPPORT_EMAIL', 'SES_KEY', 'SES_SECRET', 'MAIL_FROM', 'RECORDER_URL', 'RECORDER_SECRET', 'S2G_SECRET', 'S3_BUCKET', 'CF_DNS_TOKEN', 'MAIL_TLS_CERT'].map((k) => ({ key: k, set: !!process.env[k] }));
   return {
     version,
-    commit: process.env.SOURCE_COMMIT ?? process.env.S2G_COMMIT ?? null,
-    built,
+    commit: process.env.SOURCE_COMMIT ?? process.env.S2G_COMMIT ?? build?.commit ?? null,
+    built: build?.builtAt ?? built,
+    build,
     node: process.version,
     uptimeSeconds: Math.round((Date.now() - ctx.startedAt) / 1000),
     production: process.env.NODE_ENV === 'production',
@@ -179,6 +188,7 @@ function systemInfo(ctx: AdminCtx) {
     dbBytes: existsSync(db.dbPath) ? statSync(db.dbPath).size : 0,
     backups: backups.slice(0, 20),
     lastBackupAt: backups[0]?.at ?? null,
+    offsite: offsiteState(),
     cert: certState(mailer.MAIL_HOST),
     systemMail: mailer.systemMailPath(),
     noreply: mailer.NOREPLY,
@@ -197,6 +207,10 @@ async function warnings(ctx: AdminCtx) {
   const out: { kind: string; text: string; level: 'high' | 'normal'; to?: string }[] = [];
   if (sys.disk && sys.disk.free / sys.disk.total < 0.1) out.push({ kind: 'disk', level: 'high', text: `Disk nearly full: ${(sys.disk.free / 1e9).toFixed(1)} GB free.`, to: '/admin/platform' });
   if (!sys.lastBackupAt || sys.lastBackupAt < new Date(Date.now() - 36 * 3600_000).toISOString()) out.push({ kind: 'backup', level: 'high', text: sys.lastBackupAt ? 'The last backup is older than a day.' : 'No backup yet.', to: '/admin/platform/backups' });
+  // The off-site copy: its last upload failed, or none for two days although it's set up.
+  const off = sys.offsite;
+  if (off.configured && off.error && (!off.last || off.error.at > off.last.at)) out.push({ kind: 'offsite', level: 'high', text: `The off-site backup copy failed: ${off.error.message}`, to: '/admin/platform/backups' });
+  else if (off.configured && off.last && off.last.at < new Date(Date.now() - 48 * 3600_000).toISOString()) out.push({ kind: 'offsite', level: 'high', text: 'The last off-site backup copy is older than two days.', to: '/admin/platform/backups' });
   // The mail server's certificate: Let's Encrypt couldn't get or renew it, or a trusted one is close to expiring.
   const cert = sys.cert;
   if (cert.error) out.push({ kind: 'cert', level: cert.trusted ? 'normal' : 'high', text: cert.acme ? `Let’s Encrypt couldn’t ${cert.trusted ? 'renew' : 'issue'} the mail server’s certificate: ${cert.error.message}` : `The mail server’s certificate can’t be used: ${cert.error.message}`, to: '/admin/platform/mail' });
@@ -1218,7 +1232,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   }
   if (sub === 'backup/now' && POST) {
     if (deny('platform')) return true;
-    const file = await db.backup();
+    const file = await db.backup(`manual-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}`);
     log('system.backup', null, file.split('/').pop());
     return (json(res, 200, { file: file.split('/').pop() }), true);
   }
@@ -1345,7 +1359,8 @@ export function applyCoupon(plan: Plan, c: platform.Coupon): Plan {
 /** Opens the newest backup read-only, checks its integrity and that it has data. */
 export function testLatestBackup() {
   const dir = join(db.dataDir, 'backups');
-  const file = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.db')).sort().pop() : undefined;
+  // The newest by time: labelled one-offs sort before the day's daily copy by name.
+  const file = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.db')).sort((a, b) => statSync(join(dir, a)).mtimeMs - statSync(join(dir, b)).mtimeMs).pop() : undefined;
   let result: { at: string; file: string; ok: boolean; detail: string };
   if (!file) result = { at: now(), file: '', ok: false, detail: 'No backup to test.' };
   else {

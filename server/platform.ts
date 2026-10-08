@@ -142,6 +142,7 @@ export interface PlatformSettings {
   broadcasts: { id: string; subject: string; audience: string; sent: number; at: string; by: string }[];
   billing: { name: string; address: string; npwp: string; bank: string; email: string }; // printed on invoices
   backupTest: { at: string; file: string; ok: boolean; detail: string } | null;
+  offsite?: { at: string; file: string; bytes: number; kept: number; error?: { at: string; message: string } | null } | null; // the last off-site backup upload (server/offsite.ts)
 }
 const DEFAULTS: PlatformSettings = {
   homeWorkspace: null,

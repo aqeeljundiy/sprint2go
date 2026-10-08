@@ -100,18 +100,24 @@ export const endSession = (token: string) => db.prepare('DELETE FROM sessions WH
 export const endSessions = (userId: string) => db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 export const purgeSessions = () => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
 
-/** A copy of the database into data/backups, keeping the last 14 (one a day). */
-export async function backup() {
+/** The daily copies: sprint2go-2026-10-09.db. Labelled one-offs (sprint2go-2026-10-09-before-demo-cleanup.db) never match. */
+export const DAILY_BACKUP = /^sprint2go-\d{4}-\d{2}-\d{2}\.db$/;
+/**
+ * A copy of the database into data/backups. Without a label it's the daily copy (the last 14 are kept). With a label
+ * it's a one-off that sits outside that rotation, so the daily copy can't overwrite it: "manual-…" ones from the
+ * backend keep their last 10, any other label (e.g. before-demo-cleanup) stays until someone removes it.
+ */
+export async function backup(label?: string) {
   const dir = join(DIR, 'backups');
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, `sprint2go-${new Date().toISOString().slice(0, 10)}.db`);
+  const slug = (label ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  const file = join(dir, `sprint2go-${new Date().toISOString().slice(0, 10)}${slug ? `-${slug}` : ''}.db`);
   await sqliteBackup(db, file);
   const { readdirSync, unlinkSync } = await import('node:fs');
-  readdirSync(dir)
-    .filter((f) => f.startsWith('sprint2go-') && f.endsWith('.db'))
-    .sort()
-    .slice(0, -14)
-    .forEach((f) => unlinkSync(join(dir, f)));
+  const all = readdirSync(dir);
+  const prune = (files: string[], keep: number) => files.sort().slice(0, -keep).forEach((f) => unlinkSync(join(dir, f)));
+  prune(all.filter((f) => DAILY_BACKUP.test(f)), 14);
+  prune(all.filter((f) => /^sprint2go-\d{4}-\d{2}-\d{2}-manual-[a-z0-9-]*\.db$/.test(f)), 10);
   return file;
 }
 
