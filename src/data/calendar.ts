@@ -43,6 +43,7 @@ const standups = [0, 1, 2, 3, 4, 7, 8, 9, 10, 11].map((d) =>
     start: at(d, 9, 30),
     end: at(d, 9, 45),
     location: 'Google Meet',
+    meetingUrl: 'https://meet.google.com/pnp-stnd-upx',
     guests: [faisal, aditya, rizky],
   }),
 );
@@ -53,7 +54,7 @@ export const EVENTS: CalEvent[] = [
   ev({ title: 'Focus: sprint2go UI', calendarId: 'work', start: at(3, 13), end: at(3, 16) }),
   ev({ title: 'Gym', calendarId: 'personal', start: at(5, 8), end: at(5, 9) }),
   ev({ title: 'Family dinner', calendarId: 'personal', start: at(5, 19), end: at(5, 21) }),
-  ev({ title: 'Lumina Skin: 11.11 & 12.12 budget', calendarId: 'clients', start: at(7, 10, 30), end: at(7, 11, 15), location: 'Zoom', guests: [sarah], threadId: 't5' }),
+  ev({ title: 'Lumina Skin: 11.11 & 12.12 budget', calendarId: 'clients', start: at(7, 10, 30), end: at(7, 11, 15), location: 'Zoom', meetingUrl: 'https://us02web.zoom.us/j/81234567890', guests: [sarah], threadId: 't5' }),
   ev({ title: 'Interviews: performance marketer', calendarId: 'work', start: at(8, 10), end: at(8, 12), guests: [faisal, aditya], threadId: 't3' }),
   ev({ title: 'Invoice review', calendarId: 'work', start: at(8, 11), end: at(8, 11, 45) }),
   ev({ title: 'P&P staging review', calendarId: 'work', start: at(9, 15), end: at(9, 16), guests: [rizky] }),

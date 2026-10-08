@@ -24,6 +24,8 @@ import * as routing from './routing.ts';
 import * as offsite from './offsite.ts';
 import { certState } from './mailcert.ts';
 import { ownership as domainOwnership } from './domains.ts';
+import * as invites from './invites.ts';
+import { buildReply } from './ics.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
 import * as customDomains from './customDomains.ts';
@@ -1328,7 +1330,12 @@ createServer(async (req, res) => {
       platform.event('coupon.used', ws.id, me, ok.coupon.code);
       return json(res, 200, { ok: true, coupon: { code: ok.coupon.code, kind: ok.coupon.kind, value: ok.coupon.value, months: ok.coupon.months } });
     }
-    if (p === '/api/state') return json(res, 200, visibleState(me));
+    if (p === '/api/state') {
+      // ?only=threads,workspaces: what Mail's refresh needs, without everything else.
+      const only = (url.searchParams.get('only') ?? '').split(',').filter((k) => COLLS.includes(k as CollectionKey));
+      const state = visibleState(me);
+      return json(res, 200, only.length ? Object.fromEntries(only.map((k) => [k, state[k]])) : state);
+    }
 
     /* ---------- the mail engine: a company's domain, records, route and sending ---------- */
     const monthStart = () => {
@@ -1485,6 +1492,163 @@ createServer(async (req, res) => {
       } catch (e) {
         return json(res, 400, { error: e instanceof Error ? e.message : 'Could not send.' });
       }
+    }
+
+    /* ---------- mail: calendar invites, out of office, aliases, removing a mailbox ---------- */
+    /** A hosted mailbox that can really send, checked afresh when the last check said no; else why not. */
+    const sendBlock = async (ws: any, account: any): Promise<string | null> => {
+      if (account.provider && account.provider !== 'sprint2go') return `${account.email} stays with ${account.provider === 'microsoft' ? 'Microsoft' : 'Google'}, so mail from it goes out there.`;
+      if (ws.mailReady?.mailboxes?.[account.id]?.send) return null;
+      const r = await mailer.refreshReadiness(ws.id);
+      const m = r?.mailboxes[account.id];
+      return m?.send ? null : `Sending isn’t set up for ${account.email} yet. ${m?.sendWhy ?? m?.why ?? ''}`.trim();
+    };
+    if (p === '/api/mail/invite' && req.method === 'POST') {
+      // Yes, Maybe or No to an emailed invite: tells the organiser (an iCalendar REPLY from the mailbox) and puts the
+      // event in this person's calendar, or takes it off.
+      const { threadId, messageId, answer } = await body(req);
+      if (!invites.isRsvp(answer)) return json(res, 400, { error: 'Answer yes, maybe or no.' });
+      const t = db.getDoc('threads', String(threadId ?? '')) as any;
+      const ws = t && (memberOf(me) as any[]).find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId));
+      const account = ws?.accounts.find((a: any) => a.id === t.accountId);
+      if (!t || !account || !(account.users ?? []).includes(me)) return json(res, 403, { error: 'Not your mailbox.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      const msg = (t.messages ?? []).find((m: any) => m.id === messageId);
+      const inv = msg?.invite as invites.StoredInvite | undefined;
+      if (!inv || (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH')) return json(res, 400, { error: 'There’s no invite to answer in this email.' });
+      const own = new Set<string>([String(account.email).toLowerCase(), ...(ws.accounts ?? []).map((a: any) => String(a.email).toLowerCase())]);
+      const tell = inv.method === 'REQUEST' && !!inv.organizer?.email && !own.has(inv.organizer.email);
+      const meName = String((db.getDoc('users', me) as any)?.name ?? account.name ?? '');
+      if (tell) {
+        const blocked = await sendBlock(ws, account);
+        if (blocked) return json(res, 409, { error: `Your answer can’t go out yet. ${blocked}` });
+        const you = inv.you ?? String(account.email).toLowerCase();
+        const name = account.kind === 'shared' ? String(account.name || ws.name) : meName || String(account.name);
+        const said = answer === 'accepted' ? 'Accepted' : answer === 'tentative' ? 'Tentatively accepted' : 'Declined';
+        try {
+          await mailer.queueSend({
+            workspaceId: ws.id,
+            accountId: account.id,
+            threadId: t.id,
+            messageId: 'rsvp-' + randomBytes(6).toString('hex'),
+            from: { name, email: String(account.email).toLowerCase() },
+            to: [inv.organizer!],
+            cc: [],
+            subject: `${said}: ${inv.title}`,
+            text: `${name} ${answer === 'accepted' ? 'accepted' : answer === 'tentative' ? 'might come to' : 'declined'} “${inv.title}”.`,
+            files: [],
+            inReplyTo: msg.mid,
+            references: msg.mid ? [msg.mid] : undefined,
+            ical: { method: 'REPLY', content: buildReply(inv, { name, email: you }, answer) },
+          });
+        } catch (e) {
+          return json(res, 400, { error: e instanceof Error ? e.message : 'Your answer could not be sent.' });
+        }
+      }
+      // The answer, on the email (read fresh: the send may have touched the thread).
+      const fresh = (db.getDoc('threads', t.id) as any) ?? t;
+      const at = new Date().toISOString();
+      const nextThread = { ...fresh, messages: fresh.messages.map((m: any) => (m.id === msg.id ? { ...m, invite: { ...m.invite, answer: { status: answer, at, by: me, sent: tell } } } : m)) };
+      db.writeDocs('threads', [nextThread], [], me);
+      broadcast('threads', [nextThread], []);
+      // This person's calendar: the event (each date of a repeating one), or none after No.
+      const before = invites.eventsOf(inv.uid, ws.id, [me]);
+      const made = answer === 'declined' ? { docs: [] as db.Doc[], firstOnly: false } : invites.eventsFor(inv, { userId: me, workspaceId: ws.id, threadId: t.id, rsvp: answer, mine: [...own] });
+      const docs = made.docs.map((d) => {
+        const same = before.find((e) => (e.occurrence ?? e.start) === ((d as any).occurrence ?? d.start));
+        return same ? { ...d, id: same.id } : d;
+      });
+      const keep = new Set(docs.map((d) => d.id));
+      const gone = before.filter((e) => !keep.has(e.id));
+      db.writeDocs('events', docs, gone.map((e) => e.id), me);
+      if (gone.length) broadcast('events', [], gone.map((e) => e.id), undefined, gone);
+      if (docs.length) broadcast('events', docs, []);
+      return json(res, 200, { sent: tell, events: docs.map((d) => d.id), firstOnly: made.firstOnly });
+    }
+    if (p === '/api/mail/away' && req.method === 'POST') {
+      // Out of office for one mailbox: its people (or an admin) set it; the server keeps it and answers mail with it.
+      const { workspaceId, accountId, away } = await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
+      const account = ws?.accounts?.find((a: any) => a.id === accountId);
+      if (!ws || !account || (!(account.users ?? []).includes(me) && !isAdminOf(me, ws.id))) return json(res, 403, { error: 'Not your mailbox.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      const a = away && typeof away === 'object' ? away : {};
+      const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
+      const instant = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
+      const next = { on: !!a.on, from: day(a.from), until: day(a.until), fromAt: instant(a.fromAt), untilAt: instant(a.untilAt), subject: String(a.subject ?? '').slice(0, 200), message: String(a.message ?? '').slice(0, 5000) };
+      if (next.on && !next.message.trim()) return json(res, 400, { error: 'Write the message people get back.' });
+      if (next.fromAt && next.untilAt && next.untilAt < next.fromAt) return json(res, 400, { error: 'The last day is before the first.' });
+      if (next.on) {
+        const blocked = await sendBlock(ws, account);
+        if (blocked) return json(res, 409, { error: `Out of office can’t answer yet. ${blocked}` });
+      }
+      const prev = account.away ?? {};
+      const same = prev.on && next.on && prev.subject === next.subject && prev.message === next.message && prev.fromAt === next.fromAt && prev.untilAt === next.untilAt;
+      const saved = { ...next, since: next.on ? (same ? prev.since : new Date().toISOString()) : undefined };
+      const latest = db.getDoc('workspaces', ws.id) as any;
+      const nextWs = { ...latest, accounts: latest.accounts.map((x: any) => (x.id === account.id ? { ...x, away: saved } : x)) };
+      db.writeDocs('workspaces', [nextWs], [], me);
+      broadcast('workspaces', [nextWs], []);
+      return json(res, 200, { away: saved });
+    }
+    if (p === '/api/mail/aliases' && req.method === 'POST') {
+      // Extra addresses that deliver into mailboxes here. Checked here: at the company's own domain, not anyone's
+      // mailbox already, and pointing at mailboxes hosted here.
+      const { workspaceId, aliases } = await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change addresses.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      if (ws.emailSetup !== 'hosted' && ws.emailSetup !== 'mix') return json(res, 409, { error: ws.emailSetup === 'keep' ? 'Your domain’s mail stays with your provider, so extra addresses are made there.' : 'Email is off for this company.' });
+      const domains = (ws.domains ?? []).map((d: string) => d.toLowerCase());
+      const hosted = new Set((ws.accounts ?? []).filter((a: any) => !a.temp && (!a.provider || a.provider === 'sprint2go')).map((a: any) => a.id));
+      const taken = mailer.localAccounts();
+      const out: { id: string; address: string; to: string[] }[] = [];
+      for (const al of Array.isArray(aliases) ? aliases.slice(0, 200) : []) {
+        const address = String(al?.address ?? '').trim().toLowerCase();
+        const [local, domain] = address.split('@');
+        if (!/^[a-z0-9][a-z0-9._+-]{0,63}$/.test(local ?? '') || !domains.includes(domain ?? '')) return json(res, 400, { error: `${address || 'That address'} isn’t an address at ${domains.join(' or ') || 'your domain'}.` });
+        const hit = taken.get(address);
+        if ((hit && !(hit.alias && hit.ws.id === ws.id)) || out.some((x) => x.address === address)) return json(res, 409, { error: `${address} is already in use.` });
+        const to = [...new Set<string>((Array.isArray(al?.to) ? al.to : []).map(String))].filter((id) => hosted.has(id));
+        if (!to.length) return json(res, 400, { error: `Pick at least one mailbox for ${address}.` });
+        out.push({ id: typeof al?.id === 'string' && /^[\w-]{1,40}$/.test(al.id) ? al.id : randomBytes(6).toString('hex'), address, to });
+      }
+      const latest = db.getDoc('workspaces', ws.id) as any;
+      const nextWs = { ...latest, mailAliases: out };
+      db.writeDocs('workspaces', [nextWs], [], me);
+      broadcast('workspaces', [nextWs], []);
+      return json(res, 200, { aliases: out });
+    }
+    if (p === '/api/mail/mailbox/remove' && req.method === 'POST') {
+      // Removing a mailbox: its mail moves to another mailbox or is deleted, its aliases let go of it, and new mail to
+      // the address is refused.
+      const { workspaceId, accountId, moveTo } = await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can remove mailboxes.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      const account = (ws.accounts ?? []).find((a: any) => a.id === accountId);
+      if (!account) return json(res, 404, { error: 'No such mailbox.' });
+      const target = moveTo ? (ws.accounts ?? []).find((a: any) => a.id === moveTo && a.id !== account.id && !a.temp) : null;
+      if (moveTo && !target) return json(res, 400, { error: 'Pick a mailbox to move the mail to.' });
+      const mail = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
+      // Deletions first, while the people on the mailbox can still see them.
+      db.writeDocs('threads', [], mail.map((t) => t.id), me);
+      broadcast('threads', [], mail.map((t) => t.id), undefined, mail);
+      if (target) {
+        const moved = mail.map((t) => ({ ...t, accountId: target.id, workspaceId: ws.id, assignee: target.kind === 'shared' ? t.assignee : undefined }));
+        db.writeDocs('threads', moved, [], me);
+        broadcast('threads', moved, []);
+      }
+      const latest = db.getDoc('workspaces', ws.id) as any;
+      const nextWs = {
+        ...latest,
+        accounts: latest.accounts.filter((a: any) => a.id !== account.id),
+        mailAliases: (latest.mailAliases ?? []).map((al: any) => ({ ...al, to: al.to.filter((id: string) => id !== account.id) })).filter((al: any) => al.to.length),
+      };
+      db.writeDocs('workspaces', [nextWs], [], me);
+      broadcast('workspaces', [nextWs], []);
+      soonReadiness(ws.id);
+      return json(res, 200, { moved: target ? mail.length : 0, deleted: target ? 0 : mail.length });
     }
 
     if (p === '/api/password' && req.method === 'POST') {
@@ -1873,9 +2037,11 @@ createServer(async (req, res) => {
           if (before) {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts,
-            // the routing checks' results (the admins only switch the daily check on or off), and the company's own address
-            // with its state (changed through /api/white-label/domain only).
-            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+            // the routing checks' results (the admins only switch the daily check on or off), the company's own address
+            // with its state (changed through /api/white-label/domain only) and the mail aliases (set through the server).
+            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+            // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
+            if (Array.isArray((d as any).accounts)) (d as any).accounts = (d as any).accounts.map((a: any) => ({ ...a, away: (before.accounts ?? []).find((b: any) => b.id === a.id)?.away }));
             const plan = planFromApp((d as any).plan, before.plan);
             // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
             // that isn't keeps what was there; an empty one means the usual stages.

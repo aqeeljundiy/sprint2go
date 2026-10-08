@@ -15,7 +15,7 @@ import { Popover } from './components/ui/Popover';
 import { SmoothHeight, TabPane } from './components/ui/Smooth';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
-import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -31,13 +31,16 @@ import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
-import { server, uploadFile } from './sync';
+import { live, resync, server, uploadFile } from './sync';
+import { InviteCard, type InviteState } from './components/InviteCard';
+import { MEETING_NAME, botCanJoin, meetingKind, meetingLinkOf } from './meetingLink';
+import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
 import { EmailDeliverySection } from './components/admin/EmailDelivery';
 import { ai, aiLive } from './ai';
 import type { AskChat } from './components/Assistant';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
-import { InviteMember, NewAccount } from './components/WorkspaceForms';
+import { InviteMember, NewAccount, RemoveMailbox } from './components/WorkspaceForms';
 import { applyBranding } from './components/WorkspaceLogo';
 import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, type Mode } from './components/Sidebar';
 import { MessageList } from './components/MessageList';
@@ -240,6 +243,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [activeAccount, setActiveAccount] = useState<string>('all');
   const [newWs, setNewWs] = useState(false);
   const [newAcct, setNewAcct] = useState(false);
+  const [removeAcct, setRemoveAcct] = useState<Account | null>(null); // asking what happens to its mail
   // Throwaway addresses: the dialog (new or editing one) and the little menu on each.
   const [tempDialog, setTempDialog] = useState<{ editing?: Account } | null>(null);
   const [tempMenu, setTempMenu] = useState<Account | null>(null);
@@ -453,6 +457,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [huddleId, setHuddleId] = useState<string | null>(null); // the channel whose huddle I'm in
   const [meetPage, setMeetPage] = useState<MeetPage>({ kind: 'list' });
   const [sendBotOpen, setSendBotOpen] = useState(false);
+  // Sending the notetaker to a calendar event that has no link it can join: the dialog asks, with the event filled in.
+  const [sendBotSeed, setSendBotSeed] = useState<{ title: string; fromEvent: string; attendees: string[]; note?: string } | null>(null);
   const [shareFor, setShareFor] = useState<string | null>(null);
   const [sharedPreview, setSharedPreview] = useState<string | null>(null);
   const [askScope, setAskScope] = useState<AskScope | null>(null);
@@ -492,7 +498,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const openDump = (t: string) => (aiOn ? setDump(t) : aiOff(', so the brain dump can’t turn notes into tasks'));
   const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : aiOff(''));
   const botOn = !server.on || caps.demo || recorderOn;
-  const openSendBot = () => (botOn ? setSendBotOpen(true) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
+  const openSendBot = () => (botOn ? (setSendBotSeed(null), setSendBotOpen(true)) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
   const calendarsOn = !server.on || caps.demo || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
   const go = (m: Mode) => {
     if (m !== 'settings') setLastMode(m);
@@ -504,6 +510,29 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   /* ---------------- Mail ---------------- */
+
+  // New mail arrives live. Refresh pulls the mailboxes again, reconnects when the live connection dropped, and asks
+  // the server to check the mail setup again; the list says when mail last came in fresh.
+  const [mailLive, setMailLive] = useState(() => ({ down: live.down, at: live.mailAt || Date.now() }));
+  useEffect(() => {
+    const on = () => setMailLive({ down: live.down, at: live.mailAt });
+    window.addEventListener('s2g:live', on);
+    return () => window.removeEventListener('s2g:live', on);
+  }, []);
+  const readyAsked = useRef(0);
+  const refreshMail = async () => {
+    if (!server.on) return void setMailLive({ down: false, at: Date.now() });
+    // The mailbox check looks at DNS and the server's ports: once a minute is plenty.
+    if (Date.now() - readyAsked.current > 60_000) {
+      readyAsked.current = Date.now();
+      void fetch('/api/mail/ready', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) }).catch(() => {});
+    }
+    try {
+      await resync(['threads', 'workspaces']);
+    } catch {
+      showToast({ text: 'Couldn’t reach the server. Check your connection, then try again.' });
+    }
+  };
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -690,10 +719,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Files a sent copy and drops copies straight into any of our own recipients' inboxes. */
   const deliver = (m: Outgoing, draftId?: string) => {
     const thread = toThread(m, 'archive');
-    // Mail to one of our own mailboxes arrives straight in its inbox.
-    const delivered: Thread[] = [...m.to, ...m.cc]
-      .map((p) => allAccounts.find((a) => a.email === p.email.toLowerCase() && a.id !== m.fromId))
-      .filter((a): a is Account => !!a)
+    // Mail to one of our own mailboxes arrives straight in its inbox (an alias: in each of its mailboxes). With the
+    // server, the mail engine does that, for mailboxes this person can't open too.
+    const boxesFor = (email: string) => {
+      const e = email.toLowerCase();
+      const direct = allAccounts.filter((a) => a.email === e);
+      return direct.length ? direct : allWorkspaces.flatMap((w) => (w.mailAliases ?? []).filter((al) => al.address === e).flatMap((al) => w.accounts.filter((a) => al.to.includes(a.id))));
+    };
+    const delivered: Thread[] = (server.on ? [] : [...new Map([...m.to, ...m.cc].flatMap((p) => boxesFor(p.email)).filter((a) => a.id !== m.fromId).map((a) => [a.id, a] as const)).values()])
       .map((a) => ({
         ...thread,
         id: uid(),
@@ -2261,6 +2294,113 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     });
   };
 
+  /* ---------------- Calendar invites in mail ---------------- */
+
+  /** What's known around an invite: the answer given (in any of its emails), your calendar, later versions. */
+  const inviteState = (t: Thread, m: Message): InviteState => {
+    const inv = m.invite!;
+    const related = threads.filter((x) => x.accountId === t.accountId).flatMap((x) => x.messages.filter((y) => y.invite?.uid === inv.uid).map((y) => ({ t: x, m: y, inv: y.invite! })));
+    const sameDate = (x: { recurrenceId?: string }) => !x.recurrenceId || x.recurrenceId === inv.recurrenceId;
+    const cancelled = related.some((r) => (r.inv.method === 'CANCEL' || !!r.inv.cancelled) && r.inv.sequence >= inv.sequence && sameDate(r.inv));
+    const newer = related.find((r) => (r.inv.method === 'REQUEST' || r.inv.method === 'PUBLISH') && r.inv.sequence > inv.sequence && (r.inv.recurrenceId ?? '') === (inv.recurrenceId ?? ''));
+    const last = related.map((r) => r.inv.answer).filter((a) => !!a).sort((a, b) => b!.at.localeCompare(a!.at))[0];
+    // A shared inbox answers as the mailbox: say who did.
+    const answer = last && { status: last.status, sent: last.sent, who: last.by === user.id ? undefined : firstOf(last.by) };
+    const mine = events.some((e) => e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id);
+    return { answer, onCalendar: mine, cancelled, newer: newer && newer.t.id !== t.id ? () => openThread(newer.t.id) : undefined };
+  };
+  /** Opens the calendar on this invite's next date. */
+  const showInvite = (uid: string, start: string) => {
+    const mine = events.filter((e) => e.inviteUid === uid && (e.userId ?? 'u-aqeel') === user.id).sort((a, b) => a.start.localeCompare(b.start));
+    const ev = mine.find((e) => e.end >= new Date().toISOString()) ?? mine[0];
+    go('calendar');
+    setCalCursor(new Date(ev?.start ?? start));
+    if (ev) setSelectedEventId(ev.id);
+  };
+  /** Yes, Maybe or No: the organiser hears it from this mailbox, and the event goes on (or off) your calendar. */
+  const answerInvite = async (t: Thread, m: Message, status: RsvpStatus): Promise<boolean> => {
+    const inv = m.invite!;
+    const org = inv.organizer?.name.split(' ')[0];
+    const tell = (sent: boolean, extra = '') =>
+      showToast({
+        text: `${status === 'accepted' ? (inv.method === 'PUBLISH' ? 'Added to your calendar' : 'You’re going') : status === 'tentative' ? 'You said maybe' : 'You said no'}${sent && org ? `. ${org} knows` : ''}.${extra}`,
+        ms: extra ? 8000 : 5000,
+        action: status !== 'declined' ? { label: 'View', run: () => showInvite(inv.uid, inv.start) } : undefined,
+      });
+    if (server.on) {
+      try {
+        const r = await fetch('/api/mail/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: t.id, messageId: m.id, answer: status }) });
+        const d = (await r.json().catch(() => ({}))) as { error?: string; sent?: boolean; firstOnly?: boolean };
+        if (!r.ok) {
+          showToast({ text: d.error ?? 'Your answer couldn’t be saved. Try again.', ms: 7000, action: r.status === 409 && wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+          return false;
+        }
+        tell(!!d.sent, d.firstOnly ? ' Only the first date is on your calendar: this kind of repeat can’t be read yet.' : '');
+        return true;
+      } catch {
+        showToast({ text: 'No connection: your answer wasn’t sent.' });
+        return false;
+      }
+    }
+    // The demo (no server): answered here, and nothing is sent.
+    const at = nowIso();
+    setThreads((ts) => ts.map((x) => (x.id !== t.id ? x : { ...x, messages: x.messages.map((y) => (y.id === m.id ? { ...y, invite: { ...inv, answer: { status, at, by: user.id, sent: false } } } : y)) })));
+    setEvents((es) => [
+      ...es.filter((e) => !(e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id)),
+      ...(status === 'declined' ? [] : [{ id: uid(), title: inv.title, calendarId: 'work', start: inv.start, end: inv.end, allDay: inv.allDay, location: inv.location, meetingUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, rsvp: status, organizer: inv.organizer } as CalEvent]),
+    ]);
+    tell(false, ' Demo: no answer is sent.');
+    return true;
+  };
+  const inviteCard = (t: Thread, m: Message) => {
+    const inv = m.invite!;
+    const acct = accountOf(t.accountId);
+    return (
+      <InviteCard
+        key={m.id}
+        invite={inv}
+        state={inviteState(t, m)}
+        conflicts={conflictsWith(inv.start, inv.end).filter((e) => e.inviteUid !== inv.uid)}
+        answerOff={acct && !boxReady(acct.id).send ? replyWhy(acct) : undefined}
+        onAnswerOff={() => acct && replyBlocked(acct)}
+        onAnswer={(st) => answerInvite(t, m, st)}
+        onOpenCalendar={() => showInvite(inv.uid, inv.start)}
+      />
+    );
+  };
+
+  /** The notetaker to a calendar event's call: its own meeting link, or, without one it can join, the dialog asks for it. */
+  const sendBotToEvent = (e: CalEvent) => {
+    if (!botOn) return explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.');
+    const url = meetingLinkOf(e);
+    const attendees = (e.guests ?? []).map((g) => g.name);
+    if (!url || !botCanJoin(url)) {
+      setSendBotSeed({ title: e.title, fromEvent: e.id, attendees, note: url ? `This is a ${MEETING_NAME[meetingKind(url)]} call, and the notetaker joins Google Meet and Zoom only.` : undefined });
+      setSendBotOpen(true);
+      return;
+    }
+    sendBot({ url, title: e.title, botName: meetSettings.botName, clientId: '', attendees, fromEvent: e.id });
+  };
+
+  /** Removing a mailbox: its mail moves to another mailbox or goes with it, and its address stops receiving. */
+  const removeMailbox = async (a: Account, moveTo: string | null): Promise<boolean> => {
+    const target = moveTo ? ws.accounts.find((x) => x.id === moveTo) : undefined;
+    if (server.on) {
+      const r = await fetch('/api/mail/mailbox/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, accountId: a.id, moveTo }) }).catch(() => null);
+      if (!r?.ok) {
+        showToast({ text: ((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? 'No connection: the mailbox wasn’t removed.' });
+        return false;
+      }
+    } else {
+      setThreads((ts) => (target ? ts.map((t) => (t.accountId === a.id ? { ...t, accountId: target.id } : t)) : ts.filter((t) => t.accountId !== a.id)));
+      patchWorkspace(ws.id, { accounts: ws.accounts.filter((x) => x.id !== a.id), mailAliases: (ws.mailAliases ?? []).map((al) => ({ ...al, to: al.to.filter((id) => id !== a.id) })).filter((al) => al.to.length) });
+    }
+    if (activeAccount === a.id) setActiveAccount('all');
+    setRemoveAcct(null);
+    showToast({ text: target ? `${a.email} removed. Its mail is in ${target.email} now` : `${a.email} and its mail removed` });
+    return true;
+  };
+
   const openThread = (threadId: string) => {
     const t = threads.find((x) => x.id === threadId);
     if (!t) return;
@@ -3337,11 +3477,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 return n;
               })
             }
-            onSendNow={(e) => {
-              const zoom = /zoom/i.test(e.location ?? '');
-              sendBot({ url: zoom ? 'https://zoom.us/j/1234567890' : 'https://meet.google.com/abc-defg-hij', title: e.title, botName: meetSettings.botName, clientId: '', attendees: (e.guests ?? []).map((g) => g.name), fromEvent: e.id });
-              setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
-            }}
+            onSendNow={sendBotToEvent}
             onAsk={setAskScope}
             onSend={() => openSendBot()}
             onMenu={() => setSidebarOpen(true)}
@@ -3399,7 +3535,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 {(mailWhy.receive || mailWhy.send) && <small>{mailWhy.receive ?? mailWhy.send}</small>}
               </div>
               {isAdmin && (
-                <EmailDeliverySection ws={ws} canManage firstName={myFirst} onWorkspace={(p) => patchWorkspace(ws.id, p)} toast={(text) => showToast({ text })} />
+                <EmailDeliverySection ws={ws} canManage firstName={myFirst} onWorkspace={(p) => patchWorkspace(ws.id, p)} onAddAccount={() => setNewAcct(true)} onRemoveAccount={setRemoveAcct} toast={(text) => showToast({ text })} />
               )}
             </div>
           </section>
@@ -3434,6 +3570,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               showSnippets={settings.showSnippets}
               width={Math.min(Math.max(listW, 300), 560)}
               onWidth={setListW}
+              onRefresh={refreshMail}
+              updatedAt={mailLive.at}
+              offline={server.on && mailLive.down}
               onQuery={setQuery}
               onFilter={setFilter}
               onOpen={open}
@@ -3504,6 +3643,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               savedToDrive={savedToDrive}
               onSaveToDrive={saveToDrive}
               onAddInvite={addInvite}
+              inviteCard={(m) => selected && inviteCard(selected, m)}
               onBack={() => setReaderOpen(false)}
               onArchive={archive}
               onTrash={trash}
@@ -3559,6 +3699,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               )
             }
             onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, stageIdFor(todos.find((x) => x.id === e.taskId) ?? { workspaceId: ws.id }, 'done'))}
+            onSendBot={botOn ? sendBotToEvent : undefined}
+            sentBot={(e) => {
+              const mid = sentEvents[e.id];
+              return mid ? () => (setMeetPage({ kind: 'meeting', id: mid }), go('meet')) : undefined;
+            }}
           />
         )}
 
@@ -3771,11 +3916,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 if (moves.length) showToast({ text: `Moved ${moves.length} task${moves.length === 1 ? '' : 's'}` });
               },
             }}
-            onRemoveAccount={(id) => {
-              patchWorkspace(ws.id, { accounts: ws.accounts.filter((a) => a.id !== id) });
-              if (activeAccount === id) setActiveAccount('all');
-              showToast({ text: 'Account removed from this workspace' });
-            }}
+            onRemoveAccount={(id) => setRemoveAcct(ws.accounts.find((a) => a.id === id) ?? null)}
+            mailExtras={
+              <OutOfOffice
+                accounts={myAccounts.filter((a) => !a.temp)}
+                canSend={(id) => (boxReady(id).send ? null : (boxReady(id).sendWhy ?? boxReady(id).why ?? 'Sending isn’t set up for this mailbox yet.'))}
+                onSave={async (a, away) => {
+                  if (!server.on) {
+                    patchWorkspace(ws.id, { accounts: ws.accounts.map((x) => (x.id === a.id ? { ...x, away: { ...away, since: away.on ? nowIso() : undefined } } : x)) });
+                    return null;
+                  }
+                  const r = await fetch('/api/mail/away', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, accountId: a.id, away }) }).catch(() => null);
+                  return r?.ok ? null : (((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? 'No connection. Try again.');
+                }}
+              />
+            }
           />
         )}
       </main>
@@ -4047,7 +4202,26 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           }}
         />
       )}
-      {sendBotOpen && <SendBotDialog clients={wsClients} botName={meetSettings.botName} languages={meetSettings.languages} real={recorderOn} onSend={sendBot} onClose={() => setSendBotOpen(false)} />}
+      {sendBotOpen && (
+        <SendBotDialog
+          clients={wsClients}
+          botName={meetSettings.botName}
+          languages={meetSettings.languages}
+          real={recorderOn}
+          seed={sendBotSeed ?? undefined}
+          onSend={(d) => sendBot({ ...d, ...(sendBotSeed ? { fromEvent: sendBotSeed.fromEvent, attendees: sendBotSeed.attendees } : {}) })}
+          onClose={() => setSendBotOpen(false)}
+        />
+      )}
+      {removeAcct && (
+        <RemoveMailbox
+          account={removeAcct}
+          workspace={ws}
+          conversations={removeAcct.users.includes(user.id) ? threads.filter((t) => t.accountId === removeAcct.id).length : null}
+          onRemove={(moveTo) => removeMailbox(removeAcct, moveTo)}
+          onClose={() => setRemoveAcct(null)}
+        />
+      )}
       {shareFor && meetings.some((m) => m.id === shareFor) && (
         <ShareDialog
           m={meetings.find((m) => m.id === shareFor)!}

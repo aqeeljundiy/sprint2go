@@ -17,6 +17,8 @@ import * as db from './db.ts';
 import { mailConfigured, sendMail, sendRaw, sesIdentity } from './mail.ts';
 import { domainKey, mayUse, ownership, ownersMap, settle as settleDomain, type Ownership } from './domains.ts';
 import { loadTls, onCertChange, startCertKeeper } from './mailcert.ts';
+import { applyInbound, readInvite } from './invites.ts';
+import { maybeAnswer, type Away } from './away.ts';
 export { domainKey };
 
 db.db.exec(`
@@ -28,8 +30,9 @@ db.db.exec(`
 `);
 
 type Person = { name: string; email: string };
-type Account = { id: string; email: string; name: string; kind: string; users: string[]; provider?: string; connected?: boolean };
-type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean };
+type Account = { id: string; email: string; name: string; kind: string; users: string[]; provider?: string; connected?: boolean; away?: Away };
+type Alias = { id: string; address: string; to: string[] };
+type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean; mailAliases?: Alias[] };
 
 export interface MailerDeps {
   publicUrl: string;
@@ -56,7 +59,7 @@ const workspaces = () => db.allDocs('workspaces') as unknown as Ws[];
  * (server/domains.ts); an address at our own name stays with the company that had it first.
  */
 export function localAccounts() {
-  const map = new Map<string, { ws: Ws; account: Account }>();
+  const map = new Map<string, { ws: Ws; account: Account; alias?: { address: string; accounts: Account[] } }>();
   const all = workspaces();
   const owner = ownersMap(all);
   for (const ws of all) {
@@ -76,6 +79,13 @@ export function localAccounts() {
         if (holder && holder.id !== ws.id) continue;
         map.set(`${addr.split('@')[0]}.${slug}@${MAIL_HOST}`, { ws, account: a });
       }
+    }
+    // Aliases: another address at the company's domain that delivers into one or more of its mailboxes here.
+    for (const al of ws.mailAliases ?? []) {
+      const addr = lower(al.address);
+      const boxes = (ws.accounts ?? []).filter((a) => al.to?.includes(a.id) && a.email && (!a.provider || a.provider === 'sprint2go'));
+      const aliasDomain = addr.split('@')[1] ?? '';
+      if (boxes.length && (ws.domains ?? []).map(lower).includes(aliasDomain) && owner(aliasDomain)?.id === ws.id && !map.has(addr)) map.set(addr, { ws, account: boxes[0], alias: { address: addr, accounts: boxes } });
     }
   }
   return map;
@@ -371,7 +381,15 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
   const rawUnsub = parsed.headerLines.find((h) => h.key === 'list-unsubscribe')?.line ?? '';
   const unsubUrl = ([] as string[]).concat(list?.unsubscribe?.url ?? []).find((u) => /^https?:\/\//i.test(u)) ?? rawUnsub.match(/<(https?:[^>]+)>/i)?.[1];
   const unsubOneClick = !!list?.['unsubscribe-post'] || parsed.headerLines.some((h) => h.key === 'list-unsubscribe-post');
-  for (const rcpt of session.envelope.rcptTo) {
+  // An alias delivers a copy to each of its mailboxes; a mailbox reached twice (directly and through an alias) gets one.
+  type Target = { rcpt: (typeof session.envelope.rcptTo)[number]; found: { ws: Ws; account: Account } | null; shared: boolean };
+  const targets = session.envelope.rcptTo
+    .flatMap((rcpt): Target[] => {
+      const found = accountFor(rcpt.address);
+      return found?.alias ? found.alias.accounts.map((account) => ({ rcpt, found: { ws: found.ws, account }, shared: found.alias!.accounts.length > 1 })) : [{ rcpt, found, shared: false }];
+    })
+    .filter((t, i, all) => !t.found || all.findIndex((x) => x.found?.account.id === t.found!.account.id) === i);
+  for (const { rcpt, found, shared } of targets) {
     // A routing test: it proves the provider passed it on, and nobody ever sees it.
     if (probeHook?.accepts(lower(rcpt.address))) {
       probeHook.arrived(lower(rcpt.address));
@@ -387,10 +405,12 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
       db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('platform', 'in', spam ? 'spam' : 'support', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
       continue;
     }
-    const hit = accountFor(rcpt.address);
+    const hit = found;
     if (!hit) continue;
     const { ws, account } = hit;
-    const attachments = parsed.attachments.map((a) => {
+    // A calendar invite: read it, and list its .ics once (calendars attach it twice).
+    const cal = readInvite(parsed.attachments, [lower(rcpt.address), lower(account.email)]);
+    const attachments = cal.attachments.map((a) => {
       const id = randomBytes(16).toString('hex');
       db.saveFile({ id, workspaceId: ws.id, by: 'mail', name: a.filename ?? 'attachment', type: a.contentType ?? 'application/octet-stream', size: a.size }, a.content);
       return { name: a.filename ?? 'attachment', size: fmtSize(a.size), url: `/api/files/${id}` };
@@ -407,6 +427,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
       trackersBlocked: trackers || undefined,
       listUnsubscribe: unsubUrl ? { url: unsubUrl, oneClick: unsubOneClick } : undefined,
       auth: authSummary || undefined,
+      invite: cal.invite ?? undefined,
     };
     const threads = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
     const existing = refs.length ? threads.find((t) => (t.messages ?? []).some((m: any) => m.mid && refs.includes(m.mid))) : undefined;
@@ -418,6 +439,10 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ws.id, 'in', spam ? 'spam' : 'inbox', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
     // The first message for a mailbox that wasn't receiving yet unlocks it straight away.
     if (!(ws as any).mailReady?.mailboxes?.[account.id]?.receive) void refreshReadiness(ws.id).catch(() => {});
+    // An update or cancellation of an invite people here answered moves or removes their events.
+    if (cal.invite && !spam) applyInbound(ws, account, cal.invite, thread.id, deps.broadcast, deps.notify);
+    // Out of office (not for addresses that reach several mailboxes: someone else is around).
+    if (!shared) void maybeAnswer({ workspaceId: ws.id, account, canSend: !!(ws as any).mailReady?.mailboxes?.[account.id]?.send, parsed, envelopeFrom: sender, mid, refs, spam, send: queueSend, log: deps.log });
   }
 }
 
@@ -437,6 +462,8 @@ export interface Outgoing {
   files: { name: string; url: string }[];
   inReplyTo?: string;
   references?: string[];
+  ical?: { method: string; content: string }; // a calendar part, e.g. the REPLY to an invite
+  headers?: Record<string, string>; // extra headers (Auto-Submitted on an out-of-office answer)
 }
 
 const fileBuffer = (url: string): Buffer | null => {
@@ -484,7 +511,8 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     inReplyTo: o.inReplyTo,
     references: o.references,
     attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url) ?? Buffer.alloc(0) })),
-    headers: { 'X-Mailer': 'sprint2go' },
+    icalEvent: o.ical ? { method: o.ical.method, content: o.ical.content, filename: 'invite.ics' } : undefined,
+    headers: { 'X-Mailer': 'sprint2go', ...(o.headers ?? {}) },
   });
   let raw: Buffer = await composer.compile().build();
   if (route === 'own' && domain && domain !== MAIL_HOST) {
@@ -492,17 +520,25 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed' });
     raw = Buffer.concat([Buffer.from(signatures), raw]);
   }
-  // Our own mailboxes in other companies get a copy straight away (same-company copies are made by the app).
+  // Our own mailboxes get a copy straight away (an alias: each of its mailboxes), here or in other companies; never the
+  // mailbox it was sent from.
   let localCount = 0;
-  for (const p of local) {
-    const hit = mine.get(p.email)!;
-    if (hit.ws.id === ws.id) continue;
+  const localBoxes = local
+    .flatMap((p) => {
+      const found = mine.get(p.email)!;
+      return (found.alias?.accounts ?? [found.account]).map((account) => ({ hit: { ws: found.ws, account }, shared: (found.alias?.accounts.length ?? 1) > 1 }));
+    })
+    .filter((x, i, all) => all.findIndex((y) => y.hit.account.id === x.hit.account.id) === i);
+  for (const { hit, shared } of localBoxes) {
+    if (hit.account.id === o.accountId) continue;
     const parsed = await simpleParser(raw);
     const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: recipients, date: now(), body: o.text, html: o.html, attachments: parsed.attachments.length ? o.files.map((f, i) => ({ name: f.name, size: fmtSize(parsed.attachments[i]?.size ?? 0), url: f.url })) : undefined };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     localCount++;
+    // A colleague away gets to answer too (their answer carries Auto-Submitted, so it never answers back).
+    if (!shared) void maybeAnswer({ workspaceId: hit.ws.id, account: hit.account, canSend: !!(hit.ws as any).mailReady?.mailboxes?.[hit.account.id]?.send, parsed, envelopeFrom: o.from.email, mid, refs: o.references ?? [], spam: false, send: queueSend, log: deps.log });
   }
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
   for (const p of remote) ins.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, raw, now(), 'queued', now());
@@ -532,7 +568,8 @@ export const LIMITS = { hour: Number(process.env.MAIL_LIMIT_HOUR ?? 200), day: N
 /** After a failure: a mailbox whose recent mail mostly bounces is paused, and its company is told. */
 function watchBounces(row: any) {
   if (!row.account_id || row.workspace_id === 'platform') return;
-  const recent = db.db.prepare("SELECT state FROM outbox WHERE account_id = ? AND state IN ('sent', 'failed') ORDER BY created_at DESC LIMIT 50").all(row.account_id) as { state: string }[];
+  if (String(row.message_id ?? '').startsWith('auto-')) return; // out-of-office answers go to whoever wrote, valid or not
+  const recent = db.db.prepare("SELECT state FROM outbox WHERE account_id = ? AND state IN ('sent', 'failed') AND COALESCE(message_id, '') NOT LIKE 'auto-%' ORDER BY created_at DESC LIMIT 50").all(row.account_id) as { state: string }[];
   const failed = recent.filter((r) => r.state === 'failed').length;
   if (recent.length < 20 || failed / recent.length < 0.1) return;
   const ws = db.getDoc('workspaces', row.workspace_id) as any;
@@ -594,6 +631,7 @@ export async function pump() {
 /** When every recipient of a message is settled, the message shows sent or failed, and failures tell the sender. */
 function settle(row: any, error?: string) {
   if (row.workspace_id === 'platform') return;
+  if (String(row.message_id ?? '').startsWith('auto-')) return; // an out-of-office answer: nobody to tell
   const open = db.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'queued'").get(row.thread_id, row.message_id) as { n: number };
   if (open.n) return;
   const failed = db.db.prepare("SELECT to_addr, error FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'failed'").all(row.thread_id, row.message_id) as { to_addr: string; error: string }[];

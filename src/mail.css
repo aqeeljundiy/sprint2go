@@ -1,0 +1,473 @@
+/* ==========================================================================
+   Mail: refresh and pull to refresh, calendar invites in email, out of office,
+   mailboxes and other addresses in Email delivery.
+   ========================================================================== */
+
+/* ---------- Refresh: "Updated 3 min ago" and the button, quietly at the end of the title row ---------- */
+
+.list-sync {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.list-sync small {
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.list-sync.off small {
+  color: var(--warn);
+}
+.list-sync .icon-btn {
+  color: var(--text-3);
+  transition: color 0.15s, background 0.15s;
+}
+.list-sync .icon-btn:hover {
+  color: var(--text);
+}
+.list-sync.off .icon-btn {
+  color: var(--warn);
+}
+@media (prefers-reduced-motion: reduce) {
+  .list-sync small {
+    animation: none;
+  }
+}
+/* The title row's own width decides whether "Updated…" fits (the list can be dragged narrow). */
+.list-title {
+  container-type: inline-size;
+}
+@container (max-width: 300px) {
+  .list-sync small {
+    display: none;
+  }
+}
+
+/* Pull to refresh: the list follows the finger; a mark turns as it's pulled and spins only while checking. */
+.list-pane .rows,
+.list-pane > .empty {
+  overscroll-behavior-y: contain;
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.list-pane .rows.dragging,
+.list-pane > .empty.dragging {
+  transition: none;
+}
+.pull-mark {
+  position: relative;
+  height: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.pull-mark > svg {
+  box-sizing: content-box;
+  position: absolute;
+  top: calc(var(--pull, 0px) - 34px);
+  padding: 7px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: var(--text-3);
+  opacity: 0;
+  transition: top 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s, color 0.15s;
+}
+.pull-mark.dragging > svg {
+  transition: opacity 0.2s, color 0.15s;
+}
+.pull-mark.on > svg {
+  opacity: 1;
+}
+.pull-mark.ready > svg,
+.pull-mark.busy > svg {
+  color: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .list-pane .rows,
+  .list-pane > .empty,
+  .pull-mark > svg {
+    transition: none;
+  }
+  .pull-mark > svg {
+    transform: none !important;
+  }
+}
+
+/* ---------- A calendar invite in an email ---------- */
+
+.mail-invite {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 2px 0 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+  background: linear-gradient(135deg, var(--accent-soft), transparent 70%), var(--surface);
+  animation: tabIn 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  transition: border-color 0.2s, background 0.2s;
+}
+.mail-invite .invite-date {
+  margin-top: 2px;
+}
+.mail-invite.cancelled {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.mail-invite.cancelled .invite-date span {
+  background: var(--text-3);
+}
+.mail-invite.cancelled .invite-title {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-3);
+  color: var(--text-2);
+}
+.mail-invite.cancelled .invite-kicker {
+  color: var(--text-2);
+}
+.mail-invite.reply {
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.mi-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mi-main .invite-title {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.mi-sub {
+  font-size: 12.5px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.mi-guests {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0 -6px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  max-width: 100%;
+  transition: background 0.15s, color 0.15s;
+}
+.mi-guests:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+.mi-faces {
+  display: inline-flex;
+  flex: none;
+}
+.mi-faces .avatar {
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.mi-faces .avatar + .avatar {
+  margin-left: -6px;
+}
+.mi-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mi-guest-list {
+  list-style: none;
+  margin: 6px 0 2px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mi-guest-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.mi-guest-list li + li {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.mi-g-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mi-g-name small {
+  font-size: 11.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mi-g-status {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.mi-g-status.accepted {
+  color: var(--ok);
+}
+.mi-g-status.declined {
+  color: var(--danger);
+}
+.mi-g-status.tentative {
+  color: var(--warn);
+}
+.mi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 10px;
+}
+.mi-ask {
+  font-size: 13px;
+  font-weight: 600;
+}
+.segmented.rsvp {
+  border: 0;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.segmented.rsvp button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 56px;
+  justify-content: center;
+  padding: 5px 14px;
+  font-size: 13px;
+  transition: color 0.15s;
+}
+.segmented.rsvp button:hover {
+  color: var(--text);
+}
+.segmented.rsvp.off {
+  opacity: 0.6;
+}
+.segmented.rsvp.off button {
+  cursor: help;
+}
+.mail-invite.said-accepted .segmented.rsvp button.on {
+  color: var(--ok);
+}
+.mail-invite.said-declined .segmented.rsvp button.on {
+  color: var(--danger);
+}
+.mail-invite.said-tentative .segmented.rsvp button.on {
+  color: var(--warn);
+}
+.mi-join {
+  text-decoration: none;
+}
+.mail-invite .invite-status {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--ok);
+}
+.mail-invite .invite-status.warn {
+  color: var(--warn);
+}
+.mail-invite .invite-status.quiet {
+  color: var(--text-3);
+}
+.mail-invite .invite-status .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+@container (max-width: 440px) {
+  .mail-invite {
+    padding: 12px;
+    gap: 12px;
+  }
+  .mail-invite .invite-date {
+    width: 44px;
+  }
+  .mail-invite .invite-date strong {
+    font-size: 17px;
+  }
+  .mi-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mi-ask {
+    display: none;
+  }
+  .segmented.rsvp {
+    display: flex;
+    justify-self: stretch;
+  }
+  .segmented.rsvp button {
+    flex: 1;
+    min-height: 40px;
+  }
+  .mi-join {
+    justify-content: center;
+    min-height: 40px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mail-invite {
+    animation: none;
+  }
+}
+
+/* The reader's width decides how an invite card lays out (not the window's). On a wrapper: nothing fixed lives in it. */
+.mi-wrap {
+  container-type: inline-size;
+}
+
+/* ---------- Calendar: an event's call ---------- */
+
+.ev-row.ev-call {
+  padding: 4px 0;
+}
+.ev-call a {
+  text-decoration: none;
+}
+
+/* ---------- Out of office (Settings, Mail & signature) ---------- */
+
+.ooo-hint {
+  display: block;
+  margin: -4px 0 8px;
+}
+.ooo-list {
+  display: flex;
+  flex-direction: column;
+}
+.ooo + .ooo {
+  border-top: 1px solid var(--border);
+}
+.ooo .set-row small.ooo-warn {
+  color: var(--warn);
+}
+.ooo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 16px;
+}
+.ooo-form .field {
+  margin: 0;
+}
+.ooo-form textarea {
+  resize: vertical;
+  min-height: 104px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  outline: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ooo-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ooo-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.ooo-dates .date-sel {
+  width: 100%;
+}
+.ooo-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.switch.off {
+  opacity: 0.5;
+  cursor: help;
+}
+@media (max-width: 520px) {
+  .ooo-dates {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Email delivery: mailboxes and other addresses ---------- */
+
+.ed-head-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ed-record .ed-rec-del,
+.ed-rec-tools {
+  flex: none;
+  margin: -2px -6px -2px 0;
+}
+.ed-rec-tools {
+  display: inline-flex;
+  gap: 2px;
+}
+.ed-record .ed-rec-del,
+.ed-rec-tools .icon-btn {
+  color: var(--text-3);
+  transition: color 0.15s, background 0.15s;
+}
+.ed-record .ed-rec-del:hover,
+.ed-rec-tools .icon-btn:hover {
+  color: var(--text);
+}
+.ghost-btn.off {
+  opacity: 0.55;
+  cursor: help;
+}
+.ed-records .ed-record {
+  animation: tabIn 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+/* A removed address folds away instead of vanishing. */
+.ed-records .ed-record.leaving {
+  animation: taskOut 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ed-records .ed-record,
+  .ed-records .ed-record.leaving {
+    animation: none;
+  }
+}
+
+/* Phones: every control here is at least 40px to tap. */
+@media (max-width: 760px) {
+  .list-sync .icon-btn,
+  .ed-record .ed-rec-del,
+  .ed-rec-tools .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .mi-guests {
+    min-height: 40px;
+  }
+  .ooo-actions button {
+    min-height: 40px;
+  }
+}

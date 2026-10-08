@@ -25,10 +25,10 @@ export const PROVIDERS: { id: MailProvider; name: string }[] = [
 ];
 export const providerName = (p?: MailProvider) => (p === 'sprint2go' || !p ? `${product.name}` : PROVIDERS.find((x) => x.id === p)?.name ?? 'Other');
 
-// A function, so the product name (an agency's own, when white-labelled) is read when shown.
-const setups = (): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
+// A function, so the product name (an agency's own, when white-labelled) and the provider picked are read when shown.
+const setups = (provider: MailProvider): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
   { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook, forward here', body: `Mail stays where it is. A copy of everything comes to ${product.name} to read, and you reply from Gmail or Outlook. Nothing moves.` },
-  { id: 'hosted', icon: Server, title: `Move our email to ${product.name}`, body: 'We host your mail, so you can cancel Google or Microsoft. Cheapest per person. Old mail comes with you.' },
+  { id: 'hosted', icon: Server, title: `Move our email to ${product.name}`, body: `We host your new mail, so you can cancel Google or Microsoft. Cheapest per person. Your old mail stays in ${provider === 'imap' ? 'your current mailbox' : providerName(provider)} until you cancel it.` },
   { id: 'mix', icon: Shuffle, title: 'Some of each', body: `Keep pricey licences for a few people and give everyone else a ${product.name} mailbox.` },
   { id: 'none', icon: MailX, title: 'We don’t need email here', body: 'Switch Mail off. Use Chat, Tasks, Calendar and the rest.' },
 ];
@@ -289,7 +289,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
               <h2>Where does your company’s email live?</h2>
               <p className="set-intro">{product.name} works with any of these. You can move people later.</p>
               <div className="ob-setups">
-                {setups().map(({ id, icon: Icon, title, body }) => (
+                {setups(provider).map(({ id, icon: Icon, title, body }) => (
                   <button key={id} className={`ob-setup ${setup === id ? 'on' : ''}`} onClick={() => setSetup(id)}>
                     <Icon size={20} />
                     <span>
@@ -302,7 +302,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
 
               {setup !== 'none' && (
                 <div className="field ob-provider">
-                  <label>{setup === 'hosted' ? 'Where is your email today? (to bring your old mail)' : 'Where is your email today?'}</label>
+                  <label>Where is your email today?</label>
                   <div className="aw-tones wrap">
                     {PROVIDERS.map((p) => (
                       <button key={p.id} className={provider === p.id ? 'on' : ''} onClick={() => setProvider(p.id)}>

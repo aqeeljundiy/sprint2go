@@ -35,6 +35,34 @@ export interface Message {
   mid?: string; // the Message-ID on the wire, so replies land in the same thread
   delivery?: { state: 'sending' | 'sent' | 'failed'; at: string; error?: string }; // set by the mail engine for mail you sent
   auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
+  invite?: MailInvite; // a calendar invite in this email (Google Calendar, Outlook...), read by the mail engine
+}
+
+export type RsvpStatus = 'accepted' | 'tentative' | 'declined';
+export interface InviteGuest extends Person {
+  status: RsvpStatus | 'needs-action' | 'delegated';
+  optional?: boolean;
+}
+/** A calendar invite that came by email: the organiser's event, and the answer given from here. */
+export interface MailInvite {
+  method: 'REQUEST' | 'CANCEL' | 'REPLY' | 'PUBLISH'; // an invite or update, a cancellation, someone's answer, or a plain event to add
+  uid: string; // the event's id in the organiser's calendar
+  sequence: number; // goes up with each change the organiser makes
+  title: string;
+  start: string; // ISO. All-day: noon UTC on the first day
+  end: string; // ISO. All-day: a minute past noon UTC on the last day
+  allDay?: boolean;
+  tz?: string; // the organiser's time zone, when the invite names it
+  location?: string;
+  description?: string;
+  url?: string; // the meeting link (Google Meet, Zoom, Teams, Webex)
+  organizer?: Person;
+  attendees: InviteGuest[];
+  rrule?: string; // repeats, e.g. FREQ=WEEKLY;BYDAY=MO
+  recurrenceId?: string; // one changed occurrence of a repeating event
+  cancelled?: boolean;
+  you?: string; // the address of yours that was invited
+  answer?: { status: RsvpStatus; at: string; by: string; sent: boolean }; // sent: the organiser was told
 }
 
 export interface OpenEvent {
@@ -129,6 +157,12 @@ export interface CalEvent {
   workspaceId?: string; // defaults to the first workspace
   userId?: string; // whose calendar (defaults to the first user)
   taskId?: string; // a time block for this task
+  meetingUrl?: string; // Google Meet, Zoom or Teams link (from an invite, or added by hand)
+  inviteUid?: string; // came from an emailed invite: the organiser's event id
+  sequence?: number; // the invite version it shows
+  occurrence?: string; // one of a repeating invite's dates (its original start)
+  rsvp?: RsvpStatus; // what you answered
+  organizer?: Person;
 }
 
 export interface Label {
@@ -173,6 +207,26 @@ export interface Account {
   users: string[]; // user ids who can open this mailbox
   /** A throwaway address: made in seconds, shared with a few people, deleted by itself (or by hand). */
   temp?: { createdBy: string; createdAt: string; expiresAt?: string };
+  away?: AwayReply; // out of office
+}
+
+/** Out of office: an automatic answer, once per sender every 4 days, while it's on and inside its dates. */
+export interface AwayReply {
+  on: boolean;
+  from?: string; // YYYY-MM-DD, the first day away (as the person picked it)
+  until?: string; // YYYY-MM-DD, the last day away
+  fromAt?: string; // ISO: the start of the first day, where the person is
+  untilAt?: string; // ISO: the end of the last day
+  subject: string;
+  message: string;
+  since?: string; // set by the server when it was switched on or changed: everyone gets the new answer
+}
+
+/** Another address that delivers into mailboxes: sales@ into Dewi's and Bayu's, or info@ into the hello@ shared inbox. */
+export interface MailAlias {
+  id: string;
+  address: string;
+  to: string[]; // mailbox (account) ids
 }
 
 /** One business: its own brand, domains, mailboxes, calendar and drive. */
@@ -192,6 +246,7 @@ export interface Workspace {
   mailRoute?: 'own' | 'boosted'; // how mail goes out: from the sprint2go server, or through Amazon on our account
   mailCredits?: number; // emails left on Boosted sending
   mailCreditsNotified?: boolean;
+  mailAliases?: MailAlias[]; // extra addresses that deliver into mailboxes (set through the server)
   mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
   /** What really works, worked out by the server: mail in, mail out, per mailbox, with the reason when it doesn't. */
   mailReady?: { at: string; receive: boolean; send: boolean; why: { receive?: string; send?: string }; mailboxes: Record<string, { receive: boolean; send: boolean; why?: string; sendWhy?: string }> };

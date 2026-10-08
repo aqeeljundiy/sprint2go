@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
 import { AlertTriangle, Archive, ArrowLeft, Ban, CalendarCheck, CalendarPlus, Check, Clock, Eye, FileText, Forward, HardDriveUpload, Inbox, ListChecks, Loader2, Mail, MailMinus, Reply, Send, ShieldAlert, ShieldCheck, Sparkles, Star, StickyNote, Trash2, UserCheck } from 'lucide-react';
-import type { CalEvent, Person, Thread, User, Client } from '../types';
+import type { CalEvent, Message, Person, Thread, User, Client } from '../types';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
 import { fmtTime } from '../calendarUtils';
@@ -26,6 +26,8 @@ interface Props {
   inviteAdded: boolean;
   inviteConflicts: CalEvent[];
   onAddInvite: (threadId: string) => void;
+  /** The card for a calendar invite in a message (Yes, Maybe, No and the meeting link). */
+  inviteCard?: (m: Message) => React.ReactNode;
   onBack: () => void;
   onArchive: (id: string) => void;
   onTrash: (id: string) => void;
@@ -403,6 +405,7 @@ export function Reader(props: Props) {
                 ) : null}
                 {open && (
                   <div className="message-body">
+                    {m.invite && props.inviteCard && <div className="mi-wrap">{props.inviteCard(m)}</div>}
                     <CodeCard text={`${thread.subject}\n${m.body}`} />
                     {m.html ? (
                       <div className="prose" dangerouslySetInnerHTML={{ __html: sanitize(m.html) }} />

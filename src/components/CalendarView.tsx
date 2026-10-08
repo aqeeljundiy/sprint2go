@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Mail, MapPin, Menu, Plus, StickyNote, Trash2, Users, X } from 'lucide-react';
+import { Bot, ChevronLeft, ChevronRight, Clock, Mail, MapPin, Menu, Plus, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
+import { MEETING_NAME, botCanJoin, meetingKind, meetingLinkOf } from '../meetingLink';
 import type { CalEvent, CalendarDef } from '../types';
 import {
   addDays,
@@ -44,6 +45,10 @@ interface Props {
   onExtend?: (id: string, minutes: number) => void;
   onTomorrow?: (id: string) => void;
   onTaskDone?: (e: CalEvent) => void;
+  /** Sends the meeting notetaker to the event's call. */
+  onSendBot?: (e: CalEvent) => void;
+  /** The notetaker was already sent to this event: opens its meeting. */
+  sentBot?: (e: CalEvent) => (() => void) | undefined;
 }
 
 export function CalendarView(props: Props) {
@@ -137,6 +142,8 @@ export function CalendarView(props: Props) {
           onExtend={(m) => props.onExtend?.(selected.id, m)}
           onTomorrow={() => props.onTomorrow?.(selected.id)}
           onTaskDone={() => props.onTaskDone?.(selected)}
+          onSendBot={props.onSendBot ? () => props.onSendBot!(selected) : undefined}
+          sentBot={props.sentBot?.(selected)}
         />
       )}
     </section>
@@ -437,6 +444,8 @@ function EventDetail({
   onExtend,
   onTomorrow,
   onTaskDone,
+  onSendBot,
+  sentBot,
 }: {
   event: CalEvent;
   calendar?: CalendarDef;
@@ -447,7 +456,12 @@ function EventDetail({
   onExtend?: (minutes: number) => void;
   onTomorrow?: () => void;
   onTaskDone?: () => void;
+  onSendBot?: () => void;
+  sentBot?: () => void;
 }) {
+  const link = meetingLinkOf(event);
+  const kind = link ? meetingKind(link) : null;
+  const ended = new Date(event.end).getTime() < Date.now();
   return (
     <aside className="ev-detail" style={{ ['--c' as string]: calendar?.color }}>
       <div className="ev-actions">
@@ -466,10 +480,41 @@ function EventDetail({
         <Clock size={16} />
         <span>{fmtRange(event)}</span>
       </div>
-      {event.location && (
+      {event.location && event.location !== link && (
         <div className="ev-row">
           <MapPin size={16} />
           <span>{event.location}</span>
+        </div>
+      )}
+      {(event.organizer || event.rsvp) && (
+        <div className="ev-row muted">
+          <Mail size={16} />
+          <span>
+            {event.organizer ? `Invited by ${event.organizer.name}` : 'From an invite'}
+            {event.rsvp === 'tentative' ? '. You said maybe' : event.rsvp === 'accepted' ? '. You’re going' : ''}
+          </span>
+        </div>
+      )}
+      {link && !ended && (
+        <div className="ev-row ev-call">
+          <Video size={16} />
+          <a className="primary-btn sm" href={link} target="_blank" rel="noreferrer">
+            Join {kind && kind !== 'other' ? MEETING_NAME[kind] : 'the call'}
+          </a>
+        </div>
+      )}
+      {link && !ended && (sentBot || (onSendBot && botCanJoin(link))) && (
+        <div className="ev-row ev-call">
+          <Bot size={16} />
+          {sentBot ? (
+            <button type="button" className="link-btn small" onClick={sentBot}>
+              The notetaker is on its way. Open the meeting
+            </button>
+          ) : (
+            <button type="button" className="ghost-btn outline sm" onClick={onSendBot}>
+              Send the notetaker
+            </button>
+          )}
         </div>
       )}
       {event.guests?.length ? (
