@@ -102,8 +102,39 @@ if (process.env.S2G_PURGE_DEMO === '1' && process.env.NODE_ENV === 'production' 
       drop('statuses', [...userIds]);
       drop('notices', (db.allDocs('notices') as any[]).filter((n) => userIds.has(n.userId)).map((n) => n.id));
       for (const id of userIds) (db.deleteLogin(id), db.endSessions(id));
+      drop('users', [...userIds]);
+      // Anyone left with no company, no sign-in and no real company to be a guest of was part of the demo too.
+      const realWs = new Set((db.allDocs('workspaces') as any[]).map((w) => w.id));
+      const inRealWs = new Set((db.allDocs('workspaces') as any[]).flatMap((w) => (w.members ?? []).map((m: any) => m.userId)));
+      drop('users', (db.allDocs('users') as any[]).filter((u) => !inRealWs.has(u.id) && !db.findLogin(String(u.email ?? '')) && !(u.clientOf && realWs.has(u.clientOf.workspaceId))).map((u) => u.id));
       // A demo person added to a real company leaves it.
       for (const w of db.allDocs('workspaces') as any[]) if ((w.members ?? []).some((m: any) => userIds.has(m.userId))) db.writeDocs('workspaces', [{ ...w, members: w.members.filter((m: any) => !userIds.has(m.userId)) }], [], null);
+      // The operator numbers: revenue history, invoices, sign-up and growth events, mail logs, tickets and activity of
+      // the demo, so the backend shows only what really happened.
+      const wsList = [...demoWsIds];
+      const userList = [...userIds];
+      const marks = (n: number) => Array(n).fill('?').join(',');
+      const sweep = (label: string, sql: string, params: string[]) => {
+        if (!params.length) return;
+        const n = Number(db.db.prepare(sql).run(...params).changes ?? 0);
+        if (n) counts[label] = (counts[label] ?? 0) + n;
+      };
+      const demoTickets = (db.db.prepare(`SELECT id FROM tickets WHERE workspace_id IN (${marks(wsList.length)}) OR requester_user IN (${marks(userList.length || 1)})`).all(...wsList, ...(userList.length ? userList : [''])) as { id: string }[]).map((t) => t.id);
+      sweep('ticket messages', `DELETE FROM ticket_messages WHERE ticket_id IN (${marks(demoTickets.length)})`, demoTickets);
+      sweep('tickets', `DELETE FROM tickets WHERE id IN (${marks(demoTickets.length)})`, demoTickets);
+      for (const t of ['invoices', 'mrr_snapshots', 'op_notes', 'outbox', 'mail_log']) sweep(t.replace('_', ' '), `DELETE FROM ${t} WHERE workspace_id IN (${marks(wsList.length)})`, wsList);
+      sweep('events', `DELETE FROM platform_events WHERE workspace_id IN (${marks(wsList.length)})`, wsList);
+      sweep('events', `DELETE FROM platform_events WHERE user_id IN (${marks(userList.length)})`, userList);
+      for (const t of ['activity', 'activity_days', 'invites']) sweep(t.replace('_', ' '), `DELETE FROM ${t} WHERE user_id IN (${marks(userList.length)})`, userList);
+      // A domain's signing key belongs to the domain: if a real company uses the same domain, it keeps the key (its DNS
+      // record already has it); otherwise the key goes.
+      const realDomains = new Map<string, string>();
+      for (const w of db.allDocs('workspaces') as any[]) for (const d of w.domains ?? []) realDomains.set(String(d).toLowerCase(), w.id);
+      for (const r of db.db.prepare(`SELECT domain FROM mail_domains WHERE workspace_id IN (${marks(wsList.length)})`).all(...wsList) as { domain: string }[]) {
+        const keeper = realDomains.get(r.domain.toLowerCase());
+        if (keeper) db.db.prepare('UPDATE mail_domains SET workspace_id = ? WHERE domain = ?').run(keeper, r.domain);
+        else sweep('signing keys', 'DELETE FROM mail_domains WHERE domain = ?', [r.domain]);
+      }
       const summary = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || 'nothing';
       platform.setSetting('demoPurged' as any, { at: new Date().toISOString(), backup: file.split('/').pop(), removed: summary } as any);
       db.audit('system', 'system.demo-purge', null, `${summary}; backup ${file.split('/').pop()}`);
