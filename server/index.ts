@@ -69,9 +69,10 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 platform.bootstrapOperators();
 admin.loadPricing();
 
-// Once, on a production server: the demo companies that a start-up top-up put into the live database by mistake go
-// (with whatever was made inside them, and the demo people's sign-ins). A backup is taken first; real companies stay.
-if (process.env.NODE_ENV === 'production' && process.env.S2G_DEMO !== '1' && !(platform.settings() as any).demoPurged) {
+// Once, on a production server and only when S2G_PURGE_DEMO=1 is set: the demo companies that a start-up top-up put
+// into the live database by mistake go (with whatever was made inside them, and the demo people's sign-ins). A backup
+// is taken first; real companies stay.
+if (process.env.S2G_PURGE_DEMO === '1' && process.env.NODE_ENV === 'production' && process.env.S2G_DEMO !== '1' && !(platform.settings() as any).demoPurged) {
   void db
     .backup()
     .then((file) => {
