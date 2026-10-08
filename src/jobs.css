@@ -108,3 +108,65 @@
   }
 }
 
+/* ---------- deleting old chat messages ---------- */
+
+.retention-warn {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--warn-soft);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.retention-warn > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.retention-warn p {
+  margin: 0;
+}
+.retention-warn p + p {
+  margin-top: 6px;
+  color: var(--text-2);
+}
+.retention-keep {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.retention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 13px;
+  animation: jobs-in 180ms ease-out backwards;
+}
+.retention-chip .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retention-chip {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .retention-chip {
+    min-height: 40px;
+  }
+  .retention-chip .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+}

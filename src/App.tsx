@@ -4058,6 +4058,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             admin={{
               people: members.length,
               teams: wsTeams,
+              projects: wsClientsAll.map((c) => ({ id: c.id, name: c.name, color: c.color })),
               drive: drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id),
               byChannel: channels
                 .filter((c) => c.workspaceId === ws.id && c.kind === 'channel')

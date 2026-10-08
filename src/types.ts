@@ -268,7 +268,10 @@ export interface Workspace {
     gifs: boolean;
     celebrations: boolean;
     whoCanCreate: Policy;
-    history?: 'forever' | '1y' | '90d';
+    history?: 'forever' | '1y' | '90d'; // delete chat messages older than this, every day (server/retention.ts)
+    keep?: string[]; // projects whose channels keep everything
+    deleteFrom?: string; // set by the server: deleting starts here, a week after it was switched on
+    lastRun?: { at: string; deleted: number; files: number; before: string }; // set by the server
     layout?: ChatLayout; // the company's Default sidebar, set by admins
   };
   plan?: Plan;

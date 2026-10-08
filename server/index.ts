@@ -43,6 +43,7 @@ import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
 import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
 import * as digest from './digest.ts';
+import * as retention from './retention.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -2215,6 +2216,8 @@ createServer(async (req, res) => {
       const now = new Date().toISOString();
       // Sign-in rules that changed (owners only), for the company's security log and the people they affect.
       const securityChanges: { wsId: string; text: string; required: boolean }[] = [];
+      // Companies that just switched on deleting old chat messages (their admins get the week's notice).
+      const retentionStarted: { wsId: string; from: string; period: retention.Period }[] = [];
       /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
       const guard = (d: db.Doc): db.Doc | null => {
         const before = db.getDoc(coll, d.id) as any;
@@ -2243,12 +2246,17 @@ createServer(async (req, res) => {
             const asked = (d as any).taskStages;
             const clean = asked === undefined ? undefined : cleanStages(asked);
             const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(asked) && asked.length ? before.taskStages : undefined) : clean;
-            return { ...d, ...own, plan, taskStages, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
+            // Deleting old chat messages: the period is the admins'; when it starts (after a week's notice) is the server's.
+            const chat = retention.chatOnSave((d as any).chat, before.chat);
+            if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
+            return { ...d, ...own, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
           const plan = planFromApp(fresh.plan, undefined);
           if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
-          return { ...fresh, plan, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+          const chat = retention.chatOnSave(fresh.chat, undefined);
+          if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
+          return { ...fresh, plan, chat: chat.chat, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
           if (d.id === me) return d; // own profile: already shaped
@@ -2326,6 +2334,12 @@ createServer(async (req, res) => {
         if (c.required) tellTwoStepRequired(c.wsId, me);
       }
       if (leavers.length) endGuestAccess(leavers);
+      for (const r of retentionStarted) {
+        const w = db.getDoc('workspaces', r.wsId) as any;
+        if (w) broadcast('workspaces', [w], []); // the admin who switched it on sees when it starts too
+        if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeText(w.name, r.period, r.from), { app: 'settings', id: 'apps' });
+        db.audit(String(person.email ?? me), 'chat.retention.on', r.wsId, `messages older than ${retention.periodWords(r.period)}, deleting from ${r.from.slice(0, 10)}`);
+      }
       // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
       if (coll === 'notices' && mailer.systemMailPath() !== 'log')
         for (const n of ok as any[]) {
@@ -2929,6 +2943,18 @@ setInterval(() => {
   };
   void digest.runDigests(deps).catch((e) => console.error('[digest]', e instanceof Error ? e.message : e));
 }, 10 * 60_000);
+
+// Deleting old chat messages (Settings, Apps & chat): looked at every hour, run once a day per company.
+const retentionDeps: retention.RetentionDeps = { broadcast, notify: (ids, wsId, text, link) => tell(ids, wsId, 'team', text, link) };
+const retentionTick = () => {
+  try {
+    for (const r of retention.runRetention(retentionDeps)) if (!r.noticeOnly) console.log(`[retention] ${r.workspaceId}: ${r.deleted} old chat messages deleted, ${r.files} files kept in Drive`);
+  } catch (e) {
+    console.error('[retention]', e instanceof Error ? e.message : e);
+  }
+};
+setTimeout(retentionTick, 2 * 60_000);
+setInterval(retentionTick, 60 * 60_000);
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {

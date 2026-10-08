@@ -121,6 +121,7 @@ interface Props {
     onDelete: () => void;
     toast: (t: string) => void;
     tasks: Todo[]; // the company's tasks, for Task stages (where a removed stage's tasks go)
+    projects: { id: string; name: string; color: string }[]; // for "Keep everything for these projects" (chat history)
     onMoveTasks: (moves: { id: string; patch: Partial<Todo> }[]) => void;
   };
 }
@@ -661,7 +662,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'stages' && <TaskStagesSection ws={ws} canManage={canManage} tasks={admin.tasks} teams={admin.teams} me={me} onWorkspace={onWorkspace} onMoveTasks={admin.onMoveTasks} />}
-          {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
+          {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} projects={admin.projects} />}
           {section === 'myapps' && myApps && (
             <MyAppsSection
               ws={ws}

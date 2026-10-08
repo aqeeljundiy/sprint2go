@@ -491,6 +491,68 @@ await test('Digest: hourly or off, and the kinds switched off in Settings, Notif
   db.writeDocs('notices', [{ id: 'dm-3', userId: 'aj-mo', workspaceId: 'w-aj', kind: 'mention', text: 'More', at: new Date(at('2026-10-12', 15, 30)).toISOString(), read: false }], [], null);
   assert.equal((await digest.runDigests(digestDeps(D0 - 2 * 3600_000), at('2026-10-12', 17))).filter((x) => x.userId === 'aj-mo').length, 0, 'off');
 });
+
+/* deleting old chat messages (server/retention.ts) */
+
+const retention = await import('../server/retention.ts');
+const R0 = Date.parse('2026-10-09T03:00:00.000Z');
+const DAYMS = 86_400_000;
+await test('Retention: off by default; switching it on starts a week’s notice; a shorter period starts it again', () => {
+  assert.equal(retention.chatOnSave({ history: 'forever' }, undefined, R0).started, undefined);
+  const on = retention.chatOnSave({ history: '1y', deleteFrom: '2000-01-01T00:00:00.000Z', lastRun: { at: 'x' } }, { history: 'forever' }, R0);
+  assert.equal(on.chat.deleteFrom, new Date(R0 + 7 * DAYMS).toISOString(), 'the app can’t set when it starts');
+  assert.equal(on.chat.lastRun, undefined, 'or the last run');
+  assert.equal(on.started.period, '1y');
+  const same = retention.chatOnSave({ history: '1y', celebrations: false }, on.chat, R0 + DAYMS);
+  assert.equal(same.started, undefined);
+  assert.equal(same.chat.deleteFrom, on.chat.deleteFrom);
+  const shorter = retention.chatOnSave({ history: '90d' }, on.chat, R0 + 2 * DAYMS);
+  assert.equal(shorter.chat.deleteFrom, new Date(R0 + 9 * DAYMS).toISOString());
+  assert.equal(retention.chatOnSave({ history: 'forever' }, on.chat, R0).chat.deleteFrom, undefined);
+});
+await test('Retention: nothing goes before the notice ends; then old messages go, except pinned, kept projects and live threads; files stay in Drive', () => {
+  const chat = retention.chatOnSave({ history: '90d', keep: ['c-keep'] }, undefined, R0).chat;
+  db.writeDocs('workspaces', [{ id: 'w-ret', name: 'Ret', members: [{ userId: 'aj-ana', role: 'owner' }], accounts: [], chat }], [], null);
+  db.writeDocs('channels', [
+    { id: 'rc-1', workspaceId: 'w-ret', kind: 'channel', name: 'general', members: ['aj-ana'] },
+    { id: 'rc-keep', workspaceId: 'w-ret', kind: 'channel', name: 'keep', members: ['aj-ana'], clientId: 'c-keep' },
+    { id: 'rc-other', workspaceId: 'w-other', kind: 'channel', name: 'other', members: [] },
+  ], [], null);
+  const old = new Date(R0 - 200 * DAYMS).toISOString();
+  const fresh = new Date(R0 - 5 * DAYMS).toISOString();
+  db.writeDocs('drive', [{ id: 'dv-1', name: 'brief.pdf', kind: 'pdf', parentId: null, size: 5, modified: old, workspaceId: 'w-ret', channelId: 'rc-1' }], [], null);
+  db.writeDocs('messages', [
+    { id: 'rm-old', channelId: 'rc-1', userId: 'aj-ana', text: 'old', at: old },
+    { id: 'rm-file', channelId: 'rc-1', userId: 'aj-ana', text: 'brief', at: old, files: [{ name: 'brief.pdf', size: 5, type: 'application/pdf', driveId: 'dv-1', url: '/api/files/0123456789abcdef0123456789abcdef' }] },
+    { id: 'rm-guestfile', channelId: 'rc-1', userId: 'guest', guestEmail: 'g@client.example', text: '', at: old, files: [{ name: 'photo.jpg', size: 7, type: 'image/jpeg', url: '/api/files/fedcba9876543210fedcba9876543210' }] },
+    { id: 'rm-pinned', channelId: 'rc-1', userId: 'aj-ana', text: 'pinned', at: old, pinned: true },
+    { id: 'rm-root', channelId: 'rc-1', userId: 'aj-ana', text: 'thread start', at: old },
+    { id: 'rm-reply', channelId: 'rc-1', userId: 'aj-ana', text: 'still going', at: fresh, parentId: 'rm-root' },
+    { id: 'rm-new', channelId: 'rc-1', userId: 'aj-ana', text: 'new', at: fresh },
+    { id: 'rm-kept', channelId: 'rc-keep', userId: 'aj-ana', text: 'kept project', at: old },
+    { id: 'rm-elsewhere', channelId: 'rc-other', userId: 'aj-ana', text: 'another company', at: old },
+  ], [], null);
+  const told = [];
+  const deps = { broadcast: () => {}, notify: (ids, ws, text) => told.push(text) };
+  assert.deepEqual(retention.runRetention(deps, R0 + 6 * DAYMS).filter((r) => r.workspaceId === 'w-ret'), [], 'still in the notice week');
+  assert.ok(db.getDoc('messages', 'rm-old'));
+  const r = retention.runRetention(deps, R0 + 7 * DAYMS + 60_000).filter((x) => x.workspaceId === 'w-ret');
+  assert.deepEqual(r, [{ workspaceId: 'w-ret', deleted: 3, files: 2 }]);
+  for (const id of ['rm-old', 'rm-file', 'rm-guestfile']) assert.equal(db.getDoc('messages', id), undefined, `${id} deleted`);
+  for (const id of ['rm-pinned', 'rm-root', 'rm-reply', 'rm-new', 'rm-kept', 'rm-elsewhere']) assert.ok(db.getDoc('messages', id), `${id} kept`);
+  assert.equal(db.getDoc('drive', 'dv-1').url, '/api/files/0123456789abcdef0123456789abcdef', 'the saved copy can be opened');
+  const added = db.allDocs('drive').find((d) => d.url === '/api/files/fedcba9876543210fedcba9876543210');
+  assert.equal(added?.kind, 'image');
+  assert.equal(added?.uploadedBy, 'g@client.example');
+  assert.match(db.auditList(5, 'w-ret')[0].detail, /^3 chat messages older than 90 days/);
+  assert.equal(db.getDoc('workspaces', 'w-ret').chat.lastRun.deleted, 3);
+  assert.match(told.at(-1), /deleted every day: 3 older than 90 days/);
+  assert.deepEqual(retention.runRetention(deps, R0 + 7 * DAYMS + 3600_000).filter((x) => x.workspaceId === 'w-ret'), [], 'once a day');
+  const next = retention.runRetention(deps, R0 + 8 * DAYMS + 60_000).filter((x) => x.workspaceId === 'w-ret');
+  assert.deepEqual(next, [{ workspaceId: 'w-ret', deleted: 0, files: 0 }], 'every run is logged, even with nothing to delete');
+  assert.equal(db.auditList(5, 'w-ret')[0].detail.startsWith('0 chat messages'), true);
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');
