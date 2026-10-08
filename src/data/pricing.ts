@@ -24,7 +24,7 @@ export const ADDONS = {
   mailboxes: { name: 'Hosted mailbox (10 GB)', price: 15_000, unit: 'per mailbox' },
   storage50: { name: 'Extra 50 GB storage', price: 39_000, unit: 'per 50 GB' },
   meetHours10: { name: 'Meeting bot, 10 more hours', price: 49_000, unit: 'per 10 hours' },
-  branding: { name: 'Remove “Made with Sprint2go” from shared spaces', price: 49_000, unit: 'per month' },
+  branding: { name: 'Remove “Made with sprint2go” from shared spaces', price: 49_000, unit: 'per month' },
 } as const;
 
 export const TOP_UP = { price: 99_000, gives: 'about 50 meeting hours, or 110 Ask AI questions, or 120 brain dumps, or 600 email summaries' };

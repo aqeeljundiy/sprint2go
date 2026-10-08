@@ -12,7 +12,7 @@ export const DEFAULT_MEETINGS: MeetingSettings = {
   autoJoin: true,
   joinMode: 'accepted',
   autoTasks: true,
-  botName: 'Sprint2go Notetaker',
+  botName: 'sprint2go Notetaker',
   announce: true,
 };
 

@@ -50,7 +50,7 @@ const standups = [0, 1, 2, 3, 4, 7, 8, 9, 10, 11].map((d) =>
 export const EVENTS: CalEvent[] = [
   ...standups,
   ev({ title: 'Brand workshop', calendarId: 'work', start: at(2, 14), end: at(2, 15, 30), location: 'Office, Room 2', guests: [faisal, aditya], notes: 'Decide on palette and retire the gradient.' }),
-  ev({ title: 'Focus: Sprint2go UI', calendarId: 'work', start: at(3, 13), end: at(3, 16) }),
+  ev({ title: 'Focus: sprint2go UI', calendarId: 'work', start: at(3, 13), end: at(3, 16) }),
   ev({ title: 'Gym', calendarId: 'personal', start: at(5, 8), end: at(5, 9) }),
   ev({ title: 'Family dinner', calendarId: 'personal', start: at(5, 19), end: at(5, 21) }),
   ev({ title: 'Lumina Skin: 11.11 & 12.12 budget', calendarId: 'clients', start: at(7, 10, 30), end: at(7, 11, 15), location: 'Zoom', guests: [sarah], threadId: 't5' }),

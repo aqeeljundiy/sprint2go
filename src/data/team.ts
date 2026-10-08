@@ -221,7 +221,7 @@ export const MEETINGS: Meeting[] = [
       [23, 15, 'Aqeel', 'Yes please, send it over and we’ll see what fits.'],
       [26, 5, 'Aqeel', 'Let’s move the review call to Thursday at 2pm Jakarta time. Does that work?'],
       [26, 20, 'Nadia Putri', 'Thursday 2pm works.'],
-      [33, 40, 'Aqeel', 'Perfect, thanks everyone. Notes and tasks will be in Sprint2go.'],
+      [33, 40, 'Aqeel', 'Perfect, thanks everyone. Notes and tasks will be in sprint2go.'],
     ]),
     log: log(60 * 22 + 36, 'Sent from Google Calendar: KopiKita weekly sync', 'Joining Google Meet as “P&P Notetaker”', 'Waiting to be let in', 'Let in by Aqeel', 'Recording', 'Everyone else left', 'Writing notes with DeepSeek V4 Pro (SumoPod)', 'Filed in KopiKita by rule: domain kopikita.co.id', 'Done'),
     actions: [
