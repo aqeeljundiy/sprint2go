@@ -482,30 +482,58 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 <RichEditor initialHtml={s.signature} placeholder="Your signature" onChange={(html) => update({ signature: html })} />
               </div>
               <h3>Undo send</h3>
-              <div className="segmented">
-                {[0, 5, 10, 20].map((n) => (
-                  <button key={n} className={s.undoSend === n ? 'on' : ''} onClick={() => update({ undoSend: n })}>
-                    {n ? `${n}s` : 'Off'}
-                  </button>
-                ))}
-              </div>
-              <small className="set-hint">How long you have to take an email back after pressing Send.</small>
+              {server.on ? (
+                // The mail engine sends straight away; taking it back needs the engine to wait first.
+                <div className="set-row">
+                  <span>
+                    <strong>Take an email back after pressing Send</strong>
+                    <small>Coming soon. For now your email goes out the moment you press Send.</small>
+                  </span>
+                  <span className="badge-soon">Not yet</span>
+                </div>
+              ) : (
+                <>
+                  <div className="segmented">
+                    {[0, 5, 10, 20].map((n) => (
+                      <button key={n} className={s.undoSend === n ? 'on' : ''} onClick={() => update({ undoSend: n })}>
+                        {n ? `${n}s` : 'Off'}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="set-hint">How long you have to take an email back after pressing Send.</small>
+                </>
+              )}
 
               <h3>Read tracking</h3>
-              <Toggle
-                on={s.trackByDefault}
-                onChange={(v) => update({ trackByDefault: v })}
-                label="Track opens on emails to people outside the team"
-                hint="See who opened your email, how often, and which links they clicked. You can switch it off per email."
-              />
-              <Toggle on={s.notifyOpens} onChange={(v) => update({ notifyOpens: v })} label="Tell me when someone opens" hint="A quick notification the moment it happens." />
-              <Toggle
-                on={s.blockTrackers}
-                onChange={(v) => update({ blockTrackers: v })}
-                label="Block trackers in emails I receive"
-                hint="Senders can’t see when or where you read their email."
-              />
-              <small className="set-hint">Your team’s internal email is never tracked. If you email people in the EU, mention tracking in your privacy policy.</small>
+              {realMail ? (
+                // Mail sent from a real server isn't tracked yet (Compose only offers it in the demo).
+                <div className="set-row">
+                  <span>
+                    <strong>Track opens and clicks</strong>
+                    <small>Coming soon: see who opened your email and which links they clicked.</small>
+                  </span>
+                  <span className="badge-soon">Not yet</span>
+                </div>
+              ) : (
+                <>
+                  <Toggle
+                    on={s.trackByDefault}
+                    onChange={(v) => update({ trackByDefault: v })}
+                    label="Track opens on emails to people outside the team"
+                    hint="See who opened your email, how often, and which links they clicked. You can switch it off per email."
+                  />
+                  <Toggle on={s.notifyOpens} onChange={(v) => update({ notifyOpens: v })} label="Tell me when someone opens" hint="A quick notification the moment it happens." />
+                </>
+              )}
+              {/* Pictures that load from elsewhere never load in mail you receive, so this is always on. */}
+              <div className="set-row">
+                <span>
+                  <strong>Trackers in emails you receive are blocked</strong>
+                  <small>Senders can’t see when or where you read their email.</small>
+                </span>
+                <span className="acct-status ok">Always on</span>
+              </div>
+              {!realMail && <small className="set-hint">Your team’s internal email is never tracked. If you email people in the EU, mention tracking in your privacy policy.</small>}
 
               <h3>Blocked senders</h3>
               {blocked.length === 0 ? (

@@ -292,11 +292,15 @@ function clientLens(me: Person) {
       case 'prefs':
         return d.id === me.id ? d : null;
       case 'workspaces':
-        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: d.clientAccess, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
+        // Their access already worked out (company, project type and project settings), and the company's word for the work.
+        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: access, terms: d.terms, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
       case 'users':
         if (d.id === me.id || d.clientOf?.clientId === clientId || people.some((p) => p.email.toLowerCase() === String(d.email ?? '').toLowerCase()))
           return { id: d.id, name: d.name, email: d.email, color: d.color, title: d.title, photo: d.photo, clientOf: d.clientOf };
-        return team.has(d.id) ? { id: d.id, name: d.name, color: d.color, title: d.title, photo: d.photo, email: '' } : null;
+        if (!team.has(d.id)) return null;
+        // Guest access, "Show who's doing the work": hidden names never leave the server, first names only when asked.
+        if (access.teamNames === 'hide') return { id: d.id, name: `${w.name} team`, color: w.color, email: '' };
+        return { id: d.id, name: access.teamNames === 'first' ? String(d.name ?? '').split(' ')[0] : d.name, color: d.color, title: d.title, photo: d.photo, email: '' };
       case 'clients':
         return d.id === clientId ? d : null;
       case 'teams':
@@ -1421,6 +1425,9 @@ createServer(async (req, res) => {
       const client = db.getDoc('clients', String(clientId)) as any;
       const w = workspaces().find((x) => x.id === workspaceId) as any;
       if (!client || !w || client.workspaceId !== w.id) return json(res, 404, { error: 'No such project.' });
+      // Settings, Permissions, "Invite guests": a Member needs it, unless they lead this project.
+      const leads = client.ownerId === me || (client.members ?? []).some((m: any) => m.userId === me && m.role === 'lead');
+      if (memberOf(me).some((x) => x.id === w.id) && !isAdminOf(me, w.id) && !leads && !{ ...DEFAULT_PERMISSIONS, ...(w.permissions ?? {}) }.inviteGuests) return json(res, 403, { error: 'Only admins and its Lead can invite guests here.' });
       if (!memberOf(me).some((x) => x.id === w.id)) {
         // A client person inviting a colleague.
         const access = accessFor(w, client);
@@ -1826,6 +1833,7 @@ createServer(async (req, res) => {
         if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
         if (coll === 'messages') return d.userId === me ? d : null;
         if (coll === 'notes') return { ...d, ownerId: me } as db.Doc;
+        if (coll === 'channels' && d.kind === 'channel' && !d.teamId && limited(d.workspaceId) && (db.getDoc('workspaces', String(d.workspaceId)) as any)?.chat?.whoCanCreate === 'admins') return null; // only admins start channels here
         if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
         if (coll === 'drive') return { ...d, uploadedBy: (d as any).uploadedBy ?? me } as db.Doc;
         if (coll === 'events') return { ...d, createdBy: (d as any).createdBy ?? me } as db.Doc;

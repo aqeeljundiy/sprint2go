@@ -99,7 +99,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
     ? [
         { name: 'Files', size: Math.max(0, (room?.used ?? 0) - (room?.video ?? 0) - mailBytes), color: '#10b981' },
         { name: 'Videos', size: room?.video ?? 0, color: '#f97316' },
-        { name: 'Email attachments', size: mailBytes, color: 'var(--accent)' },
+        { name: 'Email attachments', size: mailBytes, color: '#8b5cf6' },
       ]
     : [
         { name: 'Mail', size: 1.3 * 1024 ** 3 * Math.max(1, people / 3), color: 'var(--accent)' },
@@ -277,8 +277,8 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         </div>
         <div className="set-block">
           <h3>Notetaker</h3>
-          <Row title="Join meetings from calendars automatically" hint={`From Google, Outlook and ${product.name} calendars`}>
-            <Switch on={m.autoJoin} onChange={(v) => set({ autoJoin: v })} />
+          <Row title="Join meetings from calendars automatically" hint="Coming soon. For now, send the notetaker to a meeting from Meet.">
+            <span className="badge-soon">Not yet</span>
           </Row>
           <Row title="Announce recording" hint="The bot says it’s recording when it joins. The host can stop it at any time">
             <Switch on={m.announce} onChange={(v) => set({ announce: v })} />
@@ -345,17 +345,14 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
         <WhatsAppBlock ws={ws} canManage={canManage} />
         <div className="set-block">
           <h3>Chat</h3>
-          <Row title="GIFs and stickers" hint="Off for a more formal workspace">
-            <Switch on={chat.gifs} onChange={(v) => onWorkspace({ chat: { ...chat, gifs: v } })} />
-          </Row>
           <Row title="Celebrate finished work" hint={`A small confetti and a note in the ${term.one}’s channel when a task is done`}>
             <Switch on={chat.celebrations} onChange={(v) => onWorkspace({ chat: { ...chat, celebrations: v } })} />
           </Row>
-          <Row title="Who can create channels">
+          <Row title="Who can create channels" hint={chat.whoCanCreate === 'admins' ? 'Members can still message people directly, and teams get their own channel.' : undefined}>
             <Select value={chat.whoCanCreate} onChange={(v) => onWorkspace({ chat: { ...chat, whoCanCreate: v } })} label="Who can create channels" options={[{ value: 'everyone', label: 'Everyone' }, { value: 'admins', label: 'Only admins' }]} />
           </Row>
-          <Row title="Keep chat history" hint="Older messages are deleted for everyone">
-            <Select value={chat.history} onChange={(v) => onWorkspace({ chat: { ...chat, history: v } })} label="Keep chat history" options={[{ value: 'forever', label: 'Forever' }, { value: '1y', label: '1 year' }, { value: '90d', label: '90 days' }]} />
+          <Row title="Delete old messages" hint="Coming soon: deleting messages older than a year or 90 days, for everyone. Until then chat history is kept.">
+            <span className="badge-soon">Not yet</span>
           </Row>
         </div>
       </fieldset>

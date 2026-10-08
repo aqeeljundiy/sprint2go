@@ -716,7 +716,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
     // With the server: the mail engine really sends it (our own mailboxes already have their copies).
-    if (server.on && from && (!from.provider || from.provider === 'sprint2go')) {
+    const handedOver = server.on && !!from && (!from.provider || from.provider === 'sprint2go');
+    if (handedOver) {
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -728,10 +729,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         () => showToast({ text: 'No connection: the mail was not sent.' }),
       );
     } else if (demoOk && thread.messages[0].tracking) simulateOpen(thread);
+    // Undo only where it can really take the mail back: once the mail engine has it, it's gone (Settings says so).
+    const canUndo = !!settings.undoSend && !handedOver;
     showToast({
       text: 'Message sent',
-      ms: settings.undoSend ? settings.undoSend * 1000 : 4000,
-      action: settings.undoSend
+      ms: canUndo ? settings.undoSend * 1000 : 4000,
+      action: canUndo
         ? {
             label: 'Undo',
             run: () => {
@@ -1583,6 +1586,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     );
   }, [channels, ws.chat?.layout, wsTeams]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Settings, Apps & chat: "Who can create channels" (the server checks it too). */
+  const canStartChannels = myRole !== 'member' || ws.chat?.whoCanCreate !== 'admins';
   /** The channel owner and admins can change a channel's category for everyone. */
   const canManageChannel = (c: Channel) => myRole !== 'member' || c.ownerId === user.id;
   /** Moves a channel to another category (sidebar menu or drag and drop). */
@@ -2469,7 +2474,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             ? { icon: Plus, label: `New ${term.one}`, run: () => newProjectFlow() }
           : (mode === 'tasks' || mode === 'home') && aiOn
             ? { icon: Sparkles, label: 'Brain dump', run: () => openDump('') }
-            : mode === 'chat' && !chatId
+            : mode === 'chat' && !chatId && canStartChannels
               ? { icon: Plus, label: 'New channel', run: () => setChanDialog({}) }
               : mode === 'meet' && botOn
                 ? { icon: Video, label: 'Send bot to a meeting', run: () => openSendBot() }
@@ -2909,7 +2914,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setChatId(id);
               setSidebarOpen(false);
             }}
-            onNewChannel={() => setChanDialog({})}
+            onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
             onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
             canManage={canManageChannel}
             onMove={moveChannel}
@@ -2998,7 +3003,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...c.members, user.id] } : c)));
                 setChatId(id);
               }}
-              onNewChannel={() => setChanDialog({})}
+              onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
               onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
               canManage={canManageChannel}
               onMove={moveChannel}

@@ -65,7 +65,7 @@ interface SidebarProps {
   presence: (id: string) => Presence;
   onOpen: (id: string) => void;
   onJoin: (id: string) => void;
-  onNewChannel: () => void;
+  onNewChannel?: () => void; // missing: only admins start channels in this company
   onNewDm: (userId: string) => void;
   onStatus: (s: Status | null) => void;
   canManage: (c: Channel) => boolean; // owner or admin: may change the channel's category
@@ -364,10 +364,12 @@ export function ChatSidebar(p: SidebarProps) {
       )}
       {body}
       <nav className="nav">
-        <button className="nav-item" onClick={p.onNewChannel} title="New channel">
-          <Plus size={16} />
-          <span className="sb-label">New channel</span>
-        </button>
+        {p.onNewChannel && (
+          <button className="nav-item" onClick={p.onNewChannel} title="New channel">
+            <Plus size={16} />
+            <span className="sb-label">New channel</span>
+          </button>
+        )}
         {!custom &&
           p.isAdmin &&
           (newSection ? (
