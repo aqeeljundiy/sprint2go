@@ -2912,3 +2912,56 @@ kbd {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Notes list: a letter tile per note when the sidebar is folded (the full card only when it's open). */
+.note-item .ni-dot {
+  display: none;
+}
+.sidebar.collapsed .note-item {
+  width: 40px;
+  height: 40px;
+  margin: 2px auto;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.sidebar.collapsed .note-item > :not(.ni-dot),
+.sidebar.collapsed .sb-note {
+  display: none;
+}
+.sidebar.collapsed .note-item .ni-dot {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text-2);
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+  font-weight: 600;
+}
+.sidebar.collapsed .note-item.active .ni-dot {
+  background: var(--accent);
+  color: #fff;
+}
+/* "1 live" becomes a red dot on the icon when the sidebar is folded. */
+.sidebar.collapsed .nav-item {
+  position: relative;
+}
+.sidebar.collapsed .live-count {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0;
+  background: var(--danger) !important;
+}
+.fold > .fold-in {
+  display: grid;
+  gap: 8px;
+}

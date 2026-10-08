@@ -62,7 +62,10 @@ export function NotesList({
         {shown.map((n) => {
           const c = clients.find((x) => x.id === n.clientId);
           return (
-            <button key={n.id} className={`note-item ${current === n.id ? 'active' : ''}`} onClick={() => onOpen(n.id)}>
+            <button key={n.id} className={`note-item ${current === n.id ? 'active' : ''}`} onClick={() => onOpen(n.id)} title={n.title || 'Untitled'}>
+              <span className="ni-dot" aria-hidden>
+                {(n.title || 'U').trim().charAt(0).toUpperCase()}
+              </span>
               <span className="ni-title">
                 {n.pinned && <Pin size={11} />}
                 {n.visibility === 'private' && <Lock size={11} />}

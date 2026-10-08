@@ -288,8 +288,13 @@ input[type='checkbox'] {
   appearance: none;
   -webkit-appearance: none;
   flex: none;
-  width: 18px;
-  height: 18px;
+  box-sizing: border-box;
+  /* !important: text-field rules (padding, width, min-height) must never reach a checkbox */
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px;
+  min-height: 0 !important;
+  padding: 0 !important;
   margin: 0;
   border-radius: 6px;
   border: 1.5px solid color-mix(in srgb, var(--text-3) 70%, transparent);

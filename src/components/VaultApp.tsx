@@ -489,8 +489,8 @@ function VaultEditor({
             <label className="check-row">
               <input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> Everyone in the company
             </label>
-            {!everyone && (
-              <>
+            <div className={`fold ${everyone ? '' : 'open'}`} aria-hidden={everyone}>
+              <div className="fold-in">
                 <div className="team-toggles">
                   {teams.map((t) => (
                     <button key={t.id} type="button" className={teamIds.includes(t.id) ? 'on' : ''} onClick={() => setTeamIds((x) => (x.includes(t.id) ? x.filter((y) => y !== t.id) : [...x, t.id]))}>
@@ -500,8 +500,8 @@ function VaultEditor({
                 </div>
                 <PeoplePicker value={userIds} users={users.filter((u) => u.id !== me)} me={me} onChange={setUserIds} label="People" emptyText="Add people" />
                 <small className="muted">You{isAdmin ? '' : ' and admins'} can always see it.</small>
-              </>
-            )}
+              </div>
+            </div>
           </div>
           {error && <p className="err">{error}</p>}
           </SmoothHeight>
