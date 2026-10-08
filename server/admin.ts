@@ -13,6 +13,7 @@ import * as mailer from './mailer.ts';
 import * as aiplan from './aiplan.ts';
 import { offsiteState } from './offsite.ts';
 import { certState } from './mailcert.ts';
+import * as turn from './turn.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
 
@@ -174,7 +175,7 @@ function systemInfo(ctx: AdminCtx) {
   } catch {
     /* built before the stamp existed */
   }
-  const flags = ['PUBLIC_URL', 'S2G_OPERATORS', 'S2G_DEMO', 'MAIL_HOST', 'MAIL_IP', 'SUPPORT_EMAIL', 'SES_KEY', 'SES_SECRET', 'MAIL_FROM', 'RECORDER_URL', 'RECORDER_SECRET', 'S2G_SECRET', 'S3_BUCKET', 'CF_DNS_TOKEN', 'MAIL_TLS_CERT'].map((k) => ({ key: k, set: !!process.env[k] }));
+  const flags = ['PUBLIC_URL', 'S2G_OPERATORS', 'S2G_DEMO', 'MAIL_HOST', 'MAIL_IP', 'SUPPORT_EMAIL', 'SES_KEY', 'SES_SECRET', 'MAIL_FROM', 'RECORDER_URL', 'RECORDER_SECRET', 'S2G_SECRET', 'S3_BUCKET', 'CF_DNS_TOKEN', 'MAIL_TLS_CERT', 'TURN_URLS', 'TURN_SECRET'].map((k) => ({ key: k, set: !!process.env[k] }));
   return {
     version,
     commit: process.env.SOURCE_COMMIT ?? process.env.S2G_COMMIT ?? build?.commit ?? null,
@@ -220,6 +221,8 @@ async function warnings(ctx: AdminCtx) {
     const h = await ctx.recorder.health();
     if (!h?.ok) out.push({ kind: 'recorder', level: 'normal', text: 'The meeting recorder does not answer.', to: '/admin/platform' });
   }
+  const relay = await turn.health();
+  if (relay.configured && !relay.reachable) out.push({ kind: 'relay', level: 'normal', text: `The call relay doesn’t answer at ${relay.checked ?? 'its address'}: huddles fail on networks that block direct calls.`, to: '/admin/platform' });
   const health = await mailer.serverHealth();
   if (!health.port25.ok) out.push({ kind: 'port25', level: 'normal', text: 'Outgoing port 25 is blocked: mail to outside addresses stays queued.', to: '/admin/platform/mail' });
   if (!health.ptr.ok && mailer.MAIL_IP) out.push({ kind: 'ptr', level: 'normal', text: `Reverse DNS of ${mailer.MAIL_IP} isn’t ${mailer.MAIL_HOST}: Gmail and Outlook will distrust our mail.`, to: '/admin/platform/mail' });
@@ -1193,7 +1196,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   if (sub === 'system' && GET) {
     const info = systemInfo(ctx);
     const h = ctx.recorder.configured ? await ctx.recorder.health() : null;
-    return (json(res, 200, { ...info, recorder: { configured: ctx.recorder.configured, reachable: !!h?.ok, bots: h?.bots ?? null }, warnings: await warnings(ctx), alerts: platform.recentAlerts(), backupTest: platform.settings().backupTest }), true);
+    return (json(res, 200, { ...info, recorder: { configured: ctx.recorder.configured, reachable: !!h?.ok, bots: h?.bots ?? null }, relay: await turn.health(), warnings: await warnings(ctx), alerts: platform.recentAlerts(), backupTest: platform.settings().backupTest }), true);
   }
   if (sub === 'mail' && GET) {
     const names = new Map((db.allDocs('workspaces') as any[]).map((w) => [w.id, w.name]));

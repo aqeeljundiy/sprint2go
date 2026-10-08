@@ -4173,6 +4173,56 @@ button.tl:hover,
   gap: 8px;
   justify-content: flex-end;
 }
+/* Lines that aren't up yet are dimmed; ones that couldn't connect get a small warning dot. */
+.huddle-av {
+  transition: opacity 0.2s ease;
+}
+.huddle-av.is-connecting,
+.huddle-av.is-retrying,
+.huddle-av.is-blocked,
+.huddle-av.is-silent {
+  opacity: 0.45;
+}
+.huddle-av.is-blocked::before,
+.huddle-av.is-silent::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--warn-solid, #e39a26);
+}
+/* Why the call isn't connecting, and what to do: folds open under the title (no gap when closed). */
+.huddle-fold {
+  grid-column: 1 / -1;
+}
+.huddle-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 4px 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn-soft, rgba(227, 154, 38, 0.14));
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.huddle-note svg {
+  margin-top: 2px;
+  color: var(--warn, #a8640c);
+}
+.huddle-note .ghost-btn.sm {
+  grid-column: 2;
+  justify-self: start;
+  margin: 2px 0 0 -11px; /* the label lines up with the text above */
+  font-weight: 600;
+}
 .huddle-actions .primary-btn.danger {
   background: #d14343;
 }
@@ -4198,6 +4248,9 @@ button.tl:hover,
   .huddle-btn.live .lbl::before {
     animation: none;
   }
+  .huddle-av {
+    transition: none;
+  }
 }
 .is-leaving.huddle {
   animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
@@ -4211,6 +4264,9 @@ button.tl:hover,
   }
   .huddle-btn .lbl {
     display: none;
+  }
+  .huddle-note .ghost-btn.sm {
+    min-height: 40px;
   }
 }
 

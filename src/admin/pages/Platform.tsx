@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { AlertTriangle, Check, ChevronDown, Download, HardDrive, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
 
 import { rel, bytes, dateTime, post, type PersonRow } from '../api';
+import { testRelay } from '../../ice';
 import { Badge, Empty, Failed, Loading, Page, Section, Stat, Stats, Table, Tabs, useAct, useAdmin, useApi } from '../ui';
 
 export function Platform({ tab }: { tab: string }) {
@@ -68,6 +69,7 @@ interface System {
   sessions: number;
   flags: { key: string; set: boolean }[];
   recorder: { configured: boolean; reachable: boolean; bots: number | null };
+  relay: { configured: boolean; addresses: string[]; reachable: boolean | null; checked: string | null };
   warnings: { kind: string; text: string; level: string; to?: string }[];
   alerts: { kind: string; at: string; text: string }[];
   backupTest: { at: string; file: string; ok: boolean; detail: string } | null;
@@ -144,6 +146,7 @@ function Health() {
                 ok: data.offsite.configured && !offsiteFailing(data.offsite),
               },
               { label: 'Build', value: data.build ? `Running build from ${dateTime(data.build.builtAt)}${data.build.commit ? ` · ${data.build.commit.slice(0, 7)}` : ''} · Node ${data.node}` : data.built ? `Built ${dateTime(data.built)} · Node ${data.node}` : 'unknown' },
+              { label: 'Call relay', value: <Relay relay={data.relay} />, ok: data.relay.configured && !!data.relay.reachable },
             ]}
           />
         </Section>
@@ -171,6 +174,31 @@ function Health() {
           </div>
         )}
       </Section>
+    </>
+  );
+}
+
+/** The call relay (TURN) for huddles: whether it's set up and answers, and a check of the whole chain from this browser. */
+function Relay({ relay }: { relay: System['relay'] }) {
+  const [test, setTest] = useState<{ ok: boolean; text: string } | 'running' | null>(null);
+  if (!relay.configured)
+    return <>Not set up: huddles fail on networks that block direct calls. Add TURN_URLS and TURN_SECRET in Dokploy (steps in docs/turn.md).</>;
+  const run = () => {
+    setTest('running');
+    void testRelay().then(setTest, () => setTest({ ok: false, text: 'This browser couldn’t run the test.' }));
+  };
+  return (
+    <>
+      {relay.reachable ? `Answering at ${relay.checked}` : `Set up, but nothing answers at ${relay.checked ?? relay.addresses.join(', ')}`}
+      {' · '}
+      <button type="button" className="adm-link muted" onClick={run} disabled={test === 'running'}>
+        {test === 'running' ? 'Testing…' : 'Test from this browser'}
+      </button>
+      {test && test !== 'running' && (
+        <small key={test.text} className={`adm-block adm-relay-result ${test.ok ? 'muted' : 'err'}`}>
+          {test.text}
+        </small>
+      )}
     </>
   );
 }
