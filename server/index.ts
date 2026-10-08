@@ -13,7 +13,6 @@ import { AIError, keyHint, testKey, type AIConfig } from './llm.ts';
 import * as aiplan from './aiplan.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { DEFAULT_PERMISSIONS } from '../src/types.ts';
-import { storageGB } from '../src/data/pricing.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { TOP_UP } from '../src/data/pricing.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
@@ -37,6 +36,9 @@ import * as turn from './turn.ts';
 import * as feeds from './calendarFeeds.ts';
 import { FetchError } from './safeFetch.ts';
 import * as twostep from './twostep.ts';
+import * as whatsapp from './whatsapp.ts';
+import * as billing from './billing.ts';
+import * as aiLimits from './aiLimits.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
@@ -489,14 +491,8 @@ const ipOf = (req: IncomingMessage) => String(req.headers['x-forwarded-for'] ?? 
 /** The largest single upload (S2G_MAX_UPLOAD_MB, 2 GB unless set); a company's storage left can lower it. */
 const MAX_UPLOAD = Math.max(1, Number(process.env.S2G_MAX_UPLOAD_MB) || 2048) * 1024 * 1024;
 const mb = (n: number) => (n >= 1024 ** 3 ? `${+(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(0, Math.round(n / 1024 ** 2))} MB`);
-/** A company's storage: its plan's pool (shared by everyone) and what its uploaded files take. */
-function storageRoom(wsId: string) {
-  const w = workspaces().find((x) => x.id === wsId) as any;
-  const plan = w?.plan ?? { tier: 'studio', addons: { storage50: 0, mailboxes: 0 } }; // no plan yet: the Studio trial
-  const total = storageGB(plan, Math.max(1, w?.members?.length ?? 1)) * 1024 ** 3;
-  const used = db.storageOf(wsId);
-  return { total, ...used, left: Math.max(0, total - used.used) };
-}
+/** A company's storage: its plan's pool (shared by everyone) and what its files and kept recordings take. */
+const storageRoom = billing.storageRoom;
 /** The brand people see at this address: an agency's name on its own (verified) domain, otherwise ours. */
 function brandNameAt(req: IncomingMessage) {
   const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
@@ -641,18 +637,20 @@ function aiFor(wsId: string, job: string): AIConfig[] {
   const ws = workspaces().find((w) => w.id === wsId);
   const pick = ws?.ai?.jobs?.[job];
   const chain: AIConfig[] = [];
-  if (pick && pick.provider !== 'included') {
+  // Blocked providers are never called for this company (our AI's fallback included); a key at its cap rests.
+  const may = aiLimits.allowed(ws as any);
+  if (pick && pick.provider !== 'included' && may(pick.provider)) {
     const k = db.loadKey(wsId, pick.provider);
     if (k) chain.push({ provider: pick.provider, model: pick.model, apiKey: k.key, baseUrl: k.baseUrl });
   }
-  if (onOurAI(ws)) chain.push(...aiplan.ourChain(job));
+  if (onOurAI(ws)) chain.push(...aiplan.ourChain(job).filter((c) => may(c.provider, true)));
   if (chain.length) return chain;
   // Otherwise any key the company saved, with that provider's model for this kind of job.
   const rec = JOBS.find((j) => j.id === job)?.rec;
   for (const p of ws?.ai?.providers ?? []) {
     const k = db.loadKey(wsId, p.id);
     const info = PROVIDERS.find((x) => x.id === p.id);
-    if (!k || !info || info.kind === 'speech') continue;
+    if (!k || !info || info.kind === 'speech' || !may(p.id)) continue;
     const wanted = [rec?.balanced, rec?.best, rec?.cheap].find((m) => info.models.some((x) => x.id === m));
     return [{ provider: p.id, model: wanted ?? info.models.find((m) => m.tier === 'balanced')?.id ?? info.models[0].id, apiKey: k.key, baseUrl: k.baseUrl }];
   }
@@ -681,6 +679,14 @@ function withinAllowance(ws: any, chain: AIConfig[]): { chain: AIConfig[]; messa
   return own.length ? { chain: own } : { chain: [], message: g.message };
 }
 const NO_AI = 'AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.';
+/** After AI ran for a company: its admins hear at 50%, 80% and 100% of a limit (server/aiLimits.ts). */
+const aiAlerts = (wsId: string) => {
+  try {
+    aiLimits.checkAlerts(db.getDoc('workspaces', wsId) as any, (id) => spendRp(db.usageSince(id, new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()) as any), (ids, text, url, id) => notifyUsers(ids, text, url, id));
+  } catch (e) {
+    console.error('[ai alerts]', e instanceof Error ? e.message : e);
+  }
+};
 const OUR_AI_DOWN = 'AI isn’t available right now. We’ve been told; try again in a few minutes.';
 
 /**
@@ -688,13 +694,26 @@ const OUR_AI_DOWN = 'AI isn’t available right now. We’ve been told; try agai
  * picking a plan) but never start or stretch one, since a trial runs on our AI. Top-ups: the app may add one at a
  * time, never lower the count or bring back a count the invoice run already reset (a page left open since then).
  */
-function planFromApp(next: any, prev: any) {
-  if (!next) return prev;
+function planFromApp(next: any, prev: any): { plan: any; why?: string } {
+  if (!next) return { plan: prev };
+  // Cancelling keeps the plan until the end of the period that's paid for; "Keep the plan" undoes it.
+  if (next.cancel === true && prev && prev.tier !== 'free') next = { ...next, tier: prev.tier, track: prev.track, cycle: prev.cycle };
   const max = new Date(Date.now() + 14 * 86_400_000).toISOString();
   const trialEnds = !next.trialEnds ? undefined : prev ? prev.trialEnds : String(next.trialEnds) > max ? max : next.trialEnds;
+  // A new company's trial is always Studio AI, whatever the app sent.
+  if (trialEnds && !prev && trialEnds > new Date().toISOString()) Object.assign(next, { tier: 'studio', track: 'ai' });
   const had = prev?.topUps ?? 0;
   const topUps = (Number(next.topUps) || 0) === had + 1 ? had + 1 : had;
-  return { ...next, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined };
+  // Add-ons are whole numbers (they're on the invoice); pausing has its own rules (server/billing.ts).
+  const n = (v: unknown) => Math.max(0, Math.min(1000, Math.floor(Number(v) || 0)));
+  const addons = { mailboxes: n(next.addons?.mailboxes), storage50: n(next.addons?.storage50), meetHours10: n(next.addons?.meetHours10), branding: !!next.addons?.branding };
+  const pause = billing.pauseOnSave(next, prev);
+  // A new tier or track is a new choice: a cancellation waiting for the end of the period no longer applies.
+  const cancelAt =
+    next.cancel === true && prev && prev.tier !== 'free' ? (prev.cancelAt ?? billing.periodEnd(prev)) : next.cancel === false ? undefined : prev?.cancelAt && next.tier === prev.tier && next.track === prev.track ? prev.cancelAt : undefined;
+  // How the company pays is ours to record (bank transfer until a card processor exists); the app can't invent a card.
+  const { cancel: _c, ...rest } = next;
+  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt }, why: pause.why };
 }
 
 const routes: Record<string, (b: any) => Promise<unknown>> = {
@@ -754,13 +773,14 @@ const sameSecret = (got: string) => {
 function sttFor(ws: Ws & { meetings?: { languages?: string[] } }, only?: string) {
   const languages = only ? [only] : (ws.meetings?.languages ?? []).slice(0, 4);
   const pick = ws.ai?.jobs?.speech?.provider;
+  const may = aiLimits.allowed(ws as any);
   for (const p of [languages.length > 1 ? 'sumopod' : null, pick, ...STT]) {
-    if (!p || !STT.includes(p)) continue;
+    if (!p || !STT.includes(p) || !may(p)) continue;
     const k = db.loadKey(ws.id, p);
     if (k) return { provider: p, apiKey: k.key, model: p === 'sumopod' ? 'gemini/gemini-3.5-flash' : null, languages, language: languages[0] ?? 'auto' };
   }
-  // AI-plan companies without a speech key of their own: ours, as the operators picked.
-  const ours = onOurAI(ws) ? aiplan.ourSpeech() : null;
+  // AI-plan companies without a speech key of their own: ours, as the operators picked (never a provider they blocked).
+  const ours = onOurAI(ws) ? aiplan.ourSpeech((p) => may(p, true)) : null;
   return ours ? { ...ours, languages, language: languages[0] ?? 'auto' } : null;
 }
 
@@ -818,6 +838,8 @@ async function writeMeetingNotes(id: string, again = false) {
     finish({ recording: t.recording }, why, ...t.line);
   };
   if (!m.transcript?.length) return noNotes('No transcript, so no notes');
+  // Settings, AI, Automatic jobs: "Meeting notes after each meeting" switched off means none are written by themselves.
+  if (!again && ws.ai?.auto?.meetingNotes === false) return noNotes('Automatic meeting notes are off (Settings, AI), so only the transcript is kept. “Regenerate notes” writes them now');
   const route = withinAllowance(ws, aiFor(ws.id, 'meeting'));
   if (!route.chain.length) return noNotes(route.message ? 'The AI allowance for this month is used up, so only the transcript is kept' : onOurAI(ws) ? 'AI wasn’t available, so only the transcript is kept' : 'No AI is set up for meeting notes, so only the transcript is kept');
   try {
@@ -828,6 +850,7 @@ async function writeMeetingNotes(id: string, again = false) {
       (cfg, inTokens, outTokens) => db.logUsage({ workspaceId: ws.id, userId: m.createdBy ?? '', job: 'meeting', provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens }),
       () => ai.meetingNotes({ title: m.title, transcript: m.transcript, clientNames: clients.map((c) => c.name), members }),
     );
+    aiAlerts(ws.id);
     const cur = db.getDoc('meetings', id) as any;
     // Transcribing again keeps the filing and the recording as they are.
     const filed = again || cur.filedBy === 'user' ? { clientId: cur.clientId, filedBy: cur.filedBy, by: '' } : fileMeeting(ws, { ...cur, summary: notes.summary }, notes.folder, clients);
@@ -1003,49 +1026,23 @@ createServer(async (req, res) => {
   }
   try {
     // Sign in / out
-    // WhatsApp (Meta Cloud API) webhook: Meta checks it once with a token, then posts every incoming message.
+    // WhatsApp (Meta Cloud API) webhook: Meta checks it once with the company's verify token, then posts every
+    // incoming message, signed with the Meta app's secret. Unsigned or wrongly signed posts are never read
+    // (server/whatsapp.ts); without a secret the webhook is off.
     if (p === '/api/whatsapp/webhook' && req.method === 'GET') {
-      const token = url.searchParams.get('hub.verify_token');
-      const w = workspaces().find((x: any) => x.whatsapp?.verifyToken && x.whatsapp.verifyToken === token) as any;
-      if (url.searchParams.get('hub.mode') === 'subscribe' && w) return (res.writeHead(200, { 'content-type': 'text/plain' }), res.end(url.searchParams.get('hub.challenge') ?? ''));
-      return json(res, 403, {});
+      const c = whatsapp.challenge(url.searchParams, workspaces() as any);
+      return c.status === 200 ? (res.writeHead(200, { 'content-type': 'text/plain' }), res.end(c.body)) : json(res, c.status, {});
     }
     if (p === '/api/whatsapp/webhook' && req.method === 'POST') {
-      const b = await body(req).catch(() => ({}));
-      const digits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
-      for (const entry of b.entry ?? [])
-        for (const ch of entry.changes ?? []) {
-          const v = ch.value ?? {};
-          const w = workspaces().find((x: any) => x.whatsapp?.connected && x.whatsapp.phoneNumberId === v.metadata?.phone_number_id) as any;
-          if (!w) continue;
-          const names = new Map((v.contacts ?? []).map((c: any) => [digits(c.wa_id), c.profile?.name]));
-          for (const m of v.messages ?? []) {
-            const from = digits(m.from);
-            const text = m.type === 'text' ? String(m.text?.body ?? '') : `[${m.type}]`;
-            // Whose number is it? One of a project's guests → their project's shared channel.
-            const channels = db.allDocs('channels') as any[];
-            const hit = (db.allDocs('clients') as any[])
-              .filter((c) => c.workspaceId === w.id)
-              .flatMap((c) => clientPeople(c, channels).filter((pp) => pp.phone && digits(pp.phone) === from).map((pp) => ({ c, pp })))[0];
-            const at = new Date(Number(m.timestamp) * 1000 || Date.now()).toISOString();
-            if (hit) {
-              const chan = channels.find((x) => x.clientId === hit.c.id && x.category === 'shared' && !x.archived) ?? channels.find((x) => x.clientId === hit.c.id && !x.archived);
-              if (chan) {
-                const doc = { id: randomBytes(8).toString('hex'), channelId: chan.id, userId: 'guest', guestEmail: hit.pp.email, text, at, via: 'whatsapp' } as db.Doc;
-                db.writeDocs('messages', [doc], [], null);
-                broadcast('messages', [doc], []);
-                const notices = (chan.members ?? []).map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', text: `${hit.pp.name} (WhatsApp): ${text.slice(0, 80)}`, at, read: false, link: { app: 'chat', id: chan.id, msg: doc.id } })) as db.Doc[];
-                if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
-                continue;
-              }
-            }
-            // Unknown number: admins get it, with the number, so they can add the person to a project.
-            const admins = (w.members ?? []).filter((x: any) => x.role !== 'member').map((x: any) => x.userId);
-            const notices = admins.map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', text: `WhatsApp from ${names.get(from) ? `${names.get(from)} (+${from})` : '+' + from}: ${text.slice(0, 80)}`, at, read: false, link: { app: 'settings', id: 'apps' } })) as db.Doc[];
-            if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
-          }
-        }
-      return json(res, 200, {});
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of req) {
+        size += (chunk as Buffer).length;
+        if (size > 3_000_000) return json(res, 413, {});
+        chunks.push(chunk as Buffer);
+      }
+      const r = whatsapp.receive(Buffer.concat(chunks), String(req.headers['x-hub-signature-256'] ?? '') || undefined, workspaces() as any, broadcast);
+      return json(res, r.status, {});
     }
 
     // White label: whose brand to show at this address (an agency's subdomain, or <slug>.localhost to try it locally).
@@ -1397,7 +1394,11 @@ createServer(async (req, res) => {
     if (p === '/api/billing/invoices' && req.method === 'GET') {
       const ws = memberOf(me).find((w: any) => w.id === url.searchParams.get('ws')) as any;
       if (!ws || !(isAdminOf(me, ws.id) || ws.permissions?.seeBilling)) return json(res, 403, { error: 'Not allowed.' });
-      return json(res, 200, { invoices: platform.invoices(ws.id).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, number: i.number, period: i.period, total: i.total, status: i.status, dueAt: i.dueAt, paidAt: i.paidAt, overdue: i.status === 'sent' && i.dueAt < new Date().toISOString() })) });
+      // How to pay: only what's real. Bank transfer to the account in the operators' settings (none set: nothing to show),
+      // and how many days after the due date an unpaid invoice makes the company read-only (0: never by itself).
+      const s = platform.settings();
+      const pay = { bank: s.billing.bank || null, payee: s.billing.name || null, graceDays: s.autoSuspendDays };
+      return json(res, 200, { pay, invoices: platform.invoices(ws.id).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, number: i.number, period: i.period, total: i.total, status: i.status, dueAt: i.dueAt, paidAt: i.paidAt, overdue: i.status === 'sent' && i.dueAt < new Date().toISOString(), credits: billing.isCreditInvoice(i.id) || undefined })) });
     }
     if (p === '/api/billing/invoice' && req.method === 'GET') {
       const inv = platform.invoice(url.searchParams.get('id') ?? '');
@@ -1449,7 +1450,9 @@ createServer(async (req, res) => {
       // Whose domain it is (and the record that proves it), and for operators only the mail server's certificate.
       const ownership = ownDomain ? domainOwnership(ws, domain) : null;
       const cert = opRecord ? certState(mailer.MAIL_HOST) : undefined;
-      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership, cert });
+      // Boosted credits: what's waiting for payment, and why they can't be bought here (if so).
+      const credits = { orders: billing.openOrders(saved.id), blocked: billing.creditsBlocked(mailer.boostedAvailable()), bank: platform.settings().billing.bank || null };
+      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, creditOrders: credits, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership, cert });
     }
     if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
       const { threadId } = await body(req);
@@ -1498,7 +1501,7 @@ createServer(async (req, res) => {
       const wsId = String(b.workspaceId ?? '');
       const ws = db.getDoc('workspaces', wsId) as any;
       if (!ws || !isAdminOf(me, wsId)) return json(res, 403, { error: 'Only admins can change the address.' });
-      if (ws.suspended) return json(res, 403, { error: 'This company is read-only for now.' });
+      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
       if (tooMany(`domain:${wsId}`, 30, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of checks. Wait a few minutes; we also check every hour by ourselves.' });
       if (p === '/api/white-label/check') {
         if (!ws.whiteLabel?.domain) return json(res, 400, { error: 'Add an address first.' });
@@ -1539,15 +1542,27 @@ createServer(async (req, res) => {
       soonReadiness(ws.id);
       return json(res, 200, { records: await mailer.expectedRecords(next) });
     }
+    // Boosted sending credits: there's no card processor, so buying makes an invoice to pay by bank transfer, and the
+    // credits arrive when an operator marks it paid (server/billing.ts). Nothing is added for free.
     if (p === '/api/mail/credits' && req.method === 'POST') {
-      const { workspaceId, add } = await body(req);
+      const { workspaceId, pack } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
       if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can buy credits.' });
-      const n = Math.max(0, Math.min(100_000, Number(add) || 0));
-      const next = { ...ws, mailCredits: (ws.mailCredits ?? 0) + n, mailCreditsNotified: false };
-      db.writeDocs('workspaces', [next], [], me);
-      broadcast('workspaces', [next], []);
-      return json(res, 200, { credits: next.mailCredits });
+      const blocked = billing.creditsBlocked(mailer.boostedAvailable()) ?? billing.readOnlyWhy(ws);
+      if (blocked) return json(res, 409, { error: blocked });
+      if (tooMany(`credits:${ws.id}`, 5, 60 * 60_000)) return json(res, 429, { error: 'That’s a lot of orders in an hour. Pay the invoices that are waiting first.' });
+      const r = billing.orderCredits(ws, Number(pack), me);
+      if ('error' in r) return json(res, r.status, { error: r.error });
+      // The invoice goes to the company's billing emails too (as the monthly ones do), with the bank details on it.
+      const billTo = r.invoice.billTo?.emails?.length ? r.invoice.billTo.emails : [String((db.getDoc('users', me) as any)?.email ?? '')].filter((e) => e.includes('@'));
+      const payee = platform.settings().billing.name || 'sprint2go';
+      if (billTo.length && mailer.systemMailPath() !== 'log')
+        void mailer.sendSystemMail({ fromName: payee, to: billTo, subject: `Invoice ${r.invoice.number} from ${payee}: Rp ${r.invoice.total.toLocaleString('id-ID')}`, text: `Hello,\n\nYour invoice ${r.invoice.number} for ${r.credits.toLocaleString('id-ID')} Boosted sending emails is attached: Rp ${r.invoice.total.toLocaleString('id-ID')}, due ${r.invoice.dueAt.slice(0, 10)}. The emails are added as soon as it's paid.\n\nThank you.`, attachments: [{ filename: `${r.invoice.number}.html`, content: Buffer.from(admin.invoiceHtml(r.invoice, ws.name)), contentType: 'text/html' }] }).catch(() => null);
+      // The operators who look after billing hear about it, so they watch for the transfer.
+      const ops = platform.operators().filter((o) => !o.disabled && platform.permsOf(o.role).includes('billing')).map((o) => o.email);
+      const opIds = (db.allDocs('users') as any[]).filter((u) => ops.includes(String(u.email ?? '').toLowerCase())).map((u) => u.id);
+      notifyUsers(opIds, `${ws.name} ordered ${r.credits.toLocaleString('id-ID')} Boosted emails: invoice ${r.invoice.number}, Rp ${r.invoice.total.toLocaleString('id-ID')}. Mark it paid when the transfer arrives.`, `/admin/money/invoices/${r.invoice.id}`);
+      return json(res, 200, { invoice: { id: r.invoice.id, number: r.invoice.number, total: r.invoice.total, dueAt: r.invoice.dueAt }, credits: r.credits, bank: platform.settings().billing.bank, orders: billing.openOrders(ws.id) });
     }
     if (p === '/api/mail/send' && req.method === 'POST') {
       const b = await body(req);
@@ -1559,9 +1574,21 @@ createServer(async (req, res) => {
       if (!ws.mailReady?.mailboxes?.[account.id]?.send) {
         const r = await mailer.refreshReadiness(ws.id);
         const m = r?.mailboxes[account.id];
-        if (!m?.send) return json(res, 409, { error: `Sending isn’t set up for ${account.email} yet. ${m?.why ?? ''}`.trim() });
+        if (!m?.send) return json(res, 409, { error: m?.sendWhy && !m.why ? m.sendWhy : `Sending isn’t set up for ${account.email} yet. ${m?.sendWhy ?? m?.why ?? ''}`.trim() });
       }
-      if (Array.isArray(account.users) && account.users.length && !account.users.includes(me) && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Not your mailbox.' });
+      // A mailbox's own people send from it; a shared inbox also its company's admins. Never someone's personal mailbox.
+      const users: string[] = Array.isArray(account.users) ? account.users : [];
+      if (users.length ? !users.includes(me) && !(account.kind === 'shared' && isAdminOf(me, ws.id)) : account.kind !== 'shared' && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Not your mailbox.' });
+      const ro = billing.readOnlyWhy(ws);
+      if (ro) return json(res, 403, { error: ro });
+      // The message lives in a thread of this mailbox (or a new one, saved a moment later); attachments are this company's files.
+      const thread = b.threadId ? (db.getDoc('threads', String(b.threadId)) as any) : null;
+      if (thread && thread.accountId !== account.id) return json(res, 403, { error: 'That conversation is in another mailbox.' });
+      const fileOk = (u: string) => {
+        const id = u.match(/^\/api\/files\/([a-f0-9]{32})$/)?.[1];
+        return id ? db.fileInfo(id)?.workspaceId === ws.id : u.startsWith('data:');
+      };
+      if ((Array.isArray(b.files) ? b.files : []).some((f: any) => f && typeof f.url === 'string' && !fileOk(f.url))) return json(res, 403, { error: 'One of the attachments isn’t a file of this company.' });
       const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
       try {
         platform.firstEvent('mail.first', ws.id, me);
@@ -1604,7 +1631,7 @@ createServer(async (req, res) => {
       const ws = t && (memberOf(me) as any[]).find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId));
       const account = ws?.accounts.find((a: any) => a.id === t.accountId);
       if (!t || !account || !(account.users ?? []).includes(me)) return json(res, 403, { error: 'Not your mailbox.' });
-      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
       const msg = (t.messages ?? []).find((m: any) => m.id === messageId);
       const inv = msg?.invite as invites.StoredInvite | undefined;
       if (!inv || (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH')) return json(res, 400, { error: 'There’s no invite to answer in this email.' });
@@ -1663,7 +1690,7 @@ createServer(async (req, res) => {
       const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
       const account = ws?.accounts?.find((a: any) => a.id === accountId);
       if (!ws || !account || (!(account.users ?? []).includes(me) && !isAdminOf(me, ws.id))) return json(res, 403, { error: 'Not your mailbox.' });
-      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
       const a = away && typeof away === 'object' ? away : {};
       const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
       const instant = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
@@ -1689,7 +1716,7 @@ createServer(async (req, res) => {
       const { workspaceId, aliases } = await body(req);
       const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
       if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change addresses.' });
-      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
       if (ws.emailSetup !== 'hosted' && ws.emailSetup !== 'mix') return json(res, 409, { error: ws.emailSetup === 'keep' ? 'Your domain’s mail stays with your provider, so extra addresses are made there.' : 'Email is off for this company.' });
       const domains = (ws.domains ?? []).map((d: string) => d.toLowerCase());
       const hosted = new Set((ws.accounts ?? []).filter((a: any) => !a.temp && (!a.provider || a.provider === 'sprint2go')).map((a: any) => a.id));
@@ -1717,7 +1744,7 @@ createServer(async (req, res) => {
       const { workspaceId, accountId, moveTo } = await body(req);
       const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
       if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can remove mailboxes.' });
-      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
       const account = (ws.accounts ?? []).find((a: any) => a.id === accountId);
       if (!account) return json(res, 404, { error: 'No such mailbox.' });
       const target = moveTo ? (ws.accounts ?? []).find((a: any) => a.id === moveTo && a.id !== account.id && !a.temp) : null;
@@ -1842,9 +1869,12 @@ createServer(async (req, res) => {
       const ids = new Set(people.map((u) => u.id));
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
-      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...wClean } = w as any;
+      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...wClean } = w as any;
       if (!DEMO) wClean.mailRouting = serverRouting(wClean.mailRouting, undefined);
-      const ws = { ...wClean, plan: planFromApp(wClean.plan, undefined), whiteLabel: ownAddress(wClean.whiteLabel, undefined), security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
+      if (wClean.mailRoute === 'boosted' && !mailer.boostedAvailable()) wClean.mailRoute = 'own';
+      const draft = { ...wClean, plan: planFromApp(wClean.plan, undefined).plan, whiteLabel: ownAddress(wClean.whiteLabel, undefined), security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
+      // Hosted mailboxes beyond what the plan has room for aren't made (the trial has room for everyone it starts with).
+      const ws = { ...draft, accounts: billing.mailboxesOnSave(draft, undefined).accounts ?? [] };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
       db.writeDocs('users', people, [], me);
       (ws as any).createdAt ??= new Date().toISOString();
@@ -1885,6 +1915,9 @@ createServer(async (req, res) => {
       // Guests may press the buttons the team shared with them, on their own project's table, and fill only fields they can edit.
       const guest = !team && !!t && t.share?.enabled && (t.share.buttons ?? []).includes(b.fieldId) && portalsOf(me).some((pt) => pt.clientId === t.clientId);
       if (!t || (!team && !guest)) return json(res, 404, { error: 'No such table.' });
+      if (team && !teamLens(me)('tables', t)) return json(res, 404, { error: 'No such table.' });
+      const roT = billing.readOnlyWhy(db.getDoc('workspaces', t.workspaceId) as any);
+      if (roT) return json(res, 403, { error: roT });
       const f = (t.fields ?? []).find((x: any) => x.id === b.fieldId);
       if (team && f?.button?.who === 'admins' && !isAdminOf(me, t.workspaceId)) return json(res, 403, { error: 'Only admins can press this button.' });
       const input = guest ? Object.fromEntries(Object.entries(b.input ?? {}).filter(([k]) => (t.share.edit ?? []).includes(k))) : (b.input ?? {});
@@ -1895,7 +1928,9 @@ createServer(async (req, res) => {
     if (p === '/api/tables/import' && req.method === 'POST') {
       const b = await body(req);
       const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
-      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId)) return json(res, 404, { error: 'No such table.' });
+      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId) || !teamLens(me)('tables', t)) return json(res, 404, { error: 'No such table.' });
+      const roI = billing.readOnlyWhy(db.getDoc('workspaces', t.workspaceId) as any);
+      if (roI) return json(res, 403, { error: roI });
       const out = tablesEngine.importRows(tablesEnv, t.id, me, b);
       return json(res, out.status, out.body);
     }
@@ -1914,15 +1949,28 @@ createServer(async (req, res) => {
       const configured = !!RECORDER_URL && !!RECORDER_SECRET;
       // "reachable" says whether the recorder service answers right now, not just whether it's configured.
       const reachable = configured ? await recorder('/health', { signal: AbortSignal.timeout(3000) }).then((r) => r.ok, () => false) : false;
-      return json(res, 200, { recorder: configured, reachable });
+      // With ?ws=: the company's meeting-bot minutes this month (the plan's hours plus add-ons), for the send dialog.
+      const hw = memberOf(me).find((w) => w.id === url.searchParams.get('ws')) as any;
+      const m = hw ? billing.meetMinutes(hw) : null;
+      return json(res, 200, { recorder: configured, reachable, ...(m ? { minutes: { used: m.used, left: m.left === Infinity ? null : m.left, total: m.allowance === Infinity ? null : m.allowance } } : {}) });
     }
     if (p === '/api/meet/bot' && req.method === 'POST') {
       const { meeting } = await body(req);
       const ws = workspaces().find((w) => w.id === meeting?.workspaceId) as any;
       if (!ws || !memberOf(me).some((w) => w.id === ws.id)) return json(res, 403, { error: 'Not in this company.' });
       if (ws.meetings?.whoCanRecord === 'admins' && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can send the notetaker here.' });
+      const ro = billing.readOnlyWhy(ws);
+      if (ro) return json(res, 403, { error: ro });
       if (!RECORDER_URL || !RECORDER_SECRET) return json(res, 409, { error: 'The recorder isn’t set up on this server.' });
       if (typeof meeting.id !== 'string' || !/^[\w-]{4,80}$/.test(meeting.id)) return json(res, 400, { error: 'Bad meeting.' });
+      // An existing meeting only when it's this company's and this person may see it (never someone else's by its id).
+      const existing = db.getDoc('meetings', meeting.id) as any;
+      if (existing && (existing.workspaceId !== ws.id || !teamLens(me)('meetings', existing))) return json(res, 403, { error: 'Not your meeting.' });
+      if (meeting.clientId && !teamLens(me)('clients', db.getDoc('clients', String(meeting.clientId)) ?? { workspaceId: ws.id })) return json(res, 403, { error: 'Not your project.' });
+      // The plan's meeting-bot hours this month (plus the "10 more hours" add-on); the bot leaves when they run out.
+      const hours = billing.meetMinutes(ws);
+      if (hours.left !== Infinity && hours.left < 1)
+        return json(res, 409, { error: `The notetaker’s ${hours.hours} hours for this month are used up. ${isAdminOf(me, ws.id) ? 'Add 10 more hours in Settings, Plan & billing, Add-ons' : 'An owner can add 10 more hours in Settings, Plan & billing'}, or it starts again on the 1st.`, reason: 'hours' });
       const doc = { ...meeting, bot: true, status: 'queued', createdBy: me, transcript: [], log: [...(meeting.log ?? []).slice(0, 5)] };
       saveMeeting(doc);
       const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
@@ -1930,7 +1978,7 @@ createServer(async (req, res) => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         // Video when this kind of meeting keeps video (or might: it's filed after the meeting, and an unneeded video is deleted then).
-        body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws, doc.language), names, announce: ws.meetings?.announce !== false, video: (doc.clientId ? [ws.meetings?.clientMeetings] : [ws.meetings?.clientMeetings, ws.meetings?.internalMeetings]).includes('video') }),
+        body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws, doc.language), names, announce: ws.meetings?.announce !== false, video: (doc.clientId ? [ws.meetings?.clientMeetings] : [ws.meetings?.clientMeetings, ws.meetings?.internalMeetings]).includes('video'), ...(hours.left !== Infinity ? { maxMinutes: Math.floor(hours.left) } : {}) }),
       }).then(async (r) => (r.ok ? null : ((await r.json().catch(() => ({}))) as any).error ?? `Recorder said ${r.status}`), () => 'The recorder didn’t answer');
       if (sent) saveMeeting({ ...doc, status: 'failed', error: sent, log: [...doc.log, meetLine(`Couldn’t send the bot: ${sent}`)] });
       return json(res, sent ? 502 : 200, sent ? { error: sent } : {});
@@ -1964,9 +2012,11 @@ createServer(async (req, res) => {
         // Transcribe the kept audio again, in another language or with the company's languages, then rewrite the notes.
         const { language } = await body(req);
         const ws = workspaces().find((w) => w.id === m.workspaceId) as any;
+        const ro = billing.readOnlyWhy(ws);
+        if (ro) return json(res, 403, { error: ro });
         const only = typeof language === 'string' && /^[a-z]{2}$/.test(language) ? language : undefined;
         const stt = sttFor(ws, only);
-        if (!stt) return json(res, 409, { error: 'Add a speech-to-text key in Settings → AI first.' });
+        if (!stt) return json(res, 409, { error: 'Add a speech-to-text key in Settings, AI first.' });
         if (!m.recording?.url) return json(res, 409, { error: 'This meeting’s audio wasn’t kept.' });
         const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
         const r = await recorder(`/recordings/${m.id}/transcribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stt, names, callback: `${PUBLIC_URL}/api/meet/recorder` }) }).catch(() => null);
@@ -1997,8 +2047,20 @@ createServer(async (req, res) => {
       const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'file')).slice(0, 200);
       const type = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].slice(0, 100);
       const team = memberOf(me).some((w) => w.id === wsId);
-      const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === wsId);
-      if (!team && !guest) return json(res, 403, { error: 'Not in this company.' });
+      // A guest uploads only on a project that's still going, with a role that adds things (files in the project's
+      // folder, or attached to their messages): never a viewer, someone waiting for approval, or after the work ended.
+      const guest =
+        !team &&
+        portalsOf(me).some((pt) => {
+          if (pt.workspaceId !== wsId) return false;
+          const client = db.getDoc('clients', pt.clientId) as any;
+          if (!client || client.status === 'ended') return false;
+          const person = clientPeople(client, db.allDocs('channels') as any).find((x) => x.email.toLowerCase() === String(personOf(me)?.email ?? '').toLowerCase());
+          return !!person && person.status !== 'pending' && can(person, 'upload');
+        });
+      if (!team && !guest) return json(res, 403, { error: portalsOf(me).some((pt) => pt.workspaceId === wsId) ? 'You can’t add files here.' : 'Not in this company.' });
+      const ro = billing.readOnlyWhy(db.getDoc('workspaces', wsId));
+      if (ro) return json(res, 403, { error: ro });
       const room = storageRoom(wsId);
       const cap = Math.min(MAX_UPLOAD, room.left);
       const tooBig = () => (room.left < MAX_UPLOAD ? `It doesn’t fit: the company has ${mb(room.left)} left of its ${mb(room.total)}. An admin can add more in Settings, Plan & billing.` : `Files up to ${mb(MAX_UPLOAD)}.`);
@@ -2178,12 +2240,29 @@ createServer(async (req, res) => {
       const now = new Date().toISOString();
       // Sign-in rules that changed (owners only), for the company's security log and the people they affect.
       const securityChanges: { wsId: string; text: string; required: boolean }[] = [];
+      // Why something wasn't saved (or was saved differently), for the app to say.
+      const why: string[] = [];
+      const say = (text: string | undefined | null) => void (text && !why.includes(text) && why.push(text));
+      /** The company of a document, as stored (or as sent, for a new one). */
+      const wsOfDoc = (d: any, before: any) => (coll === 'workspaces' ? d.id : (d.workspaceId ?? before?.workspaceId ?? (coll === 'messages' ? (db.getDoc('channels', String(d.channelId ?? before?.channelId)) as any)?.workspaceId : undefined)));
       /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
       const guard = (d: db.Doc): db.Doc | null => {
         const before = db.getDoc(coll, d.id) as any;
-        // A suspended company is read-only for everyone in it.
-        const wsId = coll === 'workspaces' ? d.id : ((d as any).workspaceId ?? before?.workspaceId);
-        if (wsId && (db.getDoc('workspaces', wsId) as any)?.suspended) return null;
+        // A suspended or paused company is read-only for everyone in it (its guests too). A paused plan can still be
+        // resumed (or changed) by an owner: the plan is all that changes.
+        const wsId = wsOfDoc(d, before);
+        const wsDoc = wsId ? (db.getDoc('workspaces', wsId) as any) : null;
+        const ro = billing.readOnlyWhy(wsDoc);
+        if (ro) {
+          const owner = (wsDoc?.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
+          if (coll === 'workspaces' && before && !wsDoc.suspended && owner && JSON.stringify((d as any).plan) !== JSON.stringify(before.plan)) {
+            const p = planFromApp((d as any).plan, before.plan);
+            say(p.why);
+            return { ...before, plan: p.plan } as db.Doc;
+          }
+          say(ro);
+          return null;
+        }
         if (before && 'workspaceId' in before && d.workspaceId !== before.workspaceId) return null;
         // Outside calendars, calendar links and public holidays have their own rules.
         const cal = feeds.checkWrite(coll, d, me, DEMO);
@@ -2193,25 +2272,54 @@ createServer(async (req, res) => {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts,
             // the routing checks' results (the admins only switch the daily check on or off), the company's own address
-            // with its state (changed through /api/white-label/domain only) and the mail aliases (set through the server).
-            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+            // with its state (changed through /api/white-label/domain only), the mail aliases (set through the server)
+            // and WhatsApp (connected through the server: its number decides whose messages arrive here).
+            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+            // Boosted sending only where this server has it.
+            if ((d as any).mailRoute === 'boosted' && before.mailRoute !== 'boosted' && !mailer.boostedAvailable()) (d as any).mailRoute = before.mailRoute;
             // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
             if (Array.isArray((d as any).accounts)) (d as any).accounts = (d as any).accounts.map((a: any) => ({ ...a, away: (before.accounts ?? []).find((b: any) => b.id === a.id)?.away }));
-            const plan = planFromApp((d as any).plan, before.plan);
             const owner = (before.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
-            const sec = twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
+            // The plan and billing are the owners' (the billing page says so); admins' saves keep it as it was.
+            const asked = planFromApp((d as any).plan, before.plan);
+            const planChanged = JSON.stringify((d as any).plan ?? null) !== JSON.stringify(before.plan ?? null);
+            if (!owner && planChanged) say('Only owners can change the plan and billing.');
+            const plan = owner ? asked.plan : before.plan;
+            if (owner) say(asked.why);
+            // An operator looking at the app as someone can't change the company's sign-in rules.
+            const sec = session?.operator ? { security: before.security, changed: null } : twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
             if (sec.changed) securityChanges.push({ wsId: d.id, text: sec.changed, required: !!sec.security?.twoStep && !before.security?.twoStep });
             // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
             // that isn't keeps what was there; an empty one means the usual stages.
-            const asked = (d as any).taskStages;
-            const clean = asked === undefined ? undefined : cleanStages(asked);
-            const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(asked) && asked.length ? before.taskStages : undefined) : clean;
-            return { ...d, ...own, plan, taskStages, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
+            const askedStages = (d as any).taskStages;
+            const clean = askedStages === undefined ? undefined : cleanStages(askedStages);
+            const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(askedStages) && askedStages.length ? before.taskStages : undefined) : clean;
+            // Hosted mailboxes only as many as the plan has room for.
+            const boxes = billing.mailboxesOnSave({ ...(d as any), plan }, before);
+            say(boxes.why);
+            return { ...d, ...own, accounts: boxes.accounts, plan, taskStages, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
           }
-          const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
-          const plan = planFromApp(fresh.plan, undefined);
+          const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...fresh } = d as any;
+          const plan = planFromApp(fresh.plan, undefined).plan;
           if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
-          return { ...fresh, plan, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+          if (fresh.mailRoute === 'boosted' && !mailer.boostedAvailable()) fresh.mailRoute = 'own';
+          const made = { ...fresh, plan, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] }; // whoever makes a company owns it
+          return { ...made, accounts: billing.mailboxesOnSave(made, undefined).accounts } as db.Doc;
+        }
+        // A notice goes to someone in that company (or one of its guests), and only links inside the app.
+        if (coll === 'notices' && !before) {
+          const to = String((d as any).userId ?? '');
+          const inWs = (wsDoc?.members ?? []).some((m: any) => m.userId === to);
+          const guestOfWs = to.startsWith('email:') && (db.allDocs('clients') as any[]).some((c) => c.workspaceId === wsId && clientPeople(c, db.allDocs('channels') as any).some((x) => x.email.toLowerCase() === to.slice(6)));
+          if (!inWs && !guestOfWs) return null;
+          const url = (d as any).url;
+          if (url !== undefined && !(typeof url === 'string' && url.startsWith('/') && !url.startsWith('//'))) return { ...d, url: undefined } as db.Doc;
+        }
+        // Someone else's chat message: reactions, votes, pins and the task made from it, never what it says.
+        if (coll === 'messages' && before && before.userId !== me) {
+          const { reactions, poll, pinned, taskId, alsoInChannel } = d as any;
+          const votes = poll && before.poll ? { ...before.poll, options: before.poll.options.map((o: any, i: number) => ({ ...o, votes: Array.isArray(poll.options?.[i]?.votes) ? poll.options[i].votes : o.votes })) } : before.poll;
+          return { ...before, reactions, poll: votes, pinned, taskId, alsoInChannel } as db.Doc;
         }
         if (coll === 'users') {
           if (d.id === me) return d; // own profile: already shaped
@@ -2240,8 +2348,12 @@ createServer(async (req, res) => {
       }
       const dels = mine.size
         ? (deletes as string[]).filter((id) => {
-            const before = db.getDoc(coll, id);
-            return !before || (see(coll, before) && mayDelete(before) && feeds.mayDelete(coll, before, me));
+            const before = db.getDoc(coll, id) as any;
+            if (!before) return true;
+            // Nothing in a read-only company is deleted either.
+            const ro = billing.readOnlyWhy(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
+            if (ro) return (say(ro), false);
+            return see(coll, before) && mayDelete(before) && feeds.mayDelete(coll, before, me);
           })
         : [];
       const delDocs = dels.map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
@@ -2266,7 +2378,7 @@ createServer(async (req, res) => {
         coll === 'workspaces'
           ? (ok as any[]).filter((d) => {
               const b = db.getDoc('workspaces', d.id) as any;
-              const pick = (w: any) => JSON.stringify([w?.emailSetup, w?.domains, w?.mailRoute, w?.mailRouting, (w?.accounts ?? []).map((a: any) => [a.id, a.email, a.provider])]);
+              const pick = (w: any) => JSON.stringify([w?.emailSetup, w?.domains, w?.mailRoute, w?.mailRouting, (w?.accounts ?? []).map((a: any) => [a.id, a.email, a.provider]), w?.plan?.tier, w?.plan?.addons?.mailboxes, w?.plan?.trialEnds]);
               return !b || pick(b) !== pick(d);
             }).map((d) => d.id)
           : [];
@@ -2298,12 +2410,30 @@ createServer(async (req, res) => {
           void mailer.sendNote(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin }), brandName).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
         }
       const conn = String(req.headers['x-conn'] ?? '');
-      broadcast(coll, ok, dels, clients.get(conn)?.userId === me ? conn : undefined, delDocs);
+      const sender = clients.get(conn)?.userId === me ? conn : undefined;
+      broadcast(coll, ok, dels, sender, delDocs);
+      // What the server saved differently from what this window sent goes back to it too, so it shows what's stored.
+      if (sender) {
+        const sent = new Map((upserts as db.Doc[]).filter((d) => d && typeof d.id === 'string').map((d) => [d.id, d]));
+        // Only where something the window sent was stored differently (fields the server merely adds, like who made
+        // it, don't need a round trip that could land on top of the next edit).
+        const reshaped = ok.filter((d) => {
+          const s = sent.get(d.id) as any;
+          return !!s && Object.keys(s).some((k) => JSON.stringify(s[k]) !== JSON.stringify((d as any)[k]));
+        });
+        // Refused: changes go back to what's stored, refused new things go away, refused deletions come back.
+        const refused = [...sent.keys()].filter((id) => !ok.some((d) => d.id === id));
+        const kept = [...refused, ...(deletes as string[]).filter((id) => !dels.includes(id))].map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
+        const see2 = lens(me);
+        const back = [...reshaped, ...kept].map((d) => see2(coll, d)).filter(Boolean);
+        const gone = refused.filter((id) => !db.getDoc(coll, id));
+        if (back.length || gone.length) clients.get(sender)?.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: back, deletes: gone })}\n\n`);
+      }
       if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
       feeds.afterSync(coll, ok, delDocs);
       // A deleted meeting takes its recording with it.
       if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
-      return json(res, 200, { saved: ok.length });
+      return json(res, 200, { saved: ok.length, ...(why.length ? { why: why.join(' ') } : {}) });
     }
 
     // Huddles: where audio may travel. With a call relay (TURN_URLS, TURN_SECRET) each team member gets its addresses
@@ -2399,13 +2529,33 @@ createServer(async (req, res) => {
     // Vault: shared logins. Only people given access see an item; passwords and 2FA codes leave the server one at a time, logged.
     // WhatsApp Business: the token is kept here (like AI keys); the browser only sees that it's connected.
     if (p === '/api/whatsapp/connect' && req.method === 'POST') {
-      const { workspaceId, phoneNumberId, token, displayPhone } = await body(req);
+      const { workspaceId, phoneNumberId, token, displayPhone, appSecret } = await body(req);
       if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can connect WhatsApp.' });
+      if (session?.operator) return json(res, 403, { error: 'Connecting WhatsApp is theirs to do: you’re signed in as them.' });
+      const ro = billing.readOnlyWhy(db.getDoc('workspaces', workspaceId));
+      if (ro) return json(res, 403, { error: ro });
+      // Meta signs each message with the app's secret; without one we can't tell its posts from anyone else's.
+      const secret = typeof appSecret === 'string' ? appSecret.trim() : '';
+      if (secret && !/^[a-f0-9]{32}$/i.test(secret)) return json(res, 400, { error: 'That app secret doesn’t look right: Meta shows it as 32 letters and numbers, in App settings, Basic.' });
+      // Already connected: the secret alone can be added (the number and its token stay).
+      const was = db.getDoc('workspaces', workspaceId) as any;
+      const kept = db.loadKey(workspaceId, 'whatsapp');
+      if (secret && !token && was?.whatsapp?.connected && kept?.baseUrl) {
+        db.saveKey(workspaceId, whatsapp.SECRET_KEY, secret, undefined, me);
+        const doc = { ...was, whatsapp: { ...was.whatsapp, secured: whatsapp.secured(workspaceId) } };
+        db.writeDocs('workspaces', [doc], [], me);
+        broadcast('workspaces', [doc], []);
+        return json(res, 200, { verifyToken: doc.whatsapp.verifyToken });
+      }
       if (typeof phoneNumberId !== 'string' || !phoneNumberId.trim() || typeof token !== 'string' || token.trim().length < 20) return json(res, 400, { error: 'Paste the phone number ID and a permanent access token from Meta.' });
+      if (!secret && !whatsapp.platformSecretSet() && !db.loadKey(workspaceId, whatsapp.SECRET_KEY)) return json(res, 400, { error: 'Paste the app secret too (Meta for Developers: your app, App settings, Basic). Without it, messages from Meta can’t be checked, so none are read.' });
+      // One number, one company: its messages can only go to one place.
+      if (workspaces().some((x: any) => x.id !== workspaceId && x.whatsapp?.connected && x.whatsapp.phoneNumberId === phoneNumberId.trim())) return json(res, 409, { error: 'Another company already connected this number. If it’s yours, write to us and we’ll sort it out.' });
       db.saveKey(workspaceId, 'whatsapp', token.trim(), phoneNumberId.trim(), me);
+      if (secret) db.saveKey(workspaceId, whatsapp.SECRET_KEY, secret, undefined, me);
       const w = db.getDoc('workspaces', workspaceId) as any;
       const verifyToken = w.whatsapp?.verifyToken ?? randomBytes(12).toString('hex');
-      const doc = { ...w, whatsapp: { phoneNumberId: phoneNumberId.trim(), displayPhone: displayPhone ? String(displayPhone).slice(0, 30) : undefined, connected: true, verifyToken } };
+      const doc = { ...w, whatsapp: { phoneNumberId: phoneNumberId.trim(), displayPhone: displayPhone ? String(displayPhone).slice(0, 30) : undefined, connected: true, verifyToken, secured: whatsapp.secured(workspaceId) } };
       db.writeDocs('workspaces', [doc], [], me);
       broadcast('workspaces', [doc], []);
       return json(res, 200, { verifyToken });
@@ -2414,6 +2564,7 @@ createServer(async (req, res) => {
       const { workspaceId } = await body(req);
       if (!isAdminOf(me, workspaceId)) return json(res, 403, {});
       db.deleteKey(workspaceId, 'whatsapp');
+      db.deleteKey(workspaceId, whatsapp.SECRET_KEY);
       const w = db.getDoc('workspaces', workspaceId) as any;
       const doc = { ...w, whatsapp: w.whatsapp ? { ...w.whatsapp, connected: false } : undefined };
       db.writeDocs('workspaces', [doc], [], me);
@@ -2423,6 +2574,8 @@ createServer(async (req, res) => {
     if (p === '/api/whatsapp/send' && req.method === 'POST') {
       const { workspaceId, to, text, channelId } = await body(req);
       if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, {});
+      const roWa = billing.readOnlyWhy(db.getDoc('workspaces', String(workspaceId)) as any);
+      if (roWa) return json(res, 403, { error: roWa });
       const key = db.loadKey(workspaceId, 'whatsapp');
       if (!key?.baseUrl) return json(res, 409, { error: 'WhatsApp isn’t connected. Settings, Apps & chat.' });
       const number = String(to ?? '').replace(/\D/g, '');
@@ -2446,7 +2599,10 @@ createServer(async (req, res) => {
       const canSee = (it: db.VaultRow) =>
         memberOf(me).some((w) => w.id === it.workspaceId) &&
         (it.createdBy === me || isAdminOf(me, it.workspaceId) || it.meta.access.everyone || it.meta.access.userIds.includes(me) || it.meta.access.teamIds.some((t) => teamsOf(me).includes(t)));
-      const canEdit = (it: db.VaultRow) => it.createdBy === me || isAdminOf(me, it.workspaceId);
+      // Changing or deleting a login: whoever added it while they're still in the company, or its admins.
+      const canEdit = (it: db.VaultRow) => memberOf(me).some((w) => w.id === it.workspaceId) && (it.createdBy === me || isAdminOf(me, it.workspaceId));
+      // Nothing new is saved in a paused or suspended company; reading what's there still works.
+      const vaultRo = (wsId: string) => billing.readOnlyWhy(db.getDoc('workspaces', wsId) as any);
       const m = p.match(/^\/api\/vault\/([\w-]+)(?:\/(reveal|code|log))?$/);
       if (p === '/api/vault' && req.method === 'GET') {
         if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
@@ -2458,6 +2614,7 @@ createServer(async (req, res) => {
         const it = db.vaultGet(keysReq[1]);
         if (!it || !canSee(it)) return json(res, 404, { error: 'No such login.' });
         if (!it.meta.keys?.[me] && !canEdit(it)) return json(res, 403, { error: 'You don’t hold the key to this login.' });
+        if (vaultRo(it.workspaceId)) return json(res, 403, { error: vaultRo(it.workspaceId) });
         const b = await body(req);
         const added = Object.fromEntries(Object.entries((b.keys ?? {}) as Record<string, any>).filter(([, k]) => k && typeof k.ct === 'string' && typeof k.iv === 'string' && k.epk));
         db.vaultSave({ id: it.id, workspaceId: it.workspaceId, meta: { ...it.meta, keys: { ...(it.meta.keys ?? {}), ...added } }, by: me });
@@ -2470,6 +2627,8 @@ createServer(async (req, res) => {
         const id = typeof b.id === 'string' && b.id ? b.id : 'v-' + randomBytes(6).toString('hex');
         const before = db.vaultGet(id);
         if (before && !canEdit(before)) return json(res, 403, { error: 'Only the person who added it, or an admin, can change it.' });
+        const roV = vaultRo(before?.workspaceId ?? String(b.workspaceId));
+        if (roV) return json(res, 403, { error: roV });
         if (b.totp && !String(b.totp).startsWith('enc:')) {
           try {
             db.totpCode(String(b.totp));
@@ -2494,9 +2653,12 @@ createServer(async (req, res) => {
       if (!m || !item || !canSee(item)) return json(res, 404, { error: 'Not found.' });
       if (!m[2] && req.method === 'DELETE') {
         if (!canEdit(item)) return json(res, 403, { error: 'Only the person who added it, or an admin, can delete it.' });
+        if (vaultRo(item.workspaceId)) return json(res, 403, { error: vaultRo(item.workspaceId) });
         db.vaultDelete(item.id);
         return json(res, 200, {});
       }
+      // An operator looking at the app as someone sees which logins exist, never their passwords or codes.
+      if ((m[2] === 'reveal' || m[2] === 'code') && session?.operator) return json(res, 403, { error: 'Passwords and codes stay with them: you’re signed in as them.' });
       if (m[2] === 'reveal' && req.method === 'POST') {
         const { field } = await body(req);
         // The 2FA secret leaves the server only to someone who can edit the login (to move it to end-to-end), or
@@ -2522,6 +2684,8 @@ createServer(async (req, res) => {
     if (p === '/api/ai/keys' && req.method === 'POST') {
       const { workspaceId, provider, key, baseUrl, test = true } = await body(req);
       if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can add AI keys.' });
+      if (session?.operator) return json(res, 403, { error: 'AI keys are theirs to add: you’re signed in as them.' });
+      if (aiLimits.blocked(db.getDoc('workspaces', workspaceId) as any).has(String(provider))) return json(res, 409, { error: 'This provider is blocked for the company (Settings, AI, Blocked providers). Unblock it first.' });
       const info = PROVIDERS.find((x) => x.id === provider);
       if (!info || typeof key !== 'string' || key.trim().length < 8) return json(res, 400, { error: 'That key looks too short.' });
       if (test && info.kind !== 'speech') {
@@ -2564,7 +2728,9 @@ createServer(async (req, res) => {
     if (p === '/api/ai/plan' && req.method === 'GET') {
       const wsId = url.searchParams.get('ws') ?? '';
       if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
-      return json(res, 200, aiplan.companyView(workspaces().find((w) => w.id === wsId)));
+      const w = workspaces().find((x) => x.id === wsId);
+      // This month's real spend on each of the company's own keys, and which ones rest at their cap.
+      return json(res, 200, { ...aiplan.companyView(w), spendUsd: aiLimits.spendUsd(wsId), capped: [...aiLimits.capped(w as any)] });
     }
     const action = p.match(/^\/api\/ai\/(\w+)$/)?.[1];
     if (action && routes[action] && req.method === 'POST') {
@@ -2582,6 +2748,8 @@ createServer(async (req, res) => {
       if (tooMany(`ai:${me}`, 40, 60_000)) return json(res, 429, { error: 'That’s a lot of AI in one minute. Give it a moment.' });
       // Monthly caps (Settings, AI): what the company, and each person, may spend on its own keys this month.
       const capWs = workspaces().find((w) => w.id === b.workspaceId) as any;
+      const ro = billing.readOnlyWhy(capWs);
+      if (ro) return json(res, 403, { error: ro });
       const caps = capWs?.ai?.caps as { companyRp?: number; personRp?: number } | undefined;
       if (caps?.companyRp || caps?.personRp) {
         const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
@@ -2597,7 +2765,9 @@ createServer(async (req, res) => {
         return json(res, 409, { error: 'no-key', message: NO_AI });
       }
       const log = (cfg: AIConfig, inTokens: number, outTokens: number) => db.logUsage({ workspaceId: b.workspaceId, userId: me, job, provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens });
-      return json(res, 200, await aiplan.runChain(route.chain, log, () => routes[action](b)));
+      const answer = await aiplan.runChain(route.chain, log, () => routes[action](b));
+      aiAlerts(b.workspaceId);
+      return json(res, 200, answer);
     }
     return json(res, 404, { error: 'Not found' });
   } catch (err) {
@@ -2651,6 +2821,7 @@ function caps() {
     routingCheck: process.env.MAIL_ENABLED !== '0' && mailer.systemMailPath() !== 'log', // the server can send "Some of each" routing tests
     customDomains: customDomains.dokployOn(), // agencies' own addresses get certificates (Dokploy is set up)
     customTarget: customDomains.TARGET, // what those addresses point at
+    whatsappAppSecret: whatsapp.platformSecretSet(), // WhatsApp messages signed by sprint2go's own Meta app can be checked
   };
 }
 /**
@@ -2821,6 +2992,22 @@ setTimeout(() => void hourly(), 90_000);
 // Readiness right after a start, so a deploy doesn't leave mail locked for an hour.
 setTimeout(() => void Promise.all(workspaces().map((w) => mailer.refreshReadiness(w.id).catch(() => null))), 20_000);
 setInterval(() => void hourly(), 60 * 60_000);
+
+/* ---------- every hour: plans keep their promises (server/billing.ts) ---------- */
+// A pause past the year's 3 months ends by itself (billed again from then), and a cancelled plan moves to Free when
+// the period that was paid for ends.
+const planClock = () => {
+  try {
+    const save = (ws: any) => (db.writeDocs('workspaces', [ws], [], null), broadcast('workspaces', [ws], []));
+    const tell = (ids: string[], text: string, wsId: string) => notifyUsers(ids, text, '/settings/billing', wsId);
+    billing.resumeExpiredPauses(save, tell);
+    billing.endCancelled(save, tell);
+  } catch (e) {
+    console.error('[plans]', e instanceof Error ? e.message : e);
+  }
+};
+setTimeout(planClock, 30_000);
+setInterval(planClock, 60 * 60_000);
 
 /* ---------- background jobs: scheduled mail, snoozes, task reminders ---------- */
 
