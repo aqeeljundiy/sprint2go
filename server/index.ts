@@ -2072,12 +2072,38 @@ function caps() {
     microsoftCalendar: !!process.env.MS_CLIENT_ID,
     calendarLinks: false, // .ics links aren't fetched by the server yet
     payments: !!process.env.XENDIT_SECRET,
-    desktopUrl: process.env.DESKTOP_URL || null,
+    // The desktop app: DESKTOP_URL when set, else the newest release on GitHub (its page, and each installer).
+    desktopUrl: process.env.DESKTOP_URL || desktopRelease?.page || null,
+    desktopMac: process.env.DESKTOP_URL ? null : (desktopRelease?.mac ?? null),
+    desktopWin: process.env.DESKTOP_URL ? null : (desktopRelease?.windows ?? null),
     push: true, // notifications on phones and computers (web push)
     mailHost: mailer.MAIL_HOST,
   };
 }
 
+/**
+ * The newest desktop release on GitHub (DESKTOP_REPO, "owner/repo"), checked at start and every six hours, so the
+ * landing page offers the download once a release with installers exists. A private repo or no release: nothing.
+ */
+const DESKTOP_REPO = process.env.DESKTOP_REPO ?? 'aqeeljundiy/sprint2go';
+let desktopRelease: { page: string; mac?: string; windows?: string } | null = null;
+async function checkDesktopRelease() {
+  if (process.env.DESKTOP_URL || !/^[\w.-]+\/[\w.-]+$/.test(DESKTOP_REPO)) return;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${DESKTOP_REPO}/releases/latest`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'sprint2go-server' }, signal: AbortSignal.timeout(10_000) });
+    if (r.status === 404) return void (desktopRelease = null);
+    if (!r.ok) return; // rate limited or GitHub is down: keep what we had
+    const rel = (await r.json()) as { html_url?: string; assets?: { name: string; browser_download_url: string }[] };
+    const pick = (re: RegExp) => (rel.assets ?? []).find((a) => re.test(a.name))?.browser_download_url;
+    const mac = pick(/\.dmg$/i);
+    const windows = pick(/setup.*\.exe$/i) ?? pick(/\.exe$/i);
+    desktopRelease = rel.html_url && (mac || windows) ? { page: rel.html_url, mac, windows } : null;
+  } catch {
+    /* offline: keep what we had */
+  }
+}
+setTimeout(() => void checkDesktopRelease(), 15_000);
+setInterval(() => void checkDesktopRelease(), 6 * 3600_000);
 const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** A company's email changed: check again shortly (several saves in a row count once). */
 function soonReadiness(wsId: string) {

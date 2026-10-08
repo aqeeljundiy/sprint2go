@@ -11,7 +11,9 @@ export const caps = {
   microsoftCalendar: false,
   calendarLinks: false,
   payments: false,
-  desktopUrl: null as string | null,
+  desktopUrl: null as string | null, // the desktop app's download page
+  desktopMac: null as string | null, // its installers, when the newest release has them
+  desktopWin: null as string | null,
   push: false, // notifications on phones and computers (needs the server)
   mailHost: '',
 };
