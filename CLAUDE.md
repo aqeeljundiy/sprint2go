@@ -26,6 +26,14 @@ Every change has to pass this bar before it's called done. It isn't optional pol
 8. **Both themes.** The app works in light and dark; the landing page is light only.
 9. **Reduced motion.** Every animation has a `prefers-reduced-motion` fallback.
 
+## Shared pieces (use these, don't make new versions)
+
+- People: `PersonCell` and `Badge` (src/components/ui/Person.tsx). Avatar centred next to name and email; badges are pills on the name's line.
+- Empty lists and screens: `EmptyState` (src/components/ui/EmptyState.tsx), with a compact form inside cards.
+- A dialog opened from inside a pane: `Layer` (src/components/ui/Layer.tsx) puts it at page level so nothing traps it.
+- Rows that leave: `useLeaving` (src/components/ui/Smooth.tsx). Times: `TimePicker` next to `DatePicker`.
+- The shared styles for all of these live in src/system.css, loaded last.
+
 ## Which surface
 
 Pick the surface by what the person is doing, not by habit. Not everything is a side panel.
