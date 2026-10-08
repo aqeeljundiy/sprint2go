@@ -638,7 +638,7 @@ export interface ChannelSummary {
 
 /* ---------- Tables: flexible databases (leads, pipelines, anything) ---------- */
 
-export type FieldType = 'text' | 'longtext' | 'number' | 'money' | 'date' | 'select' | 'multi' | 'person' | 'email' | 'phone' | 'url' | 'checkbox' | 'link' | 'button';
+export type FieldType = 'text' | 'longtext' | 'number' | 'money' | 'date' | 'select' | 'multi' | 'person' | 'email' | 'phone' | 'url' | 'checkbox' | 'link' | 'button' | 'files' | 'rating' | 'formula' | 'rollup' | 'created' | 'edited' | 'creator';
 
 export interface FieldOption {
   id: string;
@@ -654,6 +654,18 @@ export interface TableField {
   currency?: 'IDR' | 'USD' | 'SGD' | 'EUR'; // money
   linkTable?: string; // link: the table its rows come from
   button?: ButtonDef; // button: what pressing it does
+  description?: string; // what this field is for (shown in its menu and the row page)
+  formula?: string; // formula: e.g. {Value} * 0.1, or {Name} & " · " & {City}
+  rollup?: { linkField: string; targetField?: string; fn: 'count' | 'filled' | 'sum' | 'avg' | 'min' | 'max' | 'list' }; // rollup: from the rows a link field points to
+  max?: number; // rating: how many stars (default 5)
+}
+
+/** A file on a row (kept small: pictures and documents up to a few MB). */
+export interface FileRef {
+  name: string;
+  size: number;
+  type: string;
+  url: string;
 }
 
 /**
@@ -721,15 +733,26 @@ export interface TableFilter {
   value?: string;
 }
 
+export type CalcKind = 'count' | 'filled' | 'empty' | 'percent' | 'sum' | 'avg' | 'min' | 'max' | 'unique';
+
 export interface TableViewDef {
   id: string;
   name: string;
-  kind: 'grid' | 'board';
-  groupBy?: string; // board: a select field
-  sort?: { fieldId: string; dir: 'asc' | 'desc' };
+  kind: 'grid' | 'board' | 'list' | 'gallery' | 'calendar';
+  groupBy?: string; // board: its columns (a single choice field); grid and list: group rows by any field
+  sort?: { fieldId: string; dir: 'asc' | 'desc' }; // older views: one sort
+  sorts?: { fieldId: string; dir: 'asc' | 'desc' }[]; // sort by this, then by that
   filters?: TableFilter[];
+  filterMode?: 'and' | 'or'; // all conditions, or any
   hidden?: string[]; // field ids not shown in this view
+  order?: string[]; // field order in this view (others follow in the table's order)
   widths?: Record<string, number>; // grid column widths
+  pinned?: number; // grid: how many columns stay in view when scrolling sideways (default 1)
+  wrap?: string[]; // grid: fields whose text wraps onto more lines
+  calcs?: Record<string, CalcKind>; // grid: a total under each column
+  collapsed?: string[]; // grouped: groups folded shut
+  dateField?: string; // calendar: which date field places rows
+  cover?: string; // gallery: the files field whose first picture is the card's cover
 }
 
 export interface DataTable {
@@ -752,7 +775,7 @@ export interface DataTable {
   createdAt: string;
 }
 
-export type CellValue = string | number | boolean | string[] | null;
+export type CellValue = string | number | boolean | string[] | FileRef[] | null;
 
 export interface TableRow {
   id: string;

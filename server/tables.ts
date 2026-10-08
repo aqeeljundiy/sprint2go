@@ -2,7 +2,7 @@
 // One engine for all of them, so a button, a rule and an incoming lead behave the same way.
 import { createHmac, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { cellText, guessField, isEmpty, parseIncoming, passes, rowName } from '../src/components/tables/core.ts';
+import { cellText, guessField, isEmpty, parseIncoming, passes, rowName, valueOf } from '../src/components/tables/core.ts';
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
 
 export interface Env {
@@ -35,13 +35,15 @@ const nameOf = (id: string) => {
   return t ? rowName(t, r) : '';
 };
 const textOf = (f: TableField, v: CellValue | undefined, users: User[]) => cellText(f, v, { users, rowName: nameOf });
+/** A row's value for a field, formulas and rollups worked out. */
+const val = (t: DataTable, f: TableField, r: TableRow, users: User[]) => valueOf(t, f, r, { users, rowName: nameOf, rows: rows(), tables: tables() });
 
 /** {Field name} in text becomes the row's value (URL-encoded inside links). */
 export function fill(template: string, t: DataTable, r: TableRow, users: User[], encode = false) {
   return template.replace(/\{([^{}]+)\}/g, (all, name: string) => {
     const f = t.fields.find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
     if (!f) return all;
-    const v = f.type === 'phone' ? String(r.values[f.id] ?? '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^0/, '62') : textOf(f, r.values[f.id], users);
+    const v = f.type === 'phone' ? String(r.values[f.id] ?? '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^0/, '62') : textOf(f, val(t, f, r, users), users);
     return encode ? encodeURIComponent(v) : v;
   });
 }
@@ -125,8 +127,8 @@ export function hookPayload(t: DataTable, r: TableRow, a: Extract<TableAction, {
   const pick = a.fields?.length ? a.fields.map((x) => ({ f: t.fields.find((f) => f.id === x.fieldId), key: x.key })) : t.fields.filter((f) => f.type !== 'button').map((f) => ({ f, key: f.name }));
   for (const { f, key } of pick) {
     if (!f) continue;
-    const v = r.values[f.id];
-    data[key] = f.type === 'number' || f.type === 'money' || f.type === 'checkbox' ? (isEmpty(v) && f.type !== 'checkbox' ? null : v ?? false) : textOf(f, v, users) || null;
+    const v = val(t, f, r, users);
+    data[key] = f.type === 'files' ? ((v as { name: string }[] | null) ?? []).map((x) => x.name) : (f.type === 'formula' || f.type === 'rollup') && typeof v === 'number' ? v : f.type === 'number' || f.type === 'money' || f.type === 'checkbox' ? (isEmpty(v) && f.type !== 'checkbox' ? null : v ?? false) : textOf(f, v, users) || null;
   }
   return { event, table: { id: t.id, name: t.name }, row: { id: r.id }, data, sentAt: now() };
 }
@@ -308,7 +310,7 @@ export function afterRowWrite(env: Env, before: Map<string, TableRow | undefined
       else if (rule.on === 'updated') fire = !!was && JSON.stringify(was.values) !== JSON.stringify(r.values);
       else if (rule.on === 'becomes' && rule.fieldId) {
         const f = t.fields.find((x) => x.id === rule.fieldId);
-        const hit = (v: CellValue | undefined) => (f?.type === 'checkbox' ? !!v === (rule.value === 'yes') : Array.isArray(v) ? v.includes(rule.value ?? '') : String(v ?? '') === (rule.value ?? ''));
+        const hit = (v: CellValue | undefined) => (f?.type === 'checkbox' ? !!v === (rule.value === 'yes') : Array.isArray(v) ? (v as string[]).includes(rule.value ?? '') : String(v ?? '') === (rule.value ?? ''));
         fire = !!f && hit(r.values[f.id]) && (!was || !hit(was.values[f.id]));
       }
       if (!fire) continue;

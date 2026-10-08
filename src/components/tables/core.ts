@@ -1,4 +1,4 @@
-import type { CellValue, DataTable, FieldType, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
+import type { CalcKind, CellValue, DataTable, FieldType, FileRef, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
 import { localDay, uid } from '../../utils';
 
 /* Pure table logic, shared by the app and the server (no React, no icons). */
@@ -28,8 +28,83 @@ export const rowName = (t: DataTable, r: TableRow | undefined) => {
   return (typeof v === 'string' && v.trim()) || (typeof v === 'number' ? String(v) : '') || 'Untitled';
 };
 
+/** What cell helpers need to know: people (for names), and for links and rollups the rows and tables. */
+export interface TCtx {
+  users: User[];
+  rowName: (id: string) => string;
+  rows?: TableRow[];
+  tables?: DataTable[];
+}
+
+/** Fields whose value is worked out, not typed: formulas, rollups, and when and by whom a row was made or changed. */
+export const COMPUTED = new Set<FieldType>(['formula', 'rollup', 'created', 'edited', 'creator']);
+export const isComputed = (f: TableField) => COMPUTED.has(f.type);
+
+/** A row's value for a field: what's stored, or for computed fields, what it works out to. */
+export function valueOf(t: DataTable, f: TableField, r: TableRow, ctx: TCtx, depth = 0): CellValue {
+  switch (f.type) {
+    case 'created':
+      return r.createdAt;
+    case 'edited':
+      return r.updatedAt;
+    case 'creator':
+      return r.createdBy;
+    case 'formula':
+      if (depth > 4 || !f.formula) return null;
+      try {
+        const out = evaluate(f.formula, (name) => {
+          const ref = t.fields.find((x) => x.name.toLowerCase() === name.toLowerCase());
+          return ref ? formulaValue(t, ref, r, ctx, depth + 1) : null;
+        }, t.fields.map((x) => x.name));
+        return out === null || out === undefined || (typeof out === 'number' && !Number.isFinite(out)) ? null : (out as CellValue);
+      } catch {
+        return null;
+      }
+    case 'rollup':
+      return rollupValue(t, f, r, ctx, depth);
+    default:
+      return r.values[f.id] ?? null;
+  }
+}
+
+/** A field's value as a formula sees it: numbers stay numbers, choices and people become their names. */
+function formulaValue(t: DataTable, f: TableField, r: TableRow, ctx: TCtx, depth: number): unknown {
+  const v = valueOf(t, f, r, ctx, depth);
+  if (isEmpty(v)) return f.type === 'checkbox' ? false : f.type === 'number' || f.type === 'money' || f.type === 'rating' ? 0 : '';
+  if (f.type === 'number' || f.type === 'money' || f.type === 'rating') return Number(v);
+  if (f.type === 'checkbox') return !!v;
+  if (f.type === 'formula' || f.type === 'rollup') return v;
+  if (f.type === 'date') return String(v);
+  if (f.type === 'created' || f.type === 'edited') return String(v).slice(0, 10);
+  return cellText(f, v, ctx);
+}
+
+/** A rollup: from the rows a link field points to, count them or total one of their fields. */
+function rollupValue(t: DataTable, f: TableField, r: TableRow, ctx: TCtx, depth: number): CellValue {
+  const ru = f.rollup;
+  const link = ru && t.fields.find((x) => x.id === ru.linkField && x.type === 'link');
+  if (!ru || !link || depth > 4) return null;
+  const target = ctx.tables?.find((x) => x.id === link.linkTable);
+  const ids = (r.values[link.id] as string[] | null) ?? [];
+  const linked = (ctx.rows ?? []).filter((x) => ids.includes(x.id));
+  if (ru.fn === 'count') return linked.length;
+  const tf = target?.fields.find((x) => x.id === ru.targetField);
+  if (!target || !tf) return null;
+  const vals = linked.map((x) => valueOf(target, tf, x, ctx, depth + 1)).filter((v) => !isEmpty(v));
+  if (ru.fn === 'filled') return vals.length;
+  if (ru.fn === 'list') return vals.map((v) => cellText(tf, v, ctx)).join(', ') || null;
+  const nums = vals.map(Number).filter(Number.isFinite);
+  if (!nums.length) return null;
+  if (ru.fn === 'sum') return nums.reduce((a, b) => a + b, 0);
+  if (ru.fn === 'avg') return nums.reduce((a, b) => a + b, 0) / nums.length;
+  if (ru.fn === 'min') return Math.min(...nums);
+  return Math.max(...nums);
+}
+
+const dateTime = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 /** A cell as plain text: for search, sorting, CSV and copying. */
-export function cellText(f: TableField, v: CellValue | undefined, ctx: { users: User[]; rowName: (id: string) => string }): string {
+export function cellText(f: TableField, v: CellValue | undefined, ctx: TCtx): string {
   if (isEmpty(v)) return '';
   switch (f.type) {
     case 'select':
@@ -38,46 +113,70 @@ export function cellText(f: TableField, v: CellValue | undefined, ctx: { users: 
       return ((v as string[]) ?? []).map((id) => f.options?.find((o) => o.id === id)?.label).filter(Boolean).join(', ');
     case 'person':
       return ctx.users.find((u) => u.id === v)?.name ?? '';
+    case 'creator':
+      return v === 'webhook' ? 'Webhook' : String(v).includes('@') ? String(v) : (ctx.users.find((u) => u.id === v)?.name ?? 'Someone');
     case 'money':
       return money(Number(v), f.currency);
     case 'checkbox':
       return v ? 'Yes' : '';
     case 'date':
       return new Date(`${v}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    case 'created':
+    case 'edited':
+      return dateTime(String(v));
     case 'link':
       return ((v as string[]) ?? []).map(ctx.rowName).join(', ');
+    case 'files':
+      return ((v as FileRef[]) ?? []).map((x) => x.name).join(', ');
+    case 'rating':
+      return `${Number(v)}/${f.max ?? 5}`;
+    case 'formula':
+    case 'rollup':
+      return typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 })) : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v);
     default:
       return String(v);
   }
 }
 
 /** Sort key: choices sort in their own order (New before Won), numbers as numbers, the rest as text. */
-function sortKey(f: TableField, v: CellValue | undefined, ctx: Parameters<typeof cellText>[2]): number | string {
+function sortKey(f: TableField, v: CellValue | undefined, ctx: TCtx): number | string {
   if (isEmpty(v)) return '';
-  if (f.type === 'number' || f.type === 'money') return Number(v);
+  if (f.type === 'number' || f.type === 'money' || f.type === 'rating') return Number(v);
+  if ((f.type === 'formula' || f.type === 'rollup') && typeof v === 'number') return v;
   if (f.type === 'select') return f.options?.findIndex((o) => o.id === v) ?? 0;
   if (f.type === 'checkbox') return v ? 1 : 0;
-  if (f.type === 'date') return String(v);
+  if (f.type === 'date' || f.type === 'created' || f.type === 'edited') return String(v);
   return cellText(f, v, ctx).toLowerCase();
 }
 
+/** Words for the two sort directions, in the field's own terms. */
+export function sortWords(t: FieldType): [string, string] {
+  if (t === 'number' || t === 'money' || t === 'rating' || t === 'rollup' || t === 'formula') return ['Low to high', 'High to low'];
+  if (t === 'date' || t === 'created' || t === 'edited') return ['Oldest first', 'Newest first'];
+  if (t === 'select') return ['In choice order', 'Reverse choice order'];
+  if (t === 'checkbox') return ['Unchecked first', 'Checked first'];
+  return ['A to Z', 'Z to A'];
+}
+
 /** Does a row pass one filter? */
-export function passes(flt: TableFilter, f: TableField, v: CellValue | undefined, ctx: Parameters<typeof cellText>[2]) {
+export function passes(flt: TableFilter, f: TableField, v0: CellValue | undefined, ctx: TCtx) {
+  const v = (f.type === 'created' || f.type === 'edited') && typeof v0 === 'string' ? v0.slice(0, 10) : v0;
+  const isDate = f.type === 'date' || f.type === 'created' || f.type === 'edited';
   switch (flt.op) {
     case 'empty':
       return isEmpty(v);
     case 'filled':
       return !isEmpty(v);
     case 'is':
-      return Array.isArray(v) ? v.includes(flt.value ?? '') : f.type === 'checkbox' ? !!v === (flt.value === 'yes') : String(v ?? '') === (flt.value ?? '');
+      return Array.isArray(v) ? (v as string[]).includes(flt.value ?? '') : f.type === 'checkbox' ? !!v === (flt.value === 'yes') : String(v ?? '') === (flt.value ?? '');
     case 'not':
-      return Array.isArray(v) ? !v.includes(flt.value ?? '') : f.type === 'checkbox' ? !!v !== (flt.value === 'yes') : String(v ?? '') !== (flt.value ?? '');
+      return Array.isArray(v) ? !(v as string[]).includes(flt.value ?? '') : f.type === 'checkbox' ? !!v !== (flt.value === 'yes') : String(v ?? '') !== (flt.value ?? '');
     case 'has':
       return cellText(f, v, ctx).toLowerCase().includes((flt.value ?? '').toLowerCase());
     case 'gt':
-      return !isEmpty(v) && (f.type === 'date' ? String(v) > (flt.value ?? '') : Number(v) > Number(flt.value));
+      return !isEmpty(v) && (isDate ? String(v) > (flt.value ?? '') : Number(v) > Number(flt.value));
     case 'lt':
-      return !isEmpty(v) && (f.type === 'date' ? String(v) < (flt.value ?? '') : Number(v) < Number(flt.value));
+      return !isEmpty(v) && (isDate ? String(v) < (flt.value ?? '') : Number(v) < Number(flt.value));
   }
 }
 
@@ -87,39 +186,302 @@ export function opsFor(t: FieldType): { op: TableFilter['op']; label: string }[]
     { op: 'empty' as const, label: 'is empty' },
     { op: 'filled' as const, label: 'is not empty' },
   ];
-  if (t === 'select' || t === 'multi' || t === 'person') return [{ op: 'is', label: t === 'multi' ? 'has' : 'is' }, { op: 'not', label: t === 'multi' ? 'doesn’t have' : 'is not' }, ...base];
+  if (t === 'select' || t === 'multi' || t === 'person' || t === 'creator') return [{ op: 'is', label: t === 'multi' ? 'has' : 'is' }, { op: 'not', label: t === 'multi' ? 'doesn’t have' : 'is not' }, ...base];
   if (t === 'checkbox') return [{ op: 'is', label: 'is' }];
-  if (t === 'number' || t === 'money') return [{ op: 'gt', label: 'more than' }, { op: 'lt', label: 'less than' }, { op: 'is', label: 'equals' }, ...base];
-  if (t === 'date') return [{ op: 'lt', label: 'before' }, { op: 'gt', label: 'after' }, { op: 'is', label: 'on' }, ...base];
+  if (t === 'number' || t === 'money' || t === 'rating' || t === 'rollup') return [{ op: 'gt', label: 'more than' }, { op: 'lt', label: 'less than' }, { op: 'is', label: 'equals' }, ...base];
+  if (t === 'date' || t === 'created' || t === 'edited') return [{ op: 'lt', label: 'before' }, { op: 'gt', label: 'after' }, { op: 'is', label: 'on' }, ...base];
+  if (t === 'files') return [{ op: 'filled', label: 'has files' }, { op: 'empty', label: 'has no files' }];
   return [{ op: 'has', label: 'contains' }, { op: 'is', label: 'is exactly' }, ...base];
 }
 
-/** The rows a view shows: its filters, the search, then its sort (or the manual order). */
-export function visibleRows(t: DataTable, view: TableViewDef, rows: TableRow[], q: string, ctx: Parameters<typeof cellText>[2]) {
+/** The sorts a view uses (older views had one). */
+export const sortsOf = (view: TableViewDef) => view.sorts ?? (view.sort ? [view.sort] : []);
+
+/** The rows a view shows: its filters (all or any), the search, then its sorts (or the manual order). */
+export function visibleRows(t: DataTable, view: TableViewDef, rows: TableRow[], q: string, ctx: TCtx) {
   const byId = new Map(t.fields.map((f) => [f.id, f]));
-  let out = rows.filter((r) =>
-    (view.filters ?? []).every((flt) => {
-      const f = byId.get(flt.fieldId);
-      return !f || passes(flt, f, r.values[f.id], ctx);
-    }),
-  );
+  const filters = (view.filters ?? []).filter((flt) => byId.has(flt.fieldId) && (flt.op === 'empty' || flt.op === 'filled' || (flt.value ?? '') !== ''));
+  const test = (r: TableRow, flt: TableFilter) => {
+    const f = byId.get(flt.fieldId)!;
+    const value = flt.value === '@today' ? { ...flt, value: localDay() } : flt;
+    return passes(value, f, valueOf(t, f, r, ctx), ctx);
+  };
+  let out = filters.length ? rows.filter((r) => (view.filterMode === 'or' ? filters.some((flt) => test(r, flt)) : filters.every((flt) => test(r, flt)))) : rows;
   const needle = q.trim().toLowerCase();
-  if (needle) out = out.filter((r) => t.fields.some((f) => cellText(f, r.values[f.id], ctx).toLowerCase().includes(needle)));
-  const sf = view.sort && byId.get(view.sort.fieldId);
-  if (sf) {
-    const dir = view.sort!.dir === 'desc' ? -1 : 1;
+  if (needle) out = out.filter((r) => t.fields.some((f) => cellText(f, valueOf(t, f, r, ctx), ctx).toLowerCase().includes(needle)));
+  const sorts = sortsOf(view)
+    .map((x) => ({ f: byId.get(x.fieldId), dir: x.dir === 'desc' ? -1 : 1 }))
+    .filter((x) => x.f) as { f: TableField; dir: number }[];
+  if (sorts.length) {
+    const keys = new Map(out.map((r) => [r.id, sorts.map((x) => sortKey(x.f, valueOf(t, x.f, r, ctx), ctx))]));
     out = [...out].sort((a, b) => {
-      const ka = sortKey(sf, a.values[sf.id], ctx), kb = sortKey(sf, b.values[sf.id], ctx);
-      if (ka === '' && kb !== '') return 1; // empty cells always last
-      if (kb === '' && ka !== '') return -1;
-      return (ka < kb ? -1 : ka > kb ? 1 : 0) * dir || a.order - b.order;
+      const ka = keys.get(a.id)!, kb = keys.get(b.id)!;
+      for (let i = 0; i < sorts.length; i++) {
+        if (ka[i] === '' && kb[i] !== '') return 1; // empty cells always last
+        if (kb[i] === '' && ka[i] !== '') return -1;
+        const c = ka[i] < kb[i] ? -1 : ka[i] > kb[i] ? 1 : 0;
+        if (c) return c * sorts[i].dir;
+      }
+      return a.order - b.order;
     });
   } else out = [...out].sort((a, b) => a.order - b.order);
   return out;
 }
 
+/** Fields in a view's order (its own order first, then any new ones), without the hidden ones unless asked. */
+export function viewFields(t: DataTable, view: TableViewDef, withHidden = false) {
+  const pos = new Map((view.order ?? []).map((id, i) => [id, i]));
+  const first = t.fields[0];
+  const rest = t.fields.slice(1).sort((a, b) => (pos.get(a.id) ?? 1e6 + t.fields.indexOf(a)) - (pos.get(b.id) ?? 1e6 + t.fields.indexOf(b)));
+  const all = first ? [first, ...rest] : rest;
+  return withHidden ? all : all.filter((f, i) => i === 0 || !view.hidden?.includes(f.id));
+}
+
+export interface RowGroup {
+  key: string;
+  label: string;
+  color?: string;
+  value: CellValue; // what a new row in this group gets
+  rows: TableRow[];
+}
+
+/** Rows grouped by a field: choices in their own order, people by name, dates by day, empty last. */
+export function groupRows(t: DataTable, f: TableField, rows: TableRow[], ctx: TCtx): RowGroup[] {
+  const groups = new Map<string, RowGroup>();
+  const add = (key: string, label: string, value: CellValue, r: TableRow, color?: string) => {
+    const g = groups.get(key) ?? { key, label, value, color, rows: [] };
+    g.rows.push(r);
+    groups.set(key, g);
+  };
+  for (const r of rows) {
+    const v = valueOf(t, f, r, ctx);
+    if (isEmpty(v) && f.type !== 'checkbox') {
+      add('', `No ${f.name.toLowerCase()}`, null, r);
+      continue;
+    }
+    if (f.type === 'select') {
+      const o = f.options?.find((x) => x.id === v);
+      add(String(v), o?.label ?? 'Unknown', v, r, o?.color);
+    } else if (f.type === 'multi') {
+      const o = f.options?.find((x) => x.id === (v as string[])[0]);
+      add(String((v as string[])[0]), o?.label ?? 'Unknown', [String((v as string[])[0])], r, o?.color);
+    } else if (f.type === 'checkbox') add(v ? 'yes' : 'no', v ? `${f.name}: yes` : `${f.name}: no`, !!v, r);
+    else if (f.type === 'created' || f.type === 'edited') add(String(v).slice(0, 10), cellText({ ...f, type: 'date' }, String(v).slice(0, 10), ctx), null, r);
+    else add(String(cellText(f, v, ctx)), cellText(f, v, ctx), isComputed(f) ? null : v, r);
+  }
+  const order = (g: RowGroup) => (g.key === '' ? 1e9 : f.type === 'select' ? (f.options?.findIndex((o) => o.id === g.key) ?? 0) : 0);
+  return [...groups.values()].sort((a, b) => order(a) - order(b) || (a.key === '' ? 1 : b.key === '' ? -1 : a.label.localeCompare(b.label)));
+}
+
+export const CALCS: { kind: CalcKind; label: string; numeric?: boolean }[] = [
+  { kind: 'count', label: 'Count' },
+  { kind: 'filled', label: 'Filled' },
+  { kind: 'empty', label: 'Empty' },
+  { kind: 'percent', label: 'Percent filled' },
+  { kind: 'unique', label: 'Different values' },
+  { kind: 'sum', label: 'Sum', numeric: true },
+  { kind: 'avg', label: 'Average', numeric: true },
+  { kind: 'min', label: 'Smallest', numeric: true },
+  { kind: 'max', label: 'Largest', numeric: true },
+];
+export const isNumeric = (f: TableField) => ['number', 'money', 'rating', 'rollup', 'formula'].includes(f.type);
+
+/** A total under a column: count, filled, sum, average… formatted like the column. */
+export function calc(kind: CalcKind, t: DataTable, f: TableField, rows: TableRow[], ctx: TCtx): string {
+  const vals = rows.map((r) => valueOf(t, f, r, ctx));
+  const filled = vals.filter((v) => !isEmpty(v));
+  const fmt = (n: number) => (f.type === 'money' ? money(n, f.currency) : Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 2 }));
+  const nums = filled.map(Number).filter(Number.isFinite);
+  switch (kind) {
+    case 'count':
+      return `${rows.length}`;
+    case 'filled':
+      return `${filled.length}`;
+    case 'empty':
+      return `${rows.length - filled.length}`;
+    case 'percent':
+      return rows.length ? `${Math.round((filled.length / rows.length) * 100)}%` : '0%';
+    case 'unique':
+      return `${new Set(filled.map((v) => JSON.stringify(v))).size}`;
+    case 'sum':
+      return fmt(nums.reduce((a, b) => a + b, 0));
+    case 'avg':
+      return nums.length ? fmt(nums.reduce((a, b) => a + b, 0) / nums.length) : '';
+    case 'min':
+      return nums.length ? fmt(Math.min(...nums)) : '';
+    case 'max':
+      return nums.length ? fmt(Math.max(...nums)) : '';
+  }
+}
+
+/* ---------- formulas ---------- */
+
+/**
+ * A small, safe formula language (no code runs): {Field name}, numbers, "text", + - * / , & joins text,
+ * comparisons (> < >= <= = !=), and/or/not, and functions: if, round, floor, ceil, abs, min, max, sum, concat,
+ * upper, lower, len, empty, today, days, year, month, contains.
+ */
+export function evaluate(src: string, field: (name: string) => unknown, fieldNames: string[] = []): unknown {
+  type Tok = { t: 'num' | 'str' | 'ref' | 'id' | 'op' | 'punc'; v: string };
+  const toks: Tok[] = [];
+  for (let i = 0; i < src.length; ) {
+    const c = src[i];
+    if (/\s/.test(c)) i++;
+    else if (/[0-9.]/.test(c)) {
+      const m = /^[0-9]*\.?[0-9]+/.exec(src.slice(i))!;
+      toks.push({ t: 'num', v: m[0] });
+      i += m[0].length;
+    } else if (c === '"' || c === "'") {
+      const end = src.indexOf(c, i + 1);
+      if (end < 0) throw new Error('A text is missing its closing quote');
+      toks.push({ t: 'str', v: src.slice(i + 1, end) });
+      i = end + 1;
+    } else if (c === '{') {
+      const end = src.indexOf('}', i);
+      if (end < 0) throw new Error('A field name is missing its }');
+      toks.push({ t: 'ref', v: src.slice(i + 1, end).trim() });
+      i = end + 1;
+    } else if (/[A-Za-z_]/.test(c)) {
+      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i))!;
+      toks.push({ t: 'id', v: m[0].toLowerCase() });
+      i += m[0].length;
+    } else if ('<>!='.includes(c) && src[i + 1] === '=') {
+      toks.push({ t: 'op', v: c + '=' });
+      i += 2;
+    } else if ('+-*/&<>='.includes(c)) {
+      toks.push({ t: 'op', v: c });
+      i++;
+    } else if ('(),'.includes(c)) {
+      toks.push({ t: 'punc', v: c });
+      i++;
+    } else throw new Error(`“${c}” isn’t understood`);
+  }
+  let p = 0;
+  const peek = () => toks[p];
+  const eat = (v?: string) => {
+    const tk = toks[p++];
+    if (!tk || (v && tk.v !== v)) throw new Error(v ? `Expected ${v}` : 'The formula ends too soon');
+    return tk;
+  };
+  const num = (x: unknown) => (typeof x === 'number' ? x : typeof x === 'boolean' ? (x ? 1 : 0) : Number(String(x ?? '').replace(/[^\d.-]/g, '')) || 0);
+  const str = (x: unknown) => (x == null ? '' : typeof x === 'number' ? (Number.isInteger(x) ? String(x) : String(Math.round(x * 100) / 100)) : String(x));
+  const truthy = (x: unknown) => !!x && x !== '0' && x !== 'false';
+  const fns: Record<string, (a: unknown[]) => unknown> = {
+    if: (a) => (truthy(a[0]) ? a[1] : a[2] ?? ''),
+    round: (a) => {
+      const k = 10 ** num(a[1] ?? 0);
+      return Math.round(num(a[0]) * k) / k;
+    },
+    floor: (a) => Math.floor(num(a[0])),
+    ceil: (a) => Math.ceil(num(a[0])),
+    abs: (a) => Math.abs(num(a[0])),
+    min: (a) => Math.min(...a.map(num)),
+    max: (a) => Math.max(...a.map(num)),
+    sum: (a) => a.map(num).reduce((x, y) => x + y, 0),
+    concat: (a) => a.map(str).join(''),
+    upper: (a) => str(a[0]).toUpperCase(),
+    lower: (a) => str(a[0]).toLowerCase(),
+    len: (a) => str(a[0]).length,
+    empty: (a) => a[0] == null || a[0] === '' || a[0] === 0 || a[0] === false,
+    contains: (a) => str(a[0]).toLowerCase().includes(str(a[1]).toLowerCase()),
+    today: () => localDay(),
+    days: (a) => Math.round((Date.parse(str(a[1]).slice(0, 10)) - Date.parse(str(a[0]).slice(0, 10))) / 86_400_000),
+    year: (a) => Number(str(a[0]).slice(0, 4)) || '',
+    month: (a) => Number(str(a[0]).slice(5, 7)) || '',
+    not: (a) => !truthy(a[0]),
+  };
+  const primary = (): unknown => {
+    const tk = eat();
+    if (tk.t === 'num') return Number(tk.v);
+    if (tk.t === 'str') return tk.v;
+    if (tk.t === 'ref') return field(tk.v);
+    if (tk.t === 'op' && tk.v === '-') return -num(primary());
+    if (tk.t === 'punc' && tk.v === '(') {
+      const v = or();
+      eat(')');
+      return v;
+    }
+    if (tk.t === 'id') {
+      if (tk.v === 'true') return true;
+      if (tk.v === 'false') return false;
+      const fn = fns[tk.v];
+      if (peek()?.v !== '(') {
+        // A plain word: a one-word field name works without braces; anything else needs them.
+        if (fieldNames.some((n) => n.toLowerCase() === tk.v.toLowerCase())) return field(tk.v);
+        throw new Error(`Put field names in curly braces, like {${tk.v}}`);
+      }
+      if (!fn) throw new Error(`There’s no ${tk.v}()`);
+      eat('(');
+      const args: unknown[] = [];
+      if (peek()?.v !== ')') {
+        args.push(or());
+        while (peek()?.v === ',') (eat(','), args.push(or()));
+      }
+      eat(')');
+      return fn(args);
+    }
+    throw new Error(`“${tk.v}” is in the wrong place`);
+  };
+  const mul = (): unknown => {
+    let v = primary();
+    while (peek()?.v === '*' || peek()?.v === '/') {
+      const op = eat().v;
+      const r = primary();
+      v = op === '*' ? num(v) * num(r) : num(r) === 0 ? null : num(v) / num(r);
+    }
+    return v;
+  };
+  const add = (): unknown => {
+    let v = mul();
+    while (peek()?.v === '+' || peek()?.v === '-' || peek()?.v === '&') {
+      const op = eat().v;
+      const r = mul();
+      v = op === '&' ? str(v) + str(r) : op === '+' ? (typeof v === 'string' || typeof r === 'string' ? str(v) + str(r) : num(v) + num(r)) : num(v) - num(r);
+    }
+    return v;
+  };
+  const cmp = (): unknown => {
+    let v = add();
+    while (peek()?.t === 'op' && ['>', '<', '>=', '<=', '=', '!='].includes(peek()!.v)) {
+      const op = eat().v;
+      const r = add();
+      const both = typeof v === 'number' || typeof r === 'number';
+      const a = both ? num(v) : str(v), b = both ? num(r) : str(r);
+      v = op === '>' ? a > b : op === '<' ? a < b : op === '>=' ? a >= b : op === '<=' ? a <= b : op === '=' ? a === b : a !== b;
+    }
+    return v;
+  };
+  const and = (): unknown => {
+    let v = cmp();
+    while (peek()?.v === 'and') (eat(), (v = truthy(v) && truthy(cmp())));
+    return v;
+  };
+  const or = (): unknown => {
+    let v = and();
+    while (peek()?.v === 'or') (eat(), (v = truthy(v) || truthy(and())));
+    return v;
+  };
+  if (!toks.length) return null;
+  const out = or();
+  if (p < toks.length) throw new Error(`“${toks[p].v}” is in the wrong place`);
+  return out;
+}
+
+/** Checks a formula against a table: an error in plain words, or null if it's fine. */
+export function formulaError(src: string, t: DataTable): string | null {
+  try {
+    evaluate(src, (name) => {
+      if (!t.fields.some((f) => f.name.toLowerCase() === name.toLowerCase())) throw new Error(`There’s no field called “${name}”`);
+      return 1;
+    }, t.fields.map((f) => f.name));
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
 /** A value converted when a column changes type, so nothing silently turns to garbage. */
-export function convertValue(from: TableField, to: TableField, v: CellValue | undefined, ctx: Parameters<typeof cellText>[2]): CellValue {
+export function convertValue(from: TableField, to: TableField, v: CellValue | undefined, ctx: TCtx): CellValue {
   if (isEmpty(v)) return null;
   const text = cellText(from, v, ctx);
   switch (to.type) {
@@ -138,8 +500,18 @@ export function convertValue(from: TableField, to: TableField, v: CellValue | un
       return /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null;
     case 'person':
       return ctx.users.find((u) => u.name.toLowerCase() === text.toLowerCase())?.id ?? null;
+    case 'rating': {
+      const n = Math.round(Number(String(Array.isArray(v) ? '' : v).replace(/[^\d.]/g, '')));
+      return Number.isFinite(n) && n > 0 ? Math.min(n, to.max ?? 5) : null;
+    }
     case 'link':
     case 'button':
+    case 'files':
+    case 'formula':
+    case 'rollup':
+    case 'created':
+    case 'edited':
+    case 'creator':
       return null;
     default:
       return text;
@@ -147,7 +519,7 @@ export function convertValue(from: TableField, to: TableField, v: CellValue | un
 }
 
 /** When a column becomes a choice field, its existing words become the choices. */
-export function optionsFromValues(from: TableField, rows: TableRow[], ctx: Parameters<typeof cellText>[2]) {
+export function optionsFromValues(from: TableField, rows: TableRow[], ctx: TCtx) {
   const words = [...new Set(rows.flatMap((r) => cellText(from, r.values[from.id], ctx).split(', ')).map((w) => w.trim()).filter(Boolean))].slice(0, 40);
   return words.map((w, i) => option(w, OPTION_COLORS[(i + 1) % OPTION_COLORS.length]));
 }
@@ -232,8 +604,18 @@ export function parseIncoming(f: TableField, raw: unknown, users: User[]): { v: 
       });
       return { v: f.type === 'multi' ? ids : ids[0], field: field !== f ? field : undefined };
     }
+    case 'rating': {
+      const n = Math.round(Number(s.replace(/[^\d.]/g, '')));
+      return { v: Number.isFinite(n) && n > 0 ? Math.min(n, f.max ?? 5) : null };
+    }
     case 'link':
     case 'button':
+    case 'files':
+    case 'formula':
+    case 'rollup':
+    case 'created':
+    case 'edited':
+    case 'creator':
       return { v: null };
     default:
       return { v: s.slice(0, 5000) };

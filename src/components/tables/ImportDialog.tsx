@@ -1,3 +1,4 @@
+import { PickSelect } from '../ui/PickSelect';
 import { useMemo, useRef, useState } from 'react';
 import { FileUp, Upload, X } from 'lucide-react';
 import type { CellValue, DataTable, FieldType, TableField, TableRow, User } from '../../types';
@@ -159,7 +160,7 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
                             <strong>{h || `Column ${i + 1}`}</strong>
                             <small className="muted">{samples.join(' · ').slice(0, 70) || 'empty'}</small>
                           </span>
-                          <select className="tb-native" value={value} aria-label={`Where ${h} goes`} onChange={(e) => setTarget(i, e.target.value)}>
+                          <PickSelect value={value} aria-label={`Where ${h} goes`} onChange={(e) => setTarget(i, e.target.value)}>
                             <optgroup label="Into a field">
                               {usable.filter((f) => !taken(i).has(f.id)).map((f) => (
                                 <option key={f.id} value={f.id}>
@@ -175,21 +176,21 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
                               ))}
                             </optgroup>
                             <option value="skip">Skip this column</option>
-                          </select>
+                          </PickSelect>
                         </div>
                       );
                     })}
                   </div>
                   <div className="tb-act-row">
                     <span className="tb-act-label">Duplicates</span>
-                    <select className="tb-native" value={dedupe} aria-label="Duplicates" onChange={(e) => setDedupe(e.target.value)}>
+                    <PickSelect value={dedupe} aria-label="Duplicates" onChange={(e) => setDedupe(e.target.value)}>
                       <option value="">Always add new rows</option>
                       {usable.filter((f) => ['text', 'email', 'phone', 'url', 'number'].includes(f.type) && targets.some((t) => t.kind === 'field' && t.fieldId === f.id)).map((f) => (
                         <option key={f.id} value={f.id}>
                           Same {f.name.toLowerCase()} updates the row already here
                         </option>
                       ))}
-                    </select>
+                    </PickSelect>
                   </div>
                   {(table.rules ?? []).some((r) => r.enabled && r.on === 'created') && (
                     <label className="check-row">

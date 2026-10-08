@@ -1,3 +1,4 @@
+import { PickSelect } from '../ui/PickSelect';
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Copy, KeyRound, Plus, RefreshCw, Send, Trash2, X, Zap } from 'lucide-react';
 import type { ButtonDef, Channel, DataTable, TableAction, TableField, TableIntake, TableRule, User } from '../../types';
@@ -92,7 +93,7 @@ export function actionSummary(a: TableAction, t: DataTable, tables: DataTable[],
 /** Who an action is for: a person field on the row, whoever pressed, or a named teammate. */
 function PersonSpec({ t, users, value, onChange, label }: { t: DataTable; users: User[]; value?: string; onChange: (v: string) => void; label: string }) {
   return (
-    <select className="tb-native" value={value ?? ''} aria-label={label} onChange={(e) => onChange(e.target.value)}>
+    <PickSelect value={value ?? ''} aria-label={label} onChange={(e) => onChange(e.target.value)}>
       <option value="">Nobody</option>
       {t.fields.filter((f) => f.type === 'person').map((f) => (
         <option key={f.id} value={f.id}>
@@ -105,7 +106,7 @@ function PersonSpec({ t, users, value, onChange, label }: { t: DataTable; users:
           {u.name}
         </option>
       ))}
-    </select>
+    </PickSelect>
   );
 }
 
@@ -113,18 +114,18 @@ function PersonSpec({ t, users, value, onChange, label }: { t: DataTable; users:
 function ValueInput({ f, users, value, onChange }: { f: TableField; users: User[]; value: unknown; onChange: (v: string | number | boolean | string[] | null) => void }) {
   if (f.type === 'select' || f.type === 'multi')
     return (
-      <select className="tb-native" value={Array.isArray(value) ? value[0] ?? '' : String(value ?? '')} aria-label={f.name} onChange={(e) => onChange(f.type === 'multi' ? (e.target.value ? [e.target.value] : []) : e.target.value || null)}>
+      <PickSelect value={Array.isArray(value) ? value[0] ?? '' : String(value ?? '')} aria-label={f.name} onChange={(e) => onChange(f.type === 'multi' ? (e.target.value ? [e.target.value] : []) : e.target.value || null)}>
         <option value="">Empty</option>
         {f.options?.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
           </option>
         ))}
-      </select>
+      </PickSelect>
     );
   if (f.type === 'person')
     return (
-      <select className="tb-native" value={String(value ?? '')} aria-label={f.name} onChange={(e) => onChange(e.target.value || null)}>
+      <PickSelect value={String(value ?? '')} aria-label={f.name} onChange={(e) => onChange(e.target.value || null)}>
         <option value="">Empty</option>
         <option value="@me">Whoever pressed it</option>
         {users.map((u) => (
@@ -132,21 +133,21 @@ function ValueInput({ f, users, value, onChange }: { f: TableField; users: User[
             {u.name}
           </option>
         ))}
-      </select>
+      </PickSelect>
     );
   if (f.type === 'checkbox')
     return (
-      <select className="tb-native" value={value ? 'yes' : 'no'} aria-label={f.name} onChange={(e) => onChange(e.target.value === 'yes')}>
+      <PickSelect value={value ? 'yes' : 'no'} aria-label={f.name} onChange={(e) => onChange(e.target.value === 'yes')}>
         <option value="yes">Checked</option>
         <option value="no">Not checked</option>
-      </select>
+      </PickSelect>
     );
   if (f.type === 'date')
     return (
-      <select className="tb-native" value={value === '@today' ? '@today' : value ? 'pick' : ''} aria-label={f.name} onChange={(e) => onChange(e.target.value === '@today' ? '@today' : null)}>
+      <PickSelect value={value === '@today' ? '@today' : value ? 'pick' : ''} aria-label={f.name} onChange={(e) => onChange(e.target.value === '@today' ? '@today' : null)}>
         <option value="@today">Today (when it runs)</option>
         <option value="">Empty</option>
-      </select>
+      </PickSelect>
     );
   return <input className="tb-native" value={String(value ?? '')} placeholder="Value, or empty" aria-label={f.name} onChange={(e) => onChange(f.type === 'number' || f.type === 'money' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value || null)} />;
 }
@@ -203,26 +204,26 @@ function ActionCard({ a, i, t, tables, users, channels, onChange, onRemove, onMo
                   </div>
                 );
               })}
-              <select className="tb-native" value="" aria-label="Add a field to set" onChange={(e) => e.target.value && onChange({ ...a, values: { ...a.values, [e.target.value]: null } })}>
+              <PickSelect value="" aria-label="Add a field to set" onChange={(e) => e.target.value && onChange({ ...a, values: { ...a.values, [e.target.value]: null } })}>
                 <option value="">+ Field to set…</option>
                 {t.fields.filter((f) => f.type !== 'button' && f.type !== 'link' && !(f.id in a.values)).map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.name}
                   </option>
                 ))}
-              </select>
+              </PickSelect>
             </>
           )}
           {(a.kind === 'copy' || a.kind === 'move' || a.kind === 'linked') &&
             (others.length ? (
               <>
-                <select className="tb-native" value={a.tableId} aria-label="Table" onChange={(e) => onChange({ ...a, tableId: e.target.value })}>
+                <PickSelect value={a.tableId} aria-label="Table" onChange={(e) => onChange({ ...a, tableId: e.target.value })}>
                   {others.map((x) => (
                     <option key={x.id} value={x.id}>
                       {x.name}
                     </option>
                   ))}
-                </select>
+                </PickSelect>
                 <p className="muted small">Fields with the same name carry across{a.kind === 'linked' ? ', and the new row links back here (if it has a link field to this table)' : ''}.</p>
               </>
             ) : (
@@ -250,27 +251,27 @@ function ActionCard({ a, i, t, tables, users, channels, onChange, onRemove, onMo
           )}
           {a.kind === 'chat' && (
             <>
-              <select className="tb-native" value={a.channelId} aria-label="Channel" onChange={(e) => onChange({ ...a, channelId: e.target.value })}>
+              <PickSelect value={a.channelId} aria-label="Channel" onChange={(e) => onChange({ ...a, channelId: e.target.value })}>
                 <option value="">Pick a channel</option>
                 {channels.filter((c) => c.kind !== 'dm').map((c) => (
                   <option key={c.id} value={c.id}>
                     #{c.name}
                   </option>
                 ))}
-              </select>
+              </PickSelect>
               <input className="tb-native" value={a.text} placeholder="Message, e.g. New lead: {Name}" onChange={(e) => onChange({ ...a, text: e.target.value })} />
             </>
           )}
           {a.kind === 'email' && (
             <>
-              <select className="tb-native" value={a.toField ?? ''} aria-label="To" onChange={(e) => onChange({ ...a, toField: e.target.value || undefined })}>
+              <PickSelect value={a.toField ?? ''} aria-label="To" onChange={(e) => onChange({ ...a, toField: e.target.value || undefined })}>
                 <option value="">No address</option>
                 {t.fields.filter((f) => f.type === 'email').map((f) => (
                   <option key={f.id} value={f.id}>
                     To the row’s {f.name}
                   </option>
                 ))}
-              </select>
+              </PickSelect>
               <input className="tb-native" value={a.subject} placeholder="Subject" onChange={(e) => onChange({ ...a, subject: e.target.value })} />
               <textarea className="tb-native tall" value={a.body} rows={4} placeholder="Hi {Name}," onChange={(e) => onChange({ ...a, body: e.target.value })} />
               <p className="muted small">It opens a new email, filled in; you read it and press send.</p>
@@ -281,13 +282,13 @@ function ActionCard({ a, i, t, tables, users, channels, onChange, onRemove, onMo
               <>
                 <div className="tb-act-row">
                   <span className="tb-act-label">Field</span>
-                  <select className="tb-native" value={a.fieldId} aria-label="Person field" onChange={(e) => onChange({ ...a, fieldId: e.target.value })}>
+                  <PickSelect value={a.fieldId} aria-label="Person field" onChange={(e) => onChange({ ...a, fieldId: e.target.value })}>
                     {t.fields.filter((f) => f.type === 'person').map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
                       </option>
                     ))}
-                  </select>
+                  </PickSelect>
                 </div>
                 <div className="tb-people">
                   {users.map((u) => (
@@ -307,20 +308,20 @@ function ActionCard({ a, i, t, tables, users, channels, onChange, onRemove, onMo
               <input className="tb-native" value={a.url} placeholder="https://hooks.example.com/…" onChange={(e) => (onChange({ ...a, url: e.target.value }), setTest(null))} />
               <div className="tb-act-row">
                 <span className="tb-act-label">Send</span>
-                <select className="tb-native" value={a.fields ? 'pick' : 'all'} aria-label="What to send" onChange={(e) => onChange({ ...a, fields: e.target.value === 'all' ? undefined : t.fields.filter((f) => f.type !== 'button').slice(0, 3).map((f) => ({ fieldId: f.id, key: f.name.toLowerCase().replace(/\W+/g, '_') })) })}>
+                <PickSelect value={a.fields ? 'pick' : 'all'} aria-label="What to send" onChange={(e) => onChange({ ...a, fields: e.target.value === 'all' ? undefined : t.fields.filter((f) => f.type !== 'button').slice(0, 3).map((f) => ({ fieldId: f.id, key: f.name.toLowerCase().replace(/\W+/g, '_') })) })}>
                   <option value="all">Every field, by its name</option>
                   <option value="pick">Chosen fields, with my own names</option>
-                </select>
+                </PickSelect>
               </div>
               {a.fields?.map((m, j) => (
                 <div key={j} className="tb-act-row">
-                  <select className="tb-native" value={m.fieldId} aria-label="Field" onChange={(e) => onChange({ ...a, fields: a.fields!.map((x, k) => (k === j ? { ...x, fieldId: e.target.value } : x)) })}>
+                  <PickSelect value={m.fieldId} aria-label="Field" onChange={(e) => onChange({ ...a, fields: a.fields!.map((x, k) => (k === j ? { ...x, fieldId: e.target.value } : x)) })}>
                     {t.fields.filter((f) => f.type !== 'button').map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
                       </option>
                     ))}
-                  </select>
+                  </PickSelect>
                   <span className="muted">as</span>
                   <input className="tb-native" value={m.key} aria-label="Sent as" onChange={(e) => onChange({ ...a, fields: a.fields!.map((x, k) => (k === j ? { ...x, key: e.target.value } : x)) })} />
                   <button type="button" className="icon-btn sm" aria-label="Remove" onClick={() => onChange({ ...a, fields: a.fields!.filter((_, k) => k !== j) })}>
@@ -341,13 +342,13 @@ function ActionCard({ a, i, t, tables, users, channels, onChange, onRemove, onMo
                 <div key={j} className="tb-act-row">
                   <input className="tb-native" value={m.path} placeholder="e.g. id or data.link" aria-label="From the reply" onChange={(e) => onChange({ ...a, replyTo: a.replyTo!.map((x, k) => (k === j ? { ...x, path: e.target.value } : x)) })} />
                   <span className="muted">into</span>
-                  <select className="tb-native" value={m.fieldId} aria-label="Field" onChange={(e) => onChange({ ...a, replyTo: a.replyTo!.map((x, k) => (k === j ? { ...x, fieldId: e.target.value } : x)) })}>
+                  <PickSelect value={m.fieldId} aria-label="Field" onChange={(e) => onChange({ ...a, replyTo: a.replyTo!.map((x, k) => (k === j ? { ...x, fieldId: e.target.value } : x)) })}>
                     {t.fields.filter((f) => !['button', 'link', 'select', 'multi', 'person'].includes(f.type)).map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
                       </option>
                     ))}
-                  </select>
+                  </PickSelect>
                   <button type="button" className="icon-btn sm" aria-label="Remove" onClick={() => onChange({ ...a, replyTo: a.replyTo!.filter((_, k) => k !== j) })}>
                     <X size={13} />
                   </button>
@@ -456,14 +457,14 @@ export function ButtonSettings({ field, t, tables, users, channels, onChange }: 
       </label>
       <div className="tb-act-row">
         <span className="tb-act-label">Ask for</span>
-        <select className="tb-native" value="" aria-label="Fill in first" onChange={(e) => e.target.value && set({ ask: [...(b.ask ?? []), e.target.value] })}>
+        <PickSelect value="" aria-label="Fill in first" onChange={(e) => e.target.value && set({ ask: [...(b.ask ?? []), e.target.value] })}>
           <option value="">{b.ask?.length ? '+ Another field' : 'Nothing (runs straight away)'}</option>
           {t.fields.filter((f, i) => i > 0 && !['button', 'link'].includes(f.type) && !b.ask?.includes(f.id)).map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
           ))}
-        </select>
+        </PickSelect>
       </div>
       {b.ask?.length ? (
         <div className="tb-chips wrap">
@@ -476,7 +477,7 @@ export function ButtonSettings({ field, t, tables, users, channels, onChange }: 
       ) : null}
       <div className="tb-act-row">
         <span className="tb-act-label">Show on</span>
-        <select className="tb-native" value={sw?.fieldId ?? ''} aria-label="Only on rows where" onChange={(e) => {
+        <PickSelect value={sw?.fieldId ?? ''} aria-label="Only on rows where" onChange={(e) => {
           const f = t.fields.find((x) => x.id === e.target.value);
           set({ showWhen: f ? { fieldId: f.id, op: opsFor(f.type)[0].op } : undefined });
         }}>
@@ -486,27 +487,27 @@ export function ButtonSettings({ field, t, tables, users, channels, onChange }: 
               Rows where {f.name}…
             </option>
           ))}
-        </select>
+        </PickSelect>
       </div>
       {sw && swField && (
         <div className="tb-act-row">
-          <select className="tb-native" value={sw.op} aria-label="Test" onChange={(e) => set({ showWhen: { ...sw, op: e.target.value as typeof sw.op } })}>
+          <PickSelect value={sw.op} aria-label="Test" onChange={(e) => set({ showWhen: { ...sw, op: e.target.value as typeof sw.op } })}>
             {opsFor(swField.type).map((o) => (
               <option key={o.op} value={o.op}>
                 {o.label}
               </option>
             ))}
-          </select>
+          </PickSelect>
           {sw.op !== 'empty' && sw.op !== 'filled' &&
             (swField.options ? (
-              <select className="tb-native" value={sw.value ?? ''} aria-label="Value" onChange={(e) => set({ showWhen: { ...sw, value: e.target.value } })}>
+              <PickSelect value={sw.value ?? ''} aria-label="Value" onChange={(e) => set({ showWhen: { ...sw, value: e.target.value } })}>
                 <option value="">Choose…</option>
                 {swField.options.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.label}
                   </option>
                 ))}
-              </select>
+              </PickSelect>
             ) : (
               <input className="tb-native" value={sw.value ?? ''} aria-label="Value" onChange={(e) => set({ showWhen: { ...sw, value: e.target.value } })} />
             ))}
@@ -647,7 +648,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                               <span className="tb-map-sample muted small" title={String(intake.sample?.[k] ?? '')}>
                                 {intake.sample?.[k] != null && intake.sample[k] !== '' ? String(intake.sample[k]).slice(0, 40) : 'empty'}
                               </span>
-                              <select className="tb-native" value={intake.mapping[k] ?? ''} aria-label={`Field for ${k}`} onChange={(e) => (e.target.value === '__new' ? newFieldFor(k) : setIntake({ mapping: { ...intake.mapping, [k]: e.target.value } }))}>
+                              <PickSelect value={intake.mapping[k] ?? ''} aria-label={`Field for ${k}`} onChange={(e) => (e.target.value === '__new' ? newFieldFor(k) : setIntake({ mapping: { ...intake.mapping, [k]: e.target.value } }))}>
                                 <option value="">Skip (kept on the row, not in a field)</option>
                                 {t.fields.filter((f) => !['button', 'link'].includes(f.type)).map((f) => (
                                   <option key={f.id} value={f.id}>
@@ -655,7 +656,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                                   </option>
                                 ))}
                                 <option value="__new">+ New field “{humanize(k)}”</option>
-                              </select>
+                              </PickSelect>
                             </div>
                           ))}
                         </div>
@@ -672,14 +673,14 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                       {intake && (
                         <div className="tb-act-row">
                           <span className="tb-act-label">Duplicates</span>
-                          <select className="tb-native" value={intake.dedupeField ?? ''} aria-label="Duplicates" onChange={(e) => setIntake({ dedupeField: e.target.value || undefined })}>
+                          <PickSelect value={intake.dedupeField ?? ''} aria-label="Duplicates" onChange={(e) => setIntake({ dedupeField: e.target.value || undefined })}>
                             <option value="">Always add a new row</option>
                             {t.fields.filter((f) => ['text', 'email', 'phone', 'url', 'number'].includes(f.type)).map((f) => (
                               <option key={f.id} value={f.id}>
                                 Same {f.name.toLowerCase()} updates that row
                               </option>
                             ))}
-                          </select>
+                          </PickSelect>
                         </div>
                       )}
                       {intake?.enabled ? (
@@ -748,7 +749,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                           <input className="tb-native" value={r.name} aria-label="Rule name" onChange={(e) => setRule(r.id, { name: e.target.value })} />
                           <div className="tb-act-row">
                             <span className="tb-act-label">When</span>
-                            <select className="tb-native" value={r.on} aria-label="When" onChange={(e) => {
+                            <PickSelect value={r.on} aria-label="When" onChange={(e) => {
                               const on = e.target.value as TableRule['on'];
                               setRule(r.id, { on, ...(on === 'schedule' && !r.schedule ? { schedule: { days: [1, 2, 3, 4, 5], hour: 9, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta' } } : {}) });
                             }}>
@@ -756,7 +757,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                               <option value="updated">A row changes</option>
                               <option value="becomes">A field becomes…</option>
                               <option value="schedule">On a schedule…</option>
-                            </select>
+                            </PickSelect>
                           </div>
                           {r.on === 'schedule' && (
                             <ScheduleEditor
@@ -768,38 +769,38 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                           )}
                           {r.on === 'becomes' && (
                             <div className="tb-act-row">
-                              <select className="tb-native" value={r.fieldId ?? ''} aria-label="Field" onChange={(e) => setRule(r.id, { fieldId: e.target.value, value: undefined })}>
+                              <PickSelect value={r.fieldId ?? ''} aria-label="Field" onChange={(e) => setRule(r.id, { fieldId: e.target.value, value: undefined })}>
                                 <option value="">Pick a field</option>
                                 {t.fields.filter((x) => ['select', 'multi', 'checkbox', 'text', 'person'].includes(x.type)).map((x) => (
                                   <option key={x.id} value={x.id}>
                                     {x.name}
                                   </option>
                                 ))}
-                              </select>
+                              </PickSelect>
                               {f &&
                                 (f.options ? (
-                                  <select className="tb-native" value={r.value ?? ''} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })}>
+                                  <PickSelect value={r.value ?? ''} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })}>
                                     <option value="">Choose…</option>
                                     {f.options.map((o) => (
                                       <option key={o.id} value={o.id}>
                                         {o.label}
                                       </option>
                                     ))}
-                                  </select>
+                                  </PickSelect>
                                 ) : f.type === 'checkbox' ? (
-                                  <select className="tb-native" value={r.value ?? 'yes'} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })}>
+                                  <PickSelect value={r.value ?? 'yes'} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })}>
                                     <option value="yes">Checked</option>
                                     <option value="no">Unchecked</option>
-                                  </select>
+                                  </PickSelect>
                                 ) : f.type === 'person' ? (
-                                  <select className="tb-native" value={r.value ?? ''} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })}>
+                                  <PickSelect value={r.value ?? ''} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })}>
                                     <option value="">Choose…</option>
                                     {users.map((u) => (
                                       <option key={u.id} value={u.id}>
                                         {u.name}
                                       </option>
                                     ))}
-                                  </select>
+                                  </PickSelect>
                                 ) : (
                                   <input className="tb-native" value={r.value ?? ''} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })} />
                                 ))}
@@ -871,13 +872,13 @@ function ScheduleEditor({ t, users, rule, onChange }: { t: DataTable; users: Use
       </div>
       <div className="tb-act-row">
         <span className="tb-act-label">At</span>
-        <select className="tb-native" value={sc.hour} aria-label="Hour" onChange={(e) => set({ hour: Number(e.target.value) })}>
+        <PickSelect value={sc.hour} aria-label="Hour" onChange={(e) => set({ hour: Number(e.target.value) })}>
           {Array.from({ length: 24 }, (_, h) => (
             <option key={h} value={h}>
               {String(h).padStart(2, '0')}:00
             </option>
           ))}
-        </select>
+        </PickSelect>
         <span className="muted small">{sc.tz}</span>
       </div>
       <span className="tb-fm-label">For rows where</span>
@@ -886,7 +887,7 @@ function ScheduleEditor({ t, users, rule, onChange }: { t: DataTable; users: Use
         const needs = w.op !== 'empty' && w.op !== 'filled';
         return (
           <div key={i} className="tb-act-row">
-            <select className="tb-native" value={f.id} aria-label="Field" onChange={(e) => {
+            <PickSelect value={f.id} aria-label="Field" onChange={(e) => {
               const nf = t.fields.find((x) => x.id === e.target.value)!;
               setWhere(where.map((x, j) => (j === i ? { fieldId: nf.id, op: opsFor(nf.type)[0].op } : x)));
             }}>
@@ -895,37 +896,37 @@ function ScheduleEditor({ t, users, rule, onChange }: { t: DataTable; users: Use
                   {x.name}
                 </option>
               ))}
-            </select>
-            <select className="tb-native" value={w.op} aria-label="Test" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, op: e.target.value as typeof w.op } : x)))}>
+            </PickSelect>
+            <PickSelect value={w.op} aria-label="Test" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, op: e.target.value as typeof w.op } : x)))}>
               {opsFor(f.type).map((o) => (
                 <option key={o.op} value={o.op}>
                   {o.label}
                 </option>
               ))}
-            </select>
+            </PickSelect>
             {needs &&
               (f.options ? (
-                <select className="tb-native" value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
+                <PickSelect value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
                   <option value="">Choose…</option>
                   {f.options.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.label}
                     </option>
                   ))}
-                </select>
+                </PickSelect>
               ) : f.type === 'person' ? (
-                <select className="tb-native" value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
+                <PickSelect value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
                   <option value="">Choose…</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
                     </option>
                   ))}
-                </select>
+                </PickSelect>
               ) : f.type === 'date' ? (
-                <select className="tb-native" value={w.value ?? '@today'} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
+                <PickSelect value={w.value ?? '@today'} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
                   <option value="@today">today (when it runs)</option>
-                </select>
+                </PickSelect>
               ) : (
                 <input className="tb-native" value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
               ))}

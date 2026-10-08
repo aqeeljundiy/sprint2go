@@ -1,21 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Send, Trash2, X } from 'lucide-react';
+import { Copy, Maximize2, Minimize2, Send, Trash2, X } from 'lucide-react';
 import type { CellValue, DataTable, TableField, TableRow, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { relative } from '../../utils';
-import { ButtonCell, CellView, ContactActions, InlineInput, PickPopover, typesInline, type CellCtx } from './Cell';
-import { cellText, fieldIcon, rowName } from './fields';
+import { ButtonCell, CellView, ContactActions, FilesPopover, InlineInput, PickPopover, RatingInput, typesInline, type CellCtx } from './Cell';
+import { DatePicker } from '../ui/DatePicker';
+import { cellText, fieldIcon, isComputed, isEmpty, rowName, valueOf } from './fields';
 
 /** One field on the row page: label on the left, the value (editable in place) on the right. */
-export function FieldLine({ f, row, ctx, onCell, readOnly }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean }) {
+export function FieldLine({ f, row, ctx, onCell, readOnly, table }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean; table?: DataTable }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [pop, setPop] = useState(false);
-  const v = row.values[f.id];
+  const t = table ?? ctx.tables.find((x) => x.id === row.tableId);
+  const v = t ? valueOf(t, f, row, ctx) : row.values[f.id];
   const Icon = fieldIcon(f.type);
   const save = (x: CellValue) => onCell(f.id, x);
   let editor: React.ReactNode;
   if (f.type === 'button') editor = <span className="tb-rd-btn"><ButtonCell f={f} row={row} ctx={ctx} /></span>;
-  else if (readOnly) editor = <span className="tb-rd-val ro"><CellView f={f} v={v} ctx={ctx} wrap /></span>;
+  else if (readOnly || isComputed(f)) editor = <span className="tb-rd-val ro"><CellView f={f} v={v} ctx={ctx} wrap />{isEmpty(v) && <span className="muted">Empty</span>}</span>;
+  else if (f.type === 'rating') editor = <span className="tb-rd-val"><RatingInput v={v} max={f.max ?? 5} onSave={save} /></span>;
+  else if (f.type === 'date') editor = <span className="tb-rd-date"><DatePicker value={typeof v === 'string' ? v : ''} onChange={(d) => save(d || null)} label={f.name} placeholder="Empty" className="sel-flat" /></span>;
+  else if (f.type === 'files')
+    editor = (
+      <>
+        <button ref={ref} type="button" className="tb-rd-val" onClick={() => setPop(true)}>
+          <CellView f={f} v={v} ctx={ctx} />
+          {isEmpty(v) && <span className="muted">Add files</span>}
+        </button>
+        <FilesPopover v={v} anchor={ref} open={pop} onClose={() => setPop(false)} onSave={save} title={f.name} />
+      </>
+    );
   else if (f.type === 'checkbox') editor = <input type="checkbox" checked={!!v} onChange={(e) => save(e.target.checked)} aria-label={f.name} />;
   else if (f.type === 'longtext') editor = <LongText v={v} onSave={save} label={f.name} />;
   else if (typesInline(f.type))
@@ -37,7 +51,7 @@ export function FieldLine({ f, row, ctx, onCell, readOnly }: { f: TableField; ro
     );
   return (
     <div className="tb-rd-line">
-      <span className="tb-rd-label">
+      <span className="tb-rd-label" title={f.description}>
         <Icon size={13} /> {f.name}
       </span>
       {editor}
@@ -66,7 +80,11 @@ export function RecordDrawer({
   onOpenRow,
   readOnly,
   guest,
+  full,
+  onToggleFull,
 }: {
+  full?: boolean; // shown as a page instead of a side panel
+  onToggleFull?: () => void;
   guest?: boolean; // a project's guest: no comments, no duplicate or delete
   table: DataTable;
   row: TableRow;
@@ -99,12 +117,17 @@ export function RecordDrawer({
   };
   return (
     <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <aside className="drawer tb-drawer" role="dialog" aria-label={rowName(table, row)} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <aside className={`drawer tb-drawer${full ? ' full' : ''}`} role="dialog" aria-label={rowName(table, row)} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="drawer-head">
           <span className="drawer-kind">
             <i className="tb-dot" style={{ background: table.color }} /> {table.name}
           </span>
           <span className="spacer" />
+          {onToggleFull && (
+            <button type="button" className="icon-btn sm tb-rd-full" title={full ? 'Open as a side panel' : 'Open as a page'} onClick={onToggleFull}>
+              {full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          )}
           {!readOnly && !guest && (
             <>
               <button type="button" className="icon-btn sm" title="Duplicate row" onClick={onDuplicate}>
@@ -139,7 +162,7 @@ export function RecordDrawer({
 
           <div className="tb-rd-fields">
             {table.fields.slice(1).map((f) => (
-              <FieldLine key={f.id} f={f} row={row} ctx={ctx} onCell={onCell} readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id))} />
+              <FieldLine key={f.id} f={f} row={row} ctx={ctx} table={table} onCell={onCell} readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id))} />
             ))}
           </div>
 

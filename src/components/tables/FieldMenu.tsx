@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight, EyeOff, Plus, Trash2, X } from 'lucide-react';
-import type { Channel, DataTable, FieldType, TableField, User } from '../../types';
+import type { Channel, DataTable, FieldType, TableField, TableRow, User } from '../../types';
+import { PickSelect } from '../ui/PickSelect';
 import { ButtonSettings } from './Automations';
 import { Popover } from '../ui/Popover';
-import { FIELD_TYPES, OPTION_COLORS, fieldIcon } from './fields';
+import { FIELD_TYPES, OPTION_COLORS, cellText, fieldIcon, formulaError, rowName, valueOf, type TCtx } from './fields';
 import { newOption } from './Cell';
 import { uid } from '../../utils';
 
@@ -25,7 +26,11 @@ export function FieldMenu({
   onHide,
   users = [],
   channels = [],
+  rows,
+  previewCtx,
 }: {
+  rows?: TableRow[]; // for the formula preview
+  previewCtx?: TCtx;
   users?: User[];
   channels?: Channel[];
   anchor: React.RefObject<HTMLElement | null>;
@@ -73,7 +78,7 @@ export function FieldMenu({
   const changingType = !!field && field.type !== draft.type;
 
   return (
-    <Popover anchor={anchor} open={open} onClose={onClose} width={draft.type === 'button' ? 400 : 300} title={field ? field.name : 'New field'}>
+    <Popover anchor={anchor} open={open} onClose={onClose} width={draft.type === 'button' || draft.type === 'formula' ? 400 : 300} title={field ? field.name : 'New field'}>
       <div className={`tb-fm${draft.type === 'button' ? ' wide' : ''}`} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !(e.target as HTMLElement).closest('.tb-fm-opts, .tb-btn-set') && save()}>
         <input className="tb-fm-name" autoFocus value={draft.name} placeholder="Field name" onChange={(e) => set({ name: e.target.value })} />
 
@@ -121,6 +126,106 @@ export function FieldMenu({
         )}
 
         {draft.type === 'button' && <ButtonSettings field={draft} t={table} tables={tables} users={users} channels={channels} onChange={(button) => set({ button })} />}
+
+        {draft.type === 'formula' && (
+          <div className="tb-fm-opts">
+            <span className="tb-fm-label">Formula</span>
+            <textarea
+              className="tb-native tall tb-formula"
+              rows={3}
+              value={draft.formula ?? ''}
+              placeholder={`{Value} * 0.1   or   {${table.fields[0]?.name ?? 'Name'}} & " · " & {City}`}
+              onChange={(e) => set({ formula: e.target.value })}
+              spellCheck={false}
+            />
+            <div className="tb-formula-fields">
+              {table.fields.filter((f) => f.id !== draft.id && f.type !== 'button').map((f) => (
+                <button key={f.id} type="button" className="tb-chip linked" onClick={() => set({ formula: `${draft.formula ?? ''}{${f.name}}` })}>
+                  {f.name}
+                </button>
+              ))}
+            </div>
+            {(() => {
+              const src = draft.formula?.trim();
+              if (!src) return <p className="muted small">Use + − × ÷, & to join text, and if(), round(), days(), today(), concat()… Click a field to put it in.</p>;
+              const err = formulaError(src, table);
+              if (err) return <p className="err small">{err}</p>;
+              const row = rows?.find((r) => r.tableId === table.id);
+              if (!row || !previewCtx) return <p className="muted small">Looks right.</p>;
+              const v = valueOf({ ...table, fields: [...table.fields.filter((f) => f.id !== draft.id), draft] }, draft, row, previewCtx);
+              return (
+                <p className="muted small">
+                  For “{rowName(table, row)}”: <strong>{v === null ? 'empty' : cellText(draft, v, previewCtx)}</strong>
+                </p>
+              );
+            })()}
+          </div>
+        )}
+
+        {draft.type === 'rollup' && (
+          <div className="tb-fm-opts">
+            {table.fields.some((f) => f.type === 'link') ? (
+              <>
+                <span className="tb-fm-label">From the rows in</span>
+                <PickSelect value={draft.rollup?.linkField ?? ''} aria-label="Link field" onChange={(e) => set({ rollup: { fn: draft.rollup?.fn ?? 'count', linkField: e.target.value } })}>
+                  <option value="">Pick a link field</option>
+                  {table.fields.filter((f) => f.type === 'link').map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </PickSelect>
+                {(() => {
+                  const link = table.fields.find((f) => f.id === draft.rollup?.linkField);
+                  const target = tables.find((t) => t.id === link?.linkTable);
+                  if (!link || !target) return null;
+                  return (
+                    <>
+                      <span className="tb-fm-label">Show</span>
+                      <PickSelect value={draft.rollup?.fn ?? 'count'} aria-label="What to show" onChange={(e) => set({ rollup: { ...draft.rollup!, fn: e.target.value as NonNullable<TableField['rollup']>['fn'] } })}>
+                        <option value="count">How many there are</option>
+                        <option value="filled">How many have a value in…</option>
+                        <option value="sum">The total of…</option>
+                        <option value="avg">The average of…</option>
+                        <option value="min">The smallest…</option>
+                        <option value="max">The largest…</option>
+                        <option value="list">A list of…</option>
+                      </PickSelect>
+                      {draft.rollup?.fn && draft.rollup.fn !== 'count' && (
+                        <PickSelect value={draft.rollup.targetField ?? ''} aria-label="Of which field" onChange={(e) => set({ rollup: { ...draft.rollup!, targetField: e.target.value } })}>
+                          <option value="">Pick a field in {target.name}</option>
+                          {target.fields.filter((f) => f.type !== 'button' && (['sum', 'avg', 'min', 'max'].includes(draft.rollup!.fn) ? ['number', 'money', 'rating', 'formula', 'rollup'].includes(f.type) : true)).map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </PickSelect>
+                      )}
+                    </>
+                  );
+                })()}
+              </>
+            ) : (
+              <p className="muted small">Add a “Link to another table” field first; a rollup counts or totals the rows it links to (like a client’s total deal value).</p>
+            )}
+          </div>
+        )}
+
+        {draft.type === 'rating' && (
+          <div className="tb-fm-row">
+            <span className="tb-fm-label">Stars</span>
+            <div className="segmented sm">
+              {[3, 5, 10].map((n) => (
+                <button key={n} type="button" className={(draft.max ?? 5) === n ? 'on' : ''} onClick={() => set({ max: n })}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(draft.type === 'created' || draft.type === 'edited' || draft.type === 'creator') && <p className="muted small">Filled in by itself for every row; it can’t be typed over.</p>}
+        {draft.type === 'files' && <p className="muted small">Pictures and documents on each row (pictures are made smaller; other files up to 3 MB). For big files, put them in Drive and paste the link.</p>}
 
         {draft.type === 'money' && (
           <div className="tb-fm-row">
@@ -182,7 +287,7 @@ export function FieldMenu({
           <button type="button" className="ghost-btn sm" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="primary-btn sm" disabled={(draft.type === 'link' && !draft.linkTable) || (draft.type === 'button' && !draft.button?.actions.length)} onClick={save}>
+          <button type="button" className="primary-btn sm" disabled={(draft.type === 'link' && !draft.linkTable) || (draft.type === 'button' && !draft.button?.actions.length) || (draft.type === 'formula' && (!draft.formula?.trim() || !!formulaError(draft.formula, table))) || (draft.type === 'rollup' && !draft.rollup?.linkField)} onClick={save}>
             {field ? 'Save' : 'Add field'}
           </button>
         </div>

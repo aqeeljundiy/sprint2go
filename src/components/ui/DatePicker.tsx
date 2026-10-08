@@ -31,7 +31,11 @@ export function DatePicker({
   clearable = true,
   compact,
   className = '',
+  autoOpen,
+  onClosed,
 }: {
+  autoOpen?: boolean; // opens straight away (editing a table cell)
+  onClosed?: () => void; // after it closes, picked or not
   value: string | null | undefined;
   onChange: (v: string) => void;
   label?: string;
@@ -41,7 +45,12 @@ export function DatePicker({
   className?: string;
 }) {
   const btn = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpenRaw] = useState(!!autoOpen);
+  const setOpen = (v: boolean | ((o: boolean) => boolean)) => setOpenRaw((o) => {
+    const n = typeof v === 'function' ? v(o) : v;
+    if (o && !n) setTimeout(() => onClosed?.(), 0);
+    return n;
+  });
   const base = value ? new Date(value + 'T12:00') : new Date();
   const [month, setMonth] = useState(() => new Date(base.getFullYear(), base.getMonth(), 1));
 

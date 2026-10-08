@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { CellValue, DataTable, TableField, TableRow, TableViewDef } from '../../types';
 import { CellView, type CellCtx } from './Cell';
-import { isEmpty, rowName } from './fields';
+import { isEmpty, rowName, valueOf, viewFields } from './fields';
+import { PickSelect } from '../ui/PickSelect';
+import { uid } from '../../utils';
 
 /**
  * Kanban: one column per choice of a single-choice field (Status, Stage…), plus "No status".
@@ -17,8 +19,12 @@ export function BoardView({
   onOpenRow,
   onAddRow,
   onView,
+  onNewField,
   readOnly,
+  canAdd = true,
 }: {
+  onNewField: (f: TableField) => void;
+  canAdd?: boolean;
   table: DataTable;
   view: TableViewDef;
   rows: TableRow[];
@@ -37,14 +43,19 @@ export function BoardView({
     return (
       <div className="empty">
         <p className="empty-title">A board needs a single-choice field</p>
-        <p className="empty-sub">Add one like Status or Stage in the grid, then its choices become the board’s columns.</p>
+        <p className="empty-sub">A board makes one column for each choice, like Status (New, Contacted, Won) or Stage.</p>
+        {!readOnly && (
+          <button className="primary-btn sm" onClick={() => newChoiceField(table, onNewField, onView)}>
+            <Plus size={14} /> New choice field
+          </button>
+        )}
       </div>
     );
   // Up to three more fields on each card: the ones with something in them, in the table's order.
   // Cards show what moves a pipeline first: who has it, when it's due, its value and choices; contact details after.
   const rank: Partial<Record<TableField['type'], number>> = { person: 0, date: 1, money: 2, select: 3, multi: 4, number: 5, checkbox: 6 };
-  const shown = table.fields
-    .filter((f, i) => i > 0 && f.id !== group.id && !view.hidden?.includes(f.id) && f.type !== 'longtext')
+  const shown = viewFields(table, view)
+    .filter((f, i) => i > 0 && f.id !== group.id && f.type !== 'longtext' && f.type !== 'button')
     .sort((a, b) => (rank[a.type] ?? 9) - (rank[b.type] ?? 9))
     .slice(0, 4);
   const columns: { id: string; label: string; color: string }[] = [...(group.options ?? []), { id: '', label: `No ${group.name.toLowerCase()}`, color: '#94a3b8' }];
@@ -70,9 +81,9 @@ export function BoardView({
     >
       <strong>{rowName(table, r)}</strong>
       {shown.map((f: TableField) =>
-        isEmpty(r.values[f.id]) ? null : (
+        isEmpty(valueOf(table, f, r, ctx)) ? null : (
           <span key={f.id} className="tb-card-f">
-            <CellView f={f} v={r.values[f.id]} ctx={ctx} />
+            <CellView f={f} v={valueOf(table, f, r, ctx)} ctx={ctx} />
           </span>
         ),
       )}
@@ -80,18 +91,22 @@ export function BoardView({
   );
   return (
     <div className="tb-board-wrap">
-      {selects.length > 1 && (
-        <div className="tb-board-by">
-          <span className="muted small">Columns from</span>
-          <div className="segmented sm">
+      <div className="tb-board-by">
+        <span className="muted small">Columns:</span>
+        {readOnly ? (
+          <strong className="small">{group.name}</strong>
+        ) : (
+          <PickSelect value={group.id} aria-label="Columns from" onChange={(e) => (e.target.value === '__new' ? newChoiceField(table, onNewField, onView) : onView({ groupBy: e.target.value }))}>
             {selects.map((f) => (
-              <button key={f.id} type="button" className={f.id === group.id ? 'on' : ''} onClick={() => onView({ groupBy: f.id })}>
+              <option key={f.id} value={f.id}>
                 {f.name}
-              </button>
+              </option>
             ))}
-          </div>
-        </div>
-      )}
+            <option value="__new">+ New choice field…</option>
+          </PickSelect>
+        )}
+        <span className="muted small">one column per choice</span>
+      </div>
       <div className="tb-board">
         {columns.map((c) => {
           const list = rows.filter((r) => (r.values[group.id] ?? '') === c.id || (!c.id && !group.options?.some((o) => o.id === r.values[group.id])));
@@ -112,7 +127,7 @@ export function BoardView({
               <div className="tb-col-cards">
                 {list.map(card)}
               </div>
-              {!readOnly && (
+              {!readOnly && canAdd && (
                 <button type="button" className="tb-col-add" onClick={() => onAddRow(c.id ? { [group.id]: c.id } : {})}>
                   <Plus size={14} /> Add
                 </button>
@@ -124,3 +139,13 @@ export function BoardView({
     </div>
   );
 }
+
+/** "+ New choice field…" from a board: Stage with a few starting choices, columns straight away. */
+export function newChoiceField(_t: DataTable, onNewField: (f: TableField) => void, onView: (p: Partial<TableViewDef>) => void) {
+  const name = prompt('Name of the new choice field (its choices become the columns)', 'Stage');
+  if (!name?.trim()) return;
+  const f: TableField = { id: uid(), name: name.trim(), type: 'select', options: ['To do', 'Doing', 'Done'].map((l, i) => ({ id: uid(), label: l, color: ['#64748b', '#3b82f6', '#10b981'][i] })) };
+  onNewField(f);
+  onView({ groupBy: f.id });
+}
+

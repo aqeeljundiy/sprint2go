@@ -102,6 +102,30 @@
     width: 90px;
   }
 }
+/* Phone width: one tidy row. Search takes the free space and New row becomes a + button. */
+@container (max-width: 480px) {
+  .tb-bar > .spacer {
+    display: none;
+  }
+  .tb-bar > .tb-search {
+    flex: 1;
+    min-width: 0;
+  }
+  .tb-search input {
+    width: 100%;
+    min-width: 0;
+  }
+  .tb-bar .tb-new-row {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  .tb-bar .tb-new-row .lbl {
+    display: none;
+  }
+}
 
 .tb-bulk {
   display: flex;
@@ -1794,4 +1818,839 @@
   border-radius: 50%;
   background: var(--ok-solid, #10b981);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok-solid, #10b981) 20%, transparent);
+}
+
+/* ===================== Notion-style table, round 2 ===================== */
+
+/* Pinned columns stay in view when scrolling sideways (how many is the view's choice). */
+.tb-th.sticky {
+  left: auto;
+}
+.tb-first {
+  position: relative;
+  left: auto;
+  z-index: auto;
+}
+.tb-first.pinned,
+.tb-pin-wrap.pinned,
+.tb-foot-cell.pinned {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface);
+}
+.tb-th.pinned {
+  position: sticky;
+  z-index: 3;
+}
+.tb-pin-wrap {
+  display: flex;
+  min-width: 0;
+}
+.tb-pin-wrap .tb-cell {
+  flex: 1;
+}
+.tb-pin-wrap.pinned:last-of-type,
+.tb-th.pinned + .tb-th:not(.pinned),
+.tb-first.pinned {
+  box-shadow: 1px 0 0 var(--border);
+}
+.tb-tr:hover .tb-pin-wrap.pinned {
+  background: var(--surface-2);
+}
+
+/* Column headers: a ⌄ that shows on hover (always on touch), drag to move with a landing line. */
+.tb-th-chev {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.tb-th:hover .tb-th-chev,
+.tb-th-btn:focus-visible .tb-th-chev {
+  opacity: 1;
+}
+@media (hover: none) {
+  .tb-th-chev {
+    opacity: 0.6;
+  }
+}
+.tb-th[draggable='true'] {
+  cursor: grab;
+}
+.tb-th.col-dragging {
+  opacity: 0.45;
+}
+.tb-th.drop-before::before,
+.tb-th.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  z-index: 5;
+}
+.tb-th.drop-before::before {
+  left: -1px;
+}
+.tb-th.drop-after::after {
+  right: -1px;
+}
+
+/* The chosen cell, a range of cells, wrapped text, read-only (worked out) cells. */
+.tb-cell.active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  background: var(--surface);
+  z-index: 1;
+}
+.tb-cell.in-range {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.tb-cell.wrap {
+  height: auto;
+  min-height: 38px;
+  white-space: normal;
+  align-items: flex-start;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.tb-cell.wrap .tb-text {
+  white-space: pre-wrap;
+  overflow: visible;
+}
+.tb-cell.ro.t-formula,
+.tb-cell.ro.t-rollup,
+.tb-cell.ro.t-created,
+.tb-cell.ro.t-edited,
+.tb-cell.ro.t-creator {
+  color: var(--text-2);
+}
+.tb-date-pick {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.tb-date-pick .sel,
+.tb-date-pick button {
+  width: 100%;
+  height: 100%;
+}
+
+/* Rows: a grip to drag (when not sorted), the number, the checkbox; a landing line while dragging. */
+.tb-sel {
+  gap: 0;
+  grid-auto-flow: column;
+}
+.tb-grip {
+  position: absolute;
+  left: 2px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 24px;
+  color: var(--text-3);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.tb-tr:hover .tb-grip {
+  opacity: 1;
+}
+.tb-tr.row-dragging {
+  opacity: 0.45;
+}
+.tb-tr.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.tb-tr.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* Groups: a heading row you fold, with a count. */
+.tb-group-row {
+  position: sticky;
+  left: 0;
+  display: flex;
+  padding: 10px 8px 4px;
+  width: max-content;
+}
+.tb-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  transition: background 0.12s ease;
+}
+.tb-group-toggle:hover {
+  background: var(--hover);
+}
+.tb-group-block + .tb-group-block {
+  margin-top: 4px;
+}
+
+/* Totals under the columns, sticky at the bottom. */
+.tb-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface);
+  animation: none !important;
+}
+.tb-foot-cell {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.tb-foot-cell button {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  transition: background 0.12s ease;
+}
+.tb-foot-cell button small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.tb-foot-cell button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.tb-foot-add {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.tb-foot:hover .tb-foot-add {
+  opacity: 1;
+}
+
+/* The column menu. */
+.tb-colmenu {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+}
+.tb-colmenu > button,
+.tb-colmenu-row button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.12s ease;
+}
+.tb-colmenu > button:hover,
+.tb-colmenu-row button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.tb-colmenu .danger {
+  color: var(--danger, #e5484d);
+}
+.tb-colmenu-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+.tb-colmenu-row button:last-child {
+  justify-content: flex-end;
+}
+.tb-colmenu-type {
+  flex-wrap: wrap;
+}
+.tb-colmenu-type small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11.5px;
+}
+.tb-colmenu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+.tb-colmenu-note {
+  margin: 4px 8px;
+}
+.tb-col-desc {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-2);
+  resize: none;
+  field-sizing: content;
+  outline: none;
+  transition: background 0.12s ease;
+}
+.tb-col-desc:hover,
+.tb-col-desc:focus {
+  background: var(--hover);
+}
+
+/* The hint line for a first visit. */
+.tb-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 20px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.tb-tip span {
+  flex: 1;
+}
+
+/* Toolbar editors (sort, filter, fields, group, views). */
+.tb-menu-anchor {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.tb-menu-2line span {
+  display: grid;
+  text-align: left;
+}
+.tb-menu-2line small {
+  font-size: 11.5px;
+}
+.tb-menu-note {
+  margin: 2px 10px 6px;
+}
+.tb-view-set {
+  display: grid;
+  gap: 6px;
+  padding: 6px 4px;
+}
+.tb-view-set > p {
+  margin: 0;
+}
+/* One line per condition: lead word, field, test, value, remove. Columns shrink rather than wrap. */
+.tb-filter {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1.15fr) 28px;
+  gap: 4px;
+}
+.tb-filter-lead {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.tb-filter .pick-select,
+.tb-filter .tb-native {
+  min-width: 0;
+  width: 100%;
+}
+.tb-filter .pick-select button {
+  min-width: 0;
+}
+.tb-filter-x {
+  grid-column: 5;
+}
+.tb-filter-date {
+  min-width: 0;
+}
+.tb-filter-date .sel-flat {
+  min-width: 0;
+  flex: 1;
+}
+.tb-filter-mode {
+  justify-self: start;
+}
+.tb-filter-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.tb-chip.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tab-edit-row.drop-line {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.tb-drag {
+  cursor: grab;
+}
+
+/* Our dropdown inside forms and editors: one plain field, no frame inside a frame. */
+.pick-select {
+  min-height: 32px;
+  border-radius: 8px;
+  background: var(--hover);
+}
+.tb-act-body .pick-select,
+.tb-rule-body .pick-select {
+  background: var(--surface);
+}
+
+/* Stars, files. */
+.tb-stars {
+  display: inline-flex;
+  gap: 1px;
+  color: color-mix(in srgb, var(--text-3) 60%, transparent);
+}
+.tb-stars .on,
+.tb-stars button.on {
+  color: #f5a524;
+  fill: #f5a524;
+}
+.tb-stars.edit button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 22px;
+  color: inherit;
+  transition: transform 0.12s ease, color 0.12s ease;
+}
+.tb-stars.edit button.on {
+  color: #f5a524;
+}
+.tb-stars.edit button.on svg {
+  fill: #f5a524;
+}
+.tb-stars.edit button:hover {
+  transform: scale(1.15);
+}
+.tb-files {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.tb-files img {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  object-fit: cover;
+  flex: none;
+}
+.tb-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-filebox {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.tb-filebox.over {
+  background: var(--accent-soft);
+}
+.tb-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 8px;
+}
+.tb-file-row:hover {
+  background: var(--hover);
+}
+.tb-file-row img,
+.tb-file-ico {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+}
+.tb-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text);
+}
+.tb-file-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--accent);
+  transition: background 0.12s ease;
+}
+.tb-file-add:hover {
+  background: var(--hover);
+}
+.tb-formula {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+.tb-formula-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tb-formula-fields .tb-chip {
+  cursor: pointer;
+}
+.tb-rd-date .sel {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+/* The row as a page: wide and centred instead of a side panel. */
+/* The scrim is a flex row that puts drawers on the right; auto margins centre the page instead. */
+.drawer.tb-drawer.full {
+  width: min(860px, calc(100% - 48px)) !important;
+  height: calc(100% - 48px);
+  margin: 24px auto;
+  border: 0;
+  border-radius: 16px;
+  animation: tb-page-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes tb-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+}
+.drawer.tb-drawer.full .drawer-body {
+  padding: 28px 40px;
+}
+@media (min-width: 601px) {
+  .drawer.tb-drawer.full .tb-rd-line {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+}
+
+/* ---------- list view ---------- */
+
+.tb-list {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 20px 24px;
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 6px;
+}
+.tb-list-group {
+  display: grid;
+  gap: 2px;
+}
+.tb-list-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text);
+  animation: tb-row-in 0.2s ease-out both;
+  animation-delay: calc(var(--i, 0) * 12ms);
+  transition: background 0.12s ease;
+}
+.tb-list-row:hover {
+  background: var(--hover);
+}
+.tb-list-row > strong {
+  flex: 0 1 260px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.tb-list-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.tb-list-f {
+  display: inline-flex;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* ---------- gallery view ---------- */
+
+.tb-gallery {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 20px 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-auto-rows: max-content; /* cards clip their corners, so rows must not shrink to fit the pane */
+  align-content: start;
+  gap: 14px;
+}
+@media (max-width: 600px) {
+  .tb-gallery {
+    padding: 12px 16px 20px;
+    gap: 10px;
+  }
+  .tb-gadd {
+    min-height: 64px;
+    grid-auto-flow: column;
+  }
+}
+.tb-gcard {
+  display: grid;
+  align-content: start;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  overflow: hidden;
+  text-align: left;
+  color: var(--text);
+  animation: tb-row-in 0.22s ease-out both;
+  animation-delay: calc(var(--i, 0) * 18ms);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.tb-gcard:hover {
+  box-shadow: 0 8px 22px rgba(16, 16, 30, 0.08), 0 0 0 1px var(--border);
+  transform: translateY(-2px);
+}
+.tb-gcover {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  background: var(--surface-2);
+}
+.tb-gcover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.tb-gbody {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+.tb-gbody strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.tb-gfield {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+.tb-gfield small {
+  font-size: 11px;
+}
+.tb-gadd {
+  place-items: center;
+  align-content: center;
+  min-height: 140px;
+  gap: 6px;
+  color: var(--text-3);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text-3) 40%, transparent);
+  background: transparent;
+}
+
+/* ---------- calendar view ---------- */
+
+.tb-cal {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 20px 20px;
+  gap: 10px;
+  overflow: auto;
+}
+.tb-cal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.tb-cal-note {
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .tb-cal-head .spacer {
+    display: none;
+  }
+  .tb-cal-note {
+    flex-basis: 100%;
+  }
+}
+.tb-cal-head strong {
+  min-width: 150px;
+  text-align: center;
+  font-size: 15px;
+}
+.tb-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.tb-cal-wd {
+  padding: 6px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.tb-cal-day {
+  position: relative;
+  min-height: 104px;
+  padding: 6px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 0.12s ease;
+}
+.tb-cal-day.out {
+  background: var(--surface-2);
+}
+.tb-cal-day.out .tb-cal-n {
+  color: var(--text-3);
+}
+.tb-cal-day.over {
+  background: var(--accent-soft);
+}
+.tb-cal-n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tb-cal-day.today .tb-cal-n {
+  background: var(--accent);
+  color: #fff;
+}
+.tb-cal-add {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.tb-cal-day:hover .tb-cal-add {
+  opacity: 1;
+}
+.tb-cal-add:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.tb-cal-items {
+  display: grid;
+  gap: 3px;
+  margin-top: 4px;
+}
+.tb-cal-item {
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text);
+  background: var(--accent-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+.tb-cal-item:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.tb-cal-item.dragging {
+  opacity: 0.4;
+}
+.tb-cal-more {
+  padding: 0 6px;
+}
+@media (max-width: 760px) {
+  .tb-cal-day {
+    min-height: 64px;
+    padding: 4px;
+  }
+  .tb-cal-item {
+    font-size: 10.5px;
+    padding: 2px 4px;
+  }
+  .tb-list-row {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .tb-list-row > strong {
+    flex-basis: 100%;
+  }
+  .drawer.tb-drawer.full {
+    width: 100% !important;
+    height: 100%;
+    margin: 0;
+    border-radius: 0;
+  }
+  .drawer.tb-drawer.full .drawer-body {
+    padding: 16px;
+  }
+  .tb-rd-full {
+    display: none !important; /* a phone's panel already fills the screen */
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tb-list-row,
+  .tb-gcard,
+  .drawer.tb-drawer.full {
+    animation: none !important;
+  }
 }

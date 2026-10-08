@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ExternalLink, Mail, MessageCircle, Phone, Plus, Search, X } from 'lucide-react';
-import type { CellValue, DataTable, FieldOption, TableField, TableRow, User } from '../../types';
+import { Check, ExternalLink, FileText, Mail, MessageCircle, Paperclip, Phone, Plus, Search, Star, Trash2, X } from 'lucide-react';
+import type { CellValue, DataTable, FieldOption, FileRef, TableField, TableRow, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Popover } from '../ui/Popover';
-import { OPTION_COLORS, isEmpty, money, passes, rowName } from './fields';
+import { OPTION_COLORS, cellText, isEmpty, money, passes, rowName } from './fields';
 import { uid } from '../../utils';
 
 export interface CellCtx {
   users: User[];
   tables: DataTable[];
   rows: TableRow[];
+  rowName: (id: string) => string; // any row's name, for links and rollups
   /** Adds a choice to a select / multi field and returns its id. */
   addOption: (fieldId: string, label: string) => string;
   /** Presses a Button field on a row; running holds "rowId:fieldId" while it works. */
@@ -110,9 +111,133 @@ export function CellView({ f, v, ctx, wrap }: { f: TableField; v: CellValue | un
         </span>
       );
     }
+    case 'files': {
+      const files = v as FileRef[];
+      return (
+        <span className="tb-files">
+          {files.slice(0, 4).map((x, i) =>
+            x.type.startsWith('image/') ? <img key={i} src={x.url} alt={x.name} title={x.name} /> : (
+              <span key={i} className="tb-file-chip" title={x.name}>
+                <FileText size={12} /> {x.name}
+              </span>
+            ),
+          )}
+          {files.length > 4 && <span className="muted small">+{files.length - 4}</span>}
+        </span>
+      );
+    }
+    case 'rating':
+      return <Stars n={Number(v)} max={f.max ?? 5} />;
+    case 'creator': {
+      const u = ctx.users.find((x) => x.id === v);
+      return u ? (
+        <span className="tb-person">
+          <Avatar person={u} size={20} />
+          <span>{u.name}</span>
+        </span>
+      ) : (
+        <span className="tb-text muted">{cellText(f, v, ctx)}</span>
+      );
+    }
+    case 'created':
+    case 'edited':
+      return <span className="tb-date">{cellText(f, v, ctx)}</span>;
+    case 'formula':
+    case 'rollup':
+      return typeof v === 'number' ? <span className="tb-num">{cellText(f, v, ctx)}</span> : <span className={wrap ? 'tb-text wrap' : 'tb-text'}>{cellText(f, v, ctx)}</span>;
     default:
       return <span className={wrap ? 'tb-text wrap' : 'tb-text'}>{String(v)}</span>;
   }
+}
+
+/** Stars, read only. */
+export const Stars = ({ n, max }: { n: number; max: number }) => (
+  <span className="tb-stars" aria-label={`${n} of ${max}`}>
+    {Array.from({ length: max }, (_, i) => (
+      <Star key={i} size={13} className={i < n ? 'on' : ''} />
+    ))}
+  </span>
+);
+
+/** Stars you click: the same star again clears it. */
+export function RatingInput({ v, max, onSave }: { v: CellValue | undefined; max: number; onSave: (v: CellValue) => void }) {
+  const n = Number(v) || 0;
+  const [hover, setHover] = useState(0);
+  return (
+    <span className="tb-stars edit" onMouseLeave={() => setHover(0)}>
+      {Array.from({ length: max }, (_, i) => (
+        <button key={i} type="button" className={i < (hover || n) ? 'on' : ''} onMouseEnter={() => setHover(i + 1)} onClick={(e) => (e.stopPropagation(), onSave(n === i + 1 ? null : i + 1))} aria-label={`${i + 1} of ${max}`}>
+          <Star size={14} />
+        </button>
+      ))}
+    </span>
+  );
+}
+
+const MAX_FILE = 3 * 1024 * 1024;
+/** A picked file as a small stored copy: pictures shrunk to 1600px, anything else up to 3 MB. */
+async function toRef(file: File): Promise<FileRef> {
+  if (file.type.startsWith('image/') && file.type !== 'image/gif' && file.type !== 'image/svg+xml') {
+    const img = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const c = Object.assign(document.createElement('canvas'), { width: Math.round(img.width * scale), height: Math.round(img.height * scale) });
+    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    const url = c.toDataURL('image/jpeg', 0.82);
+    return { name: file.name, size: Math.round((url.length * 3) / 4), type: 'image/jpeg', url };
+  }
+  if (file.size > MAX_FILE) throw new Error(`${file.name} is over 3 MB. Put it in Drive and paste the link instead.`);
+  const url = await new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result));
+    r.onerror = () => rej(new Error('Couldn’t read the file'));
+    r.readAsDataURL(file);
+  });
+  return { name: file.name, size: file.size, type: file.type || 'application/octet-stream', url };
+}
+
+/** A row's files: see them, add more (pick or drop), remove one. */
+export function FilesPopover({ v, anchor, open, onClose, onSave, title, readOnly }: { v: CellValue | undefined; anchor: React.RefObject<HTMLElement | null>; open: boolean; onClose: () => void; onSave: (v: CellValue) => void; title: string; readOnly?: boolean }) {
+  const files = (Array.isArray(v) ? v : []) as FileRef[];
+  const input = useRef<HTMLInputElement>(null);
+  const [err, setErr] = useState('');
+  const [over, setOver] = useState(false);
+  const add = async (list: FileList | null) => {
+    if (!list?.length) return;
+    setErr('');
+    try {
+      const made = await Promise.all([...list].map(toRef));
+      onSave([...files, ...made]);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  return (
+    <Popover anchor={anchor} open={open} onClose={onClose} width={320} title={title}>
+      <div className={`tb-filebox${over ? ' over' : ''}`} onDragOver={(e) => (e.preventDefault(), setOver(true))} onDragLeave={() => setOver(false)} onDrop={(e) => (e.preventDefault(), setOver(false), !readOnly && void add(e.dataTransfer.files))}>
+        {files.map((x, i) => (
+          <div key={i} className="tb-file-row">
+            {x.type.startsWith('image/') ? <img src={x.url} alt="" /> : <span className="tb-file-ico"><FileText size={16} /></span>}
+            <a href={x.url} download={x.name} target="_blank" rel="noreferrer" className="tb-file-name">
+              {x.name}
+            </a>
+            <small className="muted">{x.size > 1e6 ? `${(x.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(x.size / 1e3))} KB`}</small>
+            {!readOnly && (
+              <button type="button" className="icon-btn sm" aria-label={`Remove ${x.name}`} onClick={() => onSave(files.filter((_, j) => j !== i))}>
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+        ))}
+        {!readOnly && (
+          <button type="button" className="tb-file-add" onClick={() => input.current?.click()}>
+            <Paperclip size={14} /> {files.length ? 'Add more' : 'Add files'} <small className="muted">or drop them here</small>
+          </button>
+        )}
+        {err && <p className="err small">{err}</p>}
+        <input ref={input} type="file" multiple hidden onChange={(e) => (void add(e.target.files), (e.target.value = ''))} />
+      </div>
+    </Popover>
+  );
 }
 
 /** Quick actions next to contact fields: write, call, WhatsApp, open. */
@@ -148,18 +273,24 @@ export function ContactActions({ f, v }: { f: TableField; v: CellValue | undefin
 }
 
 /** Fields typed straight into the cell (text, numbers, contact details, dates). */
-export const typesInline = (t: TableField['type']) => ['text', 'number', 'money', 'email', 'phone', 'url', 'date'].includes(t);
+export const typesInline = (t: TableField['type']) => ['text', 'number', 'money', 'email', 'phone', 'url'].includes(t);
 
 /** The input for a field typed in place. Saves on Enter or leaving; Escape puts it back. */
-export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className }: { f: TableField; v: CellValue | undefined; onSave: (v: CellValue) => void; onDone?: () => void; autoFocus?: boolean; className?: string }) {
+export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className, initial }: { f: TableField; v: CellValue | undefined; onSave: (v: CellValue) => void; onDone?: (move?: 'down' | 'right' | 'left') => void; autoFocus?: boolean; className?: string; initial?: string }) {
   const start = isEmpty(v) ? '' : String(v);
-  const [text, setText] = useState(start);
+  const [text, setText] = useState(initial ?? start);
+  const move = useRef<'down' | 'right' | 'left' | undefined>(undefined);
   const [focused, setFocused] = useState(autoFocus);
   const cancelled = useRef(false);
   // Money and numbers read formatted (Rp 4.500.000) until you click in to change them.
   const shown = !focused && !isEmpty(v) && (f.type === 'money' || f.type === 'number') ? (f.type === 'money' ? money(Number(v), f.currency) : Number(v).toLocaleString()) : text;
-  useEffect(() => setText(start), [start]);
+  useEffect(() => {
+    if (initial === undefined) setText(start);
+  }, [start]); // eslint-disable-line react-hooks/exhaustive-deps
+  const finished = useRef(false); // Enter, Tab and leaving the field all save, but only once
   const commit = () => {
+    if (finished.current) return;
+    finished.current = true;
     if (cancelled.current) return void (cancelled.current = false);
     const t = text.trim();
     let next: CellValue = t || null;
@@ -168,25 +299,27 @@ export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className 
       next = t && Number.isFinite(n) ? n : null;
     }
     if (next !== (isEmpty(v) ? null : v)) onSave(next);
-    onDone?.();
+    onDone?.(move.current);
+    move.current = undefined;
   };
   return (
     <input
       className={className ?? 'tb-input'}
       autoFocus={autoFocus}
-      type={f.type === 'date' ? 'date' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text'}
+      type={f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text'}
       inputMode={f.type === 'number' || f.type === 'money' ? 'decimal' : f.type === 'phone' ? 'tel' : undefined}
       value={shown}
       placeholder={f.type === 'money' ? (f.currency ?? 'IDR') : undefined}
       onChange={(e) => setText(e.target.value)}
-      onFocus={() => setFocused(true)}
+      onFocus={() => ((finished.current = false), setFocused(true))}
       onBlur={() => (setFocused(false), commit())}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+        e.stopPropagation(); // the grid's own keys (arrows, copy, paste) wait until editing ends
+        if (e.key === 'Enter') ((move.current = 'down'), commit());
+        if (e.key === 'Tab') (e.preventDefault(), (move.current = e.shiftKey ? 'left' : 'right'), commit());
         if (e.key === 'Escape') {
-          cancelled.current = true;
+          finished.current = true;
           setText(start);
-          (e.currentTarget as HTMLInputElement).blur();
           onDone?.();
         }
       }}
@@ -202,7 +335,7 @@ export function PickPopover({ f, v, ctx, anchor, open, onClose, onSave }: { f: T
   const [q, setQ] = useState('');
   useEffect(() => setQ(''), [open]);
   const many = f.type === 'multi' || f.type === 'link';
-  const chosen = new Set(Array.isArray(v) ? v : v ? [String(v)] : []);
+  const chosen = new Set<string>(Array.isArray(v) ? (v as string[]) : v ? [String(v)] : []);
   const items: { id: string; label: string; icon?: React.ReactNode }[] =
     f.type === 'person'
       ? ctx.users.map((u) => ({ id: u.id, label: u.name, icon: <Avatar person={u} size={20} /> }))

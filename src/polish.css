@@ -2091,6 +2091,9 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .is-leaving .drawer {
   animation: s2gDrawerOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
 }
+.is-leaving .drawer.tb-drawer.full {
+  animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
 .is-leaving .pop-sheet,
 .is-leaving .install-sheet {
   animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
