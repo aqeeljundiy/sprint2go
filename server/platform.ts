@@ -379,6 +379,12 @@ export function countView(path: string, source: string) {
 export const viewsSince = (since: string) => db.prepare('SELECT day, path, source, n FROM page_views WHERE day >= ?').all(since.slice(0, 10)) as { day: string; path: string; source: string; n: number }[];
 export const activeDay = (userId: string) => db.prepare('INSERT OR IGNORE INTO activity_days (user_id, day) VALUES (?, ?)').run(userId, today());
 export const activeDaysSince = (since: string) => db.prepare('SELECT user_id AS userId, day FROM activity_days WHERE day >= ?').all(since.slice(0, 10)) as { userId: string; day: string }[];
+/** Everyone who signed in or used sprint2go during a month (YYYY-MM), by user id. */
+export function activeInMonth(period: string): Set<string> {
+  const [y, m] = period.split('-').map(Number);
+  const to = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  return new Set((db.prepare('SELECT DISTINCT user_id AS userId FROM activity_days WHERE day >= ? AND day < ?').all(`${period}-01`, to) as { userId: string }[]).map((r) => r.userId));
+}
 
 /* ---------- alerts: at most one of each kind every few hours ---------- */
 

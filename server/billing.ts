@@ -29,6 +29,20 @@ export const teamSize = (ws: Ws | undefined) =>
     }).length,
   );
 
+/**
+ * Who a month's invoice bills (the billing page promises "only active people are billed"): people on the team
+ * (guests don't count) who signed in or used sprint2go during that month (YYYY-MM), at least one. `team` is everyone
+ * on the team, for the invoice to say how many of them were active.
+ */
+export function activePeople(ws: Ws | undefined, period = now().slice(0, 7)): { active: number; team: number; period: string } {
+  const team = (ws?.members ?? []).filter((m) => {
+    const u = db.getDoc('users', m.userId) as any;
+    return !u || (!u.clientOf && !u.deletedAt);
+  });
+  const seen = platform.activeInMonth(period);
+  return { active: Math.max(1, team.filter((m) => seen.has(m.userId)).length), team: Math.max(1, team.length), period };
+}
+
 /* ---------- read-only: paused or suspended ---------- */
 
 /** Why nothing can be changed in this company right now, or null. Reading and exporting always work. */

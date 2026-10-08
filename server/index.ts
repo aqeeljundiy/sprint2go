@@ -1478,7 +1478,9 @@ createServer(async (req, res) => {
       // and how many days after the due date an unpaid invoice makes the company read-only (0: never by itself).
       const s = platform.settings();
       const pay = { bank: s.billing.bank || null, payee: s.billing.name || null, graceDays: s.autoSuspendDays };
-      return json(res, 200, { pay, invoices: platform.invoices(ws.id).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, number: i.number, period: i.period, total: i.total, status: i.status, dueAt: i.dueAt, paidAt: i.paidAt, overdue: i.status === 'sent' && i.dueAt < new Date().toISOString(), credits: billing.isCreditInvoice(i.id) || undefined })) });
+      // Who this month's invoice bills so far: the people on the team who signed in or used sprint2go this month.
+      const active = billing.activePeople(ws);
+      return json(res, 200, { pay, active: { people: active.active, team: active.team }, invoices: platform.invoices(ws.id).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, number: i.number, period: i.period, total: i.total, status: i.status, dueAt: i.dueAt, paidAt: i.paidAt, overdue: i.status === 'sent' && i.dueAt < new Date().toISOString(), credits: billing.isCreditInvoice(i.id) || undefined })) });
     }
     if (p === '/api/billing/invoice' && req.method === 'GET') {
       const inv = platform.invoice(url.searchParams.get('id') ?? '');
