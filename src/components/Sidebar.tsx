@@ -63,6 +63,8 @@ interface Props {
   open: boolean; // mobile drawer
   onSelect: (v: View) => void;
   onCompose: () => void;
+  /** Why Compose is off (sending isn't set up). The button stays clickable so it can say why. */
+  composeOff?: string;
   onClose: () => void;
 }
 
@@ -122,7 +124,7 @@ export function Sidebar(props: Props) {
               props.panel
             ) : (
               <>
-                <button className="compose-btn" onClick={props.onCompose} title="Compose (C)">
+                <button className={`compose-btn ${props.composeOff ? 'off' : ''}`} onClick={props.onCompose} title={props.composeOff ?? 'Compose (C)'} aria-disabled={props.composeOff ? true : undefined}>
                   <PenLine size={16} />
                   <span className="sb-label">Compose</span>
                   <kbd className="sb-label">C</kbd>

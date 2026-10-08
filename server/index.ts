@@ -69,6 +69,48 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 platform.bootstrapOperators();
 admin.loadPricing();
 
+// Once, on a production server: the demo companies that a start-up top-up put into the live database by mistake go
+// (with whatever was made inside them, and the demo people's sign-ins). A backup is taken first; real companies stay.
+if (process.env.NODE_ENV === 'production' && process.env.S2G_DEMO !== '1' && !(platform.settings() as any).demoPurged) {
+  void db
+    .backup()
+    .then((file) => {
+      const s = seed();
+      const demoWsIds = new Set((s.workspaces as any[]).map((w) => w.id));
+      // The demo people, and the guests of the demo's projects.
+      const userIds = new Set([...(s.users as any[]).map((u) => u.id), ...(db.allDocs('users') as any[]).filter((u) => u.clientOf && demoWsIds.has(u.clientOf.workspaceId)).map((u) => u.id)]);
+      const counts: Record<string, number> = {};
+      const drop = (coll: string, ids: string[]) => {
+        const there = ids.filter((id) => db.getDoc(coll, id));
+        if (!there.length) return;
+        db.writeDocs(coll, [], there, null);
+        counts[coll] = (counts[coll] ?? 0) + there.length;
+      };
+      const demoWs = (s.workspaces as any[]).map((w) => db.getDoc('workspaces', w.id) as any).filter(Boolean);
+      const accounts = new Set(demoWs.flatMap((w: any) => (w.accounts ?? []).map((a: any) => a.id)));
+      // Everything that lives inside a demo company, found by its company, channel, table or mailbox.
+      const channels = new Set((db.allDocs('channels') as any[]).filter((c) => demoWs.some((w: any) => w.id === c.workspaceId)).map((c) => c.id));
+      const tables = new Set((db.allDocs('tables') as any[]).filter((t) => demoWs.some((w: any) => w.id === t.workspaceId)).map((t) => t.id));
+      drop('messages', (db.allDocs('messages') as any[]).filter((m) => channels.has(m.channelId)).map((m) => m.id));
+      drop('rows', (db.allDocs('rows') as any[]).filter((r) => tables.has(r.tableId)).map((r) => r.id));
+      drop('threads', (db.allDocs('threads') as any[]).filter((t) => accounts.has(t.accountId)).map((t) => t.id));
+      for (const w of demoWs) for (const [coll, ids] of Object.entries(db.deleteWorkspaceDocs(w.id, true))) counts[coll] = (counts[coll] ?? 0) + ids.length;
+      // The demo's own documents by id (people, their calendars, statuses, prefs, notices).
+      for (const k of COLLS) drop(k, toDocs(k, s[k]).map((d) => d.id));
+      drop('prefs', [...userIds]);
+      drop('statuses', [...userIds]);
+      drop('notices', (db.allDocs('notices') as any[]).filter((n) => userIds.has(n.userId)).map((n) => n.id));
+      for (const id of userIds) (db.deleteLogin(id), db.endSessions(id));
+      // A demo person added to a real company leaves it.
+      for (const w of db.allDocs('workspaces') as any[]) if ((w.members ?? []).some((m: any) => userIds.has(m.userId))) db.writeDocs('workspaces', [{ ...w, members: w.members.filter((m: any) => !userIds.has(m.userId)) }], [], null);
+      const summary = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || 'nothing';
+      platform.setSetting('demoPurged' as any, { at: new Date().toISOString(), backup: file.split('/').pop(), removed: summary } as any);
+      db.audit('system', 'system.demo-purge', null, `${summary}; backup ${file.split('/').pop()}`);
+      console.log(`Demo data removed (${summary}); backup ${file}`);
+    })
+    .catch((e) => console.error('[demo purge]', e instanceof Error ? e.message : e));
+}
+
 /* ---------- helpers ---------- */
 
 type Ws = { id: string; members: { userId: string; role: string }[]; accounts?: { id: string }[]; ai?: { jobs?: Record<string, { provider: string; model: string }>; providers?: { id: string; status: string }[]; payer?: string } };
@@ -729,6 +771,8 @@ createServer(async (req, res) => {
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
   if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString() });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
+  // What this server can really do. The app hides or disables what depends on something that isn't there.
+  if (p === '/api/caps' && req.method === 'GET') return json(res, 200, caps());
   // Our own DKIM public key (it's published in DNS anyway), so the record can be added without signing in.
   if (p === '/api/mail/dkim' && req.method === 'GET') {
     const domain = mailer.SUPPORT_EMAIL.split('@')[1];
@@ -1139,11 +1183,17 @@ createServer(async (req, res) => {
       const [records, health] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth()]);
       return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain: mailer.mailDomainOf(ws), ownDomain: mailer.mailDomainOf(ws) !== mailer.MAIL_HOST, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health });
     }
+    if (p === '/api/mail/ready' && req.method === 'POST') {
+      const { workspaceId } = await body(req);
+      if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, { error: 'Not in this company.' });
+      return json(res, 200, await mailer.refreshReadiness(String(workspaceId)));
+    }
     if (p === '/api/mail/check' && req.method === 'POST') {
       const { workspaceId } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
       if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can check the records.' });
       const result = await mailer.checkDomain(ws);
+      soonReadiness(ws.id);
       const own = result.domain === mailer.MAIL_HOST;
       const next = { ...ws, mailChecks: { at: result.at, allOk: result.allOk, checks: result.checks }, accounts: (ws.accounts ?? []).map((a: any) => (!a.provider || a.provider === 'sprint2go' ? { ...a, connected: own || result.allOk || result.checks.filter((c) => c.key !== 'dmarc').every((c) => c.ok) } : a)) };
       db.writeDocs('workspaces', [next], [], me);
@@ -1159,6 +1209,7 @@ createServer(async (req, res) => {
       const next = { ...ws, mailRoute: route, mailChecks: undefined };
       db.writeDocs('workspaces', [next], [], me);
       broadcast('workspaces', [next], []);
+      soonReadiness(ws.id);
       return json(res, 200, { records: await mailer.expectedRecords(next) });
     }
     if (p === '/api/mail/credits' && req.method === 'POST') {
@@ -1177,6 +1228,12 @@ createServer(async (req, res) => {
       const account = ws?.accounts?.find((a: any) => a.id === b.accountId);
       if (!ws || !account) return json(res, 403, { error: 'Not your mailbox.' });
       if (account.provider && account.provider !== 'sprint2go') return json(res, 409, { error: 'This mailbox is not hosted here.' });
+      // Only from a mailbox that can really send; a fresh check first, so a record added a minute ago counts.
+      if (!ws.mailReady?.mailboxes?.[account.id]?.send) {
+        const r = await mailer.refreshReadiness(ws.id);
+        const m = r?.mailboxes[account.id];
+        if (!m?.send) return json(res, 409, { error: `Sending isn’t set up for ${account.email} yet. ${m?.why ?? ''}`.trim() });
+      }
       if (Array.isArray(account.users) && account.users.length && !account.users.includes(me) && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Not your mailbox.' });
       const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
       try {
@@ -1293,13 +1350,15 @@ createServer(async (req, res) => {
       const ids = new Set(people.map((u) => u.id));
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
-      const ws = { ...w, name: String(w.name).trim().slice(0, 80), members, accounts };
+      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...wClean } = w as any;
+      const ws = { ...wClean, plan: wClean.plan ? { ...wClean.plan, comp: undefined, discount: undefined } : wClean.plan, name: String(w.name).trim().slice(0, 80), members, accounts };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
       db.writeDocs('users', people, [], me);
       (ws as any).createdAt ??= new Date().toISOString();
       db.writeDocs('workspaces', [ws], [], me);
       db.writeDocs('channels', [general], [], me);
       platform.event('company.created', ws.id, me);
+      soonReadiness(ws.id);
       if (people.length) platform.event('team.invited', ws.id, me, `${people.length} at creation`);
       broadcast('users', people, []);
       broadcast('workspaces', [ws], []);
@@ -1582,8 +1641,16 @@ createServer(async (req, res) => {
         if (wsId && (db.getDoc('workspaces', wsId) as any)?.suspended) return null;
         if (before && 'workspaceId' in before && d.workspaceId !== before.workspaceId) return null;
         if (coll === 'workspaces') {
-          if (before) return isAdminOf(me, d.id) ? d : null; // only admins change a company's settings and people
-          return { ...d, members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+          if (before) {
+            if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
+            // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
+            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
+            const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
+            return { ...d, ...own, plan } as db.Doc;
+          }
+          const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
+          const plan = fresh.plan ? { ...fresh.plan, comp: undefined, discount: undefined } : fresh.plan;
+          return { ...fresh, plan, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
           if (d.id === me) return d; // own profile: already shaped
@@ -1629,7 +1696,17 @@ createServer(async (req, res) => {
           ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
         }
       const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
+      // Email settings changed: check what really works again.
+      const emailChanged =
+        coll === 'workspaces'
+          ? (ok as any[]).filter((d) => {
+              const b = db.getDoc('workspaces', d.id) as any;
+              const pick = (w: any) => JSON.stringify([w?.emailSetup, w?.domains, w?.mailRoute, w?.mailRouting, (w?.accounts ?? []).map((a: any) => [a.id, a.email, a.provider])]);
+              return !b || pick(b) !== pick(d);
+            }).map((d) => d.id)
+          : [];
       db.writeDocs(coll, ok, dels, me);
+      for (const id of emailChanged) soonReadiness(id);
       if (leavers.length) endGuestAccess(leavers);
       // Guests don't live in the app all day: a notice for them also goes out as an email (when mail is set up).
       if (coll === 'notices' && mailConfigured())
@@ -1866,6 +1943,31 @@ createServer(async (req, res) => {
   mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
 });
 
+/** Whether the meeting recorder answers, checked every few minutes (the app asks often). */
+let recorderUp = false;
+const pollRecorder = () => (RECORDER_URL && RECORDER_SECRET ? recorder('/health').then((r) => (recorderUp = r.ok), () => (recorderUp = false)) : Promise.resolve((recorderUp = false)));
+setTimeout(() => void pollRecorder(), 5_000);
+setInterval(() => void pollRecorder(), 3 * 60_000);
+const DEMO = process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production';
+function caps() {
+  return {
+    demo: DEMO, // demo stand-ins (AI answers, a pretend notetaker, pretend calendar connections) are allowed
+    recorder: recorderUp,
+    boosted: mailer.boostedAvailable(),
+    googleCalendar: !!process.env.GOOGLE_CLIENT_ID,
+    microsoftCalendar: !!process.env.MS_CLIENT_ID,
+    calendarLinks: false, // .ics links aren't fetched by the server yet
+    payments: !!process.env.XENDIT_SECRET,
+    desktopUrl: process.env.DESKTOP_URL || null,
+    mailHost: mailer.MAIL_HOST,
+  };
+}
+const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** A company's email changed: check again shortly (several saves in a row count once). */
+function soonReadiness(wsId: string) {
+  clearTimeout(refreshTimers.get(wsId));
+  refreshTimers.set(wsId, setTimeout(() => (refreshTimers.delete(wsId), void mailer.refreshReadiness(wsId).catch(() => {})), 3000));
+}
 const recorderInfo = { configured: !!RECORDER_URL && !!RECORDER_SECRET, health: () => recorder('/health').then((r) => (r.ok ? (r.json() as Promise<{ ok: boolean; bots?: number }>) : null), () => null) };
 
 /** Which feature flags are on for any of these companies. */
@@ -1977,12 +2079,15 @@ const hourly = async () => {
     }
     // Once a month: open the newest backup and check it.
     if (!s.backupTest || s.backupTest.at < new Date(Date.now() - 30 * 86_400_000).toISOString()) admin.testLatestBackup();
+    for (const w of workspaces()) await mailer.refreshReadiness(w.id).catch(() => null);
     await admin.checkAlerts(adminDeps());
   } catch (e) {
     console.error('[hourly]', e instanceof Error ? e.message : e);
   }
 };
 setTimeout(() => void hourly(), 90_000);
+// Readiness right after a start, so a deploy doesn't leave mail locked for an hour.
+setTimeout(() => void Promise.all(workspaces().map((w) => mailer.refreshReadiness(w.id).catch(() => null))), 20_000);
 setInterval(() => void hourly(), 60 * 60_000);
 
 /* ---------- background jobs: scheduled mail, snoozes, task reminders ---------- */

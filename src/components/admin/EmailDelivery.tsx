@@ -272,6 +272,51 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
           )}
         </div>
 
+        {ws.accounts.filter((a) => !a.temp).length > 0 && ws.emailSetup !== 'none' && (
+          <div className="set-block">
+            <div className="ed-head">
+              <h3>Your mailboxes</h3>
+              <button
+                type="button"
+                className="ghost-btn sm outline"
+                disabled={checking}
+                onClick={() => {
+                  setChecking(true);
+                  void post('ready', { workspaceId: ws.id })
+                    .then(() => toast('Checked again.'))
+                    .catch((e: Error) => toast(e.message))
+                    .finally(() => setChecking(false));
+                }}
+              >
+                {checking ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Check again
+              </button>
+            </div>
+            <div className="ed-records">
+              {ws.accounts
+                .filter((a) => !a.temp)
+                .map((a) => {
+                  const r = ws.mailReady?.mailboxes?.[a.id];
+                  // Kept with Google or Microsoft: copies arriving here is all it can do, so that counts as working.
+                  const kept = !!a.provider && a.provider !== 'sprint2go';
+                  const both = kept ? r?.receive : r?.receive && r?.send;
+                  return (
+                    <div key={a.id} className={`ed-record ${!r ? '' : both ? 'ok' : 'bad'}`}>
+                      <span className="ed-rec-main">
+                        <strong>{a.email}</strong>
+                        <small className="muted">
+                          {!r ? 'Not checked yet' : kept ? (r.receive ? 'Copies arrive here' : 'No copies yet') : `${r.receive ? 'Receives' : 'Doesn’t receive yet'} · ${r.send ? 'sends' : 'doesn’t send yet'}`}
+                          {r?.why ? `. ${r.why}` : ''}
+                        </small>
+                      </span>
+                      <span className="ed-rec-state">{r ? both ? <Check size={15} /> : <AlertTriangle size={15} /> : null}</span>
+                    </div>
+                  );
+                })}
+            </div>
+            {ws.mailReady && <p className="small muted">Checked {relative(ws.mailReady.at)}. Mail unlocks for everyone as soon as a mailbox works.</p>}
+          </div>
+        )}
+
         {info && (
           <div className="set-block">
             <h3>The {product.name} server</h3>

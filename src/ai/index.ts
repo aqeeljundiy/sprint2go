@@ -6,6 +6,7 @@ export type { DumpTask, DumpPerson, DumpClient, DumpTeam, DumpBrief, DumpPlan, D
 // sprint2go AI client. With the local server, each job goes to the AI the company picked in Settings (server/llm.ts).
 // Without a server, or before anyone adds a key, a small built-in demo stands in so every feature can be tried.
 import { server } from '../sync';
+import { caps } from '../caps';
 
 const ENV_URL = (import.meta.env.VITE_AI_URL as string | undefined)?.replace(/\/$/, '');
 const state = { workspaceId: '', live: !!ENV_URL };
@@ -52,6 +53,8 @@ function run<T>(action: string, body: object, demoRun: () => Promise<T>): Promis
   return call<T>(action, body).catch((e) => {
     if (e instanceof NoKey) {
       state.live = false;
+      // On a real server there are no made-up answers: say what's missing instead.
+      if (server.on && !caps.demo) throw new Error('AI isn’t set up for this company yet. An admin can add it in Settings, AI.');
       return demoRun();
     }
     throw e;

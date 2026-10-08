@@ -300,6 +300,8 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ws.id, 'in', spam ? 'spam' : 'inbox', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
+    // The first message for a mailbox that wasn't receiving yet unlocks it straight away.
+    if (!(ws as any).mailReady?.mailboxes?.[account.id]?.receive) void refreshReadiness(ws.id).catch(() => {});
   }
 }
 
@@ -577,4 +579,95 @@ export async function blocklists(): Promise<{ list: string; listed: boolean | 'u
       }
     }),
   );
+}
+
+/* ---------- readiness: can this company (and each mailbox) really receive and send? ---------- */
+
+export interface MailReady {
+  at: string;
+  receive: boolean; // at least one mailbox receives
+  send: boolean; // at least one mailbox sends
+  why: { receive?: string; send?: string };
+  mailboxes: Record<string, { receive: boolean; send: boolean; why?: string; sendWhy?: string }>;
+}
+const receivedAt = (addr: string) =>
+  !!db.db.prepare("SELECT 1 FROM mail_log WHERE direction = 'in' AND addr = ? AND at >= ? LIMIT 1").get(lower(addr), new Date(Date.now() - 60 * 86_400_000).toISOString());
+
+/** Worked out from the real state: DNS seen by public resolvers, the server's ports, and mail that actually arrived. */
+export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: string }; whiteLabel?: unknown }): Promise<MailReady> {
+  const at = now();
+  const setup = ws.emailSetup ?? 'none';
+  const accounts = (ws.accounts ?? []).filter((a) => a.email);
+  if (setup === 'none' || !accounts.length)
+    return { at, receive: false, send: false, why: { receive: setup === 'none' ? 'Email is off for this company.' : 'There are no mailboxes yet.', send: setup === 'none' ? 'Email is off for this company.' : 'There are no mailboxes yet.' }, mailboxes: {} };
+  const health = await serverHealth();
+  const route = ws.mailRoute ?? 'own';
+  const slug = lower(ws.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'company';
+  // One DNS check per domain the mailboxes use.
+  const domains = new Map<string, { mxHere: boolean; signs: boolean; why?: string }>();
+  for (const d of new Set(accounts.map((a) => lower(a.email.split('@')[1] ?? '')))) {
+    if (d === MAIL_HOST) {
+      domains.set(d, { mxHere: true, signs: true });
+      continue;
+    }
+    const mx = await pub.resolveMx(d).then((r) => r.sort((a, b) => a.priority - b.priority).map((x) => lower(x.exchange)), () => [] as string[]);
+    let signs = false;
+    let why: string | undefined;
+    if (route === 'boosted') {
+      const ses = mailConfigured() ? await sesIdentity(d).catch(() => null) : null;
+      signs = !!ses?.dkimVerified;
+      why = !mailConfigured() ? 'Boosted sending isn’t available yet.' : signs ? undefined : 'Amazon hasn’t verified the signing records yet.';
+    } else {
+      const spf = (await txt(d)).find((t) => t.toLowerCase().startsWith('v=spf1')) ?? '';
+      const spfOk = spf.toLowerCase().includes(MAIL_IP ? `ip4:${MAIL_IP}` : `a:${MAIL_HOST}`) || spf.toLowerCase().includes(`a:${MAIL_HOST}`);
+      const dkim = (await txt(`${SELECTOR}._domainkey.${d}`)).find((t) => t.includes('p=')) ?? '';
+      const dkimOk = dkim.replace(/\s/g, '').includes(`p=${domainKey(d, ws.id).publicKey}`);
+      signs = spfOk && dkimOk;
+      why = signs ? undefined : !spfOk && !dkimOk ? `The SPF and DKIM records for ${d} are missing.` : !spfOk ? `The SPF record for ${d} doesn’t include our server.` : `The DKIM record for ${d} is missing or different.`;
+    }
+    domains.set(d, { mxHere: mx[0] === MAIL_HOST, signs, why });
+  }
+  const mailboxes: MailReady['mailboxes'] = {};
+  for (const a of accounts) {
+    const d = lower(a.email.split('@')[1] ?? '');
+    const dom = domains.get(d)!;
+    const hosted = !a.provider || a.provider === 'sprint2go';
+    const portOut = route === 'boosted' || health.port25.ok;
+    if (hosted) {
+      const receive = health.inbound.ok && (dom.mxHere || !!ws.mailRouting?.verifiedAt || receivedAt(a.email));
+      const send = portOut && dom.signs;
+      const why = !receive ? (setup === 'mix' ? `Mail for ${a.email} isn’t routed here yet: add the routing rule in Google Admin, then send a test.` : `Mail for ${d} still goes elsewhere: point the MX record to ${MAIL_HOST}.`) : !send ? (dom.why ?? 'Outgoing mail is blocked on the server.') : undefined;
+      mailboxes[a.id] = { receive, send, why, sendWhy: send ? undefined : !portOut ? 'Outgoing mail is blocked on the server.' : dom.why };
+    } else {
+      // Stays with Google or Microsoft: a copy arrives here once forwarding is on; sending stays in their app for now.
+      const fwd = `${lower(a.email).split('@')[0]}.${slug}@${MAIL_HOST}`;
+      const receive = health.inbound.ok && receivedAt(fwd);
+      const app = a.provider === 'microsoft' ? 'Outlook' : 'Gmail';
+      mailboxes[a.id] = {
+        receive,
+        send: false,
+        why: receive ? `Replies go out from ${app} for now.` : `Turn on forwarding to ${fwd} in ${app}; it unlocks when the first copy arrives.`,
+        sendWhy: `${a.email} stays with ${a.provider === 'microsoft' ? 'Microsoft' : 'Google'}, so replies go out from ${app}. Move the mailbox over in Settings, Email delivery, to send from here.`,
+      };
+    }
+  }
+  const list = Object.values(mailboxes);
+  const firstWhy = (k: 'receive' | 'send') => (k === 'send' ? list.find((m) => !m.send)?.sendWhy : list.find((m) => !m.receive)?.why);
+  return { at, receive: list.some((m) => m.receive), send: list.some((m) => m.send), why: { receive: list.some((m) => m.receive) ? undefined : firstWhy('receive'), send: list.some((m) => m.send) ? undefined : firstWhy('send') }, mailboxes };
+}
+
+/** Recomputes and saves a company's readiness when it changed; returns it. */
+export async function refreshReadiness(wsId: string) {
+  const ws = db.getDoc('workspaces', wsId) as any;
+  if (!ws) return null;
+  const r = await mailReadiness(ws);
+  const cur = ws.mailReady;
+  const same = cur && JSON.stringify({ ...cur, at: '' }) === JSON.stringify({ ...r, at: '' });
+  if (!same) {
+    const fresh = db.getDoc('workspaces', wsId) as any;
+    const next = { ...fresh, mailReady: r };
+    db.writeDocs('workspaces', [next], [], null);
+    deps?.broadcast('workspaces', [next], []);
+  }
+  return r;
 }

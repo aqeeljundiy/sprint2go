@@ -193,6 +193,8 @@ export interface Workspace {
   mailCredits?: number; // emails left on Boosted sending
   mailCreditsNotified?: boolean;
   mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
+  /** What really works, worked out by the server: mail in, mail out, per mailbox, with the reason when it doesn't. */
+  mailReady?: { at: string; receive: boolean; send: boolean; why: { receive?: string; send?: string }; mailboxes: Record<string, { receive: boolean; send: boolean; why?: string; sendWhy?: string }> };
   meetUrl?: string;
   meetingRules?: MeetingRule[];
   clientAccess?: ClientAccess; // what guests see and do in the shared space

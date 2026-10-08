@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { PLAN_FEATURES, PRICES, rp } from '../data/pricing';
+import { caps } from '../caps';
 import type { Tier, Track } from '../types';
 import { Tour } from './Tour';
 import { LangCtx, STR, startLang, useT, type Lang } from './i18n';
@@ -744,6 +745,7 @@ function Page() {
         </div>
       </section>
 
+      {caps.desktopUrl && (
       <section id="download" className="ln-sec">
         <div className="ln-wrap ln-head ln-download">
           <h2 className="rv">{t.download.h}</h2>
@@ -751,10 +753,10 @@ function Page() {
             {t.download.p}
           </p>
           <div className="ln-dl rv" style={{ ['--i' as string]: 2 }}>
-            <a className="ln-btn" href="https://github.com/aqeeljundiy/sprint2go/releases/latest" target="_blank" rel="noreferrer">
+            <a className="ln-btn" href={caps.desktopUrl} target="_blank" rel="noreferrer">
               <Download size={16} /> {t.download.mac}
             </a>
-            <a className="ln-btn outline" href="https://github.com/aqeeljundiy/sprint2go/releases/latest" target="_blank" rel="noreferrer">
+            <a className="ln-btn outline" href={caps.desktopUrl} target="_blank" rel="noreferrer">
               <Download size={16} /> {t.download.win}
             </a>
           </div>
@@ -763,6 +765,7 @@ function Page() {
           </small>
         </div>
       </section>
+      )}
 
       <section className="ln-final">
         <span className="ln-key k1" aria-hidden="true">

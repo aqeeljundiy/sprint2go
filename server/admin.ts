@@ -237,6 +237,7 @@ function invoiceLinesFor(ws: any, people: number) {
   if (a.storage50) lines.push({ text: `${a.storage50 * 50} GB extra storage`, amount: a.storage50 * ADDONS.storage50.price });
   if (a.meetHours10) lines.push({ text: `${a.meetHours10 * 10} more meeting-bot hours`, amount: a.meetHours10 * ADDONS.meetHours10.price });
   if (a.branding) lines.push({ text: 'Branding add-on', amount: ADDONS.branding.price });
+  if (plan.topUps) lines.push({ text: `${plan.topUps} AI top-up${plan.topUps === 1 ? '' : 's'}`, amount: plan.topUps * TOP_UP.price });
   const subtotal = lines.reduce((n, l) => n + l.amount, 0);
   return { lines, discount: discountOf(plan, subtotal) };
 }
@@ -973,6 +974,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
       const ws = wsById(c.id);
       const auto = invoiceLinesFor(ws, c.people);
       platform.createInvoice({ workspaceId: c.id, period, lines: auto.lines, discount: auto.discount, dueDays: 14, billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email });
+      if (ws.plan.topUps) saveWs({ ...ws, plan: { ...ws.plan, topUps: 0 } }); // invoiced: the count starts again
       made++;
     }
     log('invoice.generate', null, `${made} drafts for ${period}`);

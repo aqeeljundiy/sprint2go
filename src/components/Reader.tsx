@@ -34,6 +34,9 @@ interface Props {
   onStar: (id: string) => void;
   onMarkUnread: (id: string) => void;
   onReply: (id: string, html: string, text: string) => void;
+  /** Why replies can't go out from this mailbox yet; Reply and Forward then explain instead of opening. */
+  replyOff?: string;
+  onReplyOff?: () => void;
   signature: string;
   blockTrackers: boolean;
   savedToDrive: (name: string) => boolean;
@@ -109,7 +112,7 @@ export function Reader(props: Props) {
 
   // Suggested replies only when someone asks (AI never runs just because an email was opened).
   const lastMsg = thread?.messages[thread.messages.length - 1];
-  const canReply = !!thread && !!lastMsg && !isMine(lastMsg.from.email) && !isList && thread.location !== 'spam' && !/no-?reply|notifications/i.test(lastMsg.from.email);
+  const canReply = !props.replyOff && !!thread && !!lastMsg && !isMine(lastMsg.from.email) && !isList && thread.location !== 'spam' && !/no-?reply|notifications/i.test(lastMsg.from.email);
   const suggest = async () => {
     if (!thread || !lastMsg || suggesting) return;
     setSuggesting(true);
@@ -141,11 +144,12 @@ export function Reader(props: Props) {
       if (e.key !== 'r' || !thread || e.metaKey || e.ctrlKey) return;
       if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable]')) return;
       e.preventDefault();
-      setReplyOpen(true);
+      if (props.replyOff) props.onReplyOff?.();
+      else setReplyOpen(true);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [thread]);
+  }, [thread, props.replyOff]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!thread) {
     return (
@@ -544,13 +548,13 @@ export function Reader(props: Props) {
             </div>
           )}
           <div className="reply-buttons">
-            <button className="ghost-btn outline" onClick={() => setReplyOpen(true)}>
+            <button className={`ghost-btn outline ${props.replyOff ? 'off' : ''}`} aria-disabled={props.replyOff ? true : undefined} title={props.replyOff} onClick={() => (props.replyOff ? props.onReplyOff?.() : setReplyOpen(true))}>
               <Reply size={15} /> Reply <kbd>R</kbd>
             </button>
             <button className="ghost-btn outline" onClick={() => setNoteOpen((o) => !o)}>
               <StickyNote size={15} /> Internal note
             </button>
-            <button className="ghost-btn outline" onClick={() => setReplyOpen(true)}>
+            <button className={`ghost-btn outline ${props.replyOff ? 'off' : ''}`} aria-disabled={props.replyOff ? true : undefined} title={props.replyOff} onClick={() => (props.replyOff ? props.onReplyOff?.() : setReplyOpen(true))}>
               <Forward size={15} /> Forward
             </button>
           </div>

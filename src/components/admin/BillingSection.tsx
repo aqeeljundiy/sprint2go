@@ -1,4 +1,5 @@
 import { server } from '../../sync';
+import { caps } from '../../caps';
 import { useState, useEffect } from 'react';
 import { CheckCircle2, CreditCard, Download, Minus, PauseCircle, Plus, Sparkles, Users, XCircle } from 'lucide-react';
 import type { Plan, Tier, Track, Workspace } from '../../types';
@@ -258,6 +259,16 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
 
         <div className="set-block">
           <h3>Payment</h3>
+          {server.on && !caps.payments && !caps.demo ? (
+            <div className="set-row">
+              <span>
+                <strong>
+                  <CreditCard size={14} /> Bank transfer
+                </strong>
+                <small>Each month an invoice goes to the emails below, with our bank details. QRIS, e-wallets and cards come soon.</small>
+              </span>
+            </div>
+          ) : (
           <div className="set-row">
             <span>
               <strong>
@@ -278,6 +289,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
               ]}
             />
           </div>
+          )}
           <p className="muted small">If a payment fails we retry and remind you for 14 days, then the workspace becomes read-only. Nothing is ever deleted for a late payment.</p>
         </div>
 

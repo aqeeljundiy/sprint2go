@@ -13,7 +13,7 @@ import { ProjectsSidebar } from './components/ProjectsSidebar';
 import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
 import { SmoothHeight, TabPane } from './components/ui/Smooth';
-import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare } from 'lucide-react';
+import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
 import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
@@ -32,6 +32,8 @@ import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
 import { server, uploadFile } from './sync';
+import { caps } from './caps';
+import { EmailDeliverySection } from './components/admin/EmailDelivery';
 import { ai, aiLive } from './ai';
 import type { AskChat } from './components/Assistant';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
@@ -204,6 +206,32 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     () => ws.accounts.filter((a) => a.users.includes(user.id)).sort((a, b) => Number(a.kind === 'shared') - Number(b.kind === 'shared')),
     [ws.accounts, user.id],
   );
+  // What really works (worked out on the server). The standalone demo and demo servers have everything on.
+  const demoOk = !server.on || caps.demo;
+  const ready = ws.mailReady;
+  const boxReady = (id: string): { receive: boolean; send: boolean; why?: string; sendWhy?: string } => (demoOk ? { receive: true, send: true } : ready?.mailboxes?.[id] ?? { receive: false, send: false, why: ready ? undefined : 'Checking your email setup…' });
+  const mailIn = myAccounts.some((a) => boxReady(a.id).receive);
+  const mailOut = myAccounts.some((a) => boxReady(a.id).send);
+  const whyFor = (k: 'receive' | 'send') =>
+    myAccounts
+      .map((a) => boxReady(a.id))
+      .filter((b) => !b[k])
+      .map((b) => (k === 'send' ? (b.sendWhy ?? b.why) : b.why))
+      .find(Boolean);
+  const mailWhy = { receive: whyFor('receive') ?? ready?.why?.receive, send: whyFor('send') ?? ready?.why?.send };
+  const sendable = myAccounts.filter((a) => boxReady(a.id).send);
+  // AI: on when the company has it (included or its own key), or in a demo.
+  const [aiOn, setAiOn] = useState(true);
+  useEffect(() => {
+    if (!server.on) return setAiOn(true);
+    let on = true;
+    fetch(`/api/ai/status?ws=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? r.json() : { live: false }))
+      .then((d: { live: boolean }) => on && setAiOn(d.live || caps.demo), () => on && setAiOn(caps.demo));
+    return () => {
+      on = false;
+    };
+  }, [ws.id, ws.ai]);
   const [activeAccount, setActiveAccount] = useState<string>('all');
   const [newWs, setNewWs] = useState(false);
   const [newAcct, setNewAcct] = useState(false);
@@ -447,6 +475,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return () => clearTimeout(t);
   }, [toast]);
 
+  /** A feature that depends on something not set up: say what's missing (and where to fix it, for admins). */
+  const explainOff = (text: string, fix?: SettingsSection) =>
+    showToast({ text, ms: 7000, action: fix && ws.members.some((m) => m.userId === user.id && m.role !== 'member') ? { label: 'Set it up', run: () => (setSettingsSection(fix), go('settings')) } : undefined });
+  const openDump = (t: string) => (aiOn ? setDump(t) : explainOff('AI isn’t set up for this company yet, so the brain dump can’t turn notes into tasks.', 'ai'));
+  const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : explainOff('AI isn’t set up for this company yet.', 'ai'));
+  const botOn = !server.on || caps.demo || recorderOn;
+  const openSendBot = () => (botOn ? setSendBotOpen(true) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
+  const calendarsOn = !server.on || caps.demo || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
   const go = (m: Mode) => {
     if (m !== 'settings') setLastMode(m);
     setMode(m);
@@ -522,10 +558,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, [wsThreads, events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selected = threads.find((t) => t.id === selectedId) ?? null;
+  const selectedAcct = selected ? accountOf(selected.accountId) : undefined;
+  const wsAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
 
   const update = (id: string, patch: Partial<Thread>) => setThreads((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   const openCompose = (init?: Omit<ComposeState, 'key'>) => {
+    // No mailbox can send yet: say why instead of opening a window that can't send.
+    if (!mailOut && myAccounts.length) {
+      showToast({ text: `Sending isn’t set up yet. ${mailWhy.send ?? ''}`.trim(), ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+      return;
+    }
     setCompose({ key: Date.now(), ...init });
     setSidebarOpen(false);
   };
@@ -580,17 +623,31 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setReaderOpen(false);
   };
 
+  const replyWhy = (acct: { id: string; email: string }) => boxReady(acct.id).sendWhy ?? `Replies can’t go out from ${acct.email} yet. ${boxReady(acct.id).why ?? mailWhy.send ?? ''}`.trim();
+  const replyBlocked = (acct: { id: string; email: string }) =>
+    showToast({ text: replyWhy(acct), ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
   const reply = (id: string, html: string, text: string) => {
-    setThreads((ts) =>
-      ts.map((t) => {
-        if (t.id !== id) return t;
-        const last = lastMessage(t);
-        const to = isMine(last.from.email) ? last.to : [last.from];
-        const from = senderFor(accountOf(t.accountId));
-        return { ...t, messages: [...t.messages, { id: uid(), from, to, date: new Date().toISOString(), body: text, html }] };
-      }),
-    );
-    showToast({ text: 'Reply sent' });
+    const t = threads.find((x) => x.id === id);
+    if (!t) return;
+    const acct = accountOf(t.accountId);
+    if (acct && !boxReady(acct.id).send) return replyBlocked(acct);
+    const last = lastMessage(t);
+    const to = isMine(last.from.email) ? last.to : [last.from];
+    const from = senderFor(acct);
+    const msgId = uid();
+    setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, date: new Date().toISOString(), body: text, html }] } : x)));
+    // With the server, the mail engine sends it for real, threaded under the message it answers.
+    if (server.on && acct && (!acct.provider || acct.provider === 'sprint2go')) {
+      const refs = t.messages.map((m) => m.mid).filter(Boolean) as string[];
+      void fetch('/api/mail/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: t.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs }),
+      }).then(
+        async (r) => showToast({ text: r.ok ? 'Reply sent' : ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The reply could not be sent.' }),
+        () => showToast({ text: 'No connection: the reply was not sent.' }),
+      );
+    } else showToast({ text: 'Reply sent' });
   };
 
   const toThread = (m: Outgoing, location: Location, id = uid()): Thread => ({
@@ -946,7 +1003,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Projects and Teams came after some companies picked their apps: they're on wherever Tasks is.
   const companyApps: AppId[] = ws.apps ? (ws.apps.includes('tasks') ? [...new Set<AppId>([...ws.apps, 'projects', 'teams'])] : ws.apps) : APPS.map((a) => a.id);
   const myHidden: AppId[] = user.hiddenApps ?? [];
-  const enabledApps: AppId[] = companyApps.filter((a) => a === 'home' || !myHidden.includes(a));
+  const imAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
+  // Members only see an app once it works; admins still see it, with the steps to set it up.
+  const notReady = new Set<AppId>(!imAdmin && !demoOk && myAccounts.length && !mailIn && !mailOut ? ['mail'] : []);
+  const enabledApps: AppId[] = companyApps.filter((a) => a === 'home' || (!myHidden.includes(a) && !notReady.has(a)));
   const enabled = new Set<string>(enabledApps);
   const setMyHidden = (list: AppId[]) => {
     onUpdateUser({ hiddenApps: list });
@@ -1706,7 +1766,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           : mode === 'tasks' && taskScope.kind === 'client'
             ? { kind: 'client', id: taskScope.id }
             : { kind: 'all' };
-  const toggleAsk = () => setAskScope((s2) => (s2 ? null : contextScope()));
+  const toggleAsk = () => (askScope ? setAskScope(null) : openAsk(contextScope()));
   const askOptions = [
     { value: 'all', label: 'Everything', group: 'Everywhere' },
     ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}` })),
@@ -2367,19 +2427,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const fab =
     mode === 'mail'
-      ? { icon: PenLine, label: 'Compose', run: () => openCompose() }
+      ? mailOut
+        ? { icon: PenLine, label: 'Compose', run: () => openCompose() }
+        : null
       : mode === 'calendar'
         ? { icon: Plus, label: 'New event', run: () => openNewEvent() }
         : mode === 'drive'
           ? { icon: Upload, label: 'Upload', run: () => fileInput.current?.click() }
           : mode === 'projects' && projScope.kind === 'projects'
             ? { icon: Plus, label: `New ${term.one}`, run: () => newProjectFlow() }
-          : mode === 'tasks' || mode === 'home'
-            ? { icon: Sparkles, label: 'Brain dump', run: () => setDump('') }
+          : (mode === 'tasks' || mode === 'home') && aiOn
+            ? { icon: Sparkles, label: 'Brain dump', run: () => openDump('') }
             : mode === 'chat' && !chatId
               ? { icon: Plus, label: 'New channel', run: () => setChanDialog({}) }
-              : mode === 'meet'
-                ? { icon: Video, label: 'Send bot to a meeting', run: () => setSendBotOpen(true) }
+              : mode === 'meet' && botOn
+                ? { icon: Video, label: 'Send bot to a meeting', run: () => openSendBot() }
                 : null;
 
   /** The phone's title switcher for each app. */
@@ -2482,8 +2544,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...wsTasks
       .filter((t) => !t.done && ((t.status === 'review' && t.supervisorId === user.id) || (doersOf(t).includes(user.id) && !!t.due && t.due <= today0)))
       .map((t) => ({ id: 'n-' + t.id, group: 'Needs you', title: t.title, sub: t.status === 'review' ? 'Waiting for your review' : t.due! < today0 ? 'Late' : 'Due today', icon: ListChecks, run: () => openTask(t.id) })),
-    { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, run: () => setDump('') },
-    ...(enabled.has('mail') ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, run: () => openCompose() }] : []),
+    { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, run: () => openDump('') },
+    ...(enabled.has('mail') && mailOut ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, run: () => openCompose() }] : []),
     { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, run: () => { openTasks({ kind: 'mine' }); setTimeout(() => document.getElementById('new-task')?.focus(), 200); } },
     ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, run: () => { go('calendar'); openNewEvent(); } }] : []),
     ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
@@ -2689,7 +2751,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 return n;
               })
             }
-            onAddCalendar={() => setConnectCal(true)}
+            onAddCalendar={() => (calendarsOn ? setConnectCal(true) : explainOff('Connecting Google, Outlook and iCloud calendars comes soon. Events made here already sync to everyone.'))}
             toPlan={wsTasks
               .filter((t) => !t.done && !isBrief(t) && doersOf(t).includes(user.id) && !events.some((e) => e.taskId === t.id && new Date(e.end).getTime() > Date.now()))
               .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
@@ -2775,7 +2837,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setSidebarOpen(false);
             }}
             projectsApp={enabled.has('projects')}
-            onBrainDump={() => setDump('')}
+            onBrainDump={() => openDump('')}
             onAddClient={
               canCreateProjects
                 ? (name, domain, type) => {
@@ -2792,8 +2854,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             clients={wsClients}
             canSend={meetSettings.whoCanRecord === 'everyone' || myRole !== 'member'}
             onPage={(pg) => (setMeetPage(pg), setSidebarOpen(false))}
-            onSend={() => setSendBotOpen(true)}
-            onAsk={() => setAskScope({ kind: 'all' })}
+            onSend={() => openSendBot()}
+            onAsk={() => openAsk({ kind: 'all' })}
             onSettings={() => (setSettingsSection('meetings'), go('settings'))}
           />
           ) : appMode === 'chat' ? (
@@ -2867,6 +2929,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         open={sidebarOpen}
         onSelect={selectView}
         onCompose={() => openCompose()}
+        composeOff={mailOut ? undefined : 'Sending isn’t set up yet'}
         onClose={() => setSidebarOpen(false)}
       />
 
@@ -2983,7 +3046,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               .sort((a, b) => b.at.localeCompare(a.at))
               .map((m) => ({ id: m.id, to: m.kudosFor!, from: m.userId, text: m.text, at: m.at }))}
             enabled={enabled}
-            onDump={(text) => setDump(text ?? '')}
+            onDump={(text) => openDump(text ?? '')}
             onToggleTask={toggleTodo}
             onOpenTasks={() => openTasks({ kind: 'mine' })}
             onOpenThread={openThread}
@@ -3004,8 +3067,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                     {
                       key: 'email',
                       label: 'Email',
-                      hint: ws.emailSetup === 'none' ? 'Mail is off for this company' : !ws.domains[0] ? 'Addresses live on the sprint2go server; add your own domain when you have one' : ws.mailChecks?.allOk ? 'Records in place; mail from your domain is trusted' : 'Add the records so mail from your domain is trusted',
-                      done: ws.emailSetup === 'none' || !ws.domains[0] || !!ws.mailChecks?.allOk,
+                      hint: ws.emailSetup === 'none' ? 'Mail is off for this company' : mailIn && mailOut ? 'Receiving and sending work' : `${mailIn ? 'Receiving works. ' : ''}${mailOut ? 'Sending works. ' : ''}${(!mailIn ? mailWhy.receive : mailWhy.send) ?? 'Add the records for your domain'}`,
+                      done: ws.emailSetup === 'none' || (mailIn && mailOut),
                       onOpen: () => (setSettingsSection('email'), go('settings')),
                     },
                     { key: 'people', label: 'Your team', hint: ws.members.length > 1 ? `${ws.members.length} people in` : 'Invite the people you work with', done: ws.members.length > 1, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
@@ -3090,7 +3153,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenThread={openThread}
             onOpenChannel={openChannel}
             onOpenMeeting={openMeeting}
-            onBrainDump={() => setDump('')}
+            onBrainDump={() => openDump('')}
             onTemplate={() => setTplOpen({ clientId: taskScope.kind === 'client' ? taskScope.id : undefined })}
             onMenu={() => setSidebarOpen(true)}
           />
@@ -3214,7 +3277,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
             }}
             onAsk={setAskScope}
-            onSend={() => setSendBotOpen(true)}
+            onSend={() => openSendBot()}
             onMenu={() => setSidebarOpen(true)}
             toast={(text) => showToast({ text })}
           />
@@ -3255,9 +3318,42 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onHide={() => setMyHidden([...myHidden, 'mail'])}
           />
         )}
-        {mode === 'mail' && myAccounts.length > 0 && view.kind !== 'tracking' && (
+        {mode === 'mail' && myAccounts.length > 0 && !mailIn && !mailOut && (
+          <section className="settings-pane view-enter mail-setup">
+            <header className="settings-head">
+              <button className="icon-btn menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+                <Menu size={18} />
+              </button>
+              <h1>Mail</h1>
+            </header>
+            <div className="mail-setup-body">
+              <div className="mail-setup-lead">
+                <strong>Email isn’t working here yet</strong>
+                <span>{isAdmin ? 'Mail opens as soon as your domain’s records are in place. Pick how it should work, add the records, then check.' : 'An admin is setting up email for the company. Mail opens here as soon as it works.'}</span>
+                {(mailWhy.receive || mailWhy.send) && <small>{mailWhy.receive ?? mailWhy.send}</small>}
+              </div>
+              {isAdmin && (
+                <EmailDeliverySection ws={ws} canManage firstName={myFirst} onWorkspace={(p) => patchWorkspace(ws.id, p)} toast={(text) => showToast({ text })} />
+              )}
+            </div>
+          </section>
+        )}
+        {mode === 'mail' && myAccounts.length > 0 && (mailIn || mailOut) && view.kind !== 'tracking' && (
           <div className="mail-view view-enter">
             <MessageList
+              notice={
+                !mailIn || !mailOut ? (
+                  <div className="mail-gate">
+                    <AlertTriangle size={14} />
+                    <span>{!mailIn ? `Incoming mail isn’t connected yet. ${mailWhy.receive ?? ''}` : `Compose and Reply are off here. ${mailWhy.send ?? 'Sending isn’t set up yet.'}`}</span>
+                    {isAdmin && (
+                      <button type="button" className="link-btn small" onClick={() => (setSettingsSection('email'), go('settings'))}>
+                        Fix it
+                      </button>
+                    )}
+                  </div>
+                ) : undefined
+              }
               ref={searchRef}
               title={title}
               threads={visible}
@@ -3304,6 +3400,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             />
             <Reader
               thread={selected}
+              replyOff={selectedAcct && !boxReady(selectedAcct.id).send ? 'Sending isn’t set up for this mailbox yet' : undefined}
+              onReplyOff={() => selectedAcct && replyBlocked(selectedAcct)}
               teammates={selected ? members.filter((u) => ws.accounts.find((a) => a.id === selected.accountId)?.users.includes(u.id)) : []}
               shared={!!selected && ws.accounts.find((a) => a.id === selected.accountId)?.kind === 'shared'}
               onAssign={(id, who) => {
@@ -3712,8 +3810,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           contacts={contacts}
           signature={settings.signature}
           trackByDefault={settings.trackByDefault}
-          accounts={myAccounts}
-          defaultFrom={activeAccount !== 'all' ? activeAccount : myAccounts[0]?.id}
+          accounts={sendable.length ? sendable : myAccounts}
+          defaultFrom={activeAccount !== 'all' && sendable.some((a) => a.id === activeAccount) ? activeAccount : (sendable[0] ?? myAccounts[0])?.id}
           initial={compose.initial}
           onSend={send}
           onClose={closeCompose}

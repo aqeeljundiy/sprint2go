@@ -16,6 +16,7 @@ import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
 import { InstallPrompt } from './components/InstallPrompt';
 import { brand as product, brandOf, setBrandName } from './terms';
 import { applyPricing, type PricingOverride } from './data/pricing';
+import { loadCaps } from './caps';
 
 /**
  * With the local server: real sign-in, data from the database, live updates.
@@ -36,6 +37,7 @@ export default function Root() {
       .then((d: { pricing?: PricingOverride } | null) => applyPricing(d?.pricing), () => {});
     void probe().then(async (r) => {
       if (r === 'none') return setMode('demo');
+      await loadCaps(); // what this server can do, before anything shows (features that can't work stay hidden)
       if (r === 'signed-out') return setMode('signed-out');
       setSession(r);
       server.operator = !!r.operator;

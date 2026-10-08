@@ -7,6 +7,8 @@ import { Avatar } from './Avatar';
 import { isMine } from '../identity';
 
 interface Props {
+  /** A line above the list about what doesn't work yet (incoming or outgoing mail), with its fix. */
+  notice?: React.ReactNode;
   /** What an empty list says instead (e.g. a temporary address waiting for its first email). */
   empty?: { title: string; sub: string; action?: React.ReactNode };
   title: string;
@@ -89,6 +91,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
           ))}
         </div>
       </header>
+      {props.notice}
 
       {threads.length === 0 ? (
         <div className="empty">

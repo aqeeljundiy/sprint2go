@@ -4150,3 +4150,97 @@ a.help-file:hover {
     grid-column: 1;
   }
 }
+
+/* Mail: not working yet (setup in place of the inbox), or half working (a strip above the list) */
+.mail-setup {
+  flex: 1;
+  min-width: 0;
+}
+.mail-setup-body {
+  overflow-y: auto;
+  padding: 24px 32px 64px;
+  max-width: 860px;
+}
+.mail-setup-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, #b45309 10%, transparent);
+  font-size: 14px;
+  line-height: 1.5;
+  animation: viewIn 0.22s ease-out backwards;
+}
+.mail-setup-lead strong {
+  font-size: 15px;
+}
+.mail-setup-lead small {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.mail-setup-body h2:first-of-type {
+  display: none; /* the section's own title repeats "Mail" here */
+}
+.mail-gate {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #b45309 11%, transparent);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+  animation: viewIn 0.2s ease-out backwards;
+}
+.mail-gate > svg {
+  flex: none;
+  margin-top: 2px;
+  color: #b45309;
+}
+.mail-gate > span {
+  flex: 1;
+  min-width: 0;
+}
+.mail-gate .link-btn {
+  flex: none;
+  white-space: nowrap;
+}
+:root[data-theme='dark'] .mail-gate > svg {
+  color: #fbbf24;
+}
+@media (max-width: 760px) {
+  .mail-setup-body {
+    padding: 16px 16px 80px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mail-setup-lead,
+  .mail-gate {
+    animation: none;
+  }
+}
+
+/* Compose while sending isn't set up: reads as off, still clickable so it can say why. */
+:root .sb-panel .compose-btn.off,
+:root .sb-panel .compose-btn.off:hover {
+  background: var(--hover);
+  color: var(--text-2);
+  box-shadow: none;
+  transform: none;
+  cursor: help;
+}
+:root .sb-panel .compose-btn.off kbd {
+  background: transparent;
+  color: var(--text-2);
+}
+:root .reply-buttons .ghost-btn.off,
+:root .reply-buttons .ghost-btn.off:hover {
+  color: var(--text-2);
+  opacity: 0.55;
+  background: transparent;
+  cursor: help;
+}
