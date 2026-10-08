@@ -1,7 +1,6 @@
 /* Tables: the company's own databases. Grid (a spreadsheet), board (kanban) and the row page. */
 
 .tb-pane {
-  container-type: inline-size;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -46,6 +45,7 @@
 /* ---------- bar: views, search, filter, sort ---------- */
 
 .tb-bar {
+  container-type: inline-size; /* its labels fold away when narrow; kept off the pane so dialogs aren't trapped in it */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -97,6 +97,9 @@
 @container (max-width: 760px) {
   .tb-bar .ghost-btn .lbl {
     display: none;
+  }
+  .tb-bar > .tb-views {
+    flex: 1 1 100%; /* the view tabs get a row; the tools share the next one */
   }
   .tb-search input {
     width: 90px;
@@ -1276,9 +1279,34 @@
 
 /* ---------- button settings and steps ---------- */
 
-.tb-fm.wide {
-  max-height: min(70vh, 640px);
+/* In the column popover: what the button does, in a line, and a way into its dialog. */
+.tb-btn-sum {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.tb-btn-sum p {
+  margin: 0;
+  color: var(--text-2);
+}
+/* The button's own dialog. */
+.modal.btn-modal {
+  width: min(680px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.btn-modal-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding: 18px 20px 20px;
+}
+.btn-modal .modal-foot .spacer {
+  flex: 1;
+}
+.btn-modal .tb-btn-set > .tb-fm-label {
+  margin-top: 10px;
 }
 .tb-btn-set {
   display: grid;
@@ -1428,17 +1456,10 @@
   color: var(--accent);
   background: var(--accent-soft);
 }
-.tb-auto .drawer-body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.tb-auto-tabs {
-  align-self: flex-start;
-}
 .tb-auto-sec {
   display: grid;
   gap: 10px;
+  max-width: 760px;
 }
 .tb-auto-sec > p {
   margin: 0;
@@ -1469,22 +1490,6 @@
 }
 .tb-url code.block {
   white-space: pre-wrap;
-}
-.tb-map {
-  display: grid;
-  gap: 4px;
-}
-.tb-map-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 8px;
-  align-items: center;
-}
-.tb-map-row code {
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .tb-map-sample {
   overflow: hidden;
@@ -1754,7 +1759,6 @@
   justify-items: start;
 }
 .tb-steps > li > div > .tb-url,
-.tb-steps > li > div > .tb-map,
 .tb-steps > li > div > .tb-act-row,
 .tb-steps > li > div > .tb-listen,
 .tb-steps > li > div > .tb-try {
@@ -1797,20 +1801,75 @@
   margin-top: 3px;
   color: var(--accent);
 }
-.tb-try summary {
-  cursor: pointer;
-  font-size: 12.5px;
+.tb-try {
+  display: grid;
+  justify-items: start;
+}
+.tb-try .fold-in > .tb-url {
+  margin-top: 6px;
+}
+
+/* What a test delivered, one key per line: the key, its value in the latest test, and the field it goes into. */
+.tb-maptable {
+  display: grid;
+  justify-self: stretch;
+}
+.tb-steps > li > div > .tb-maptable,
+.tb-steps > li > div > .fold {
+  justify-self: stretch;
+}
+.tb-maptable-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 40px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.tb-maptable-row:last-child {
+  border-bottom: 0;
+}
+.tb-maptable-row.head {
+  min-height: 30px;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--text-3);
-  list-style: none;
 }
-.tb-try summary::-webkit-details-marker {
-  display: none;
+.tb-maptable-row code {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.tb-try[open] summary {
-  margin-bottom: 6px;
-}
-.tb-map-row.skip code {
+.tb-maptable-row.skip code,
+.tb-maptable-row.skip .tb-map-sample {
   color: var(--text-3);
+}
+.tb-maptable-row .pick-select {
+  width: 100%;
+}
+.tb-older {
+  margin-top: 4px;
+}
+@media (max-width: 600px) {
+  .tb-maptable-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    row-gap: 2px;
+    padding: 8px 0;
+  }
+  .tb-maptable-row.head {
+    display: none;
+  }
+  .tb-maptable-row .tb-map-sample {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 12px;
+  }
+  .tb-maptable-row > span:last-child {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
 }
 .tb-on-dot {
   width: 8px;

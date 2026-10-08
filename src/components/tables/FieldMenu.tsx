@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight, EyeOff, Plus, Trash2, X } from 'lucide-react';
 import type { Channel, DataTable, FieldType, TableField, TableRow, User } from '../../types';
 import { PickSelect } from '../ui/PickSelect';
-import { ButtonSettings } from './Automations';
+import { actionSummary } from './Automations';
+import { ButtonSetupCtx } from './ButtonDialog';
 import { Popover } from '../ui/Popover';
 import { FIELD_TYPES, OPTION_COLORS, cellText, fieldIcon, formulaError, rowName, valueOf, type TCtx } from './fields';
 import { newOption } from './Cell';
@@ -55,6 +56,7 @@ export function FieldMenu({
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (p: Partial<TableField>) => setDraft((d) => ({ ...d, ...p }));
+  const setupButton = useContext(ButtonSetupCtx);
   const pickType = (type: FieldType) => {
     const next: Partial<TableField> = { type };
     if ((type === 'select' || type === 'multi') && !draft.options?.length) next.options = [];
@@ -78,8 +80,8 @@ export function FieldMenu({
   const changingType = !!field && field.type !== draft.type;
 
   return (
-    <Popover anchor={anchor} open={open} onClose={onClose} width={draft.type === 'button' || draft.type === 'formula' ? 400 : 300} title={field ? field.name : 'New field'}>
-      <div className={`tb-fm${draft.type === 'button' ? ' wide' : ''}`} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !(e.target as HTMLElement).closest('.tb-fm-opts, .tb-btn-set') && save()}>
+    <Popover anchor={anchor} open={open} onClose={onClose} width={draft.type === 'formula' ? 400 : 300} title={field ? field.name : 'New field'}>
+      <div className="tb-fm" onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !(e.target as HTMLElement).closest('.tb-fm-opts, .tb-btn-set') && save()}>
         <input className="tb-fm-name" autoFocus value={draft.name} placeholder="Field name" onChange={(e) => set({ name: e.target.value })} />
 
         <button type="button" className="tb-fm-type" onClick={() => setTypesOpen((x) => !x)} disabled={isFirst && draft.type === 'text' && !!field} title={isFirst ? 'The first field is each row’s name' : undefined}>
@@ -125,7 +127,24 @@ export function FieldMenu({
           </div>
         )}
 
-        {draft.type === 'button' && <ButtonSettings field={draft} t={table} tables={tables} users={users} channels={channels} onChange={(button) => set({ button })} />}
+        {draft.type === 'button' && (
+          <div className="tb-btn-sum">
+            <span className="tb-fm-label">When pressed</span>
+            <p className="small">{draft.button?.actions.length ? draft.button.actions.map((a) => actionSummary(a, table, tables, users, channels)).join(', ') : 'Nothing yet. Pick what it does: send a webhook, set fields, make a task and more.'}</p>
+            {setupButton && (
+              <button
+                type="button"
+                className={draft.button?.actions.length ? 'ghost-btn sm' : 'primary-btn sm'}
+                onClick={() => {
+                  save();
+                  setupButton(draft.id);
+                }}
+              >
+                {draft.button?.actions.length ? 'Change what it does' : 'Set up what it does'}
+              </button>
+            )}
+          </div>
+        )}
 
         {draft.type === 'formula' && (
           <div className="tb-fm-opts">
@@ -287,7 +306,7 @@ export function FieldMenu({
           <button type="button" className="ghost-btn sm" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="primary-btn sm" disabled={(draft.type === 'link' && !draft.linkTable) || (draft.type === 'button' && !draft.button?.actions.length) || (draft.type === 'formula' && (!draft.formula?.trim() || !!formulaError(draft.formula, table))) || (draft.type === 'rollup' && !draft.rollup?.linkField)} onClick={save}>
+          <button type="button" className="primary-btn sm" disabled={(draft.type === 'link' && !draft.linkTable) || (draft.type === 'formula' && (!draft.formula?.trim() || !!formulaError(draft.formula, table))) || (draft.type === 'rollup' && !draft.rollup?.linkField)} onClick={save}>
             {field ? 'Save' : 'Add field'}
           </button>
         </div>

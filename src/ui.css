@@ -2,7 +2,7 @@
 
 .pop {
   position: fixed;
-  z-index: 400;
+  z-index: var(--z-pop);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -24,7 +24,7 @@
 .pop-scrim {
   position: fixed;
   inset: 0;
-  z-index: 400;
+  z-index: var(--z-pop);
   background: rgba(10, 12, 20, 0.35);
   display: flex;
   align-items: flex-end;
@@ -352,5 +352,107 @@ input[type='checkbox']:disabled {
   to {
     transform: translate(var(--dx), calc(var(--dy) + 420px)) rotate(var(--r));
     opacity: 0;
+  }
+}
+
+/* ---------- Large dialog: setup screens with sections on the left (Automations, settings-like flows) ---------- */
+
+.modal.big-modal {
+  width: min(1040px, 100%);
+  height: min(760px, calc(100dvh - 32px));
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.big-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.big-head .muted {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.big-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+.big-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  overflow: auto;
+}
+.big-nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.big-nav button:hover {
+  background: var(--hover);
+}
+.big-nav button.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(16, 16, 30, 0.04);
+}
+.big-nav button.on svg {
+  color: var(--accent);
+}
+.big-nav small {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.big-nav small.bad {
+  color: #d14343;
+}
+.big-main {
+  min-width: 0;
+  overflow: auto;
+  padding: 20px 28px 28px;
+}
+@media (max-width: 760px) {
+  .modal.big-modal {
+    height: 92dvh;
+  }
+  .big-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .big-nav {
+    flex-direction: row;
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .big-nav button {
+    flex: none;
+    min-height: 40px;
+  }
+  .big-main {
+    padding: 16px;
   }
 }

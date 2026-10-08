@@ -20,6 +20,7 @@ const LEAVING = [
   '.more-sheet',
   '.chat-side',
   '.ask-drawer',
+  '.ask-pill',
   '.later-menu',
   '.track-menu',
   '.tb-popup',

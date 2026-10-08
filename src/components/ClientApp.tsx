@@ -55,6 +55,7 @@ import { Assistant, type AskChat } from './Assistant';
 import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
 import { dueLabel, isBrief, statusOf } from './TasksView';
+import { useOnePanel } from '../onePanel';
 
 type Mode = 'home' | 'requests' | 'chat' | 'work' | 'files' | 'meet' | 'tables';
 
@@ -955,6 +956,7 @@ function TaskPanel({
   onOpen: (id: string) => void;
   onClose: () => void;
 }) {
+  useOnePanel(onClose);
   const [comment, setComment] = useState('');
   const [changes, setChanges] = useState<string | null>(null);
   useEffect(() => {

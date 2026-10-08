@@ -10,6 +10,7 @@ import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { SOURCE, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
 import { PeoplePicker } from './ui/PeoplePicker';
+import { useOnePanel } from '../onePanel';
 
 interface Props {
   task: Todo;
@@ -36,6 +37,7 @@ interface Props {
 
 /** A task or brief, opened. A brief shows its context and its tasks; a task shows the brief it belongs to and who's in charge. */
 export function TaskDrawer(p: Props) {
+  useOnePanel(p.onClose);
   const t = p.task;
   const brief = isBrief(t);
   const parent = t.briefId ? p.tasks.find((x) => x.id === t.briefId) : undefined;

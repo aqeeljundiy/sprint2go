@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { term } from '../terms';
-import { History, Plus, Send, Sparkles, X } from 'lucide-react';
+import { History, Minus, Plus, Send, Sparkles, X } from 'lucide-react';
 import { relative } from '../utils';
 import { Select } from './ui/Select';
 
@@ -51,16 +51,17 @@ export function Assistant(p: Props) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState(false);
+  const [min, setMin] = useState(false); // tucked into a pill in the corner, chat kept
   const chat = p.chats.find((c) => c.id === chatId);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
   }, [chat?.messages.length, busy]);
   useEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.pop, .modal-scrim') && p.onClose();
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && !min && !document.querySelector('.pop, .modal-scrim') && p.onClose();
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
-  }, [p]);
+  }, [p, min]);
 
   const ask = async (q: string) => {
     if (!q.trim() || busy) return;
@@ -112,6 +113,15 @@ export function Assistant(p: Props) {
       );
     });
 
+  if (min)
+    return (
+      <button type="button" className="ask-pill" onClick={() => setMin(false)} aria-label="Open Ask AI">
+        <Sparkles size={16} />
+        Ask AI
+        {busy && <small>Answering…</small>}
+      </button>
+    );
+
   return (
     <aside className="ask-drawer" role="dialog" aria-label="Ask AI">
       <header className="cs-head">
@@ -124,6 +134,9 @@ export function Assistant(p: Props) {
         </button>
         <button className="icon-btn sm" title="New chat" onClick={() => (setChatId(null), setHistory(false))}>
           <Plus size={15} />
+        </button>
+        <button className="icon-btn sm" title="Minimize" onClick={() => setMin(true)}>
+          <Minus size={15} />
         </button>
         <button className="icon-btn sm" onClick={p.onClose} aria-label="Close">
           <X size={16} />

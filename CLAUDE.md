@@ -26,6 +26,19 @@ Every change has to pass this bar before it's called done. It isn't optional pol
 8. **Both themes.** The app works in light and dark; the landing page is light only.
 9. **Reduced motion.** Every animation has a `prefers-reduced-motion` fallback.
 
+## Which surface
+
+Pick the surface by what the person is doing, not by habit. Not everything is a side panel.
+
+- **Side panel** (`.drawer`): one item, looked at or edited next to the list it came from (a task, a table row). One at a time: every side panel calls `useOnePanel(onClose)` (`src/onePanel.ts`), so opening one closes the other.
+- **Dialog** (`.modal`): a focused job with a start and an end (new table, share, import, delete). **Large dialog** (`.modal.big-modal` with `.big-nav` sections on the left): setup that has several parts (Automations). Anything with steps, options and conditions (a button's actions) gets a dialog, never a crammed popover.
+- **Popover** (`Popover`): a quick pick or a few settings next to what was clicked (a column's menu, a filter, a date). Becomes a bottom sheet on phones.
+- **Docked panel**: a companion you keep open while working (Ask AI), bottom-right, no scrim, can shrink to a pill.
+- **Toast**: what just happened, with Undo when it can be undone.
+- Stacking order is fixed by tokens in `styles.css`: page < `--z-panel` < `--z-dialog` < `--z-pop` < `--z-toast`. Never hard-code a z-index above 10 for an overlay.
+- Nothing that holds a fixed overlay (a pane, a screen) may keep a `transform`, `filter` or `container-type`: they trap `position: fixed` children inside the pane. Put `container-type` on the inner element that needs it, and use `animation-fill-mode: backwards` for entrance animations.
+- Our own dropdowns everywhere (`Select`, `PickSelect`, `PeoplePicker`, `DatePicker`), never a native `<select>` or date input.
+
 ## Checking it
 
 - Look at it in the browser at phone and desktop widths, and go through the interaction: open, switch, close, resize.

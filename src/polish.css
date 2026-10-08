@@ -1962,7 +1962,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .install-scrim {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: var(--z-dialog);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -2191,8 +2191,9 @@ select,
   animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
 }
 .is-leaving.chat-side,
-.is-leaving.ask-drawer {
-  animation: s2gDrawerOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+.is-leaving.ask-drawer,
+.is-leaving.ask-pill {
+  animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
 }
 .is-leaving.later-menu,
 .is-leaving.track-menu,

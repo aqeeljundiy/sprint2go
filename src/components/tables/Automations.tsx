@@ -1,10 +1,10 @@
 import { PickSelect } from '../ui/PickSelect';
-import { useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Copy, KeyRound, Plus, RefreshCw, Send, Trash2, X, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Copy, KeyRound, Plus, RefreshCw, ScrollText, Send, Trash2, X, Zap } from 'lucide-react';
 import type { ButtonDef, Channel, DataTable, TableAction, TableField, TableIntake, TableRule, User } from '../../types';
 import { relative, uid } from '../../utils';
 import { TabPane } from '../ui/Smooth';
-import { OPTION_COLORS, opsFor } from './fields';
+import { OPTION_COLORS, isComputed, opsFor } from './fields';
 import { guessType } from './csv';
 
 /** data.full_name -> Full name */
@@ -522,6 +522,11 @@ export function ButtonSettings({ field, t, tables, users, channels, onChange }: 
 export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose, toast }: { t: DataTable; tables: DataTable[]; users: User[]; channels: Channel[]; onPatch: (p: Partial<DataTable>) => void; onClose: () => void; toast: (text: string) => void }) {
   const [tab, setTab] = useState<'in' | 'rules' | 'log'>('in');
   const [editing, setEditing] = useState<string | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.pop') && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const intake = t.intake;
   const url = intake ? `${location.origin}/api/hooks/${intake.token}` : '';
   const setIntake = (p: Partial<TableIntake>) => onPatch({ intake: { ...(intake ?? { token: secret(), enabled: true, mapping: {} }), ...p } });
@@ -541,34 +546,69 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
     if (f.type === 'money') f.currency = 'IDR';
     onPatch({ fields: [...t.fields, f], intake: { ...intake, mapping: { ...intake.mapping, [k]: f.id } } });
   };
-  // Every key seen so far (the latest delivery's first), so earlier ones can still be mapped.
-  const sampleKeys = [...new Set([...Object.keys(intake?.sample ?? {}), ...Object.keys(intake?.mapping ?? {})])];
+  // The latest test's keys are what matter; keys matched from earlier tests stay, folded away.
+  const latestKeys = Object.keys(intake?.sample ?? {});
+  const olderKeys = Object.keys(intake?.mapping ?? {}).filter((k) => intake?.mapping[k] && !latestKeys.includes(k));
+  const [showOlder, setShowOlder] = useState(false);
+  const [showCurl, setShowCurl] = useState(false);
+  const mapRow = (k: string) => {
+    if (!intake) return null;
+    const v = intake.sample?.[k];
+    const shown = v != null && v !== '' ? (typeof v === 'object' ? JSON.stringify(v) : String(v)) : '';
+    return (
+      <div key={k} className={`tb-maptable-row${intake.mapping[k] ? '' : ' skip'}`} role="row">
+        <code role="cell" title={k}>
+          {k}
+        </code>
+        <span role="cell" className={`tb-map-sample${shown ? '' : ' muted'}`} title={shown}>
+          {shown ? shown.slice(0, 80) : latestKeys.includes(k) ? 'empty' : 'not in the latest test'}
+        </span>
+        <span role="cell">
+          <PickSelect value={intake.mapping[k] ?? ''} aria-label={`Field for ${k}`} onChange={(e) => (e.target.value === '__new' ? newFieldFor(k) : setIntake({ mapping: { ...intake.mapping, [k]: e.target.value } }))}>
+            <option value="">Skip</option>
+            {t.fields.filter((f) => !['button', 'link'].includes(f.type) && !isComputed(f)).map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+            <option value="__new">+ New field “{humanize(k)}”</option>
+          </PickSelect>
+        </span>
+      </div>
+    );
+  };
   const example = JSON.stringify(Object.fromEntries(t.fields.filter((f) => !['button', 'link'].includes(f.type)).slice(0, 4).map((f) => [f.name.toLowerCase().replace(/\W+/g, '_'), f.type === 'email' ? 'rina@example.com' : f.type === 'phone' ? '+62 812 0000 0000' : f.type === 'money' || f.type === 'number' ? 1000000 : f.options?.[0]?.label ?? `Example ${f.name.toLowerCase()}`])), null, 2);
 
+  const failed = (t.log ?? []).filter((e) => !e.ok).length;
+  const sections: { id: typeof tab; label: string; icon: typeof Zap; meta?: string; bad?: boolean }[] = [
+    { id: 'in', label: 'Data coming in', icon: ArrowDownLeft, meta: intake?.enabled ? 'On' : intake ? 'Not on yet' : undefined },
+    { id: 'rules', label: 'Rules', icon: Zap, meta: rules.length ? `${rules.filter((r) => r.enabled).length} on` : undefined },
+    { id: 'log', label: 'Log', icon: ScrollText, meta: failed ? `${failed} failed` : undefined, bad: failed > 0 },
+  ];
+
   return (
-    <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <aside className="drawer tb-drawer tb-auto" role="dialog" aria-label="Automations" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-        <header className="drawer-head">
-          <span className="drawer-kind">
-            <Zap size={14} /> Automations · {t.name}
-          </span>
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal big-modal tb-auto" role="dialog" aria-label={`Automations for ${t.name}`} onMouseDown={(e) => e.stopPropagation()}>
+        <header className="big-head">
+          <Zap size={15} />
+          <strong>Automations</strong>
+          <span className="muted">{t.name}</span>
           <span className="spacer" />
           <button type="button" className="icon-btn sm" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
         </header>
-        <div className="drawer-body">
-          <div className="segmented tb-auto-tabs">
-            <button className={tab === 'in' ? 'on' : ''} onClick={() => setTab('in')}>
-              Data coming in
-            </button>
-            <button className={tab === 'rules' ? 'on' : ''} onClick={() => setTab('rules')}>
-              Rules{rules.length ? ` · ${rules.filter((r) => r.enabled).length}` : ''}
-            </button>
-            <button className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>
-              Log
-            </button>
-          </div>
+        <div className="big-body">
+          <nav className="big-nav" aria-label="Sections">
+            {sections.map(({ id, label, icon: I, meta, bad }) => (
+              <button key={id} type="button" className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
+                <I size={15} />
+                <span>{label}</span>
+                {meta && <small className={bad ? 'bad' : ''}>{meta}</small>}
+              </button>
+            ))}
+          </nav>
+          <div className="big-main">
           <TabPane key={tab}>
             {tab === 'in' && (
               <div className="tb-auto-sec">
@@ -623,15 +663,21 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                         <p className="muted small">After the address.</p>
                       )}
                       {intake && (
-                        <details className="tb-try">
-                          <summary>Or send one yourself</summary>
+                        <div className="tb-try">
+                          <button type="button" className="link-btn small" onClick={() => setShowCurl((x) => !x)}>
+                            <ChevronRight size={13} className={`rot-chev ${showCurl ? 'open' : ''}`} /> Or send one yourself
+                          </button>
+                          <div className={`fold ${showCurl ? 'open' : ''}`}>
+                            <div className="fold-in">
                           <div className="tb-url">
                             <code className="block">{`curl -X POST ${url} \\\n  -H "content-type: application/json" \\\n  -d '${example.replace(/\n\s*/g, ' ')}'`}</code>
                             <button className="icon-btn sm" onClick={() => copy(`curl -X POST ${url} -H "content-type: application/json" -d '${example.replace(/\n\s*/g, ' ')}'`, 'Example')} aria-label="Copy example">
                               <Copy size={14} />
                             </button>
                           </div>
-                        </details>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </li>
@@ -640,26 +686,32 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                     <span className="tb-step-n">{intake?.enabled && intake.sample ? <Check size={12} /> : 3}</span>
                     <div>
                       <strong>Match what arrived to fields</strong>
-                      {intake && sampleKeys.length ? (
-                        <div className="tb-map">
-                          {sampleKeys.map((k) => (
-                            <div key={k} className={`tb-map-row${intake.mapping[k] ? '' : ' skip'}`}>
-                              <code title={k}>{k}</code>
-                              <span className="tb-map-sample muted small" title={String(intake.sample?.[k] ?? '')}>
-                                {intake.sample?.[k] != null && intake.sample[k] !== '' ? String(intake.sample[k]).slice(0, 40) : 'empty'}
-                              </span>
-                              <PickSelect value={intake.mapping[k] ?? ''} aria-label={`Field for ${k}`} onChange={(e) => (e.target.value === '__new' ? newFieldFor(k) : setIntake({ mapping: { ...intake.mapping, [k]: e.target.value } }))}>
-                                <option value="">Skip (kept on the row, not in a field)</option>
-                                {t.fields.filter((f) => !['button', 'link'].includes(f.type)).map((f) => (
-                                  <option key={f.id} value={f.id}>
-                                    {f.name}
-                                  </option>
-                                ))}
-                                <option value="__new">+ New field “{humanize(k)}”</option>
-                              </PickSelect>
+                      {intake && (latestKeys.length || olderKeys.length) ? (
+                        <>
+                          <div className="tb-maptable" role="table" aria-label="Match values to fields">
+                            <div className="tb-maptable-row head" role="row">
+                              <span role="columnheader">Arrived as</span>
+                              <span role="columnheader">In the latest test</span>
+                              <span role="columnheader">Goes into</span>
                             </div>
-                          ))}
-                        </div>
+                            {latestKeys.map(mapRow)}
+                          </div>
+                          {olderKeys.length > 0 && (
+                            <>
+                              <button type="button" className="link-btn small tb-older" onClick={() => setShowOlder((x) => !x)}>
+                                <ChevronRight size={13} className={`rot-chev ${showOlder ? 'open' : ''}`} />
+                                {olderKeys.length} matched from earlier tests
+                              </button>
+                              <div className={`fold ${showOlder ? 'open' : ''}`}>
+                                <div className="fold-in">
+                                  <div className="tb-maptable" role="table" aria-label="Matched from earlier tests">
+                                    {olderKeys.map(mapRow)}
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </>
                       ) : (
                         <p className="muted small">The values from your test appear here, each with what it contained, to put into the right field.</p>
                       )}
@@ -701,25 +753,6 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                   </li>
                 </ol>
 
-                <h4 className="tb-auto-h">
-                  <KeyRound size={13} /> Signing webhooks this table sends
-                </h4>
-                <p className="muted small">Webhooks sent by this table’s buttons and rules carry an <code>X-Sprint2go-Signature</code> header: an HMAC-SHA256 of the body with this secret, so the other side can check it came from you.</p>
-                {t.signingSecret ? (
-                  <div className="tb-url">
-                    <code>{t.signingSecret.slice(0, 6)}••••••••••••</code>
-                    <button className="icon-btn sm" onClick={() => copy(t.signingSecret!, 'Secret')} aria-label="Copy secret">
-                      <Copy size={14} />
-                    </button>
-                    <button className="icon-btn sm" onClick={() => confirm('Make a new secret? Receivers checking the old one will reject webhooks until updated.') && onPatch({ signingSecret: secret(32) })} aria-label="New secret">
-                      <RefreshCw size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <button className="ghost-btn sm" onClick={() => onPatch({ signingSecret: secret(32) })}>
-                    Make a signing secret
-                  </button>
-                )}
               </div>
             )}
 
@@ -816,6 +849,25 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                 <button className="ghost-btn sm" onClick={addRule}>
                   <Plus size={13} /> Add a rule
                 </button>
+                <h4 className="tb-auto-h">
+                  <KeyRound size={13} /> Signing webhooks this table sends
+                </h4>
+                <p className="muted small">Webhooks sent by buttons and rules carry an <code>X-Sprint2go-Signature</code> header: an HMAC-SHA256 of the body with this secret, so the other side can check it came from you.</p>
+                {t.signingSecret ? (
+                  <div className="tb-url">
+                    <code>{t.signingSecret.slice(0, 6)}••••••••••••</code>
+                    <button className="icon-btn sm" onClick={() => copy(t.signingSecret!, 'Secret')} aria-label="Copy secret">
+                      <Copy size={14} />
+                    </button>
+                    <button className="icon-btn sm" onClick={() => confirm('Make a new secret? Receivers checking the old one will reject webhooks until updated.') && onPatch({ signingSecret: secret(32) })} aria-label="New secret">
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <button className="ghost-btn sm" onClick={() => onPatch({ signingSecret: secret(32) })}>
+                    Make a signing secret
+                  </button>
+                )}
               </div>
             )}
 
@@ -837,8 +889,9 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
               </div>
             )}
           </TabPane>
+          </div>
         </div>
-      </aside>
+      </div>
     </div>
   );
 }

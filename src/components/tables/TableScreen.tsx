@@ -16,6 +16,7 @@ import { BoardView, newChoiceField } from './BoardView';
 import { CalendarView, GalleryView, ListView } from './Views';
 import { FieldLine, RecordDrawer } from './RecordDrawer';
 import { AutomationsPanel } from './Automations';
+import { ButtonDialog, ButtonSetupCtx } from './ButtonDialog';
 import { ImportDialog, type ImportPlan } from './ImportDialog';
 import { download, rowsToCsv } from './csv';
 import { TABLE_COLORS, cellText, convertValue, fieldIcon, isComputed, isEmpty, opsFor, optionsFromValues, parseIncoming, rowName, sortWords, sortsOf, viewFields, visibleRows } from './fields';
@@ -65,6 +66,7 @@ export function TableScreen(p: ScreenProps) {
   const [name, setName] = useState(t.name);
   const [renamingView, setRenamingView] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
+  const [buttonFor, setButtonFor] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [full, setFull] = useState(false);
@@ -378,7 +380,9 @@ export function TableScreen(p: ScreenProps) {
   const menuRow = rowMenu ? mine.find((r) => r.id === rowMenu.rowId) : undefined;
   const canAdd = !g || g.add;
 
+  const buttonField = buttonFor ? t.fields.find((f) => f.id === buttonFor && f.type === 'button') : undefined;
   return (
+    <ButtonSetupCtx.Provider value={setButtonFor}>
     <section className="tasks-pane tb-pane view-enter">
       <header className="tracking-head tasks-head tb-head-bar">
         <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
@@ -670,6 +674,7 @@ export function TableScreen(p: ScreenProps) {
       {importing && <ImportDialog table={t} rows={mine} users={p.users} onImport={importPlan} onClose={() => setImporting(false)} />}
       {sharing && <ShareTableDialog t={t} onSave={(share) => (patchTable({ share }), setSharing(false), p.toast({ text: share.enabled ? 'Shared with the project’s guests' : 'No longer shared' }))} onClose={() => setSharing(false)} />}
       {autoOpen && <AutomationsPanel t={t} tables={p.tables} users={p.users} channels={p.channels} onPatch={patchTable} onClose={() => setAutoOpen(false)} toast={(text) => p.toast({ text })} />}
+      {buttonField && <ButtonDialog key={buttonField.id} field={buttonField} t={t} tables={p.tables} users={p.users} channels={p.channels} onSave={(button) => saveField({ ...buttonField, button })} onClose={() => setButtonFor(null)} />}
       {asking && (
         <AskDialog
           table={t}
@@ -705,6 +710,7 @@ export function TableScreen(p: ScreenProps) {
         />
       )}
     </section>
+    </ButtonSetupCtx.Provider>
   );
 }
 

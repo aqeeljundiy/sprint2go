@@ -141,7 +141,7 @@ body.resizing-x .pane-resize::after {
 
 .view-enter,
 .cal-pane {
-  animation: viewIn 0.3s var(--ease) both;
+  animation: viewIn 0.3s var(--ease) backwards; /* not "both": a leftover transform would trap fixed dialogs inside the pane */
 }
 .reader-scroll {
   animation: viewIn 0.28s var(--ease) both;
@@ -1631,7 +1631,7 @@ body.resizing-x .pane-resize::after {
 .lightbox {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  z-index: var(--z-dialog);
   display: flex;
   flex-direction: column;
   background: rgba(8, 8, 12, 0.92);
@@ -3662,7 +3662,7 @@ fieldset.plain:disabled {
   top: 8px;
   right: 8px;
   bottom: 8px;
-  z-index: 55;
+  z-index: var(--z-panel);
   width: 400px;
   display: flex;
   flex-direction: column;

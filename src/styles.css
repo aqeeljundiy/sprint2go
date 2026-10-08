@@ -1,4 +1,9 @@
 :root {
+  /* Stacking order, lowest to highest: page < side panel < dialog < popover < toast. */
+  --z-panel: 300;
+  --z-dialog: 350;
+  --z-pop: 400;
+  --z-toast: 450;
   --accent: #5b5bf6;
   --accent-hover: #4a4ae8;
   --accent-soft: rgba(91, 91, 246, 0.1);
@@ -771,7 +776,7 @@ kbd {
   color: #fff;
   box-shadow: var(--shadow-lg);
   font-weight: 500;
-  z-index: 50;
+  z-index: var(--z-toast);
   animation: rise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 :root[data-theme='dark'] .toast {

@@ -6,6 +6,7 @@ import { relative } from '../../utils';
 import { ButtonCell, CellView, ContactActions, FilesPopover, InlineInput, PickPopover, RatingInput, typesInline, type CellCtx } from './Cell';
 import { DatePicker } from '../ui/DatePicker';
 import { cellText, fieldIcon, isComputed, isEmpty, rowName, valueOf } from './fields';
+import { useOnePanel } from '../../onePanel';
 
 /** One field on the row page: label on the left, the value (editable in place) on the right. */
 export function FieldLine({ f, row, ctx, onCell, readOnly, table }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean; table?: DataTable }) {
@@ -98,6 +99,7 @@ export function RecordDrawer({
   onOpenRow: (tableId: string, rowId: string) => void;
   readOnly?: boolean;
 }) {
+  useOnePanel(onClose);
   const [title, setTitle] = useState(String(row.values[table.fields[0].id] ?? ''));
   const [comment, setComment] = useState('');
   useEffect(() => setTitle(String(row.values[table.fields[0].id] ?? '')), [row.id, row.values, table.fields]);
