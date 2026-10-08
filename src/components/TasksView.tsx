@@ -186,6 +186,7 @@ export function TasksView(p: Props) {
   // The company's own stages: board columns, grouping, the Start button and what each row says.
   const stages = stagesFor(p.workspace.id);
   const activeStage = firstOf('active', stages);
+  const waitingStages = stages.filter((s) => s.kind === 'waiting');
   const client = scope.kind === 'client' ? p.clients.find((c) => c.id === scope.id) : undefined;
   const team = scope.kind === 'team' ? p.teams.find((t) => t.id === scope.id) : undefined;
   const cellTeam = scope.kind === 'client' && scope.teamId ? p.teams.find((t) => t.id === scope.teamId) : undefined;
@@ -947,7 +948,7 @@ export function TasksView(p: Props) {
                   [
                     ['late', 'Late'],
                     ['high', 'High priority'],
-                    ...(firstOf('waiting', stages) || quick.includes('waiting') ? ([['waiting', `Waiting on ${term.who}`]] as const) : []),
+                    ...(firstOf('waiting', stages) || quick.includes('waiting') ? ([['waiting', waitingStages.length === 1 ? stageName(waitingStages[0]) : `Waiting on ${term.who}`]] as const) : []),
                     ['nobody', 'Nobody on it'],
                   ] as const
                 ).map(([id, l]) => (

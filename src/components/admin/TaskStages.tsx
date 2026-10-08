@@ -111,6 +111,9 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
           <div className="stage-list" style={{ position: 'relative' }}>
             {stages.map((s, i) => {
               const onlyOne = (s.kind === 'open' || s.kind === 'done') && count(s.kind) === 1;
+              // Whether tasks count as done follows the kind, so a stage only becomes (or stops being) a done stage while it's empty.
+              const busy = inStage(s.id).length > 0;
+              const fixedKind = onlyOne || (s.kind === 'done' && busy);
               return (
                 <div
                   key={s.id}
@@ -132,8 +135,8 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
                     }}
                     onName={(name) => patch(s.id, { name })}
                   />
-                  {s.kind === 'done' || (onlyOne && s.kind === 'open') ? (
-                    <span className="stage-kind-fixed" title={s.kind === 'done' ? 'A done stage stays a done stage' : 'At least one stage is where new tasks start'}>
+                  {fixedKind ? (
+                    <span className="stage-kind-fixed" title={onlyOne ? (s.kind === 'open' ? 'At least one stage is where new tasks start' : 'At least one stage is where finished tasks go') : 'Finished tasks are in it. Move them before it means something else.'}>
                       {KIND_INFO[s.kind].name}
                     </span>
                   ) : (
@@ -144,7 +147,7 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
                       title="What this stage means"
                       className="sel-flat stage-kind"
                       disabled={!canManage}
-                      options={STAGE_KINDS.filter((k) => k !== 'done').map((k) => ({ value: k, label: KIND_INFO[k].name, hint: KIND_INFO[k].hint }))}
+                      options={STAGE_KINDS.filter((k) => k !== 'done' || !busy).map((k) => ({ value: k, label: KIND_INFO[k].name, hint: KIND_INFO[k].hint }))}
                     />
                   )}
                   {canManage && (

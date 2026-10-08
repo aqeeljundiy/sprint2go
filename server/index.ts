@@ -21,7 +21,7 @@ import * as platform from './platform.ts';
 import * as support from './support.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
-import { cleanStages, stageIdFor } from '../src/stages.ts';
+import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -1702,8 +1702,11 @@ createServer(async (req, res) => {
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
             const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
             const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
-            // Task stages: only a list the app can work with (known kinds, at least one open and one done stage).
-            const taskStages = (d as any).taskStages === undefined ? undefined : cleanStages((d as any).taskStages);
+            // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
+            // that isn't keeps what was there; an empty one means the usual stages.
+            const asked = (d as any).taskStages;
+            const clean = asked === undefined ? undefined : cleanStages(asked);
+            const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(asked) && asked.length ? before.taskStages : undefined) : clean;
             return { ...d, ...own, plan, taskStages } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
