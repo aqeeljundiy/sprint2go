@@ -1,3 +1,4 @@
+import { MEETING_LANGUAGES } from '../data/languages';
 import { useEffect, useRef, useState } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
@@ -19,6 +20,7 @@ export interface DumpResult {
 }
 
 interface Props {
+  language?: string; // main meeting language code, for dictation
   users: User[];
   clients: Client[];
   teams: Team[];
@@ -38,7 +40,7 @@ const EXAMPLES = [
 ];
 
 /** Speech-to-text where the browser supports it (Chrome, Edge, Safari). */
-function useDictation(onText: (t: string) => void) {
+function useDictation(onText: (t: string) => void, lang?: string) {
   const rec = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [on, setOn] = useState(false);
   const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -48,7 +50,7 @@ function useDictation(onText: (t: string) => void) {
       const r = new Ctor();
       r.continuous = true;
       r.interimResults = false;
-      r.lang = navigator.language || 'en-US';
+      r.lang = lang || navigator.language || 'en-US'; // the company's main meeting language when it has one
       r.onresult = (e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
         const said = Array.from(e.results as ArrayLike<any>) // eslint-disable-line @typescript-eslint/no-explicit-any
           .slice(e.resultIndex)
@@ -73,7 +75,7 @@ function useDictation(onText: (t: string) => void) {
   return { supported: !!Ctor, on, start, stop };
 }
 
-export function BrainDump({ users, clients, teams, me, aliases, initialText, onCreate, onInvite, onClose }: Props) {
+export function BrainDump({ users, clients, teams, me, aliases, initialText, language, onCreate, onInvite, onClose }: Props) {
   const [text, setText] = useState(initialText ?? '');
   const [step, setStep] = useState<'write' | 'thinking' | 'review'>('write');
   const [rows, setRows] = useState<Row[]>([]);
@@ -84,7 +86,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, onC
   const [error, setError] = useState<string | null>(null);
   const [learned, setLearned] = useState<Record<string, string>>({});
   const [inviting, setInviting] = useState<{ key: number; name: string; email: string } | null>(null);
-  const dict = useDictation((t) => setText((x) => (x ? x.replace(/\s*$/, ' ') : '') + t.trim()));
+  const dict = useDictation((t) => setText((x) => (x ? x.replace(/\s*$/, ' ') : '') + t.trim()), MEETING_LANGUAGES.find((l) => l.code === language)?.speech);
 
   const plan = async () => {
     if (!text.trim()) return;

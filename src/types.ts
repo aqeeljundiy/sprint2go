@@ -495,7 +495,8 @@ export interface Meeting {
   topics?: { name: string; at: number }[]; // ms
   transcript?: { speaker: string; text: string; at: number }[]; // ms since start
   log?: { message: string; at: string }[];
-  recording?: { keep: 'video' | 'audio' | 'notes'; sizeMb: number; downgradeOn?: string; seconds?: number; url?: string }; // url: audio from the recorder bot
+  recording?: { keep: 'video' | 'audio' | 'notes'; sizeMb: number; downgradeOn?: string; seconds?: number; url?: string; videoUrl?: string; videoMb?: number }; // url / videoUrl: from the recorder bot
+  language?: string; // this meeting's language when it differs from the company's (a code from MEETING_LANGUAGES)
   bot?: boolean; // sent with the real recorder (the server and the bot update it)
   needsTasks?: boolean; // the server wrote notes; the sender's app turns the actions into tasks
   share?: { token: string; transcript: boolean; video: boolean };
@@ -609,6 +610,7 @@ export interface MeetingSettings {
   autoTasks?: boolean; // create tasks from action items
   botName: string;
   announce: boolean;
+  languages?: string[]; // what meetings are spoken in, main one first (codes from MEETING_LANGUAGES); empty = detect
 }
 
 export interface StorageSettings {

@@ -1,3 +1,4 @@
+import { LanguagePicker } from '../LanguagePicker';
 import { useState } from 'react';
 import { term } from '../../terms';
 import { Cloud, Download, FileText, HardDrive, Lock, Plus, ShieldCheck, Trash2, Video, X } from 'lucide-react';
@@ -167,9 +168,11 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
 
 /* ---------------- Meetings ---------------- */
 
-// Audio only for now: the notetaker records sound (what the notes come from). Video recording comes later.
-const KEEP: { value: MeetingSettings['keep']; label: string; hint: string }[] = [
+// Audio is the default and the most reliable; video (Beta) also saves cameras and screen shares, with a separate
+// audio file kept alongside so the transcript never depends on the video.
+export const KEEP: { value: MeetingSettings['keep']; label: string; hint: string }[] = [
   { value: 'audio', label: 'Audio and notes', hint: 'About 30 MB per hour' },
+  { value: 'video', label: 'Video, audio and notes (Beta)', hint: 'About 1 GB per hour' },
   { value: 'notes', label: 'Notes and transcript only', hint: 'Under 1 MB per hour' },
 ];
 
@@ -184,12 +187,35 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         <div className="set-block">
           <h3>What to keep</h3>
           <Row title={`${term.Who} meetings`} hint={`Meetings with a ${term.who} on the invite`}>
-            <Select value={m.clientMeetings === 'video' ? 'audio' : m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label={`${term.Who} meetings`} width={280} />
+            <Select value={m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label={`${term.Who} meetings`} width={300} />
           </Row>
           <Row title="Internal meetings" hint="Standups, team syncs">
-            <Select value={m.internalMeetings === 'video' ? 'audio' : m.internalMeetings} onChange={(v) => set({ internalMeetings: v })} options={KEEP} label="Internal meetings" width={280} />
+            <Select value={m.internalMeetings} onChange={(v) => set({ internalMeetings: v })} options={KEEP} label="Internal meetings" width={300} />
           </Row>
-<p className="muted small">The notetaker records audio only for now. Video recording comes later.</p>
+          <div className={`fold ${m.clientMeetings === 'video' || m.internalMeetings === 'video' ? 'open' : ''}`}>
+            <div className="fold-in">
+              <Row title="Turn old video into audio" hint="Keeps the audio, transcript and notes; frees about 97% of the space">
+                <Select
+                  value={String(m.downgradeAfter)}
+                  onChange={(v) => set({ downgradeAfter: Number(v) as MeetingSettings['downgradeAfter'] })}
+                  label="Turn old video into audio"
+                  options={[
+                    { value: '30', label: 'After 30 days' },
+                    { value: '60', label: 'After 60 days' },
+                    { value: '90', label: 'After 90 days' },
+                    { value: '0', label: 'Never' },
+                  ]}
+                />
+              </Row>
+              <p className="muted small">Video is in Beta: the picture can stutter on a busy server. The audio is saved separately, so transcripts and notes are never affected.</p>
+            </div>
+          </div>
+        </div>
+        <div className="set-block">
+          <h3>Languages</h3>
+          <p className="muted small">What your meetings are spoken in. The transcript only ever comes out in these, so Indonesian is never mistaken for Spanish. Pick two (say Indonesian and English) if people mix them; the first is the main one.</p>
+          <LanguagePicker value={m.languages ?? []} onChange={(languages) => set({ languages })} />
+          {!(m.languages?.length) && <p className="muted small">Nothing picked: the speech service guesses the language for each meeting.</p>}
         </div>
         <div className="set-block">
           <h3>Permissions</h3>

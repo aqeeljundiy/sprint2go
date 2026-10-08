@@ -1,3 +1,5 @@
+import { LanguagePicker } from './LanguagePicker';
+import { MEETING_LANGUAGES } from '../data/languages';
 import { useState } from 'react';
 import { term } from '../terms';
 import { Check, Cloud, MailX, Server, Shuffle, X, type LucideIcon } from 'lucide-react';
@@ -58,6 +60,11 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
   const [provider, setProvider] = useState<MailProvider>('google');
   const [emailInput, setMyEmail] = useState('');
   const [keep, setKeep] = useState<MeetingSettings['keep']>('audio');
+  // Meeting languages: a first guess from the browser (Indonesian usually comes mixed with English), easy to change.
+  const [languages, setLanguages] = useState<string[]>(() => {
+    const nav = (typeof navigator !== 'undefined' ? navigator.language : 'en').slice(0, 2).toLowerCase();
+    return nav === 'id' || nav === 'ms' ? [nav, 'en'] : MEETING_LANGUAGES.some((l) => l.code === nav) ? [nav] : ['en'];
+  });
   const [team, setTeam] = useState<Invite[]>([{ key: 1, name: '', email: '', role: 'member', where: 'sprint2go' }]);
 
   const d = domain.trim().toLowerCase().replace(/^@/, '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -104,7 +111,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,
         plan: trialPlan(brand.name.trim(), myEmail),
         ai: defaultAI(false),
-        meetings: { ...DEFAULT_MEETINGS, keep, clientMeetings: keep, internalMeetings: keep },
+        meetings: { ...DEFAULT_MEETINGS, keep, clientMeetings: keep, internalMeetings: keep, languages },
       },
       newUsers,
     );
@@ -211,25 +218,33 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                   );
                 })}
               </div>
-              {apps.includes('meet') && (
-                <div className="ob-keep">
-                  <strong>What should meetings keep by default?</strong>
-                  <p className="muted small">The notetaker records the meeting’s audio for accurate notes, then keeps only this. People can change it per meeting. Video recording comes later.</p>
-                  <div className="cat-pick">
-                    {(
-                      [
-                        ['audio', 'Audio and notes', 'About 30 MB per hour'],
-                        ['notes', 'Notes and transcript only', 'Almost no space'],
-                      ] as const
-                    ).map(([v, l, h]) => (
-                      <button key={v} type="button" className={keep === v ? 'on' : ''} onClick={() => setKeep(v)}>
-                        <strong>{l}</strong>
-                        <small>{h}</small>
-                      </button>
-                    ))}
+              <div className={`fold ${apps.includes('meet') ? 'open' : ''}`} aria-hidden={!apps.includes('meet')}>
+                <div className="fold-in">
+                  <div className="ob-keep">
+                    <strong>What should the notetaker keep?</strong>
+                    <p className="muted small">It writes the notes from the meeting’s audio either way. People can change this per meeting, and you can change it later in Settings.</p>
+                    <div className="cat-pick three">
+                      {(
+                        [
+                          ['audio', 'Audio and notes', 'Recommended. About 30 MB per hour'],
+                          ['video', 'Video too (Beta)', 'Cameras and screen shares. About 1 GB per hour'],
+                          ['notes', 'Notes and transcript only', 'Almost no space'],
+                        ] as const
+                      ).map(([v, l, h]) => (
+                        <button key={v} type="button" className={keep === v ? 'on' : ''} onClick={() => setKeep(v)}>
+                          <strong>{l}</strong>
+                          <small>{h}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ob-keep">
+                    <strong>Which languages are your meetings in?</strong>
+                    <p className="muted small">Transcripts only come out in these. Pick two if people mix them, like Indonesian and English; the first is the main one.</p>
+                    <LanguagePicker value={languages} onChange={setLanguages} />
                   </div>
                 </div>
-              )}
+              </div>
               <p className="trial-note">
                 Your first 14 days are on Studio AI with everything switched on. After that you stay on <b>Free</b> (up to 5 people) unless you pick a plan. No card, no surprise charges.
               </p>

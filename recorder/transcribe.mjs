@@ -142,14 +142,17 @@ async function whisper(t, apiKey, path, { language, prompt }) {
   for (let attempt = 1; ; attempt++) {
     const res = await fetch(`${t.base}/audio/transcriptions`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: form });
     const data = await res.json().catch(() => ({}));
-    if (res.ok) return (data.segments || []).map((s) => ({ start: s.start, end: s.end, text: s.text?.trim(), noSpeech: s.no_speech_prob, logprob: s.avg_logprob }));
+    if (res.ok) return Object.assign((data.segments || []).map((s) => ({ start: s.start, end: s.end, text: s.text?.trim(), noSpeech: s.no_speech_prob, logprob: s.avg_logprob })), { heard: WHISPER_NAMES[String(data.language || '').toLowerCase()] ?? data.language ?? null });
     if ((res.status === 429 || res.status >= 500) && attempt < 4) { await new Promise((r) => setTimeout(r, 5000 * attempt)); continue; }
     throw new Error(`${t.short}: ${data.error?.message || `HTTP ${res.status}`}`);
   }
 }
 
-// ISO 639-1 → 639-3 for ElevenLabs.
+// ISO 639-1 → 639-3 for ElevenLabs, and Whisper's language names → 639-1.
 const ISO3 = { en: 'eng', id: 'ind', ms: 'msa', nl: 'nld', de: 'deu', fr: 'fra', es: 'spa', pt: 'por', ar: 'ara', hi: 'hin', ja: 'jpn' };
+const FROM_ISO3 = Object.fromEntries(Object.entries(ISO3).map(([a, b]) => [b, a]));
+const WHISPER_NAMES = { english: 'en', indonesian: 'id', malay: 'ms', dutch: 'nl', german: 'de', french: 'fr', spanish: 'es', portuguese: 'pt', arabic: 'ar', hindi: 'hi', japanese: 'ja' };
+const langName = (code) => LANGUAGES[code]?.label.split(' (')[0] ?? code;
 
 async function elevenlabs(t, apiKey, path, { language }) {
   const form = new FormData();
@@ -162,7 +165,7 @@ async function elevenlabs(t, apiKey, path, { language }) {
   for (let attempt = 1; ; attempt++) {
     const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': apiKey }, body: form });
     const data = await res.json().catch(() => ({}));
-    if (res.ok) return wordsToSegments(data.words || []);
+    if (res.ok) return Object.assign(wordsToSegments(data.words || []), { heard: FROM_ISO3[data.language_code] ?? data.language_code ?? null });
     if ((res.status === 429 || res.status >= 500) && attempt < 4) { await new Promise((r) => setTimeout(r, 5000 * attempt)); continue; }
     const msg = data.detail?.message || (typeof data.detail === 'string' ? data.detail : null) || `HTTP ${res.status}`;
     throw new Error(`${t.short}: ${msg}`);
@@ -187,7 +190,7 @@ function wordsToSegments(words) {
 
 async function deepgram(apiKey, path, { language, prompt }) {
   // nova-3 for English / auto; Indonesian and some others are on nova-2.
-  const nova3 = ['auto', 'en', 'nl', 'de', 'fr', 'es', 'pt', 'ja', 'hi'].includes(language);
+  const nova3 = ['auto', 'multi', 'en', 'nl', 'de', 'fr', 'es', 'pt', 'ja', 'hi'].includes(language);
   const params = new URLSearchParams({ model: nova3 ? 'nova-3' : 'nova-2', smart_format: 'true', punctuate: 'true', diarize: 'true', utterances: 'true' });
   if (language === 'auto') params.set('detect_language', 'true'); else params.set('language', language);
   if (prompt && nova3) for (const w of prompt.split(', ').slice(0, 50)) params.append('keyterm', w);
@@ -206,9 +209,12 @@ const toSec = (v) => {
   if (p.some((n) => !Number.isFinite(n))) return null;
   return p.reduce((a, n) => a * 60 + n, 0);
 };
-export async function geminiChunk(t, apiKey, model, path, { language, prompt, durationSec }) {
+export async function geminiChunk(t, apiKey, model, path, { language, languages, prompt, durationSec }) {
   const audio = (await readFile(path)).toString('base64');
-  const lang = language === 'auto' ? 'the language(s) spoken' : `${LANGUAGES[language].label.split(' (')[0]} (people may mix in English words or sentences: write those in English exactly as said)`;
+  const list = (languages?.length ? languages : [language]).filter((l) => l && l !== 'auto');
+  const lang = !list.length ? 'the language(s) spoken'
+    : list.length > 1 ? `${list.map(langName).join(' and ')}, often mixed in the same sentence. Write every word in the language it was spoken in; never translate. It is never any other language`
+    : `${langName(list[0])} (people may mix in English words or sentences: write those in English exactly as said). It is never any other language`;
   const system = 'You are a precise meeting transcriber. You write down exactly what was said, word for word. You never translate, summarise, correct grammar or invent words.';
   const text = `Transcribe this meeting recording (${Math.round(durationSec || 600)} seconds). Language: ${lang}.
 ${prompt ? `People in the meeting (use these spellings for names): ${prompt}.
@@ -281,17 +287,35 @@ export async function transcribeRecording(file, stt, captions = [], { names = []
   const prompt = people.length ? people.join(', ') : '';
   // ElevenLabs takes up to 10 hours in one file (better speaker tracking); the others get 10-minute pieces.
   const chunkSec = stt.provider === 'elevenlabs' ? 36_000 : 600;
+  // The company's meeting languages, main one first. One language: always that one. Several: the service
+  // listens for itself, but an answer outside the list (Indonesian heard as Spanish, say) is redone in the main one.
+  const langs = (stt.languages?.length ? stt.languages : [stt.language || 'auto']).filter((l) => LANGUAGES[l]);
+  const main = langs[0] ?? 'auto';
+  const several = langs.length > 1;
+  const DG_MULTI = ['en', 'es', 'fr', 'de', 'hi', 'pt', 'ja', 'nl'];
+  const dgLang = several ? (langs.every((l) => DG_MULTI.includes(l)) ? 'multi' : main) : main;
+  const heardNote = new Set();
+  const checked = async (fn) => {
+    const first = await fn(several ? 'auto' : main);
+    if (!several || !first.heard || langs.includes(first.heard)) {
+      if (first.heard) heardNote.add(first.heard);
+      return first;
+    }
+    log(`${t.short} heard ${langName(first.heard)}, which isn't one of this company's languages; transcribing again in ${langName(main)}`);
+    heardNote.add(main);
+    return fn(main);
+  };
   const { dir, files } = await audioChunks(file, chunkSec, stt.provider === 'sumopod' ? 'mp3' : 'ogg');
   try {
     const segs = [];
     for (const [i, part] of files.entries()) {
       log(`Transcribing part ${i + 1} of ${files.length} with ${t.short}`);
       const offset = i * chunkSec;
-      const got = stt.provider === 'sumopod' ? (await geminiChunk(t, stt.apiKey, stt.model, part, { language: stt.language, prompt, durationSec: await durationSec(part) }))
+      const got = stt.provider === 'sumopod' ? (await geminiChunk(t, stt.apiKey, stt.model, part, { language: main, languages: langs, prompt, durationSec: await durationSec(part) }))
           .map((s) => ({ ...s, dgSpeaker: s.voice ? `${i}:${s.voice}` : null }))   // Gemini's voice labels only hold within one part
-        : stt.provider === 'deepgram' ? await deepgram(stt.apiKey, part, { language: stt.language, prompt })
-        : stt.provider === 'elevenlabs' ? await elevenlabs(t, stt.apiKey, part, { language: stt.language })
-        : await whisper(t, stt.apiKey, part, { language: stt.language, prompt });
+        : stt.provider === 'deepgram' ? await deepgram(stt.apiKey, part, { language: dgLang, prompt })
+        : stt.provider === 'elevenlabs' ? await checked((language) => elevenlabs(t, stt.apiKey, part, { language }))
+        : await checked((language) => whisper(t, stt.apiKey, part, { language, prompt }));
       for (const s of got) segs.push({ ...s, start: s.start + offset, end: s.end + offset });
     }
     // Drop silence guesses and repeats.
@@ -329,6 +353,7 @@ export async function transcribeRecording(file, stt, captions = [], { names = []
         prev.endMs = endMs;
       } else out.push({ speaker, text: s.text, t_ms: startMs, endMs });
     }
+    if (heardNote.size) log(`Language: ${[...heardNote].map(langName).join(' and ')}`);
     return out.map(({ speaker, text, t_ms }) => ({ speaker, text, t_ms }));
   } finally {
     await rm(dir, { recursive: true, force: true });

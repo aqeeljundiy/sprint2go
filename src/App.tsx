@@ -1787,6 +1787,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       .filter((m) => m.needsTasks && m.createdBy === user.id && m.workspaceId === ws.id)
       .forEach((m) => {
         patchMeeting(m.id, { needsTasks: false });
+        // Notes written again (another language, say): AI tasks from the old notes that nobody touched make way for the new ones.
+        setTodos((ts) => ts.filter((t) => !(t.meetingId === m.id && t.source === 'meeting' && !t.done && !t.notes && t.createdBy === user.id)));
         if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) m.actions.forEach((_, i) => meetingActionToTask(m, i, true));
         notify(user.id, 'meeting', `Notes are ready for “${m.title}” · ${m.actions.length} action item${m.actions.length === 1 ? '' : 's'}`, { app: 'meet', id: m.id });
         showToast({ text: `Notes ready for “${m.title}”`, action: { label: 'Open', run: () => openMeeting(m.id) } });
@@ -1794,7 +1796,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, [meetings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** The demo bot: joins, waits to be let in, records a short sample conversation, leaves and writes notes. */
-  const sendBot = (d: { url: string; title: string; botName: string; clientId: string; attendees?: string[]; fromEvent?: string }) => {
+  const sendBot = (d: { url: string; title: string; botName: string; clientId: string; attendees?: string[]; fromEvent?: string; language?: string }) => {
     const id = uid();
     const zoom = /zoom/i.test(d.url);
     const m: Meeting = { id, workspaceId: ws.id, title: d.title, at: nowIso(), minutes: 0, clientId: d.clientId || undefined, filedBy: d.clientId ? 'user' : undefined, attendees: d.attendees ?? [], summary: '', actions: [], status: 'queued', platform: zoom ? 'zoom' : 'meet', url: d.url, botName: d.botName, transcript: [], log: [{ message: d.fromEvent ? `Sent from calendar: ${d.title}` : 'Queued', at: nowIso() }], createdBy: user.id };
@@ -1804,8 +1806,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     go('meet');
     // With the real recorder, the server saves the meeting and the bot fills it in from there.
     if (recorderOn) {
-      setMeetings((ms) => [{ ...m, bot: true }, ...ms]);
-      void fetch('/api/meet/bot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ meeting: { ...m, bot: true } }) }).then(async (r) => {
+      const real = { ...m, bot: true, ...(d.language ? { language: d.language } : {}) };
+      setMeetings((ms) => [real, ...ms]);
+      void fetch('/api/meet/bot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ meeting: real }) }).then(async (r) => {
         if (!r.ok) showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t send the notetaker' });
       });
       return;
@@ -2907,6 +2910,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onPage={setMeetPage}
             onStop={stopBot}
             onRegenerate={(id) => finishMeeting(id, true)}
+            onTranscribeAgain={
+              recorderOn
+                ? (id, language) =>
+                    void fetch(`/api/meet/again/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language }) }).then(async (r) =>
+                      showToast({ text: r.ok ? 'Transcribing again. The notes update when it’s done.' : (((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t transcribe again') }),
+                    )
+                : undefined
+            }
             onDelete={deleteMeeting}
             onFolder={setMeetingFolder}
             onPatch={patchMeeting}
@@ -3527,7 +3538,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           }}
         />
       )}
-      {sendBotOpen && <SendBotDialog clients={wsClients} botName={meetSettings.botName} onSend={sendBot} onClose={() => setSendBotOpen(false)} />}
+      {sendBotOpen && <SendBotDialog clients={wsClients} botName={meetSettings.botName} languages={meetSettings.languages} real={recorderOn} onSend={sendBot} onClose={() => setSendBotOpen(false)} />}
       {shareFor && meetings.some((m) => m.id === shareFor) && (
         <ShareDialog
           m={meetings.find((m) => m.id === shareFor)!}
@@ -3632,6 +3643,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       )}
       {dump !== null && (
         <BrainDump
+          language={meetSettings.languages?.[0]}
           users={members}
           clients={wsClients}
           teams={wsTeams}

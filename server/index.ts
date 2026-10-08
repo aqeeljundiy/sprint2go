@@ -11,6 +11,7 @@ import * as ai from './ai.ts';
 import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
+import { languageName, languagesText } from '../src/data/languages.ts';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
@@ -355,13 +356,18 @@ const sameSecret = (got: string) => {
   return !!RECORDER_SECRET && a.length === b.length && timingSafeEqual(a, b);
 };
 
-/** Speech to text for a company's meetings: the service picked for meeting audio, else any speech key they saved. */
-function sttFor(ws: Ws & { meetings?: { language?: string } }) {
+/**
+ * Speech to text for a company's meetings, in the company's meeting languages (main first), or one language
+ * picked for this meeting. Mixed languages go to Gemini (through SumoPod) when the company has that key,
+ * since it copes with two languages in one sentence; otherwise the service picked for meeting audio, else any speech key.
+ */
+function sttFor(ws: Ws & { meetings?: { languages?: string[] } }, only?: string) {
+  const languages = only ? [only] : (ws.meetings?.languages ?? []).slice(0, 4);
   const pick = ws.ai?.jobs?.speech?.provider;
-  for (const p of [pick, ...STT]) {
+  for (const p of [languages.length > 1 ? 'sumopod' : null, pick, ...STT]) {
     if (!p || !STT.includes(p)) continue;
     const k = db.loadKey(ws.id, p);
-    if (k) return { provider: p, apiKey: k.key, model: p === 'sumopod' ? 'gemini/gemini-3.5-flash' : null, language: ws.meetings?.language ?? 'auto' };
+    if (k) return { provider: p, apiKey: k.key, model: p === 'sumopod' ? 'gemini/gemini-3.5-flash' : null, languages, language: languages[0] ?? 'auto' };
   }
   return null;
 }
@@ -384,8 +390,29 @@ function fileMeeting(ws: any, m: any, aiFolder: string, clients: any[]) {
   return c ? { clientId: c.id, filedBy: 'ai', by: 'AI' } : { clientId: undefined, filedBy: undefined, by: '' };
 }
 
-/** After the bot has the transcript: notes with the company's "Meeting notes" AI, filing, what to keep. */
-async function writeMeetingNotes(id: string) {
+/**
+ * Keep only what the company chose for this kind of meeting, deleting the rest on the recorder.
+ * Without notes (no transcript, or no AI) the audio always stays, so the meeting can be transcribed again later.
+ */
+async function trimRecording(cur: any, ws: any, clientId: string | undefined, haveNotes: boolean) {
+  const settings = ws.meetings ?? {};
+  const wanted = (clientId ? settings.clientMeetings : settings.internalMeetings) ?? settings.keep ?? 'audio';
+  const keep = wanted === 'video' && cur.recording?.videoUrl ? 'video' : wanted === 'notes' && haveNotes ? 'notes' : 'audio';
+  if (!cur.recording?.url) return { recording: cur.recording, line: [] as string[] };
+  const what = haveNotes ? 'notes' : 'transcript';
+  if (keep === 'notes') {
+    await recorder(`/recordings/${cur.id}`, { method: 'DELETE' }).catch(() => {});
+    return { recording: { keep: 'notes', sizeMb: 0 }, line: ['Kept: notes and transcript only (the recording was deleted)'] };
+  }
+  if (keep === 'audio' && cur.recording.videoUrl) {
+    await recorder(`/recordings/${cur.id}?only=video`, { method: 'DELETE' }).catch(() => {});
+    return { recording: { ...cur.recording, keep: 'audio', videoUrl: undefined, videoMb: undefined }, line: [`Kept: audio and ${what} (the video was deleted)`] };
+  }
+  return { recording: { ...cur.recording, keep }, line: [keep === 'video' ? `Kept: video, audio and ${what}` : `Kept: audio and ${what}`] };
+}
+
+/** After the bot has the transcript: notes with the company's "Meeting notes" AI, filing, what to keep. Again = a new transcript of the same meeting. */
+async function writeMeetingNotes(id: string, again = false) {
   const m = db.getDoc('meetings', id) as any;
   const ws = workspaces().find((w) => w.id === m?.workspaceId) as any;
   if (!m || !ws) return;
@@ -393,19 +420,23 @@ async function writeMeetingNotes(id: string) {
     const cur = db.getDoc('meetings', id) as any;
     if (cur) saveMeeting({ ...cur, ...extra, status: 'done', log: [...(cur.log ?? []), ...lines.map(meetLine), meetLine('Done')] });
   };
-  if (!m.transcript?.length) return finish({}, 'No transcript, so no notes');
+  const noNotes = async (why: string) => {
+    if (again) return finish({}, why);
+    const t = await trimRecording(m, ws, m.clientId, false);
+    finish({ recording: t.recording }, why, ...t.line);
+  };
+  if (!m.transcript?.length) return noNotes('No transcript, so no notes');
   const cfg = aiFor(ws.id, 'meeting');
-  if (!cfg) return finish({}, 'No AI is set up for meeting notes, so only the transcript is kept');
+  if (!cfg) return noNotes('No AI is set up for meeting notes, so only the transcript is kept');
   cfg.onUsage = (inTokens, outTokens) => db.logUsage({ workspaceId: ws.id, userId: m.createdBy ?? '', job: 'meeting', provider: cfg.included ? 'included' : cfg.provider, model: cfg.model, inTokens, outTokens });
   try {
     const clients = (db.allDocs('clients') as any[]).filter((c) => c.workspaceId === ws.id && c.status !== 'ended');
     const members = ws.members.map((x: any) => String((db.getDoc('users', x.userId) as any)?.name ?? '').split(' ')[0]).filter(Boolean);
     const notes = await withAI(cfg, () => ai.meetingNotes({ title: m.title, transcript: m.transcript, clientNames: clients.map((c) => c.name), members }));
     const cur = db.getDoc('meetings', id) as any;
-    const filed = cur.filedBy === 'user' ? { clientId: cur.clientId, filedBy: 'user', by: '' } : fileMeeting(ws, { ...cur, summary: notes.summary }, notes.folder, clients);
-    const settings = ws.meetings ?? {};
-    const keep = (filed.clientId ? settings.clientMeetings : settings.internalMeetings) === 'notes' ? 'notes' : 'audio';
-    if (keep === 'notes' && cur.recording?.url) await recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
+    // Transcribing again keeps the filing and the recording as they are.
+    const filed = again || cur.filedBy === 'user' ? { clientId: cur.clientId, filedBy: cur.filedBy, by: '' } : fileMeeting(ws, { ...cur, summary: notes.summary }, notes.folder, clients);
+    const kept = again ? { recording: cur.recording, line: [] as string[] } : await trimRecording(cur, ws, filed.clientId, true);
     const name = clients.find((c) => c.id === filed.clientId)?.name;
     finish(
       {
@@ -420,16 +451,16 @@ async function writeMeetingNotes(id: string) {
         actions: notes.actions,
         clientId: filed.clientId,
         filedBy: filed.filedBy,
-        sharedWithClient: cur.sharedWithClient ?? (filed.clientId ? !!settings.shareNotesWithClient : false),
-        recording: keep === 'notes' ? { keep: 'notes', sizeMb: 0 } : cur.recording,
+        sharedWithClient: cur.sharedWithClient ?? (filed.clientId ? !!ws.meetings?.shareNotesWithClient : false),
+        recording: kept.recording,
         needsTasks: true,
       },
-      'Notes written',
+      again ? 'Notes written again from the new transcript' : 'Notes written',
       ...(filed.by && name ? [`Filed in ${name} by ${filed.by}`] : []),
-      keep === 'notes' ? 'Kept: notes and transcript only (the audio was deleted)' : 'Kept: audio and notes',
+      ...kept.line,
     );
   } catch (err) {
-    finish({}, `Could not write notes: ${err instanceof AIError ? err.message : 'the AI service failed'}. Try "Write notes again" later.`);
+    finish({}, `Could not write notes: ${err instanceof AIError ? err.message : 'the AI service failed'}. Try "Regenerate notes" later.`);
   }
 }
 
@@ -540,13 +571,15 @@ createServer(async (req, res) => {
         if (Array.isArray(b.transcript)) next.transcript = b.transcript;
         if (b.recording) {
           next.minutes = Math.max(1, Math.round(b.recording.seconds / 60));
-          next.recording = { keep: 'audio', sizeMb: b.recording.sizeMb, seconds: b.recording.seconds, url: `/api/meet/audio/${m.id}` };
+          const video = b.recording.videoMb ? { videoUrl: `/api/meet/video/${m.id}`, videoMb: b.recording.videoMb } : {};
+          next.recording = { keep: b.recording.videoMb ? 'video' : 'audio', sizeMb: b.recording.sizeMb, seconds: b.recording.seconds, url: `/api/meet/audio/${m.id}`, ...video };
         }
         next.status = 'processing';
         next.log = [...(next.log ?? []), meetLine('Writing notes')];
-      } else if (typeof b.status === 'string' && (BOT_LIVE.has(b.status) || ['failed', 'stopped'].includes(b.status))) next.status = b.status;
+      } else if (b.status === 'again-failed') next.status = 'done';
+      else if (typeof b.status === 'string' && (BOT_LIVE.has(b.status) || ['failed', 'stopped'].includes(b.status))) next.status = b.status;
       saveMeeting(next);
-      if (b.status === 'recorded') void writeMeetingNotes(m.id);
+      if (b.status === 'recorded') void writeMeetingNotes(m.id, !!b.again);
       return json(res, 200, {});
     }
 
@@ -666,12 +699,13 @@ createServer(async (req, res) => {
       const sent = await recorder('/bots', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws), names, announce: ws.meetings?.announce !== false }),
+        // Video when this kind of meeting keeps video (or might: it's filed after the meeting, and an unneeded video is deleted then).
+        body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws, doc.language), names, announce: ws.meetings?.announce !== false, video: (doc.clientId ? [ws.meetings?.clientMeetings] : [ws.meetings?.clientMeetings, ws.meetings?.internalMeetings]).includes('video') }),
       }).then(async (r) => (r.ok ? null : ((await r.json().catch(() => ({}))) as any).error ?? `Recorder said ${r.status}`), () => 'The recorder didn’t answer');
       if (sent) saveMeeting({ ...doc, status: 'failed', error: sent, log: [...doc.log, meetLine(`Couldn’t send the bot: ${sent}`)] });
       return json(res, sent ? 502 : 200, sent ? { error: sent } : {});
     }
-    const meetId = p.match(/^\/api\/meet\/(stop|audio)\/([\w-]+)$/);
+    const meetId = p.match(/^\/api\/meet\/(stop|audio|video|again)\/([\w-]+)$/);
     if (meetId) {
       const m = db.getDoc('meetings', meetId[2]) as any;
       if (!m?.bot || !memberOf(me).some((w) => w.id === m.workspaceId)) return json(res, 404, { error: 'No such meeting.' });
@@ -682,11 +716,25 @@ createServer(async (req, res) => {
         saveMeeting({ ...m, status: gone ? (m.status === 'recording' ? 'failed' : 'stopped') : 'stopping', log: [...(m.log ?? []), meetLine(gone ? 'The bot was no longer running' : 'Asked to leave')] });
         return json(res, 200, {});
       }
-      if (meetId[1] === 'audio') {
+      if (meetId[1] === 'again' && req.method === 'POST') {
+        // Transcribe the kept audio again, in another language or with the company's languages, then rewrite the notes.
+        const { language } = await body(req);
+        const ws = workspaces().find((w) => w.id === m.workspaceId) as any;
+        const only = typeof language === 'string' && /^[a-z]{2}$/.test(language) ? language : undefined;
+        const stt = sttFor(ws, only);
+        if (!stt) return json(res, 409, { error: 'Add a speech-to-text key in Settings → AI first.' });
+        if (!m.recording?.url) return json(res, 409, { error: 'This meeting’s audio wasn’t kept.' });
+        const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
+        const r = await recorder(`/recordings/${m.id}/transcribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stt, names, callback: `${PUBLIC_URL}/api/meet/recorder` }) }).catch(() => null);
+        if (!r?.ok) return json(res, 502, { error: 'The recorder couldn’t start transcribing.' });
+        saveMeeting({ ...m, ...(only ? { language: only } : {}), status: 'processing', log: [...(m.log ?? []), meetLine(`Transcribing again in ${only ? languageName(only) : languagesText(ws.meetings?.languages)}`)] });
+        return json(res, 200, {});
+      }
+      if (meetId[1] === 'audio' || meetId[1] === 'video') {
         const watch = m.access?.watch ?? 'everyone';
         const me2 = (db.getDoc('users', me) as any)?.name;
         if ((watch === 'admins' && !isAdminOf(me, m.workspaceId)) || (watch === 'attendees' && !isAdminOf(me, m.workspaceId) && m.createdBy !== me && !(m.attendees ?? []).includes(me2))) return json(res, 403, { error: 'You can’t play this recording.' });
-        const r = await recorder(`/recordings/${m.id}`, { headers: req.headers.range ? { range: String(req.headers.range) } : {} }).catch(() => null);
+        const r = await recorder(`/recordings/${m.id}${meetId[1] === 'video' ? '/video' : ''}`, { headers: req.headers.range ? { range: String(req.headers.range) } : {} }).catch(() => null);
         if (!r?.ok || !r.body) return json(res, r?.status === 404 ? 404 : 502, { error: 'Recording not available.' });
         const h: Record<string, string> = { 'cache-control': 'private, max-age=3600' };
         for (const k of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
@@ -734,6 +782,18 @@ createServer(async (req, res) => {
         .map((d) => {
           // A meeting the recorder bot is still in: the bot's fields come from the bot, not from an older copy in someone's app.
           const before = coll === 'meetings' ? (db.getDoc(coll, d!.id) as any) : null;
+          // Keeping less of a finished recording deletes it on the recorder, so the storage really comes back.
+          if (before?.recording?.url && !BOT_LIVE.has(before.status) && RECORDER_URL) {
+            const keep = (d as any).recording?.keep;
+            if (keep === 'notes') {
+              void recorder(`/recordings/${d!.id}`, { method: 'DELETE' }).catch(() => {});
+              return { ...d, recording: { keep: 'notes', sizeMb: 0 } };
+            }
+            if (keep === 'audio' && before.recording.videoUrl) {
+              void recorder(`/recordings/${d!.id}?only=video`, { method: 'DELETE' }).catch(() => {});
+              return { ...d, recording: { ...before.recording, keep: 'audio', videoUrl: undefined, videoMb: undefined } };
+            }
+          }
           if (!before?.bot || !BOT_LIVE.has(before.status)) return d;
           return { ...d, bot: true, ...Object.fromEntries(BOT_FIELDS.filter((k) => k in before).map((k) => [k, before[k]])) };
         }) as db.Doc[];
@@ -886,6 +946,21 @@ createServer(async (req, res) => {
 }).listen(PORT, HOST, () => console.log(`Sprint2go on http://localhost:${PORT}`));
 
 /* ---------- background jobs: scheduled mail, snoozes, task reminders ---------- */
+
+// Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
+setInterval(() => {
+  if (!RECORDER_URL) return;
+  const now = Date.now();
+  for (const m of db.allDocs('meetings') as any[]) {
+    if (!m.recording?.videoUrl) continue;
+    const days = (workspaces().find((w) => w.id === m.workspaceId) as any)?.meetings?.downgradeAfter ?? 60;
+    if (!days || now - Date.parse(m.at) < days * 86_400_000) continue;
+    void recorder(`/recordings/${m.id}?only=video`, { method: 'DELETE' }).then(
+      () => saveMeeting({ ...m, recording: { ...m.recording, keep: 'audio', videoUrl: undefined, videoMb: undefined }, log: [...(m.log ?? []), meetLine(`Video turned into audio after ${days} days`)] }),
+      () => {},
+    );
+  }
+}, 3_600_000);
 
 setInterval(() => {
   const now = new Date().toISOString();

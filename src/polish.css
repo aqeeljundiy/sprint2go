@@ -2992,3 +2992,67 @@ kbd {
 .side-card > .te-empty {
   padding: 4px 18px 16px;
 }
+
+/* A meeting recorded with video: the video fills the player; the same play button, bar and time sit on top. */
+.m-player.video {
+  aspect-ratio: 16 / 9;
+  background: #0d0d0d;
+}
+.m-player .m-video-el {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+}
+.m-player.video .m-play {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+/* While a video plays, the play button steps aside until the pointer comes back. */
+.m-player.video.is-playing .m-play {
+  opacity: 0;
+  transform: scale(0.92);
+}
+.m-player.video.is-playing:hover .m-play {
+  opacity: 1;
+  transform: none;
+}
+
+.lang-chips .lang-main {
+  font-style: normal;
+  font-size: 11px;
+  margin-left: 4px;
+  opacity: 0.75;
+}
+
+/* Above a recorded meeting's transcript: what language it was heard in, and a way to redo it. */
+.tr-again {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 0 4px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Narrow meeting pane: header pickers keep their words, tab actions drop to icons, nothing runs off the edge. */
+.meet-page header .sel,
+.tr-again .sel {
+  flex-shrink: 0;
+}
+@container (max-width: 640px) {
+  .m-tabs .m-tab-act .lbl {
+    display: none;
+  }
+}
+
+/* The trial note is a sentence: inline bold words stay in the line instead of becoming flex columns. */
+p.trial-note {
+  display: block;
+}
+p.trial-note > svg:first-child {
+  vertical-align: -2px;
+  margin-right: 6px;
+}

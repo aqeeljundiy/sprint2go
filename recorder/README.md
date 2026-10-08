@@ -2,7 +2,11 @@
 
 A bot that joins Google Meet or Zoom as a guest, records the meeting's audio, and reports back to Sprint2go: status, live captions, and at the end the transcript. Sprint2go writes the notes with the company's own "Meeting notes" AI.
 
-Based on the open-source meeting app's bot (page.mjs, platforms.mjs and transcribe.mjs are copied from it). Audio only for now.
+Based on the open-source meeting app's bot (page.mjs, platforms.mjs and transcribe.mjs are copied from it).
+
+- **Audio** by default. When a company keeps video (Beta), the bot also records cameras and screen shares; the audio is still saved as its own file, and that file is what gets transcribed.
+- **Languages**: Sprint2go sends the company's meeting languages, main one first. One language is always used as is. With several, the speech service listens for itself, and an answer outside the list is redone in the main language. Mixed languages go to Gemini (SumoPod) when the company has that key. Meet's live captions are switched to the main language.
+- **Transcribe again**: the audio and the live captions are kept, so a meeting can be transcribed again in another language later.
 
 ## Run it
 

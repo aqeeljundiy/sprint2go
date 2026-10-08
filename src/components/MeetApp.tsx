@@ -1,3 +1,4 @@
+import { MEETING_LANGUAGES, languageName, languagesText } from '../data/languages';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight, TabPane } from './ui/Smooth';
@@ -51,8 +52,8 @@ export const STATUS_LABEL: Record<NonNullable<Meeting['status']>, string> = {
 };
 export const LIVE = new Set(['queued', 'joining', 'waiting_room', 'recording', 'stopping', 'processing']);
 export const TYPE_LABEL: Record<MeetingType, string> = { sales: 'Sales', get client() { return `${term.One}`; }, internal: 'Internal', hiring: 'Hiring', partner: 'Partner', one_on_one: '1:1', other: 'Other' };
-// Audio only for now (older meetings saved as "video" are shown as audio). Video recording comes later.
-const KEEP_LABEL = { video: 'Audio and notes', audio: 'Audio and notes', notes: 'Notes and transcript only' } as const;
+// Video is a company choice (Beta); a meeting only shows video when the bot actually recorded it.
+const KEEP_LABEL = { video: 'Video, audio and notes', audio: 'Audio and notes', notes: 'Notes and transcript only' } as const;
 export const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 const sizeOf = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : mb < 1 ? 'Under 1 MB' : `${Math.round(mb)} MB`);
 
@@ -141,6 +142,7 @@ export interface MeetProps {
   onPage: (p: MeetPage) => void;
   onStop: (id: string) => void;
   onRegenerate: (id: string) => void;
+  onTranscribeAgain?: (id: string, language?: string) => void; // real recordings: transcribe the audio again, then rewrite the notes
   onDelete: (id: string) => void;
   onFolder: (id: string, clientId: string | null, remember: boolean) => void;
   onPatch: (id: string, p: Partial<Meeting>) => void;
@@ -301,10 +303,11 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
   const doneN = mTasks.filter((t) => t.done).length;
   const speakers = [...new Set((m.transcript ?? []).map((l) => l.speaker))];
   const rawKeep = m.recording?.keep ?? (status === 'done' ? p.settings.keep : undefined);
-  const keep = rawKeep === 'video' ? 'audio' : rawKeep; // audio only for now
-  // A real recording from the bot plays through <audio>; demo meetings run the same controls on a timer.
-  const audio = useRef<HTMLAudioElement>(null);
-  const real = keep === 'audio' && !!m.recording?.url;
+  const keep = rawKeep === 'video' && !m.recording?.videoUrl ? 'audio' : rawKeep; // demo and older meetings have no real video
+  // A real recording from the bot plays through <audio> or <video>; demo meetings run the same controls on a timer.
+  const audio = useRef<HTMLMediaElement>(null);
+  const real = (keep === 'audio' || keep === 'video') && !!m.recording?.url;
+  const isVideo = keep === 'video' && !!m.recording?.videoUrl;
   const duration = real && m.recording?.seconds ? m.recording.seconds * 1000 : (m.minutes || 1) * 60_000;
 
   useEffect(() => {
@@ -430,8 +433,12 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                 <span>{status === 'recording' ? 'Recording in progress. It appears here when the meeting ends.' : status === 'failed' || status === 'stopped' ? 'There is no recording for this meeting.' : 'The recording appears here after the meeting.'}</span>
               </div>
             ) : (
-              <div className={`m-player ${keep}`}>
-                {real && <audio ref={audio} src={m.recording!.url} preload="metadata" onTimeUpdate={(e) => setTime(e.currentTarget.currentTime * 1000)} onEnded={() => setPlaying(false)} />}
+              <div className={`m-player ${keep}${playing ? ' is-playing' : ''}`}>
+                {isVideo ? (
+                  <video ref={audio as React.RefObject<HTMLVideoElement>} className="m-video-el" src={m.recording!.videoUrl} preload="metadata" playsInline onClick={() => setPlaying((x) => !x)} onTimeUpdate={(e) => setTime(e.currentTarget.currentTime * 1000)} onEnded={() => setPlaying(false)} />
+                ) : (
+                  real && <audio ref={audio as React.RefObject<HTMLAudioElement>} src={m.recording!.url} preload="metadata" onTimeUpdate={(e) => setTime(e.currentTarget.currentTime * 1000)} onEnded={() => setPlaying(false)} />
+                )}
                 {keep === 'audio' && (
                   <span className="voice-wave playing-static">
                     {Array.from({ length: 48 }, (_, i) => (
@@ -455,13 +462,21 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                 <span className="muted small">Keep:</span>
                 <Select
                   value={keep ?? p.settings.keep}
-                  onChange={(v) => p.onPatch(m.id, { recording: { ...m.recording, keep: v, sizeMb: v === 'audio' ? (m.minutes || 30) * 0.5 : 0.4 } })}
+                  onChange={(v) => {
+                    if (m.recording?.url) {
+                      // A real recording: keeping less deletes it for good.
+                      const loses = v === 'notes' ? 'the recording' : v === 'audio' && keep === 'video' ? 'the video (the audio stays)' : '';
+                      if (loses && !confirm(`Delete ${loses} for good? This can’t be undone.`)) return;
+                      return p.onPatch(m.id, { recording: { ...m.recording, keep: v } });
+                    }
+                    p.onPatch(m.id, { recording: { ...m.recording, keep: v, sizeMb: v === 'audio' ? (m.minutes || 30) * 0.5 : 0.4 } });
+                  }}
                   label="What to keep"
                   className="sel-flat"
                   width={280}
-                  options={(['audio', 'notes'] as const).map((k) => ({ value: k, label: KEEP_LABEL[k], hint: k === 'audio' ? `About ${sizeOf((m.minutes || 30) * 0.5)}` : 'Under 1 MB' }))}
+                  options={(m.recording?.videoUrl ? (['video', 'audio', 'notes'] as const) : m.bot && !m.recording?.url ? (['notes'] as const) : (['audio', 'notes'] as const)).map((k) => ({ value: k, label: KEEP_LABEL[k], hint: k === 'video' ? `About ${sizeOf(m.recording?.videoMb ?? 0)}` : k === 'audio' ? `About ${sizeOf(m.recording?.url ? m.recording.sizeMb : (m.minutes || 30) * 0.5)}` : 'Under 1 MB' }))}
                 />
-                {keep === 'audio' && m.recording && <span className="muted small">{sizeOf(m.recording.sizeMb)} of team storage</span>}
+                {keep !== 'notes' && m.recording && <span className="muted small">{sizeOf(m.recording.sizeMb + (keep === 'video' ? m.recording.videoMb ?? 0 : 0))} of team storage</span>}
                 <button ref={accessBtn} className="link-btn small" onClick={() => setAccessOpen(true)}>
                   <Lock size={12} /> Who can see this
                 </button>
@@ -524,12 +539,12 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
           ))}
           <span className="spacer" />
           {tab === 'transcript' && (m.transcript?.length ?? 0) > 0 && (
-            <button onClick={downloadTxt}>
-              <Download size={13} /> Download .txt
+            <button className="m-tab-act" onClick={downloadTxt} title="Download .txt">
+              <Download size={13} /> <span className="lbl">Download .txt</span>
             </button>
           )}
-          <button onClick={copy}>
-            <Copy size={13} /> Copy
+          <button className="m-tab-act" onClick={copy} title="Copy">
+            <Copy size={13} /> <span className="lbl">Copy</span>
           </button>
         </div>
 
@@ -621,6 +636,20 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
 
         {tab === 'transcript' && (
           <div className="m-transcript">
+            {!live && m.bot && m.recording?.url && p.onTranscribeAgain && (
+              <div className="tr-again">
+                <span className="muted small">Spoken in {m.language ? languageName(m.language) : languagesText(p.settings.languages)}. Wrong language or messy?</span>
+                <Select<string>
+                  value={null}
+                  onChange={(v) => p.onTranscribeAgain!(m.id, v === 'company' ? undefined : v)}
+                  placeholder="Transcribe again in…"
+                  label="Transcribe again in"
+                  className="sel-flat"
+                  width={260}
+                  options={[{ value: 'company', label: languagesText(p.settings.languages), hint: 'Your company’s meeting languages' }, ...MEETING_LANGUAGES.map((l) => ({ value: l.code, label: l.label, hint: m.language === l.code ? 'Used last time' : undefined }))]}
+                />
+              </div>
+            )}
             {(m.transcript ?? []).map((l, i) => (
               <button key={i} className={`tl ${time >= l.at && time < (m.transcript![i + 1]?.at ?? Infinity) && playing ? 'now' : ''}`} onClick={() => seek(l.at)}>
                 <time>{mmss(l.at)}</time>
@@ -982,15 +1011,16 @@ function Upcoming(p: MeetProps) {
 
 /* ---------------- Send bot ---------------- */
 
-export function SendBotDialog({ clients, botName, onSend, onClose }: { clients: Client[]; botName: string; onSend: (d: { url: string; title: string; botName: string; clientId: string }) => void; onClose: () => void }) {
+export function SendBotDialog({ clients, botName, languages, real, onSend, onClose }: { clients: Client[]; botName: string; languages?: string[]; real?: boolean; onSend: (d: { url: string; title: string; botName: string; clientId: string; language?: string }) => void; onClose: () => void }) {
   const [url, setUrl] = useState('');
+  const [language, setLanguage] = useState('');
   const [title, setTitle] = useState('');
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [err, setErr] = useState('');
   const send = () => {
     if (!/^https?:\/\/(meet\.google\.com|[\w.-]*zoom\.us)\//i.test(url.trim())) return setErr('Paste a Google Meet or Zoom link');
-    onSend({ url: url.trim(), title: title.trim(), botName: name.trim() || botName, clientId });
+    onSend({ url: url.trim(), title: title.trim(), botName: name.trim() || botName, clientId, language: language || undefined });
   };
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
@@ -1023,7 +1053,16 @@ export function SendBotDialog({ clients, botName, onSend, onClose }: { clients: 
             <span>Folder (optional, otherwise filed automatically)</span>
             <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none="Auto" label="Folder" />
           </div>
-          <p className="muted small">Demo: no real bot is sent. You’ll see it join, record a short sample conversation and write the notes.</p>
+          <div className="field">
+            <span>Spoken in</span>
+            <Select<string>
+              value={language}
+              onChange={setLanguage}
+              label="Spoken in"
+              options={[{ value: '', label: languagesText(languages), hint: 'Your company’s meeting languages' }, ...MEETING_LANGUAGES.map((l) => ({ value: l.code, label: l.label, hint: 'Just this meeting' }))]}
+            />
+          </div>
+          {!real && <p className="muted small">Demo: no real bot is sent. You’ll see it join, record a short sample conversation and write the notes.</p>}
           </SmoothHeight>
         </div>
         <footer className="modal-foot">

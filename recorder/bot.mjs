@@ -3,7 +3,7 @@
 // back to Sprint2go by HTTP: status, log lines, live captions, and at the end the transcript.
 // Audio only: the meeting's mixed sound, recorded as Opus in WebM.
 import { chromium } from 'playwright';
-import { createWriteStream, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -67,7 +67,11 @@ let chromeProc;
 let profileDir;
 let recStart = 0;
 let recDone;
+let videoDone;
+// <id>.webm is always the audio (what gets transcribed and played); <id>.video.webm only when video was asked for.
 const recFile = join(recDir, `${id}.webm`);
+const videoFile = join(recDir, `${id}.video.webm`);
+const wantVideo = job.video === true;
 
 function chromePath() {
   return [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome']
@@ -118,11 +122,23 @@ async function main() {
   const context = await launchBrowser();
   const page = context.pages()[0] || (await context.newPage());
 
-  const out = createWriteStream(recFile);
-  let resolveRec;
+  // With video, the page's main recorder writes the video and a second, cheap one writes the audio,
+  // so the sound survives even if the video stutters. Audio only: the main recorder is the audio.
+  const audioOut = createWriteStream(recFile);
+  let resolveRec, resolveVideo;
   recDone = new Promise((r) => { resolveRec = r; });
-  await page.exposeFunction('__mbChunk', (b64) => { out.write(Buffer.from(b64, 'base64')); });
-  await page.exposeFunction('__mbRecStopped', () => out.end(resolveRec));
+  videoDone = new Promise((r) => { resolveVideo = r; });
+  if (wantVideo) {
+    const videoOut = createWriteStream(videoFile);
+    await page.exposeFunction('__mbChunk', (b64) => { videoOut.write(Buffer.from(b64, 'base64')); });
+    await page.exposeFunction('__mbRecStopped', () => videoOut.end(resolveVideo));
+    await page.exposeFunction('__mbAudioChunk', (b64) => { audioOut.write(Buffer.from(b64, 'base64')); });
+    await page.exposeFunction('__mbAudioStopped', () => audioOut.end(resolveRec));
+  } else {
+    resolveVideo();
+    await page.exposeFunction('__mbChunk', (b64) => { audioOut.write(Buffer.from(b64, 'base64')); });
+    await page.exposeFunction('__mbRecStopped', () => audioOut.end(resolveRec));
+  }
   await page.exposeFunction('__mbRecState', (state, detail) => log(`Recorder ${state}: ${detail}`));
 
   await page.addInitScript(hookAudioTracks);
@@ -147,13 +163,14 @@ async function main() {
 
   log('Let in');
   await sleep(2000);
-  const lang = job.stt?.language || 'auto';
+  // Meet's live captions in the company's main meeting language (they default to English).
+  const lang = job.stt?.languages?.[0] || job.stt?.language || 'auto';
   await platform.afterJoin(page, log, { captionLanguage: LANGUAGES[lang]?.meet && lang !== 'en' ? { name: LANGUAGES[lang].label.split(' (')[0], pattern: LANGUAGES[lang].meet } : null });
-  if (job.announce !== false) await platform.announce(page, `Hi, I'm ${job.botName}. I'm recording this meeting's audio and taking notes.`, log);
+  if (job.announce !== false) await platform.announce(page, `Hi, I'm ${job.botName}. I'm recording this meeting${wantVideo ? '' : "'s audio"} and taking notes.`, log);
 
   await grabTabAudio(page);
-  const r = await startCompositeRecorder(page, { video: false });
-  log(`Recording audio from ${r.tabAudio ? 'the tab' : `${r.audioTracks} call stream${r.audioTracks === 1 ? '' : 's'}`}`);
+  const r = await startCompositeRecorder(page, { video: wantVideo });
+  log(`Recording ${wantVideo ? 'video (cameras and screen shares) and audio' : 'audio'}; sound from ${r.tabAudio ? 'the tab' : `${r.audioTracks} call stream${r.audioTracks === 1 ? '' : 's'}`}`);
   setTimeout(async () => {
     const lvl = await audioLevel(page, 8000).catch(() => null);
     if (lvl != null) log(lvl > 0.002 ? 'Sound is coming through' : 'Silent so far (nobody talking yet, or no sound reaching the bot)');
@@ -198,7 +215,7 @@ async function main() {
 async function finish(page, finalStatus) {
   if (recStart) {
     await stopRecorder(page);
-    await Promise.race([recDone, sleep(15000)]);
+    await Promise.race([Promise.all([recDone, videoDone]), sleep(15000)]);
   }
   await platform.leave(page).catch(() => {});
   log('Left the meeting');
@@ -209,10 +226,18 @@ async function finish(page, finalStatus) {
   // Seekable file with the right length.
   // Without ffmpeg (a dev machine) the file is still fine to play; the meeting's own length stands in.
   const seconds = (await fixRecording(recFile).catch((e) => (log(`Could not tidy the recording: ${e.message}`), null))) ?? (await durationSec(recFile)) ?? (existsSync(recFile) ? (Date.now() - recStart) / 1000 : null);
-  const sizeMb = existsSync(recFile) ? Math.round((readFileSync(recFile).length / 1048576) * 10) / 10 : 0;
+  const mb = (f) => (existsSync(f) ? Math.round((statSync(f).size / 1048576) * 10) / 10 : 0);
+  const sizeMb = mb(recFile);
+  let videoMb = 0;
+  if (wantVideo && existsSync(videoFile)) {
+    await fixRecording(videoFile).catch(() => {});
+    videoMb = mb(videoFile);
+  }
 
   // Transcript: from the recording when a speech service is set (much better than captions outside
   // English); names come from the captions. Otherwise the live captions are the transcript.
+  // Kept next to the audio so "Transcribe again" later still knows who spoke when.
+  try { writeFileSync(join(recDir, `${id}.captions.json`), JSON.stringify(captions)); } catch {}
   let transcript = captions.map((c) => ({ speaker: c.speaker, text: c.text, at: c.t_ms }));
   const stt = job.stt;
   if (seconds && stt?.provider && stt.apiKey && TRANSCRIBERS[stt.provider]) {
@@ -228,7 +253,7 @@ async function finish(page, finalStatus) {
   } else if (!transcript.length) log('No captions came through and no speech service is set, so there is no transcript');
 
   await flush();
-  await post({ status: 'recorded', recording: seconds ? { seconds: Math.round(seconds), sizeMb } : null, transcript });
+  await post({ status: 'recorded', recording: seconds ? { seconds: Math.round(seconds), sizeMb, ...(videoMb ? { videoMb } : {}) } : null, transcript });
 }
 
 main()
