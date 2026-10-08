@@ -619,6 +619,11 @@ strong > .adm-badge {
 .adm-block {
   display: block;
 }
+/* The call relay test's answer, under its row */
+.adm-relay-result {
+  margin-top: 4px;
+  animation: adm-rise 0.2s ease-out backwards;
+}
 .adm-link {
   border: 0;
   background: none;
@@ -2574,6 +2579,7 @@ button.adm-q-text:hover strong {
 
 @media (prefers-reduced-motion: reduce) {
   .adm-page,
+  .adm-relay-result,
   .adm-tab-body,
   .adm-stat,
   .adm-tr,

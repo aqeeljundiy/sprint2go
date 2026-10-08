@@ -11,6 +11,7 @@ export const caps = {
   microsoftCalendar: false,
   calendarLinks: false,
   payments: false,
+  relay: false, // a call relay (TURN) for huddles on networks that block direct calls
   desktopUrl: null as string | null,
   mailHost: '',
 };

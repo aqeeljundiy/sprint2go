@@ -19,6 +19,7 @@ import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
+import * as turn from './turn.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
@@ -1778,6 +1779,15 @@ createServer(async (req, res) => {
       return json(res, 200, { saved: ok.length });
     }
 
+    // Huddles: where audio may travel. With a call relay (TURN_URLS, TURN_SECRET) each team member gets its addresses
+    // and credentials that work for an hour; coturn checks them against the same secret, which stays here.
+    if (p === '/api/ice' && req.method === 'GET') {
+      if (!memberOf(me).length) return json(res, 403, { error: 'Huddles are for the team.' }); // guests only see their portal
+      const c = turn.credentials(me);
+      res.setHeader('cache-control', 'no-store');
+      return json(res, 200, c ? { relay: true, iceServers: [{ urls: c.urls, username: c.username, credential: c.credential }], expiresAt: c.expiresAt } : { relay: false, iceServers: [] });
+    }
+
     // Huddles: WebRTC offers, answers and candidates relayed to one person in a company you share. Audio goes
     // straight between browsers; the server only passes these notes along.
     if (p === '/api/signal' && req.method === 'POST') {
@@ -2010,6 +2020,7 @@ function caps() {
     microsoftCalendar: !!process.env.MS_CLIENT_ID,
     calendarLinks: false, // .ics links aren't fetched by the server yet
     payments: !!process.env.XENDIT_SECRET,
+    relay: turn.configured, // huddles can fall back to our call relay (TURN) on networks that block direct calls
     desktopUrl: process.env.DESKTOP_URL || null,
     mailHost: mailer.MAIL_HOST,
   };

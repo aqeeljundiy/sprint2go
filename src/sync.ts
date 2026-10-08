@@ -126,10 +126,15 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
   }, 250);
 }
 
-/** Sends a huddle note (offer, answer, candidate) to one person; it reaches them through their live connection. */
+const signalQueue = new Map<string, Promise<unknown>>();
+/**
+ * Sends a huddle note (offer, answer, candidate) to one person; it reaches them through their live connection.
+ * Notes to the same person go one after another, so an offer never arrives after its own candidates.
+ */
 export function sendSignal(to: string, data: unknown) {
   if (!server.on) return;
-  void fetch('/api/signal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, data }) }).catch(() => {});
+  const send = () => fetch('/api/signal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, data }) }).catch(() => {});
+  signalQueue.set(to, (signalQueue.get(to) ?? Promise.resolve()).then(send));
 }
 
 /**
