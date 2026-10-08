@@ -4,6 +4,7 @@ import type { Account, User, Workspace } from '../types';
 import { uid } from '../utils';
 import { Avatar } from './Avatar';
 import { SmoothHeight } from './ui/Smooth';
+import { Select } from './ui/Select';
 
 /** Throwaway addresses live on a Sprint2go domain, so they work at once whatever the company's own email setup. */
 export const tempDomain = (ws: Workspace) => {
@@ -75,10 +76,7 @@ export function TempAddressDialog({ ws, me, people, editing, onSave, onClose }: 
                     <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder="tiktok-test" />
                     <span className="temp-at">@</span>
                     {ownDomain ? (
-                      <select value={domain} onChange={(e) => setDomain(e.target.value)} aria-label="Domain">
-                        <option value={tempDomain(ws)}>{tempDomain(ws)}</option>
-                        <option value={ownDomain}>{ownDomain}</option>
-                      </select>
+                      <Select<string> value={domain} onChange={setDomain} label="Domain" className="sel-flat temp-domain-sel" options={[{ value: tempDomain(ws), label: tempDomain(ws), hint: 'Works straight away' }, { value: ownDomain, label: ownDomain, hint: 'Your company’s domain' }]} />
                     ) : (
                       <span className="temp-domain">{domain}</span>
                     )}

@@ -202,6 +202,7 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
       <button ref={ref} type="button" className="tb-th-btn" onClick={() => !ro && (menu || editing ? (setMenu(false), setEditing(false)) : setMenu(true))} title={f.description || (ro ? f.name : `${f.name}: click for options, drag to move`)}>
         <Icon size={13} />
         <span>{f.name}</span>
+        {first && <span className="tb-name-tag" title="Each row’s name. Another column can take this role from its menu.">Title</span>}
         {sort?.dir === 'asc' && <ArrowDown size={12} className="tb-sorted" />}
         {sort?.dir === 'desc' && <ArrowUp size={12} className="tb-sorted" />}
         {!ro && <ChevronDown size={13} className="tb-th-chev" />}

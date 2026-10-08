@@ -803,7 +803,7 @@ function SortEditor({ table, sorts, onChange }: { table: DataTable; sorts: { fie
         const f = table.fields.find((x) => x.id === s.fieldId) ?? sortable[0];
         const [asc, desc] = sortWords(f.type);
         return (
-          <div key={i} className="tb-filter">
+          <div key={i} className="tb-filter tb-sort">
             <span className="tb-filter-lead">{i === 0 ? 'Sort by' : 'then by'}</span>
             <PickSelect value={f.id} aria-label="Field" onChange={(e) => set(i, { fieldId: e.target.value })}>
               {sortable.map((x) => (

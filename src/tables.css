@@ -2926,3 +2926,42 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
   outline: none;
 }
+
+/* Sort rows: lead word, field, direction, remove. */
+.tb-filter.tb-sort {
+  grid-template-columns: 60px minmax(0, 1.2fr) minmax(0, 1fr) 28px;
+}
+.tb-filter-lead {
+  white-space: nowrap;
+}
+.tb-filter.tb-sort .icon-btn {
+  grid-column: 4;
+}
+
+/* The column that names each row: a quiet tag in its header. */
+.tb-name-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+/* The row page's title is a field you can click into: it shows it on hover and when editing. */
+.tb-drawer .drawer-title {
+  margin-left: -8px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.tb-drawer .drawer-title:not([readonly]):hover {
+  background: var(--hover);
+  cursor: text;
+}
+.tb-drawer .drawer-title:not([readonly]):focus {
+  background: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--accent);
+  outline: none;
+}

@@ -56,6 +56,7 @@ import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
 import { dueLabel, isBrief, statusOf } from './TasksView';
 import { useOnePanel } from '../onePanel';
+import { Select } from './ui/Select';
 
 type Mode = 'home' | 'requests' | 'chat' | 'work' | 'files' | 'meet' | 'tables';
 
@@ -823,13 +824,7 @@ export function ClientApp(p: Props) {
             Viewing as <b>{person.name}</b>
           </span>
           {p.preview.people.length > 1 && (
-            <select value={person.email} onChange={(e) => p.preview!.onSwitch(e.target.value)} aria-label="Switch person">
-              {p.preview.people.map((x) => (
-                <option key={x.email} value={x.email}>
-                  {x.name} · {ROLE[x.role]}
-                </option>
-              ))}
-            </select>
+            <Select<string> value={person.email} onChange={(v) => p.preview!.onSwitch(v)} label="Switch person" className="sel-flat" options={p.preview.people.map((x) => ({ value: x.email, label: x.name, hint: ROLE[x.role] }))} />
           )}
           <button className="primary-btn sm" onClick={p.preview.onExit}>
             Exit
