@@ -1,9 +1,9 @@
 /**
  * Sliding selection for every tab bar and segmented control in the app, in one place.
  *
- * Each bar gets one highlight (a pill, or an underline for underlined tabs) that glides to the selected tab, instead
- * of the selection jumping. It takes the selected tab's shape, and each kind of bar keeps its own colours (polish.css). Screens don't
- * need to do anything: any container matching BARS gets it.
+ * Each bar gets one highlight that glides to the selected tab, instead of the selection jumping. It takes the selected
+ * tab's shape; every bar has the same look (system.css: a 32px round pill tinted with the accent), so tabs and
+ * segmented controls read as one family. Screens don't need to do anything: any container matching BARS gets it.
  */
 const BARS = '.segmented, .client-tabs, .chan-tabs, .cs-tabs';
 
