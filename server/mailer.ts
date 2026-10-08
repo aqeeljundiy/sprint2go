@@ -129,14 +129,17 @@ export interface DnsCheck {
   found: string;
   want: string;
 }
-const txt = (host: string) => dns.resolveTxt(host).then((r) => r.map((x) => x.join('')), () => [] as string[]);
+/** Checks ask public resolvers, not the server's own cache: that's what Gmail and Outlook see, and new records show at once. */
+const pub = new dns.Resolver({ timeout: 4000, tries: 2 });
+pub.setServers(['1.1.1.1', '8.8.8.8']);
+const txt = (host: string) => pub.resolveTxt(host).then((r) => r.map((x) => x.join('')), () => [] as string[]);
 export async function checkDomain(ws: Ws): Promise<{ domain: string; at: string; checks: DnsCheck[]; allOk: boolean }> {
   const domain = mailDomainOf(ws);
   const checks: DnsCheck[] = [];
   if (domain === MAIL_HOST) return { domain, at: now(), checks, allOk: true };
   const mode = ws.emailSetup ?? 'none';
   const route = ws.mailRoute ?? 'own';
-  const mx = await dns.resolveMx(domain).then((r) => r.sort((a, b) => a.priority - b.priority).map((x) => lower(x.exchange)), () => [] as string[]);
+  const mx = await pub.resolveMx(domain).then((r) => r.sort((a, b) => a.priority - b.priority).map((x) => lower(x.exchange)), () => [] as string[]);
   if (mode === 'hosted') checks.push({ key: 'mx', ok: mx[0] === MAIL_HOST, found: mx.join(', ') || 'none', want: MAIL_HOST });
   else if (mode === 'mix' || mode === 'keep') checks.push({ key: 'mx', ok: mx.length > 0 && mx[0] !== MAIL_HOST, found: mx.join(', ') || 'none', want: 'your provider' });
   const spf = (await txt(domain)).find((t) => t.toLowerCase().startsWith('v=spf1')) ?? '';
@@ -145,7 +148,7 @@ export async function checkDomain(ws: Ws): Promise<{ domain: string; at: string;
   if (route === 'boosted') {
     const ses = await sesIdentity(domain).catch(() => null);
     const tokens = ses?.tokens ?? [];
-    const results = await Promise.all(tokens.map((t) => dns.resolveCname(`${t}._domainkey.${domain}`).then((r) => lower(r[0] ?? '') === `${t}.dkim.amazonses.com`, () => false)));
+    const results = await Promise.all(tokens.map((t) => pub.resolveCname(`${t}._domainkey.${domain}`).then((r) => lower(r[0] ?? '') === `${t}.dkim.amazonses.com`, () => false)));
     checks.push({ key: 'dkim', ok: tokens.length > 0 && results.every(Boolean), found: tokens.length ? `${results.filter(Boolean).length} of ${tokens.length} records` : 'Amazon has no identity for this domain yet', want: '3 CNAME records' });
   } else {
     const rec = (await txt(`${SELECTOR}._domainkey.${domain}`)).find((t) => t.includes('p=')) ?? '';
@@ -161,8 +164,8 @@ export async function checkDomain(ws: Ws): Promise<{ domain: string; at: string;
 let healthCache: { at: number; value: { ptr: DnsCheck; a: DnsCheck; port25: DnsCheck; inbound: DnsCheck } } | null = null;
 export async function serverHealth() {
   if (healthCache && healthCache.at > Date.now() - 10 * 60_000) return healthCache.value;
-  const ptrNames = MAIL_IP ? await dns.reverse(MAIL_IP).catch(() => [] as string[]) : [];
-  const a = await dns.resolve4(MAIL_HOST).catch(() => [] as string[]);
+  const ptrNames = MAIL_IP ? await pub.reverse(MAIL_IP).catch(() => [] as string[]) : [];
+  const a = await pub.resolve4(MAIL_HOST).catch(() => [] as string[]);
   const port25 = await new Promise<boolean>((res) => {
     const s = connect({ host: 'gmail-smtp-in.l.google.com', port: 25, timeout: 6000 });
     s.once('connect', () => (s.destroy(), res(true)));
