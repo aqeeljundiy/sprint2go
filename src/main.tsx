@@ -14,6 +14,7 @@ import './round2.css';
 import './tables.css';
 import './teams.css';
 import './polish.css';
+import './mail.css';
 import './admin.css';
 
 startExitAnimations();

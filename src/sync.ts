@@ -56,26 +56,55 @@ export async function changePassword(current: string, next: string): Promise<str
   return r.ok ? null : ((await r.json().catch(() => null))?.error ?? 'Could not change the password.');
 }
 
+/** The live connection: whether it dropped, and when mail last came in fresh (a load, a refresh or a live change). */
+export const live = { down: false, mailAt: 0 };
+const liveChanged = () => window.dispatchEvent(new CustomEvent('s2g:live'));
+let es: EventSource | null = null;
+let reload: ((only?: CollectionKey[]) => Promise<void>) | null = null;
+let listen: (() => void) | null = null;
+
 /** Loads everything this person can see, then starts listening for changes. */
 export async function connect(apply: <K extends CollectionKey>(k: K, v: Collections[K]) => void) {
-  const load = async () => {
-    const state = (await (await fetch('/api/state')).json()) as Record<CollectionKey, Doc[]>;
+  const load = async (only?: CollectionKey[]) => {
+    const r = await fetch(only?.length ? `/api/state?only=${only.join(',')}` : '/api/state');
+    if (r.status === 401) {
+      window.dispatchEvent(new CustomEvent('s2g:signed-out'));
+      throw new Error('Signed out');
+    }
+    if (!r.ok) throw new Error('Could not load');
+    const state = (await r.json()) as Record<CollectionKey, Doc[]>;
     for (const k of Object.keys(state) as CollectionKey[]) {
       remember(k, state[k]);
+      latest[k] = fromDocs(k, state[k]);
       apply(k, fromDocs(k, state[k]) as Collections[typeof k]);
     }
+    if (!only || only.includes('threads')) (live.mailAt = Date.now()), liveChanged();
   };
+  reload = load;
   await load();
   server.on = true;
-  let first = true;
-  const es = new EventSource('/api/events');
-  es.addEventListener('hello', (e) => {
-    server.conn = JSON.parse((e as MessageEvent).data).conn;
-    if (!first) void load(); // reconnected: catch up on anything missed
-    first = false;
-  });
-  es.addEventListener('signal', (e) => window.dispatchEvent(new CustomEvent('s2g:signal', { detail: JSON.parse((e as MessageEvent).data) })));
-  es.addEventListener('change', (e) => {
+  listen = () => {
+    es?.close();
+    let first = true;
+    const src = new EventSource('/api/events');
+    es = src;
+    src.addEventListener('hello', (e) => {
+      server.conn = JSON.parse((e as MessageEvent).data).conn;
+      live.down = false;
+      liveChanged();
+      if (!first) void load().catch(() => {}); // reconnected: catch up on anything missed
+      first = false;
+    });
+    src.onerror = () => {
+      if (es !== src || live.down) return;
+      live.down = true; // the browser keeps retrying on its own; a refresh starts over
+      liveChanged();
+    };
+    attach(src);
+  };
+  const attach = (src: EventSource) => {
+  src.addEventListener('signal', (e) => window.dispatchEvent(new CustomEvent('s2g:signal', { detail: JSON.parse((e as MessageEvent).data) })));
+  src.addEventListener('change', (e) => {
     const { coll, upserts, deletes } = JSON.parse((e as MessageEvent).data) as { coll: CollectionKey; upserts: Doc[]; deletes: string[] };
     const base = synced[coll] ?? new Map();
     // Start from what's on screen (it may hold local changes not sent yet).
@@ -92,7 +121,20 @@ export async function connect(apply: <K extends CollectionKey>(k: K, v: Collecti
     const docs = [...current.values()];
     latest[coll] = fromDocs(coll, docs);
     apply(coll, latest[coll] as Collections[typeof coll]);
+    if (coll === 'threads') (live.mailAt = Date.now()), liveChanged();
   });
+  };
+  listen();
+}
+
+/**
+ * Mail's refresh: fetches the mailboxes again and, when the live connection dropped (or never came back), opens a
+ * new one. Resolves when the fresh mail is in.
+ */
+export async function resync(only: CollectionKey[] = ['threads', 'workspaces']) {
+  if (!server.on || !reload) return;
+  if (!es || es.readyState !== EventSource.OPEN) listen?.();
+  await reload(only);
 }
 
 /** Called on every local change: sends only what changed, a moment later (several quick edits go together). */

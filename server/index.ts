@@ -1200,7 +1200,12 @@ createServer(async (req, res) => {
       platform.event('coupon.used', ws.id, me, ok.coupon.code);
       return json(res, 200, { ok: true, coupon: { code: ok.coupon.code, kind: ok.coupon.kind, value: ok.coupon.value, months: ok.coupon.months } });
     }
-    if (p === '/api/state') return json(res, 200, visibleState(me));
+    if (p === '/api/state') {
+      // ?only=threads,workspaces: what Mail's refresh needs, without everything else.
+      const only = (url.searchParams.get('only') ?? '').split(',').filter((k) => COLLS.includes(k as CollectionKey));
+      const state = visibleState(me);
+      return json(res, 200, only.length ? Object.fromEntries(only.map((k) => [k, state[k]])) : state);
+    }
 
     /* ---------- the mail engine: a company's domain, records, route and sending ---------- */
     const monthStart = () => {

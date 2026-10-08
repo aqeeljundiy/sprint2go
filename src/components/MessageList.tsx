@@ -1,6 +1,6 @@
-import { forwardRef, useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useRef, useState } from 'react';
 import { lastTracked, summarize } from '../tracking';
-import { Archive, Clock, Eye, EyeOff, Menu, Paperclip, Search, Star, Trash2 } from 'lucide-react';
+import { Archive, Clock, Eye, EyeOff, Menu, Paperclip, RefreshCw, Search, Star, Trash2 } from 'lucide-react';
 import type { Client, Person, Thread } from '../types';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
@@ -32,7 +32,13 @@ interface Props {
   showSnippets: boolean;
   width: number;
   onWidth: (w: number) => void;
+  /** Checks for new mail now (the button, and pulling the list down on a phone). */
+  onRefresh?: () => Promise<void>;
+  updatedAt?: number; // when mail last came in fresh
+  offline?: boolean; // the live connection dropped: new mail waits for a refresh
 }
+
+const PULL_AT = 64; // px: pull this far, let go, and it refreshes
 
 export const LIST_MIN = 300;
 export const LIST_MAX = 560;
@@ -41,6 +47,74 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
   const { title, threads, me, selectedId, query, filter } = props;
   const listRef = useRef<HTMLUListElement>(null);
   const unread = threads.filter((t) => t.unread).length;
+  const [refreshing, setRefreshing] = useState(false);
+  const [pull, setPull] = useState(0); // how far the list is pulled down, in px
+  const [dragging, setDragging] = useState(false); // a finger is on it: the list follows without easing
+  const [, tick] = useState(0);
+  const refreshRef = useRef<() => void>(() => {});
+  const bodyRef = useRef<HTMLElement | null>(null); // the list, or the empty state: what a pull starts on
+  const refresh = async () => {
+    if (refreshing || !props.onRefresh) return;
+    setRefreshing(true);
+    await props.onRefresh().catch(() => {});
+    setRefreshing(false);
+    setPull(0);
+  };
+  refreshRef.current = () => void refresh();
+
+  // "Updated 3 min ago" stays true while the screen is open.
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Pull to refresh (touch screens): from the top of the list, pull down past the mark and let go.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || !props.onRefresh) return;
+    let startY = 0;
+    let pulling = false;
+    let dist = 0;
+    const down = (e: TouchEvent) => {
+      if (el.scrollTop > 0 || e.touches.length !== 1) return;
+      startY = e.touches[0].clientY;
+      pulling = true;
+      dist = 0;
+    };
+    const move = (e: TouchEvent) => {
+      if (!pulling) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0 || el.scrollTop > 0) {
+        if (dist) setPull((dist = 0));
+        return;
+      }
+      e.preventDefault(); // the list follows the finger instead of the page bouncing
+      if (!dist) setDragging(true);
+      dist = Math.min(96, dy * 0.5);
+      setPull(dist);
+    };
+    const up = () => {
+      if (!pulling) return;
+      pulling = false;
+      setDragging(false);
+      if (dist >= PULL_AT) {
+        setPull(44);
+        refreshRef.current();
+      } else setPull(0);
+      dist = 0;
+    };
+    el.addEventListener('touchstart', down, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', up);
+    el.addEventListener('touchcancel', up);
+    return () => {
+      el.removeEventListener('touchstart', down);
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', up);
+      el.removeEventListener('touchcancel', up);
+    };
+  }, [!!props.onRefresh, threads.length === 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const updated = props.updatedAt ? relative(new Date(props.updatedAt).toISOString()) : null;
 
   // Keep the keyboard-selected row in view.
   useEffect(() => {
@@ -72,6 +146,18 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
           </button>
           <h1>{title}</h1>
           {unread > 0 && <span className="pill">{unread} unread</span>}
+          {props.onRefresh && (
+            <span className={`list-sync ${props.offline ? 'off' : ''}`}>
+              {(updated || props.offline) && (
+                <small key={props.offline ? 'off' : 'on'} title={props.offline ? 'New mail isn’t arriving by itself right now. Refresh to reconnect.' : undefined}>
+                  {refreshing ? 'Checking for mail…' : props.offline ? `Connection lost${updated ? `. Updated ${updated}` : ''}` : `Updated ${updated}`}
+                </small>
+              )}
+              <button type="button" className="icon-btn sm" onClick={() => void refresh()} disabled={refreshing} title="Check for new mail" aria-label="Check for new mail">
+                <RefreshCw size={15} className={refreshing ? 'spin' : ''} />
+              </button>
+            </span>
+          )}
         </div>
         <label className="search">
           <Search size={16} />
@@ -92,16 +178,25 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         </div>
       </header>
       {props.notice}
+      {props.onRefresh && (
+        <div className={`pull-mark ${pull ? 'on' : ''} ${dragging ? 'dragging' : ''} ${refreshing ? 'busy' : ''} ${pull >= PULL_AT ? 'ready' : ''}`} style={{ ['--pull' as string]: `${pull}px` }} aria-hidden>
+          <RefreshCw size={16} className={refreshing ? 'spin' : ''} style={refreshing ? undefined : { transform: `rotate(${pull * 3}deg)` }} />
+        </div>
+      )}
 
       {threads.length === 0 ? (
-        <div className="empty">
+        <div className={`empty ${pull ? 'pulled' : ''} ${dragging ? 'dragging' : ''}`} ref={(el) => void (bodyRef.current = el)} style={pull ? { transform: `translateY(${pull}px)` } : undefined}>
           <div className="empty-art">✓</div>
           <p className="empty-title">{query ? 'No matches' : (props.empty?.title ?? 'All caught up')}</p>
           <p className="empty-sub">{query ? `Nothing found for “${query}”. Try a name, an email address or a few words from the subject.` : (props.empty?.sub ?? 'Nothing waiting here. New mail lands in your inbox; press C to write one.')}</p>
           {!query && props.empty?.action}
         </div>
       ) : (
-        <ul className="rows" ref={listRef}>
+        <ul
+          className={`rows ${pull ? 'pulled' : ''} ${dragging ? 'dragging' : ''}`}
+          ref={(el) => void ((listRef.current = el), (bodyRef.current = el))}
+          style={pull ? { transform: `translateY(${pull}px)` } : undefined}
+        >
           {threads.map((t) => {
             const last = lastMessage(t);
             const client = props.clientOf(t);

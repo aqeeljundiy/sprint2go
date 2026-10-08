@@ -31,7 +31,7 @@ import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
-import { server, uploadFile } from './sync';
+import { live, resync, server, uploadFile } from './sync';
 import { caps } from './caps';
 import { EmailDeliverySection } from './components/admin/EmailDelivery';
 import { ai, aiLive } from './ai';
@@ -493,6 +493,29 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   /* ---------------- Mail ---------------- */
+
+  // New mail arrives live. Refresh pulls the mailboxes again, reconnects when the live connection dropped, and asks
+  // the server to check the mail setup again; the list says when mail last came in fresh.
+  const [mailLive, setMailLive] = useState(() => ({ down: live.down, at: live.mailAt || Date.now() }));
+  useEffect(() => {
+    const on = () => setMailLive({ down: live.down, at: live.mailAt });
+    window.addEventListener('s2g:live', on);
+    return () => window.removeEventListener('s2g:live', on);
+  }, []);
+  const readyAsked = useRef(0);
+  const refreshMail = async () => {
+    if (!server.on) return void setMailLive({ down: false, at: Date.now() });
+    // The mailbox check looks at DNS and the server's ports: once a minute is plenty.
+    if (Date.now() - readyAsked.current > 60_000) {
+      readyAsked.current = Date.now();
+      void fetch('/api/mail/ready', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) }).catch(() => {});
+    }
+    try {
+      await resync(['threads', 'workspaces']);
+    } catch {
+      showToast({ text: 'Couldn’t reach the server. Check your connection, then try again.' });
+    }
+  };
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -3396,6 +3419,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               showSnippets={settings.showSnippets}
               width={Math.min(Math.max(listW, 300), 560)}
               onWidth={setListW}
+              onRefresh={refreshMail}
+              updatedAt={mailLive.at}
+              offline={server.on && mailLive.down}
               onQuery={setQuery}
               onFilter={setFilter}
               onOpen={open}
