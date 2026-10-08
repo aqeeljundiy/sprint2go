@@ -1,3 +1,5 @@
+import type { SummaryRun } from './jobTimes';
+
 export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed' | 'scheduled' | 'assigned';
 
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
@@ -623,8 +625,9 @@ export interface ChatMessage {
   voice?: { seconds: number; url?: string; transcript?: string };
   poll?: { question: string; options: { text: string; votes: string[] }[] };
   files?: ChatFile[];
-  kind?: 'message' | 'celebration' | 'kudos' | 'system';
+  kind?: 'message' | 'celebration' | 'kudos' | 'system' | 'summary'; // summary: a channel's scheduled AI summary, posted by sprint2go
   kudosFor?: string; // user id
+  summaryOf?: string; // kind 'summary': the period it covers
   guestEmail?: string; // written by a guest
   via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
@@ -822,6 +825,7 @@ export interface ChannelSummary {
   schedule: 'off' | 'daily' | 'weekly' | 'monthly';
   post: boolean; // also post each new summary into the channel
   history: { id: string; text: string; period: string; at: string; auto: boolean; by?: string }[];
+  last?: SummaryRun; // what the server last did on the schedule (set by the server only)
 }
 
 /* ---------- Tables: flexible databases (leads, pipelines, anything) ---------- */

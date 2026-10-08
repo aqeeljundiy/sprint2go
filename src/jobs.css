@@ -44,3 +44,67 @@
   opacity: 0.85;
 }
 
+/* ---------- channel summaries ---------- */
+
+/* Why the schedule can't run (no AI, allowance used up), or why the last one wasn't written */
+.sum-off {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: jobs-in 200ms ease-out backwards;
+}
+.sum-off > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.sum-off .link-btn {
+  font-size: 13px;
+}
+/* A scheduled summary posted in the channel */
+/* lined up with the text of the messages around it (10px row padding, 34px avatar, 10px gap) */
+.chat-summary {
+  margin: 8px 10px 8px 54px;
+  max-width: 680px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  animation: jobs-in 220ms ease-out backwards;
+}
+.chat-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.chat-summary-head > svg {
+  color: var(--accent);
+}
+.chat-summary-head time {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.chat-summary p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sum-off,
+  .chat-summary {
+    animation: none;
+  }
+}
+

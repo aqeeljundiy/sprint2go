@@ -3517,6 +3517,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onToggleTask={toggleTodo}
             onChannel={(patch) => chatId && setChannels((cs) => cs.map((c) => (c.id === chatId ? { ...c, ...patch } : c)))}
             summaryCost={summaryCost}
+            summaryOff={
+              server.on && !aiOn
+                ? {
+                    text: aiWhy === 'used-up' ? 'the company’s AI allowance for this month is used up.' : aiWhy === 'down' ? 'AI isn’t available right now. They start again by themselves when it’s back.' : 'AI isn’t set up for this company yet.',
+                    fix: isAdmin && aiWhy !== 'down' ? { label: aiWhy === 'used-up' ? 'Add a top-up' : 'Set up AI', run: () => (setSettingsSection(aiWhy === 'used-up' ? 'billing' : 'ai'), go('settings')) } : undefined,
+                  }
+                : undefined
+            }
             since={sinceRead}
             onReact={reactTo}
             onVote={votePoll}

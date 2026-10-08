@@ -41,6 +41,7 @@ import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
 import * as autojoin from './autojoin.ts';
+import * as summaries from './summaries.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -2230,6 +2231,8 @@ createServer(async (req, res) => {
           const { clientOf: _c, vaultKey: _v, ...rest } = d as any;
           return rest as db.Doc;
         }
+        // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
+        if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
         if (before) return d;
         // New things carry who made them.
         if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
@@ -2861,6 +2864,27 @@ setInterval(() => {
 // The notetaker joins by itself (Meet, Upcoming, "Bot joins automatically"): checked every minute.
 const autoJoinDeps: autojoin.AutoJoinDeps = { recorderUp: () => recorderUp, send: dispatchBot, notify: (ids, wsId, text, link) => tell(ids, wsId, 'meeting', text, link) };
 setInterval(() => void autojoin.runAutoJoin(autoJoinDeps).catch((e) => console.error('[autojoin]', e instanceof Error ? e.message : e)), 60_000);
+
+// Channel summaries on their schedule, with the company's AI (its keys, or the plan's allowance).
+const summaryDeps: summaries.SummaryDeps = {
+  broadcast,
+  write: async (ws, input) => {
+    const route = withinAllowance(ws, aiFor(ws.id, 'summary'));
+    if (!route.chain.length) {
+      if (route.message) return { off: route.message };
+      if (onOurAI(ws)) return { failed: 'AI wasn’t available' }; // ours is down: tried again later
+      return { off: 'AI isn’t set up for this company. An admin can add an AI key in Settings, AI, or switch to the AI plan.' };
+    }
+    try {
+      const text = await aiplan.runChain(route.chain, (cfg, inTokens, outTokens) => db.logUsage({ workspaceId: ws.id, userId: '', job: 'summary', provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens }), () => ai.channelSummary(input));
+      return { text };
+    } catch (e) {
+      return { failed: e instanceof AIError ? e.message : 'the AI service failed' };
+    }
+  },
+};
+setTimeout(() => void summaries.runSummaries(summaryDeps).catch((e) => console.error('[summaries]', e instanceof Error ? e.message : e)), 45_000);
+setInterval(() => void summaries.runSummaries(summaryDeps).catch((e) => console.error('[summaries]', e instanceof Error ? e.message : e)), 10 * 60_000);
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {

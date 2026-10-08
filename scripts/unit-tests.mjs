@@ -290,6 +290,103 @@ await test('Auto-join: the plan’s meeting-bot hours used up means no bot, and 
   assert.match(ajNotes.at(-1).text, /100 meeting-bot hours are used up/);
   db.writeDocs('meetings', [], ['m-used'], null);
 });
+
+/* channel summaries on a schedule (src/jobTimes.ts, server/summaries.ts) */
+
+const jt = await import('../src/jobTimes.ts');
+const at = (day, hour, minute = 0) => jt.zonedTime(day, hour, 'Asia/Jakarta') + minute * 60_000;
+
+await test('Job times: local days, hours and run days in Jakarta', () => {
+  assert.equal(new Date(at('2026-10-09', 6)).toISOString(), '2026-10-08T23:00:00.000Z');
+  assert.deepEqual(jt.localParts(at('2026-10-09', 6, 30), 'Asia/Jakarta'), { day: '2026-10-09', hour: 6, minute: 30, weekday: 5 });
+  assert.equal(jt.runDayOn('weekly', '2026-10-09'), '2026-10-05');
+  assert.equal(jt.runDayOn('monthly', '2026-10-09'), '2026-10-01');
+  assert.deepEqual(jt.summaryPeriod('monthly', '2026-10-01'), { key: 'monthly:2026-09', from: '2026-09-01', to: '2026-10-01', label: 'September 2026' });
+  assert.deepEqual(jt.summaryPeriod('weekly', '2026-10-05'), { key: 'weekly:2026-09-28', from: '2026-09-28', to: '2026-10-05', label: 'Week of 28 September' });
+  assert.equal(jt.summaryPeriod('daily', '2026-10-09').label, 'Thursday 8 October');
+});
+await test('Job times: a summary is due once, from 6:00 on its day; a missed one only when the schedule ran before', () => {
+  assert.equal(jt.summaryDue('daily', undefined, at('2026-10-09', 5)), null, 'not before 6:00');
+  assert.equal(jt.summaryDue('daily', undefined, at('2026-10-09', 6))?.key, 'daily:2026-10-08');
+  assert.equal(jt.summaryDue('daily', 'daily:2026-10-08', at('2026-10-09', 9)), null, 'written already');
+  assert.equal(jt.summaryDue('weekly', undefined, at('2026-10-09', 9)), null, 'a new schedule waits for Monday');
+  assert.equal(jt.summaryDue('weekly', 'weekly:2026-09-21', at('2026-10-06', 9))?.key, 'weekly:2026-09-28', 'missed Monday, caught up on Tuesday');
+  assert.equal(jt.summaryDue('weekly', 'weekly:2026-09-21', at('2026-10-09', 9)), null, 'too late to catch up');
+  assert.equal(jt.summaryDue('monthly', undefined, at('2026-11-01', 6))?.key, 'monthly:2026-10');
+  assert.equal(jt.summaryDue('off', undefined, at('2026-11-01', 6)), null);
+  assert.equal(jt.nextSummaryDay('weekly', undefined, at('2026-10-09', 9)), '2026-10-12');
+  assert.equal(jt.nextSummaryDay('daily', 'daily:2026-10-08', at('2026-10-09', 9)), '2026-10-10');
+  assert.equal(jt.nextSummaryDay('daily', 'daily:2026-10-07', at('2026-10-09', 3)), '2026-10-09');
+  assert.equal(jt.nextSummaryDay('monthly', 'monthly:2026-09', at('2026-10-09', 9)), '2026-11-01');
+  assert.equal(jt.channelSchedule({ kind: 'dm' }), 'off');
+  assert.equal(jt.channelSchedule({ kind: 'channel' }), 'monthly');
+  assert.equal(jt.channelSchedule({ kind: 'channel', digest: true }), 'daily');
+});
+
+const summaries = await import('../server/summaries.ts');
+const S0 = at('2026-10-09', 6, 5); // Friday, just after summaries are written
+db.writeDocs('workspaces', [{ id: 'w-sum', name: 'Sum', members: [{ userId: 'aj-ana', role: 'owner' }], accounts: [] }], [], null);
+db.writeDocs('channels', [
+  { id: 'ch-daily', workspaceId: 'w-sum', kind: 'channel', name: 'design', members: ['aj-ana'], summary: { schedule: 'daily', post: true, history: [{ id: 'old', text: 'Asked by hand', period: 'Today', at: '2026-10-07T03:00:00.000Z', auto: false, by: 'aj-ana' }] } },
+  { id: 'ch-quiet', workspaceId: 'w-sum', kind: 'channel', name: 'quiet', members: ['aj-ana'], summary: { schedule: 'daily', post: false, history: [] } },
+  { id: 'ch-monthly', workspaceId: 'w-sum', kind: 'channel', name: 'general', members: ['aj-ana'] },
+  { id: 'ch-dm', workspaceId: 'w-sum', kind: 'dm', name: '', members: ['aj-ana', 'aj-mo'] },
+], [], null);
+const yesterday = (h) => new Date(at('2026-10-08', h)).toISOString();
+db.writeDocs('messages', [
+  { id: 'sm1', channelId: 'ch-daily', userId: 'aj-ana', text: 'Logo v2 is approved', at: yesterday(10) },
+  { id: 'sm2', channelId: 'ch-daily', userId: 'aj-mo', text: 'Sending files tomorrow', at: yesterday(15), files: [{ name: 'logo.png', size: 10, type: 'image/png' }] },
+  { id: 'sm3', channelId: 'ch-daily', userId: 'aj-ana', text: 'Today, not yesterday', at: new Date(S0 - 60_000).toISOString() },
+  { id: 'sm4', channelId: 'ch-dm', userId: 'aj-ana', text: 'A private chat', at: yesterday(11) },
+], [], null);
+const sumInputs = [];
+const sumDeps = (write) => ({ broadcast: () => {}, write: async (ws, input) => (sumInputs.push(input), write(ws, input)) });
+await test('Summaries: a due one is written once, kept in history and posted; nothing happened means none', async () => {
+  const r = await summaries.runSummaries(sumDeps(async () => ({ text: 'Logo approved; files come tomorrow.' })), S0, 'Asia/Jakarta');
+  assert.deepEqual(r.map((x) => [x.channelId, x.state]).sort(), [['ch-daily', 'done'], ['ch-quiet', 'nothing']], 'monthly waits for the 1st, a DM has no schedule');
+  assert.equal(sumInputs.length, 1, 'no AI for a quiet channel');
+  assert.deepEqual(sumInputs[0].messages.map((m) => m.text), ['Logo v2 is approved', 'Sending files tomorrow'], 'only yesterday, in Jakarta time');
+  assert.equal(sumInputs[0].period, 'Thursday 8 October');
+  assert.deepEqual(sumInputs[0].messages[1].files, ['logo.png']);
+  const ch = db.getDoc('channels', 'ch-daily');
+  assert.equal(ch.summary.history[0].text, 'Logo approved; files come tomorrow.');
+  assert.equal(ch.summary.history[0].auto, true);
+  assert.equal(ch.summary.history[1].id, 'old', 'earlier summaries stay');
+  assert.equal(ch.summary.last.key, 'daily:2026-10-08');
+  const posted = db.allDocs('messages').filter((m) => m.channelId === 'ch-daily' && m.kind === 'summary');
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].summaryOf, 'Thursday 8 October');
+  assert.equal((await summaries.runSummaries(sumDeps(async () => ({ text: 'again' })), S0 + 15 * 60_000, 'Asia/Jakarta')).length, 0, 'never twice');
+});
+await test('Summaries: no working AI means no summary, and the channel says why', async () => {
+  const S1 = at('2026-10-10', 6, 5);
+  db.writeDocs('messages', [{ id: 'sm5', channelId: 'ch-daily', userId: 'aj-ana', text: 'Friday news', at: new Date(at('2026-10-09', 12)).toISOString() }], [], null);
+  const r = (await summaries.runSummaries(sumDeps(async () => ({ off: 'AI isn’t set up for this company.' })), S1, 'Asia/Jakarta')).filter((x) => x.channelId === 'ch-daily');
+  assert.deepEqual(r.map((x) => [x.channelId, x.state]), [['ch-daily', 'off']]);
+  const ch = db.getDoc('channels', 'ch-daily');
+  assert.equal(ch.summary.last.why, 'AI isn’t set up for this company.');
+  assert.equal(ch.summary.history.length, 2, 'nothing added');
+  assert.equal(jt.nextSummaryDay('daily', jt.settledKey(ch.summary.last), S1 + 60_000, 'Asia/Jakarta', true), '2026-10-11', 'Next moves on');
+});
+await test('Summaries: a failure is tried again an hour later, then written', async () => {
+  const S2 = at('2026-10-11', 6, 5);
+  db.writeDocs('messages', [{ id: 'sm6', channelId: 'ch-daily', userId: 'aj-ana', text: 'Saturday news', at: new Date(at('2026-10-10', 12)).toISOString() }], [], null);
+  const daily = (list) => list.filter((x) => x.channelId === 'ch-daily');
+  let r = daily(await summaries.runSummaries(sumDeps(async () => ({ failed: 'timeout' })), S2, 'Asia/Jakarta'));
+  assert.deepEqual(r.map((x) => x.state), ['failed']);
+  assert.equal(daily(await summaries.runSummaries(sumDeps(async () => ({ text: 'too early' })), S2 + 30 * 60_000, 'Asia/Jakarta')).length, 0, 'waits for the retry');
+  r = daily(await summaries.runSummaries(sumDeps(async () => ({ text: 'Saturday: news.' })), S2 + 61 * 60_000, 'Asia/Jakarta'));
+  assert.deepEqual(r.map((x) => [x.key, x.state]), [['daily:2026-10-10', 'done']]);
+});
+await test('Summaries: an older copy saved from the app keeps the server’s summaries and adds asked ones', () => {
+  const before = db.getDoc('channels', 'ch-daily');
+  const stale = { ...before, topic: 'new topic', summary: { schedule: 'weekly', post: false, history: [{ id: 'mine', text: 'Asked now', period: 'This week', at: '2026-10-11T05:00:00.000Z', auto: false }], last: undefined } };
+  const kept = summaries.keepSummaries(stale, before);
+  assert.equal(kept.topic, 'new topic');
+  assert.equal(kept.summary.schedule, 'weekly');
+  assert.deepEqual(kept.summary.last, before.summary.last);
+  assert.ok(kept.summary.history.some((h) => h.id === 'mine') && kept.summary.history.some((h) => h.text === 'Saturday: news.'));
+});
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');
