@@ -18,6 +18,7 @@ import { mailConfigured, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as routing from './routing.ts';
+import { certState } from './mailcert.ts';
 import { ownership as domainOwnership } from './domains.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
@@ -1225,9 +1226,10 @@ createServer(async (req, res) => {
       const domain = mailer.mailDomainOf(ws);
       const ownDomain = domain !== mailer.MAIL_HOST;
       const [records, health, dns] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth(), ownDomain ? mailer.dnsHostOf(domain) : Promise.resolve({ dnsHost: null, nameservers: [] as string[] })]);
-      // Whose domain it is, and the record that proves it.
+      // Whose domain it is (and the record that proves it), and for operators only the mail server's certificate.
       const ownership = ownDomain ? domainOwnership(ws, domain) : null;
-      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership });
+      const cert = opRecord ? certState(mailer.MAIL_HOST) : undefined;
+      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership, cert });
     }
     if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
       const { threadId } = await body(req);
@@ -2046,6 +2048,7 @@ function caps() {
     payments: !!process.env.XENDIT_SECRET,
     desktopUrl: process.env.DESKTOP_URL || null,
     mailHost: mailer.MAIL_HOST,
+    trustedCert: certState(mailer.MAIL_HOST).trusted, // providers may require a CA-signed certificate from our mail server
     routingCheck: process.env.MAIL_ENABLED !== '0' && mailer.systemMailPath() !== 'log', // the server can send "Some of each" routing tests
   };
 }

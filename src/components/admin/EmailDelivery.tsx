@@ -23,6 +23,8 @@ interface Setup {
   nameservers?: string[];
   /** Whose domain it is: verified ours, ours but not proven yet, or another company's (held first, or proven). */
   ownership?: { domain: string; state: 'verified' | 'pending' | 'held' | 'taken'; at: string | null; how: string | null; record: { type: string; host: string; value: string } } | null;
+  /** Operators only: the mail server's certificate. */
+  cert?: { source: string; issuer: string | null; validTo: string | null; daysLeft: number | null; trusted: boolean; acme: boolean; error: { at: string; message: string } | null };
 }
 const PROVEN_BY: Record<string, string> = { mx: 'its MX record points here', dkim: 'its signing record', txt: 'its sprint2go-verify record' };
 
@@ -405,6 +407,25 @@ export function EmailDeliverySection({
                   </div>
                 );
               })}
+              {/* Operators only (the server sends it to them alone): customers have nothing to do about it. */}
+              {info.cert && (
+                <div className={`ed-record ${info.cert.trusted ? 'ok' : 'bad'}`}>
+                  <span className="ed-rec-main">
+                    <strong>Mail server certificate</strong>
+                    <small className="muted">
+                      {info.cert.trusted
+                        ? `${info.cert.issuer ?? 'A trusted authority'}, valid until ${info.cert.validTo?.slice(0, 10)}.`
+                        : info.cert.acme
+                          ? `Self-signed until Let’s Encrypt issues one${info.cert.error ? `: ${info.cert.error.message}` : '.'}`
+                          : info.cert.error
+                            ? `Self-signed: ${info.cert.error.message}`
+                            : 'Self-signed: providers that require a CA-signed certificate refuse it. Set CF_DNS_TOKEN or MAIL_TLS_CERT on the server.'}{' '}
+                      Only operators see this.
+                    </small>
+                  </span>
+                  <span className="ed-rec-state">{info.cert.trusted ? <Check size={15} /> : <AlertTriangle size={15} />}</span>
+                </div>
+              )}
             </div>
           </div>
         )}

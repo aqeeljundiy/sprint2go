@@ -4,7 +4,7 @@
 //
 // Env: MAIL_HOST (this server's mail name, default: the app's host), MAIL_IP (its public address, for the PTR check),
 // MAIL_PORT (inbound SMTP, default 25 in production and 2525 otherwise), MAIL_RELAY_URL (optional smtp:// relay for the
-// "own" route), MAIL_TLS_KEY / MAIL_TLS_CERT (optional; otherwise a self-signed pair is made once).
+// "own" route), MAIL_TLS_KEY / MAIL_TLS_CERT or CF_DNS_TOKEN for a trusted certificate (see server/mailcert.ts).
 import { SMTPServer, type SMTPServerSession } from 'smtp-server';
 import { simpleParser, type ParsedMail } from 'mailparser';
 import nodemailer from 'nodemailer';
@@ -12,13 +12,11 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { authenticate, dkimSign } from 'mailauth';
 import { promises as dns } from 'node:dns';
 import { connect, isIP } from 'node:net';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { mailConfigured, sendMail, sendRaw, sesIdentity } from './mail.ts';
 import { domainKey, mayUse, ownership, ownersMap, settle as settleDomain, type Ownership } from './domains.ts';
+import { loadTls, onCertChange, startCertKeeper } from './mailcert.ts';
 export { domainKey };
 
 db.db.exec(`
@@ -276,19 +274,6 @@ export async function serverHealth() {
 /* ---------- receiving ---------- */
 
 let listening = false;
-function tlsOptions() {
-  const key = process.env.MAIL_TLS_KEY, cert = process.env.MAIL_TLS_CERT;
-  if (key && cert && existsSync(key) && existsSync(cert)) return { key: readFileSync(key), cert: readFileSync(cert) };
-  const k = join(db.dataDir, 'mail-key.pem'), c = join(db.dataDir, 'mail-cert.pem');
-  if (!existsSync(k) || !existsSync(c)) {
-    try {
-      execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', k, '-out', c, '-days', '3650', '-subj', `/CN=${MAIL_HOST}`], { stdio: 'ignore' });
-    } catch {
-      return null; // no openssl: plain SMTP only
-    }
-  }
-  return { key: readFileSync(k), cert: readFileSync(c) };
-}
 
 /** "Some of each" routing tests (server/routing.ts): their addresses are accepted, then swallowed. */
 type ProbeHook = { accepts: (address: string) => boolean; arrived: (address: string) => void };
@@ -298,7 +283,8 @@ export const onRoutingProbe = (hook: ProbeHook) => (probeHook = hook);
 export function startMailer(d: MailerDeps) {
   deps = d;
   if (process.env.MAIL_ENABLED === '0') return;
-  const tls = tlsOptions();
+  const loaded = loadTls(MAIL_HOST);
+  const tls = loaded ? { key: loaded.key, cert: loaded.cert } : null;
   const server = new SMTPServer({
     name: MAIL_HOST,
     banner: 'sprint2go mail',
@@ -323,9 +309,15 @@ export function startMailer(d: MailerDeps) {
     },
   });
   server.on('error', (e) => deps.log(`[mail] ${e.message}`));
+  // A renewed or newly trusted certificate goes in without a restart.
+  onCertChange((next) => {
+    server.updateSecureContext({ key: next.key, cert: next.cert });
+    server.options.hideSTARTTLS = false;
+  });
+  startCertKeeper(MAIL_HOST, deps.log);
   server.listen(MAIL_PORT, '0.0.0.0', () => {
     listening = true;
-    deps.log(`Mail: receiving for ${MAIL_HOST} on port ${MAIL_PORT}${tls ? ' (STARTTLS)' : ''}; sending ${process.env.MAIL_RELAY_URL ? 'through the relay' : 'direct'}${boostedAvailable() ? ', Boosted available' : ''}`);
+    deps.log(`Mail: receiving for ${MAIL_HOST} on port ${MAIL_PORT}${tls ? ` (STARTTLS, ${loaded!.source} certificate)` : ''}; sending ${process.env.MAIL_RELAY_URL ? 'through the relay' : 'direct'}${boostedAvailable() ? ', Boosted available' : ''}`);
   });
   setInterval(() => void pump(), 30_000);
   void pump();
@@ -333,6 +325,22 @@ export function startMailer(d: MailerDeps) {
 
 const cleanSubject = (s: string) => String(s ?? '').replace(/^\s*((re|fwd?|aw|wg)\s*:\s*)+/i, '').trim();
 const person = (v: { name?: string; address?: string } | undefined): Person => ({ name: v?.name || (v?.address ?? '').split('@')[0], email: lower(v?.address ?? '') });
+
+/** Who may vouch for forwarded mail with an ARC seal: Google, Microsoft and Zoho (the providers "Some of each" uses). */
+export const ARC_SEALERS = ['google.com', 'microsoft.com', 'zohomail.com', 'zohomail.eu', 'zohomail.in', 'zoho.com'];
+/**
+ * mailauth's ARC result, read: the chain must validate, its newest seal must come from a trusted provider, and what
+ * that provider saw (its ARC-Authentication-Results) must be a pass and not a DMARC fail.
+ */
+export function arcVerdict(arc: unknown): { trusted: boolean; sealer: string; result: string } {
+  const a = arc as { status?: { result?: string }; signature?: { signingDomain?: string } | false; authenticationResults?: Record<string, any> } | undefined;
+  const result = String(a?.status?.result ?? 'none');
+  const sealer = lower((a?.signature && a.signature.signingDomain) || '');
+  const known = ARC_SEALERS.some((d) => sealer === d || sealer.endsWith(`.${d}`));
+  const aar = a?.authenticationResults ?? {};
+  const passed = aar.dmarc?.result === 'pass' || aar.spf?.result === 'pass' || (Array.isArray(aar.dkim) && aar.dkim.some((x: { result?: string }) => x.result === 'pass'));
+  return { trusted: result === 'pass' && known && passed && aar.dmarc?.result !== 'fail', sealer, result };
+}
 
 async function receive(raw: Buffer, session: SMTPServerSession) {
   const parsed = await simpleParser(raw);
@@ -344,8 +352,11 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const dmarc = (auth.dmarc as any)?.status?.result as string | undefined;
     const spf = (auth.spf as any)?.status?.result as string | undefined;
     const dkimPass = (auth.dkim?.results ?? []).some((r: any) => r.status?.result === 'pass');
-    spam = dmarc === 'fail' || (spf === 'fail' && !dkimPass);
-    authSummary = `spf=${spf ?? '-'} dkim=${dkimPass ? 'pass' : 'none'} dmarc=${dmarc ?? '-'}`;
+    // Forwarded by Google, Microsoft or Zoho ("Some of each", forwarding): our own SPF and DMARC see their servers, not
+    // the sender's, so they fail. A valid ARC seal from them saying the original passed there is good enough.
+    const arc = arcVerdict(auth.arc);
+    spam = !arc.trusted && (dmarc === 'fail' || (spf === 'fail' && !dkimPass));
+    authSummary = `spf=${spf ?? '-'} dkim=${dkimPass ? 'pass' : 'none'} dmarc=${dmarc ?? '-'}${arc.sealer ? ` arc=${arc.result}(${arc.sealer})` : ''}`;
   } catch {
     /* no verdict: treat as ordinary mail */
   }

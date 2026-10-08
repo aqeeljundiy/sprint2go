@@ -56,6 +56,7 @@ interface System {
   dbBytes: number;
   backups: { file: string; bytes: number; at: string }[];
   lastBackupAt: string | null;
+  cert: Cert;
   systemMail: 'ses' | 'own' | 'log';
   noreply: string;
   mailOn: boolean;
@@ -69,6 +70,29 @@ interface System {
   alerts: { kind: string; at: string; text: string }[];
   backupTest: { at: string; file: string; ok: boolean; detail: string } | null;
 }
+interface Cert {
+  source: 'file' | 'acme' | 'self-signed' | 'none';
+  issuer: string | null;
+  validTo: string | null;
+  daysLeft: number | null;
+  trusted: boolean;
+  acme: boolean;
+  error: { at: string; message: string } | null;
+}
+/** The mail server's certificate in one line, and whether it's trusted. */
+const certRow = (c: Cert) => ({
+  label: 'Mail certificate',
+  value: c.trusted
+    ? `${c.issuer ?? 'Trusted'}${c.source === 'acme' ? ' (renews itself)' : ''}, valid until ${c.validTo?.slice(0, 10)}`
+    : c.source === 'none'
+      ? 'None: mail arrives without encryption'
+      : c.acme
+        ? `Self-signed until Let’s Encrypt issues one${c.error ? `: ${c.error.message}` : ''}`
+        : c.error
+          ? `Self-signed: ${c.error.message}`
+          : 'Self-signed: Google routes that require a CA-signed one bounce. Set CF_DNS_TOKEN or MAIL_TLS_CERT',
+  ok: c.trusted,
+});
 const uptime = (s: number) => (s > 86400 ? `${Math.floor(s / 86400)} d ${Math.floor((s % 86400) / 3600)} h` : s > 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.floor(s / 60)} min`);
 
 function Health() {
@@ -107,6 +131,7 @@ function Health() {
                 value: data.systemMail === 'ses' ? 'Sent through Amazon SES' : data.systemMail === 'own' ? `Sent from ${data.noreply} by our mail server` : 'Not sent: sign-up codes go to the server log',
                 ok: data.systemMail !== 'log' || !data.production,
               },
+              certRow(data.cert),
               { label: 'Support address', value: data.supportEmail },
               { label: 'Meeting recorder', value: !data.recorder.configured ? 'Not set up' : data.recorder.reachable ? `Answering · ${data.recorder.bots ?? 0} bots busy` : 'Not answering', ok: !data.recorder.configured || data.recorder.reachable },
               { label: 'Built', value: data.built ? `${dateTime(data.built)} · Node ${data.node}` : 'unknown' },
@@ -147,6 +172,7 @@ interface MailData {
   supportEmail: string;
   limits: { hour: number; day: number };
   health: Record<'ptr' | 'a' | 'port25' | 'inbound', { ok: boolean; found: string; want: string }>;
+  cert: Cert;
   blocklists: { list: string; listed: boolean | 'unknown' }[];
   queued: { id: string; company: string; route: string; fromAddr: string; toAddr: string; attempts: number; nextAt: string; error: string | null; createdAt: string }[];
   failed: { id: string; company: string; route: string; fromAddr: string; toAddr: string; attempts: number; error: string | null; createdAt: string }[];
@@ -170,7 +196,7 @@ function Mail() {
       </Stats>
       <div className="adm-split">
         <Section title="Can we send and receive?">
-          <Rows rows={(['inbound', 'port25', 'a', 'ptr'] as const).map((k) => ({ label: HEALTH[k], value: data.health[k].ok ? data.health[k].found : `${data.health[k].found} (wanted ${data.health[k].want})`, ok: data.health[k].ok }))} />
+          <Rows rows={[...(['inbound', 'port25', 'a', 'ptr'] as const).map((k) => ({ label: HEALTH[k], value: data.health[k].ok ? data.health[k].found : `${data.health[k].found} (wanted ${data.health[k].want})`, ok: data.health[k].ok })), certRow(data.cert)]} />
         </Section>
         <Section title="Blocklists" hint={data.ip || 'set MAIL_IP to check'}>
           {data.blocklists.length === 0 ? (

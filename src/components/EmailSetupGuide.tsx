@@ -78,6 +78,8 @@ export function EmailSetupGuide({
     alive.current = true;
     return () => void (alive.current = false);
   }, []);
+  // Our certificate is CA-signed: providers can require that, and should.
+  const trusted = real && caps.trustedCert;
   // "Some of each" with a real company: the records it really needs (the exact DKIM key) and who runs its DNS.
   const [info, setInfo] = useState<SetupInfo | null>(null);
   useEffect(() => {
@@ -432,9 +434,15 @@ export function EmailSetupGuide({
                   <li>
                     Routing: <b>Route email through these smart hosts</b>. Add <Value v={mx} />, then Next.
                   </li>
-                  <li>
-                    Security restrictions: keep <b>Always use Transport Layer Security (TLS) to secure the connection</b> and pick <b>Any digital certificate, including self-signed certificates</b>. Our certificate is self-signed for now. Next.
-                  </li>
+                  {trusted ? (
+                    <li>
+                      Security restrictions: keep <b>Always use Transport Layer Security (TLS) to secure the connection</b> and pick <b>Issued by a trusted certificate authority (CA)</b>. Tick <b>And the subject name or subject alternative name (SAN) matches this domain name</b> and add <Value v={mx} />. Next.
+                    </li>
+                  ) : (
+                    <li>
+                      Security restrictions: keep <b>Always use Transport Layer Security (TLS) to secure the connection</b> and pick <b>Any digital certificate, including self-signed certificates</b>. Our certificate is self-signed for now. Next.
+                    </li>
+                  )}
                   <li>
                     Validation email: an address at {d} that only exists in {product.name}, like the mailbox from step 2. Click <b>Validate</b>, and when it passes, <b>Next</b> and <b>Create connector</b>.
                   </li>
@@ -511,9 +519,7 @@ export function EmailSetupGuide({
                         Server: <Value v={mx} />
                         {ipAlt}
                       </li>
-                      <li>
-                        Port <b>25</b>, with TLS. Our certificate is self-signed for now, so they must not require a CA-signed one.
-                      </li>
+                      <li>{trusted ? <>Port <b>25</b>, with TLS. Our certificate is CA-signed, so they can require that.</> : <>Port <b>25</b>, with TLS. Our certificate is self-signed for now, so they must not require a CA-signed one.</>}</li>
                       <li>Only for addresses they don’t host. Everyone who has a mailbox there keeps getting mail there.</li>
                     </ol>
                     <p className="esg-tipline">
@@ -542,14 +548,20 @@ export function EmailSetupGuide({
                       <li>
                         Specify email server: <b>Single host</b>, with <Value v={mx} /> and port <b>25</b>.
                       </li>
-                      <li>
-                        Options: keep <b>Require mail to be transmitted over a secure transport (TLS) connection</b> ticked. Untick <b>Require CA signed certificate</b> and <b>Validate certificate hostname</b>. Leave <b>Perform MX lookup on host</b> unticked.
-                      </li>
+                      {trusted ? (
+                        <li>
+                          Options: tick <b>Require mail to be transmitted over a secure transport (TLS) connection</b>, <b>Require CA signed certificate</b> and <b>Validate certificate hostname</b>. Leave <b>Perform MX lookup on host</b> unticked.
+                        </li>
+                      ) : (
+                        <li>
+                          Options: keep <b>Require mail to be transmitted over a secure transport (TLS) connection</b> ticked. Untick <b>Require CA signed certificate</b> and <b>Validate certificate hostname</b>. Leave <b>Perform MX lookup on host</b> unticked.
+                        </li>
+                      )}
                       <li>
                         Click <b>Save</b>.
                       </li>
                     </ol>
-                    <p className="muted small">Our certificate is self-signed for now. With either certificate box ticked, Google can’t deliver here and the mail bounces.</p>
+                    <p className="muted small">{trusted ? `Our certificate for ${mx} is signed by a trusted authority, so Google can check it on every delivery.` : 'Our certificate is self-signed for now. With either certificate box ticked, Google can’t deliver here and the mail bounces.'}</p>
                   </>
                 ),
               },

@@ -10,6 +10,7 @@ import * as db from './db.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
 import * as mailer from './mailer.ts';
+import { certState } from './mailcert.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
 
@@ -164,7 +165,7 @@ function systemInfo(ctx: AdminCtx) {
     /* fine */
   }
   const built = existsSync(join(process.cwd(), 'dist', 'index.html')) ? statSync(join(process.cwd(), 'dist', 'index.html')).mtime.toISOString() : null;
-  const flags = ['PUBLIC_URL', 'S2G_OPERATORS', 'S2G_DEMO', 'MAIL_HOST', 'MAIL_IP', 'SUPPORT_EMAIL', 'SES_KEY', 'SES_SECRET', 'MAIL_FROM', 'RECORDER_URL', 'RECORDER_SECRET', 'S2G_SECRET'].map((k) => ({ key: k, set: !!process.env[k] }));
+  const flags = ['PUBLIC_URL', 'S2G_OPERATORS', 'S2G_DEMO', 'MAIL_HOST', 'MAIL_IP', 'SUPPORT_EMAIL', 'SES_KEY', 'SES_SECRET', 'MAIL_FROM', 'RECORDER_URL', 'RECORDER_SECRET', 'S2G_SECRET', 'CF_DNS_TOKEN', 'MAIL_TLS_CERT'].map((k) => ({ key: k, set: !!process.env[k] }));
   return {
     version,
     commit: process.env.SOURCE_COMMIT ?? process.env.S2G_COMMIT ?? null,
@@ -178,6 +179,7 @@ function systemInfo(ctx: AdminCtx) {
     dbBytes: existsSync(db.dbPath) ? statSync(db.dbPath).size : 0,
     backups: backups.slice(0, 20),
     lastBackupAt: backups[0]?.at ?? null,
+    cert: certState(mailer.MAIL_HOST),
     systemMail: mailer.systemMailPath(),
     noreply: mailer.NOREPLY,
     mailOn: ctx.mailOn,
@@ -195,6 +197,10 @@ async function warnings(ctx: AdminCtx) {
   const out: { kind: string; text: string; level: 'high' | 'normal'; to?: string }[] = [];
   if (sys.disk && sys.disk.free / sys.disk.total < 0.1) out.push({ kind: 'disk', level: 'high', text: `Disk nearly full: ${(sys.disk.free / 1e9).toFixed(1)} GB free.`, to: '/admin/platform' });
   if (!sys.lastBackupAt || sys.lastBackupAt < new Date(Date.now() - 36 * 3600_000).toISOString()) out.push({ kind: 'backup', level: 'high', text: sys.lastBackupAt ? 'The last backup is older than a day.' : 'No backup yet.', to: '/admin/platform/backups' });
+  // The mail server's certificate: Let's Encrypt couldn't get or renew it, or a trusted one is close to expiring.
+  const cert = sys.cert;
+  if (cert.error) out.push({ kind: 'cert', level: cert.trusted ? 'normal' : 'high', text: cert.acme ? `Let’s Encrypt couldn’t ${cert.trusted ? 'renew' : 'issue'} the mail server’s certificate: ${cert.error.message}` : `The mail server’s certificate can’t be used: ${cert.error.message}`, to: '/admin/platform/mail' });
+  else if (cert.source !== 'self-signed' && cert.daysLeft !== null && cert.daysLeft < 14) out.push({ kind: 'cert', level: 'high', text: `The mail server’s certificate expires in ${Math.max(0, cert.daysLeft)} days.`, to: '/admin/platform/mail' });
   if (ctx.recorder.configured) {
     const h = await ctx.recorder.health();
     if (!h?.ok) out.push({ kind: 'recorder', level: 'normal', text: 'The meeting recorder does not answer.', to: '/admin/platform' });
@@ -1181,6 +1187,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         supportEmail: mailer.SUPPORT_EMAIL,
         limits: mailer.LIMITS,
         health: await mailer.serverHealth(),
+        cert: certState(mailer.MAIL_HOST),
         blocklists: await mailer.blocklists(),
         queued: mailer.queue('queued').map((q) => ({ ...q, company: names.get(q.workspaceId) ?? (q.workspaceId === 'platform' ? 'sprint2go' : q.workspaceId) })),
         failed: mailer.queue('failed', 100).map((q) => ({ ...q, company: names.get(q.workspaceId) ?? (q.workspaceId === 'platform' ? 'sprint2go' : q.workspaceId) })),

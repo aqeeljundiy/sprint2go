@@ -13,6 +13,7 @@ export const caps = {
   payments: false,
   desktopUrl: null as string | null,
   mailHost: '',
+  trustedCert: false, // our mail server's certificate is CA-signed, so providers may require that
   routingCheck: false, // the server can send "Some of each" routing tests (daily and "Send a test")
 };
 export function loadCaps() {

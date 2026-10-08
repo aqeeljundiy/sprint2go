@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "acme-client": "^5.4.0",
     "dompurify": "^3.4.16",
     "lucide-react": "^1.50.0",
     "mailauth": "^7.1.1",
