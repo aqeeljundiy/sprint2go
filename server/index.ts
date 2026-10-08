@@ -212,6 +212,15 @@ function portalsOf(userId: string): { workspaceId: string; clientId: string }[] 
   if (me.clientOf && !found.some((f) => f.clientId === me.clientOf!.clientId)) found.push(me.clientOf);
   return found;
 }
+/**
+ * What a customer attaches to a ticket: files they uploaded themselves (Help uploads them), never another address,
+ * since support opens what's on a ticket.
+ */
+const ticketFiles = (list: unknown, userId: string) =>
+  (Array.isArray(list) ? list : [])
+    .filter((a: any) => a && typeof a.url === 'string' && db.fileInfo(/^\/api\/files\/([a-f0-9]{32})$/.exec(a.url)?.[1] ?? '')?.by === userId)
+    .slice(0, 10)
+    .map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: String(a.url), size: a.size ? String(a.size).slice(0, 20) : undefined }));
 /** An operator opening the same ticket file again within ten minutes (a video seeking, a second tab) is one audit entry. */
 const fileOpens = new Map<string, number>();
 const firstOpenInAWhile = (key: string) => {
@@ -1406,7 +1415,7 @@ createServer(async (req, res) => {
       if (!subject || !text) return json(res, 400, { error: 'Tell us what it’s about and what happened.' });
       const ws = (memberOf(me).find((w: any) => w.id === b.workspaceId) ?? memberOf(me)[0]) as any;
       const paying = ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false;
-      const attachments = (Array.isArray(b.attachments) ? b.attachments : []).filter((a: any) => a && typeof a.url === 'string' && /^\/api\/files\/[a-f0-9]{32}$/.test(a.url)).map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: a.url, size: a.size ? String(a.size) : undefined }));
+      const attachments = ticketFiles(b.attachments, me);
       const t = support.createTicket({
         subject,
         body: text,
@@ -1437,7 +1446,7 @@ createServer(async (req, res) => {
         const b = await body(req);
         const text = String(b.body ?? '').trim();
         if (!text) return json(res, 400, { error: 'Write something first.' });
-        const attachments = (Array.isArray(b.attachments) ? b.attachments : []).filter((a: any) => a && typeof a.url === 'string' && /^\/api\/files\/[a-f0-9]{32}$/.test(a.url)).map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: a.url }));
+        const attachments = ticketFiles(b.attachments, me);
         support.addMessage(t.id, { kind: 'customer', author: String(meDoc?.email ?? '').toLowerCase(), authorName: meDoc?.name ?? null, body: text, internal: false, attachments });
         support.customerReplied(t.id);
         supportNotify(t, `${meDoc?.name ?? 'A customer'} replied on #${t.number}: ${text.slice(0, 70)}`, true);
@@ -2239,12 +2248,12 @@ createServer(async (req, res) => {
             return usedOn().some((r) => !!see(r.coll, JSON.parse(r.data)));
           })());
       // Support tickets: the operators who work tickets (the support permission, past the console's two-step sign-in)
-      // open what customers attach, and each opening is in the audit log; whoever opened a ticket opens the files on
-      // its replies to them (never on internal notes).
-      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, m.internal, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; internal: number; number: number; requesterUser: string | null; requesterEmail: string }[]) : [];
+      // open what customers attached (their own uploads, or what came with their email), and each opening is in the
+      // audit log. Whoever wrote in by email opens what they sent, in Help (those files belong to no company).
+      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.kind = 'customer' AND m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; number: number; requesterUser: string | null; requesterEmail: string }[]) : [];
       const supportOp = !!tickets.length && !!opRecord && opRecord.totpOn && platform.permsOf(opRecord.role).includes('support') && platform.sessionVerified(token);
       const myEmail = String(meDoc?.email ?? '').toLowerCase();
-      const requester = !supportOp && tickets.some((t) => !t.internal && (t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail)));
+      const requester = !supportOp && f.workspaceId === 'platform' && tickets.some((t) => t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail));
       if (!team && !guest && !supportOp && !requester) return json(res, 404, { error: 'No such file.' });
       if (supportOp && !/^bytes=[1-9]/.test(String(req.headers.range ?? '')) && firstOpenInAWhile(`${me}:${f.id}`)) db.audit(opRecord!.email, 'ticket.file-open', tickets[0].ticketId, `#${tickets[0].number}: ${String(f.name).slice(0, 120)}`);
       const path = db.filePath(f.id);
