@@ -3,9 +3,12 @@ import { term, setTermWord } from './terms';
 import { setPhotos } from './photos';
 import { TempAddressDialog, lifeLeft } from './components/TempAddress';
 import { AppSetupCard } from './components/AppSetupCard';
+import { ProjectsCtx } from './components/ProjectPicker';
+import { ProjectsSidebar } from './components/ProjectsSidebar';
+import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
 import { SmoothHeight, TabPane } from './components/ui/Smooth';
-import { Brain, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
+import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video } from 'lucide-react';
 import type { Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
@@ -364,8 +367,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [notices, setNotices] = useStored('notices');
   const [meetings, setMeetings] = useStored('meetings');
   const [taskScope, setTaskScope] = useState<TaskScope>({ kind: 'mine' });
+  // The Projects app: all projects, past ones, or one project's hub.
+  const [projScope, setProjScope] = useState<TaskScope>({ kind: 'projects' });
+  const [projNew, setProjNew] = useState(0); // bumps to open the "new project" form
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'portal' | undefined>(undefined);
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'logins' | 'portal' | undefined>(undefined);
   const [teams, setTeams] = useStored('teams');
   const [statuses, setStatuses] = useStored('statuses');
   const [savedTemplates, setSavedTemplates] = useStored('templates');
@@ -886,7 +892,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /* ---------------- Team: tasks, clients, chat, notifications ---------------- */
 
   // The company's apps, minus the ones this person hid from their own sidebar (Settings, Your apps).
-  const companyApps: AppId[] = ws.apps ?? APPS.map((a) => a.id);
+  // Projects used to live inside Tasks: companies that chose their apps before it existed get it with Tasks.
+  const companyApps: AppId[] = ws.apps ? (ws.apps.includes('tasks') && !ws.apps.includes('projects') ? [...ws.apps, 'projects'] : ws.apps) : APPS.map((a) => a.id);
   const myHidden: AppId[] = user.hiddenApps ?? [];
   const enabledApps: AppId[] = companyApps.filter((a) => a === 'home' || !myHidden.includes(a));
   const enabled = new Set<string>(enabledApps);
@@ -913,6 +920,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // … and the ones you work with now (pickers, sidebars, Home, filing).
   const wsClients = useMemo(() => wsClientsAll.filter((c) => c.status !== 'ended'), [wsClientsAll]);
   const wsTeams = useMemo(() => teams.filter((t) => t.workspaceId === ws.id), [teams, ws.id]);
+  /** A new project, from anywhere (any project picker, ⌘K, the Projects app). Returns it so the picker can select it. */
+  const createProject = (name: string, extra: Partial<Client> = {}): Client => {
+    const c: Client = { id: uid(), workspaceId: ws.id, name: name.trim(), color: ['#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444'][wsClientsAll.length % 6], status: 'active', since: nowIso(), ownerId: user.id, ...extra };
+    setClients((cs) => [...cs, c]);
+    showToast({ text: `${c.name} added`, action: { label: 'Open', run: () => openClient(c.id) } });
+    return c;
+  };
+  const projectsCtx = useMemo(() => ({ create: (name: string) => createProject(name) }), [ws.id, wsClientsAll.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const allWsTasks = useMemo(() => todos.filter((t) => (t.workspaceId ?? 'pnp') === ws.id), [todos, ws.id]);
   // Who sees which tasks: owners and admins see everything; everyone else sees their own work,
   // their teams' work, the clients they work on, and the channels they're in.
@@ -1348,13 +1363,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   const openTasks = (scope: TaskScope) => {
+    if ((scope.kind === 'client' || scope.kind === 'past') && enabled.has('projects')) return (setProjScope(scope), go('projects'));
     setTaskScope(scope);
     go('tasks');
   };
-  /** The client page is the hub: overview, tasks, chat, mail, meetings, files, portal. */
+  /** The project page is the hub: overview, tasks, chat, mail, meetings, files, notes, logins, guests. It lives in the Projects app. */
   const openClient = (id: string, tab?: typeof clientTab) => {
     setClientTab(tab);
     openTasks({ kind: 'client', id });
+  };
+  const newProjectFlow = () => {
+    setProjScope({ kind: 'projects' });
+    setProjNew((n) => n + 1);
+    go('projects');
   };
   const openChannel = (id: string) => {
     setChatId(id);
@@ -1449,7 +1470,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       .then((d: { items: VaultItem[] }) => setVaultItems(d.items));
   };
   useEffect(() => {
-    if (mode === 'vault') loadVault();
+    // Vault itself, and a project's Logins tab (which lists the project's logins you can see).
+    if (mode === 'vault' || mode === 'projects') loadVault();
   }, [mode, ws.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------------- Notes ---------------- */
@@ -2141,6 +2163,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ? { icon: Plus, label: 'New event', run: () => openNewEvent() }
         : mode === 'drive'
           ? { icon: Upload, label: 'Upload', run: () => fileInput.current?.click() }
+          : mode === 'projects' && projScope.kind === 'projects'
+            ? { icon: Plus, label: `New ${term.one}`, run: () => newProjectFlow() }
           : mode === 'tasks' || mode === 'home'
             ? { icon: Sparkles, label: 'Brain dump', run: () => setDump('') }
             : mode === 'chat' && !chatId
@@ -2325,6 +2349,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }
 
   return (
+    <ProjectsCtx.Provider value={projectsCtx}>
     <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''}`}>
       <AppRail
         current={mode}
@@ -2472,6 +2497,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onUpload={() => fileInput.current?.click()}
             onNewFolder={newFolder}
           />
+          ) : appMode === 'projects' ? (
+          <ProjectsSidebar
+            scope={projScope}
+            tasks={wsTasks}
+            clients={wsClientsAll}
+            isAdmin={isAdmin}
+            myClientIds={myClientIds}
+            onScope={(sc) => {
+              setProjScope(sc);
+              setSidebarOpen(false);
+            }}
+            onAddClient={(name, domain, type) => {
+              const c = createProject(name, { domain, type });
+              setProjScope({ kind: 'client', id: c.id });
+            }}
+          />
           ) : appMode === 'tasks' ? (
           <TasksSidebar
             scope={taskScope}
@@ -2483,15 +2524,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             myTeamIds={myTeamIds}
             myClientIds={myClientIds}
             onScope={(sc) => {
-              setTaskScope(sc);
+              openTasks(sc);
               setSidebarOpen(false);
             }}
+            projectsApp={enabled.has('projects')}
             onBrainDump={() => setDump('')}
             onAddClient={(name, domain, type) => {
-              const c = { id: uid(), workspaceId: ws.id, name, domain, type, color: ['#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444'][wsClients.length % 6], status: 'active' as const, ownerId: user.id };
-              setClients((cs) => [...cs, c]);
+              const c = createProject(name, { domain, type });
               setTaskScope({ kind: 'client', id: c.id });
-              showToast({ text: `${name} added` });
             }}
           />
           ) : appMode === 'meet' ? (
@@ -2554,6 +2594,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         activeAccount={activeAccount}
         accountUnread={accountUnread}
         onNewTemp={() => setTempDialog({})}
+        onNewProject={enabled.has('projects') ? () => (newProjectFlow(), setSidebarOpen(false)) : undefined}
         onTempMenu={(a, el) => ((tempAnchor.current = el), setTempMenu(a))}
         onAccountFilter={(id) => {
           setActiveAccount(id);
@@ -2702,13 +2743,31 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
         )}
 
-        {mode === 'tasks' && (
+        {mode === 'projects' && projScope.kind === 'projects' && (
+          <ProjectsHome
+            key={projNew}
+            startAdding={projNew > 0}
+            projects={isAdmin ? wsClientsAll : wsClientsAll.filter((c) => myClientIds.includes(c.id))}
+            tasks={wsTasks}
+            users={members}
+            onOpen={(id) => setProjScope({ kind: 'client', id })}
+            onCreate={(name, type) => {
+              const c = createProject(name, { type });
+              setProjScope({ kind: 'client', id: c.id });
+            }}
+            onMenu={() => setSidebarOpen(true)}
+          />
+        )}
+        {(mode === 'tasks' || (mode === 'projects' && projScope.kind !== 'projects')) && (
           <TasksView
-            scope={taskScope}
+            scope={mode === 'projects' ? projScope : taskScope}
             tasks={wsTasks}
             clients={wsClientsAll}
             teams={wsTeams}
-            onScope={setTaskScope}
+            onScope={(sc) => (mode === 'projects' && (sc.kind === 'client' || sc.kind === 'past') ? setProjScope(sc) : openTasks(sc))}
+            logins={vaultItems.map((v) => ({ id: v.id, title: v.meta.title, url: v.meta.url, username: v.meta.username, clientId: v.meta.clientId, hasTotp: v.hasTotp }))}
+            onOpenLogins={(clientId) => (setVaultFilter(clientId), go('vault'))}
+            onNewLogin={(clientId) => (setVaultFilter(clientId), setVaultEditing('new'), go('vault'))}
             onOpenTask={setTaskOpen}
             myTeamIds={myTeamIds}
             myClientIds={myClientIds}
@@ -3562,6 +3621,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           recentKey={`s2g-palette-recent:${user.id}:${ws.id}`}
           queryActions={(q) => [
             { id: 'q-task', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Create task “${q}”`, sub: 'Assigned to you', icon: ListChecks, run: () => { const t = createTask({ title: q.charAt(0).toUpperCase() + q.slice(1), userId: user.id, source: 'manual' }); showToast({ text: 'Task created', action: { label: 'Open', run: () => openTask(t.id) } }); } },
+            { id: 'q-project', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `New ${term.one} “${q}”`, sub: `Opens its page: tasks, chat, files, logins…`, icon: Briefcase, run: () => { const c = createProject(q.charAt(0).toUpperCase() + q.slice(1)); openClient(c.id); } },
             { id: 'q-note', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `New note “${q}”`, sub: 'Only you can see it until you share it', icon: FileText, run: () => newNote(q.charAt(0).toUpperCase() + q.slice(1)) },
             { id: 'q-ask', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Ask AI: “${q}”`, sub: 'Answers from your mail, chat, meetings and tasks', icon: Sparkles, run: () => { setAskSeed(q); setAskScope({ kind: 'all' }); } },
           ]}
@@ -3595,5 +3655,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         </div>
       )}
     </div>
+    </ProjectsCtx.Provider>
   );
 }

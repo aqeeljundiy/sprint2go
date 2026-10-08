@@ -24,7 +24,8 @@ export type TaskScope =
   | { kind: 'grid' }
   | { kind: 'client'; id: string; teamId?: string }
   | { kind: 'team'; id: string }
-  | { kind: 'past' }; // past clients and clients over time
+  | { kind: 'past' } // past clients and clients over time
+  | { kind: 'projects' }; // every project (the Projects app's home)
 
 export const ROLE_NAME: Record<ClientPerson['role'], string> = { viewer: 'Viewer', collaborator: 'Collaborator', approver: 'Approver' };
 export const ROLE_HINT: Record<ClientPerson['role'], string> = { viewer: 'Reads only', collaborator: 'Comments, uploads, sends requests', approver: 'Also approves work' };
@@ -101,6 +102,10 @@ interface Props {
   onOpenNote: (id: string) => void;
   onNewNote: (clientId: string) => void;
   onReactivateClient: (id: string) => void;
+  /** Vault logins for this project (only the ones you can see); open them in Vault, or add one there. */
+  logins?: { id: string; title: string; url?: string; username?: string; clientId?: string; hasTotp?: boolean }[];
+  onOpenLogins?: (clientId: string) => void;
+  onNewLogin?: (clientId: string) => void;
   onShareMeeting: (id: string, shared: boolean) => void;
   onShareFile: (id: string, shared: boolean) => void;
   onScope: (s: TaskScope) => void;
@@ -115,7 +120,7 @@ interface Props {
   onOpenThread: (id: string) => void;
   onOpenChannel: (id: string) => void;
   messages: ChatMessage[]; // this workspace's chat, for the client page's Chat tab
-  clientTab?: 'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'portal';
+  clientTab?: 'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'logins' | 'portal';
   onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
@@ -133,7 +138,7 @@ export function TasksView(p: Props) {
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'portal'>('overview');
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'logins' | 'portal'>('overview');
   const [writingOv, setWritingOv] = useState(false);
   const scopeId = 'id' in p.scope ? p.scope.id : '';
   useEffect(() => {
@@ -619,6 +624,8 @@ export function TasksView(p: Props) {
               ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail'],
               ['meetings', 'Meetings'],
               ['files', 'Files'],
+              ['notes', 'Notes'],
+              ['logins', 'Logins'],
               ['portal', 'Guests'],
             ] as const
           ).map(([id, label]) => (
@@ -955,22 +962,38 @@ export function TasksView(p: Props) {
         )}
 
         {client && clientTab === 'chat' && (
-          <div className="te-list hub-chat">
+          <div className="hub-chat">
             {clientChannel ? (
               <>
-                {clientMsgs.slice(-12).map((m) => (
-                  <div key={m.id} className="hub-msg">
-                    <b>{m.guestEmail ? (clientChannel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone')}</b>
-                    <span>{m.text || (m.voice ? 'Voice note' : m.files ? m.files.map((f) => f.name).join(', ') : '')}</span>
-                    <time>{relative(m.at)}</time>
-                  </div>
-                ))}
-                <button className="primary-btn sm" onClick={() => p.onOpenChannel(clientChannel.id)}>
-                  <Hash size={13} /> Open #{clientChannel.name}
-                </button>
+                <div className="hub-msgs">
+                  {clientMsgs.slice(-12).map((m) => {
+                    const g = m.guestEmail ? clientChannel.guests?.find((x) => x.email === m.guestEmail) : undefined;
+                    const u = m.guestEmail ? undefined : person(m.userId);
+                    const who = g ? { name: g.name, email: g.email } : u ? u : { name: 'Someone', email: '' };
+                    return (
+                      <div key={m.id} className="hub-msg">
+                        <Avatar person={who} size={28} />
+                        <div className="hm-body">
+                          <div className="hm-head">
+                            <b>{who.name.split(' ')[0]}</b>
+                            {g && <em className="ext-tag">{term.who}</em>}
+                            <time>{relative(m.at)}</time>
+                          </div>
+                          <p>{m.text || (m.voice ? 'Voice note' : m.files ? m.files.map((f) => f.name).join(', ') : '')}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <footer className="hub-chat-foot">
+                  <span className="muted small">#{clientChannel.name} · latest messages</span>
+                  <button className="primary-btn sm" onClick={() => p.onOpenChannel(clientChannel.id)}>
+                    <Hash size={13} /> Open the channel
+                  </button>
+                </footer>
               </>
             ) : (
-              <p className="te-empty">{client.name} has no channel yet. Create one in Chat and pick “Client”.</p>
+              <p className="te-empty">{client.name} has no channel yet. Create one in Chat and pick “{term.One} (internal)” or “Shared”.</p>
             )}
           </div>
         )}
@@ -1030,6 +1053,64 @@ export function TasksView(p: Props) {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+        {client && clientTab === 'notes' && (
+          <div className="tracking-scroll proj-tab">
+            <div className="proj-tab-head">
+              <p className="muted small">Prep, preferences, who’s who: notes linked to {client.name}. Private notes stay yours.</p>
+              <button className="primary-btn sm" onClick={() => p.onNewNote(client.id)}>
+                <Plus size={14} /> New note
+              </button>
+            </div>
+            {p.notes.filter((n) => n.clientId === client.id).length ? (
+              <ul className="proj-list">
+                {p.notes
+                  .filter((n) => n.clientId === client.id)
+                  .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt.localeCompare(a.updatedAt))
+                  .map((n) => (
+                    <li key={n.id}>
+                      <button onClick={() => p.onOpenNote(n.id)}>
+                        <strong>{n.title || 'Untitled'}</strong>
+                        <small>
+                          {n.visibility === 'private' ? 'Only you · ' : ''}
+                          {relative(n.updatedAt)}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="te-empty">No notes for {client.name} yet.</p>
+            )}
+          </div>
+        )}
+        {client && clientTab === 'logins' && (
+          <div className="tracking-scroll proj-tab">
+            <div className="proj-tab-head">
+              <p className="muted small">Shared passwords and 2FA codes for {client.name}. You only see the ones you were given; every reveal is logged.</p>
+              <button className="primary-btn sm" onClick={() => p.onNewLogin?.(client.id)}>
+                <Plus size={14} /> New login
+              </button>
+            </div>
+            {(p.logins ?? []).filter((l) => l.clientId === client.id).length ? (
+              <ul className="proj-list">
+                {(p.logins ?? [])
+                  .filter((l) => l.clientId === client.id)
+                  .map((l) => (
+                    <li key={l.id}>
+                      <button onClick={() => p.onOpenLogins?.(client.id)}>
+                        <strong>{l.title}</strong>
+                        <small>
+                          {[l.username, l.url?.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], l.hasTotp ? '2FA' : ''].filter(Boolean).join(' · ') || 'Login'}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="te-empty">No logins for {client.name} yet. Add the ad accounts, social logins and tools you share with the team.</p>
+            )}
           </div>
         )}
         {client && clientTab === 'portal' && (() => {

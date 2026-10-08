@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown, Plus, Search } from 'lucide-react';
 import { Popover } from './Popover';
 
 export interface Option<V extends string = string> {
@@ -28,6 +28,7 @@ export function Select<V extends string = string>({
   searchable,
   width = 240,
   disabled,
+  create,
 }: {
   value: V | null | undefined;
   options: Option<V>[];
@@ -41,11 +42,21 @@ export function Select<V extends string = string>({
   searchable?: boolean;
   width?: number;
   disabled?: boolean;
+  /** "+ New …" at the bottom: makes the thing on the spot (from the typed name) and picks it. Returns its value. */
+  create?: { label: string; placeholder?: string; make: (name: string) => V | null };
 }) {
   const btn = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
+  const [making, setMaking] = useState<string | null>(null); // the new name being typed, when creating
+  const finishCreate = () => {
+    const name = (making ?? '').trim();
+    if (!name || !create) return;
+    const v = create.make(name);
+    setMaking(null);
+    if (v) pick({ value: v, label: name });
+  };
   const current = options.find((o) => o.value === value);
   const showSearch = searchable ?? options.length > 7;
 
@@ -71,6 +82,7 @@ export function Select<V extends string = string>({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (shown[hi]) pick(shown[hi]);
+      else if (create && q.trim()) setMaking(q);
     }
   };
 
@@ -109,7 +121,7 @@ export function Select<V extends string = string>({
           </>
         )}
       </button>
-      <Popover anchor={btn} open={open} onClose={() => (setOpen(false), setQ(''))} width={width} title={title ?? label}>
+      <Popover anchor={btn} open={open} onClose={() => (setOpen(false), setQ(''), setMaking(null))} width={width} title={title ?? label}>
         <div className="sel-pop" onKeyDown={onKey}>
           {showSearch && (
             <label className="sel-search">
@@ -120,7 +132,7 @@ export function Select<V extends string = string>({
           <ul role="listbox" tabIndex={-1} ref={(el) => {
               if (!showSearch) el?.focus();
             }} aria-label={label}>
-            {shown.length === 0 && <li className="sel-empty">No matches</li>}
+            {shown.length === 0 && !create && <li className="sel-empty">No matches</li>}
             {shown.map((o, i) => {
               const head = o.group && o.group !== lastGroup ? o.group : null;
               lastGroup = o.group;
@@ -146,6 +158,32 @@ export function Select<V extends string = string>({
               );
             })}
           </ul>
+          {create &&
+            (making !== null ? (
+              <div className="sel-create">
+                <input
+                  autoFocus
+                  value={making}
+                  onChange={(e) => setMaking(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') (e.preventDefault(), finishCreate());
+                    if (e.key === 'Escape') (e.preventDefault(), setMaking(null));
+                  }}
+                  placeholder={create.placeholder ?? 'Name'}
+                />
+                <button type="button" className="primary-btn sm" disabled={!making.trim()} onClick={finishCreate}>
+                  Add
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="sel-opt sel-new" onClick={() => setMaking(q)}>
+                <span className="sel-icon">
+                  <Plus size={14} />
+                </span>
+                <span className="sel-label">{q.trim() ? `${create.label}: “${q.trim()}”` : create.label}</span>
+              </button>
+            ))}
         </div>
       </Popover>
     </>

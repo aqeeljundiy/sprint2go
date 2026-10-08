@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ProjectPicker } from './ProjectPicker';
 import { term } from '../terms';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { Archive, Globe, Hash, Lock, Mail, Megaphone, Plus, Users, X } from 'lucide-react';
@@ -163,7 +164,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
               {(category === 'client' || category === 'shared') && (
                 <div className="field">
                   <span>{term.One}</span>
-                  <Select value={clientId} onChange={pickClient} label={`${term.One}`} placeholder={`Pick a ${term.one}`} options={clients.map((c) => ({ value: c.id, label: c.name, hint: c.domain ? '@' + c.domain : undefined, icon: <Dot color={c.color} /> }))} />
+                  <ProjectPicker value={clientId} onChange={pickClient} projects={clients} />
                 </div>
               )}
               {category === 'team' && (

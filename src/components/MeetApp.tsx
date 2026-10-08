@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
 import {
@@ -352,17 +353,11 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
           Meetings
         </button>
         <StatusPill m={m} />
-        <Select
-          value={m.clientId ?? ''}
-          onChange={(v) => {
+        <ProjectPicker value={m.clientId ?? ''} onChange={(v) => {
             const outsiders = speakers.filter((s) => !p.users.some((u) => u.name.split(' ')[0] === s.split(' ')[0]) && s !== 'You' && s !== `${term.One}`);
             if (v && outsiders.length && m.clientId !== v) setAskRemember(v);
             p.onFolder(m.id, v || null, false);
-          }}
-          label="Folder"
-          className="sel-flat"
-          options={[{ value: '', label: 'Unfiled' }, ...p.clients.map((c) => ({ value: c.id, label: c.name, icon: <span className="sel-dot" style={{ background: c.color }} /> }))]}
-        />
+          }} projects={p.clients} none="Unfiled" label="Folder" className="sel-flat" />
         <Select value={m.type ?? null} onChange={(v) => p.onPatch(m.id, { type: v as MeetingType })} placeholder="Type…" label="Type" className="sel-flat" options={Object.entries(TYPE_LABEL).map(([v, l]) => ({ value: v, label: l }))} />
         {m.filedBy && m.filedBy !== 'user' && <span className="muted small">{m.filedBy === 'ai' ? 'auto-filed' : 'filed by rule'}</span>}
         <span className="spacer" />
@@ -1023,7 +1018,7 @@ export function SendBotDialog({ clients, botName, onSend, onClose }: { clients: 
           </label>
           <div className="field">
             <span>Folder (optional, otherwise filed automatically)</span>
-            <Select value={clientId} onChange={setClientId} label="Folder" options={[{ value: '', label: 'Auto' }, ...clients.map((c) => ({ value: c.id, label: c.name, icon: <span className="sel-dot" style={{ background: c.color }} /> }))]} />
+            <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none="Auto" label="Folder" />
           </div>
           <p className="muted small">Demo: no real bot is sent. You’ll see it join, record a short sample conversation and write the notes.</p>
           </SmoothHeight>

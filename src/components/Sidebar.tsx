@@ -53,6 +53,7 @@ interface Props {
   accountUnread: Record<string, number>;
   onAccountFilter: (id: string) => void;
   onNewTemp?: () => void;
+  onNewProject?: () => void;
   onTempMenu?: (a: Account, anchor: HTMLElement) => void;
   view: View;
   labels: Label[];
@@ -211,16 +212,22 @@ export function Sidebar(props: Props) {
 
                 </nav>
 
-                {!!props.clients?.length && (
+                {(!!props.clients?.length || props.onNewProject) && (
                   <>
                     <div className="nav-heading sb-label">{term.Many}</div>
                     <nav className="nav">
-                      {props.clients.map((c) => (
+                      {props.clients?.map((c) => (
                         <button key={c.id} className="nav-item" onClick={() => props.onClient?.(c.id)} title={`${c.name}: emails on the ${term.one} page`}>
                           <span className="dot" style={{ background: c.color }} />
                           <span className="sb-label">{c.name}</span>
                         </button>
                       ))}
+                      {props.onNewProject && (
+                        <button className="nav-item temp-add" onClick={props.onNewProject} title={`New ${term.one}`}>
+                          <Plus size={16} />
+                          <span className="sb-label">New {term.one}</span>
+                        </button>
+                      )}
                     </nav>
                   </>
                 )}

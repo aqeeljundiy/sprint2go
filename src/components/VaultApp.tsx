@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { Copy, Eye, History, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react';
@@ -7,7 +8,6 @@ import { relative } from '../utils';
 import { server } from '../sync';
 import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
-import { Dot, Select } from './ui/Select';
 
 /** What the browser knows about a login. The password, 2FA secret and notes stay on the server. */
 export interface VaultItem {
@@ -482,7 +482,7 @@ function VaultEditor({
           </label>
           <div className="field">
             <span>{term.One}</span>
-            <Select value={clientId} onChange={setClientId} label={`${term.One}`} options={[{ value: '', label: `Company login (no ${term.one})` }, ...clients.filter((c) => c.status !== 'ended' || c.id === clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]} />
+            <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none={`Company login (no ${term.one})`} />
           </div>
           <div className="field">
             <span>Who can use it</span>

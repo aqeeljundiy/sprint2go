@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { KeyRound, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
+import { Briefcase, KeyRound, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
+import { term } from '../terms';
 import type { AppId } from '../types';
 
 export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[] = [
@@ -7,6 +8,14 @@ export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[]
   { id: 'mail', name: 'Mail', icon: Mail, path: '/mail' },
   { id: 'chat', name: 'Chat', icon: MessagesSquare, path: '/chat' },
   { id: 'tasks', name: 'Tasks', icon: ListChecks, path: '/tasks' },
+  {
+    id: 'projects',
+    get name() {
+      return term.Many; // Projects, or Clients for companies that use that word
+    },
+    icon: Briefcase,
+    path: '/projects',
+  },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, path: '/calendar' },
   { id: 'notes', name: 'Notes', icon: NotebookPen, path: '/notes' },
   { id: 'drive', name: 'Drive', icon: HardDrive, path: '/drive' },

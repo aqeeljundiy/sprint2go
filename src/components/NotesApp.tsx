@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ProjectPicker } from './ProjectPicker';
 import { term } from '../terms';
 import { ArrowLeft, ListChecks, Lock, NotebookPen, Pin, PinOff, Plus, Search, Trash2, Users } from 'lucide-react';
 import type { Client, Note, User } from '../types';
@@ -138,13 +139,7 @@ export function NoteEditor({
             { value: 'team', label: 'Everyone in the company', icon: <Users size={13} /> },
           ]}
         />
-        <Select<string>
-          value={note.clientId ?? ''}
-          onChange={(v) => onPatch(note.id, { clientId: v || undefined })}
-          label={`${term.One}`}
-          className="sel-flat"
-          options={[{ value: '', label: `No ${term.one}` }, ...clients.filter((c) => c.status !== 'ended' || c.id === note.clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]}
-        />
+        <ProjectPicker value={note.clientId ?? ''} onChange={(v) => onPatch(note.id, { clientId: v || undefined })} projects={clients} none={`No ${term.one}`} className="sel-flat" />
         <span className="spacer" />
         <button className="ghost-btn sm" onMouseDown={(e) => e.preventDefault()} onClick={taskFromSelection} title="Select a line, then make it a task">
           <ListChecks size={14} /> Make a task

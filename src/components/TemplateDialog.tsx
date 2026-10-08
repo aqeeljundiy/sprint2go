@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { CheckSquare, LayoutTemplate, Repeat as RepeatIcon, Trash2, X } from 'lucide-react';
 import type { Client, User } from '../types';
 import type { TaskTemplate } from '../data/templates';
 import { addWorkdays, localDay } from '../utils';
-import { Select, Dot } from './ui/Select';
+import { Select } from './ui/Select';
 import { DatePicker, shortDate } from './ui/DatePicker';
 import { Avatar } from './Avatar';
 
@@ -73,13 +74,7 @@ export function TemplateDialog(p: Props) {
               <div className="tpl-fields">
                 <label className="field">
                   <span>{term.One}</span>
-                  <Select
-                    value={clientId}
-                    onChange={setClientId}
-                    label={`${term.One}`}
-                    searchable
-                    options={[{ value: '', label: `No ${term.one}` }, ...p.clients.map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))]}
-                  />
+                  <ProjectPicker value={clientId} onChange={setClientId} projects={p.clients} none={`No ${term.one}`} />
                 </label>
                 <label className="field">
                   <span>Starts</span>

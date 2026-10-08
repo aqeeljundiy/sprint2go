@@ -19,9 +19,10 @@ interface Props {
   onScope: (s: TaskScope) => void;
   onBrainDump: () => void;
   onAddClient: (name: string, domain?: string, type?: string) => void;
+  projectsApp?: boolean; // projects have their own app: no project list here
 }
 
-export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeams, me, isAdmin, myTeamIds, myClientIds, onScope, onBrainDump, onAddClient }: Props) {
+export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeams, me, isAdmin, myTeamIds, myClientIds, onScope, onBrainDump, onAddClient, projectsApp }: Props) {
   const teams = isAdmin ? allTeams : allTeams.filter((t) => myTeamIds.includes(t.id));
   const mineOrAll = isAdmin ? allClients : allClients.filter((c) => myClientIds.includes(c.id));
   const [typeFilter, setTypeFilter] = usePersisted<string>('s2g-project-type', '');
@@ -101,6 +102,8 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
         </>
       )}
 
+      {!projectsApp && (
+        <>
       <div className="nav-heading sb-label">{term.Many}</div>
       {types.length > 1 && (
         <div className="type-chips sb-label" role="group" aria-label={`Filter ${term.many} by type`}>
@@ -163,6 +166,8 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
           </button>
         )}
       </nav>
+        </>
+      )}
     </>
   );
 }

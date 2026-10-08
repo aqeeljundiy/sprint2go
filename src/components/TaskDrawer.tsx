@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { Bell, CalendarPlus, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, LayoutTemplate, Plus, Repeat as RepeatIcon, RotateCcw, Trash2, X } from 'lucide-react';
@@ -7,7 +8,7 @@ import { localDay, relative } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
-import { SOURCE, clientOptions, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
+import { SOURCE, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
 import { PeoplePicker } from './ui/PeoplePicker';
 
 interface Props {
@@ -274,7 +275,7 @@ export function TaskDrawer(p: Props) {
             )}
             <dt>{term.One}</dt>
             <dd>
-              <Select value={t.clientId ?? ''} options={clientOptions(p.clients, t.clientId)} onChange={(v) => p.onPatch(t.id, { clientId: v || undefined })} label={`${term.One}`} />
+              <ProjectPicker value={t.clientId ?? ''} projects={p.clients} none={`No ${term.one}`} onChange={(v) => p.onPatch(t.id, { clientId: v || undefined })} />
             </dd>
             <dt>Due</dt>
             <dd>
