@@ -200,6 +200,8 @@ test('meeting links from the location or description', () => {
   assert.equal(ev.end, '2026-10-20T01:30:00.000Z');
   const page = parseInvite(`BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:z\nDTSTART:20261020T010000Z\nURL:https://calendar.example.com/event/1\nSUMMARY:No link\nEND:VEVENT\nEND:VCALENDAR`)!;
   assert.equal(page.url, undefined, 'a calendar page is not a meeting link');
+  const odd = parseInvite(`BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:z\nDTSTART:20261020T010000Z\nX-GOOGLE-CONFERENCE:https://evil.example/join\nSUMMARY:Odd\nEND:VEVENT\nEND:VCALENDAR`)!;
+  assert.equal(odd.url, undefined, 'only known meeting services become the Join button');
   assert.equal(durationMs('P1W'), 7 * 86_400_000);
   assert.equal(durationMs('-PT15M'), -15 * 60_000);
 });

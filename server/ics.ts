@@ -335,8 +335,10 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
   if (!t || !uid) return null;
   const description = textOf(main, 'DESCRIPTION');
   const location = textOf(main, 'LOCATION', 500);
-  const conference = ['X-GOOGLE-CONFERENCE', 'X-MICROSOFT-SKYPETEAMSMEETINGURL', 'X-MICROSOFT-ONLINEMEETINGCONFLINK', 'URL'].map((n) => prop(main, n)?.value.trim()).find((v) => v && /^https:\/\//i.test(v));
-  const url = findMeetingLink(conference) ?? findMeetingLink(location) ?? findMeetingLink(description) ?? (conference && prop(main, 'URL')?.value.trim() !== conference ? conference : undefined);
+  // Only links to the calls we know become the Join button: the invite comes from outside, so any other address
+  // stays a plain link in the email.
+  const conference = ['X-GOOGLE-CONFERENCE', 'X-MICROSOFT-SKYPETEAMSMEETINGURL', 'X-MICROSOFT-ONLINEMEETINGCONFLINK', 'URL'].map((n) => findMeetingLink(prop(main, n)?.value.trim())).find(Boolean);
+  const url = conference ?? findMeetingLink(location) ?? findMeetingLink(description);
   const org = prop(main, 'ORGANIZER');
   const recId = instant(prop(main, 'RECURRENCE-ID'), ctx);
   const exdates = props(main, 'EXDATE').flatMap((p) => p.value.split(',').map((v) => instant({ ...p, value: v }, ctx)).filter(Boolean).map((x) => iso(x!.at)));
