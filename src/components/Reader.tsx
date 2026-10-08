@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
-import { term } from '../terms';
-import { AlertTriangle, Archive, ArrowLeft, Ban, CalendarCheck, CalendarPlus, Check, Clock, Eye, FileText, Forward, HardDriveUpload, Inbox, ListChecks, Loader2, Mail, MailMinus, Reply, Send, ShieldAlert, ShieldCheck, Sparkles, Star, StickyNote, Trash2, UserCheck } from 'lucide-react';
+import { brand as product, term } from '../terms';
+import { AlertTriangle, Archive, ArrowLeft, Ban, CalendarCheck, CalendarPlus, Check, Clock, Eye, EyeOff, FileText, Forward, HardDriveUpload, Inbox, ListChecks, Loader2, Mail, MailMinus, Reply, Send, ShieldAlert, ShieldCheck, Sparkles, Star, StickyNote, Trash2, UserCheck } from 'lucide-react';
 import type { CalEvent, Message, Person, Thread, User, Client } from '../types';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
@@ -12,6 +12,7 @@ import { Wordmark } from './Logo';
 import { RichEditor } from './RichEditor';
 import { TrackingPanel } from './TrackingPanel';
 import { isMine } from '../identity';
+import { isTeam } from '../tracking';
 import { hasOwnText, sanitize, textToHtml } from '../sanitize';
 import { ai, type Summary } from '../ai';
 import type { Todo } from '../types';
@@ -35,7 +36,11 @@ interface Props {
   onMoveToInbox: (id: string) => void;
   onStar: (id: string) => void;
   onMarkUnread: (id: string) => void;
-  onReply: (id: string, html: string, text: string) => void;
+  /** `track`: the reply box's tracking switch was on (only offered when the company allows it, for outside people). */
+  onReply: (id: string, html: string, text: string, track: boolean) => void;
+  /** Read tracking is offered (the company hasn't switched it off), and whether it starts on (Settings, Mail). */
+  canTrack?: boolean;
+  trackByDefault?: boolean;
   /** A reply taken back with Undo: back in the reply box, as it was written. */
   restoreReply?: { threadId: string; html: string; text: string; key: number } | null;
   /** Why replies can't go out from this mailbox yet; Reply and Forward then explain instead of opening. */
@@ -90,6 +95,7 @@ export function Reader(props: Props) {
   const [replyOpen, setReplyOpen] = useState(false);
   const [reply, setReply] = useState({ html: '', text: '' });
   const [replyInitial, setReplyInitial] = useState<string | null>(null);
+  const [replyTrack, setReplyTrack] = useState<boolean | null>(null); // null: the person's default
   const [summary, setSummary] = useState<Summary | 'loading' | null>(null);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
   const [suggesting, setSuggesting] = useState(false);
@@ -107,6 +113,7 @@ export function Reader(props: Props) {
     setReplyOpen(false);
     setReply({ html: '', text: '' });
     setReplyInitial(null);
+    setReplyTrack(null);
     // AI answers are saved per message: opening the email again never pays twice.
     const key = thread.messages[thread.messages.length - 1].id;
     setSummary(AI_CACHE.summary.get(key) ?? null);
@@ -178,6 +185,9 @@ export function Reader(props: Props) {
 
   const last = thread.messages[thread.messages.length - 1];
   const replyTo = isMine(last.from.email) ? last.to[0] : last.from;
+  // The reply goes to the same people as App's reply(); only those outside the team can be tracked.
+  const replyOutside = (isMine(last.from.email) ? last.to : [last.from]).filter((p) => !isTeam(p.email));
+  const replyTracked = !!props.canTrack && replyOutside.length > 0 && (replyTrack ?? !!props.trackByDefault);
   const inbox = thread.location === 'inbox';
 
   const toggle = (id: string) =>
@@ -189,7 +199,7 @@ export function Reader(props: Props) {
 
   const send = () => {
     if (!hasOwnText(reply.text, props.signature)) return;
-    props.onReply(thread.id, reply.html, reply.text);
+    props.onReply(thread.id, reply.html, reply.text, replyTracked);
     setReply({ html: '', text: '' });
     setReplyOpen(false);
     setReplyInitial(null);
@@ -482,6 +492,23 @@ export function Reader(props: Props) {
               />
             </div>
             <div className="reply-actions">
+              {props.canTrack && replyOutside.length > 0 && (
+                <button
+                  type="button"
+                  className={`track-toggle ${replyTracked ? 'on' : ''}`}
+                  aria-pressed={replyTracked}
+                  aria-label="Read tracking"
+                  onClick={() => setReplyTrack(!replyTracked)}
+                  title={
+                    replyTracked
+                      ? `${replyOutside.length === 1 ? `${replyOutside[0].name || replyOutside[0].email}’s copy gets` : 'Each person outside the team gets a copy with'} an invisible picture and links that pass through ${product.name}, so you see when it’s opened and which links are clicked. Apple Mail can load pictures by itself, so treat opens as a hint.`
+                      : 'Not tracked. Turn on to see when they open your reply and which links they click.'
+                  }
+                >
+                  {replyTracked ? <Eye size={15} /> : <EyeOff size={15} />}
+                  <span>{replyTracked ? 'Tracking' : 'Not tracked'}</span>
+                </button>
+              )}
               <button
                 className="ghost-btn"
                 onClick={() => {

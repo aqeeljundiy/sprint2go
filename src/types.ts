@@ -74,7 +74,7 @@ export interface OpenEvent {
   /** Maybe opened by a machine, not a person: Apple Mail Privacy Protection, a security filter. Not counted. */
   auto?: 'apple' | 'scanner';
   /** Opened through the provider's picture proxy: a person opened it, the device is hidden. */
-  via?: 'gmail' | 'yahoo';
+  via?: 'gmail' | 'yahoo' | 'outlook';
 }
 
 export interface ClickEvent {
