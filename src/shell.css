@@ -2467,16 +2467,18 @@ body.resizing-x .pane-resize::after {
 }
 .track-menu {
   position: absolute;
-  left: 0;
+  /* Opens leftward from the toggle: the toggle sits near the compose window's right edge, which is the screen's. */
+  right: 0;
   bottom: calc(100% + 8px);
   z-index: 10;
   width: 320px;
+  max-width: calc(100vw - 16px);
   padding: 6px;
   border-radius: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
-  transform-origin: bottom left;
+  transform-origin: bottom right;
   animation: pop 0.18s var(--ease);
 }
 .tm-title {

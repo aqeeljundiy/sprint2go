@@ -10,6 +10,7 @@ import { hasOwnText, htmlToText, textToHtml } from '../sanitize';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from '../tracking';
 import type { Account, TrackOptions } from '../types';
 import { Select } from './ui/Select';
+import { brand as product } from '../terms';
 
 export interface OutgoingFile {
   name: string;
@@ -35,7 +36,7 @@ interface Props {
   contacts: Person[];
   signature: string;
   trackByDefault: boolean;
-  /** Open tracking exists (the demo only, until the server tracks opens for real). */
+  /** Read tracking is offered: the company hasn't switched it off (the mail engine tracks for real, the demo pretends). */
   canTrack?: boolean;
   accounts: Account[];
   defaultFrom: string;
@@ -285,8 +286,8 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
                 !external.length
                   ? 'Your team’s mail is never tracked'
                   : track
-                    ? `You’ll see when ${external.length === 1 ? external[0].name : `${external.length} people`} open this email`
-                    : 'Opens won’t be tracked'
+                    ? `${external.length === 1 ? `${external[0].name}’s copy gets` : `Each of the ${external.length} people outside the team gets a copy with`} an invisible picture and links that pass through ${product.name}, so you see when it’s opened and which links are clicked. Teammates are never tracked. Apple Mail can load pictures by itself, so treat opens as a hint.`
+                    : 'Not tracked. Turn on to see when people outside the team open it and which links they click.'
               }
             >
               {track ? <Eye size={15} /> : <EyeOff size={15} />}
@@ -304,7 +305,7 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
                   [
                     ['opens', Eye, 'Opens', 'When and how often they open it'],
                     ['clicks', MousePointerClick, 'Link clicks', 'Which links they click'],
-                    ['notify', Bell, 'Notify me', 'A pop-up the moment it happens'],
+                    ['notify', Bell, 'Notify me', 'The first time each person opens it'],
                   ] as const
                 ).map(([key, Icon, label, hint]) => (
                   <label key={key} className="tm-row">
@@ -329,7 +330,7 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
                     ))}
                   </div>
                 </div>
-                <div className="tm-foot">Tracking {external.map((p) => p.name.split(' ')[0]).join(', ')} · teammates are never tracked. Apple Mail can show opens that didn’t happen, so treat opens as a hint.</div>
+                <div className="tm-foot">Tracking {external.map((p) => p.name.split(' ')[0]).join(', ')}. Teammates are never tracked. Apple Mail and some mail filters load pictures by themselves; those opens show as maybe automatic.</div>
               </div>
             )}
           </div>

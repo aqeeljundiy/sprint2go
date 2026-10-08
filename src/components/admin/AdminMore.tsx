@@ -622,7 +622,7 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
   return (
     <>
       <h2>Security & data</h2>
-      <p className="set-intro">How people sign in to {ws.name || 'the company'}, and the company’s data.</p>
+      <p className="set-intro">How people sign in to {ws.name || 'the company'}, what it may track, and the company’s data.</p>
       <div className="set-block">
         <h3>Sign-in</h3>
         {canManage ? (
@@ -735,6 +735,20 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
           )}
         </div>
       )}
+
+      <div className="set-block">
+        <h3>Privacy</h3>
+        <Row
+          title="Read tracking on email to people outside the company"
+          hint={
+            ws.readTracking !== false
+              ? `People can choose to see when someone outside ${ws.name || 'the company'} opens their email and which links they click. Teammates are never tracked.${canManage ? '' : ' Only owners and admins change this.'}`
+              : `Off: nobody in ${ws.name || 'the company'} can track email, and pictures in mail already sent stop counting.${canManage ? '' : ' Only owners and admins change this.'}`
+          }
+        >
+          <Switch on={ws.readTracking !== false} disabled={!canManage} onChange={(v) => onWorkspace({ readTracking: v })} />
+        </Row>
+      </div>
 
       <div className="set-block">
         <h3>Your data</h3>

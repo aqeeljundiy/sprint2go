@@ -4,6 +4,9 @@
 //  2. a "Some of each" routing test address is accepted and swallowed, and the company's lastCheck says it worked
 //  3. an unknown routing test address is refused
 //  4. a second company that adds pixelandprofits.com gets none of its mail
+//  5. read tracking: a tracked email goes out through a local sink (MAIL_RELAY_URL), each outside recipient with their
+//     own picture and links; loading them as an outside mail app would updates the sender's thread, and the app can't
+//     write opens itself
 //   node scripts/smoke-mail.mjs
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -13,6 +16,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import nodemailer from 'nodemailer';
+import { SMTPServer } from 'smtp-server';
+import { simpleParser } from 'mailparser';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const freePort = () =>
@@ -27,7 +32,19 @@ const freePort = () =>
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const dir = mkdtempSync(join(tmpdir(), 's2g-smoke-'));
-const [httpPort, smtpPort] = [await freePort(), await freePort()];
+const [httpPort, smtpPort, sinkPort] = [await freePort(), await freePort(), await freePort()];
+// Where "the world" is for this test: a local SMTP sink that keeps what it gets. Nothing leaves this machine.
+const sunk = [];
+const sink = new SMTPServer({
+  disabledCommands: ['AUTH', 'STARTTLS'],
+  logger: false,
+  onData(stream, session, cb) {
+    const chunks = [];
+    stream.on('data', (c) => chunks.push(c));
+    stream.on('end', () => (sunk.push({ to: session.envelope.rcptTo.map((r) => r.address.toLowerCase()), raw: Buffer.concat(chunks) }), cb()));
+  },
+});
+await new Promise((res) => sink.listen(sinkPort, '127.0.0.1', res));
 const env = {
   ...process.env,
   NODE_ENV: 'development',
@@ -45,6 +62,8 @@ const env = {
   CF_DNS_TOKEN: '',
   PUBLIC_URL: '',
   SUPPORT_EMAIL: '',
+  MAIL_RELAY_URL: `smtp://127.0.0.1:${sinkPort}`,
+  GEO_COUNTRY_HEADER: '',
 };
 const server = spawn(process.execPath, ['--import', './server/register.mjs', 'server/index.ts'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = '';
@@ -58,6 +77,7 @@ const check = (ok, what) => {
 };
 const finish = (code) => {
   server.kill('SIGTERM');
+  sink.close();
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch {
@@ -121,6 +141,118 @@ try {
   check(!!t4 && t4.accountId === 'pnp-aqeel', 'with a second company on the same domain, mail still goes to the company that holds it');
   const refusedOther = await send('only-other@pixelandprofits.com', 'not yours').then(() => false, (e) => e.responseCode === 550);
   check(refusedOther, 'the second company’s own address at that domain is refused');
+
+  // 5. Read tracking, end to end.
+  const base = `http://127.0.0.1:${httpPort}`;
+  const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'aqeel@pixelandprofits.com', password: env.SEED_PASSWORD }) });
+  const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+  check(login.ok && cookie.startsWith('s2g='), 'signs in as the sender');
+  const api = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) });
+  // This laptop can't prove DNS or port 25 for the demo domain: say the mailbox can send (the server checks that itself).
+  const canSend = () => {
+    const w = JSON.parse(db.prepare("SELECT data FROM docs WHERE coll = 'workspaces' AND id = 'pnp'").get().data);
+    w.mailReady = { at: new Date().toISOString(), receive: true, send: true, why: {}, mailboxes: Object.fromEntries((w.accounts ?? []).map((a) => [a.id, { receive: true, send: true }])) };
+    db.prepare("UPDATE docs SET data = ? WHERE coll = 'workspaces' AND id = 'pnp'").run(JSON.stringify(w));
+  };
+  const tid = `t-smoke-${randomBytes(4).toString('hex')}`;
+  const mid = `m-smoke-${randomBytes(4).toString('hex')}`;
+  const subject = `tracked ${randomBytes(4).toString('hex')}`;
+  const to = [
+    { name: 'Client One', email: 'client@outside-smoke.example' },
+    { name: 'Client Two', email: 'second@outside-smoke.example' },
+    { name: 'Rizky', email: 'rizky@pixelandprofits.com' },
+  ];
+  const html = '<p>Hello, see <a href="https://shop.example/offer?id=7&amp;x=1">the offer</a>.</p>';
+  // The app saves the sent copy (with the recipients it expects to track, and a made-up open), then asks to send it.
+  const made = Object.fromEntries(to.slice(0, 2).map((p) => [p.email, { opens: [{ at: new Date().toISOString(), device: 'made up' }], clicks: [] }]));
+  const message = { id: mid, from: { name: 'Aqeel', email: 'aqeel@pixelandprofits.com' }, to, date: new Date().toISOString(), body: 'Hello, see the offer.', html, tracking: made, trackOptions: { opens: true, clicks: true, notify: true, attachments: false, details: false, remindDays: 3 } };
+  const saved = await api('/api/sync', { coll: 'threads', upserts: [{ id: tid, accountId: 'pnp-aqeel', workspaceId: 'pnp', subject, location: 'archive', starred: false, unread: false, labels: [], messages: [message] }], deletes: [] });
+  check(saved.ok, 'the app saves the sent copy');
+  const sendBody = { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: tid, messageId: mid, to, cc: [], subject, text: 'Hello, see the offer.', html, files: [], track: true, trackOptions: { opens: true, clicks: true, notify: true } };
+  canSend();
+  let sent = await api('/api/mail/send', sendBody);
+  if (sent.status === 409) (canSend(), (sent = await api('/api/mail/send', sendBody)));
+  check(sent.ok, `the mail engine takes the tracked email (${sent.status})`);
+  const ours = () => sunk.filter((m) => m.raw.includes(subject));
+  const got = await waitFor(() => (ours().length >= 2 ? ours() : null));
+  check(!!got, 'both outside recipients’ copies reach the sink');
+  const thread = () => JSON.parse(db.prepare("SELECT data FROM docs WHERE coll = 'threads' AND id = ?").get(tid)?.data ?? 'null');
+  if (got) {
+    const copies = await Promise.all(got.map(async (m) => ({ to: m.to[0], parsed: await simpleParser(m.raw) })));
+    const one = copies.find((c) => c.to === 'client@outside-smoke.example');
+    const two = copies.find((c) => c.to === 'second@outside-smoke.example');
+    const pixel = (c) => /<img src="([^"]+\/t\/o\/[a-f0-9]{32}\.gif)"/.exec(c?.parsed.html ?? '')?.[1];
+    const link = (c) => /href="([^"]+\/t\/c\/[a-f0-9]{32}\?[^"]+)"/.exec(c?.parsed.html ?? '')?.[1]?.replace(/&amp;/g, '&');
+    const local = (u) => u.replace(/^https?:\/\/[^/]+/, base);
+    // Every copy leaves signed for the sender's domain (mailauth signs only from signatureData; an empty signature once
+    // went unnoticed).
+    check(got.every((m) => /^DKIM-Signature: v=1; a=rsa-sha256;[^]*?\bd=pixelandprofits\.com;/im.test(m.raw.toString('utf8').split(/\r?\n\r?\n/)[0])), 'every copy is DKIM-signed for the sender’s domain');
+    check(!!pixel(one) && !!pixel(two) && pixel(one) !== pixel(two), 'each outside recipient gets a picture of their own');
+    check(!!link(one) && link(one) !== link(two), 'and links of their own');
+    check(one?.parsed.text?.includes('Hello, see the offer.') && !one?.parsed.text?.includes('/t/'), 'the plain-text part stays as written');
+    const inside = await waitFor(() =>
+      db
+        .prepare("SELECT data FROM docs WHERE coll = 'threads' AND data LIKE ?")
+        .all(`%${subject}%`)
+        .map((r) => JSON.parse(r.data))
+        .find((t) => t.accountId === 'pnp-rizky'),
+    );
+    check(!!inside && !String(inside.messages[0].html ?? '').includes('/t/o/'), 'the teammate’s copy has no picture');
+    const t0 = thread();
+    check(
+      !!t0 && Object.keys(t0.messages[0].tracking ?? {}).sort().join() === 'client@outside-smoke.example,second@outside-smoke.example' && t0.messages[0].tracking['client@outside-smoke.example'].opens.length === 0,
+      'the sender’s copy tracks the two outsiders, and the app’s made-up open is gone',
+    );
+    // Outside mail apps open it: an iPhone, then Gmail's proxy, then Apple Mail Privacy Protection.
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+    const img = await fetch(local(pixel(one)), { headers: { 'user-agent': iphone } });
+    const gif = Buffer.from(await img.arrayBuffer());
+    check(img.status === 200 && img.headers.get('content-type') === 'image/gif' && gif.subarray(0, 6).toString() === 'GIF89a' && /no-store/.test(img.headers.get('cache-control') ?? ''), 'the picture is a transparent GIF that is never cached');
+    const opened = await waitFor(() => thread()?.messages[0].tracking?.['client@outside-smoke.example']?.opens?.[0]);
+    check(opened?.device === 'iPhone · Apple Mail' && !opened.place && !opened.auto, `the sender’s thread shows the open on an iPhone (${JSON.stringify(opened)})`);
+    await fetch(local(pixel(two)), { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)' } });
+    await fetch(local(pixel(one)), { headers: { 'user-agent': 'Mozilla/5.0' } });
+    const after = await waitFor(() => {
+      const tr = thread()?.messages[0].tracking;
+      return tr?.['second@outside-smoke.example']?.opens?.length && tr['client@outside-smoke.example'].opens.length >= 2 ? tr : null;
+    });
+    check(after?.['second@outside-smoke.example'].opens[0].via === 'gmail' && after['second@outside-smoke.example'].opens[0].device === '', 'Gmail’s proxy shows as opened via Gmail, with no device');
+    check(after?.['client@outside-smoke.example'].opens[1]?.auto === 'apple', 'Apple Mail Privacy Protection shows as maybe automatic');
+    const bogus = await fetch(`${base}/t/o/${'0'.repeat(32)}.gif`);
+    check(bogus.status === 200 && bogus.headers.get('content-type') === 'image/gif', 'an unknown picture answers the same');
+    // A click: on to the original address only, and only with the server's signature.
+    const clickUrl = local(link(one));
+    const click = await fetch(clickUrl, { redirect: 'manual', headers: { 'user-agent': iphone } });
+    check(click.status === 302 && click.headers.get('location') === 'https://shop.example/offer?id=7&x=1', 'a click goes on to the address in the email');
+    const evil = await fetch(clickUrl.replace(/u=[^&]+/, `u=${encodeURIComponent('https://evil.example/')}`), { redirect: 'manual' });
+    check(evil.status === 400 && !evil.headers.get('location'), 'a changed click address goes nowhere (no open redirect)');
+    const clicked = await waitFor(() => thread()?.messages[0].tracking?.['client@outside-smoke.example']?.clicks?.[0]);
+    check(clicked?.label === 'the offer' && clicked.url === 'https://shop.example/offer?id=7&x=1', 'the click shows on the sender’s thread with its link text');
+    const notices = await waitFor(() => {
+      const list = db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND data LIKE ?").all(`%${subject}%`).map((r) => JSON.parse(r.data));
+      return list.length >= 2 ? list : null;
+    });
+    check(notices?.length === 2 && notices.every((n) => n.userId === 'u-aqeel' && n.event === 'opened' && n.link?.id === tid), 'the sender hears about the first open by each person, not the automatic one');
+    // The app can't write opens: a copy with its own opens and delivery state keeps the server's.
+    const before = thread();
+    const forged = { ...before, unread: true, messages: [{ ...before.messages[0], delivery: { state: 'failed', at: new Date().toISOString() }, tracking: { 'client@outside-smoke.example': { opens: [], clicks: [] } } }] };
+    await api('/api/sync', { coll: 'threads', upserts: [forged], deletes: [] });
+    const kept = thread();
+    check(kept.unread === true && kept.messages[0].tracking['client@outside-smoke.example'].opens.length === 2 && kept.messages[0].delivery?.state !== 'failed', 'the app’s own write keeps the server’s opens and delivery state');
+    // The app's real order: it asks to send first and saves the thread a moment later. The server's marks still land.
+    const tid2 = `t-smoke-${randomBytes(4).toString('hex')}`;
+    const mid2 = `m-smoke-${randomBytes(4).toString('hex')}`;
+    const to2 = [{ name: 'Third', email: 'third@outside-smoke.example' }, { name: 'Rizky', email: 'rizky@pixelandprofits.com' }];
+    canSend();
+    const sent2 = await api('/api/mail/send', { ...sendBody, threadId: tid2, messageId: mid2, to: to2, subject: `${subject} later` });
+    const both = Object.fromEntries(to2.map((p) => [p.email, { opens: [], clicks: [] }])); // the app's guess: Rizky too
+    await api('/api/sync', { coll: 'threads', upserts: [{ id: tid2, accountId: 'pnp-aqeel', workspaceId: 'pnp', subject: `${subject} later`, location: 'archive', starred: false, unread: false, labels: [], messages: [{ ...message, id: mid2, to: to2, tracking: both }] }], deletes: [] });
+    const t2 = await waitFor(() => {
+      const t = JSON.parse(db.prepare("SELECT data FROM docs WHERE coll = 'threads' AND id = ?").get(tid2)?.data ?? 'null');
+      return t?.messages?.[0]?.delivery?.state === 'sent' ? t : null;
+    });
+    check(sent2.ok && !!t2?.messages[0].mid && Object.keys(t2.messages[0].tracking ?? {}).join() === 'third@outside-smoke.example', 'sent before the app saved it: the Message-ID, delivery state and who is tracked still land on the message');
+  }
 
   db.close();
 } catch (e) {
