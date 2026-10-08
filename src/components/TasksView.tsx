@@ -952,7 +952,7 @@ export function TasksView(p: Props) {
                   items={views.map((v) => ({ id: v.id, name: v.name, label: v.name }))}
                 />
               )}
-              <div className="toolbar task-toolbar">
+              <div className="tool-row task-toolbar">
                 {layout === 'list' && (
                   <>
                     <div className="segmented">

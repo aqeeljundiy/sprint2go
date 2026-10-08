@@ -510,9 +510,9 @@ export function Table<T>({ id, rows, cols, rowKey, onOpen, views, search, bulk, 
         <div className={`adm-table ${dense ? 'dense' : ''}`} role="table" style={{ ['--cols' as string]: template, ['--cols-t' as string]: templateT }}>
           <div className="adm-tr head" role="row">
             {bulk && (
-              <span className="adm-check">
+              <label className="adm-check">
                 <input type="checkbox" aria-label="Select all" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(rowKey)))} />
-              </span>
+              </label>
             )}
             {cols.map((c) => (
               <span key={c.key} role="columnheader" className={`${c.align === 'right' ? 'r' : ''} ${c.hide ? `hide-${c.hide}` : ''}`}>
@@ -532,13 +532,13 @@ export function Table<T>({ id, rows, cols, rowKey, onOpen, views, search, bulk, 
             return (
               <div key={k} role="row" className={`adm-tr ${onOpen ? 'click' : ''} ${sel.has(k) ? 'sel' : ''} ${rowTone?.(r) ?? ''}`} style={{ ['--i' as string]: Math.min(i, 12) }} onClick={(e) => onOpen && !(e.target as HTMLElement).closest('button, a, input, .adm-check') && onOpen(r)} tabIndex={onOpen ? 0 : undefined} onKeyDown={(e) => onOpen && e.key === 'Enter' && onOpen(r)}>
                 {bulk && (
-                  <span className="adm-check">
+                  <label className="adm-check">
                     <input type="checkbox" aria-label="Select" checked={sel.has(k)} onChange={() => setSel((s) => {
                       const n = new Set(s);
                       n.has(k) ? n.delete(k) : n.add(k);
                       return n;
                     })} />
-                  </span>
+                  </label>
                 )}
                 {cols.map((c, ci) => (
                   <span key={c.key} role="cell" className={`${ci === 0 ? 'first' : ''} ${c.align === 'right' ? 'r' : ''} ${c.hide ? `hide-${c.hide}` : ''}`} data-label={c.label}>

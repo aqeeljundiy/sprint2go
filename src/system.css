@@ -281,12 +281,15 @@ span.person-cell > :first-child {
 .segmented > button {
   height: calc(var(--tab-h) - 4px);
 }
-.segmented > button:hover:not(.on):not(:disabled),
-.client-tabs > button:hover:not(.on),
-.chan-tabs > button:hover:not(.on),
-.cs-tabs > button:hover:not(.on) {
-  color: var(--text);
-  background: color-mix(in oklab, var(--text) 6%, transparent);
+/* Hover only where there is a pointer: on a phone a tapped tab would keep a grey "hover" after the screen changed. */
+@media (hover: hover) {
+  .segmented > button:hover:not(.on):not(:disabled),
+  .client-tabs > button:hover:not(.on),
+  .chan-tabs > button:hover:not(.on),
+  .cs-tabs > button:hover:not(.on) {
+    color: var(--text);
+    background: color-mix(in oklab, var(--text) 6%, transparent);
+  }
 }
 .segmented > button.on,
 .client-tabs > button.on,
@@ -371,11 +374,11 @@ span.person-cell > :first-child {
     height: 40px;
   }
   .segmented > button {
-    height: 36px;
-    min-height: 36px;
+    height: 40px;
+    min-height: 40px;
   }
   .segmented {
-    padding: 2px;
+    padding: 0;
   }
   .segmented.icon-seg > button {
     width: 40px;
@@ -396,19 +399,42 @@ span.person-cell > :first-child {
 /* ---------- Toolbars ----------
    Search, filters and how the list is shown sit on one line; on a narrow pane they wrap, search first. */
 
-.toolbar {
+.tool-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
-.toolbar > .spacer {
+.tool-row > .spacer {
   flex: 1 1 0;
+}
+/* A pane header's actions stay on the right when they wrap under the title. The header measures itself (it holds
+   no fixed overlays, so the container can live here and not on the pane). */
+.tasks-head {
+  justify-content: flex-end;
+  container-type: inline-size;
+}
+@container (max-width: 620px) {
+  .tasks-head .new-task-btn kbd {
+    display: none;
+  }
 }
 /* Tasks: open / done, group and the quick filters, one row. */
 .task-toolbar {
   margin: 0;
+}
+/* "Save as a view" ends the row, and stays at the right end when the row wraps. */
+.task-toolbar > .spacer {
+  display: none;
+}
+.task-toolbar > .link-btn {
+  flex: none;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 0 auto;
 }
 .task-toolbar > .sel.sel-flat {
   min-height: 0;
@@ -424,7 +450,7 @@ span.person-cell > :first-child {
   background: color-mix(in oklab, var(--text) 9%, var(--hover));
 }
 @media (max-width: 760px) {
-  .toolbar > .spacer {
+  .tool-row > .spacer {
     display: none;
   }
   .task-toolbar > .sel.sel-flat,
@@ -433,6 +459,20 @@ span.person-cell > :first-child {
   }
   .task-toolbar > .link-btn {
     min-height: 40px;
+  }
+  /* The quick filters are one row you can swipe, not three wrapped rows. */
+  .task-toolbar > .quick-chips {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .task-toolbar > .quick-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .task-toolbar > .quick-chips > button {
+    flex: none;
   }
 }
 
@@ -450,8 +490,230 @@ span.person-cell > :first-child {
   }
 }
 
+/* ---------- Dialog titles: one look ----------
+   Every dialog's title is the same: 15px semibold in the text colour, with its icon quieter beside it. Only Brain
+   dump (an AI job) keeps the AI colour. Before, some were small grey labels and others purple. */
+
+.modal-head {
+  padding-top: 12px;
+}
+.modal-head > span:first-child,
+.modal-head > .dump-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.modal-head > .dump-title > svg {
+  flex: none;
+  color: var(--text-3);
+}
+.dump-modal .modal-head > .dump-title,
+.dump-modal .modal-head > .dump-title > svg {
+  color: var(--ai);
+}
+
+/* ---------- The huddle bar sits over the sidebar column, never over the message box ---------- */
+
+@media (min-width: 761px) {
+  .huddle {
+    width: 240px;
+  }
+  /* A collapsed sidebar has no room for it: it waits above the message box instead. */
+  body:has(.sidebar.collapsed) .huddle {
+    bottom: 96px;
+  }
+}
+
+/* ---------- Headings never leave one word alone on the last line ---------- */
+
+h1,
+h2,
+h3,
+h4,
+.th-text h1 {
+  text-wrap: balance;
+}
+
 /* ---------- Settings nav: an icon never squeezes away beside a long name ---------- */
 
 .settings-nav button svg {
   flex: none;
+}
+
+/* ---------- Phones: every control is at least a 40px target ---------- */
+@media (max-width: 760px) {
+  .ghost-btn,
+  .primary-btn,
+  .danger-btn,
+  .sel,
+  .date-sel,
+  .time-sel {
+    min-height: 40px;
+  }
+  .icon-btn,
+  .icon-btn.sm,
+  .icon-btn.xs {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  /* The top bar: workspace, title switcher, settings, search, bell. */
+  .mobile-top .mt-ws {
+    place-items: center;
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .mobile-top .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .mt-title.sel {
+    min-height: 40px;
+  }
+  .settings-nav button {
+    min-height: 40px;
+  }
+  /* Calendar: the date on its own line with New event; Today, the arrows and Day / Week / Month under it. */
+  .cal-header h1 {
+    order: 1;
+    flex: 1 0 100%;
+  }
+  .cal-header .cal-new {
+    display: none; /* the round + at the bottom is New event on phones: one, not two */
+  }
+  .cal-header .cal-nav {
+    order: 3;
+  }
+  .cal-header .segmented {
+    order: 4;
+    flex: 1;
+  }
+  .cal-header .cal-nav .ghost-btn.sm {
+    margin-right: 0;
+  }
+  /* Many choices in one segmented control (Guest access per project type): one row you can swipe. */
+  .access-types .segmented {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .access-types .segmented > button {
+    flex: none;
+  }
+  /* Onboarding: the steps stay one row; the preview note goes under them instead of breaking the row in three. */
+  .onboard-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .ob-steps {
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .ob-preview-tag {
+    order: 3;
+    margin: 0;
+  }
+  /* A setting with a dropdown: the words get the full width, the dropdown goes under them (not a squeezed column). */
+  .set-row:has(> .sel) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .set-row:has(> .sel) > .sel {
+    width: 100%;
+    max-width: none;
+  }
+  /* The top bar already says "Settings": no second title under it. */
+  .settings-head {
+    display: none;
+  }
+  /* The mail reader's actions: Back stays first; the rest wrap onto a second line at the right, never off screen. */
+  .reader-bar {
+    align-items: flex-start;
+  }
+  .reader-bar > .toolbar {
+    flex: 1;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .reader-bar .divider {
+    display: none;
+  }
+  /* Search fields: the whole field is the target (it's a label around the input). */
+  .search,
+  .notes-search,
+  .tb-search,
+  .sel-search {
+    min-height: 40px;
+  }
+  .segmented > button,
+  .cal-new {
+    min-width: 40px;
+  }
+  .setup-text,
+  .crumb {
+    min-height: 40px;
+    justify-content: center;
+  }
+  /* Links that stand on their own (not inside a sentence) are buttons too. */
+  .signin-forgot,
+  .ts-switch {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .home-notice {
+    min-height: 40px;
+  }
+  /* A card heading's link ("Work →"): a 40px target that doesn't make the heading taller. */
+  .home-card h3 .link-btn {
+    min-height: 40px;
+    margin-block: -12px;
+  }
+  /* A task's title: a taller tap area without making the row taller (the line under it stays on top). */
+  .task-title-btn {
+    padding-block: 10px;
+    margin-block: -10px;
+  }
+  /* Small round controls keep their look; their tap area grows to 40px around them. */
+  .todo-check,
+  .swatch,
+  .accent-swatch,
+  .people-btn.compact {
+    position: relative;
+  }
+  .switch {
+    position: relative;
+  }
+  .switch::after {
+    content: '';
+    position: absolute;
+    inset: -8px -4px;
+  }
+  .toast button,
+  .rich-toolbar .tb,
+  .lang-chips > button,
+  .team-toggles > button {
+    min-height: 40px;
+  }
+  .rich-toolbar .tb {
+    min-width: 40px;
+  }
+  .todo-check::after,
+  .swatch::after,
+  .accent-swatch::after,
+  .people-btn.compact::after,
+  .star::after,
+  .nav-more::after {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc(50% - 20px));
+  }
 }

@@ -2342,7 +2342,11 @@ button.adm-q-text:hover strong {
     display: none;
   }
   .adm-tr .sel {
-    min-height: 36px;
+    min-height: 40px;
+  }
+  .adm-check {
+    min-width: 40px;
+    min-height: 40px;
   }
   .adm-search {
     margin-left: 0;

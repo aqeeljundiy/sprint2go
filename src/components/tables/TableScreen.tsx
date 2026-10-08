@@ -529,10 +529,14 @@ export function TableScreen(p: ScreenProps) {
                 <Group size={13} /> <span className="lbl">{groupField ? `By ${groupField.name}` : 'Group'}</span>
               </button>
             )}
-            {view.kind === 'board' && <BoardTools table={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} />}
-            <button ref={refs.fields} className={`ghost-btn sm${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')}>
-              <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
-            </button>
+            {/* A board's "Cards" is what its fields menu would be (what each card shows): one button, not two. */}
+            {view.kind === 'board' ? (
+              <BoardTools table={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} />
+            ) : (
+              <button ref={refs.fields} className={`ghost-btn sm${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')}>
+                <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
+              </button>
+            )}
           </>
         )}
         {!!g && view?.kind === 'board' && <BoardTools table={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} readOnly />}

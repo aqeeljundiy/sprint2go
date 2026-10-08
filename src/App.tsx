@@ -2760,6 +2760,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ],
         onChange: (v: string) => setMeetPage(v.startsWith('folder:') ? { kind: 'folder', clientId: v.slice(7) } : ({ kind: v } as MeetPage)),
       };
+    // Projects: the open project's name, and a quick way to another one (the sidebar isn't there on phones).
+    if (mode === 'projects')
+      return {
+        label: term.Many,
+        value: projScope.kind === 'client' ? projScope.id : projScope.kind === 'past' ? 'past' : 'all',
+        options: [
+          { value: 'all', label: `All ${term.many}`, group: term.Many },
+          ...wsClients.map((c) => ({ value: c.id, label: c.name, group: term.Many })),
+          { value: 'past', label: `Past ${term.many}`, group: 'More' },
+        ],
+        onChange: (v: string) => setProjScope(v === 'all' ? { kind: 'projects' } : v === 'past' ? { kind: 'past' } : { kind: 'client', id: v }),
+      };
     if (mode === 'drive')
       return {
         label: 'Drive',
@@ -3223,7 +3235,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       <main className="main" key={`${ws.id}:${mode}`}>
         {mobile && (
           <MobileTop
-            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[mode]}
+            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', projects: term.Many, teams: 'Teams', tables: 'Tables', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[mode] ?? ''}
             switcher={mobileSwitcher}
             workspaces={workspaces}
             current={ws}
