@@ -3391,3 +3391,14 @@ p.trial-note > svg:first-child {
   white-space: normal;
   text-align: right;
 }
+.esg-list {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+.esg-list li::marker {
+  color: var(--text-3);
+  font-weight: 600;
+}

@@ -181,6 +181,8 @@ export interface Workspace {
   members: Member[];
   apps?: AppId[]; // switched-on apps (default: all)
   emailSetup?: EmailSetup; // what the company chose at onboarding
+  /** "Some of each": the domain stays with Google or Microsoft, which passes unknown addresses on to Sprint2go. */
+  mailRouting?: { verifiedAt?: string; dailyCheck: boolean; lastCheck?: { at: string; ok: boolean } };
   emailProvider?: MailProvider; // where the domain's mail lives when not hosted by us
   meetUrl?: string;
   meetingRules?: MeetingRule[];

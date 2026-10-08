@@ -8,9 +8,11 @@ import { providerName } from './Onboarding';
  *  - forward: mail stays at Gmail or Outlook; a copy of everything is forwarded to the person's Sprint2go address,
  *    and replies go out through Sprint2go (Amazon SES) from their own address.
  *  - move: the domain's mail moves to Sprint2go (MX records), old mail is imported, the old provider is cancelled.
+ *  - split: "some of each". The domain stays with Google or Microsoft; one routing rule there passes mail for
+ *    addresses it doesn't know on to Sprint2go, so people without a licence get a real name@domain mailbox here.
  * Until the mail server runs, the waits (Gmail's code, the DNS check, the import, the test email) are simulated.
  */
-export function EmailSetupGuide({ mode, provider, domain, first }: { mode: 'forward' | 'move'; provider: MailProvider; domain: string; first: string }) {
+export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: { mode: 'forward' | 'move' | 'split'; provider: MailProvider; domain: string; first: string; onVerified?: () => void }) {
   const d = domain || 'yourcompany.com';
   const slug = d.split('.')[0].replace(/[^a-z0-9]/g, '') || 'company';
   const inbox = `${first || 'you'}.${slug}@in.sprint2go.com`;
@@ -30,7 +32,10 @@ export function EmailSetupGuide({ mode, provider, domain, first }: { mode: 'forw
   // DEMO: each wait resolves after a moment. The real ones are a webhook from the mail server or a DNS lookup.
   const run = (key: string, ms = 1600) => {
     setDone((x) => ({ ...x, [key]: 'wait' }));
-    setTimeout(() => setDone((x) => ({ ...x, [key]: 'ok' })), ms);
+    setTimeout(() => {
+      setDone((x) => ({ ...x, [key]: 'ok' }));
+      if (key === 'route-test') onVerified?.();
+    }, ms);
   };
   const Btn = ({ k, idle, wait, ok, ms }: { k: string; idle: string; wait: string; ok: string; ms?: number }) => (
     <button className="ghost-btn outline sm" disabled={done[k] === 'wait'} onClick={() => run(k, ms)}>
@@ -83,8 +88,85 @@ export function EmailSetupGuide({ mode, provider, domain, first }: { mode: 'forw
           ? 'In your mail provider’s settings, find Forwarding and add the address.'
           : 'In Gmail: Settings (gear), See all settings, Forwarding and POP/IMAP, Add a forwarding address.';
 
+
+  const routeHow =
+    provider === 'microsoft' ? (
+      <ol className="esg-list">
+        <li>In the Exchange admin center: Mail flow, Accepted domains. Open {d} and set it to <b>Internal relay</b>.</li>
+        <li>Mail flow, Connectors, Add a connector: from Office 365 to <b>Partner organization</b>, used only for {d}.</li>
+        <li>Route it through this smart host, with TLS:</li>
+      </ol>
+    ) : provider === 'zoho' ? (
+      <ol className="esg-list">
+        <li>In the Zoho Mail admin console: Mail settings, Email routing.</li>
+        <li>Add a route for {d} that sends mail for addresses that don’t exist in Zoho to this host:</li>
+      </ol>
+    ) : provider === 'imap' ? (
+      <ol className="esg-list">
+        <li>Ask your provider for <b>split delivery</b> (sometimes called routing for unknown recipients) for {d}.</li>
+        <li>Mail for addresses they don’t host should go to this host:</li>
+      </ol>
+    ) : (
+      <ol className="esg-list">
+        <li>In the Google Admin console: Apps, Google Workspace, Gmail, <b>Default routing</b>, Configure.</li>
+        <li>Envelope recipients to match: all recipients. Account types to affect: tick only <b>Unrecognized / Catch-all</b>.</li>
+        <li>Route: change route to a new host, with TLS required:</li>
+      </ol>
+    );
+  const splitRecords = sendRecords.map((r) => (r.type === 'TXT' ? { ...r, value: `v=spf1 ${provider === 'microsoft' ? 'include:spf.protection.outlook.com' : provider === 'zoho' ? 'include:zoho.com' : 'include:_spf.google.com'} include:amazonses.com ~all`, note: 'One SPF record listing both. Keep anything else already in it' } : r));
   const steps: { title: string; body: ReactNode }[] =
-    mode === 'forward'
+    mode === 'split'
+      ? [
+          {
+            title: 'How it works',
+            body: (
+              <>
+                <p>
+                  {d} stays with {providerName(provider)}. People who keep a licence there carry on as today. Everyone else gets a real <b>name@{d}</b> mailbox in Sprint2go, and you stop paying {providerName(provider)} for them.
+                </p>
+                <p>
+                  Mail always reaches {providerName(provider)} first. One rule there passes anything for an address it doesn’t know on to Sprint2go. If an address exists in neither, the sender gets the usual “doesn’t exist” reply.
+                </p>
+                <p className="esg-tipline">
+                  <b>One place per person.</b> When someone moves to Sprint2go, remove their {providerName(provider)} licence; while it exists, {providerName(provider)} keeps their mail.
+                </p>
+              </>
+            ),
+          },
+          {
+            title: 'Pass the rest on',
+            body: (
+              <>
+                {routeHow}
+                <Value v="mx.sprint2go.com" />
+                <p className="muted small">Port 25. Only an admin of {d} can add this rule, once for the whole company.</p>
+              </>
+            ),
+          },
+          {
+            title: 'Sending',
+            body: (
+              <>
+                <p>So mail from Sprint2go mailboxes isn’t marked as spam, add these where you manage {d}. Once for the whole company.</p>
+                <Records list={splitRecords} />
+                <Btn k="dns" idle="Check the records" wait="Checking DNS…" ok="Both records found" />
+              </>
+            ),
+          },
+          {
+            title: 'Check it works',
+            body: (
+              <>
+                <p>
+                  We send a test to <b>check@{d}</b>, an address only Sprint2go has. If it arrives here, {providerName(provider)} passes mail on correctly and you can give people Sprint2go mailboxes.
+                </p>
+                <Btn k="route-test" idle="Send the test" wait={`Waiting for it to pass through ${providerName(provider)}…`} ok="It arrived: routing works" ms={2600} />
+                <p className="muted small">After this we send the same test every day and tell admins straight away if it stops arriving, for example when someone changes the rule.</p>
+              </>
+            ),
+          },
+        ]
+      : mode === 'forward'
       ? [
           {
             title: 'Your address',

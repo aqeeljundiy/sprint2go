@@ -19,6 +19,9 @@ import { ClientAccessForm } from './admin/ClientAccessForm';
 import { accessFor } from '../clientView';
 import { Select } from './ui/Select';
 import { changePassword, server } from '../sync';
+import { EmailSetupGuide } from './EmailSetupGuide';
+import { providerName } from './Onboarding';
+import { relative } from '../utils';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -120,6 +123,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
+  const [routingGuide, setRoutingGuide] = useState(false);
   const canManage = myRole !== 'member';
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
@@ -245,6 +249,38 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   </button>
                 )}
               </div>
+
+              {ws.emailSetup === 'mix' && (
+                <>
+                  <h3>Mail routing</h3>
+                  <div className="set-block routing-block">
+                    <p className="small">
+                      {ws.domains[0] ?? 'Your domain'} stays with {providerName(ws.emailProvider)}, which passes mail for addresses it doesn’t know on to Sprint2go.{' '}
+                      {ws.mailRouting?.lastCheck
+                        ? ws.mailRouting.lastCheck.ok
+                          ? `Last check ${relative(ws.mailRouting.lastCheck.at)}: working.`
+                          : `Last check ${relative(ws.mailRouting.lastCheck.at)}: the test didn’t arrive. Check the routing rule.`
+                        : ws.mailRouting?.verifiedAt
+                          ? `Checked ${relative(ws.mailRouting.verifiedAt)} during setup.`
+                          : 'Not checked yet: mail to Sprint2go mailboxes may not arrive.'}
+                    </p>
+                    <Toggle
+                      on={ws.mailRouting?.dailyCheck ?? true}
+                      onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
+                      label="Check every day"
+                      hint="A test email each morning. If it stops arriving, admins hear about it straight away. Runs once Sprint2go mail is live."
+                    />
+                    <button type="button" className="link-btn small" onClick={() => setRoutingGuide((x) => !x)}>
+                      {routingGuide ? 'Hide the setup steps' : 'Show the setup steps'}
+                    </button>
+                    <div className={`fold ${routingGuide ? 'open' : ''}`}>
+                      <div className="fold-in">
+                        <EmailSetupGuide mode="split" provider={ws.emailProvider ?? 'google'} domain={ws.domains[0] ?? ''} first={(users.find((u) => u.id === me)?.name ?? '').split(' ')[0].toLowerCase()} onVerified={() => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } })} />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <h3>Email accounts</h3>
               <div className="acct-list">

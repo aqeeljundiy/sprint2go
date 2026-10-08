@@ -1816,3 +1816,15 @@
     order: -1;
   }
 }
+.ob-person > small {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.ob-person .ob-warn {
+  color: #b45309;
+}
+.esg-who {
+  justify-self: start;
+  margin-bottom: 4px;
+}

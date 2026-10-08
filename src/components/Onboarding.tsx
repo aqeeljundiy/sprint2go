@@ -65,6 +65,8 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
     const nav = (typeof navigator !== 'undefined' ? navigator.language : 'en').slice(0, 2).toLowerCase();
     return nav === 'id' || nav === 'ms' ? [nav, 'en'] : MEETING_LANGUAGES.some((l) => l.code === nav) ? [nav] : ['en'];
   });
+  const [mixPart, setMixPart] = useState<'split' | 'keep'>('split'); // "Some of each": which people the guide is about
+  const [routingOk, setRoutingOk] = useState(false); // the routing test reached Sprint2go
   const [team, setTeam] = useState<Invite[]>([{ key: 1, name: '', email: '', role: 'member', where: 'sprint2go' }]);
 
   const d = domain.trim().toLowerCase().replace(/^@/, '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -108,6 +110,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
         members: [{ userId: me.id, role: 'owner' }, ...newUsers.map((u, i) => ({ userId: u.id, role: people[i].role }))],
         apps: mailOn ? apps : apps.filter((a) => a !== 'mail'),
         emailSetup: setup,
+        ...(setup === 'mix' ? { mailRouting: { dailyCheck: true, ...(routingOk ? { verifiedAt: new Date().toISOString() } : {}) } } : {}),
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,
         plan: trialPlan(brand.name.trim(), myEmail),
         ai: defaultAI(false),
@@ -281,8 +284,25 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
               )}
               {setup !== 'none' && (
                 <>
-                  <h3 className="esg-title">{setup === 'hosted' ? 'How the move works' : setup === 'mix' ? 'For people who keep their mailbox' : 'How forwarding works'}</h3>
-                  <EmailSetupGuide mode={setup === 'hosted' ? 'move' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} />
+                  {setup === 'mix' ? (
+                    <>
+                      <div className="segmented sm esg-who">
+                        <button type="button" className={mixPart === 'split' ? 'on' : ''} onClick={() => setMixPart('split')}>
+                          People on Sprint2go mail
+                        </button>
+                        <button type="button" className={mixPart === 'keep' ? 'on' : ''} onClick={() => setMixPart('keep')}>
+                          People who keep {providerName(provider)}
+                        </button>
+                      </div>
+                      <h3 className="esg-title">{mixPart === 'split' ? `Give people a ${d || 'company'} mailbox here` : 'Their mail, copied here'}</h3>
+                      <EmailSetupGuide mode={mixPart === 'split' ? 'split' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} onVerified={() => setRoutingOk(true)} />
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="esg-title">{setup === 'hosted' ? 'How the move works' : 'How forwarding works'}</h3>
+                      <EmailSetupGuide mode={setup === 'hosted' ? 'move' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} />
+                    </>
+                  )}
                   <small className="set-hint">You can finish now and do this later from Settings, Mail. {preview ? 'In this preview the waits are simulated.' : ''}</small>
                 </>
               )}
@@ -327,6 +347,10 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                       <X size={14} />
                     </button>
                     {t.email && existingEmails.includes(t.email.toLowerCase()) && <small className="err">Already has an account.</small>}
+                    {setup === 'mix' && t.where === 'sprint2go' && t.email && !routingOk && (
+                      <small className="ob-warn">Mail to this address won’t arrive until the routing check in the email step passes. You can still invite them now.</small>
+                    )}
+                    {setup === 'mix' && t.where === 'sprint2go' && t.email && routingOk && <small className="muted">Remove their {providerName(provider)} licence if they have one, or it keeps their mail.</small>}
                   </div>
                 ))}
                 <button className="ghost-btn sm" onClick={() => setTeam((ts) => [...ts, { key: Date.now(), name: '', email: '', role: 'member', where: 'sprint2go' }])}>
