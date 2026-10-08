@@ -743,8 +743,8 @@ function ViewSettings({ t, view, onView, onNewField }: { t: DataTable; view: Tab
     const selects = t.fields.filter((f) => f.type === 'select');
     return (
       <div className="tb-view-set">
-        <span className="tb-fm-label">Columns from</span>
-        <PickSelect value={view.groupBy ?? selects[0]?.id ?? ''} aria-label="Columns from" onChange={(e) => (e.target.value === '__new' ? newChoiceField(t, onNewField, onView) : onView({ groupBy: e.target.value }))}>
+        <span className="tb-fm-label">Grouped by</span>
+        <PickSelect value={view.groupBy ?? selects[0]?.id ?? ''} aria-label="Grouped by" onChange={(e) => (e.target.value === '__new' ? newChoiceField(t, onNewField, onView) : onView({ groupBy: e.target.value }))}>
           {selects.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}

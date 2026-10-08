@@ -138,11 +138,11 @@ export function BoardView({
   return (
     <div className="tb-board-wrap">
       <div className="tb-board-by">
-        <span className="muted small">Columns from</span>
+        <span className="muted small">Grouped by</span>
         {readOnly || !group ? (
           <strong className="small">{group?.name ?? 'nothing yet: add a column'}</strong>
         ) : (
-          <PickSelect value={group.id} aria-label="Columns from" onChange={(e) => (e.target.value === '__new' ? newChoiceField(table, onNewField, onView) : onView({ groupBy: e.target.value }))}>
+          <PickSelect value={group.id} aria-label="Grouped by" onChange={(e) => (e.target.value === '__new' ? newChoiceField(table, onNewField, onView) : onView({ groupBy: e.target.value }))}>
             {selects.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.name}
