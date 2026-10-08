@@ -23,6 +23,8 @@ export interface GridProps {
   onCell: (rowId: string, fieldId: string, v: CellValue) => void;
   onOpenRow: (id: string, full?: boolean) => void;
   onAddRow: (values?: Record<string, CellValue>) => void;
+  focusRowId?: string | null; // a row just added: scroll to it and start typing its name
+  onFocused?: () => void;
   onSaveField: (f: TableField, at?: number) => void; // at: insert at this view position
   onDeleteField: (id: string) => void;
   onDuplicateField: (id: string) => void;
@@ -317,6 +319,18 @@ export function GridView(p: GridProps) {
     setActive(pos);
     requestAnimationFrame(() => wrapRef.current?.querySelector<HTMLElement>(`[data-cell="${key(flat[pos.r]?.id ?? '', fields[pos.c]?.id ?? '')}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
   };
+  // A new row: bring it into view with its name ready to type. Hidden by a filter? Open its page instead.
+  useEffect(() => {
+    if (!p.focusRowId) return;
+    const r = flat.findIndex((x) => x.id === p.focusRowId);
+    const c = Math.max(0, fields.findIndex((f) => f.id === nameId));
+    p.onFocused?.();
+    if (r < 0) return p.onOpenRow(p.focusRowId);
+    setActive({ r, c });
+    setAnchor(null);
+    setEditing({ pos: { r, c } });
+    requestAnimationFrame(() => wrapRef.current?.querySelector<HTMLElement>(`[data-cell="${key(p.focusRowId!, fields[c]?.id ?? '')}"]`)?.scrollIntoView({ block: 'nearest' }));
+  }, [p.focusRowId]); // eslint-disable-line react-hooks/exhaustive-deps
   const startEdit = (pos: Pos, initial?: string) => {
     const f = fields[pos.c];
     if (!f || !canEdit(f) || f.type === 'checkbox' || f.type === 'rating') return;
@@ -547,7 +561,7 @@ export function GridView(p: GridProps) {
             )}
             {!collapsed.has(g.key) && g.rows.map((r) => renderRow(r, g))}
             {!collapsed.has(g.key) && !p.readOnly && p.canAdd !== false && (
-              <button type="button" className="tb-new-row" onClick={() => p.onAddRow(groupField && g.value !== null && !isComputed(groupField) ? { [groupField.id]: g.value } : {})}>
+              <button type="button" className="tb-grid-add" onClick={() => p.onAddRow(groupField && g.value !== null && !isComputed(groupField) ? { [groupField.id]: g.value } : {})}>
                 <Plus size={14} /> New row{groupField ? ` in ${g.label}` : ''}
               </button>
             )}

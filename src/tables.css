@@ -118,14 +118,14 @@
     width: 100%;
     min-width: 0;
   }
-  .tb-bar .tb-new-row {
+  .tb-bar .tb-add-row {
     flex: none;
     width: 36px;
     height: 36px;
     padding: 0;
     justify-content: center;
   }
-  .tb-bar .tb-new-row .lbl {
+  .tb-bar .tb-add-row .lbl {
     display: none;
   }
 }
@@ -408,7 +408,7 @@
   background: var(--hover);
   color: var(--text);
 }
-.tb-new-row {
+.tb-grid-add {
   position: sticky;
   left: 0;
   display: inline-flex;
@@ -421,7 +421,7 @@
   font-size: 13px;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.tb-new-row:hover {
+.tb-grid-add:hover {
   background: var(--hover);
   color: var(--text);
 }
@@ -2913,4 +2913,16 @@
   .tb-rd-folded > .link-btn {
     margin-left: 0;
   }
+}
+
+/* A linked row is a link: it reads as one on hover. */
+.tb-chip.linked.go {
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.tb-chip.linked.go:hover,
+.tb-chip.linked.go:focus-visible {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  outline: none;
 }

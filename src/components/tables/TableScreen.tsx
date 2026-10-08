@@ -70,6 +70,7 @@ export function TableScreen(p: ScreenProps) {
   const [renamingView, setRenamingView] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
   const [buttonFor, setButtonFor] = useState<string | null>(null);
+  const [freshRow, setFreshRow] = useState<string | null>(null); // just added in the grid: shown and ready to type
   const [importing, setImporting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [full, setFull] = useState(false);
@@ -368,7 +369,7 @@ export function TableScreen(p: ScreenProps) {
     void press(row, f);
   };
 
-  const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, rowName: rowNameOf, addOption, runButton, running, isAdmin: p.isAdmin || !!g, canEdit: g?.canEdit };
+  const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, rowName: rowNameOf, addOption, runButton, running, isAdmin: p.isAdmin || !!g, canEdit: g?.canEdit, openLinked: g ? undefined : (tableId, rowId) => p.onOpenTable(tableId, rowId) };
   const filters = view?.filters ?? [];
   const activeFilters = filters.filter((f) => f.op === 'empty' || f.op === 'filled' || (f.value ?? '') !== '');
   const sorts = view ? sortsOf(view) : [];
@@ -534,7 +535,7 @@ export function TableScreen(p: ScreenProps) {
           </>
         )}
         {canAdd && (
-          <button className="primary-btn sm tb-new-row" aria-label="New row" onClick={() => (view?.kind === 'grid' ? addRow() : openRowFull(addRow()))}>
+          <button className="primary-btn sm tb-add-row" aria-label="New row" onClick={() => (view?.kind === 'grid' || !view ? setFreshRow(addRow()) : openRowFull(addRow()))}>
             <Plus size={14} /> <span className="lbl">New row</span>
           </button>
         )}
@@ -618,7 +619,9 @@ export function TableScreen(p: ScreenProps) {
               onSelect={setSelected}
               onCell={setCell}
               onOpenRow={(id, f) => openRowFull(id, f)}
-              onAddRow={(v) => addRow(v)}
+              onAddRow={(v) => setFreshRow(addRow(v))}
+              focusRowId={freshRow}
+              onFocused={() => setFreshRow(null)}
               onSaveField={saveField}
               onDeleteField={deleteField}
               onDuplicateField={duplicateField}

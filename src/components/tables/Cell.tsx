@@ -20,6 +20,8 @@ export interface CellCtx {
   isAdmin?: boolean;
   /** Guests: only some fields can be changed. */
   canEdit?: (fieldId: string) => boolean;
+  /** Goes to a linked row (in its own table). */
+  openLinked?: (tableId: string, rowId: string) => void;
 }
 
 /** A Button field's button on a row: hidden where "Show on" doesn't match, busy while it runs. */
@@ -104,11 +106,29 @@ export function CellView({ f, v, ctx, wrap }: { f: TableField; v: CellValue | un
       const { target } = linkRows(f, ctx);
       return (
         <span className="tb-chips">
-          {(v as string[]).map((id) => (
-            <span key={id} className="tb-chip linked">
-              {target ? rowName(target, ctx.rows.find((r) => r.id === id)) : 'Missing'}
-            </span>
-          ))}
+          {(v as string[]).map((id) => {
+            const name = target ? rowName(target, ctx.rows.find((r) => r.id === id)) : 'Missing';
+            const go = target && ctx.openLinked ? () => ctx.openLinked!(target.id, id) : undefined;
+            // A linked row is a link: click it to go there (in a span, since it can sit inside a card's button).
+            return go ? (
+              <span
+                key={id}
+                role="link"
+                tabIndex={0}
+                className="tb-chip linked go"
+                title={`Open ${name} in ${target!.name}`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => (e.stopPropagation(), e.preventDefault(), go())}
+                onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), go())}
+              >
+                {name}
+              </span>
+            ) : (
+              <span key={id} className="tb-chip linked">
+                {name}
+              </span>
+            );
+          })}
         </span>
       );
     }
