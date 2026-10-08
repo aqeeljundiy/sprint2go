@@ -98,7 +98,7 @@ export function monthlyTotal(plan: Plan, people: number) {
 }
 
 export const PLAN_FEATURES: Record<Tier, string[]> = {
-  free: ['5 people, 1 team', 'AI with your own keys, plus a small monthly taste', '90 days of visible history', '5 GB storage, 2 meeting-bot hours', '1 guest'],
+  free: ['5 people, 1 team', 'AI with your own keys', '90 days of visible history', '5 GB storage, 2 meeting-bot hours', '1 guest'],
   small: ['For 1 to 9 people', 'Every app, hosted email', 'Guests and shared spaces', '20 GB storage per person'],
   studio: ['10 people included', 'Hosted email, every app', 'Guests and shared spaces', '250 GB shared storage'],
   agency: ['30 people included', '1 TB shared storage', 'Permissions and retention rules'],

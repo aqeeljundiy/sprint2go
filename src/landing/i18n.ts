@@ -304,7 +304,7 @@ const id: Dict = {
     feature: (f: string) =>
       ({
         '5 people, 1 team': '5 orang, 1 tim',
-        'AI with your own keys, plus a small monthly taste': 'AI dengan key sendiri, plus kuota kecil tiap bulan',
+        'AI with your own keys': 'AI dengan key sendiri',
         '90 days of visible history': 'Riwayat 90 hari',
         '5 GB storage, 2 meeting-bot hours': 'Penyimpanan 5 GB, 2 jam bot rapat',
         '1 guest': '1 tamu',
