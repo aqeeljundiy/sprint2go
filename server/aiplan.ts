@@ -20,7 +20,7 @@ const monthStart = () => {
   const d = new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
 };
-const rp = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+const rp = (n: number) => 'Rp\u00a0' + Math.round(n).toLocaleString('id-ID'); // never split from its number
 export const DEFAULT_RATE = 17_500; // rupiah per US$, the catalogue's rate
 
 /* ---------- what the operators chose ---------- */
