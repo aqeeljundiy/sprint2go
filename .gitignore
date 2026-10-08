@@ -7,3 +7,6 @@ dist
 .DS_Store
 recorder/data
 recorder/.env
+
+# Claude Code worktrees
+.claude/worktrees/
