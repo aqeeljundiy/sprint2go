@@ -35,6 +35,8 @@ interface Props {
   contacts: Person[];
   signature: string;
   trackByDefault: boolean;
+  /** Open tracking exists (the demo only, until the server tracks opens for real). */
+  canTrack?: boolean;
   accounts: Account[];
   defaultFrom: string;
   /** Re-opening a draft or an undone send. */
@@ -46,7 +48,7 @@ interface Props {
 
 type WinState = 'normal' | 'min' | 'max';
 
-export function Compose({ contacts, signature, trackByDefault, accounts, defaultFrom, initial, onSend, onClose }: Props) {
+export function Compose({ contacts, signature, trackByDefault, canTrack = true, accounts, defaultFrom, initial, onSend, onClose }: Props) {
   const [to, setTo] = useState<Person[]>(initial?.to ?? []);
   const [cc, setCc] = useState<Person[]>(initial?.cc ?? []);
   const [showCc, setShowCc] = useState(!!initial?.cc.length);
@@ -71,7 +73,7 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
 
   const external = [...to, ...cc].filter((p) => !isTeam(p.email));
   // Follows the default until you flip it yourself.
-  const track = external.length > 0 && (trackChoice ?? trackByDefault);
+  const track = canTrack && external.length > 0 && (trackChoice ?? trackByDefault);
   const message = (): Outgoing => ({ to, cc, subject: subject.trim(), html: body.html, text: body.text, files, track, trackOptions: opts, fromId });
   const typed = hasOwnText(body.text, signature);
   const hasContent = to.length > 0 || subject.trim() || typed || files.length > 0;
@@ -273,6 +275,7 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
           <button className={`icon-btn ai-btn ${aiOpen ? 'on' : ''}`} title="Write with AI" onClick={() => setAiOpen((o) => !o)}>
             <Sparkles size={17} />
           </button>
+          {canTrack && (
           <div className="track-split">
             <button
               className={`track-toggle ${track ? 'on' : ''}`}
@@ -330,6 +333,7 @@ export function Compose({ contacts, signature, trackByDefault, accounts, default
               </div>
             )}
           </div>
+          )}
           <span className="spacer" />
           <button className="icon-btn" title="Discard" onClick={() => {
             setClosing(true);

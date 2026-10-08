@@ -704,10 +704,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       showToast({ text: `Scheduled for ${new Date(m.sendAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`, action: { label: 'Undo', run: () => setThreads((ts) => ts.filter((x) => x.id !== t.id)) } });
       return;
     }
+    const from = accountOf(m.fromId);
+    // With the server, a mailbox that can't send keeps the message open instead of pretending it went out.
+    if (!demoOk && (!from || !boxReady(from.id).send)) {
+      showToast({ text: from ? replyWhy(from) : 'Choose a mailbox that can send.', ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+      return;
+    }
     const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
     // With the server: the mail engine really sends it (our own mailboxes already have their copies).
-    const from = accountOf(m.fromId);
     if (server.on && from && (!from.provider || from.provider === 'sprint2go')) {
       void fetch('/api/mail/send', {
         method: 'POST',
@@ -719,7 +724,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         },
         () => showToast({ text: 'No connection: the mail was not sent.' }),
       );
-    } else if (thread.messages[0].tracking) simulateOpen(thread);
+    } else if (demoOk && thread.messages[0].tracking) simulateOpen(thread);
     showToast({
       text: 'Message sent',
       ms: settings.undoSend ? settings.undoSend * 1000 : 4000,
@@ -945,13 +950,36 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const from = incomingFrom(t);
     if (!m || !from) return;
     const at = new Date().toISOString();
+    const link = m.listUnsubscribe!.url;
+    const openPage = () => /^https?:\/\//i.test(link) && window.open(link, '_blank', 'noopener,noreferrer');
+    if (!demoOk) {
+      // Senders without one-click unsubscribe: their own page, opened from this click so it isn't blocked.
+      if (!m.listUnsubscribe!.oneClick) {
+        openPage();
+        setUnsubscribed((u) => ({ ...u, [domainOf(from.email)]: at }));
+        showToast({ text: `${from.name}’s unsubscribe page is open. Finish there.`, ms: 6000 });
+        return;
+      }
+      // One-click senders (RFC 8058): the server sends the request for you.
+      void fetch('/api/mail/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: t.id }) })
+        .then(async (r) => ({ ok: r.ok, d: (await r.json().catch(() => ({}))) as { error?: string; open?: string } }))
+        .then(
+          ({ ok, d }) => {
+            if (ok) {
+              setUnsubscribed((u) => ({ ...u, [domainOf(from.email)]: at }));
+              showToast({ text: `Unsubscribed from ${from.name}` });
+            } else showToast({ text: d.error ?? 'Couldn’t unsubscribe. Try again.', ms: 7000, action: d.open ? { label: 'Open their page', run: () => void openPage() } : undefined });
+          },
+          () => showToast({ text: 'No connection. Try again.' }),
+        );
+      return;
+    }
     setUnsubscribed((u) => ({ ...u, [domainOf(from.email)]: at }));
-    // Real version: one-click senders get an automatic POST (RFC 8058); others open their page.
     showToast({ text: `Unsubscribed from ${from.name}${m.listUnsubscribe!.oneClick ? '' : ', request sent'}` });
 
     // DEMO ONLY: senders without one-click unsubscribe often keep mailing. Simulate that,
     // so the "still sending → Block" flow can be tried.
-    if (!m.listUnsubscribe!.oneClick)
+    if (demoOk && !m.listUnsubscribe!.oneClick)
       setTimeout(() => {
         const again: Thread = {
           id: uid(),
@@ -1880,7 +1908,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
     }
     // DEMO ONLY: the other person answers a DM a few seconds later, so the chat feels alive.
-    if (ch.kind === 'dm' && !pl.parentId) {
+    if (demoOk && ch.kind === 'dm' && !pl.parentId) {
       const other = ch.members.find((m) => m !== user.id)!;
       setTimeout(() => {
         const reply = pl.voice ? 'Got your voice note, will do 👍' : /\?/.test(text) ? 'Good question, let me check and get back to you shortly.' : /thank/i.test(text) ? 'Anytime! 🙌' : '👍 Got it, on it.';
@@ -3810,6 +3838,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           contacts={contacts}
           signature={settings.signature}
           trackByDefault={settings.trackByDefault}
+          canTrack={demoOk}
           accounts={sendable.length ? sendable : myAccounts}
           defaultFrom={activeAccount !== 'all' && sendable.some((a) => a.id === activeAccount) ? activeAccount : (sendable[0] ?? myAccounts[0])?.id}
           initial={compose.initial}

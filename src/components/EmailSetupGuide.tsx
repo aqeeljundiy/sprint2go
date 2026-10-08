@@ -2,8 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, Check, Copy, Loader2, Mail } from 'lucide-react';
 import type { MailProvider } from '../types';
 import { providerName } from './Onboarding';
-import { mailInfo } from '../sync';
+import { mailInfo, server } from '../sync';
 import { brand as product } from '../terms';
+import { caps } from '../caps';
 
 /**
  * How mail gets into sprint2go, step by step. Two ways:
@@ -12,14 +13,17 @@ import { brand as product } from '../terms';
  *  - move: the domain's mail moves to sprint2go (MX records), old mail is imported, the old provider is cancelled.
  *  - split: "some of each". The domain stays with Google or Microsoft; one routing rule there passes mail for
  *    addresses it doesn't know on to sprint2go, so people without a licence get a real name@domain mailbox here.
- * Until the mail server runs, the waits (Gmail's code, the DNS check, the import, the test email) are simulated.
+ * With the server, every check asks it for real (records, a test email arriving); steps it can't do yet say so. Only the
+ * standalone demo plays the waits.
  */
-export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: { mode: 'forward' | 'move' | 'split'; provider: MailProvider; domain: string; first: string; onVerified?: () => void }) {
+export function EmailSetupGuide({ mode, provider, domain, first, onVerified, workspaceId }: { mode: 'forward' | 'move' | 'split'; provider: MailProvider; domain: string; first: string; onVerified?: () => void; workspaceId?: string }) {
+  const real = server.on && !caps.demo;
   const d = domain || 'yourcompany.com';
   const slug = d.split('.')[0].replace(/[^a-z0-9]/g, '') || 'company';
   const inbox = `${first || 'you'}.${slug}@${mailInfo.host || 'in.sprint2go.com'}`; // a copy of their mail, forwarded here
   const [copied, setCopied] = useState<string | null>(null);
-  const [done, setDone] = useState<Record<string, 'wait' | 'ok'>>({});
+  const [done, setDone] = useState<Record<string, 'wait' | 'ok' | 'no'>>({});
+  const [why, setWhy] = useState<Record<string, string>>({});
   const [cur, setCur] = useState(0);
   useEffect(() => setCur(0), [mode]); // a different path starts at its first step
   const copy = async (v: string) => {
@@ -31,19 +35,48 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
       /* clipboard blocked: the value is selectable */
     }
   };
-  // DEMO: each wait resolves after a moment. The real ones are a webhook from the mail server or a DNS lookup.
-  const run = (key: string, ms = 1600) => {
-    setDone((x) => ({ ...x, [key]: 'wait' }));
-    setTimeout(() => {
-      setDone((x) => ({ ...x, [key]: 'ok' }));
-      if (key === 'route-test') onVerified?.();
-    }, ms);
+  const post = (path: string) =>
+    fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId }) }).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((d as { error?: string }).error ?? 'The check didn’t go through. Try again.');
+      return d as any;
+    });
+  /** Real checks: the records, or whether mail has arrived here yet. */
+  const check = async (key: string): Promise<{ ok: boolean; why?: string }> => {
+    if (key === 'dns') {
+      const r = await post('/api/mail/check');
+      const missing = (r.checks ?? []).filter((c: { ok: boolean }) => !c.ok).length;
+      return { ok: !!r.allOk, why: r.allOk ? undefined : `${missing} of ${(r.checks ?? []).length} records not found yet. New records can take a few minutes to show.` };
+    }
+    const r = await post('/api/mail/ready');
+    return { ok: !!r.receive, why: r.receive ? undefined : 'Nothing has arrived yet. It can take a minute; try again.' };
   };
-  const Btn = ({ k, idle, wait, ok, ms }: { k: string; idle: string; wait: string; ok: string; ms?: number }) => (
-    <button className="ghost-btn outline sm" disabled={done[k] === 'wait'} onClick={() => run(k, ms)}>
-      {done[k] === 'wait' ? <Loader2 size={14} className="spin" /> : done[k] === 'ok' ? <Check size={14} /> : <Mail size={14} />} {done[k] === 'ok' ? ok : done[k] === 'wait' ? wait : idle}
-    </button>
-  );
+  const run = async (key: string, ms = 1600) => {
+    setDone((x) => ({ ...x, [key]: 'wait' }));
+    if (!real) {
+      // The standalone demo: each wait resolves after a moment.
+      setTimeout(() => {
+        setDone((x) => ({ ...x, [key]: 'ok' }));
+        if (key === 'route-test') onVerified?.();
+      }, ms);
+      return;
+    }
+    const r = await check(key).catch((e: Error) => ({ ok: false, why: e.message }));
+    setDone((x) => ({ ...x, [key]: r.ok ? 'ok' : 'no' }));
+    setWhy((x) => ({ ...x, [key]: r.why ?? '' }));
+    if (r.ok && key === 'route-test') onVerified?.();
+  };
+  const Btn = ({ k, idle, wait, ok, ms }: { k: string; idle: string; wait: string; ok: string; ms?: number }) =>
+    real && !workspaceId ? (
+      <p className="muted small">Once your company is set up, check this in Settings, Email delivery.</p>
+    ) : (
+      <span className="esg-check">
+        <button className="ghost-btn outline sm" disabled={done[k] === 'wait'} onClick={() => void run(k, ms)}>
+          {done[k] === 'wait' ? <Loader2 size={14} className="spin" /> : done[k] === 'ok' ? <Check size={14} /> : <Mail size={14} />} {done[k] === 'ok' ? ok : done[k] === 'wait' ? wait : done[k] === 'no' ? 'Check again' : idle}
+        </button>
+        {done[k] === 'no' && why[k] && <small className="muted">{why[k]}</small>}
+      </span>
+    );
   const Value = ({ v }: { v: string }) => (
     <span className="esg-value">
       <span className="mono esg-sel">{v}</span>
@@ -118,7 +151,7 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
         <li>Route: change route to a new host, with TLS required:</li>
       </ol>
     );
-  const splitRecords = sendRecords.map((r) => (r.type === 'TXT' ? { ...r, value: `v=spf1 ${provider === 'microsoft' ? 'include:spf.protection.outlook.com' : provider === 'zoho' ? 'include:zoho.com' : 'include:_spf.google.com'} include:amazonses.com ~all`, note: 'One SPF record listing both. Keep anything else already in it' } : r));
+  const splitRecords = sendRecords.map((r) => (r.host === '@' ? { ...r, value: ['v=spf1', provider === 'microsoft' ? 'include:spf.protection.outlook.com' : provider === 'zoho' ? 'include:zoho.com' : provider === 'imap' ? '' : 'include:_spf.google.com', spfUs, '~all'].filter(Boolean).join(' '), note: 'One SPF record listing both. Keep anything else already in it' } : r));
   const steps: { title: string; body: ReactNode }[] =
     mode === 'split'
       ? [
@@ -162,11 +195,16 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             title: 'Check it works',
             body: (
               <>
-                <p>
-                  We send a test to <b>check@{d}</b>, an address only {product.name} has. If it arrives here, {providerName(provider)} passes mail on correctly and you can give people {product.name} mailboxes.
-                </p>
-                <Btn k="route-test" idle="Send the test" wait={`Waiting for it to pass through ${providerName(provider)}…`} ok="It arrived: routing works" ms={2600} />
-                <p className="muted small">After this we send the same test every day and tell admins straight away if it stops arriving, for example when someone changes the rule.</p>
+                {real ? (
+                  <p>
+                    From your phone, send an email to a {d} address that only exists in {product.name}. If it arrives here, {providerName(provider)} passes mail on correctly.
+                  </p>
+                ) : (
+                  <p>
+                    We send a test to <b>check@{d}</b>, an address only {product.name} has. If it arrives here, {providerName(provider)} passes mail on correctly and you can give people {product.name} mailboxes.
+                  </p>
+                )}
+                <Btn k="route-test" idle={real ? 'I sent it' : 'Send the test'} wait={real ? 'Looking for it…' : `Waiting for it to pass through ${providerName(provider)}…`} ok="It arrived: routing works" ms={2600} />
               </>
             ),
           },
@@ -189,8 +227,17 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
                 <p>{where}</p>
                 {provider === 'google' && (
                   <>
-                    <p>Gmail sends a confirmation code to that address. It arrives here, so you don’t have to go looking:</p>
-                    <Btn k="code" idle="Show Gmail’s code" wait="Waiting for Gmail…" ok="Code: 482 913" />
+                    {real ? (
+                      <>
+                        <p>Gmail sends a confirmation email to that address. It shows up in Mail here, with the code and a Copy button.</p>
+                        <Btn k="code" idle="Look for Gmail’s email" wait="Looking for it…" ok="It arrived: open Mail for the code" />
+                      </>
+                    ) : (
+                      <>
+                        <p>Gmail sends a confirmation code to that address. It arrives here, so you don’t have to go looking:</p>
+                        <Btn k="code" idle="Show Gmail’s code" wait="Waiting for Gmail…" ok="Code: 482 913" />
+                      </>
+                    )}
                     <p className="muted small">Paste it in Gmail, then choose “Forward a copy of incoming mail” and “keep Gmail’s copy in the Inbox”.</p>
                   </>
                 )}
@@ -205,24 +252,33 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
               </>
             ),
           },
-          {
-            title: 'Reply as yourself',
-            body: (
-              <>
-                <p>
-                  So replies leave as <b>{first || 'you'}@{d}</b> and don’t land in spam, add two records where you manage {d}. Once for the whole company.
-                </p>
-                <Records list={sendRecords} />
-                <Btn k="dns" idle="Check the records" wait="Checking DNS…" ok="Both records found" />
-              </>
-            ),
-          },
+          real
+            ? {
+                title: 'Replies',
+                body: (
+                  <p>
+                    While a mailbox stays with {providerName(provider)}, you read its mail here and reply from {provider === 'microsoft' ? 'Outlook' : provider === 'zoho' ? 'Zoho Mail' : provider === 'imap' ? 'your usual mail app' : 'Gmail'}. To send from {product.name} as <b>{first || 'you'}@{d}</b>, move the mailbox over in Settings, Email delivery.
+                  </p>
+                ),
+              }
+            : {
+                title: 'Reply as yourself',
+                body: (
+                  <>
+                    <p>
+                      So replies leave as <b>{first || 'you'}@{d}</b> and don’t land in spam, add two records where you manage {d}. Once for the whole company.
+                    </p>
+                    <Records list={sendRecords} />
+                    <Btn k="dns" idle="Check the records" wait="Checking DNS…" ok="Both records found" />
+                  </>
+                ),
+              },
           {
             title: 'Test it',
             body: (
               <>
                 <p>Send any email to {first || 'you'}@{d} from your phone.</p>
-                <Btn k="test" idle="I sent it" wait="Watching for it…" ok={`Arrived in ${product.name}`} ms={2200} />
+                <Btn k="test" idle="I sent it" wait={real ? 'Looking for it…' : 'Watching for it…'} ok={`Arrived in ${product.name}`} ms={2200} />
               </>
             ),
           },
@@ -242,18 +298,24 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             title: 'Bring old mail',
             body: (
               <>
-                <p>Sign in to {providerName(provider)} once and we copy every folder in the background. People can work while it runs.</p>
-                <Btn k="import" idle={`Connect ${providerName(provider)}`} wait="Importing 12,480 emails…" ok="Imported 12,480 emails" ms={2600} />
+                {real ? (
+                  <p>Bringing old mail over isn’t available yet. Your old mail stays in {providerName(provider)}, so keep that account until you’ve saved what you need.</p>
+                ) : (
+                  <>
+                    <p>Sign in to {providerName(provider)} once and we copy every folder in the background. People can work while it runs.</p>
+                    <Btn k="import" idle={`Connect ${providerName(provider)}`} wait="Importing 12,480 emails…" ok="Imported 12,480 emails" ms={2600} />
+                  </>
+                )}
               </>
             ),
           },
           {
             title: 'Switch day',
-            body: <p>When the MX record goes live, new mail arrives here, usually within an hour. For a day or two some mail may still reach the old inbox; we keep pulling it in until the switch is complete.</p>,
+            body: <p>When the MX record goes live, new mail arrives here, usually within an hour. For a day or two some mail may still reach the old inbox{real ? ', so look there too until then.' : '; we keep pulling it in until the switch is complete.'}</p>,
           },
           {
             title: 'Cancel the old plan',
-            body: <p>After 30 days with nothing arriving there, cancel {providerName(provider)}. We remind you.</p>,
+            body: <p>After 30 days with nothing arriving there, cancel {providerName(provider)}.{real ? '' : ' We remind you.'}</p>,
           },
         ];
 

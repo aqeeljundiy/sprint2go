@@ -1184,6 +1184,17 @@ createServer(async (req, res) => {
       const [records, health] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth()]);
       return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain: mailer.mailDomainOf(ws), ownDomain: mailer.mailDomainOf(ws) !== mailer.MAIL_HOST, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health });
     }
+    if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
+      const { threadId } = await body(req);
+      const t = db.getDoc('threads', String(threadId ?? '')) as any;
+      const acct = t && (memberOf(me) as any[]).flatMap((w) => w.accounts ?? []).find((a: any) => a.id === t.accountId);
+      if (!t || !acct || !(acct.users ?? []).includes(me)) return json(res, 403, { error: 'Not your mailbox.' });
+      const m = [...(t.messages ?? [])].reverse().find((x: any) => x.listUnsubscribe?.url);
+      if (!m) return json(res, 400, { error: 'This sender didn’t include an unsubscribe link.' });
+      if (!m.listUnsubscribe.oneClick) return json(res, 200, { open: m.listUnsubscribe.url });
+      const r = await mailer.oneClickUnsubscribe(String(m.listUnsubscribe.url));
+      return r.ok ? json(res, 200, { done: true }) : json(res, 502, { error: r.why, open: r.safe ? m.listUnsubscribe.url : undefined });
+    }
     if (p === '/api/mail/ready' && req.method === 'POST') {
       const { workspaceId } = await body(req);
       if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, { error: 'Not in this company.' });

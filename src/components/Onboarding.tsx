@@ -25,7 +25,7 @@ export const providerName = (p?: MailProvider) => (p === 'sprint2go' || !p ? `${
 
 // A function, so the product name (an agency's own, when white-labelled) is read when shown.
 const setups = (): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
-  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook, forward here', body: `Mail stays where it is. A copy of everything comes to ${product.name} and you reply from here as yourself. Nothing moves.` },
+  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook, forward here', body: `Mail stays where it is. A copy of everything comes to ${product.name} to read, and you reply from Gmail or Outlook. Nothing moves.` },
   { id: 'hosted', icon: Server, title: `Move our email to ${product.name}`, body: 'We host your mail, so you can cancel Google or Microsoft. Cheapest per person. Old mail comes with you.' },
   { id: 'mix', icon: Shuffle, title: 'Some of each', body: `Keep pricey licences for a few people and give everyone else a ${product.name} mailbox.` },
   { id: 'none', icon: MailX, title: 'We don’t need email here', body: 'Switch Mail off. Use Chat, Tasks, Calendar and the rest.' },

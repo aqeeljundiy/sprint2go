@@ -11,7 +11,7 @@ import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { authenticate, dkimSign } from 'mailauth';
 import { promises as dns } from 'node:dns';
-import { connect } from 'node:net';
+import { connect, isIP } from 'node:net';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -258,8 +258,11 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
   const addrs = (v: ParsedMail['to']) => (Array.isArray(v) ? v : v ? [v] : []).flatMap((x) => x.value).map(person);
   const html = parsed.html || undefined;
   const trackers = html ? (html.match(/<img[^>]+(width|height)\s*=\s*["']?1\b/gi) ?? []).length : 0;
-  const unsub = parsed.headers.get('list-unsubscribe') as unknown as string | undefined;
-  const unsubUrl = typeof unsub === 'string' ? unsub.match(/<(https?:[^>]+)>/)?.[1] : undefined;
+  // mailparser folds List-* headers into one 'list' object; the raw header line is the fallback.
+  const list = parsed.headers.get('list') as { unsubscribe?: { url?: string | string[] }; 'unsubscribe-post'?: unknown } | undefined;
+  const rawUnsub = parsed.headerLines.find((h) => h.key === 'list-unsubscribe')?.line ?? '';
+  const unsubUrl = ([] as string[]).concat(list?.unsubscribe?.url ?? []).find((u) => /^https?:\/\//i.test(u)) ?? rawUnsub.match(/<(https?:[^>]+)>/i)?.[1];
+  const unsubOneClick = !!list?.['unsubscribe-post'] || parsed.headerLines.some((h) => h.key === 'list-unsubscribe-post');
   for (const rcpt of session.envelope.rcptTo) {
     if (supportAddresses().includes(lower(rcpt.address)) && supportHandler) {
       const attachments = parsed.attachments.map((a) => {
@@ -289,7 +292,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
       html,
       attachments: attachments.length ? attachments : undefined,
       trackersBlocked: trackers || undefined,
-      listUnsubscribe: unsubUrl ? { url: unsubUrl, oneClick: !!parsed.headers.get('list-unsubscribe-post') } : undefined,
+      listUnsubscribe: unsubUrl ? { url: unsubUrl, oneClick: unsubOneClick } : undefined,
       auth: authSummary || undefined,
     };
     const threads = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
@@ -646,7 +649,11 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
       mailboxes[a.id] = {
         receive,
         send: false,
-        why: receive ? `Replies go out from ${app} for now.` : `Turn on forwarding to ${fwd} in ${app}; it unlocks when the first copy arrives.`,
+        why: receive
+          ? `Replies go out from ${app} for now.`
+          : dom.mxHere
+            ? `Mail for ${d} already comes to this server, but ${a.email} is set to stay with ${a.provider === 'microsoft' ? 'Microsoft' : 'Google'}. Move the mailbox over in Settings, Email delivery, to get it here.`
+            : `Turn on forwarding to ${fwd} in ${app}; it unlocks when the first copy arrives.`,
         sendWhy: `${a.email} stays with ${a.provider === 'microsoft' ? 'Microsoft' : 'Google'}, so replies go out from ${app}. Move the mailbox over in Settings, Email delivery, to send from here.`,
       };
     }
@@ -670,4 +677,41 @@ export async function refreshReadiness(wsId: string) {
     deps?.broadcast('workspaces', [next], []);
   }
   return r;
+}
+
+/* ---------- one-click unsubscribe (RFC 8058) ---------- */
+
+/** Loopback, private, link-local, carrier-grade NAT and unique-local addresses: never called from here. */
+function privateIp(ip: string): boolean {
+  const v = ip.toLowerCase();
+  if (v.startsWith('::ffff:')) return privateIp(v.slice(7));
+  if (isIP(v) === 6) return v === '::1' || v === '::' || /^f[cd]/.test(v) || /^fe[89ab]/.test(v);
+  return /^(0\.|10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|22[4-9]\.|2[3-5]\d\.)/.test(v);
+}
+
+/**
+ * Tells a sender to stop, the way RFC 8058 asks: one POST to the link from their List-Unsubscribe header. The link
+ * comes from incoming mail, so only https on the usual port, to a host whose addresses are all public.
+ */
+export async function oneClickUnsubscribe(link: string): Promise<{ ok: boolean; why?: string; safe?: boolean }> {
+  let u: URL;
+  try {
+    u = new URL(link);
+  } catch {
+    return { ok: false, why: 'The sender’s unsubscribe link is broken.' };
+  }
+  if (u.protocol !== 'https:' || (u.port && u.port !== '443') || u.username || u.password) return { ok: false, why: 'The sender’s unsubscribe link isn’t a safe web address.' };
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  const addrs = isIP(host) ? [host] : [...(await dns.resolve4(host).catch(() => [] as string[])), ...(await dns.resolve6(host).catch(() => [] as string[]))];
+  if (!addrs.length) return { ok: false, why: 'The sender’s unsubscribe address doesn’t exist.' };
+  if (addrs.some(privateIp)) return { ok: false, why: 'The sender’s unsubscribe link isn’t a safe web address.' };
+  const r = await fetch(u, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': `${MAIL_HOST} unsubscribe` },
+    body: 'List-Unsubscribe=One-Click',
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  if (!r) return { ok: false, safe: true, why: 'The sender’s server didn’t answer.' };
+  return r.status < 400 ? { ok: true, safe: true } : { ok: false, safe: true, why: `The sender’s server refused (${r.status}).` };
 }

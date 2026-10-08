@@ -4244,3 +4244,19 @@ a.help-file:hover {
   background: transparent;
   cursor: help;
 }
+
+/* A real check in the email setup guide: the button, and why it didn't pass yet. */
+.esg-check {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.esg-check small {
+  animation: viewIn 0.2s ease-out backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .esg-check small {
+    animation: none;
+  }
+}

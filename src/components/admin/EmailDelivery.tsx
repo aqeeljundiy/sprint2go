@@ -23,7 +23,7 @@ interface Setup {
 
 /** Built when shown, so a white-labelled company sees its own name. */
 const receive = (): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
-  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook', body: `Mail stays where it is. ${product.name} sends from your domain; nothing incoming shows here.` },
+  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook', body: 'Mail stays where it is. A forwarded copy shows here to read, and replies go out from Gmail or Outlook.' },
   { id: 'mix', icon: Shuffle, title: 'Some of each', body: `Google or Microsoft keeps the domain and passes the addresses it doesn’t know to ${product.name}.` },
   { id: 'hosted', icon: Server, title: `Move to ${product.name}`, body: 'The domain’s mail comes here. Cancel the other licences.' },
   { id: 'none', icon: MailX, title: 'No email here', body: 'Mail stays off. Chat, Tasks, Calendar and the rest keep working.' },
@@ -165,7 +165,7 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
                 </button>
                 <div className={`fold ${guide ? 'open' : ''}`}>
                   <div className="fold-in">
-                    <EmailSetupGuide mode={setup === 'mix' ? 'split' : 'forward'} provider={provider} domain={ws.domains[0] ?? ''} first={firstName.toLowerCase()} />
+                    <EmailSetupGuide workspaceId={ws.id} mode={setup === 'mix' ? 'split' : 'forward'} provider={provider} domain={ws.domains[0] ?? ''} first={firstName.toLowerCase()} />
                   </div>
                 </div>
               </>

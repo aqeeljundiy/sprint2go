@@ -283,7 +283,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                     </button>
                     <div className={`fold ${routingGuide ? 'open' : ''}`}>
                       <div className="fold-in">
-                        <EmailSetupGuide mode="split" provider={ws.emailProvider ?? 'google'} domain={ws.domains[0] ?? ''} first={(users.find((u) => u.id === me)?.name ?? '').split(' ')[0].toLowerCase()} onVerified={() => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } })} />
+                        <EmailSetupGuide workspaceId={ws.id} mode="split" provider={ws.emailProvider ?? 'google'} domain={ws.domains[0] ?? ''} first={(users.find((u) => u.id === me)?.name ?? '').split(' ')[0].toLowerCase()} onVerified={() => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } })} />
                       </div>
                     </div>
                   </div>
