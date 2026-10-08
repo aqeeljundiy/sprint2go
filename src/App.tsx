@@ -671,6 +671,23 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const replyWhy = (acct: { id: string; email: string }) => boxReady(acct.id).sendWhy ?? `Replies can’t go out from ${acct.email} yet. ${boxReady(acct.id).why ?? mailWhy.send ?? ''}`.trim();
   const replyBlocked = (acct: { id: string; email: string }) =>
     showToast({ text: replyWhy(acct), ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+  /**
+   * Undo send for real: the mail engine keeps each email for the sender's Undo window (Settings, Mail) before anything
+   * leaves, so taking it back means nobody gets it. `then` runs once the server has it back.
+   */
+  const takeBack = (threadId: string, messageId: string, then: () => void) =>
+    void fetch('/api/mail/undo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId, messageId }) }).then(
+      async (r) => (r.ok ? then() : showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'It couldn’t be taken back.' })),
+      () => showToast({ text: 'No connection: it couldn’t be taken back.' }),
+    );
+  /** After the mail engine took an email: "sent", with Undo for as long as it's still waiting there. */
+  const sentToast = async (r: Response, text: string, undo: () => void) => {
+    const d = (await r.json().catch(() => ({}))) as { held?: boolean; until?: string };
+    const left = d.held && d.until ? Date.parse(d.until) - Date.now() - 300 : 0;
+    showToast(left > 1000 ? { text, ms: left, action: { label: 'Undo', run: undo } } : { text });
+  };
+  const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number } | null>(null);
+
   const reply = (id: string, html: string, text: string) => {
     const t = threads.find((x) => x.id === id);
     if (!t) return;
@@ -687,9 +704,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: t.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: t.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, undoSeconds: settings.undoSend }),
       }).then(
-        async (r) => showToast({ text: r.ok ? 'Reply sent' : ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The reply could not be sent.' }),
+        async (r) =>
+          r.ok
+            ? sentToast(r, 'Reply sent', () =>
+                takeBack(id, msgId, () => {
+                  setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
+                  setRestoreReply({ threadId: id, html, text, key: Date.now() });
+                }),
+              )
+            : showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The reply could not be sent.' }),
         () => showToast({ text: 'No connection: the reply was not sent.' }),
       );
     } else showToast({ text: 'Reply sent' });
@@ -750,7 +775,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const t = { ...toThread(m, 'drafts'), sendAt: m.sendAt };
       setThreads((ts) => [t, ...ts.filter((x) => x.id !== compose?.draftId)]);
       setCompose(null);
-      showToast({ text: `Scheduled for ${new Date(m.sendAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`, action: { label: 'Undo', run: () => setThreads((ts) => ts.filter((x) => x.id !== t.id)) } });
+      // Undo: not scheduled any more, back to the draft it was (the server sends only what's still scheduled at its time).
+      showToast({
+        text: `Scheduled for ${new Date(m.sendAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
+        action: {
+          label: 'Undo',
+          run: () => {
+            setThreads((ts) => ts.map((x) => (x.id === t.id ? { ...x, sendAt: undefined } : x)));
+            openCompose({ draftId: t.id, initial: { ...m, sendAt: undefined } });
+          },
+        },
+      });
       return;
     }
     const from = accountOf(m.fromId);
@@ -767,16 +802,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })) }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), undoSeconds: settings.undoSend }),
       }).then(
         async (r) => {
-          if (!r.ok) showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The mail could not be handed to the mail engine.' });
+          if (!r.ok) return showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The mail could not be handed to the mail engine.' });
+          // Undo while the mail engine still has it waiting: it comes back as a draft, and nobody got it.
+          await sentToast(r, 'Message sent', () =>
+            takeBack(thread.id, thread.messages[0].id, () => {
+              setThreads((ts) => ts.map((x) => (x.id === thread.id ? { ...x, location: 'drafts', messages: x.messages.map((msg) => ({ ...msg, delivery: undefined })) } : x)));
+              openCompose({ draftId: thread.id, initial: m });
+            }),
+          );
         },
         () => showToast({ text: 'No connection: the mail was not sent.' }),
       );
+      return;
     } else if (demoOk && thread.messages[0].tracking) simulateOpen(thread);
-    // Undo only where it can really take the mail back: once the mail engine has it, it's gone (Settings says so).
-    const canUndo = !!settings.undoSend && !handedOver;
+    // Without the mail engine (the demo), nothing has left yet: Undo just puts it back.
+    const canUndo = !!settings.undoSend && !server.on;
     showToast({
       text: 'Message sent',
       ms: canUndo ? settings.undoSend * 1000 : 4000,
@@ -3717,6 +3760,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             />
             <Reader
               thread={selected}
+              restoreReply={restoreReply}
               replyOff={selectedAcct && !boxReady(selectedAcct.id).send ? 'Sending isn’t set up for this mailbox yet' : undefined}
               onReplyOff={() => selectedAcct && replyBlocked(selectedAcct)}
               teammates={selected ? members.filter((u) => ws.accounts.find((a) => a.id === selected.accountId)?.users.includes(u.id)) : []}

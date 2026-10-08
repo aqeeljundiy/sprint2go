@@ -387,6 +387,52 @@ await test('Summaries: an older copy saved from the app keeps the server’s sum
   assert.deepEqual(kept.summary.last, before.summary.last);
   assert.ok(kept.summary.history.some((h) => h.id === 'mine') && kept.summary.history.some((h) => h.text === 'Saturday: news.'));
 });
+
+/* undo send (server/mailer.ts): mail waits for the sender's window, Undo takes it back */
+
+process.env.MAIL_ENABLED = '0'; // no SMTP server here, just the engine's bookkeeping
+const mailBroadcasts = [];
+mailer.startMailer({ publicUrl: 'http://localhost', broadcast: (c, u) => mailBroadcasts.push([c, u]), notify: () => {}, log: () => {} });
+db.writeDocs('workspaces', [{ id: 'w-undo', name: 'Undo Co', domains: [], members: [{ userId: 'aj-ana', role: 'owner' }], accounts: [
+  { id: 'ub-ana', email: `ana.undo@${mailer.MAIL_HOST}`, name: 'Ana', kind: 'personal', users: ['aj-ana'] },
+  { id: 'ub-mo', email: `mo.undo@${mailer.MAIL_HOST}`, name: 'Mo', kind: 'personal', users: ['aj-mo'] },
+] }], [], null);
+const outgoing = (messageId) => ({ workspaceId: 'w-undo', accountId: 'ub-ana', threadId: 't-undo', messageId, from: { name: 'Ana', email: `ana.undo@${mailer.MAIL_HOST}` }, to: [{ name: 'Mo', email: `mo.undo@${mailer.MAIL_HOST}` }], cc: [], subject: 'Hello', text: 'Hi Mo', files: [] });
+const inMoBox = () => db.allDocs('threads').filter((t) => t.accountId === 'ub-mo').length;
+db.writeDocs('threads', [{ id: 't-undo', accountId: 'ub-ana', subject: 'Hello', location: 'archive', messages: [{ id: 'msg-1', from: {}, to: [], date: '', body: 'Hi Mo' }] }], [], null);
+await test('Undo send: the email waits, nobody gets it, and Undo takes it back (only its sender)', async () => {
+  const h = mailer.holdSend(outgoing('msg-1'), { userId: 'aj-ana', releaseAt: Date.now() + 20_000 });
+  assert.equal(db.getDoc('threads', 't-undo').messages[0].delivery.state, 'held');
+  assert.equal(mailer.heldUntil('t-undo', 'msg-1'), h.until);
+  assert.equal((await mailer.releaseHeld(Date.now())).length, 0, 'not before its time');
+  assert.equal(inMoBox(), 0, 'our own mailboxes don’t get it while it waits');
+  assert.deepEqual(mailer.cancelHeld('t-undo', 'msg-1', 'aj-mo'), { ok: false, why: 'not-yours' });
+  const back = mailer.cancelHeld('t-undo', 'msg-1', 'aj-ana');
+  assert.equal(back.ok, true);
+  assert.equal(back.email.text, 'Hi Mo');
+  assert.deepEqual(mailer.cancelHeld('t-undo', 'msg-1', 'aj-ana'), { ok: false, why: 'gone' });
+  assert.equal((await mailer.releaseHeld(Date.now() + 60_000)).length, 0, 'an undone email never goes');
+  assert.equal(inMoBox(), 0);
+});
+await test('Undo send: when the window is over it goes out like any email, and can’t be undone', async () => {
+  mailer.holdSend(outgoing('msg-2'), { userId: 'aj-ana', releaseAt: Date.now() + 5_000 });
+  const r = await mailer.releaseHeld(Date.now() + 6_000);
+  assert.deepEqual(r.map((x) => x.state), ['sent']);
+  assert.equal(inMoBox(), 1, 'delivered to the colleague’s mailbox');
+  assert.deepEqual(mailer.cancelHeld('t-undo', 'msg-2', 'aj-ana'), { ok: false, why: 'gone' });
+});
+await test('Undo send: a refused email is marked failed on the message', async () => {
+  const w = db.getDoc('workspaces', 'w-undo');
+  db.writeDocs('workspaces', [{ ...w, accounts: w.accounts.map((a) => (a.id === 'ub-ana' ? { ...a, sendPaused: { reason: 'Too many bounces.' } } : a)) }], [], null);
+  db.writeDocs('threads', [{ ...db.getDoc('threads', 't-undo'), messages: [...db.getDoc('threads', 't-undo').messages, { id: 'msg-3', from: {}, to: [], date: '', body: 'x' }] }], [], null);
+  mailer.holdSend(outgoing('msg-3'), { userId: 'aj-ana', releaseAt: Date.now() - 1 });
+  const r = await mailer.releaseHeld();
+  assert.deepEqual(r.map((x) => x.state), ['failed']);
+  const m = db.getDoc('threads', 't-undo').messages.find((x) => x.id === 'msg-3');
+  assert.equal(m.delivery.state, 'failed');
+  assert.match(m.delivery.error, /paused/);
+  db.writeDocs('workspaces', [w], [], null);
+});
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

@@ -293,6 +293,10 @@ export const onRoutingProbe = (hook: ProbeHook) => (probeHook = hook);
 
 export function startMailer(d: MailerDeps) {
   deps = d;
+  // Mail kept back for Undo (or its scheduled time) goes out when its wait is over, after a restart too.
+  recoverHolds();
+  setInterval(() => void releaseHeld(), 5_000).unref?.();
+  void releaseHeld();
   if (process.env.MAIL_ENABLED === '0') return;
   const loaded = loadTls(MAIL_HOST);
   const tls = loaded ? { key: loaded.key, cert: loaded.cert } : null;
@@ -552,13 +556,91 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
 }
 
 /** Writes the delivery state on the message inside its thread, so the app can show "sending", "sent" or "failed". */
-function markDelivery(threadId: string, messageId: string, mid: string | null, state: 'sending' | 'sent' | 'failed', error?: string) {
+function markDelivery(threadId: string, messageId: string, mid: string | null, state: 'held' | 'sending' | 'sent' | 'failed', error?: string, until?: string) {
   const t = db.getDoc('threads', threadId) as any;
   if (!t) return;
-  const messages = (t.messages ?? []).map((m: any) => (m.id === messageId ? { ...m, mid: mid ?? m.mid, delivery: { state, at: now(), ...(error ? { error } : {}) } } : m));
+  const messages = (t.messages ?? []).map((m: any) => (m.id === messageId ? { ...m, mid: mid ?? m.mid, delivery: { state, at: now(), ...(error ? { error } : {}), ...(until ? { until } : {}) } } : m));
   const next = { ...t, messages };
   db.writeDocs('threads', [next], [], null);
-  deps.broadcast('threads', [next], []);
+  deps?.broadcast('threads', [next], []);
+}
+
+/* ---------- Undo send: mail waits here for its sender's undo window (scheduled mail too, from its time) ---------- */
+
+db.db.exec(`
+  CREATE TABLE IF NOT EXISTS mail_hold (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, account_id TEXT NOT NULL, thread_id TEXT NOT NULL, message_id TEXT NOT NULL, user_id TEXT, payload TEXT NOT NULL, release_at TEXT NOT NULL, state TEXT NOT NULL, error TEXT, created_at TEXT NOT NULL);
+  CREATE INDEX IF NOT EXISTS mail_hold_due ON mail_hold (state, release_at);
+  CREATE INDEX IF NOT EXISTS mail_hold_msg ON mail_hold (thread_id, message_id);
+`);
+/** The longest undo window anyone can pick (Settings, Mail). */
+export const MAX_UNDO_SECONDS = 30;
+
+/**
+ * Keeps an email back until `releaseAt`: nothing leaves, and none of our own mailboxes get a copy, before then. Undo
+ * (`cancelHeld`) takes it back while it waits; then `releaseHeld` hands it to `queueSend` like any other email.
+ */
+export function holdSend(o: Outgoing, opts: { userId: string | null; releaseAt: number }) {
+  const until = new Date(opts.releaseAt).toISOString();
+  // One wait per message: the same message sent again replaces one that's still waiting.
+  db.db.prepare("UPDATE mail_hold SET state = 'cancelled' WHERE thread_id = ? AND message_id = ? AND state = 'held'").run(o.threadId, o.messageId);
+  const id = randomBytes(8).toString('hex');
+  db.db.prepare('INSERT INTO mail_hold (id, workspace_id, account_id, thread_id, message_id, user_id, payload, release_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)').run(id, o.workspaceId, o.accountId, o.threadId, o.messageId, opts.userId, JSON.stringify(o), until, 'held', now());
+  const wait = opts.releaseAt - Date.now();
+  if (wait > 0) markDelivery(o.threadId, o.messageId, null, 'held', undefined, until);
+  setTimeout(() => void releaseHeld(), Math.max(0, wait) + 50).unref?.();
+  return { id, until };
+}
+
+/** Undo: takes back an email that's still waiting. Only the person who sent it can; a sent one can't come back. */
+export function cancelHeld(threadId: string, messageId: string, userId: string): { ok: true; email: Outgoing } | { ok: false; why: 'gone' | 'not-yours' } {
+  const h = db.db.prepare('SELECT id, user_id, payload, state FROM mail_hold WHERE thread_id = ? AND message_id = ? ORDER BY created_at DESC LIMIT 1').get(threadId, messageId) as { id: string; user_id: string | null; payload: string; state: string } | undefined;
+  if (!h || h.state !== 'held') return { ok: false, why: 'gone' };
+  if (h.user_id !== userId) return { ok: false, why: 'not-yours' };
+  // Taken in one step: if the release got it first, it's gone.
+  if (!db.db.prepare("UPDATE mail_hold SET state = 'cancelled' WHERE id = ? AND state = 'held'").run(h.id).changes) return { ok: false, why: 'gone' };
+  return { ok: true, email: JSON.parse(h.payload) as Outgoing };
+}
+
+/** Whether a message is waiting to go out, and until when. */
+export const heldUntil = (threadId: string, messageId: string) =>
+  (db.db.prepare("SELECT release_at FROM mail_hold WHERE thread_id = ? AND message_id = ? AND state = 'held'").get(threadId, messageId) as { release_at: string } | undefined)?.release_at ?? null;
+
+let releasing: Promise<{ id: string; state: 'sent' | 'failed'; error?: string }[]> | null = null;
+/** Hands every email whose wait is over to the outbox. `at` can be set for tests. */
+export function releaseHeld(at = Date.now()): Promise<{ id: string; state: 'sent' | 'failed'; error?: string }[]> {
+  if (releasing) return releasing.then(() => releaseHeld(at));
+  releasing = (async (): Promise<{ id: string; state: 'sent' | 'failed'; error?: string }[]> => {
+    const out: { id: string; state: 'sent' | 'failed'; error?: string }[] = [];
+    const due = db.db.prepare("SELECT * FROM mail_hold WHERE state = 'held' AND release_at <= ? ORDER BY release_at LIMIT 50").all(new Date(at).toISOString()) as any[];
+    for (const h of due) {
+      if (!db.db.prepare("UPDATE mail_hold SET state = 'releasing' WHERE id = ? AND state = 'held'").run(h.id).changes) continue; // undone a moment ago
+      try {
+        await queueSend(JSON.parse(h.payload) as Outgoing);
+        db.db.prepare("UPDATE mail_hold SET state = 'sent', payload = '' WHERE id = ?").run(h.id);
+        out.push({ id: h.id, state: 'sent' });
+      } catch (e) {
+        const why = e instanceof Error ? e.message : 'It could not be sent.';
+        db.db.prepare("UPDATE mail_hold SET state = 'failed', error = ? WHERE id = ?").run(why.slice(0, 300), h.id);
+        markDelivery(h.thread_id, h.message_id, null, 'failed', why);
+        const ws = workspaces().find((w) => w.id === h.workspace_id);
+        const who = h.user_id ? [h.user_id] : ((ws?.accounts ?? []).find((a) => a.id === h.account_id)?.users ?? []);
+        if (who.length) deps?.notify(who, h.workspace_id, `Your email could not be sent: ${why.slice(0, 160)}`, '/mail');
+        out.push({ id: h.id, state: 'failed', error: why });
+      }
+    }
+    return out;
+  })().finally(() => (releasing = null));
+  return releasing;
+}
+
+/** After a restart: an email caught halfway (handed over or not) is settled by what's in the outbox and the thread. */
+function recoverHolds() {
+  for (const h of db.db.prepare("SELECT id, thread_id, message_id FROM mail_hold WHERE state = 'releasing'").all() as { id: string; thread_id: string; message_id: string }[]) {
+    const queued = db.db.prepare('SELECT 1 FROM outbox WHERE thread_id = ? AND message_id = ? LIMIT 1').get(h.thread_id, h.message_id);
+    const marked = ((db.getDoc('threads', h.thread_id) as any)?.messages ?? []).find((m: any) => m.id === h.message_id)?.delivery?.state;
+    db.db.prepare('UPDATE mail_hold SET state = ? WHERE id = ?').run(queued || marked === 'sending' || marked === 'sent' ? 'sent' : 'held', h.id);
+  }
+  db.db.prepare("DELETE FROM mail_hold WHERE state IN ('sent', 'cancelled') AND created_at < ?").run(new Date(Date.now() - 30 * 86_400_000).toISOString());
 }
 
 const BACKOFF = [60, 300, 900, 3600, 4 * 3600, 8 * 3600];

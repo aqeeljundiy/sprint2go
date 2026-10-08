@@ -518,27 +518,15 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               </div>
               {mailExtras}
               <h3>Undo send</h3>
-              {server.on ? (
-                // The mail engine sends straight away; taking it back needs the engine to wait first.
-                <div className="set-row">
-                  <span>
-                    <strong>Take an email back after pressing Send</strong>
-                    <small>Coming soon. For now your email goes out the moment you press Send.</small>
-                  </span>
-                  <span className="badge-soon">Not yet</span>
-                </div>
-              ) : (
-                <>
-                  <div className="segmented">
-                    {[0, 5, 10, 20].map((n) => (
-                      <button key={n} className={s.undoSend === n ? 'on' : ''} onClick={() => update({ undoSend: n })}>
-                        {n ? `${n}s` : 'Off'}
-                      </button>
-                    ))}
-                  </div>
-                  <small className="set-hint">How long you have to take an email back after pressing Send.</small>
-                </>
-              )}
+              {/* The mail engine keeps each email this long before anything leaves (server/mailer.ts, holdSend). */}
+              <div className="segmented">
+                {[0, 5, 10, 20, 30].map((n) => (
+                  <button key={n} className={s.undoSend === n ? 'on' : ''} onClick={() => update({ undoSend: n })}>
+                    {n ? `${n}s` : 'Off'}
+                  </button>
+                ))}
+              </div>
+              <small className="set-hint">{s.undoSend ? `Your email waits ${s.undoSend} seconds before it goes out, so Undo can take it back and nobody gets it.` : 'Your email goes out the moment you press Send.'}</small>
 
               <h3>Read tracking</h3>
               {realMail ? (

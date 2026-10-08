@@ -1584,7 +1584,7 @@ createServer(async (req, res) => {
       const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
       try {
         platform.firstEvent('mail.first', ws.id, me);
-        const r = await mailer.queueSend({
+        const email: mailer.Outgoing = {
           workspaceId: ws.id,
           accountId: account.id,
           threadId: String(b.threadId ?? ''),
@@ -1598,11 +1598,36 @@ createServer(async (req, res) => {
           files: (Array.isArray(b.files) ? b.files : []).filter((f: any) => f && typeof f.url === 'string').map((f: any) => ({ name: String(f.name ?? 'file').slice(0, 200), url: String(f.url) })),
           inReplyTo: typeof b.inReplyTo === 'string' ? b.inReplyTo : undefined,
           references: Array.isArray(b.references) ? b.references.filter((x: unknown) => typeof x === 'string') : undefined,
-        });
-        return json(res, 200, r);
+        };
+        // Undo send (Settings, Mail): the email waits here for the sender's window before anything leaves.
+        const undo = Math.min(mailer.MAX_UNDO_SECONDS, Math.max(0, Math.round(Number(b.undoSeconds) || 0)));
+        if (undo) {
+          const held = mailer.holdSend(email, { userId: me, releaseAt: Date.now() + undo * 1000 });
+          return json(res, 200, { held: true, until: held.until, undoMs: undo * 1000 });
+        }
+        return json(res, 200, await mailer.queueSend(email));
       } catch (e) {
         return json(res, 400, { error: e instanceof Error ? e.message : 'Could not send.' });
       }
+    }
+    // Undo send: an email still waiting comes back as a draft (a reply leaves its conversation). Nothing has left yet,
+    // so nobody gets it. (A scheduled email isn't waiting here until its time; before then it's a draft to change.)
+    if (p === '/api/mail/undo' && req.method === 'POST') {
+      const { threadId, messageId } = await body(req);
+      const tid = String(threadId ?? '');
+      const t = db.getDoc('threads', tid) as any;
+      const at = new Date().toISOString();
+      // Only whoever sent it takes it back (checked with the waiting email itself, even before the thread is saved).
+      const taken = mailer.cancelHeld(tid, String(messageId ?? ''), me);
+      if (!taken.ok) return json(res, 409, { error: taken.why === 'not-yours' ? 'Only the person who sent it can take it back.' : 'Too late: it already went out.' });
+      const rest = (t?.messages ?? []).filter((m: any) => m.id !== messageId);
+      if (t) {
+        // A new email goes back to Drafts; a reply leaves the conversation (the app puts it back in the reply box).
+        const next = rest.length ? { ...t, messages: rest } : { ...t, location: 'drafts', messages: (t.messages ?? []).map((m: any) => ({ ...m, delivery: undefined, date: at })) };
+        db.writeDocs('threads', [next], [], me);
+        broadcast('threads', [next], []);
+      }
+      return json(res, 200, { draft: !rest.length, reply: !!rest.length, threadId: tid, email: { to: taken.email.to, cc: taken.email.cc, subject: taken.email.subject, text: taken.email.text, html: taken.email.html, files: taken.email.files } });
     }
 
     /* ---------- mail: calendar invites, out of office, aliases, removing a mailbox ---------- */
@@ -2913,15 +2938,14 @@ setInterval(() => {
     db.writeDocs('threads', threads, [], null);
     broadcast('threads', threads, []);
   }
-  // "Send later" mail goes out for real now.
+  // "Send later" mail goes out for real now, the same way as any email: through the wait in the outbox (its time has
+  // come, so it leaves straight away), where a failure is marked on the email and told to its mailbox's people.
   for (const t of sendNow) {
     const ws = workspaces().find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId)) as any;
     const account = ws?.accounts?.find((a: any) => a.id === t.accountId);
     const m = t.messages[t.messages.length - 1];
     if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
-    void mailer
-      .queueSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })) })
-      .catch((e) => console.error('[mail] scheduled send', e instanceof Error ? e.message : e));
+    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })) }, { userId: null, releaseAt: Date.parse(t.sendAt) });
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
   if (due.length) {
