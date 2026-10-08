@@ -184,6 +184,9 @@ try {
     const pixel = (c) => /<img src="([^"]+\/t\/o\/[a-f0-9]{32}\.gif)"/.exec(c?.parsed.html ?? '')?.[1];
     const link = (c) => /href="([^"]+\/t\/c\/[a-f0-9]{32}\?[^"]+)"/.exec(c?.parsed.html ?? '')?.[1]?.replace(/&amp;/g, '&');
     const local = (u) => u.replace(/^https?:\/\/[^/]+/, base);
+    // Every copy leaves signed for the sender's domain (mailauth signs only from signatureData; an empty signature once
+    // went unnoticed).
+    check(got.every((m) => /^DKIM-Signature: v=1; a=rsa-sha256;[^]*?\bd=pixelandprofits\.com;/im.test(m.raw.toString('utf8').split(/\r?\n\r?\n/)[0])), 'every copy is DKIM-signed for the sender’s domain');
     check(!!pixel(one) && !!pixel(two) && pixel(one) !== pixel(two), 'each outside recipient gets a picture of their own');
     check(!!link(one) && link(one) !== link(two), 'and links of their own');
     check(one?.parsed.text?.includes('Hello, see the offer.') && !one?.parsed.text?.includes('/t/'), 'the plain-text part stays as written');

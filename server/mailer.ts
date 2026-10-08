@@ -522,7 +522,8 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     let raw: Buffer = await new MailComposer({ ...message, html }).compile().build();
     if (route === 'own' && domain && domain !== MAIL_HOST) {
       const key = domainKey(domain, ws.id);
-      const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed' });
+      const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
+      if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
       raw = Buffer.concat([Buffer.from(signatures), raw]);
     }
     return raw;
@@ -747,7 +748,8 @@ export async function queueSystemMail(m: SystemMail) {
   const route: 'own' | 'boosted' = mailConfigured() ? 'boosted' : 'own';
   if (route === 'own') {
     const key = domainKey(domain, 'platform');
-    const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed' });
+    const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
+    if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
     raw = Buffer.concat([Buffer.from(signatures), raw]);
   }
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
