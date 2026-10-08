@@ -1658,3 +1658,43 @@
 .contents {
   display: contents;
 }
+
+/* ---------- scheduled rules, assign in turns ---------- */
+
+.tb-sched {
+  display: grid;
+  gap: 8px;
+}
+.tb-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tb-days button {
+  min-width: 40px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--surface);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tb-days button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.tb-people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 8px;
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .tb-act-row {
+    flex-wrap: wrap;
+  }
+  .tb-act-row .tb-native {
+    min-width: 120px;
+  }
+}

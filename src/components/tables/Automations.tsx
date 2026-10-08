@@ -15,6 +15,7 @@ export const ACTION_KINDS: { kind: TableAction['kind']; label: string; hint: str
   { kind: 'move', label: 'Move to another table', hint: 'Fields carry across by name', ruleOk: true },
   { kind: 'copy', label: 'Copy to another table', hint: 'This row stays here too', ruleOk: true },
   { kind: 'linked', label: 'Add a linked row', hint: 'A new row there, linked back here', ruleOk: true },
+  { kind: 'assign', label: 'Assign in turns', hint: 'The next salesperson, round robin', ruleOk: true },
   { kind: 'task', label: 'Make a task', hint: 'Assigned, with a due date', ruleOk: true },
   { kind: 'notify', label: 'Notify someone', hint: 'A notification in Sprint2go', ruleOk: true },
   { kind: 'chat', label: 'Post in a channel', hint: 'A message in Chat', ruleOk: true },
@@ -45,6 +46,8 @@ function blankAction(kind: TableAction['kind'], t: DataTable, tables: DataTable[
       return { kind, url: '' };
     case 'open':
       return { kind, url: t.fields.some((f) => f.type === 'phone') ? `https://wa.me/{${t.fields.find((f) => f.type === 'phone')!.name}}` : 'https://' };
+    case 'assign':
+      return { kind, fieldId: t.fields.find((f) => f.type === 'person')?.id ?? '', among: [] };
   }
 }
 
@@ -74,6 +77,8 @@ export function actionSummary(a: TableAction, t: DataTable, tables: DataTable[],
       return a.url ? `Send to ${a.url.replace(/^https?:\/\//, '').split('/')[0]}` : 'Send a webhook (no address yet)';
     case 'open':
       return 'Open a link';
+    case 'assign':
+      return a.among.length ? `Assign ${fname(a.fieldId) || 'a person'} in turns (${a.among.length} people)` : 'Assign in turns (nobody picked yet)';
   }
 }
 
@@ -264,6 +269,31 @@ function ActionCard({ a, i, t, tables, users, channels, onChange, onRemove, onMo
               <p className="muted small">It opens a new email, filled in; you read it and press send.</p>
             </>
           )}
+          {a.kind === 'assign' &&
+            (t.fields.some((f) => f.type === 'person') ? (
+              <>
+                <div className="tb-act-row">
+                  <span className="tb-act-label">Field</span>
+                  <select className="tb-native" value={a.fieldId} aria-label="Person field" onChange={(e) => onChange({ ...a, fieldId: e.target.value })}>
+                    {t.fields.filter((f) => f.type === 'person').map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="tb-people">
+                  {users.map((u) => (
+                    <label key={u.id} className="check-row">
+                      <input type="checkbox" checked={a.among.includes(u.id)} onChange={(e) => onChange({ ...a, among: e.target.checked ? [...a.among, u.id] : a.among.filter((x) => x !== u.id) })} /> {u.name}
+                    </label>
+                  ))}
+                </div>
+                <p className="muted small">Each time, the next person in this list gets it, then it starts again from the top.</p>
+              </>
+            ) : (
+              <p className="muted small">Add a Person field (like Owner) first.</p>
+            ))}
           {a.kind === 'open' && <input className="tb-native" value={a.url} placeholder="https://wa.me/{Phone}" onChange={(e) => onChange({ ...a, url: e.target.value })} />}
           {a.kind === 'webhook' && (
             <>
@@ -622,7 +652,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                 {rules.map((r) => {
                   const f = t.fields.find((x) => x.id === r.fieldId);
                   const open = editing === r.id;
-                  const when = r.on === 'created' ? 'When a row is added' : r.on === 'updated' ? 'When a row changes' : `When ${f?.name ?? 'a field'} becomes ${f?.options?.find((o) => o.id === r.value)?.label ?? (f?.type === 'checkbox' ? (r.value === 'yes' ? 'checked' : 'unchecked') : r.value || '…')}`;
+                  const when = r.on === 'schedule' ? scheduleText(r) : r.on === 'created' ? 'When a row is added' : r.on === 'updated' ? 'When a row changes' : `When ${f?.name ?? 'a field'} becomes ${f?.options?.find((o) => o.id === r.value)?.label ?? (f?.type === 'checkbox' ? (r.value === 'yes' ? 'checked' : 'unchecked') : r.value || '…')}`;
                   return (
                     <div key={r.id} className={`tb-rule${r.enabled ? '' : ' off'}`}>
                       <header>
@@ -642,12 +672,24 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                           <input className="tb-native" value={r.name} aria-label="Rule name" onChange={(e) => setRule(r.id, { name: e.target.value })} />
                           <div className="tb-act-row">
                             <span className="tb-act-label">When</span>
-                            <select className="tb-native" value={r.on} aria-label="When" onChange={(e) => setRule(r.id, { on: e.target.value as TableRule['on'] })}>
+                            <select className="tb-native" value={r.on} aria-label="When" onChange={(e) => {
+                              const on = e.target.value as TableRule['on'];
+                              setRule(r.id, { on, ...(on === 'schedule' && !r.schedule ? { schedule: { days: [1, 2, 3, 4, 5], hour: 9, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta' } } : {}) });
+                            }}>
                               <option value="created">A row is added</option>
                               <option value="updated">A row changes</option>
                               <option value="becomes">A field becomes…</option>
+                              <option value="schedule">On a schedule…</option>
                             </select>
                           </div>
+                          {r.on === 'schedule' && (
+                            <ScheduleEditor
+                              t={t}
+                              users={users}
+                              rule={r}
+                              onChange={(p) => setRule(r.id, p)}
+                            />
+                          )}
                           {r.on === 'becomes' && (
                             <div className="tb-act-row">
                               <select className="tb-native" value={r.fieldId ?? ''} aria-label="Field" onChange={(e) => setRule(r.id, { fieldId: e.target.value, value: undefined })}>
@@ -720,6 +762,109 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
           </TabPane>
         </div>
       </aside>
+    </div>
+  );
+}
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** "Weekdays at 9:00" */
+function scheduleText(r: TableRule) {
+  const sc = r.schedule;
+  if (!sc?.days.length) return 'On a schedule (no days picked)';
+  const days = sc.days.length === 7 ? 'Every day' : [1, 2, 3, 4, 5].every((d) => sc.days.includes(d)) && sc.days.length === 5 ? 'Weekdays' : sc.days.map((d) => DAYS[d]).join(', ');
+  return `${days} at ${String(sc.hour).padStart(2, '0')}:00${r.where?.length ? `, rows matching ${r.where.length} condition${r.where.length === 1 ? '' : 's'}` : ', every row'}`;
+}
+
+/** When a scheduled rule runs, and on which rows. */
+function ScheduleEditor({ t, users, rule, onChange }: { t: DataTable; users: User[]; rule: TableRule; onChange: (p: Partial<TableRule>) => void }) {
+  const sc = rule.schedule ?? { days: [1, 2, 3, 4, 5], hour: 9, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta' };
+  const set = (p: Partial<typeof sc>) => onChange({ schedule: { ...sc, ...p } });
+  const where = rule.where ?? [];
+  const setWhere = (w: typeof where) => onChange({ where: w });
+  return (
+    <div className="tb-sched">
+      <div className="tb-act-row">
+        <span className="tb-act-label">Days</span>
+        <div className="tb-days">
+          {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+            <button key={d} type="button" className={sc.days.includes(d) ? 'on' : ''} aria-pressed={sc.days.includes(d)} onClick={() => set({ days: sc.days.includes(d) ? sc.days.filter((x) => x !== d) : [...sc.days, d] })}>
+              {DAYS[d]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="tb-act-row">
+        <span className="tb-act-label">At</span>
+        <select className="tb-native" value={sc.hour} aria-label="Hour" onChange={(e) => set({ hour: Number(e.target.value) })}>
+          {Array.from({ length: 24 }, (_, h) => (
+            <option key={h} value={h}>
+              {String(h).padStart(2, '0')}:00
+            </option>
+          ))}
+        </select>
+        <span className="muted small">{sc.tz}</span>
+      </div>
+      <span className="tb-fm-label">For rows where</span>
+      {where.map((w, i) => {
+        const f = t.fields.find((x) => x.id === w.fieldId) ?? t.fields[0];
+        const needs = w.op !== 'empty' && w.op !== 'filled';
+        return (
+          <div key={i} className="tb-act-row">
+            <select className="tb-native" value={f.id} aria-label="Field" onChange={(e) => {
+              const nf = t.fields.find((x) => x.id === e.target.value)!;
+              setWhere(where.map((x, j) => (j === i ? { fieldId: nf.id, op: opsFor(nf.type)[0].op } : x)));
+            }}>
+              {t.fields.filter((x) => x.type !== 'button').map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+            <select className="tb-native" value={w.op} aria-label="Test" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, op: e.target.value as typeof w.op } : x)))}>
+              {opsFor(f.type).map((o) => (
+                <option key={o.op} value={o.op}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            {needs &&
+              (f.options ? (
+                <select className="tb-native" value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
+                  <option value="">Choose…</option>
+                  {f.options.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === 'person' ? (
+                <select className="tb-native" value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
+                  <option value="">Choose…</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === 'date' ? (
+                <select className="tb-native" value={w.value ?? '@today'} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
+                  <option value="@today">today (when it runs)</option>
+                </select>
+              ) : (
+                <input className="tb-native" value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
+              ))}
+            <button type="button" className="icon-btn sm" aria-label="Remove" onClick={() => setWhere(where.filter((_, j) => j !== i))}>
+              <X size={13} />
+            </button>
+          </div>
+        );
+      })}
+      <button type="button" className="link-btn small" onClick={() => {
+        const d = t.fields.find((x) => x.type === 'date');
+        setWhere([...where, d ? { fieldId: d.id, op: 'lt', value: '@today' } : { fieldId: t.fields[0].id, op: 'filled' }]);
+      }}>
+        <Plus size={13} /> {where.length ? 'Another condition' : 'Only some rows (every row otherwise)'}
+      </button>
     </div>
   );
 }

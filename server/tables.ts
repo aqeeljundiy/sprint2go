@@ -233,6 +233,20 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
     }
     case 'open':
       return { ok: true, note: 'Opened', open: fill(a.url, t, r, users, true) };
+    case 'assign': {
+      // The next person in turn (the turn is remembered per field, so it carries on across rows and days).
+      const among = a.among.filter((id) => users.some((u) => u.id === id));
+      const f = t.fields.find((x) => x.id === a.fieldId && x.type === 'person');
+      if (!f || !among.length) return { ok: false, note: 'Nobody to assign to' };
+      const cur = db.getDoc('tables', t.id) as unknown as DataTable;
+      const n = (cur.turns?.[f.id] ?? -1) + 1;
+      const who = among[n % among.length];
+      save(env, 'tables', [{ ...cur, turns: { ...(cur.turns ?? {}), [f.id]: n % among.length } }]);
+      const next = changed(r, { [f.id]: who }, me);
+      save(env, 'rows', [next]);
+      afterRowWrite(env, new Map([[r.id, r]]), [next], me, depth + 1);
+      return { ok: true, note: `Assigned to ${users.find((u) => u.id === who)?.name.split(' ')[0] ?? 'someone'}` };
+    }
   }
 }
 
@@ -278,9 +292,16 @@ export function afterRowWrite(env: Env, before: Map<string, TableRow | undefined
   const all = tables();
   for (const r of after) {
     const t = all.find((x) => x.id === r.tableId);
-    const rules = (t?.rules ?? []).filter((x) => x.enabled && x.actions.length);
-    if (!t || !rules.length) continue;
+    if (!t) continue;
     const was = before.get(r.id);
+    // Someone set you as a row's person (owner, assignee…): you hear about it, unless you did it yourself.
+    for (const f of t.fields.filter((x) => x.type === 'person')) {
+      const who = r.values[f.id];
+      if (typeof who === 'string' && who && who !== by && who !== (was?.values[f.id] ?? null))
+        save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', text: `${rowName(t, r)} in ${t.name} is yours (${f.name})`, at: now(), read: false, link: { app: 'tables', id: t.id, msg: r.id } }]);
+    }
+    const rules = (t.rules ?? []).filter((x) => x.enabled && x.actions.length && x.on !== 'schedule');
+    if (!rules.length) continue;
     for (const rule of rules) {
       let fire = false;
       if (rule.on === 'created') fire = !was;
@@ -397,4 +418,44 @@ export function importRows(env: Env, tableId: string, me: string, plan: { fields
   logTo(env, t.id, { dir: 'in', ok: true, text: `CSV import: ${made.length} added${updated.length ? `, ${updated.length} updated` : ''}` });
   if (plan.runRules) afterRowWrite(env, before, [...made, ...updated], me);
   return { status: 200, body: { ok: true, added: made.length, updated: updated.length } };
+}
+
+/* ---------- scheduled rules ---------- */
+
+/** The weekday, hour and calendar day right now in a time zone. */
+function localNow(tz: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23', weekday: 'short' }).formatToParts(new Date()).map((p) => [p.type, p.value]));
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday) };
+}
+
+/** Runs rules set to a schedule ("every weekday at 9:00, for rows where Follow-up is before today"): once each day it's due. */
+export function runSchedules(env: Env) {
+  for (const t of tables()) {
+    for (const rule of (t.rules ?? []).filter((x) => x.enabled && x.on === 'schedule' && x.schedule && x.actions.length)) {
+      let at;
+      try {
+        at = localNow(rule.schedule!.tz || 'Asia/Jakarta');
+      } catch {
+        at = localNow('Asia/Jakarta');
+      }
+      if (!rule.schedule!.days.includes(at.weekday) || at.hour < rule.schedule!.hour || t.ruleRuns?.[rule.id] === at.day) continue;
+      const cur = db.getDoc('tables', t.id) as unknown as DataTable;
+      save(env, 'tables', [{ ...cur, ruleRuns: { ...(cur.ruleRuns ?? {}), [rule.id]: at.day } }]);
+      const users = usersOf(t.workspaceId);
+      const ctx = { users, rowName: nameOf };
+      // "today" in a filter means the rule's own today.
+      const where = (rule.where ?? []).map((w) => (w.value === '@today' ? { ...w, value: at.day } : w));
+      const due = rows()
+        .filter((r) => r.tableId === t.id)
+        .filter((r) => where.every((w) => {
+          const f = t.fields.find((x) => x.id === w.fieldId);
+          return !f || passes(w, f, r.values[f.id], ctx);
+        }))
+        .slice(0, 500);
+      void (async () => {
+        for (const r of due) for (const a of rule.actions.filter((x) => x.kind !== 'email' && x.kind !== 'open')) await runAction(env, a, t, r, t.createdBy, 1, 'schedule').catch(() => null);
+        logTo(env, t.id, { dir: 'out', ok: true, text: `Scheduled rule “${rule.name}” ran on ${due.length} row${due.length === 1 ? '' : 's'}` });
+      })();
+    }
+  }
 }

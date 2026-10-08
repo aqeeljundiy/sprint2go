@@ -666,7 +666,8 @@ export type TableAction =
   | { kind: 'chat'; channelId: string; text: string }
   | { kind: 'notify'; who: string; text: string } // who: a person field's id, a user id, or "@me"
   | { kind: 'webhook'; url: string; fields?: { fieldId: string; key: string }[]; replyTo?: { path: string; fieldId: string }[] }
-  | { kind: 'open'; url: string }; // a link built from the row, like https://wa.me/{Phone}
+  | { kind: 'open'; url: string } // a link built from the row, like https://wa.me/{Phone}
+  | { kind: 'assign'; fieldId: string; among: string[] }; // a person field, filled with the next of these people in turn
 
 export interface ButtonDef {
   label: string;
@@ -682,9 +683,11 @@ export interface ButtonDef {
 export interface TableRule {
   id: string;
   name: string;
-  on: 'created' | 'updated' | 'becomes';
+  on: 'created' | 'updated' | 'becomes' | 'schedule';
   fieldId?: string; // becomes: this field…
   value?: string; // …becomes this (a choice id, "yes" for a checkbox, or text)
+  schedule?: { days: number[]; hour: number; tz: string }; // schedule: these weekdays (0 = Sunday) at this hour, in this time zone
+  where?: TableFilter[]; // schedule: only rows that match
   actions: TableAction[];
   enabled: boolean;
 }
@@ -736,6 +739,8 @@ export interface DataTable {
   intake?: TableIntake;
   signingSecret?: string; // signs outgoing webhooks (X-Sprint2go-Signature)
   share?: TableShare; // shown to the project's guests
+  ruleRuns?: Record<string, string>; // scheduled rule id -> the day it last ran (the server's)
+  turns?: Record<string, number>; // "assign in turns": whose turn is next, per person field (the server's)
   log?: TableLogEntry[]; // the last webhook deliveries, both ways
   createdBy: string;
   createdAt: string;

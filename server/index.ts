@@ -905,7 +905,7 @@ createServer(async (req, res) => {
           const before = db.getDoc('tables', ok[i]!.id) as any;
           if (!before) continue;
           const d = ok[i] as any;
-          ok[i] = { ...d, log: before.log, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
+          ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
         }
       db.writeDocs(coll, ok, dels, me);
       broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);
@@ -1050,6 +1050,9 @@ createServer(async (req, res) => {
 }).listen(PORT, HOST, () => console.log(`Sprint2go on http://localhost:${PORT}`));
 
 /* ---------- background jobs: scheduled mail, snoozes, task reminders ---------- */
+
+// Tables' scheduled rules: checked every minute, each runs once on the days it's due.
+setInterval(() => tablesEngine.runSchedules(tablesEnv), 60_000);
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {
