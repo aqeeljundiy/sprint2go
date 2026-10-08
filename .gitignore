@@ -10,3 +10,4 @@ recorder/.env
 
 # Claude Code worktrees
 .claude/worktrees/
+tsconfig.tsbuildinfo
