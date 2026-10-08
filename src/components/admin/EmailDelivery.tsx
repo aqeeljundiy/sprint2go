@@ -21,7 +21,12 @@ interface Setup {
   health: Record<'ptr' | 'a' | 'port25' | 'inbound', { ok: boolean; found: string; want: string }>;
   dnsHost?: { name: string; where: string } | null; // who runs the domain's DNS, from its nameservers
   nameservers?: string[];
+  /** Whose domain it is: verified ours, ours but not proven yet, or another company's (held first, or proven). */
+  ownership?: { domain: string; state: 'verified' | 'pending' | 'held' | 'taken'; at: string | null; how: string | null; record: { type: string; host: string; value: string } } | null;
+  /** Operators only: the mail server's certificate. */
+  cert?: { source: string; issuer: string | null; validTo: string | null; daysLeft: number | null; trusted: boolean; acme: boolean; error: { at: string; message: string } | null };
 }
+const PROVEN_BY: Record<string, string> = { mx: 'its MX record points here', dkim: 'its signing record', txt: 'its sprint2go-verify record' };
 
 /** Built when shown, so a white-labelled company sees its own name. */
 const receive = (): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
@@ -41,7 +46,7 @@ const PACKS = [
   { n: 5000, rp: 59_000 },
   { n: 25_000, rp: 249_000 },
 ];
-const KEY_NAME: Record<string, string> = { mx: 'Where mail arrives (MX)', spf: 'Who may send (SPF)', dkim: 'Signature (DKIM)', dmarc: 'Policy (DMARC)', ptr: 'Reverse DNS of the server', a: 'The server’s address record', port25: 'Outgoing port 25', inbound: 'Incoming mail port' };
+const KEY_NAME: Record<string, string> = { verify: 'Proof the domain is yours (TXT)', mx: 'Where mail arrives (MX)', spf: 'Who may send (SPF)', dkim: 'Signature (DKIM)', dmarc: 'Policy (DMARC)', ptr: 'Reverse DNS of the server', a: 'The server’s address record', port25: 'Outgoing port 25', inbound: 'Incoming mail port' };
 const rp = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
 
 /** Settings, Email delivery: where a company's mail lives, how it goes out, the records to add, and whether they're there. */
@@ -266,6 +271,14 @@ export function EmailDeliverySection({
               Your addresses live at <code className="mono">{info.host}</code>, so there is nothing to add: mail to them arrives here as it is. To use your own domain, add it under General.
             </p>
           )}
+          {info?.ownership && (info.ownership.state === 'held' || info.ownership.state === 'taken') && (
+            <p className="ed-owner bad">
+              <AlertTriangle size={15} />
+              <span>
+                <strong>Another company uses {info.ownership.domain}.</strong> Its mail can’t arrive here or go out from {product.name} for you until you prove the domain is yours with the record below.
+              </span>
+            </p>
+          )}
           {info && info.ownDomain && (
             <>
               <p className="small muted">
@@ -308,6 +321,24 @@ export function EmailDeliverySection({
               {checks && (
                 <p className={`small ${checks.allOk ? 'ed-ok' : 'muted'}`}>
                   {checks.allOk ? 'Everything is in place.' : `${checks.checks.filter((c) => !c.ok).length} of ${checks.checks.length} still missing.`} Checked {relative(checks.at)}.
+                </p>
+              )}
+              {info.ownership?.state === 'verified' && (
+                <p className="small ed-ok">
+                  {info.ownership.domain} is verified as yours{info.ownership.how && PROVEN_BY[info.ownership.how] ? ` by ${PROVEN_BY[info.ownership.how]}` : ''}.
+                </p>
+              )}
+              {info.ownership?.state === 'pending' && (
+                <p className="small muted ed-owner-line">
+                  <span>
+                    {info.ownership.domain} isn’t verified as yours yet. That happens by itself once {setup === 'hosted' ? 'the MX record points here' : route === 'own' ? 'the DKIM record is in place' : 'a record proves it'}, or add this TXT record at <code className="mono">@</code>:
+                  </span>
+                  <span className="ed-rec-value">
+                    <code className="mono">{info.ownership.record.value}</code>
+                    <button type="button" className="icon-btn sm" title="Copy" onClick={() => copy(info.ownership!.record.value)}>
+                      {copied === info.ownership.record.value ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                  </span>
                 </p>
               )}
             </>
@@ -376,6 +407,25 @@ export function EmailDeliverySection({
                   </div>
                 );
               })}
+              {/* Operators only (the server sends it to them alone): customers have nothing to do about it. */}
+              {info.cert && (
+                <div className={`ed-record ${info.cert.trusted ? 'ok' : 'bad'}`}>
+                  <span className="ed-rec-main">
+                    <strong>Mail server certificate</strong>
+                    <small className="muted">
+                      {info.cert.trusted
+                        ? `${info.cert.issuer ?? 'A trusted authority'}, valid until ${info.cert.validTo?.slice(0, 10)}.`
+                        : info.cert.acme
+                          ? `Self-signed until Let’s Encrypt issues one${info.cert.error ? `: ${info.cert.error.message}` : '.'}`
+                          : info.cert.error
+                            ? `Self-signed: ${info.cert.error.message}`
+                            : 'Self-signed: providers that require a CA-signed certificate refuse it. Set CF_DNS_TOKEN or MAIL_TLS_CERT on the server.'}{' '}
+                      Only operators see this.
+                    </small>
+                  </span>
+                  <span className="ed-rec-state">{info.cert.trusted ? <Check size={15} /> : <AlertTriangle size={15} />}</span>
+                </div>
+              )}
             </div>
           </div>
         )}

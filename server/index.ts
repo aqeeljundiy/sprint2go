@@ -16,9 +16,13 @@ import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { TOP_UP } from '../src/data/pricing.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
-import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
+import { mailConfigured, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
+import * as routing from './routing.ts';
+import * as offsite from './offsite.ts';
+import { certState } from './mailcert.ts';
+import { ownership as domainOwnership } from './domains.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
 import { gzipSync } from 'node:zlib';
@@ -30,6 +34,14 @@ const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1'; // localhost only, unless hosted (HOST=0.0.0.0 in the container)
 const DIST = join(process.cwd(), 'dist');
 const STARTED = Date.now();
+/** Which build is running: dist/version.json, written by `npm run build` (scripts/build-stamp.mjs). */
+const BUILD = (() => {
+  try {
+    return JSON.parse(readFileSync(join(DIST, 'version.json'), 'utf8')) as { builtAt: string; bundle: string | null; commit: string | null };
+  } catch {
+    return null;
+  }
+})();
 /** Sign-ups waiting for their email code (in memory: a restart just means starting again). */
 const signups = new Map<string, { name: string; hash: string; code: string; tries: number; until: number }>();
 
@@ -77,7 +89,7 @@ admin.loadPricing();
 // is taken first; real companies stay.
 if (process.env.S2G_PURGE_DEMO === '1' && process.env.NODE_ENV === 'production' && process.env.S2G_DEMO !== '1' && !(platform.settings() as any).demoPurged) {
   void db
-    .backup()
+    .backup('before-demo-cleanup')
     .then((file) => {
       const s = seed();
       const demoWsIds = new Set((s.workspaces as any[]).map((w) => w.id));
@@ -445,11 +457,15 @@ function tooMany(key: string, max: number, windowMs: number) {
   return list.length > max;
 }
 const ipOf = (req: IncomingMessage) => String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
-/** Six digits, sent by email when mail is set up; otherwise in the log (and on screen outside production). */
+/**
+ * Six digits, sent by email: through Amazon SES when it's set up, else from no-reply@ our support domain through our
+ * own mail engine. Only when neither can send (local development) the code goes to the log (and on screen outside
+ * production).
+ */
 const codes = new Map<string, { code: string; tries: number; until: number; data?: any }>();
 const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
 async function sendCode(to: string, what: string, code: string) {
-  const sent = await sendMail(to, `${code} is your sprint2go code`, `${code} is your code to ${what}. It works for 15 minutes.`, simpleHtml('sprint2go', [`${code} is your code to ${what}.`, 'It works for 15 minutes. If this wasn’t you, ignore this email.'])).catch((e) => (console.error('[mail]', e instanceof Error ? e.message : e), false));
+  const sent = await mailer.sendNote(to, `${code} is your sprint2go code`, `${code} is your code to ${what}. It works for 15 minutes.`, simpleHtml('sprint2go', [`${code} is your code to ${what}.`, 'It works for 15 minutes. If this wasn’t you, ignore this email.'])).catch((e) => (console.error('[mail]', e instanceof Error ? e.message : e), false));
   if (!sent) console.log(`Code for ${to} (${what}): ${code}`);
   return sent;
 }
@@ -854,7 +870,7 @@ createServer(async (req, res) => {
   if (secureCookies()) res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');
   if (siteRedirect(req, res, p)) return;
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
-  if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString() });
+  if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString(), build: BUILD });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
   // What this server can really do. The app hides or disables what depends on something that isn't there.
   if (p === '/api/caps' && req.method === 'GET') return json(res, 200, caps());
@@ -1272,7 +1288,10 @@ createServer(async (req, res) => {
       const domain = mailer.mailDomainOf(ws);
       const ownDomain = domain !== mailer.MAIL_HOST;
       const [records, health, dns] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth(), ownDomain ? mailer.dnsHostOf(domain) : Promise.resolve({ dnsHost: null, nameservers: [] as string[] })]);
-      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers });
+      // Whose domain it is (and the record that proves it), and for operators only the mail server's certificate.
+      const ownership = ownDomain ? domainOwnership(ws, domain) : null;
+      const cert = opRecord ? certState(mailer.MAIL_HOST) : undefined;
+      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership, cert });
     }
     if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
       const { threadId } = await body(req);
@@ -1291,7 +1310,28 @@ createServer(async (req, res) => {
       const ready = await mailer.refreshReadiness(String(workspaceId));
       const ws = db.getDoc('workspaces', String(workspaceId)) as any;
       // "Some of each": which hosted mailboxes at the company's domain really got mail, the proof that routing works.
-      return json(res, 200, { ...ready, routing: ws ? mailer.hostedArrivals(ws) : null });
+      const arrivals = ws ? mailer.hostedArrivals(ws) : null;
+      if (arrivals?.arrived.length) routing.noteRoutingWorks(String(workspaceId));
+      return json(res, 200, { ...ready, routing: arrivals });
+    }
+    // "Some of each": the guide's "Send a test". We send to an address at the company's domain that only we know, and
+    // the guide asks how it's doing until it arrives here (or the provider refuses it).
+    if (p === '/api/mail/routing-test' && req.method === 'POST') {
+      const { workspaceId } = await body(req);
+      const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can send a routing test.' });
+      if (tooMany(`routing-test:${ws.id}`, 10, 60 * 60_000)) return json(res, 429, { error: 'That’s a lot of tests in an hour. Wait a little and try again.' });
+      try {
+        return json(res, 200, await routing.sendProbe(ws.id, 'manual'));
+      } catch (e) {
+        return json(res, 409, { error: e instanceof Error ? e.message : 'Could not send the test.' });
+      }
+    }
+    if (p === '/api/mail/routing-test' && req.method === 'GET') {
+      const wsId = url.searchParams.get('ws') ?? '';
+      if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, { error: 'Not in this company.' });
+      const st = routing.probeStatus(wsId, url.searchParams.get('token') ?? '');
+      return st ? json(res, 200, st) : json(res, 404, { error: 'No such test.' });
     }
     if (p === '/api/mail/check' && req.method === 'POST') {
       const { workspaceId } = await body(req);
@@ -1456,6 +1496,7 @@ createServer(async (req, res) => {
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
       const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...wClean } = w as any;
+      if (!DEMO) wClean.mailRouting = serverRouting(wClean.mailRouting, undefined);
       const ws = { ...wClean, plan: wClean.plan ? { ...wClean.plan, comp: undefined, discount: undefined } : wClean.plan, name: String(w.name).trim().slice(0, 80), members, accounts };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
       db.writeDocs('users', people, [], me);
@@ -1748,8 +1789,9 @@ createServer(async (req, res) => {
         if (coll === 'workspaces') {
           if (before) {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
-            // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
-            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
+            // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts,
+            // and the routing checks' results (the admins only switch the daily check on or off).
+            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
             const plan = planFromApp((d as any).plan, before.plan);
             // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
             // that isn't keeps what was there; an empty one means the usual stages.
@@ -1760,6 +1802,7 @@ createServer(async (req, res) => {
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
           const plan = planFromApp(fresh.plan, undefined);
+          if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
           return { ...fresh, plan, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
@@ -1818,15 +1861,15 @@ createServer(async (req, res) => {
       db.writeDocs(coll, ok, dels, me);
       for (const id of emailChanged) soonReadiness(id);
       if (leavers.length) endGuestAccess(leavers);
-      // Guests don't live in the app all day: a notice for them also goes out as an email (when mail is set up).
-      if (coll === 'notices' && mailConfigured())
+      // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
+      if (coll === 'notices' && mailer.systemMailPath() !== 'log')
         for (const n of ok as any[]) {
           if (!String(n.userId).startsWith('email:') || n.read) continue;
           const to = String(n.userId).slice(6);
           const w = db.getDoc('workspaces', n.workspaceId) as any;
           const brandName = w?.whiteLabel?.enabled ? w.whiteLabel.name : w?.name ?? 'sprint2go';
           const origin = w?.whiteLabel?.enabled && w.whiteLabel.domain && w.whiteLabel.domainStatus === 'verified' ? `https://${w.whiteLabel.domain}` : PUBLIC_URL;
-          void sendMail(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin })).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
+          void mailer.sendNote(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin }), brandName).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
         }
       const conn = String(req.headers['x-conn'] ?? '');
       broadcast(coll, ok, dels, clients.get(conn)?.userId === me ? conn : undefined, delDocs);
@@ -2067,8 +2110,10 @@ createServer(async (req, res) => {
     json(res, status, { error: err instanceof AIError ? err.message : status === 503 ? 'AI is busy, try again shortly.' : 'Something went wrong.' });
   }
 }).listen(PORT, HOST, () => {
-  console.log(`sprint2go on http://localhost:${PORT}${mailConfigured() ? ' (email on)' : ' (no email: codes go to this log)'}`);
+  const mailPath = mailer.systemMailPath();
+  console.log(`sprint2go on http://localhost:${PORT}${mailPath === 'ses' ? ' (email through Amazon SES)' : mailPath === 'own' ? ` (email from ${mailer.NOREPLY} through our mail server)` : ' (no email: codes go to this log)'}`);
   mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
+  routing.startRouting({ notify: notifyPeople, broadcast, log: (line) => console.log(line) });
 });
 
 /** Whether the meeting recorder answers, checked every few minutes (the app asks often). */
@@ -2088,7 +2133,17 @@ function caps() {
     payments: !!process.env.XENDIT_SECRET,
     desktopUrl: process.env.DESKTOP_URL || null,
     mailHost: mailer.MAIL_HOST,
+    trustedCert: certState(mailer.MAIL_HOST).trusted, // providers may require a CA-signed certificate from our mail server
+    routingCheck: process.env.MAIL_ENABLED !== '0' && mailer.systemMailPath() !== 'log', // the server can send "Some of each" routing tests
   };
+}
+/**
+ * A company's "Some of each" routing, as saved from the app: the admins choose the daily check; whether routing was
+ * verified and the last check's result are the server's (server/routing.ts). The demo plays those in the app.
+ */
+function serverRouting(next: any, before: any) {
+  if (!next && !before) return undefined;
+  return { dailyCheck: typeof next?.dailyCheck === 'boolean' ? next.dailyCheck : (before?.dailyCheck ?? true), ...(before?.verifiedAt ? { verifiedAt: before.verifiedAt } : {}), ...(before?.lastCheck ? { lastCheck: before.lastCheck } : {}) };
 }
 const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** A company's email changed: check again shortly (several saves in a row count once). */
@@ -2160,14 +2215,22 @@ function notifyPeople(userIds: string[], workspaceId: string, text: string, link
   if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
 }
 
-// Once a day: expired sessions go, and a copy of the database lands in data/backups (the last 14 are kept).
+// Once a day: expired sessions go, and a copy of the database lands in data/backups (the last 14 are kept), with a
+// gzipped copy off this server when S3_* is set (the last 30 there).
 const housekeeping = () => {
   try {
     db.purgeSessions();
   } catch (e) {
     console.error('[sessions]', e);
   }
-  db.backup().then((f) => console.log(`Backup: ${f}`)).catch((e) => console.error('[backup]', e instanceof Error ? e.message : e));
+  db.backup()
+    .then(async (f) => {
+      console.log(`Backup: ${f}`);
+      if (!offsite.offsiteConfigured()) return;
+      const up = await offsite.uploadBackup(f);
+      console.log(`Backup copied off-site: ${up.file}, ${Math.round(up.bytes / 1024)} KB`);
+    })
+    .catch((e) => console.error('[backup]', e instanceof Error ? e.message : e));
 };
 setTimeout(housekeeping, 60_000);
 setInterval(housekeeping, 24 * 60 * 60_000);

@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, Check, Copy, Loader2, Mail, Plus } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ArrowLeft, ArrowRight, Check, Copy, Loader2, Mail, Plus, Send } from 'lucide-react';
 import type { MailProvider } from '../types';
 import { providerName } from './Onboarding';
 import { mailInfo, server } from '../sync';
@@ -71,6 +71,15 @@ export function EmailSetupGuide({
   const [why, setWhy] = useState<Record<string, string>>({});
   const [cur, setCur] = useState(0);
   useEffect(() => setCur(0), [mode, provider]); // a different path starts at its first step
+  // "Send a test": where the server's routing test is ('' while idle).
+  const [probeNote, setProbeNote] = useState('');
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => void (alive.current = false);
+  }, []);
+  // Our certificate is CA-signed: providers can require that, and should.
+  const trusted = real && caps.trustedCert;
   // "Some of each" with a real company: the records it really needs (the exact DKIM key) and who runs its DNS.
   const [info, setInfo] = useState<SetupInfo | null>(null);
   useEffect(() => {
@@ -139,6 +148,36 @@ export function EmailSetupGuide({
     setDone((x) => ({ ...x, [key]: r.ok ? 'ok' : 'no' }));
     setWhy((x) => ({ ...x, [key]: r.why ?? '' }));
     if (r.ok && key === 'route-test') onVerified?.();
+  };
+  /** The server sends a test to an address at the domain that only we know, then we watch for it to come back. */
+  const sendTest = async () => {
+    setDone((x) => ({ ...x, probe: 'wait' }));
+    setWhy((x) => ({ ...x, probe: '' }));
+    const finish = (ok: boolean, text = '') => {
+      if (!alive.current) return;
+      setDone((x) => ({ ...x, probe: ok ? 'ok' : 'no' }));
+      setWhy((x) => ({ ...x, probe: text }));
+      setProbeNote('');
+      if (ok) onVerified?.();
+    };
+    try {
+      const r = await fetch('/api/mail/routing-test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId }) });
+      const x = (await r.json().catch(() => ({}))) as { token?: string; address?: string; error?: string };
+      if (!r.ok || !x.token) return finish(false, x.error ?? 'The test couldn’t be sent. Try again.');
+      const waiting = `Sent to ${x.address}. Waiting for ${prov} to pass it on…`;
+      setProbeNote(waiting);
+      for (let i = 0; i < 60 && alive.current; i++) {
+        await new Promise((res) => setTimeout(res, 3000));
+        const st = (await fetch(`/api/mail/routing-test?ws=${encodeURIComponent(workspaceId ?? '')}&token=${x.token}`).then((q) => q.json(), () => null)) as { state?: string; why?: string; leaving?: boolean } | null;
+        if (st?.state === 'arrived') return finish(true);
+        if (st?.state === 'failed') return finish(false, `${st.why ?? 'It didn’t arrive.'} ${routeHint}`);
+        if (st?.state === 'unsent') return finish(false, 'The test couldn’t leave our server. Try again later.');
+        if (alive.current) setProbeNote(st?.leaving ? `Sending to ${x.address}…` : waiting);
+      }
+      finish(false, `It hasn’t arrived yet. ${routeHint} We keep watching for it; the result shows under Mail routing.`);
+    } catch {
+      finish(false, 'No connection. Try again.');
+    }
   };
   const Btn = ({ k, idle, wait, ok, ms }: { k: string; idle: string; wait: string; ok: string; ms?: number }) =>
     real && !workspaceId ? (
@@ -318,20 +357,33 @@ export function EmailSetupGuide({
       </>
     ),
   };
+  // The server sends its own test when it can send mail; a company that isn't saved yet checks later, in Settings.
+  const canProbe = real && caps.routingCheck && !!workspaceId;
   const test = {
     title: 'Check it works',
     body: (
       <>
         {real ? (
           <p>
-            From your phone, or any address outside {d}, send an email to an address at {d} that only exists in {product.name}, like a mailbox from step {mailboxStep}. If it arrives here, {prov} passes mail on correctly.
+            {canProbe ? `Send a test and we mail an address at ${d} that only ${product.name} knows. Or, from your phone or any address outside ${d}, send an email to an address at ${d} that only exists in ${product.name}, like a mailbox from step ${mailboxStep}.` : `From your phone, or any address outside ${d}, send an email to an address at ${d} that only exists in ${product.name}, like a mailbox from step ${mailboxStep}.`} If it arrives here, {prov} passes mail on correctly.
           </p>
         ) : (
           <p>
             We send a test to <b>check@{d}</b>, an address only {product.name} has. If it arrives here, {prov} passes mail on correctly and you can give people {product.name} mailboxes.
           </p>
         )}
-        <Btn k="route-test" idle={real ? 'I sent it' : 'Send the test'} wait={real ? 'Looking for it…' : `Waiting for it to pass through ${prov}…`} ok="It arrived: routing works" ms={2600} />
+        <div className="esg-checks">
+          {canProbe && (
+            <span className="esg-check">
+              <button className="ghost-btn outline sm" disabled={done.probe === 'wait'} onClick={() => void sendTest()}>
+                {done.probe === 'wait' ? <Loader2 size={14} className="spin" /> : done.probe === 'ok' ? <Check size={14} /> : <Send size={14} />} {done.probe === 'ok' ? 'It arrived: routing works' : done.probe === 'wait' ? 'Testing…' : done.probe === 'no' ? 'Send another test' : 'Send a test'}
+              </button>
+              {done.probe === 'wait' && probeNote && <small className="muted">{probeNote}</small>}
+              {done.probe === 'no' && why.probe && <small className="muted">{why.probe}</small>}
+            </span>
+          )}
+          <Btn k="route-test" idle={real ? 'I sent it' : 'Send the test'} wait={real ? 'Looking for it…' : `Waiting for it to pass through ${prov}…`} ok="It arrived: routing works" ms={2600} />
+        </div>
       </>
     ),
   };
@@ -382,9 +434,15 @@ export function EmailSetupGuide({
                   <li>
                     Routing: <b>Route email through these smart hosts</b>. Add <Value v={mx} />, then Next.
                   </li>
-                  <li>
-                    Security restrictions: keep <b>Always use Transport Layer Security (TLS) to secure the connection</b> and pick <b>Any digital certificate, including self-signed certificates</b>. Our certificate is self-signed for now. Next.
-                  </li>
+                  {trusted ? (
+                    <li>
+                      Security restrictions: keep <b>Always use Transport Layer Security (TLS) to secure the connection</b> and pick <b>Issued by a trusted certificate authority (CA)</b>. Tick <b>And the subject name or subject alternative name (SAN) matches this domain name</b> and add <Value v={mx} />. Next.
+                    </li>
+                  ) : (
+                    <li>
+                      Security restrictions: keep <b>Always use Transport Layer Security (TLS) to secure the connection</b> and pick <b>Any digital certificate, including self-signed certificates</b>. Our certificate is self-signed for now. Next.
+                    </li>
+                  )}
                   <li>
                     Validation email: an address at {d} that only exists in {product.name}, like the mailbox from step 2. Click <b>Validate</b>, and when it passes, <b>Next</b> and <b>Create connector</b>.
                   </li>
@@ -461,9 +519,7 @@ export function EmailSetupGuide({
                         Server: <Value v={mx} />
                         {ipAlt}
                       </li>
-                      <li>
-                        Port <b>25</b>, with TLS. Our certificate is self-signed for now, so they must not require a CA-signed one.
-                      </li>
+                      <li>{trusted ? <>Port <b>25</b>, with TLS. Our certificate is CA-signed, so they can require that.</> : <>Port <b>25</b>, with TLS. Our certificate is self-signed for now, so they must not require a CA-signed one.</>}</li>
                       <li>Only for addresses they don’t host. Everyone who has a mailbox there keeps getting mail there.</li>
                     </ol>
                     <p className="esg-tipline">
@@ -492,14 +548,20 @@ export function EmailSetupGuide({
                       <li>
                         Specify email server: <b>Single host</b>, with <Value v={mx} /> and port <b>25</b>.
                       </li>
-                      <li>
-                        Options: keep <b>Require mail to be transmitted over a secure transport (TLS) connection</b> ticked. Untick <b>Require CA signed certificate</b> and <b>Validate certificate hostname</b>. Leave <b>Perform MX lookup on host</b> unticked.
-                      </li>
+                      {trusted ? (
+                        <li>
+                          Options: tick <b>Require mail to be transmitted over a secure transport (TLS) connection</b>, <b>Require CA signed certificate</b> and <b>Validate certificate hostname</b>. Leave <b>Perform MX lookup on host</b> unticked.
+                        </li>
+                      ) : (
+                        <li>
+                          Options: keep <b>Require mail to be transmitted over a secure transport (TLS) connection</b> ticked. Untick <b>Require CA signed certificate</b> and <b>Validate certificate hostname</b>. Leave <b>Perform MX lookup on host</b> unticked.
+                        </li>
+                      )}
                       <li>
                         Click <b>Save</b>.
                       </li>
                     </ol>
-                    <p className="muted small">Our certificate is self-signed for now. With either certificate box ticked, Google can’t deliver here and the mail bounces.</p>
+                    <p className="muted small">{trusted ? `Our certificate for ${mx} is signed by a trusted authority, so Google can check it on every delivery.` : 'Our certificate is self-signed for now. With either certificate box ticked, Google can’t deliver here and the mail bounces.'}</p>
                   </>
                 ),
               },

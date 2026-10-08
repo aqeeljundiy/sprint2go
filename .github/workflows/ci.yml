@@ -1,0 +1,30 @@
+# Every push and pull request: both typechecks, the build, the demo-only guard, the unit checks and a mail smoke test
+# (the server starts on a throwaway data folder and really receives mail over SMTP).
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck the app
+        run: npx tsc -p tsconfig.json --noEmit
+      - name: Typecheck the server
+        run: npx tsc -p tsconfig.server.json --noEmit
+      - name: Build
+        run: npx vite build
+      - name: Demo-only code is guarded
+        run: node scripts/check-demo-guards.mjs
+      - name: Unit checks
+        run: node --import ./server/register.mjs scripts/unit-tests.mjs
+      - name: Mail smoke test
+        run: node scripts/smoke-mail.mjs

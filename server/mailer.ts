@@ -4,7 +4,7 @@
 //
 // Env: MAIL_HOST (this server's mail name, default: the app's host), MAIL_IP (its public address, for the PTR check),
 // MAIL_PORT (inbound SMTP, default 25 in production and 2525 otherwise), MAIL_RELAY_URL (optional smtp:// relay for the
-// "own" route), MAIL_TLS_KEY / MAIL_TLS_CERT (optional; otherwise a self-signed pair is made once).
+// "own" route), MAIL_TLS_KEY / MAIL_TLS_CERT or CF_DNS_TOKEN for a trusted certificate (see server/mailcert.ts).
 import { SMTPServer, type SMTPServerSession } from 'smtp-server';
 import { simpleParser, type ParsedMail } from 'mailparser';
 import nodemailer from 'nodemailer';
@@ -12,12 +12,12 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { authenticate, dkimSign } from 'mailauth';
 import { promises as dns } from 'node:dns';
 import { connect, isIP } from 'node:net';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { mailConfigured, sendRaw, sesIdentity } from './mail.ts';
+import { mailConfigured, sendMail, sendRaw, sesIdentity } from './mail.ts';
+import { domainKey, mayUse, ownership, ownersMap, settle as settleDomain, type Ownership } from './domains.ts';
+import { loadTls, onCertChange, startCertKeeper } from './mailcert.ts';
+export { domainKey };
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS mail_domains (domain TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, selector TEXT NOT NULL, private_key TEXT NOT NULL, public_key TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -51,16 +51,31 @@ const lower = (s: string) => String(s ?? '').trim().toLowerCase();
 /* ---------- who has which address ---------- */
 
 const workspaces = () => db.allDocs('workspaces') as unknown as Ws[];
-/** Every mailbox on this server, by address. */
+/**
+ * Every mailbox on this server, by address. A domain's addresses belong only to the company that holds the domain
+ * (server/domains.ts); an address at our own name stays with the company that had it first.
+ */
 export function localAccounts() {
   const map = new Map<string, { ws: Ws; account: Account }>();
-  for (const ws of workspaces()) {
+  const all = workspaces();
+  const owner = ownersMap(all);
+  for (const ws of all) {
     const slug = lower(ws.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'company';
     for (const a of ws.accounts ?? []) {
       if (!a.email) continue;
-      if (!a.provider || a.provider === 'sprint2go') map.set(lower(a.email), { ws, account: a });
+      const addr = lower(a.email);
+      const domain = addr.split('@')[1] ?? '';
+      if (!a.provider || a.provider === 'sprint2go') {
+        if (domain === MAIL_HOST ? map.has(addr) : owner(domain)?.id !== ws.id) continue;
+        map.set(addr, { ws, account: a });
+      }
       // A mailbox that stays with Google or Microsoft gets a forwarding address here: a copy of its mail lands in the app.
-      else map.set(`${lower(a.email).split('@')[0]}.${slug}@${MAIL_HOST}`, { ws, account: a });
+      // A shared address (gmail.com) has no holder; a company domain's copies go to the company that holds it.
+      else {
+        const holder = owner(domain);
+        if (holder && holder.id !== ws.id) continue;
+        map.set(`${addr.split('@')[0]}.${slug}@${MAIL_HOST}`, { ws, account: a });
+      }
     }
   }
   return map;
@@ -77,18 +92,8 @@ export const onSupportMail = (fn: (m: SupportMail) => Promise<void>) => (support
 export const mailDomainOf = (ws: Ws) => lower(ws.domains?.[0] ?? '') || MAIL_HOST;
 export const boostedAvailable = () => mailConfigured();
 
-/* ---------- DKIM keys, one per domain ---------- */
+/* ---------- DKIM keys, one per domain (kept with who holds the domain, in server/domains.ts) ---------- */
 
-export function domainKey(domain: string, workspaceId: string) {
-  const d = lower(domain);
-  let row = db.db.prepare('SELECT selector, private_key, public_key FROM mail_domains WHERE domain = ?').get(d) as { selector: string; private_key: string; public_key: string } | undefined;
-  if (!row) {
-    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'der' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
-    row = { selector: SELECTOR, private_key: db.seal(privateKey), public_key: publicKey.toString('base64') };
-    db.db.prepare('INSERT INTO mail_domains (domain, workspace_id, selector, private_key, public_key, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(d, workspaceId, row.selector, row.private_key, row.public_key, now());
-  }
-  return { selector: row.selector, privateKey: db.unseal(row.private_key), publicKey: row.public_key };
-}
 export const dkimRecord = (domain: string, workspaceId: string) => `v=DKIM1; k=rsa; p=${domainKey(domain, workspaceId).publicKey}`;
 
 /* ---------- the DNS records a company needs, and whether they're there ---------- */
@@ -116,9 +121,20 @@ const spfHas = (spf: string, want: string) => {
 /** A domain must have exactly one SPF record; with two, receivers treat it as broken. */
 const spfRecords = (all: string[]) => all.filter((t) => /^v=spf1(\s|$)/i.test(t.trim()));
 
+/** The record that proves a domain is this company's, while another company holds it. */
+const takeoverRecord = (own: Ownership): DnsRecord => ({
+  type: 'TXT',
+  host: '@',
+  value: own.record.value,
+  note: `Proves ${own.domain} is yours: once it’s there, the domain moves to you and the other records show here. Keep it afterwards.`,
+  key: 'verify',
+});
+
 export async function expectedRecords(ws: Ws): Promise<DnsRecord[]> {
   const domain = mailDomainOf(ws);
   if (domain === MAIL_HOST) return []; // addresses at our own name need nothing
+  const own = ownership(ws, domain);
+  if (own.state === 'held' || own.state === 'taken') return [takeoverRecord(own)];
   const mode = ws.emailSetup ?? 'none';
   const route = ws.mailRoute ?? 'own';
   const out: DnsRecord[] = [];
@@ -203,10 +219,18 @@ export async function checkDomain(ws: Ws): Promise<{ domain: string; at: string;
   const mode = ws.emailSetup ?? 'none';
   const route = ws.mailRoute ?? 'own';
   const mx = await pub.resolveMx(domain).then((r) => r.sort((a, b) => a.priority - b.priority).map((x) => lower(x.exchange)), () => [] as string[]);
+  const apex = await txt(domain);
+  const rec = (await txt(`${SELECTOR}._domainkey.${domain}`)).find((t) => t.includes('p=')) ?? '';
+  // Whose domain is it? The same lookups prove it (MX here, our DKIM key, or the company's verify record).
+  const own = settleDomain(ws, domain, { mxHere: mx[0] === MAIL_HOST, dkim: rec, txt: apex });
+  if (own.state === 'held' || own.state === 'taken') {
+    checks.push({ key: 'verify', ok: false, found: apex.some((t) => t.startsWith('sprint2go-verify=')) ? 'a different sprint2go-verify record' : 'none', want: own.record.value });
+    return { domain, at: now(), checks, allOk: false };
+  }
   if (mode === 'hosted') checks.push({ key: 'mx', ok: mx[0] === MAIL_HOST, found: mx.join(', ') || 'none', want: MAIL_HOST });
   else if (mode === 'mix' || mode === 'keep') checks.push({ key: 'mx', ok: mx.length > 0 && mx[0] !== MAIL_HOST, found: mx.join(', ') || 'none', want: 'your provider' });
   // Only our part has to be there; whatever else the record lists (the provider's include, a CRM) is theirs to keep.
-  const spfs = spfRecords(await txt(domain));
+  const spfs = spfRecords(apex);
   const spf = spfs[0] ?? '';
   const spfWant = spfOurs(route);
   const spfUs = spfHas(spf, spfWant) || (route === 'own' && !!MAIL_IP && spfHas(spf, `a:${MAIL_HOST}`));
@@ -217,7 +241,6 @@ export async function checkDomain(ws: Ws): Promise<{ domain: string; at: string;
     const results = await Promise.all(tokens.map((t) => pub.resolveCname(`${t}._domainkey.${domain}`).then((r) => lower(r[0] ?? '') === `${t}.dkim.amazonses.com`, () => false)));
     checks.push({ key: 'dkim', ok: tokens.length > 0 && results.every(Boolean), found: tokens.length ? `${results.filter(Boolean).length} of ${tokens.length} records` : 'Amazon has no identity for this domain yet', want: '3 CNAME records' });
   } else {
-    const rec = (await txt(`${SELECTOR}._domainkey.${domain}`)).find((t) => t.includes('p=')) ?? '';
     const want = domainKey(domain, ws.id).publicKey;
     checks.push({ key: 'dkim', ok: rec.replace(/\s/g, '').includes(`p=${want}`), found: rec ? 'a DKIM record' + (rec.replace(/\s/g, '').includes(`p=${want}`) ? '' : ' with a different key') : 'none', want: `${SELECTOR}._domainkey TXT` });
   }
@@ -251,24 +274,17 @@ export async function serverHealth() {
 /* ---------- receiving ---------- */
 
 let listening = false;
-function tlsOptions() {
-  const key = process.env.MAIL_TLS_KEY, cert = process.env.MAIL_TLS_CERT;
-  if (key && cert && existsSync(key) && existsSync(cert)) return { key: readFileSync(key), cert: readFileSync(cert) };
-  const k = join(db.dataDir, 'mail-key.pem'), c = join(db.dataDir, 'mail-cert.pem');
-  if (!existsSync(k) || !existsSync(c)) {
-    try {
-      execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', k, '-out', c, '-days', '3650', '-subj', `/CN=${MAIL_HOST}`], { stdio: 'ignore' });
-    } catch {
-      return null; // no openssl: plain SMTP only
-    }
-  }
-  return { key: readFileSync(k), cert: readFileSync(c) };
-}
+
+/** "Some of each" routing tests (server/routing.ts): their addresses are accepted, then swallowed. */
+type ProbeHook = { accepts: (address: string) => boolean; arrived: (address: string) => void };
+let probeHook: ProbeHook | null = null;
+export const onRoutingProbe = (hook: ProbeHook) => (probeHook = hook);
 
 export function startMailer(d: MailerDeps) {
   deps = d;
   if (process.env.MAIL_ENABLED === '0') return;
-  const tls = tlsOptions();
+  const loaded = loadTls(MAIL_HOST);
+  const tls = loaded ? { key: loaded.key, cert: loaded.cert } : null;
   const server = new SMTPServer({
     name: MAIL_HOST,
     banner: 'sprint2go mail',
@@ -277,7 +293,7 @@ export function startMailer(d: MailerDeps) {
     hideSTARTTLS: !tls,
     ...(tls ?? {}),
     onRcptTo(address, _session, cb) {
-      if (accountFor(address.address) || supportAddresses().includes(lower(address.address))) return cb();
+      if (accountFor(address.address) || supportAddresses().includes(lower(address.address)) || probeHook?.accepts(lower(address.address))) return cb();
       cb(Object.assign(new Error('No such mailbox here'), { responseCode: 550 }));
     },
     onData(stream, session, cb) {
@@ -293,9 +309,15 @@ export function startMailer(d: MailerDeps) {
     },
   });
   server.on('error', (e) => deps.log(`[mail] ${e.message}`));
+  // A renewed or newly trusted certificate goes in without a restart.
+  onCertChange((next) => {
+    server.updateSecureContext({ key: next.key, cert: next.cert });
+    server.options.hideSTARTTLS = false;
+  });
+  startCertKeeper(MAIL_HOST, deps.log);
   server.listen(MAIL_PORT, '0.0.0.0', () => {
     listening = true;
-    deps.log(`Mail: receiving for ${MAIL_HOST} on port ${MAIL_PORT}${tls ? ' (STARTTLS)' : ''}; sending ${process.env.MAIL_RELAY_URL ? 'through the relay' : 'direct'}${boostedAvailable() ? ', Boosted available' : ''}`);
+    deps.log(`Mail: receiving for ${MAIL_HOST} on port ${MAIL_PORT}${tls ? ` (STARTTLS, ${loaded!.source} certificate)` : ''}; sending ${process.env.MAIL_RELAY_URL ? 'through the relay' : 'direct'}${boostedAvailable() ? ', Boosted available' : ''}`);
   });
   setInterval(() => void pump(), 30_000);
   void pump();
@@ -303,6 +325,22 @@ export function startMailer(d: MailerDeps) {
 
 const cleanSubject = (s: string) => String(s ?? '').replace(/^\s*((re|fwd?|aw|wg)\s*:\s*)+/i, '').trim();
 const person = (v: { name?: string; address?: string } | undefined): Person => ({ name: v?.name || (v?.address ?? '').split('@')[0], email: lower(v?.address ?? '') });
+
+/** Who may vouch for forwarded mail with an ARC seal: Google, Microsoft and Zoho (the providers "Some of each" uses). */
+export const ARC_SEALERS = ['google.com', 'microsoft.com', 'zohomail.com', 'zohomail.eu', 'zohomail.in', 'zoho.com'];
+/**
+ * mailauth's ARC result, read: the chain must validate, its newest seal must come from a trusted provider, and what
+ * that provider saw (its ARC-Authentication-Results) must be a pass and not a DMARC fail.
+ */
+export function arcVerdict(arc: unknown): { trusted: boolean; sealer: string; result: string } {
+  const a = arc as { status?: { result?: string }; signature?: { signingDomain?: string } | false; authenticationResults?: Record<string, any> } | undefined;
+  const result = String(a?.status?.result ?? 'none');
+  const sealer = lower((a?.signature && a.signature.signingDomain) || '');
+  const known = ARC_SEALERS.some((d) => sealer === d || sealer.endsWith(`.${d}`));
+  const aar = a?.authenticationResults ?? {};
+  const passed = aar.dmarc?.result === 'pass' || aar.spf?.result === 'pass' || (Array.isArray(aar.dkim) && aar.dkim.some((x: { result?: string }) => x.result === 'pass'));
+  return { trusted: result === 'pass' && known && passed && aar.dmarc?.result !== 'fail', sealer, result };
+}
 
 async function receive(raw: Buffer, session: SMTPServerSession) {
   const parsed = await simpleParser(raw);
@@ -314,8 +352,11 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const dmarc = (auth.dmarc as any)?.status?.result as string | undefined;
     const spf = (auth.spf as any)?.status?.result as string | undefined;
     const dkimPass = (auth.dkim?.results ?? []).some((r: any) => r.status?.result === 'pass');
-    spam = dmarc === 'fail' || (spf === 'fail' && !dkimPass);
-    authSummary = `spf=${spf ?? '-'} dkim=${dkimPass ? 'pass' : 'none'} dmarc=${dmarc ?? '-'}`;
+    // Forwarded by Google, Microsoft or Zoho ("Some of each", forwarding): our own SPF and DMARC see their servers, not
+    // the sender's, so they fail. A valid ARC seal from them saying the original passed there is good enough.
+    const arc = arcVerdict(auth.arc);
+    spam = !arc.trusted && (dmarc === 'fail' || (spf === 'fail' && !dkimPass));
+    authSummary = `spf=${spf ?? '-'} dkim=${dkimPass ? 'pass' : 'none'} dmarc=${dmarc ?? '-'}${arc.sealer ? ` arc=${arc.result}(${arc.sealer})` : ''}`;
   } catch {
     /* no verdict: treat as ordinary mail */
   }
@@ -330,6 +371,11 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
   const unsubUrl = ([] as string[]).concat(list?.unsubscribe?.url ?? []).find((u) => /^https?:\/\//i.test(u)) ?? rawUnsub.match(/<(https?:[^>]+)>/i)?.[1];
   const unsubOneClick = !!list?.['unsubscribe-post'] || parsed.headerLines.some((h) => h.key === 'list-unsubscribe-post');
   for (const rcpt of session.envelope.rcptTo) {
+    // A routing test: it proves the provider passed it on, and nobody ever sees it.
+    if (probeHook?.accepts(lower(rcpt.address))) {
+      probeHook.arrived(lower(rcpt.address));
+      continue;
+    }
     if (supportAddresses().includes(lower(rcpt.address)) && supportHandler) {
       const attachments = parsed.attachments.map((a) => {
         const id = randomBytes(16).toString('hex');
@@ -411,6 +457,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   if (sentLastHour + recipientsCount > LIMITS.hour || sentLastDay + recipientsCount > LIMITS.day)
     throw new Error(`This mailbox has reached its sending limit (${LIMITS.hour} an hour, ${LIMITS.day} a day). Try again later, or use Boosted sending for bigger sends.`);
   const domain = lower(o.from.email.split('@')[1] ?? '');
+  if (domain && domain !== MAIL_HOST && !mayUse(ws, domain)) throw new Error(`Another company uses ${domain}, so mail can’t be sent from it here. An admin can prove it’s yours in Settings, Email delivery.`);
   const mid = `<${randomBytes(12).toString('hex')}@${domain || MAIL_HOST}>`;
   let route: 'own' | 'boosted' = ws.mailRoute === 'boosted' && boostedAvailable() ? 'boosted' : 'own';
   const recipients = [...o.to, ...o.cc].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
@@ -594,7 +641,12 @@ export const mailStatsAll = (since: string) =>
 
 /* ---------- mail from sprint2go itself (support replies, invoices, alerts, broadcasts) ---------- */
 
-export async function sendSystemMail(m: { fromName: string; from?: string; to: string[]; subject: string; text: string; html?: string; inReplyTo?: string; references?: string[]; attachments?: { filename: string; content: Buffer; contentType?: string }[] }) {
+type SystemMail = { fromName: string; from?: string; to: string[]; subject: string; text: string; html?: string; inReplyTo?: string; references?: string[]; attachments?: { filename: string; content: Buffer; contentType?: string }[] };
+export async function sendSystemMail(m: SystemMail) {
+  return (await queueSystemMail(m)).mid;
+}
+/** The same, also returning the outbox rows it made (one per recipient), for callers that follow the delivery. */
+export async function queueSystemMail(m: SystemMail) {
   const from = lower(m.from ?? SUPPORT_EMAIL);
   const domain = from.split('@')[1] ?? MAIL_HOST;
   const mid = `<${randomBytes(12).toString('hex')}@${domain}>`;
@@ -607,9 +659,42 @@ export async function sendSystemMail(m: { fromName: string; from?: string; to: s
     raw = Buffer.concat([Buffer.from(signatures), raw]);
   }
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
-  for (const to of m.to) ins.run(randomBytes(8).toString('hex'), 'platform', route, from, lower(to), raw, now(), 'queued', now());
+  const ids = m.to.map((to) => {
+    const id = randomBytes(8).toString('hex');
+    ins.run(id, 'platform', route, from, lower(to), raw, now(), 'queued', now());
+    return id;
+  });
   void pump();
-  return mid;
+  return { mid, ids };
+}
+/** Where an outbox row stands: still trying, delivered, or given up (with the receiving server's last answer). */
+export const outboxState = (id: string) => db.db.prepare('SELECT state, error, attempts FROM outbox WHERE id = ?').get(id) as { state: 'queued' | 'sent' | 'failed'; error: string | null; attempts: number } | undefined;
+
+/* ---------- the app's own notes (sign-up codes, guest notices): Amazon SES when set up, else our own engine ---------- */
+
+/** The address notes come from: no-reply at the support domain, whose DKIM key the platform already publishes. */
+export const NOREPLY = `no-reply@${SUPPORT_EMAIL.split('@')[1] ?? MAIL_HOST}`;
+const realDomain = (d: string) => d.includes('.') && !/(^|\.)(localhost|local|test|invalid|example|internal)$/.test(d);
+/**
+ * How the app's own notes go out: 'ses' when Amazon SES is configured, 'own' when this server can send them itself
+ * (the mail engine is on and the support domain is a real one), else 'log' (local development: codes go to the log).
+ */
+export function systemMailPath(): 'ses' | 'own' | 'log' {
+  if (mailConfigured()) return 'ses';
+  if (process.env.MAIL_ENABLED !== '0' && realDomain(NOREPLY.split('@')[1])) return 'own';
+  return 'log';
+}
+/**
+ * Sends one note (text and HTML as given). True when it's on its way. False when no path works: no SES, and our own
+ * engine can't get mail out (local development, or port 25 blocked without a relay); the caller logs instead.
+ */
+export async function sendNote(to: string, subject: string, text: string, html?: string, fromName = 'sprint2go'): Promise<boolean> {
+  const path = systemMailPath();
+  if (path === 'ses') return sendMail(to, subject, text, html);
+  if (path === 'log') return false;
+  if (!process.env.MAIL_RELAY_URL && !(await serverHealth()).port25.ok) return false;
+  await sendSystemMail({ fromName, from: NOREPLY, to: [to], subject, text, html });
+  return true;
 }
 
 export const queue = (state: 'queued' | 'failed', limit = 200) =>
@@ -685,13 +770,21 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
   const route = ws.mailRoute ?? 'own';
   const slug = lower(ws.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'company';
   // One DNS check per domain the mailboxes use.
-  const domains = new Map<string, { mxHere: boolean; signs: boolean; why?: string }>();
+  const domains = new Map<string, { mxHere: boolean; signs: boolean; why?: string; taken?: string }>();
   for (const d of new Set(accounts.map((a) => lower(a.email.split('@')[1] ?? '')))) {
     if (d === MAIL_HOST) {
       domains.set(d, { mxHere: true, signs: true });
       continue;
     }
     const mx = await pub.resolveMx(d).then((r) => r.sort((a, b) => a.priority - b.priority).map((x) => lower(x.exchange)), () => [] as string[]);
+    const apex = await txt(d);
+    const dkim = (await txt(`${SELECTOR}._domainkey.${d}`)).find((t) => t.includes('p=')) ?? '';
+    // Another company holds the domain: none of its mail comes here or goes out for this company.
+    const own = settleDomain(ws, d, { mxHere: mx[0] === MAIL_HOST, dkim, txt: apex });
+    if (own.state === 'held' || own.state === 'taken') {
+      domains.set(d, { mxHere: false, signs: false, taken: `Another company uses ${d}. An admin can prove it’s yours in Settings, Email delivery.` });
+      continue;
+    }
     let signs = false;
     let why: string | undefined;
     if (route === 'boosted') {
@@ -699,9 +792,8 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
       signs = !!ses?.dkimVerified;
       why = !mailConfigured() ? 'Boosted sending isn’t available yet.' : signs ? undefined : 'Amazon hasn’t verified the signing records yet.';
     } else {
-      const spfs = spfRecords(await txt(d));
+      const spfs = spfRecords(apex);
       const spfOk = spfs.length === 1 && (spfHas(spfs[0], spfOurs('own')) || spfHas(spfs[0], `a:${MAIL_HOST}`));
-      const dkim = (await txt(`${SELECTOR}._domainkey.${d}`)).find((t) => t.includes('p=')) ?? '';
       const dkimOk = dkim.replace(/\s/g, '').includes(`p=${domainKey(d, ws.id).publicKey}`);
       signs = spfOk && dkimOk;
       why = signs ? undefined : !spfOk && !dkimOk ? `The SPF and DKIM records for ${d} are missing.` : !spfOk ? (spfs.length > 1 ? `${d} has ${spfs.length} SPF records; merge them into one.` : `The SPF record for ${d} doesn’t include our server.`) : `The DKIM record for ${d} is missing or different.`;
@@ -714,7 +806,8 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
     const dom = domains.get(d)!;
     const hosted = !a.provider || a.provider === 'sprint2go';
     const portOut = route === 'boosted' || health.port25.ok;
-    if (hosted) {
+    if (dom.taken) mailboxes[a.id] = { receive: false, send: false, why: dom.taken, sendWhy: dom.taken };
+    else if (hosted) {
       const receive = health.inbound.ok && (dom.mxHere || !!ws.mailRouting?.verifiedAt || receivedAt(a.email));
       const send = portOut && dom.signs;
       const prov = PROVIDER_NAME[ws.emailProvider || 'google'] ?? 'your mail provider';

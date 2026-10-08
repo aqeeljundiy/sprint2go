@@ -56,6 +56,11 @@ interface System {
   dbBytes: number;
   backups: { file: string; bytes: number; at: string }[];
   lastBackupAt: string | null;
+  build: { builtAt: string; bundle: string | null; commit: string | null } | null;
+  offsite: { configured: boolean; where: string | null; last: { at: string; file: string; bytes: number; kept: number } | null; error: { at: string; message: string } | null };
+  cert: Cert;
+  systemMail: 'ses' | 'own' | 'log';
+  noreply: string;
   mailOn: boolean;
   mailHost: string;
   supportEmail: string;
@@ -67,6 +72,31 @@ interface System {
   alerts: { kind: string; at: string; text: string }[];
   backupTest: { at: string; file: string; ok: boolean; detail: string } | null;
 }
+interface Cert {
+  source: 'file' | 'acme' | 'self-signed' | 'none';
+  issuer: string | null;
+  validTo: string | null;
+  daysLeft: number | null;
+  trusted: boolean;
+  acme: boolean;
+  error: { at: string; message: string } | null;
+}
+/** The mail server's certificate in one line, and whether it's trusted. */
+const certRow = (c: Cert) => ({
+  label: 'Mail certificate',
+  value: c.trusted
+    ? `${c.issuer ?? 'Trusted'}${c.source === 'acme' ? ' (renews itself)' : ''}, valid until ${c.validTo?.slice(0, 10)}`
+    : c.source === 'none'
+      ? 'None: mail arrives without encryption'
+      : c.acme
+        ? `Self-signed until Let’s Encrypt issues one${c.error ? `: ${c.error.message}` : ''}`
+        : c.error
+          ? `Self-signed: ${c.error.message}`
+          : 'Self-signed: Google routes that require a CA-signed one bounce. Set CF_DNS_TOKEN or MAIL_TLS_CERT',
+  ok: c.trusted,
+});
+/** The newest off-site upload failed (or there's none yet while it's set up). */
+const offsiteFailing = (o: System['offsite']) => !!o.error && (!o.last || o.error.at > o.last.at);
 const uptime = (s: number) => (s > 86400 ? `${Math.floor(s / 86400)} d ${Math.floor((s % 86400) / 3600)} h` : s > 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.floor(s / 60)} min`);
 
 function Health() {
@@ -100,9 +130,20 @@ function Health() {
             rows={[
               { label: 'Address', value: data.publicUrl, ok: data.https || !data.production },
               { label: 'Mail', value: `Our server at ${data.mailHost}${data.mailOn ? ' · Boosted available' : ''}` },
+              {
+                label: 'Codes and notices',
+                value: data.systemMail === 'ses' ? 'Sent through Amazon SES' : data.systemMail === 'own' ? `Sent from ${data.noreply} by our mail server` : 'Not sent: sign-up codes go to the server log',
+                ok: data.systemMail !== 'log' || !data.production,
+              },
+              certRow(data.cert),
               { label: 'Support address', value: data.supportEmail },
               { label: 'Meeting recorder', value: !data.recorder.configured ? 'Not set up' : data.recorder.reachable ? `Answering · ${data.recorder.bots ?? 0} bots busy` : 'Not answering', ok: !data.recorder.configured || data.recorder.reachable },
-              { label: 'Built', value: data.built ? `${dateTime(data.built)} · Node ${data.node}` : 'unknown' },
+              {
+                label: 'Off-site backups',
+                value: !data.offsite.configured ? 'Not set up: add S3_* to keep a copy off this server' : offsiteFailing(data.offsite) ? `Failing: ${data.offsite.error!.message}` : data.offsite.last ? `Copied ${rel(data.offsite.last.at)}, ${bytes(data.offsite.last.bytes)}` : 'Set up: the first copy goes with the next daily backup',
+                ok: data.offsite.configured && !offsiteFailing(data.offsite),
+              },
+              { label: 'Build', value: data.build ? `Running build from ${dateTime(data.build.builtAt)}${data.build.commit ? ` · ${data.build.commit.slice(0, 7)}` : ''} · Node ${data.node}` : data.built ? `Built ${dateTime(data.built)} · Node ${data.node}` : 'unknown' },
             ]}
           />
         </Section>
@@ -140,6 +181,7 @@ interface MailData {
   supportEmail: string;
   limits: { hour: number; day: number };
   health: Record<'ptr' | 'a' | 'port25' | 'inbound', { ok: boolean; found: string; want: string }>;
+  cert: Cert;
   blocklists: { list: string; listed: boolean | 'unknown' }[];
   queued: { id: string; company: string; route: string; fromAddr: string; toAddr: string; attempts: number; nextAt: string; error: string | null; createdAt: string }[];
   failed: { id: string; company: string; route: string; fromAddr: string; toAddr: string; attempts: number; error: string | null; createdAt: string }[];
@@ -163,7 +205,7 @@ function Mail() {
       </Stats>
       <div className="adm-split">
         <Section title="Can we send and receive?">
-          <Rows rows={(['inbound', 'port25', 'a', 'ptr'] as const).map((k) => ({ label: HEALTH[k], value: data.health[k].ok ? data.health[k].found : `${data.health[k].found} (wanted ${data.health[k].want})`, ok: data.health[k].ok }))} />
+          <Rows rows={[...(['inbound', 'port25', 'a', 'ptr'] as const).map((k) => ({ label: HEALTH[k], value: data.health[k].ok ? data.health[k].found : `${data.health[k].found} (wanted ${data.health[k].want})`, ok: data.health[k].ok })), certRow(data.cert)]} />
         </Section>
         <Section title="Blocklists" hint={data.ip || 'set MAIL_IP to check'}>
           {data.blocklists.length === 0 ? (
@@ -366,7 +408,33 @@ function Backups() {
             ))}
           </div>
         )}
-        <p className="adm-note">Keep a copy off this server too: download one a week, or set up an off-site copy of the data volume in Dokploy.</p>
+        <p className="adm-note">Labelled copies (before a cleanup, or made with Back up now) sit outside the 14-day rotation.</p>
+      </Section>
+      <Section title="Off-site copy" hint={data.offsite.where ?? 'S3, Cloudflare R2 or Backblaze B2'}>
+        {!data.offsite.configured ? (
+          <Empty title="Not set up" text="Add S3_ENDPOINT, S3_BUCKET, S3_REGION, S3_KEY and S3_SECRET on the server to keep a copy off this server. Each daily backup then goes there gzipped, and the last 30 are kept." />
+        ) : (
+          <>
+            {offsiteFailing(data.offsite) && (
+              <div className="adm-banner bad">
+                <AlertTriangle size={15} />
+                <span>
+                  The last copy failed {rel(data.offsite.error!.at)}: {data.offsite.error!.message}
+                </span>
+              </div>
+            )}
+            {data.offsite.last ? (
+              <Rows
+                rows={[
+                  { label: 'Last copy', value: `${data.offsite.last.file}, ${bytes(data.offsite.last.bytes)}, ${rel(data.offsite.last.at)}`, ok: !offsiteFailing(data.offsite) },
+                  { label: 'Kept there', value: `${data.offsite.last.kept} daily copies (up to 30)` },
+                ]}
+              />
+            ) : (
+              !offsiteFailing(data.offsite) && <Empty title="No copy yet" text="The first one goes up with the next daily backup." />
+            )}
+          </>
+        )}
       </Section>
     </>
   );

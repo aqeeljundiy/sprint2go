@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/build-stamp.mjs",
     "preview": "vite preview",
     "standalone": "vite build && node scripts/standalone.mjs",
     "server": "node --import ./server/register.mjs server/index.ts",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "acme-client": "^5.4.0",
     "dompurify": "^3.4.16",
     "lucide-react": "^1.50.0",
     "mailauth": "^7.1.1",
