@@ -233,24 +233,49 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
   const firstWs = (ws.find((w) => w.id === 'pnp') ?? ws[0])?.id; // older documents without a workspace belong to the first one (as in the app)
   const accounts = new Map(ws.flatMap((w) => ((w.accounts ?? []) as { id: string; users?: string[] }[]).map((a) => [a.id, { ws: w.id, users: a.users ?? [] }] as const)));
   const channels = new Map((db.allDocs('channels') as any[]).map((c) => [String(c.id), c]));
-  // Guests on your projects (some are people at other companies that use sprint2go): so their names and photos show.
-  const guests = new Set((db.allDocs('clients') as any[]).filter((c) => mine.has(c.workspaceId)).flatMap((c) => (c.people ?? []).map((p: any) => String(p.email).toLowerCase())));
-  const channelOk = (c: any) => !!c && mine.has(c.workspaceId) && (!(c.private || c.kind === 'dm') || (c.members ?? []).includes(userId));
   // Tasks: owners and admins see all of a company's; members see their own work, their teams', the projects they're on
   // (every project when the company allows it) and their channels'. The same rule as the app's.
   // Built only when a task is checked (most live updates aren't tasks).
   let taskCtx: { adminOf: Set<string>; seeAll: Set<string>; myTeams: Set<string>; myProjects: Set<string> } | null = null;
+  // Projects follow the same rule: owners and admins see every one, members the ones they're on (all of them when the
+  // company allows "See every project"). Everything inside a project follows it: its channels and their messages, files,
+  // notes, meetings, quotes, tables and their rows, and its guests' names. Built only when needed.
+  let projects: Map<string, any> | null = null;
+  const projectById = (id: string) => (projects ??= new Map((db.allDocs('clients') as any[]).map((c) => [String(c.id), c]))).get(id);
+  const seesAll = new Set(ws.filter((w) => mine.has(w.id) && (w.members.some((m) => m.userId === userId && m.role !== 'member') || { ...DEFAULT_PERMISSIONS, ...((w as any).permissions ?? {}) }.seeAllProjects)).map((w) => w.id));
+  const projectOk = (c: any) => {
+    if (!c) return true; // no such project (not saved yet, or gone): nothing to hide
+    if (!mine.has(c.workspaceId)) return false;
+    if (seesAll.has(c.workspaceId) || c.ownerId === userId || (c.members ?? []).some((m: any) => m.userId === userId)) return true;
+    return ctxOf().myProjects.has(c.id);
+  };
+  const inProject = (clientId: unknown) => !clientId || projectOk(projectById(String(clientId)));
+  // Guests on the projects you see (some are people at other companies that use sprint2go): so their names and photos show.
+  let guestSet: Set<string> | null = null;
+  const guests = () => (guestSet ??= new Set((db.allDocs('clients') as any[]).filter((c) => mine.has(c.workspaceId) && projectOk(c)).flatMap((c) => (c.people ?? []).map((p: any) => String(p.email).toLowerCase()))));
+  const isMember = (c: any) => (c.members ?? []).includes(userId);
+  const channelOk = (c: any) => !!c && mine.has(c.workspaceId) && (isMember(c) || (!(c.private || c.kind === 'dm') && inProject(c.clientId)));
+  let tables: Map<string, any> | null = null;
+  // A file's project: its own, or its folder's (folders nest).
+  let drive: Map<string, any> | null = null;
+  const driveProject = (d: any): string | undefined => {
+    drive ??= new Map((db.allDocs('drive') as any[]).map((x) => [String(x.id), x]));
+    for (let cur = d, i = 0; cur && i < 20; cur = cur.parentId ? drive.get(String(cur.parentId)) : null, i++) if (cur.clientId) return cur.clientId;
+    return undefined;
+  };
   const doing = (t: any) => t.userId === userId || (t.assignees ?? []).includes(userId) || t.supervisorId === userId;
   const ctxOf = () =>
     (taskCtx ??= (() => {
-      const allTodos = db.allDocs('todos') as any[];
+      // The projects I'm on: I lead or am on it, I'm in one of its channels, or I'm doing one of its tasks (one pass each).
+      const viaChannels = new Set([...channels.values()].filter((ch) => ch.clientId && (ch.members ?? []).includes(userId)).map((ch) => String(ch.clientId)));
+      const viaTasks = new Set((db.allDocs('todos') as any[]).filter((t) => t.clientId && doing(t)).map((t) => String(t.clientId)));
       return {
         adminOf: new Set(ws.filter((w) => w.members.some((m) => m.userId === userId && m.role !== 'member')).map((w) => w.id)),
         seeAll: new Set(ws.filter((w) => mine.has(w.id) && ({ ...DEFAULT_PERMISSIONS, ...((w as any).permissions ?? {}) }).seeAllProjects).map((w) => w.id)),
         myTeams: new Set((db.allDocs('teams') as any[]).filter((t) => (t.members ?? []).includes(userId) || t.leadId === userId).map((t) => t.id)),
         myProjects: new Set(
           (db.allDocs('clients') as any[])
-            .filter((c) => mine.has(c.workspaceId) && (c.ownerId === userId || (c.members ?? []).some((m: any) => m.userId === userId) || [...channels.values()].some((ch) => ch.clientId === c.id && (ch.members ?? []).includes(userId)) || allTodos.some((t) => t.clientId === c.id && doing(t))))
+            .filter((c) => mine.has(c.workspaceId) && (c.ownerId === userId || (c.members ?? []).some((m: any) => m.userId === userId) || viaChannels.has(String(c.id)) || viaTasks.has(String(c.id))))
             .map((c) => c.id),
         ),
       };
@@ -266,8 +291,8 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
   const ok = (coll: string, d: any): boolean => {
     switch (coll) {
       case 'users':
-        // Yourself, your companies' people, and the client people of your companies.
-        return d.id === userId || people.has(d.id) || (!!d.clientOf && mine.has(d.clientOf.workspaceId)) || guests.has(String(d.email ?? '').toLowerCase());
+        // Yourself, your companies' people, and the guests of the projects you see.
+        return d.id === userId || people.has(d.id) || (!!d.clientOf && mine.has(d.clientOf.workspaceId) && inProject(d.clientOf.clientId)) || guests().has(String(d.email ?? '').toLowerCase());
       case 'workspaces':
         return mine.has(d.id);
       case 'statuses':
@@ -275,13 +300,30 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
       case 'prefs':
         return d.id === userId; // your own settings only
       case 'notes':
-        return mine.has(d.workspaceId) && (d.visibility !== 'private' || d.ownerId === userId); // private notes: only their owner
+        // Private notes: only their owner. A project's notes: the people who see the project (and whoever wrote them).
+        return mine.has(d.workspaceId) && (d.visibility !== 'private' || d.ownerId === userId) && (d.ownerId === userId || inProject(d.clientId));
+      case 'clients':
+        return projectOk(d);
       case 'channels':
         return channelOk(d);
       case 'todos':
         return taskOk(d);
       case 'messages':
         return channelOk(channels.get(d.channelId));
+      case 'drive': {
+        const wsId = typeof d.workspaceId === 'string' ? d.workspaceId : firstWs;
+        return mine.has(wsId) && (d.ownerId === userId || d.uploadedBy === userId || inProject(driveProject(d)) || (!!d.channelId && isMember(channels.get(String(d.channelId)) ?? {})));
+      }
+      case 'meetings':
+        return mine.has(d.workspaceId) && (d.createdBy === userId || inProject(d.clientId) || (!!me?.name && (d.attendees ?? []).includes(me.name)));
+      case 'quotes':
+        return mine.has(d.workspaceId) && (d.createdBy === userId || inProject(d.clientId));
+      case 'tables':
+        return mine.has(d.workspaceId) && (d.createdBy === userId || inProject(d.clientId));
+      case 'rows': {
+        const t = (tables ??= new Map((db.allDocs('tables') as any[]).map((x) => [String(x.id), x]))).get(String(d.tableId));
+        return !!t && mine.has(t.workspaceId) && (t.createdBy === userId || inProject(t.clientId));
+      }
       case 'notices':
         // Your own, plus what the team sent to client people (so "View as client" shows it).
         return d.userId === userId || (String(d.userId).startsWith('email:') && mine.has(d.workspaceId)) || (!!me?.email && d.userId === `email:${String(me.email).toLowerCase()}`);
@@ -1240,6 +1282,8 @@ createServer(async (req, res) => {
       if (!twostep.allowedWhileGated(gate, p, req.method ?? 'GET'))
         return json(res, gate.need === 'code' ? 401 : 403, { error: gate.need === 'code' ? 'Enter the code from your authenticator app first.' : 'Set up two-step sign-in first. Your company requires it.', twoStep: gate.need });
     }
+    // An operator signed in as someone: every change they make is in the audit log, under the operator's own name.
+    if (session?.operator && req.method !== 'GET' && p !== '/api/presence' && p !== '/api/client-error') db.audit(session.operator, 'person.signin-as.change', me, `${req.method} ${p}`);
     const opRecord = session?.operator ? null : platform.operator(meDoc?.email);
     const pset = platform.settings();
 
@@ -1770,6 +1814,8 @@ createServer(async (req, res) => {
       return json(res, 200, { moved: target ? mail.length : 0, deleted: target ? 0 : mail.length });
     }
 
+    // An operator signed in as someone never changes their password or deletes their account.
+    if ((p === '/api/password' || p === '/api/account/delete') && session?.operator) return json(res, 403, { error: 'That’s theirs to do: you’re signed in as them.' });
     if (p === '/api/password' && req.method === 'POST') {
       const { current, next } = await body(req);
       const u = db.getDoc('users', me) as { email?: string } | undefined;
@@ -1899,8 +1945,10 @@ createServer(async (req, res) => {
       // An invite sets a password, so it can only be for someone who has never signed in: a new person (not saved yet,
       // their doc may still be on its way) or someone added to a company you run. Never an existing account.
       if (db.hasLogin(target)) return json(res, 409, { error: 'They already have a sign-in.' });
-      const existing = db.getDoc('users', target);
+      const existing = db.getDoc('users', target) as any;
       if (existing && !memberOf(me).some((w) => isAdminOf(me, w.id) && w.members.some((m: any) => m.userId === target))) return json(res, 403, { error: 'Only their own company can invite them.' });
+      // The sign-in goes to their own address, never one the inviter picks for them.
+      if (existing?.email && String(existing.email).toLowerCase() !== email.trim().toLowerCase()) return json(res, 400, { error: 'The invite goes to the address on their profile.' });
       const taken = db.findLogin(email);
       if (taken) return json(res, 409, { error: 'Someone already uses that email.' });
       return json(res, 200, { link: `/?invite=${db.newInvite(target, email)}` });
@@ -1937,7 +1985,7 @@ createServer(async (req, res) => {
     if (p === '/api/tables/test-hook' && req.method === 'POST') {
       const b = await body(req);
       const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
-      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId)) return json(res, 404, { error: 'No such table.' });
+      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId) || !teamLens(me)('tables', t)) return json(res, 404, { error: 'No such table.' });
       const a = { kind: 'webhook' as const, url: String(b.url ?? ''), fields: b.fields };
       const payload = tablesEngine.testPayload(t, a);
       const out = await tablesEngine.sendHook(t, a.url, payload);
@@ -1986,7 +2034,8 @@ createServer(async (req, res) => {
     const meetId = p.match(/^\/api\/meet\/(stop|audio|video|again)\/([\w-]+)$/);
     if (meetId) {
       const m = db.getDoc('meetings', meetId[2]) as any;
-      const staff = !!m?.bot && memberOf(me).some((w) => w.id === m.workspaceId);
+      // The team: people who can see the meeting (a project's meetings only for those who see the project).
+      const staff = !!m?.bot && memberOf(me).some((w) => w.id === m.workspaceId) && !!teamLens(me)('meetings', m);
       // A guest may play a recording of their project's meeting when its guest settings allow recordings.
       const guestPlays = () => {
         if (!m?.bot || !m.clientId || (meetId[1] !== 'audio' && meetId[1] !== 'video')) return false;
@@ -2103,7 +2152,17 @@ createServer(async (req, res) => {
       const f = db.fileInfo(fileReq[1]);
       if (!f) return json(res, 404, { error: 'No such file.' });
       const team = memberOf(me).some((w) => w.id === f.workspaceId);
-      const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === f.workspaceId);
+      // A guest opens their own uploads, and files on something they can see (a shared file, a message in their
+      // channel, a request): never the rest of the company's files, even with the address.
+      const guest =
+        !team &&
+        portalsOf(me).some((pt) => pt.workspaceId === f.workspaceId) &&
+        (f.by === me ||
+          (() => {
+            const see = lens(me);
+            const rows = db.db.prepare("SELECT coll, data FROM docs WHERE data LIKE ? ESCAPE '\\' LIMIT 50").all(`%/api/files/${f.id}%`) as { coll: string; data: string }[];
+            return rows.some((r) => !!see(r.coll, JSON.parse(r.data)));
+          })());
       if (!team && !guest) return json(res, 404, { error: 'No such file.' });
       const path = db.filePath(f.id);
       if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });
@@ -2204,6 +2263,17 @@ createServer(async (req, res) => {
         const p = permsOf(wsId);
         const before = db.getDoc(coll, d.id) as any;
         if (coll === 'clients' && !before && !p.createProjects) return null;
+        // Who's a guest is changed by admins, the project's lead, or Members allowed to invite guests ("Invite guests"),
+        // whether on the project or in one of its channels: being listed is what opens the portal.
+        if ((coll === 'clients' || coll === 'channels') && before && !p.inviteGuests) {
+          const project = db.getDoc('clients', String(coll === 'clients' ? before.id : before.clientId ?? '')) as any;
+          const leads = !!project && (project.ownerId === me || (project.members ?? []).some((m: any) => m.userId === me && m.role === 'lead'));
+          const key = coll === 'clients' ? 'people' : 'guests';
+          if (!leads && JSON.stringify((d as any)[key] ?? []) !== JSON.stringify(before[key] ?? [])) {
+            say('Only admins and the project’s Lead can change who its guests are here.');
+            return { ...d, [key]: before[key] } as db.Doc;
+          }
+        }
         if (coll === 'teams') {
           if (!before) return p.createTeams ? d : null;
           if (before.leadId === me) return d;
@@ -2227,6 +2297,11 @@ createServer(async (req, res) => {
         return d;
       };
       const mayDelete = (before: any) => {
+        // Someone else's chat message: its author, admins, or members allowed to delete things.
+        if (coll === 'messages' && before && before.userId !== me) {
+          const chan = db.getDoc('channels', String(before.channelId)) as any;
+          return !!chan && (isAdminOf(me, chan.workspaceId) || permsOf(chan.workspaceId).deleteThings);
+        }
         if (!before || !limited(before.workspaceId)) return true;
         if (coll === 'teams') return false; // only admins delete teams
         if (permsOf(before.workspaceId).deleteThings) return true;
