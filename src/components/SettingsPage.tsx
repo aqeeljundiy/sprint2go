@@ -616,6 +616,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               myEmail={ws.accounts.find((a) => !a.temp && a.kind === 'personal' && a.users.includes(me))?.email}
               onWorkspace={onWorkspace}
               onAddAccount={canManage ? onAddAccount : undefined}
+              onRemoveAccount={canManage ? (a) => onRemoveAccount(a.id) : undefined}
               toast={admin.toast}
             />
           )}

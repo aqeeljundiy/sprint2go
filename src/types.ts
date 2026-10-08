@@ -209,6 +209,13 @@ export interface Account {
   temp?: { createdBy: string; createdAt: string; expiresAt?: string };
 }
 
+/** Another address that delivers into mailboxes: sales@ into Dewi's and Bayu's, or info@ into the hello@ shared inbox. */
+export interface MailAlias {
+  id: string;
+  address: string;
+  to: string[]; // mailbox (account) ids
+}
+
 /** One business: its own brand, domains, mailboxes, calendar and drive. */
 export interface Workspace {
   id: string;
@@ -226,6 +233,7 @@ export interface Workspace {
   mailRoute?: 'own' | 'boosted'; // how mail goes out: from the sprint2go server, or through Amazon on our account
   mailCredits?: number; // emails left on Boosted sending
   mailCreditsNotified?: boolean;
+  mailAliases?: MailAlias[]; // extra addresses that deliver into mailboxes (set through the server)
   mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
   /** What really works, worked out by the server: mail in, mail out, per mailbox, with the reason when it doesn't. */
   mailReady?: { at: string; receive: boolean; send: boolean; why: { receive?: string; send?: string }; mailboxes: Record<string, { receive: boolean; send: boolean; why?: string; sendWhy?: string }> };

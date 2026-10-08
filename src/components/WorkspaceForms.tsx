@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { ImagePlus, Inbox, Shield, UserRound, Users, X } from 'lucide-react';
-import type { Account, MailProvider, Role, User, Workspace } from '../types';
+import type { Account, MailAlias, MailProvider, Role, User, Workspace } from '../types';
+import { Select } from './ui/Select';
 import { PROVIDERS } from './Onboarding';
 import { notAtProvider, providerLabel } from './EmailSetupGuide';
 import { WORKSPACE_COLORS } from '../data/workspaces';
@@ -330,6 +331,139 @@ export function InviteMember({
         </button>
         <button className="primary-btn" onClick={invite} disabled={!valid}>
           Send invite
+        </button>
+      </footer>
+    </Modal>
+  );
+}
+
+/** Removing a mailbox says what happens to its mail first: moved into another mailbox, or deleted with it. */
+export function RemoveMailbox({ account, workspace, conversations, onRemove, onClose }: { account: Account; workspace: Workspace; conversations: number | null; onRemove: (moveTo: string | null) => Promise<boolean>; onClose: () => void }) {
+  const others = workspace.accounts.filter((a) => a.id !== account.id && !a.temp);
+  const [moveTo, setMoveTo] = useState<string>(others.find((a) => a.kind === 'shared')?.id ?? others[0]?.id ?? '');
+  const [busy, setBusy] = useState(false);
+  const aliases = (workspace.mailAliases ?? []).filter((al) => al.to.includes(account.id));
+  const hosted = !account.provider || account.provider === 'sprint2go';
+  const mail = conversations === null ? 'Its mail' : `Its ${conversations} conversation${conversations === 1 ? '' : 's'}`;
+  return (
+    <Modal title={`Remove ${account.email}?`} onClose={onClose}>
+      <div className="modal-body">
+        <SmoothHeight>
+          <p className="modal-intro">
+            {hosted
+              ? `New mail to ${account.email} is refused from now on, and senders get a note that it bounced.`
+              : `${account.email} stays at ${providerLabel(account.provider ?? 'google')}. It just stops showing in ${product.name}.`}
+          </p>
+          {conversations !== 0 && (
+            <div className="field">
+              <label>{mail}</label>
+              <Select<string>
+                value={moveTo}
+                onChange={setMoveTo}
+                label="What happens to its mail"
+                width={320}
+                options={[
+                  ...others.map((a) => ({ value: a.id, label: `Move it to ${a.email}`, hint: a.kind === 'shared' ? 'Shared inbox' : undefined })),
+                  { value: '', label: 'Delete it', hint: 'For everyone. This can’t be undone.', danger: true },
+                ]}
+              />
+            </div>
+          )}
+          {aliases.length > 0 && (
+            <p className="small muted">
+              {aliases.map((al) => al.address).join(', ')} {aliases.length > 1 ? 'stop' : 'stops'} delivering here
+              {aliases.some((al) => al.to.length === 1) ? '; an address with no other mailbox is removed too' : ''}.
+            </p>
+          )}
+        </SmoothHeight>
+      </div>
+      <footer className="modal-foot">
+        <button className="ghost-btn" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          className="primary-btn danger-btn"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            if (!(await onRemove(conversations === 0 ? null : moveTo || null))) setBusy(false);
+          }}
+        >
+          {moveTo && conversations !== 0 ? 'Move mail and remove' : 'Remove mailbox'}
+        </button>
+      </footer>
+    </Modal>
+  );
+}
+
+/**
+ * Another address for mail: sales@ into Dewi's and Bayu's mailboxes (each gets a copy), or info@ into the hello@
+ * shared inbox. With "Some of each", the provider must not have the address, or it keeps the mail.
+ */
+export function AliasDialog({ workspace, alias, onSave, onClose }: { workspace: Workspace; alias?: MailAlias; onSave: (a: MailAlias) => Promise<string | null>; onClose: () => void }) {
+  const domains = workspace.domains;
+  const [local, setLocal] = useState(alias?.address.split('@')[0] ?? '');
+  const [domain, setDomain] = useState(alias?.address.split('@')[1] ?? domains[0] ?? '');
+  const boxes = workspace.accounts.filter((a) => !a.temp && (!a.provider || a.provider === 'sprint2go'));
+  const [to, setTo] = useState<string[]>(alias?.to ?? []);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const address = `${local.trim().toLowerCase()}@${domain}`;
+  const taken = workspace.accounts.some((a) => a.email === address) || (workspace.mailAliases ?? []).some((al) => al.address === address && al.id !== alias?.id);
+  const valid = /^[a-z0-9][a-z0-9._+-]{0,63}$/i.test(local.trim()) && !!domain && !taken && to.length > 0;
+  const picked = boxes.filter((b) => to.includes(b.id));
+  const save = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError('');
+    const err = await onSave({ id: alias?.id ?? uid(), address, to });
+    setBusy(false);
+    if (err) setError(err);
+  };
+  return (
+    <Modal title={alias ? `Edit ${alias.address}` : 'Add an address'} onClose={onClose}>
+      <div className="modal-body">
+        <SmoothHeight>
+          <p className="modal-intro">Another address at your domain that delivers into mailboxes here, like sales@ or info@. Replies go out from the mailbox.</p>
+          <div className="field">
+            <label>Address</label>
+            <div className="email-split">
+              <input autoFocus value={local} onChange={(e) => (setLocal(e.target.value), setError(''))} placeholder="sales" onKeyDown={(e) => e.key === 'Enter' && void save()} />
+              {domains.length > 1 ? (
+                <Select<string> value={domain} onChange={setDomain} label="Domain" className="sel-flat" width={220} options={domains.map((d) => ({ value: d, label: `@${d}` }))} />
+              ) : (
+                <span>@{domain}</span>
+              )}
+            </div>
+            {taken && <small className="err">{address} is already a mailbox or an address.</small>}
+          </div>
+          <div className="field">
+            <label>Delivers to</label>
+            {boxes.map((b) => (
+              <label key={b.id} className="check-row">
+                <input type="checkbox" checked={to.includes(b.id)} onChange={(e) => setTo((x) => (e.target.checked ? [...x, b.id] : x.filter((i) => i !== b.id)))} />
+                <span>
+                  {b.email}
+                  {b.kind === 'shared' && <small className="muted"> · shared inbox</small>}
+                </span>
+              </label>
+            ))}
+            <small>{picked.length > 1 ? 'Each of these mailboxes gets its own copy.' : picked[0]?.kind === 'shared' ? `Everyone on ${picked[0].email} sees it.` : 'Pick one mailbox, or several: each gets its own copy.'}</small>
+          </div>
+          {workspace.emailSetup === 'mix' && (
+            <p className="modal-note">
+              <Inbox size={14} /> Mail for {local.trim() ? address : 'the address'} comes through {providerLabel(workspace.emailProvider ?? 'google')}. {notAtProvider(workspace.emailProvider ?? 'google')}
+            </p>
+          )}
+          {error && <p className="err">{error}</p>}
+        </SmoothHeight>
+      </div>
+      <footer className="modal-foot">
+        <button className="ghost-btn" onClick={onClose}>
+          Cancel
+        </button>
+        <button className="primary-btn" onClick={() => void save()} disabled={!valid || busy}>
+          {alias ? 'Save' : 'Add address'}
         </button>
       </footer>
     </Modal>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, Cloud, Copy, Loader2, MailX, RefreshCw, Server, Shuffle, Zap, type LucideIcon } from 'lucide-react';
-import type { EmailSetup, MailProvider, Workspace } from '../../types';
+import { AlertTriangle, Check, Cloud, Copy, Loader2, MailX, PenLine, Plus, RefreshCw, Server, Shuffle, Trash2, Zap, type LucideIcon } from 'lucide-react';
+import type { Account, EmailSetup, MailAlias, MailProvider, Workspace } from '../../types';
+import { AliasDialog } from '../WorkspaceForms';
+import { server } from '../../sync';
 import { brand as product } from '../../terms';
 import { relative } from '../../utils';
 import { SmoothHeight } from '../ui/Smooth';
@@ -52,6 +54,7 @@ export function EmailDeliverySection({
   myEmail,
   onWorkspace,
   onAddAccount,
+  onRemoveAccount,
   toast,
 }: {
   ws: Workspace;
@@ -60,6 +63,7 @@ export function EmailDeliverySection({
   myEmail?: string; // the person's own mailbox here, for their forwarding address
   onWorkspace: (p: Partial<Workspace>) => void;
   onAddAccount?: () => void; // admins: opens "Add an email account"
+  onRemoveAccount?: (a: Account) => void; // admins: asks what happens to its mail, then removes it
   toast: (t: string) => void;
 }) {
   const [info, setInfo] = useState<Setup | null>(null);
@@ -68,6 +72,19 @@ export function EmailDeliverySection({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState('');
   const [guide, setGuide] = useState(false);
+  const [aliasEdit, setAliasEdit] = useState<MailAlias | 'new' | null>(null);
+  const [leaving, setLeaving] = useState<string[]>([]); // addresses folding away while they're removed
+  const mailboxes = ws.accounts.filter((a) => !a.temp);
+  const hostedBoxes = mailboxes.filter((a) => !a.provider || a.provider === 'sprint2go');
+  const aliases = ws.mailAliases ?? [];
+  /** Aliases are checked and kept by the server (at your domain, not taken); the demo keeps them here. */
+  const saveAliases = async (list: MailAlias[]): Promise<string | null> => {
+    if (!server.on) return (onWorkspace({ mailAliases: list }), null);
+    return post('aliases', { workspaceId: ws.id, aliases: list }).then(
+      () => null,
+      (e: Error) => e.message,
+    );
+  };
   // The records follow what's picked on screen, even before the change has reached the server.
   const load = () =>
     fetch(`/api/mail/setup?ws=${encodeURIComponent(ws.id)}&setup=${ws.emailSetup ?? 'none'}&provider=${ws.emailProvider ?? ''}`)
@@ -314,48 +331,122 @@ export function EmailDeliverySection({
           )}
         </div>
 
-        {ws.accounts.filter((a) => !a.temp).length > 0 && ws.emailSetup !== 'none' && (
+        {ws.emailSetup !== 'none' && (
           <div className="set-block">
             <div className="ed-head">
               <h3>Your mailboxes</h3>
-              <button
-                type="button"
-                className="ghost-btn sm outline"
-                disabled={checking}
-                onClick={() => {
-                  setChecking(true);
-                  void post('ready', { workspaceId: ws.id })
-                    .then(() => toast('Checked again.'))
-                    .catch((e: Error) => toast(e.message))
-                    .finally(() => setChecking(false));
-                }}
-              >
-                {checking ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Check again
-              </button>
+              <span className="ed-head-actions">
+                {mailboxes.length > 0 && (
+                  <button
+                    type="button"
+                    className="ghost-btn sm outline"
+                    disabled={checking}
+                    onClick={() => {
+                      setChecking(true);
+                      void post('ready', { workspaceId: ws.id })
+                        .then(() => toast('Checked again.'))
+                        .catch((e: Error) => toast(e.message))
+                        .finally(() => setChecking(false));
+                    }}
+                  >
+                    {checking ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Check again
+                  </button>
+                )}
+                {canManage && onAddAccount && (
+                  <button type="button" className="ghost-btn sm outline" onClick={onAddAccount}>
+                    <Plus size={14} /> Add a mailbox
+                  </button>
+                )}
+              </span>
             </div>
-            <div className="ed-records">
-              {ws.accounts
-                .filter((a) => !a.temp)
-                .map((a) => {
+            {mailboxes.length === 0 ? (
+              <p className="small muted">No mailboxes yet. Add one for each person, and shared inboxes like hello@ for the team.</p>
+            ) : (
+              <div className="ed-records">
+                {mailboxes.map((a) => {
                   const r = ws.mailReady?.mailboxes?.[a.id];
                   // Kept with Google or Microsoft: copies arriving here is all it can do, so that counts as working.
                   const kept = !!a.provider && a.provider !== 'sprint2go';
                   const both = kept ? r?.receive : r?.receive && r?.send;
+                  const extra = aliases.filter((al) => al.to.includes(a.id)).map((al) => al.address);
                   return (
                     <div key={a.id} className={`ed-record ${!r ? '' : both ? 'ok' : 'bad'}`}>
                       <span className="ed-rec-main">
                         <strong>{a.email}</strong>
                         <small className="muted">
+                          {a.kind === 'shared' ? 'Shared inbox · ' : ''}
                           {!r ? 'Not checked yet' : kept ? (r.receive ? 'Copies arrive here' : 'No copies yet') : `${r.receive ? 'Receives' : 'Doesn’t receive yet'} · ${r.send ? 'sends' : 'doesn’t send yet'}`}
                           {r?.why ? `. ${r.why}` : ''}
                         </small>
+                        {extra.length > 0 && <small className="muted">Also gets mail for {extra.join(', ')}</small>}
                       </span>
                       <span className="ed-rec-state">{r ? both ? <Check size={15} /> : <AlertTriangle size={15} /> : null}</span>
+                      {canManage && onRemoveAccount && (
+                        <button type="button" className="icon-btn sm ed-rec-del" title={`Remove ${a.email}`} aria-label={`Remove ${a.email}`} onClick={() => onRemoveAccount(a)}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {ws.mailReady && mailboxes.length > 0 && <p className="small muted">Checked {relative(ws.mailReady.at)}. Mail unlocks for everyone as soon as a mailbox works.</p>}
+          </div>
+        )}
+
+        {(setup === 'hosted' || setup === 'mix') && hostedBoxes.length > 0 && (
+          <div className="set-block">
+            <div className="ed-head">
+              <h3>Other addresses</h3>
+              {canManage && (
+                <button type="button" className={`ghost-btn sm outline ${ws.domains.length ? '' : 'off'}`} aria-disabled={ws.domains.length ? undefined : true} title={ws.domains.length ? undefined : 'Add your domain under General first'} onClick={() => (ws.domains.length ? setAliasEdit('new') : toast('Add your domain under General first: addresses live at your own domain.'))}>
+                  <Plus size={14} /> Add an address
+                </button>
+              )}
             </div>
-            {ws.mailReady && <p className="small muted">Checked {relative(ws.mailReady.at)}. Mail unlocks for everyone as soon as a mailbox works.</p>}
+            <p className="small muted">Addresses like sales@ or info@ that deliver into mailboxes here: into a shared inbox, or a copy to each of several people.</p>
+            {aliases.length > 0 && (
+              <div className="ed-records">
+                {aliases.map((al) => (
+                  <div key={al.id} className={`ed-record ${leaving.includes(al.id) ? 'leaving' : ''}`}>
+                    <span className="ed-rec-main">
+                      <strong>{al.address}</strong>
+                      <small className="muted">
+                        {al.to.length > 1 ? 'A copy to each of ' : 'Into '}
+                        {al.to.map((id) => ws.accounts.find((a) => a.id === id)?.email ?? 'a removed mailbox').join(', ')}
+                      </small>
+                    </span>
+                    {canManage && (
+                      <span className="ed-rec-tools">
+                        <button type="button" className="icon-btn sm" title={`Change ${al.address}`} aria-label={`Change ${al.address}`} onClick={() => setAliasEdit(al)}>
+                          <PenLine size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn sm"
+                          title={`Remove ${al.address}`}
+                          aria-label={`Remove ${al.address}`}
+                          onClick={() => {
+                            setLeaving((l) => [...l, al.id]);
+                            setTimeout(
+                              () =>
+                                void saveAliases(aliases.filter((x) => x.id !== al.id)).then((err) => {
+                                  setLeaving((l) => l.filter((x) => x !== al.id));
+                                  toast(err ?? `${al.address} removed. Mail to it is refused from now on.`);
+                                }),
+                              220,
+                            );
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -391,6 +482,21 @@ export function EmailDeliverySection({
           </div>
         ) : null}
       </fieldset>
+      {aliasEdit && (
+        <AliasDialog
+          workspace={ws}
+          alias={aliasEdit === 'new' ? undefined : aliasEdit}
+          onClose={() => setAliasEdit(null)}
+          onSave={async (al) => {
+            const err = await saveAliases(aliasEdit === 'new' ? [...aliases, al] : aliases.map((x) => (x.id === al.id ? al : x)));
+            if (!err) {
+              setAliasEdit(null);
+              toast(aliasEdit === 'new' ? `${al.address} added. Send it a test to see it arrive.` : `${al.address} saved`);
+            }
+            return err;
+          }}
+        />
+      )}
     </>
   );
 }

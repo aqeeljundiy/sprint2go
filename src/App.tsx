@@ -39,7 +39,7 @@ import { EmailDeliverySection } from './components/admin/EmailDelivery';
 import { ai, aiLive } from './ai';
 import type { AskChat } from './components/Assistant';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
-import { InviteMember, NewAccount } from './components/WorkspaceForms';
+import { InviteMember, NewAccount, RemoveMailbox } from './components/WorkspaceForms';
 import { applyBranding } from './components/WorkspaceLogo';
 import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, type Mode } from './components/Sidebar';
 import { MessageList } from './components/MessageList';
@@ -237,6 +237,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [activeAccount, setActiveAccount] = useState<string>('all');
   const [newWs, setNewWs] = useState(false);
   const [newAcct, setNewAcct] = useState(false);
+  const [removeAcct, setRemoveAcct] = useState<Account | null>(null); // asking what happens to its mail
   // Throwaway addresses: the dialog (new or editing one) and the little menu on each.
   const [tempDialog, setTempDialog] = useState<{ editing?: Account } | null>(null);
   const [tempMenu, setTempMenu] = useState<Account | null>(null);
@@ -706,10 +707,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Files a sent copy and drops copies straight into any of our own recipients' inboxes. */
   const deliver = (m: Outgoing, draftId?: string) => {
     const thread = toThread(m, 'archive');
-    // Mail to one of our own mailboxes arrives straight in its inbox.
-    const delivered: Thread[] = [...m.to, ...m.cc]
-      .map((p) => allAccounts.find((a) => a.email === p.email.toLowerCase() && a.id !== m.fromId))
-      .filter((a): a is Account => !!a)
+    // Mail to one of our own mailboxes arrives straight in its inbox (an alias: in each of its mailboxes). With the
+    // server, the mail engine does that, for mailboxes this person can't open too.
+    const boxesFor = (email: string) => {
+      const e = email.toLowerCase();
+      const direct = allAccounts.filter((a) => a.email === e);
+      return direct.length ? direct : allWorkspaces.flatMap((w) => (w.mailAliases ?? []).filter((al) => al.address === e).flatMap((al) => w.accounts.filter((a) => al.to.includes(a.id))));
+    };
+    const delivered: Thread[] = (server.on ? [] : [...new Map([...m.to, ...m.cc].flatMap((p) => boxesFor(p.email)).filter((a) => a.id !== m.fromId).map((a) => [a.id, a] as const)).values()])
       .map((a) => ({
         ...thread,
         id: uid(),
@@ -2351,6 +2356,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     sendBot({ url, title: e.title, botName: meetSettings.botName, clientId: '', attendees, fromEvent: e.id });
   };
 
+  /** Removing a mailbox: its mail moves to another mailbox or goes with it, and its address stops receiving. */
+  const removeMailbox = async (a: Account, moveTo: string | null): Promise<boolean> => {
+    const target = moveTo ? ws.accounts.find((x) => x.id === moveTo) : undefined;
+    if (server.on) {
+      const r = await fetch('/api/mail/mailbox/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, accountId: a.id, moveTo }) }).catch(() => null);
+      if (!r?.ok) {
+        showToast({ text: ((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? 'No connection: the mailbox wasn’t removed.' });
+        return false;
+      }
+    } else {
+      setThreads((ts) => (target ? ts.map((t) => (t.accountId === a.id ? { ...t, accountId: target.id } : t)) : ts.filter((t) => t.accountId !== a.id)));
+      patchWorkspace(ws.id, { accounts: ws.accounts.filter((x) => x.id !== a.id), mailAliases: (ws.mailAliases ?? []).map((al) => ({ ...al, to: al.to.filter((id) => id !== a.id) })).filter((al) => al.to.length) });
+    }
+    if (activeAccount === a.id) setActiveAccount('all');
+    setRemoveAcct(null);
+    showToast({ text: target ? `${a.email} removed. Its mail is in ${target.email} now` : `${a.email} and its mail removed` });
+    return true;
+  };
+
   const openThread = (threadId: string) => {
     const t = threads.find((x) => x.id === threadId);
     if (!t) return;
@@ -3472,7 +3496,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 {(mailWhy.receive || mailWhy.send) && <small>{mailWhy.receive ?? mailWhy.send}</small>}
               </div>
               {isAdmin && (
-                <EmailDeliverySection ws={ws} canManage firstName={myFirst} onWorkspace={(p) => patchWorkspace(ws.id, p)} toast={(text) => showToast({ text })} />
+                <EmailDeliverySection ws={ws} canManage firstName={myFirst} onWorkspace={(p) => patchWorkspace(ws.id, p)} onAddAccount={() => setNewAcct(true)} onRemoveAccount={setRemoveAcct} toast={(text) => showToast({ text })} />
               )}
             </div>
           </section>
@@ -3847,11 +3871,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               },
               toast: (text) => showToast({ text }),
             }}
-            onRemoveAccount={(id) => {
-              patchWorkspace(ws.id, { accounts: ws.accounts.filter((a) => a.id !== id) });
-              if (activeAccount === id) setActiveAccount('all');
-              showToast({ text: 'Account removed from this workspace' });
-            }}
+            onRemoveAccount={(id) => setRemoveAcct(ws.accounts.find((a) => a.id === id) ?? null)}
           />
         )}
       </main>
@@ -4132,6 +4152,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           seed={sendBotSeed ?? undefined}
           onSend={(d) => sendBot({ ...d, ...(sendBotSeed ? { fromEvent: sendBotSeed.fromEvent, attendees: sendBotSeed.attendees } : {}) })}
           onClose={() => setSendBotOpen(false)}
+        />
+      )}
+      {removeAcct && (
+        <RemoveMailbox
+          account={removeAcct}
+          workspace={ws}
+          conversations={removeAcct.users.includes(user.id) ? threads.filter((t) => t.accountId === removeAcct.id).length : null}
+          onRemove={(moveTo) => removeMailbox(removeAcct, moveTo)}
+          onClose={() => setRemoveAcct(null)}
         />
       )}
       {shareFor && meetings.some((m) => m.id === shareFor) && (

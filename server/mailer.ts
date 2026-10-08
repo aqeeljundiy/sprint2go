@@ -30,7 +30,8 @@ db.db.exec(`
 
 type Person = { name: string; email: string };
 type Account = { id: string; email: string; name: string; kind: string; users: string[]; provider?: string; connected?: boolean };
-type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean };
+type Alias = { id: string; address: string; to: string[] };
+type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean; mailAliases?: Alias[] };
 
 export interface MailerDeps {
   publicUrl: string;
@@ -54,7 +55,7 @@ const lower = (s: string) => String(s ?? '').trim().toLowerCase();
 const workspaces = () => db.allDocs('workspaces') as unknown as Ws[];
 /** Every mailbox on this server, by address. */
 export function localAccounts() {
-  const map = new Map<string, { ws: Ws; account: Account }>();
+  const map = new Map<string, { ws: Ws; account: Account; alias?: { address: string; accounts: Account[] } }>();
   for (const ws of workspaces()) {
     const slug = lower(ws.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'company';
     for (const a of ws.accounts ?? []) {
@@ -62,6 +63,12 @@ export function localAccounts() {
       if (!a.provider || a.provider === 'sprint2go') map.set(lower(a.email), { ws, account: a });
       // A mailbox that stays with Google or Microsoft gets a forwarding address here: a copy of its mail lands in the app.
       else map.set(`${lower(a.email).split('@')[0]}.${slug}@${MAIL_HOST}`, { ws, account: a });
+    }
+    // Aliases: another address at the company's domain that delivers into one or more of its mailboxes here.
+    for (const al of ws.mailAliases ?? []) {
+      const addr = lower(al.address);
+      const boxes = (ws.accounts ?? []).filter((a) => al.to?.includes(a.id) && a.email && (!a.provider || a.provider === 'sprint2go'));
+      if (boxes.length && (ws.domains ?? []).map(lower).includes(addr.split('@')[1] ?? '') && !map.has(addr)) map.set(addr, { ws, account: boxes[0], alias: { address: addr, accounts: boxes } });
     }
   }
   return map;
@@ -330,7 +337,15 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
   const rawUnsub = parsed.headerLines.find((h) => h.key === 'list-unsubscribe')?.line ?? '';
   const unsubUrl = ([] as string[]).concat(list?.unsubscribe?.url ?? []).find((u) => /^https?:\/\//i.test(u)) ?? rawUnsub.match(/<(https?:[^>]+)>/i)?.[1];
   const unsubOneClick = !!list?.['unsubscribe-post'] || parsed.headerLines.some((h) => h.key === 'list-unsubscribe-post');
-  for (const rcpt of session.envelope.rcptTo) {
+  // An alias delivers a copy to each of its mailboxes; a mailbox reached twice (directly and through an alias) gets one.
+  type Target = { rcpt: (typeof session.envelope.rcptTo)[number]; found: { ws: Ws; account: Account } | null; shared: boolean };
+  const targets = session.envelope.rcptTo
+    .flatMap((rcpt): Target[] => {
+      const found = accountFor(rcpt.address);
+      return found?.alias ? found.alias.accounts.map((account) => ({ rcpt, found: { ws: found.ws, account }, shared: found.alias!.accounts.length > 1 })) : [{ rcpt, found, shared: false }];
+    })
+    .filter((t, i, all) => !t.found || all.findIndex((x) => x.found?.account.id === t.found!.account.id) === i);
+  for (const { rcpt, found, shared } of targets) {
     if (supportAddresses().includes(lower(rcpt.address)) && supportHandler) {
       const attachments = parsed.attachments.map((a) => {
         const id = randomBytes(16).toString('hex');
@@ -341,7 +356,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
       db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('platform', 'in', spam ? 'spam' : 'support', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
       continue;
     }
-    const hit = accountFor(rcpt.address);
+    const hit = found;
     if (!hit) continue;
     const { ws, account } = hit;
     // A calendar invite: read it, and list its .ics once (calendars attach it twice).
@@ -452,11 +467,17 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed' });
     raw = Buffer.concat([Buffer.from(signatures), raw]);
   }
-  // Our own mailboxes in other companies get a copy straight away (same-company copies are made by the app).
+  // Our own mailboxes get a copy straight away (an alias: each of its mailboxes), here or in other companies; never the
+  // mailbox it was sent from.
   let localCount = 0;
-  for (const p of local) {
-    const hit = mine.get(p.email)!;
-    if (hit.ws.id === ws.id) continue;
+  const localBoxes = local
+    .flatMap((p) => {
+      const found = mine.get(p.email)!;
+      return (found.alias?.accounts ?? [found.account]).map((account) => ({ hit: { ws: found.ws, account }, shared: (found.alias?.accounts.length ?? 1) > 1 }));
+    })
+    .filter((x, i, all) => all.findIndex((y) => y.hit.account.id === x.hit.account.id) === i);
+  for (const { hit, shared } of localBoxes) {
+    if (hit.account.id === o.accountId) continue;
     const parsed = await simpleParser(raw);
     const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: recipients, date: now(), body: o.text, html: o.html, attachments: parsed.attachments.length ? o.files.map((f, i) => ({ name: f.name, size: fmtSize(parsed.attachments[i]?.size ?? 0), url: f.url })) : undefined };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };

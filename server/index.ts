@@ -1318,7 +1318,7 @@ createServer(async (req, res) => {
       }
     }
 
-    /* ---------- mail: calendar invites ---------- */
+    /* ---------- mail: calendar invites, aliases, removing a mailbox ---------- */
     /** A hosted mailbox that can really send, checked afresh when the last check said no; else why not. */
     const sendBlock = async (ws: any, account: any): Promise<string | null> => {
       if (account.provider && account.provider !== 'sprint2go') return `${account.email} stays with ${account.provider === 'microsoft' ? 'Microsoft' : 'Google'}, so mail from it goes out there.`;
@@ -1388,6 +1388,65 @@ createServer(async (req, res) => {
       if (gone.length) broadcast('events', [], gone.map((e) => e.id), undefined, gone);
       if (docs.length) broadcast('events', docs, []);
       return json(res, 200, { sent: tell, events: docs.map((d) => d.id), firstOnly: made.firstOnly });
+    }
+    if (p === '/api/mail/aliases' && req.method === 'POST') {
+      // Extra addresses that deliver into mailboxes here. Checked here: at the company's own domain, not anyone's
+      // mailbox already, and pointing at mailboxes hosted here.
+      const { workspaceId, aliases } = await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change addresses.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      if (ws.emailSetup !== 'hosted' && ws.emailSetup !== 'mix') return json(res, 409, { error: ws.emailSetup === 'keep' ? 'Your domain’s mail stays with your provider, so extra addresses are made there.' : 'Email is off for this company.' });
+      const domains = (ws.domains ?? []).map((d: string) => d.toLowerCase());
+      const hosted = new Set((ws.accounts ?? []).filter((a: any) => !a.temp && (!a.provider || a.provider === 'sprint2go')).map((a: any) => a.id));
+      const taken = mailer.localAccounts();
+      const out: { id: string; address: string; to: string[] }[] = [];
+      for (const al of Array.isArray(aliases) ? aliases.slice(0, 200) : []) {
+        const address = String(al?.address ?? '').trim().toLowerCase();
+        const [local, domain] = address.split('@');
+        if (!/^[a-z0-9][a-z0-9._+-]{0,63}$/.test(local ?? '') || !domains.includes(domain ?? '')) return json(res, 400, { error: `${address || 'That address'} isn’t an address at ${domains.join(' or ') || 'your domain'}.` });
+        const hit = taken.get(address);
+        if ((hit && !(hit.alias && hit.ws.id === ws.id)) || out.some((x) => x.address === address)) return json(res, 409, { error: `${address} is already in use.` });
+        const to = [...new Set<string>((Array.isArray(al?.to) ? al.to : []).map(String))].filter((id) => hosted.has(id));
+        if (!to.length) return json(res, 400, { error: `Pick at least one mailbox for ${address}.` });
+        out.push({ id: typeof al?.id === 'string' && /^[\w-]{1,40}$/.test(al.id) ? al.id : randomBytes(6).toString('hex'), address, to });
+      }
+      const latest = db.getDoc('workspaces', ws.id) as any;
+      const nextWs = { ...latest, mailAliases: out };
+      db.writeDocs('workspaces', [nextWs], [], me);
+      broadcast('workspaces', [nextWs], []);
+      return json(res, 200, { aliases: out });
+    }
+    if (p === '/api/mail/mailbox/remove' && req.method === 'POST') {
+      // Removing a mailbox: its mail moves to another mailbox or is deleted, its aliases let go of it, and new mail to
+      // the address is refused.
+      const { workspaceId, accountId, moveTo } = await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can remove mailboxes.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      const account = (ws.accounts ?? []).find((a: any) => a.id === accountId);
+      if (!account) return json(res, 404, { error: 'No such mailbox.' });
+      const target = moveTo ? (ws.accounts ?? []).find((a: any) => a.id === moveTo && a.id !== account.id && !a.temp) : null;
+      if (moveTo && !target) return json(res, 400, { error: 'Pick a mailbox to move the mail to.' });
+      const mail = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
+      // Deletions first, while the people on the mailbox can still see them.
+      db.writeDocs('threads', [], mail.map((t) => t.id), me);
+      broadcast('threads', [], mail.map((t) => t.id), undefined, mail);
+      if (target) {
+        const moved = mail.map((t) => ({ ...t, accountId: target.id, workspaceId: ws.id, assignee: target.kind === 'shared' ? t.assignee : undefined }));
+        db.writeDocs('threads', moved, [], me);
+        broadcast('threads', moved, []);
+      }
+      const latest = db.getDoc('workspaces', ws.id) as any;
+      const nextWs = {
+        ...latest,
+        accounts: latest.accounts.filter((a: any) => a.id !== account.id),
+        mailAliases: (latest.mailAliases ?? []).map((al: any) => ({ ...al, to: al.to.filter((id: string) => id !== account.id) })).filter((al: any) => al.to.length),
+      };
+      db.writeDocs('workspaces', [nextWs], [], me);
+      broadcast('workspaces', [nextWs], []);
+      soonReadiness(ws.id);
+      return json(res, 200, { moved: target ? mail.length : 0, deleted: target ? 0 : mail.length });
     }
 
     if (p === '/api/password' && req.method === 'POST') {
@@ -1775,7 +1834,7 @@ createServer(async (req, res) => {
           if (before) {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
-            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
+            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases };
             const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
             return { ...d, ...own, plan } as db.Doc;
           }
