@@ -686,6 +686,10 @@ export interface Meeting {
   share?: { token: string; transcript: boolean; video: boolean };
   access?: { watch: 'everyone' | 'attendees' | 'admins'; download: boolean; transcript: 'everyone' | 'attendees' };
   createdBy?: string;
+  // Sent by the server because the calendar said so ("Bot joins automatically")
+  auto?: boolean;
+  eventId?: string; // the calendar event it came from
+  scheduledFor?: string; // when that event starts
 }
 
 export interface MeetingRule {

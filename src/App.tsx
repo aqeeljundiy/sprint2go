@@ -27,7 +27,7 @@ import { templatesFor, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
 import type { VaultItem } from './components/VaultApp';
 import { eventsOn } from './calendarUtils';
-import { meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
+import { botJoins, callKey, meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
 import { setHolidayDays } from './holidayDays';
 import { holidayCalendarId, holidayCountry } from './data/holidays';
 import { useSettings, usePersisted, usePrefsSync } from './settings';
@@ -2264,6 +2264,31 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return [...mine, ...mates];
   }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers]);
   const myEvents = useMemo(() => visibleEvents.filter((e) => !e.calendarId.startsWith('mate-')), [visibleEvents]);
+  // The notetaker joining by itself: the server does it when the real recorder answers; the demo keeps its switches.
+  const autoJoin: 'live' | 'demo' | 'off' = recorderOn ? 'live' : demoOk ? 'demo' : 'off';
+  // (It joins from two minutes before the start until a minute after; a meeting already going gets "Send now".)
+  const botWillJoin = (e: CalEvent) => autoJoin === 'live' && (e.userId ?? user.id) === user.id && !e.calendarId.startsWith('mate-') && new Date(e.start).getTime() > Date.now() - 60_000 && botJoins(e, meetSettings.joinMode, joinOverrides, isMine);
+  const setBotJoin = (eventId: string, join: boolean | null) =>
+    setJoinOverrides((o) => {
+      const n = { ...o };
+      if (join === null) delete n[eventId];
+      else n[eventId] = join;
+      return n;
+    });
+  /** Events the notetaker was sent to (from here, or by itself from the calendar: the same call at the same time). */
+  const sentFor = useMemo(() => {
+    const out: Record<string, string> = { ...sentEvents };
+    const auto = wsMeetings.filter((m) => m.auto && m.scheduledFor && m.url);
+    if (!auto.length) return out;
+    for (const e of myEvents) {
+      if (out[e.id]) continue;
+      const link = meetingLinkOf(e);
+      const start = new Date(e.start).toISOString();
+      const hit = auto.find((m) => m.eventId === e.id || (!!link && m.scheduledFor === start && callKey(m.url!) === callKey(link.url)));
+      if (hit) out[e.id] = hit.id;
+    }
+    return out;
+  }, [sentEvents, wsMeetings, myEvents]);
   const busyDays = useMemo(() => new Set(myEvents.map((e) => new Date(e.start).toDateString())), [myEvents]);
   const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
 
@@ -3523,7 +3548,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             events={myEvents}
             settings={meetSettings}
             overrides={joinOverrides}
-            sentEvents={sentEvents}
+            sentEvents={sentFor}
+            autoJoin={autoJoin}
             onPage={setMeetPage}
             onStop={stopBot}
             onRegenerate={(id) => finishMeeting(id, true)}
@@ -3551,14 +3577,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenClient={openClient}
             onWriteOverview={writeOverview}
             onJoinMode={(jm) => patchWorkspace(ws.id, { meetings: { ...meetSettings, joinMode: jm } })}
-            onOverride={(eid, join) =>
-              setJoinOverrides((o) => {
-                const n = { ...o };
-                if (join === null) delete n[eid];
-                else n[eid] = join;
-                return n;
-              })
-            }
+            onOverride={setBotJoin}
             onSendNow={(e) => sendNotetakerTo(e)}
             demo={demoOk}
             calendarsSyncedAt={linkCals.reduce<string | undefined>((a, c) => (c.syncedAt && (!a || c.syncedAt > a) ? c.syncedAt : a), undefined)}
@@ -3757,6 +3776,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onMenu={() => setSidebarOpen(true)}
             canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
             onNotetaker={botOn ? sendNotetakerTo : undefined}
+            botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
+            onBotJoin={
+              autoJoin === 'live'
+                ? (e, join) => {
+                    const byRule = botJoins(e, meetSettings.joinMode, {}, isMine);
+                    setBotJoin(e.id, join === byRule ? null : join);
+                    showToast({ text: join ? `The notetaker will join “${e.title}”` : `The notetaker won’t join “${e.title}”`, action: { label: 'Undo', run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
+                  }
+                : undefined
+            }
             onMove={(id, start, end) => {
               const before = events.find((e) => e.id === id);
               if (!before) return;
@@ -3786,7 +3815,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, stageIdFor(todos.find((x) => x.id === e.taskId) ?? { workspaceId: ws.id }, 'done'))}
             sentBot={(e) => {
-              const mid = sentEvents[e.id];
+              const mid = sentFor[e.id];
               return mid ? () => (setMeetPage({ kind: 'meeting', id: mid }), go('meet')) : undefined;
             }}
           />

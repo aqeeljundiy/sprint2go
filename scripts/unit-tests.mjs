@@ -209,6 +209,87 @@ await test('Certificate: with a token, an empty host or localhost is never sent 
   delete process.env.CF_ZONE_ID;
 });
 
+/* ---------- jobs the settings promise: clocks are set by hand, the outside world is faked ---------- */
+
+// Nothing in these tests may reach a real mail server: any delivery goes to a closed local port.
+process.env.MAIL_RELAY_URL = 'smtp://127.0.0.1:9';
+
+/* the notetaker joins by itself (server/autojoin.ts) */
+
+const links = await import('../src/meetingLinks.ts');
+await test('Notetaker rule: organize or accept, organize only, every link, off', () => {
+  const mine = (e) => e === 'ana@aj.example';
+  const own = {};
+  const invited = { inviteUid: 'x', organizer: { name: 'Bo', email: 'bo@else.example' }, rsvp: 'tentative' };
+  assert.equal(links.joinsByRule(own, 'accepted', mine), true);
+  assert.equal(links.joinsByRule(invited, 'accepted', mine), false, 'maybe is not yes');
+  assert.equal(links.joinsByRule({ ...invited, rsvp: 'accepted' }, 'accepted', mine), true);
+  assert.equal(links.joinsByRule({ ...invited, rsvp: 'accepted' }, 'organizer', mine), false);
+  assert.equal(links.joinsByRule({ inviteUid: 'x', organizer: { name: 'Ana', email: 'ana@aj.example' } }, 'organizer', mine), true);
+  assert.equal(links.joinsByRule({ feed: 'link' }, 'accepted', mine), true, 'a linked calendar keeps what they go to');
+  assert.equal(links.joinsByRule(invited, 'all', mine), true);
+  assert.equal(links.joinsByRule(own, 'off', mine), false);
+  const ev = { id: 'e', title: 't', calendarId: 'c', start: '', end: '', meetUrl: 'https://teams.microsoft.com/l/meetup-join/abc' };
+  assert.equal(links.botJoins(ev, 'all', {}, mine), false, 'Teams: the notetaker can’t join');
+  assert.equal(links.botJoins({ ...ev, meetUrl: 'https://zoom.us/j/123' }, 'off', { e: true }, mine), true, 'their own switch wins');
+});
+
+const autojoin = await import('../server/autojoin.ts');
+const T0 = Date.parse('2026-10-12T02:00:00.000Z'); // Monday 9:00 in Jakarta
+const ajEvent = (id, mins, extra = {}) => ({ id, title: `Call ${id}`, calendarId: 'work', start: new Date(T0 + mins * 60_000).toISOString(), end: new Date(T0 + (mins + 30) * 60_000).toISOString(), userId: 'aj-ana', workspaceId: 'w-aj', meetUrl: `https://meet.google.com/abc-defg-${id}`, ...extra });
+db.writeDocs('users', [{ id: 'aj-ana', name: 'Ana Owner', email: 'ana@aj.example' }, { id: 'aj-mo', name: 'Mo Member', email: 'mo@aj.example' }], [], null);
+db.writeDocs('workspaces', [{ id: 'w-aj', name: 'AJ', members: [{ userId: 'aj-ana', role: 'owner' }, { userId: 'aj-mo', role: 'member' }], accounts: [], meetings: { joinMode: 'accepted', botName: 'AJ Notetaker' }, plan: { tier: 'studio', track: 'ai', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false } } }], [], null);
+db.writeDocs('events', [
+  ajEvent('soon', 1),
+  ajEvent('later', 10),
+  ajEvent('maybe', 1, { inviteUid: 'u1', organizer: { name: 'Bo', email: 'bo@else.example' }, rsvp: 'tentative' }),
+  ajEvent('teams', 1, { meetUrl: 'https://teams.microsoft.com/l/meetup-join/xyz' }),
+  ajEvent('skip', 1),
+  { ...ajEvent('soon', 1), id: 'soon-mo', userId: 'aj-mo' }, // the same call on a colleague's calendar
+], [], null);
+db.writeDocs('prefs', [{ id: 'aj-ana', value: { 's2g-join:aj-ana': { skip: false } } }], [], null);
+const ajSent = [];
+const ajNotes = [];
+const ajDeps = { recorderUp: () => true, send: async (_ws, m) => (ajSent.push(m), null), notify: (ids, _ws, text) => ajNotes.push({ ids, text }) };
+await test('Auto-join: only events about to start, with a Meet or Zoom link, that the rules say to record; once per call', async () => {
+  const r = await autojoin.runAutoJoin(ajDeps, T0);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['soon', 'sent']]);
+  assert.equal(ajSent[0].url, 'https://meet.google.com/abc-defg-soon');
+  assert.equal(ajSent[0].createdBy, 'aj-ana');
+  assert.equal(ajSent[0].eventId, 'soon');
+  assert.equal(ajSent[0].bot, true);
+  assert.equal(ajSent[0].botName, 'AJ Notetaker');
+  assert.equal((await autojoin.runAutoJoin(ajDeps, T0 + 30_000)).length, 0, 'never twice');
+  const later = await autojoin.runAutoJoin(ajDeps, T0 + 9 * 60_000);
+  assert.deepEqual(later.map((x) => x.eventId), ['later']);
+});
+await test('Auto-join: nothing while the recorder is down', async () => {
+  db.writeDocs('events', [ajEvent('down', 31)], [], null);
+  assert.equal((await autojoin.runAutoJoin({ ...ajDeps, recorderUp: () => false }, T0 + 30 * 60_000)).length, 0);
+});
+await test('Auto-join: a recorder that refuses marks it failed and tells the owner', async () => {
+  const r = await autojoin.runAutoJoin({ ...ajDeps, send: async () => 'Recorder said 500' }, T0 + 30 * 60_000);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['down', 'failed']]);
+  assert.match(ajNotes.at(-1).text, /couldn’t join “Call down”: Recorder said 500/);
+});
+await test('Auto-join: only admins when "Who can record" says so', async () => {
+  const w = db.getDoc('workspaces', 'w-aj');
+  db.writeDocs('workspaces', [{ ...w, meetings: { ...w.meetings, whoCanRecord: 'admins' } }], [], null);
+  db.writeDocs('events', [{ ...ajEvent('mo', 40), userId: 'aj-mo' }], [], null);
+  const r = await autojoin.runAutoJoin(ajDeps, T0 + 39 * 60_000);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['mo', 'not-allowed']]);
+  db.writeDocs('workspaces', [w], [], null);
+});
+await test('Auto-join: the plan’s meeting-bot hours used up means no bot, and the owner hears why', async () => {
+  const h = autojoin.botHours(db.getDoc('workspaces', 'w-aj'), T0);
+  assert.equal(h.hours, 100, 'Studio AI: 10 hours for each of the 10 included seats');
+  db.writeDocs('meetings', [{ id: 'm-used', workspaceId: 'w-aj', bot: true, minutes: 6000, at: new Date(T0 - 86_400_000).toISOString() }], [], null);
+  db.writeDocs('events', [ajEvent('full', 50)], [], null);
+  const r = await autojoin.runAutoJoin(ajDeps, T0 + 49 * 60_000);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['full', 'no-hours']]);
+  assert.match(ajNotes.at(-1).text, /100 meeting-bot hours are used up/);
+  db.writeDocs('meetings', [], ['m-used'], null);
+});
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

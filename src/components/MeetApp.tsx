@@ -35,7 +35,8 @@ import {
 } from 'lucide-react';
 import type { CalEvent, Client, Meeting, MeetingSettings, MeetingType, Role, Todo, User } from '../types';
 import { relative, fullDate } from '../utils';
-import { MEETING_NAME, meetingLinkOf, notetakerJoins, type MeetingKind } from '../meetingLinks';
+import { JOIN_MODES, MEETING_NAME, joinsByRule, meetingLinkOf, notetakerJoins, type MeetingKind } from '../meetingLinks';
+import { isMine } from '../identity';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { Popover } from './ui/Popover';
@@ -158,6 +159,8 @@ export interface MeetProps {
   onJoinMode: (m: NonNullable<MeetingSettings['joinMode']>) => void;
   onOverride: (eventId: string, join: boolean | null) => void;
   onSendNow: (e: CalEvent) => void;
+  /** The notetaker joining by itself: live (the recorder answers), the demo's switches, or not available here. */
+  autoJoin: 'live' | 'demo' | 'off';
   demo?: boolean; // the demo: events that only say "Zoom" or "Google Meet" count as having a link
   calendarsSyncedAt?: string; // when the outside calendars were last read
   onSyncCalendars?: () => void;
@@ -923,7 +926,6 @@ function FolderPage(p: MeetProps & { clientId: string }) {
 
 /* ---------------- Upcoming ---------------- */
 
-const JOIN_LABEL = { accepted: 'Meetings I organize or accept', organizer: 'Only meetings I organize', all: 'Every meeting with a link', off: 'Off: I pick each one' } as const;
 /** The event's video call: a real link, or in the demo a place that just says Zoom or Google Meet. */
 const linkOf = (e: CalEvent, demo?: boolean): MeetingKind | null => meetingLinkOf(e)?.kind ?? (demo ? (/zoom/i.test(e.location ?? '') ? 'zoom' : /meet|google/i.test(e.location ?? '') ? 'meet' : null) : null);
 
@@ -937,8 +939,11 @@ function Upcoming(p: MeetProps) {
     const k = linkOf(e, p.demo);
     if (!k || !notetakerJoins(k)) return false;
     if (e.id in p.overrides) return p.overrides[e.id];
-    return mode === 'all' || mode === 'accepted' || (mode === 'organizer' && !e.guests?.length);
+    return joinsByRule(e, mode, isMine);
   };
+  const live = p.autoJoin === 'live';
+  const admin = p.myRole !== 'member';
+  const modeLabel = JOIN_MODES.find((x) => x.value === mode)?.label ?? '';
   return (
     <section className="meet-pane view-enter">
       <Head title="Upcoming" sub={p.calendarsSyncedAt ? `From your calendars · updated ${relative(p.calendarsSyncedAt)}` : 'From your calendar'} onMenu={p.onMenu}>
@@ -952,9 +957,15 @@ function Upcoming(p: MeetProps) {
         <div className="side-card upcoming-set">
           <span>
             <strong>Bot joins automatically</strong>
-            <small>It joins a minute before each meeting with a Meet or Zoom link. Read-only: it never changes your calendar.</small>
+            <small>
+              {p.autoJoin === 'off'
+                ? 'The notetaker isn’t available on this server yet, so it can’t join meetings. Recordings and notes start working as soon as it is.'
+                : admin
+                  ? 'It joins a minute before each meeting with a Google Meet or Zoom link, for everyone in the company. Read only: it never changes your calendar.'
+                  : `${modeLabel}, for everyone in the company. An admin can change it in Settings, Meetings. Use the switch on a meeting to change just that one.`}
+            </small>
           </span>
-          <Select value={mode} onChange={p.onJoinMode} label="Bot joins automatically" width={280} options={Object.entries(JOIN_LABEL).map(([v, l]) => ({ value: v as keyof typeof JOIN_LABEL, label: l }))} />
+          {p.autoJoin !== 'off' && admin && <Select value={mode} onChange={p.onJoinMode} label="Bot joins automatically" width={280} options={JOIN_MODES.map((x) => ({ value: x.value, label: x.label, hint: x.hint }))} />}
         </div>
         {days.map((d) => (
           <div key={d} className="todo-group">
@@ -964,10 +975,12 @@ function Upcoming(p: MeetProps) {
               .map((e) => {
                 const link = linkOf(e, p.demo);
                 const url = meetingLinkOf(e)?.url;
-                const bot = !!link && notetakerJoins(link);
+                const bot = !!link && notetakerJoins(link) && p.autoJoin !== 'off';
                 const mid = p.sentEvents[e.id];
                 const mt = mid ? p.meetings.find((x) => x.id === mid) : undefined;
                 const startsSoon = new Date(e.start).getTime() - now < 15 * 60_000;
+                // With the real notetaker, the server sends it by itself a minute or two before the start.
+                const willJoin = live && bot && !mt && new Date(e.start).getTime() > now - 60_000 && joins(e);
                 return (
                   <div key={e.id} className="ev-row">
                     <time>
@@ -978,10 +991,15 @@ function Upcoming(p: MeetProps) {
                       <strong>{e.title}</strong>
                       <small>
                         {link ? MEETING_NAME[link] : 'No meeting link'}
-                        {link && !bot ? ' · the notetaker can’t join this yet' : ''}
+                        {link && !notetakerJoins(link) ? ' · the notetaker can’t join this yet' : ''}
                         {e.guests?.length ? ` · ${e.guests.length} other${e.guests.length > 1 ? 's' : ''}` : ''}
                         {e.id in p.overrides ? ' · set by you' : ''}
                       </small>
+                      {willJoin && (
+                        <small className="ev-bot-will">
+                          <Mic size={12} aria-hidden /> The notetaker will join
+                        </small>
+                      )}
                     </span>
                     {mt ? (
                       <button className="link-btn" onClick={() => p.onPage({ kind: 'meeting', id: mt.id })}>
@@ -989,7 +1007,8 @@ function Upcoming(p: MeetProps) {
                       </button>
                     ) : (
                       bot &&
-                      startsSoon && (
+                      startsSoon &&
+                      !willJoin && (
                         <button className="ghost-btn sm" onClick={() => p.onSendNow(e)}>
                           <Send size={13} /> Send now
                         </button>
@@ -1000,7 +1019,7 @@ function Upcoming(p: MeetProps) {
                         <Video size={13} /> Join
                       </a>
                     )}
-                    {bot && (
+                    {bot && !mt && (
                       <label className="ev-switch" title="Bot joins">
                         <span className="muted small">Bot joins</span>
                         <button
@@ -1010,8 +1029,7 @@ function Upcoming(p: MeetProps) {
                           className={`switch ${joins(e) ? 'on' : ''}`}
                           onClick={() => {
                             const want = !joins(e);
-                            const byRule = mode === 'all' || mode === 'accepted' || (mode === 'organizer' && !e.guests?.length);
-                            p.onOverride(e.id, want === byRule ? null : want);
+                            p.onOverride(e.id, want === joinsByRule(e, mode, isMine) ? null : want);
                           }}
                         >
                           <span />

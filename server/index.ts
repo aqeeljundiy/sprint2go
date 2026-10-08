@@ -40,6 +40,7 @@ import * as twostep from './twostep.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
+import * as autojoin from './autojoin.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -769,6 +770,23 @@ function saveMeeting(m: db.Doc) {
   broadcast('meetings', [m], []);
 }
 const meetLine = (message: string) => ({ message, at: new Date().toISOString() });
+
+/**
+ * Saves a meeting (queued) and asks the recorder to send the bot to it, from Meet or by itself from a calendar.
+ * Null when it's on its way; otherwise why not (the meeting is then marked failed).
+ */
+async function dispatchBot(ws: any, doc: any): Promise<string | null> {
+  saveMeeting(doc);
+  const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
+  const sent = await recorder('/bots', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    // Video when this kind of meeting keeps video (or might: it's filed after the meeting, and an unneeded video is deleted then).
+    body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws, doc.language), names, announce: ws.meetings?.announce !== false, video: (doc.clientId ? [ws.meetings?.clientMeetings] : [ws.meetings?.clientMeetings, ws.meetings?.internalMeetings]).includes('video') }),
+  }).then(async (r) => (r.ok ? null : ((await r.json().catch(() => ({}))) as any).error ?? `Recorder said ${r.status}`), () => 'The recorder didn’t answer');
+  if (sent) saveMeeting({ ...doc, status: 'failed', error: sent, log: [...(doc.log ?? []), meetLine(`Couldn’t send the bot: ${sent}`)] });
+  return sent;
+}
 
 /** Which project a meeting belongs to: the company's first matching rule, else the project the AI named. */
 function fileMeeting(ws: any, m: any, aiFolder: string, clients: any[]) {
@@ -1924,15 +1942,7 @@ createServer(async (req, res) => {
       if (!RECORDER_URL || !RECORDER_SECRET) return json(res, 409, { error: 'The recorder isn’t set up on this server.' });
       if (typeof meeting.id !== 'string' || !/^[\w-]{4,80}$/.test(meeting.id)) return json(res, 400, { error: 'Bad meeting.' });
       const doc = { ...meeting, bot: true, status: 'queued', createdBy: me, transcript: [], log: [...(meeting.log ?? []).slice(0, 5)] };
-      saveMeeting(doc);
-      const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
-      const sent = await recorder('/bots', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        // Video when this kind of meeting keeps video (or might: it's filed after the meeting, and an unneeded video is deleted then).
-        body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws, doc.language), names, announce: ws.meetings?.announce !== false, video: (doc.clientId ? [ws.meetings?.clientMeetings] : [ws.meetings?.clientMeetings, ws.meetings?.internalMeetings]).includes('video') }),
-      }).then(async (r) => (r.ok ? null : ((await r.json().catch(() => ({}))) as any).error ?? `Recorder said ${r.status}`), () => 'The recorder didn’t answer');
-      if (sent) saveMeeting({ ...doc, status: 'failed', error: sent, log: [...doc.log, meetLine(`Couldn’t send the bot: ${sent}`)] });
+      const sent = await dispatchBot(ws, doc);
       return json(res, sent ? 502 : 200, sent ? { error: sent } : {});
     }
     const meetId = p.match(/^\/api\/meet\/(stop|audio|video|again)\/([\w-]+)$/);
@@ -2748,6 +2758,13 @@ mailer.onSupportMail(async ({ to, parsed, mid, refs, spam, attachments }) => {
     void mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [email], subject: `Re: ${t.subject} [#${t.number}]`, text: `Thanks, we have your message (ticket #${t.number}) and will reply here. Reply to this email to add anything.`, inReplyTo: mid, references: [mid] }).catch(() => {});
 });
 
+/** A notice in these people's bell, of a kind (the push rules and Settings, Notifications go by it), opening `link`. */
+function tell(userIds: string[], workspaceId: string, kind: string, text: string, link: { app: string; id?: string }) {
+  const at = new Date().toISOString();
+  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind, text: text.slice(0, 300), at, read: false, link })) as db.Doc[];
+  if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
+}
+
 /** A notice for these people (the mail engine uses it for failures and credits). */
 function notifyPeople(userIds: string[], workspaceId: string, text: string, link?: string) {
   const at = new Date().toISOString();
@@ -2838,6 +2855,12 @@ setInterval(() => {
     console.error('[reminders]', e instanceof Error ? e.message : e);
   }
 }, 60_000);
+
+/* ---------- jobs the settings promise (each in its own module, which says what it does) ---------- */
+
+// The notetaker joins by itself (Meet, Upcoming, "Bot joins automatically"): checked every minute.
+const autoJoinDeps: autojoin.AutoJoinDeps = { recorderUp: () => recorderUp, send: dispatchBot, notify: (ids, wsId, text, link) => tell(ids, wsId, 'meeting', text, link) };
+setInterval(() => void autojoin.runAutoJoin(autoJoinDeps).catch((e) => console.error('[autojoin]', e instanceof Error ? e.message : e)), 60_000);
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {

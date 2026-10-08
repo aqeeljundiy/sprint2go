@@ -15,6 +15,7 @@ import { server } from '../../sync';
 import { caps } from '../../caps';
 import { relative } from '../../utils';
 import { loadTwoStep } from '../TwoStep';
+import { JOIN_MODES } from '../../meetingLinks';
 
 const Switch = ({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
   <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
@@ -277,8 +278,16 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         </div>
         <div className="set-block">
           <h3>Notetaker</h3>
-          <Row title="Join meetings from calendars automatically" hint="Coming soon. For now, send the notetaker to a meeting from Meet.">
-            <span className="badge-soon">Not yet</span>
+          {/* The server sends the notetaker by itself (server/autojoin.ts), once the recorder is there to send. */}
+          <Row
+            title="Join meetings from calendars automatically"
+            hint={
+              !server.on || caps.demo || caps.recorder
+                ? 'Google Meet and Zoom calls on people’s calendars. It joins a minute before; anyone can switch it off for one meeting in Meet, Upcoming.'
+                : 'The notetaker isn’t available on this server yet, so it can’t join meetings by itself. This starts working as soon as it is.'
+            }
+          >
+            <Select value={m.joinMode ?? 'accepted'} onChange={(v) => set({ joinMode: v })} options={JOIN_MODES.map((x) => ({ value: x.value, label: x.label, hint: x.hint }))} label="Join meetings from calendars automatically" width={300} disabled={!(!server.on || caps.demo || caps.recorder)} />
           </Row>
           <Row title="Announce recording" hint="The bot says it’s recording when it joins. The host can stop it at any time">
             <Switch on={m.announce} onChange={(v) => set({ announce: v })} />
