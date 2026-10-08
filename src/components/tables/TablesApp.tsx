@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
-import { Zap, ArrowLeft, ArrowUpDown, Columns3, EyeOff, Filter, LayoutGrid, Menu, MoreHorizontal, Plus, Search, Table2, Trash2, X } from 'lucide-react';
+import { Download, FileUp, Zap, ArrowLeft, ArrowUpDown, Columns3, EyeOff, Filter, LayoutGrid, Menu, MoreHorizontal, Plus, Search, Table2, Trash2, X } from 'lucide-react';
 import type { CellValue, Channel, Client, DataTable, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
 import { AutomationsPanel } from './Automations';
+import { ImportDialog, type ImportPlan } from './ImportDialog';
+import { download, rowsToCsv } from './csv';
 import { term } from '../../terms';
 import { uid } from '../../utils';
 import { usePersisted } from '../../settings';
@@ -12,7 +14,7 @@ import { newOption, type CellCtx } from './Cell';
 import { GridView } from './GridView';
 import { BoardView } from './BoardView';
 import { FieldLine, RecordDrawer } from './RecordDrawer';
-import { TABLE_COLORS, TEMPLATES, cellText, convertValue, isEmpty, opsFor, optionsFromValues, rowName, templateFields, visibleRows, type TemplateId } from './fields';
+import { TABLE_COLORS, TEMPLATES, convertValue, isEmpty, opsFor, optionsFromValues, rowName, templateFields, visibleRows, type TemplateId } from './fields';
 
 type Setter<T> = (fn: (x: T) => T) => void;
 
@@ -196,6 +198,7 @@ export function TableScreen(p: ScreenProps) {
   const [name, setName] = useState(t.name);
   const [renamingView, setRenamingView] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [asking, setAsking] = useState<{ row: TableRow; f: TableField } | null>(null);
 
@@ -300,6 +303,27 @@ export function TableScreen(p: ScreenProps) {
     p.onDeleted();
   };
 
+  /* CSV */
+  const exportCsv = () => {
+    const ids = view?.kind === 'grid' ? t.fields.filter((f) => !view.hidden?.includes(f.id)).map((f) => f.id) : undefined;
+    download(`${t.name.replace(/[^\w\s-]/g, '').trim() || 'table'}.csv`, rowsToCsv(t, shown, p.users, rowNameOf, ids));
+  };
+  const importPlan = async (plan: ImportPlan) => {
+    if (p.serverOn) {
+      const r = await fetch('/api/tables/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tableId: t.id, ...plan }) });
+      const out = await r.json().catch(() => null);
+      if (!r.ok) return p.toast({ text: out?.error ?? 'The import didn’t go through. Try again.' });
+    } else {
+      patchTable({ fields: plan.fields });
+      let order = Math.max(0, ...mine.map((x) => x.order));
+      const made: TableRow[] = plan.creates.map((values) => ({ id: uid(), workspaceId: t.workspaceId, tableId: t.id, values, order: ++order, createdBy: p.me, createdAt: now(), updatedAt: now() }));
+      const upd = new Map(plan.updates.map((u) => [u.id, u.values]));
+      p.setRows((rs) => [...rs.map((r) => (upd.has(r.id) ? { ...r, values: { ...r.values, ...upd.get(r.id)! }, updatedAt: now() } : r)), ...made]);
+    }
+    setImporting(false);
+    p.toast({ text: `Imported ${plan.creates.length} row${plan.creates.length === 1 ? '' : 's'}${plan.updates.length ? `, updated ${plan.updates.length}` : ''}` });
+  };
+
   /* buttons */
   const press = async (row: TableRow, f: TableField, input: Record<string, CellValue> = {}) => {
     if (!p.serverOn) return p.toast({ text: 'Buttons run on the server; they work once Sprint2go is running on one.' });
@@ -365,6 +389,12 @@ export function TableScreen(p: ScreenProps) {
               <span className="muted small">Description</span>
               <textarea rows={2} defaultValue={t.description ?? ''} placeholder="What this table is for" onBlur={(e) => e.target.value.trim() !== (t.description ?? '') && patchTable({ description: e.target.value.trim() || undefined })} />
             </label>
+            <button type="button" onClick={() => (setPop(null), setImporting(true))}>
+              <FileUp size={14} /> Import CSV
+            </button>
+            <button type="button" onClick={() => (setPop(null), exportCsv())}>
+              <Download size={14} /> Download CSV{view && shown.length !== mine.length ? ` (${shown.length} shown)` : ''}
+            </button>
             <button type="button" className="danger" onClick={() => (setPop(null), deleteTable())}>
               <Trash2 size={14} /> Delete table
             </button>
@@ -486,6 +516,7 @@ export function TableScreen(p: ScreenProps) {
         </TabPane>
       </div>
 
+      {importing && <ImportDialog table={t} rows={mine} users={p.users} onImport={importPlan} onClose={() => setImporting(false)} />}
       {autoOpen && <AutomationsPanel t={t} tables={p.tables} users={p.users} channels={p.channels} onPatch={patchTable} onClose={() => setAutoOpen(false)} toast={(text) => p.toast({ text })} />}
       {asking && (
         <AskDialog
@@ -592,13 +623,6 @@ function FilterEditor({ table, filters, users, onChange }: { table: DataTable; f
   );
 }
 
-/** Rows as CSV text (used by export, and by copying a selection later). */
-export function rowsToCsv(t: DataTable, rows: TableRow[], users: User[], rowNameOf: (id: string) => string) {
-  const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const head = t.fields.map((f) => esc(f.name)).join(',');
-  const body = rows.map((r) => t.fields.map((f) => esc(f.type === 'money' || f.type === 'number' ? (isEmpty(r.values[f.id]) ? '' : String(r.values[f.id])) : cellText(f, r.values[f.id], { users, rowName: rowNameOf }))).join(','));
-  return [head, ...body].join('\n');
-}
 
 /** Tables with none open: every table as a card (company first, then each project's), or how to start. */
 export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { tables: DataTable[]; rows: TableRow[]; clients: Client[]; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void }) {

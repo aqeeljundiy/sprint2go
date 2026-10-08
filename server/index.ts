@@ -730,6 +730,13 @@ createServer(async (req, res) => {
       if (f?.button?.who === 'admins' && !isAdminOf(me, t.workspaceId)) return json(res, 403, { error: 'Only admins can press this button.' });
       return json(res, 200, await tablesEngine.runButton(tablesEnv, t.id, String(b.rowId ?? ''), String(b.fieldId ?? ''), me, b.input ?? {}));
     }
+    if (p === '/api/tables/import' && req.method === 'POST') {
+      const b = await body(req);
+      const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
+      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId)) return json(res, 404, { error: 'No such table.' });
+      const out = tablesEngine.importRows(tablesEnv, t.id, me, b);
+      return json(res, out.status, out.body);
+    }
     if (p === '/api/tables/test-hook' && req.method === 'POST') {
       const b = await body(req);
       const t = db.getDoc('tables', String(b.tableId ?? '')) as any;

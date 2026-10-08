@@ -1536,3 +1536,82 @@
     animation-duration: 2s;
   }
 }
+
+/* ---------- CSV import ---------- */
+
+.tb-import {
+  width: min(640px, calc(100vw - 32px));
+}
+.tb-drop {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 36px 20px;
+  border-radius: 14px;
+  border: 1.5px dashed color-mix(in srgb, var(--text-3) 50%, transparent);
+  color: var(--text-2);
+  text-align: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.tb-drop:hover,
+.tb-drop.over {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tb-drop strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.tb-drop small {
+  max-width: 380px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.tb-imap {
+  display: grid;
+  gap: 2px;
+  margin: 10px 0 14px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.tb-imap-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  transition: background 0.12s ease, opacity 0.15s ease;
+}
+.tb-imap-row:hover {
+  background: var(--surface-2);
+}
+.tb-imap-row.skip {
+  opacity: 0.55;
+}
+.tb-imap-col {
+  display: grid;
+  min-width: 0;
+}
+.tb-imap-col strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-imap-col small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-imp-sum {
+  margin-right: 8px;
+}
+@media (max-width: 760px) {
+  .tb-imap-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

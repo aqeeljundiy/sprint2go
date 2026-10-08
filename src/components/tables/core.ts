@@ -1,5 +1,5 @@
 import type { CellValue, DataTable, FieldType, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
-import { uid } from '../../utils';
+import { localDay, uid } from '../../utils';
 
 /* Pure table logic, shared by the app and the server (no React, no icons). */
 
@@ -193,4 +193,67 @@ export function templateFields(id: TemplateId): { fields: TableField[]; views: T
     return { fields: [f('Item', 'text'), status, f('Owner', 'person'), f('Due', 'date')], views: [grid(), board(status.id)] };
   }
   return { fields: [f('Name', 'text'), f('Notes', 'longtext')], views: [grid()] };
+}
+
+/** A value from outside (a webhook, a CSV cell) turned into what the field holds: choices by label (new ones added), Indonesian or English number formats, dates, people by email or name. */
+export function parseIncoming(f: TableField, raw: unknown, users: User[]): { v: CellValue; field?: TableField } {
+  if (raw == null || raw === '') return { v: null };
+  const s = String(raw).trim();
+  switch (f.type) {
+    case 'number':
+    case 'money': {
+      const n = Number(s.replace(/[^\d.,-]/g, '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
+      return { v: Number.isFinite(n) ? n : null };
+    }
+    case 'checkbox':
+      return { v: !/^(0|false|no|tidak|off)$/i.test(s) };
+    case 'date': {
+      // 08/10/2026 or 8-10-2026 is day first (as written in Indonesia and Europe), never US month first.
+      const dm = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+      if (dm) return { v: `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}` };
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return { v: s.slice(0, 10) };
+      const d = new Date(/^\d+$/.test(s) ? Number(s) * (s.length <= 10 ? 1000 : 1) : s);
+      return { v: Number.isNaN(d.getTime()) ? null : localDay(d) }; // the calendar day where it's read, not UTC
+    }
+    case 'person': {
+      const u = users.find((x) => x.email?.toLowerCase() === s.toLowerCase() || x.name.toLowerCase() === s.toLowerCase());
+      return { v: u?.id ?? null };
+    }
+    case 'select':
+    case 'multi': {
+      const labels = f.type === 'multi' ? s.split(/\s*[,;]\s*/).filter(Boolean) : [s];
+      let field = f;
+      const ids = labels.map((l) => {
+        const hit = field.options?.find((o) => o.label.toLowerCase() === l.toLowerCase());
+        if (hit) return hit.id;
+        const o = { id: uid(), label: l.slice(0, 60), color: ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#0ea5e9'][(field.options?.length ?? 0) % 6] };
+        field = { ...field, options: [...(field.options ?? []), o] };
+        return o.id;
+      });
+      return { v: f.type === 'multi' ? ids : ids[0], field: field !== f ? field : undefined };
+    }
+    case 'link':
+    case 'button':
+      return { v: null };
+    default:
+      return { v: s.slice(0, 5000) };
+  }
+}
+
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** Other names people use for common fields (English and Indonesian). */
+const SAME: Record<string, string[]> = {
+  name: ['fullname', 'firstname', 'nama', 'namalengkap', 'contactname', 'customer', 'pelanggan'],
+  email: ['emailaddress', 'mail', 'surel'],
+  phone: ['phonenumber', 'mobile', 'whatsapp', 'wa', 'telp', 'telepon', 'hp', 'nohp', 'nomorhp', 'nowa'],
+  company: ['organization', 'business', 'perusahaan', 'brand'],
+  city: ['kota'],
+  notes: ['note', 'catatan', 'keterangan', 'message', 'pesan'],
+};
+/** A key or column's field by name: email -> Email, phone_number -> Phone, data.full_name -> Name, Nama -> Name. */
+export function guessField(key: string, fields: TableField[], skip: Set<string> = new Set()) {
+  const last = norm(key.split('.').pop() ?? key);
+  const ok = fields.filter((f) => f.type !== 'button' && f.type !== 'link' && !skip.has(f.id));
+  return (ok.find((f) => norm(f.name) === last) ?? ok.find((f) => (SAME[norm(f.name)] ?? []).includes(last) || Object.entries(SAME).some(([k, list]) => list.includes(norm(f.name)) && (k === last || list.includes(last)))))?.id;
 }

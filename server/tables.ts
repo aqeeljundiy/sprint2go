@@ -2,7 +2,7 @@
 // One engine for all of them, so a button, a rule and an incoming lead behave the same way.
 import { createHmac, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { cellText, isEmpty, passes, rowName } from '../src/components/tables/core.ts';
+import { cellText, guessField, isEmpty, parseIncoming, passes, rowName } from '../src/components/tables/core.ts';
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
 
 export interface Env {
@@ -316,55 +316,6 @@ export function flatten(obj: unknown, prefix = '', out: Record<string, unknown> 
   return out;
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-const SAME: Record<string, string[]> = { name: ['fullname', 'firstname', 'nama', 'contactname'], email: ['emailaddress', 'mail', 'e_mail'], phone: ['phonenumber', 'mobile', 'whatsapp', 'wa', 'telp', 'hp', 'nohp'], company: ['organization', 'business', 'perusahaan'] };
-/** An incoming key's best field by name (email -> Email, phone_number -> Phone, data.full_name -> Name). */
-function guess(key: string, t: DataTable) {
-  const last = norm(key.split('.').pop() ?? key);
-  return t.fields.find((f) => f.type !== 'button' && f.type !== 'link' && (norm(f.name) === last || (SAME[norm(f.name)] ?? []).includes(last)))?.id;
-}
-
-/** An incoming value turned into what the field holds (choices by label, new ones added). */
-function incoming(f: TableField, raw: unknown, users: User[]): { v: CellValue; field?: TableField } {
-  if (raw == null || raw === '') return { v: null };
-  const s = String(raw).trim();
-  switch (f.type) {
-    case 'number':
-    case 'money': {
-      const n = Number(s.replace(/[^\d.,-]/g, '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
-      return { v: Number.isFinite(n) ? n : null };
-    }
-    case 'checkbox':
-      return { v: !/^(0|false|no|tidak|off)$/i.test(s) };
-    case 'date': {
-      const d = new Date(/^\d+$/.test(s) ? Number(s) * (s.length <= 10 ? 1000 : 1) : s);
-      return { v: Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10) };
-    }
-    case 'person': {
-      const u = users.find((x) => x.email?.toLowerCase() === s.toLowerCase() || x.name.toLowerCase() === s.toLowerCase());
-      return { v: u?.id ?? null };
-    }
-    case 'select':
-    case 'multi': {
-      const labels = f.type === 'multi' ? s.split(/\s*[,;]\s*/).filter(Boolean) : [s];
-      let field = f;
-      const ids = labels.map((l) => {
-        const hit = field.options?.find((o) => o.label.toLowerCase() === l.toLowerCase());
-        if (hit) return hit.id;
-        const o = { id: uid(), label: l.slice(0, 60), color: ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#0ea5e9'][(field.options?.length ?? 0) % 6] };
-        field = { ...field, options: [...(field.options ?? []), o] };
-        return o.id;
-      });
-      return { v: f.type === 'multi' ? ids : ids[0], field: field !== f ? field : undefined };
-    }
-    case 'link':
-    case 'button':
-      return { v: null };
-    default:
-      return { v: s.slice(0, 5000) };
-  }
-}
-
 const hits = new Map<string, number[]>();
 
 /** Data posted to a table's own URL: mapped into a row (or into the matching row, when duplicates are merged). */
@@ -384,7 +335,7 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
   const users = usersOf(t.workspaceId);
   // Keys never seen before get their best field by name, remembered so the mapping screen shows them.
   const mapping = { ...t.intake.mapping };
-  for (const k of Object.keys(flat)) if (!(k in mapping)) mapping[k] = guess(k, t) ?? '';
+  for (const k of Object.keys(flat)) if (!(k in mapping)) mapping[k] = guessField(k, t.fields) ?? '';
   let fields = t.fields;
   const values: Record<string, CellValue> = {};
   const extra: Record<string, unknown> = {};
@@ -394,7 +345,7 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
       extra[k] = raw;
       continue;
     }
-    const { v, field } = incoming(f, raw, users);
+    const { v, field } = parseIncoming(f, raw, users);
     if (field) fields = fields.map((x) => (x.id === field.id ? field : x));
     if (!isEmpty(v)) values[f.id] = v;
   }
@@ -419,4 +370,31 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
 export function testPayload(t: DataTable, a: Extract<TableAction, { kind: 'webhook' }>) {
   const r = rows().find((x) => x.tableId === t.id) ?? newRow(t, Object.fromEntries(t.fields.filter((f) => f.type === 'text').map((f) => [f.id, `Test ${f.name.toLowerCase()}`])), 'test');
   return hookPayload(t, r, a, 'test', usersOf(t.workspaceId));
+}
+
+/** A CSV import: the table's fields (with any new ones), new rows, and rows updated because they matched. */
+export function importRows(env: Env, tableId: string, me: string, plan: { fields: TableField[]; creates: Record<string, CellValue>[]; updates: { id: string; values: Record<string, CellValue> }[]; runRules?: boolean }) {
+  const t = tables().find((x) => x.id === tableId);
+  if (!t) return { status: 404, body: { error: 'No such table' } };
+  if (!Array.isArray(plan.fields) || !plan.fields.length || plan.creates.length + plan.updates.length > 20_000) return { status: 400, body: { error: 'That import is too big or incomplete' } };
+  // Existing fields keep their kind and settings; only new fields and new choices come from the import.
+  const fields = plan.fields.map((f) => {
+    const before = t.fields.find((x) => x.id === f.id);
+    return before ? { ...before, options: f.options ?? before.options } : f;
+  });
+  save(env, 'tables', [{ ...t, fields }]);
+  let order = Math.max(0, ...rows().filter((x) => x.tableId === t.id).map((x) => x.order));
+  const made: TableRow[] = plan.creates.map((values) => ({ ...newRow(t, values, me), order: ++order }));
+  const before = new Map<string, TableRow | undefined>();
+  const updated: TableRow[] = [];
+  for (const u of plan.updates) {
+    const r = db.getDoc('rows', u.id) as unknown as TableRow | undefined;
+    if (!r || r.tableId !== t.id) continue;
+    before.set(r.id, r);
+    updated.push(changed(r, u.values, me));
+  }
+  save(env, 'rows', [...made, ...updated]);
+  logTo(env, t.id, { dir: 'in', ok: true, text: `CSV import: ${made.length} added${updated.length ? `, ${updated.length} updated` : ''}` });
+  if (plan.runRules) afterRowWrite(env, before, [...made, ...updated], me);
+  return { status: 200, body: { ok: true, added: made.length, updated: updated.length } };
 }
