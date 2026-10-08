@@ -16,6 +16,8 @@ export interface CellCtx {
   runButton?: (row: TableRow, f: TableField) => void;
   running?: Set<string>;
   isAdmin?: boolean;
+  /** Guests: only some fields can be changed. */
+  canEdit?: (fieldId: string) => boolean;
 }
 
 /** A Button field's button on a row: hidden where "Show on" doesn't match, busy while it runs. */

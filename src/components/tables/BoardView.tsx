@@ -48,8 +48,9 @@ export function BoardView({
     .sort((a, b) => (rank[a.type] ?? 9) - (rank[b.type] ?? 9))
     .slice(0, 4);
   const columns: { id: string; label: string; color: string }[] = [...(group.options ?? []), { id: '', label: `No ${group.name.toLowerCase()}`, color: '#94a3b8' }];
+  const canMove = !readOnly && (!ctx.canEdit || ctx.canEdit(group.id));
   const drop = (col: string) => {
-    if (dragging && !readOnly) {
+    if (dragging && canMove) {
       const r = rows.find((x) => x.id === dragging);
       if (r && (r.values[group.id] ?? '') !== col) onCell(dragging, group.id, col || null);
     }
@@ -62,7 +63,7 @@ export function BoardView({
       key={r.id}
       type="button"
       className={`tb-card${dragging === r.id ? ' dragging' : ''}`}
-      draggable={!readOnly}
+      draggable={canMove}
       onDragStart={(e) => (e.dataTransfer.setData('text/plain', r.id), (e.dataTransfer.effectAllowed = 'move'), setDragging(r.id))}
       onDragEnd={() => (setDragging(null), setOver(null))}
       onClick={() => onOpenRow(r.id)}

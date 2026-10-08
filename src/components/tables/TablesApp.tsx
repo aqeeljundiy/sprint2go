@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Download, FileUp, Zap, ArrowLeft, ArrowUpDown, Columns3, EyeOff, Filter, LayoutGrid, Menu, MoreHorizontal, Plus, Search, Table2, Trash2, X } from 'lucide-react';
+import { Download, FileUp, Users, Zap, ArrowLeft, ArrowUpDown, Columns3, EyeOff, Filter, LayoutGrid, Menu, MoreHorizontal, Plus, Search, Table2, Trash2, X } from 'lucide-react';
 import type { CellValue, Channel, Client, DataTable, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
 import { AutomationsPanel } from './Automations';
 import { ImportDialog, type ImportPlan } from './ImportDialog';
@@ -185,6 +185,8 @@ interface ScreenProps {
   isAdmin: boolean;
   serverOn: boolean;
   onCompose: (m: { to: string; subject: string; body: string }) => void;
+  /** A project's guest looking at a shared table: what they may do. */
+  guest?: { canEdit: (fieldId: string) => boolean; add: boolean; download: boolean };
 }
 
 export function TableScreen(p: ScreenProps) {
@@ -199,6 +201,8 @@ export function TableScreen(p: ScreenProps) {
   const [renamingView, setRenamingView] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const g = p.guest;
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [asking, setAsking] = useState<{ row: TableRow; f: TableField } | null>(null);
 
@@ -355,7 +359,7 @@ export function TableScreen(p: ScreenProps) {
     void press(row, f);
   };
 
-  const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, addOption, runButton, running, isAdmin: p.isAdmin };
+  const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, addOption, runButton, running, isAdmin: p.isAdmin || !!g, canEdit: g?.canEdit };
   const filters = view?.filters ?? [];
   const setFilters = (fs: TableFilter[]) => patchView({ filters: fs });
   const openRow = p.openRow ? mine.find((r) => r.id === p.openRow) : undefined;
@@ -370,19 +374,30 @@ export function TableScreen(p: ScreenProps) {
         <button className="icon-btn tb-back" onClick={p.onMenu} aria-label="All tables">
           <ArrowLeft size={18} />
         </button>
-        <button type="button" className="client-badge tb-badge" style={{ background: t.color }} title="Change colour" onClick={() => patchTable({ color: TABLE_COLORS[(TABLE_COLORS.indexOf(t.color) + 1) % TABLE_COLORS.length] })}>
+        <button type="button" className="client-badge tb-badge" style={{ background: t.color }} title={g ? t.name : 'Change colour'} disabled={!!g} onClick={() => patchTable({ color: TABLE_COLORS[(TABLE_COLORS.indexOf(t.color) + 1) % TABLE_COLORS.length] })}>
           {t.name.charAt(0).toUpperCase()}
         </button>
         <div className="th-text">
-          <input className="tb-title" value={name} aria-label="Table name" onChange={(e) => setName(e.target.value)} onBlur={() => (name.trim() ? name.trim() !== t.name && patchTable({ name: name.trim() }) : setName(t.name))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
-          <ProjectPicker value={t.clientId ?? ''} onChange={(v) => patchTable({ clientId: v || undefined })} projects={p.clients} none="Whole company" label="Belongs to" className="sel-flat" />
+          <input className="tb-title" value={name} readOnly={!!g} aria-label="Table name" onChange={(e) => setName(e.target.value)} onBlur={() => (name.trim() ? name.trim() !== t.name && patchTable({ name: name.trim() }) : setName(t.name))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+          {g ? t.description && <span className="muted small">{t.description}</span> : <ProjectPicker value={t.clientId ?? ''} onChange={(v) => patchTable({ clientId: v || undefined })} projects={p.clients} none="Whole company" label="Belongs to" className="sel-flat" />}
         </div>
-        <button className={`ghost-btn sm tb-auto-btn${t.intake?.enabled || t.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title="Data coming in, rules, webhooks">
+        {!g && t.clientId && (
+          <button className={`ghost-btn sm tb-share-btn${t.share?.enabled ? ' on' : ''}`} onClick={() => setSharing(true)} title="What the project’s guests see">
+            <Users size={13} /> <span className="lbl">{t.share?.enabled ? 'Shared' : 'Share'}</span>
+          </button>
+        )}
+        {!g && <button className={`ghost-btn sm tb-auto-btn${t.intake?.enabled || t.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title="Data coming in, rules, webhooks">
           <Zap size={13} /> <span className="lbl">Automations</span>
-        </button>
-        <button ref={refs.more} className="icon-btn" onClick={() => setPop('more')} aria-label="Table options">
+        </button>}
+        {g ? (
+          g.download && (
+            <button className="icon-btn" onClick={exportCsv} aria-label="Download CSV" title="Download CSV">
+              <Download size={16} />
+            </button>
+          )
+        ) : <button ref={refs.more} className="icon-btn" onClick={() => setPop('more')} aria-label="Table options">
           <MoreHorizontal size={17} />
-        </button>
+        </button>}
         <Popover anchor={refs.more} open={pop === 'more'} onClose={() => setPop(null)} width={240} align="end" title="Table">
           <div className="tb-menu">
             <label className="tb-menu-desc">
@@ -405,13 +420,15 @@ export function TableScreen(p: ScreenProps) {
       <div className="tb-bar">
         <div className="client-tabs tb-views">
           {t.views.map((v) => (
-            <button key={v.id} ref={v.id === view?.id ? refs.view : undefined} className={v.id === view?.id ? 'on' : ''} onClick={() => (v.id === view?.id ? (setRenamingView(v.name), setPop('view')) : (setViewId(v.id), setSelected(new Set())))} title={v.id === view?.id ? 'View settings' : undefined}>
+            <button key={v.id} ref={v.id === view?.id ? refs.view : undefined} className={v.id === view?.id ? 'on' : ''} onClick={() => (v.id === view?.id ? !g && (setRenamingView(v.name), setPop('view')) : (setViewId(v.id), setSelected(new Set())))} title={v.id === view?.id ? 'View settings' : undefined}>
               {v.kind === 'board' ? <Columns3 size={13} /> : <LayoutGrid size={13} />} {v.name}
             </button>
           ))}
-          <button ref={refs.addView} className="tb-add-view" onClick={() => setPop('addView')} title="Add a view">
-            <Plus size={14} />
-          </button>
+          {!g && (
+            <button ref={refs.addView} className="tb-add-view" onClick={() => setPop('addView')} title="Add a view">
+              <Plus size={14} />
+            </button>
+          )}
         </div>
         <Popover anchor={refs.addView} open={pop === 'addView'} onClose={() => setPop(null)} width={220} title="Add a view">
           <div className="tb-menu">
@@ -439,6 +456,7 @@ export function TableScreen(p: ScreenProps) {
           <Search size={14} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search rows" />
         </label>
+        {!g && <>
         <button ref={refs.filter} className={`ghost-btn sm${filters.length ? ' on' : ''}`} onClick={() => setPop('filter')}>
           <Filter size={13} /> <span className="lbl">{filters.length ? `${filters.length} filter${filters.length === 1 ? '' : 's'}` : 'Filter'}</span>
         </button>
@@ -450,9 +468,12 @@ export function TableScreen(p: ScreenProps) {
             <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
           </button>
         )}
-        <button className="primary-btn sm" onClick={() => (view?.kind === 'board' ? p.setOpenRow(addRow()) : addRow())}>
-          <Plus size={14} /> <span className="lbl">New row</span>
-        </button>
+        </>}
+        {(!g || g.add) && (
+          <button className="primary-btn sm" onClick={() => (view?.kind === 'board' ? p.setOpenRow(addRow()) : addRow())}>
+            <Plus size={14} /> <span className="lbl">New row</span>
+          </button>
+        )}
 
         <Popover anchor={refs.filter} open={pop === 'filter'} onClose={() => setPop(null)} width={420} title="Filter">
           <FilterEditor table={t} filters={filters} users={p.users} onChange={setFilters} />
@@ -504,9 +525,9 @@ export function TableScreen(p: ScreenProps) {
       <div className="tb-body">
         <TabPane key={view?.id ?? 'none'}>
           {!view ? null : view.kind === 'board' ? (
-            <BoardView table={t} view={view} rows={shown} ctx={ctx} onCell={setCell} onOpenRow={p.setOpenRow} onAddRow={(v) => p.setOpenRow(addRow(v))} onView={patchView} />
+            <BoardView table={t} view={view} rows={shown} ctx={ctx} onCell={setCell} onOpenRow={p.setOpenRow} onAddRow={(v) => p.setOpenRow(addRow(v))} onView={patchView} readOnly={!!g && !g.add && !t.fields.some((f) => g.canEdit(f.id))} />
           ) : (
-            <GridView channels={p.channels} table={t} tables={p.tables} view={view} rows={shown} ctx={ctx} selected={selected} onSelect={setSelected} onCell={setCell} onOpenRow={p.setOpenRow} onAddRow={() => addRow()} onSaveField={saveField} onDeleteField={deleteField} onView={patchView} />
+            <GridView locked={!!g} canAdd={!g || g.add} channels={p.channels} table={t} tables={p.tables} view={view} rows={shown} ctx={ctx} selected={selected} onSelect={setSelected} onCell={setCell} onOpenRow={p.setOpenRow} onAddRow={() => addRow()} onSaveField={saveField} onDeleteField={deleteField} onView={patchView} />
           )}
           {view && !shown.length && (mine.length ? (
             <p className="muted small tb-none">No rows match {q.trim() ? 'the search' : 'the filters'}.</p>
@@ -517,6 +538,7 @@ export function TableScreen(p: ScreenProps) {
       </div>
 
       {importing && <ImportDialog table={t} rows={mine} users={p.users} onImport={importPlan} onClose={() => setImporting(false)} />}
+      {sharing && <ShareTableDialog t={t} onSave={(share) => (patchTable({ share }), setSharing(false), p.toast({ text: share.enabled ? 'Shared with the project’s guests' : 'No longer shared' }))} onClose={() => setSharing(false)} />}
       {autoOpen && <AutomationsPanel t={t} tables={p.tables} users={p.users} channels={p.channels} onPatch={patchTable} onClose={() => setAutoOpen(false)} toast={(text) => p.toast({ text })} />}
       {asking && (
         <AskDialog
@@ -544,6 +566,7 @@ export function TableScreen(p: ScreenProps) {
           onDuplicate={() => duplicate(openRow.id)}
           onClose={() => p.setOpenRow(null)}
           onOpenRow={(tableId, rowId) => p.onOpenTable(tableId, rowId)}
+          guest={!!g}
         />
       )}
     </section>
@@ -696,6 +719,86 @@ function AskDialog({ table, row, f, ctx, onRun, onClose }: { table: DataTable; r
           </button>
           <button className="primary-btn" onClick={() => onRun(draft)}>
             {f.button?.label || 'Run'}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+/** What a project's guests get of this table: they see some fields, change fewer, press chosen buttons. */
+function ShareTableDialog({ t, onSave, onClose }: { t: DataTable; onSave: (s: NonNullable<DataTable['share']>) => void; onClose: () => void }) {
+  const [s, setS] = useState<NonNullable<DataTable['share']>>(
+    () => t.share ?? { enabled: true, fields: t.fields.filter((f, i) => i > 0 && !['button', 'link', 'longtext'].includes(f.type)).map((f) => f.id), edit: [], buttons: [], add: false, download: true },
+  );
+  const toggle = (key: 'fields' | 'edit' | 'buttons', id: string, on: boolean) =>
+    setS((x) => {
+      const next = { ...x, [key]: on ? [...x[key], id] : x[key].filter((y) => y !== id) };
+      if (key === 'fields' && !on) next.edit = next.edit.filter((y) => y !== id); // can't change what they can't see
+      if (key === 'edit' && on && !next.fields.includes(id)) next.fields = [...next.fields, id];
+      return next;
+    });
+  const first = t.fields[0];
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal tb-share" role="dialog" aria-label="Share with guests" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <Users size={15} /> Share {t.name} with guests
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body">
+          <label className="check-row tb-share-on">
+            <input type="checkbox" checked={s.enabled} onChange={(e) => setS({ ...s, enabled: e.target.checked })} />
+            <span>
+              <strong>Guests on this {term.one} can open this table</strong>
+              <small className="muted">It shows in their shared space. Rules, webhook addresses and the team’s notes on rows stay hidden.</small>
+            </span>
+          </label>
+          <div className={`fold ${s.enabled ? 'open' : ''}`}>
+            <div className="fold-in">
+              <div className="tb-share-grid">
+                <span />
+                <small className="muted">Sees</small>
+                <small className="muted">Can change</small>
+                <span className="tb-share-name">{first.name}</span>
+                <input type="checkbox" checked disabled aria-label={`${first.name} is always seen`} />
+                <input type="checkbox" checked={s.edit.includes(first.id)} onChange={(e) => toggle('edit', first.id, e.target.checked)} aria-label={`Guests can change ${first.name}`} />
+                {t.fields.slice(1).filter((f) => f.type !== 'link').map((f) =>
+                  f.type === 'button' ? (
+                    <div key={f.id} className="contents">
+                      <span className="tb-share-name">{f.button?.label ?? f.name} <small className="muted">button</small></span>
+                      <input type="checkbox" checked={s.buttons.includes(f.id)} onChange={(e) => toggle('buttons', f.id, e.target.checked)} aria-label={`Guests can press ${f.name}`} />
+                      <span />
+                    </div>
+                  ) : (
+                    <div key={f.id} className="contents">
+                      <span className="tb-share-name">{f.name}</span>
+                      <input type="checkbox" checked={s.fields.includes(f.id)} onChange={(e) => toggle('fields', f.id, e.target.checked)} aria-label={`Guests see ${f.name}`} />
+                      <input type="checkbox" checked={s.edit.includes(f.id)} onChange={(e) => toggle('edit', f.id, e.target.checked)} aria-label={`Guests can change ${f.name}`} />
+                    </div>
+                  ),
+                )}
+              </div>
+              <label className="check-row">
+                <input type="checkbox" checked={!!s.add} onChange={(e) => setS({ ...s, add: e.target.checked })} /> They can add rows
+              </label>
+              <label className="check-row">
+                <input type="checkbox" checked={!!s.download} onChange={(e) => setS({ ...s, download: e.target.checked })} /> They can download it as CSV
+              </label>
+            </div>
+          </div>
+        </div>
+        <footer className="modal-foot">
+          <span className="spacer" />
+          <button className="ghost-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-btn" onClick={() => onSave(s)}>
+            Save
           </button>
         </footer>
       </div>

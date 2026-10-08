@@ -1615,3 +1615,46 @@
     gap: 4px;
   }
 }
+
+/* ---------- sharing with guests ---------- */
+
+.tb-share-btn.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.tb-share {
+  width: min(520px, calc(100vw - 32px));
+}
+.tb-share-on {
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.tb-share-on span {
+  display: grid;
+  gap: 2px;
+}
+.tb-share-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 92px;
+  align-items: center;
+  justify-items: center;
+  row-gap: 6px;
+  margin: 4px 0 14px;
+  max-height: 44vh;
+  overflow: auto;
+}
+.tb-share-grid > :nth-child(3n + 1),
+.tb-share-grid .contents > :first-child {
+  justify-self: start;
+}
+.tb-share-name {
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contents {
+  display: contents;
+}

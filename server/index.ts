@@ -13,7 +13,7 @@ import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
-import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
+import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -196,6 +196,13 @@ function clientLens(me: Person) {
         return files.has(d.id) || (d.kind === 'folder' && d.clientId === clientId) ? d : null;
       case 'notices':
         return d.userId === me.id || d.userId === `email:${email}` ? d : null;
+      case 'tables':
+        return guestTable(client, d);
+      case 'rows': {
+        const t = db.getDoc('tables', d.tableId) as any;
+        const g = t && guestTable(client, t);
+        return g ? guestRow(g, d) : null;
+      }
       default:
         return null; // mail, calendars, events, statuses, templates: never
     }
@@ -242,6 +249,23 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       return access.uploads && can(person, 'upload') && d.clientId === clientId && String(d.uploadedBy).toLowerCase() === email ? d : null;
     case 'notices':
       return !before && d.workspaceId === workspaceId && (w.members.some((m: any) => m.userId === d.userId) || String(d.userId).startsWith('email:')) ? d : null;
+    case 'rows': {
+      // A shared table: guests change only the fields the team opened up, and add rows only if allowed.
+      const t = db.getDoc('tables', String((before ?? d).tableId)) as any;
+      const share = t?.clientId === clientId && t.share?.enabled ? t.share : null;
+      if (!share || !can(person, 'comment')) return null;
+      const editable = new Set<string>(share.edit ?? []);
+      const pick = (vals: any) => Object.fromEntries(Object.entries(vals ?? {}).filter(([k]) => editable.has(k)));
+      const at = new Date().toISOString();
+      if (!before) {
+        if (!share.add) return null;
+        return { id: d.id, workspaceId: t.workspaceId, tableId: t.id, values: { ...pick(d.values), ...(d.values?.[t.fields[0].id] != null ? { [t.fields[0].id]: d.values[t.fields[0].id] } : {}) }, order: Number(d.order) || Date.now(), createdBy: email, createdAt: at, updatedAt: at };
+      }
+      const changes = Object.entries(pick(d.values)).filter(([k, v]) => JSON.stringify(before.values?.[k] ?? null) !== JSON.stringify(v));
+      if (!changes.length) return null;
+      const history = [...(before.history ?? []), ...changes.map(([k, v]) => ({ by: email, at, fieldId: k, from: before.values?.[k] ?? null, to: v }))].slice(-50);
+      return { ...before, values: { ...before.values, ...Object.fromEntries(changes) }, updatedAt: at, history };
+    }
     case 'clients': {
       if (d.id !== clientId || !before) return null;
       const known = new Set((before.people ?? []).map((x: any) => x.email.toLowerCase()));
@@ -725,10 +749,16 @@ createServer(async (req, res) => {
     if (p === '/api/tables/run' && req.method === 'POST') {
       const b = await body(req);
       const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
-      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId)) return json(res, 404, { error: 'No such table.' });
+      const team = !!t && memberOf(me).some((w) => w.id === t.workspaceId);
+      // Guests may press the buttons the team shared with them, on their own project's table, and fill only fields they can edit.
+      const guest = !team && !!t && t.share?.enabled && (t.share.buttons ?? []).includes(b.fieldId) && portalsOf(me).some((pt) => pt.clientId === t.clientId);
+      if (!t || (!team && !guest)) return json(res, 404, { error: 'No such table.' });
       const f = (t.fields ?? []).find((x: any) => x.id === b.fieldId);
-      if (f?.button?.who === 'admins' && !isAdminOf(me, t.workspaceId)) return json(res, 403, { error: 'Only admins can press this button.' });
-      return json(res, 200, await tablesEngine.runButton(tablesEnv, t.id, String(b.rowId ?? ''), String(b.fieldId ?? ''), me, b.input ?? {}));
+      if (team && f?.button?.who === 'admins' && !isAdminOf(me, t.workspaceId)) return json(res, 403, { error: 'Only admins can press this button.' });
+      const input = guest ? Object.fromEntries(Object.entries(b.input ?? {}).filter(([k]) => (t.share.edit ?? []).includes(k))) : (b.input ?? {});
+      const out = await tablesEngine.runButton(tablesEnv, t.id, String(b.rowId ?? ''), String(b.fieldId ?? ''), me, input as any);
+      // Guests see that it worked, not where the team's webhooks go or what the steps were.
+      return json(res, 200, guest ? { ok: out.ok, results: [{ ok: out.ok, note: out.ok ? 'Done' : 'Didn’t work; the team can see why', ...(out.results.find((x) => x.open) ? { open: out.results.find((x) => x.open)!.open } : {}) }] } : out);
     }
     if (p === '/api/tables/import' && req.method === 'POST') {
       const b = await body(req);

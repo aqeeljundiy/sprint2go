@@ -27,13 +27,17 @@ import {
   Sparkles,
   Upload,
   UserPlus,
+  Table2,
   Video,
   X,
   type LucideIcon,
 } from 'lucide-react';
-import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, DriveItem, Meeting, Notice, Todo, User, Workspace } from '../types';
+import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, DataTable, DriveItem, Meeting, Notice, Todo, User, Workspace } from '../types';
 import type { ClientActions } from '../clientActions';
-import { can, companyOf, requestStatus, teamLabel } from '../clientView';
+import { can, companyOf, guestRow, guestTable, requestStatus, teamLabel } from '../clientView';
+import { useStored } from '../store';
+import { server } from '../sync';
+import { TableScreen } from './tables/TablesApp';
 import { relative } from '../utils';
 import { Avatar } from './Avatar';
 import { PhotoPicker } from './PhotoPicker';
@@ -52,7 +56,7 @@ import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
 import { dueLabel, isBrief, statusOf } from './TasksView';
 
-type Mode = 'home' | 'requests' | 'chat' | 'work' | 'files' | 'meet';
+type Mode = 'home' | 'requests' | 'chat' | 'work' | 'files' | 'meet' | 'tables';
 
 interface Props {
   ws: Workspace;
@@ -159,6 +163,16 @@ export function ClientApp(p: Props) {
   const unread = p.notices.filter((n) => !n.read).length;
   const task = v.tasks.find((t) => t.id === openTask);
 
+  // Tables the team shared with this project (leads and so on): only shared fields, shaped like the server does.
+  const [allTables] = useStored('tables');
+  const [allRows, setAllRows] = useStored('rows');
+  const sharedTables = useMemo(() => allTables.filter((t) => t.workspaceId === ws.id).map((t) => guestTable(client, t)).filter(Boolean) as DataTable[], [allTables, ws.id, client]);
+  const sharedRows = useMemo(() => {
+    const byId = new Map(sharedTables.map((t) => [t.id, t]));
+    return allRows.filter((r) => byId.has(r.tableId)).map((r) => guestRow(byId.get(r.tableId)!, r));
+  }, [allRows, sharedTables]);
+  const [tableRow, setTableRow] = useState<string | null>(null);
+
   const MODES: [Mode, string, LucideIcon, number?][] = [
     ['home', 'Home', House],
     ...(access.requests ? ([['requests', 'Requests', Inbox, waitingOnMe.length]] as [Mode, string, LucideIcon, number][]) : []),
@@ -166,6 +180,7 @@ export function ClientApp(p: Props) {
     ['work', 'Work', ListChecks, approvals.length],
     ['files', 'Files', HardDrive],
     ['meet', 'Meetings', Video],
+    ...(sharedTables.length ? ([['tables', 'Tables', Table2]] as [Mode, string, LucideIcon][]) : []),
   ];
   const go = (m: Mode, s = '') => {
     setMode(m);
@@ -185,6 +200,25 @@ export function ClientApp(p: Props) {
     </button>
   );
   const sidebar: Partial<Record<Mode, React.ReactNode>> = {
+    tables: (
+      <nav className="nav">
+        {sharedTables.map((t) =>
+          navItem(
+            t.id,
+            <>
+              <span className="client-dot sm" style={{ background: t.color }}>
+                {t.name.charAt(0).toUpperCase()}
+              </span>{' '}
+              {t.name}
+            </>,
+            null,
+            undefined,
+            (sub || sharedTables[0]?.id) === t.id,
+            () => (setSub(t.id), setTableRow(null)),
+          ),
+        )}
+      </nav>
+    ),
     requests: (
       <>
         {can(person, 'request') && (
@@ -504,6 +538,37 @@ export function ClientApp(p: Props) {
           : empty(<ListChecks size={22} />, 'Nothing here', 'The team shares tasks and briefs with you as work moves.')}
       </>,
     );
+  }
+
+  if (mode === 'tables') {
+    const t = sharedTables.find((x) => x.id === sub) ?? sharedTables[0];
+    if (t) {
+      const editable = can(person, 'comment') && client.status !== 'ended';
+      content = (
+        <TableScreen
+          key={t.id}
+          table={t}
+          tables={sharedTables}
+          rows={sharedRows}
+          users={shownTeam}
+          clients={[client]}
+          me={p.account?.me.id ?? person.email}
+          setTables={() => {}}
+          setRows={setAllRows /* the server keeps only the changes guests may make */}
+          onOpenTable={(id, rowId) => (setSub(id), setTableRow(rowId ?? null))}
+          openRow={tableRow}
+          setOpenRow={setTableRow}
+          onDeleted={() => {}}
+          onMenu={() => go('home')}
+          toast={(x) => say(x.text)}
+          channels={[]}
+          isAdmin={false}
+          serverOn={server.on}
+          onCompose={() => {}}
+          guest={{ canEdit: (id) => editable && (t.share?.edit ?? []).includes(id), add: editable && !!t.share?.add, download: !!t.share?.download }}
+        />
+      );
+    }
   }
 
   if (mode === 'files') {

@@ -1,5 +1,5 @@
 // What a client can see and do. One set of rules for the client app, "View as client" and the local server.
-import { DEFAULT_CLIENT_ACCESS, type Channel, type Client, type ClientAccess, type ClientPerson, type DriveItem, type Meeting, type Todo, type User, type Workspace } from './types';
+import { DEFAULT_CLIENT_ACCESS, type Channel, type Client, type ClientAccess, type ClientPerson, type DataTable, type DriveItem, type Meeting, type TableRow, type Todo, type User, type Workspace } from './types';
 
 /** The client's settings: the company's Client access settings, with this client's own changes on top. */
 export const accessFor = (ws: Pick<Workspace, 'clientAccess' | 'plan'>, client: Pick<Client, 'access'>): ClientAccess => {
@@ -98,4 +98,36 @@ export function companyOf(email: string, company?: string, client?: Pick<Client,
   const first = domain.split('.')[0];
   if (FREEMAIL.includes(first)) return undefined;
   return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+/**
+ * A table as a project's guests see it: only shared tables of their project, only the shared fields, buttons
+ * without their inner workings, and none of the team's settings (rules, webhook addresses, secrets, log).
+ */
+export function guestTable(client: Pick<Client, 'id'>, t: DataTable): DataTable | null {
+  if (t.clientId !== client.id || !t.share?.enabled) return null;
+  const share = t.share;
+  const visible = new Set([t.fields[0]?.id, ...share.fields, ...share.buttons]);
+  const fields = t.fields
+    .filter((f) => visible.has(f.id) && (f.type !== 'button' || share.buttons.includes(f.id)) && (f.type !== 'link'))
+    .map((f) => (f.type === 'button' ? { id: f.id, name: f.name, type: f.type, button: { label: f.button?.label ?? f.name, color: f.button?.color, confirm: f.button?.confirm, ask: f.button?.ask?.filter((x) => share.edit.includes(x)), actions: [] } } : f));
+  const ids = new Set(fields.map((f) => f.id));
+  const views = t.views.map((v) => ({ ...v, hidden: v.hidden?.filter((x) => ids.has(x)), filters: v.filters?.filter((x) => ids.has(x.fieldId)), sort: v.sort && ids.has(v.sort.fieldId) ? v.sort : undefined, groupBy: v.groupBy && ids.has(v.groupBy) ? v.groupBy : undefined }));
+  return { id: t.id, workspaceId: t.workspaceId, name: t.name, color: t.color, clientId: t.clientId, description: t.description, fields, views, createdBy: t.createdBy, createdAt: t.createdAt, share };
+}
+
+/** A row as guests see it: shared fields only, no comments, history of shared fields only. */
+export function guestRow(t: DataTable, r: TableRow): TableRow {
+  const ids = new Set(t.fields.map((f) => f.id));
+  return {
+    id: r.id,
+    workspaceId: r.workspaceId,
+    tableId: r.tableId,
+    order: r.order,
+    createdBy: r.createdBy,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    values: Object.fromEntries(Object.entries(r.values).filter(([k]) => ids.has(k))),
+    history: (r.history ?? []).filter((h) => ids.has(h.fieldId)).slice(-20),
+  };
 }

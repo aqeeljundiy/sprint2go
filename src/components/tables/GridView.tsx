@@ -23,6 +23,8 @@ export interface GridProps {
   onDeleteField: (id: string) => void;
   onView: (p: Partial<TableViewDef>) => void;
   readOnly?: boolean;
+  locked?: boolean; // guests: no field settings, no selecting rows, no new fields
+  canAdd?: boolean; // false: no "New row" (guests who can't add rows)
   channels?: Channel[];
 }
 
@@ -149,12 +151,12 @@ export function GridView(p: GridProps) {
     <div className="tb-grid-wrap">
       <div className="tb-grid" role="grid" style={{ ['--cols' as string]: cols }} aria-rowcount={p.rows.length}>
         <div className="tb-tr tb-head" role="row">
-          <div className="tb-th tb-sel sticky0">{!p.readOnly && <input type="checkbox" aria-label="Select all" checked={all} onChange={() => p.onSelect(all ? new Set() : new Set(p.rows.map((r) => r.id)))} />}</div>
+          <div className="tb-th tb-sel sticky0">{!p.readOnly && !p.locked && <input type="checkbox" aria-label="Select all" checked={all} onChange={() => p.onSelect(all ? new Set() : new Set(p.rows.map((r) => r.id)))} />}</div>
           {fields.map((f, i) => (
-            <Header key={f.id} f={f} first={i === 0} {...p} />
+            <Header key={f.id} f={f} first={i === 0} {...p} readOnly={p.readOnly || p.locked} />
           ))}
           <div className="tb-th tb-add-col">
-            {!p.readOnly && (
+            {!p.readOnly && !p.locked && (
               <button ref={addRef} type="button" className="icon-btn sm" title="Add a field" onClick={() => setAdding(true)}>
                 <Plus size={15} />
               </button>
@@ -164,25 +166,25 @@ export function GridView(p: GridProps) {
         {p.rows.map((r, n) => (
           <div key={r.id} className={`tb-tr${p.selected.has(r.id) ? ' on' : ''}`} role="row" style={{ ['--i' as string]: Math.min(n, 20) }}>
             <div className="tb-sel sticky0">
-              {!p.readOnly && <input type="checkbox" aria-label="Select row" checked={p.selected.has(r.id)} onChange={() => toggle(r.id)} />}
+              {!p.readOnly && !p.locked && <input type="checkbox" aria-label="Select row" checked={p.selected.has(r.id)} onChange={() => toggle(r.id)} />}
               <span className="tb-n">{n + 1}</span>
             </div>
             {fields.map((f, i) =>
               i === 0 ? (
                 <div key={f.id} className="tb-first">
-                  <GridCell f={f} row={r} ctx={p.ctx} onCell={p.onCell} readOnly={p.readOnly} />
+                  <GridCell f={f} row={r} ctx={p.ctx} onCell={p.onCell} readOnly={p.readOnly || (!!p.ctx.canEdit && !p.ctx.canEdit(f.id))} />
                   <button type="button" className="tb-expand" onClick={() => p.onOpenRow(r.id)} title="Open row" aria-label="Open row">
                     <Maximize2 size={13} />
                   </button>
                 </div>
               ) : (
-                <GridCell key={f.id} f={f} row={r} ctx={p.ctx} onCell={p.onCell} readOnly={p.readOnly} />
+                <GridCell key={f.id} f={f} row={r} ctx={p.ctx} onCell={p.onCell} readOnly={p.readOnly || (!!p.ctx.canEdit && !p.ctx.canEdit(f.id))} />
               ),
             )}
             <div />
           </div>
         ))}
-        {!p.readOnly && (
+        {!p.readOnly && p.canAdd !== false && (
           <button type="button" className="tb-new-row" onClick={p.onAddRow}>
             <Plus size={14} /> New row
           </button>

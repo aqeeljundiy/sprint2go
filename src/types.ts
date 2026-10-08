@@ -735,6 +735,7 @@ export interface DataTable {
   rules?: TableRule[];
   intake?: TableIntake;
   signingSecret?: string; // signs outgoing webhooks (X-Sprint2go-Signature)
+  share?: TableShare; // shown to the project's guests
   log?: TableLogEntry[]; // the last webhook deliveries, both ways
   createdBy: string;
   createdAt: string;
@@ -755,4 +756,14 @@ export interface TableRow {
   extra?: Record<string, unknown>; // incoming data no field was mapped to (kept, never lost)
   runs?: { fieldId: string; at: string; by: string; ok: boolean; note: string }[]; // button presses on this row
   history?: { by: string; at: string; fieldId: string; from: CellValue; to: CellValue }[];
+}
+
+/** What a project's guests get of a table: which fields they see, which they can change, which buttons they can press. */
+export interface TableShare {
+  enabled: boolean;
+  fields: string[]; // visible (the first field, each row's name, always is)
+  edit: string[]; // they can change these (a subset of visible)
+  buttons: string[]; // Button fields they can press
+  add?: boolean; // they can add rows
+  download?: boolean; // they can download CSV
 }

@@ -65,7 +65,9 @@ export function RecordDrawer({
   onClose,
   onOpenRow,
   readOnly,
+  guest,
 }: {
+  guest?: boolean; // a project's guest: no comments, no duplicate or delete
   table: DataTable;
   row: TableRow;
   ctx: CellCtx;
@@ -103,7 +105,7 @@ export function RecordDrawer({
             <i className="tb-dot" style={{ background: table.color }} /> {table.name}
           </span>
           <span className="spacer" />
-          {!readOnly && (
+          {!readOnly && !guest && (
             <>
               <button type="button" className="icon-btn sm" title="Duplicate row" onClick={onDuplicate}>
                 <Copy size={15} />
@@ -122,7 +124,7 @@ export function RecordDrawer({
             className="drawer-title"
             rows={1}
             value={title}
-            readOnly={readOnly}
+            readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(first.id))}
             placeholder={first.name}
             aria-label={first.name}
             onChange={(e) => setTitle(e.target.value)}
@@ -137,7 +139,7 @@ export function RecordDrawer({
 
           <div className="tb-rd-fields">
             {table.fields.slice(1).map((f) => (
-              <FieldLine key={f.id} f={f} row={row} ctx={ctx} onCell={onCell} readOnly={readOnly} />
+              <FieldLine key={f.id} f={f} row={row} ctx={ctx} onCell={onCell} readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id))} />
             ))}
           </div>
 
@@ -171,7 +173,7 @@ export function RecordDrawer({
             </div>
           )}
 
-          <div className="tb-rd-sec">
+          {!guest && <div className="tb-rd-sec">
             <h4>Comments</h4>
             {(row.comments ?? []).map((c) => {
               const u = userOf(c.by);
@@ -200,7 +202,7 @@ export function RecordDrawer({
                 <Send size={14} />
               </button>
             </form>
-          </div>
+          </div>}
 
           {(row.history?.length ?? 0) > 0 && (
             <div className="tb-rd-sec">
