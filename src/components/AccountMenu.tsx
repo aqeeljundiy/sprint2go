@@ -6,7 +6,7 @@ import type { Settings, ThemePref } from '../settings';
 import { fmtSize } from '../data/drive';
 import { Avatar } from './Avatar';
 
-export type SettingsSection = 'workspace' | 'email' | 'agency' | 'permissions' | 'teams' | 'clients' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'developer' | 'myapps' | 'help';
+export type SettingsSection = 'workspace' | 'email' | 'agency' | 'permissions' | 'teams' | 'stages' | 'clients' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'developer' | 'myapps' | 'help';
 
 interface Props {
   me: Person & { color?: string };

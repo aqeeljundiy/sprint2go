@@ -9,6 +9,7 @@ import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { SOURCE, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
+import { kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { useOnePanel } from '../onePanel';
 
@@ -106,13 +107,12 @@ export function TaskDrawer(p: Props) {
                 value={statusOf(t)}
                 onChange={(v) => p.onStatus(t.id, v)}
                 label="Status"
-                options={[
-                  { value: 'todo', label: 'To do', icon: <span className="st-dot st-todo" /> },
-                  { value: 'doing', label: 'In progress', icon: <span className="st-dot st-doing" /> },
-                  { value: 'waiting', label: `Waiting on ${term.who}`, hint: `The next step is the ${term.who}’s`, icon: <span className="st-dot st-waiting" /> },
-                  ...(statusOf(t) === 'review' ? [{ value: 'review' as TaskStatus, label: 'Waiting for review', icon: <span className="st-dot st-review" /> }] : []),
-                  { value: 'done', label: 'Done', icon: <span className="st-dot st-done" /> },
-                ]}
+                options={stagesFor(t.workspaceId).map((s) => ({
+                  value: s.id,
+                  label: stageName(s),
+                  hint: s.kind === 'waiting' ? `The next step is the ${term.who}’s` : s.kind === 'review' ? 'The supervisor checks it' : undefined,
+                  icon: <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} />,
+                }))}
               />
             </dd>
             {brief ? (
@@ -263,7 +263,7 @@ export function TaskDrawer(p: Props) {
           <div className={brief ? 'bf-main' : 'bf-flat'}>
           <div className="drawer-title-row">
             {!brief && (
-              <button className={`todo-check big ${t.done ? 'on' : ''}`} onClick={() => p.onStatus(t.id, t.done ? 'todo' : 'done')} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
+              <button className={`todo-check big ${t.done ? 'on' : ''}`} onClick={() => p.onStatus(t.id, stageIdFor(t, t.done ? 'open' : 'done'))} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
                 {t.done && <span>✓</span>}
               </button>
             )}
@@ -324,10 +324,10 @@ export function TaskDrawer(p: Props) {
           )}
 
           <SmoothHeight>
-          {statusOf(t) === 'review' && (
+          {kindOf(t) === 'review' && (
             <div className="review-banner">
               <span>
-                <strong>Waiting for review</strong>
+                <strong>{stageBadge(stageOf(t))}</strong>
                 <small>{t.supervisorId === p.me ? 'You supervise this. Approve it, or send it back with a note.' : `${p.users.find((u) => u.id === t.supervisorId)?.name.split(' ')[0] ?? 'The supervisor'} checks it before it counts as done.`}</small>
               </span>
               {t.supervisorId === p.me && (
@@ -344,7 +344,7 @@ export function TaskDrawer(p: Props) {
                       <button className="ghost-btn sm" onClick={() => setSendingBack(true)}>
                         Send back
                       </button>
-                      <button className="primary-btn sm" onClick={() => p.onStatus(t.id, 'done')}>
+                      <button className="primary-btn sm" onClick={() => p.onStatus(t.id, stageIdFor(t, 'done'))}>
                         Approve
                       </button>
                     </>
@@ -381,7 +381,7 @@ export function TaskDrawer(p: Props) {
                   const tm = teamOf(s.teamId);
                   return (
                     <div key={s.id} className={`sub ${s.done ? 'done' : ''}`}>
-                      <button className="todo-check" onClick={() => p.onStatus(s.id, s.done ? 'todo' : 'done')} aria-label="Toggle done">
+                      <button className="todo-check" onClick={() => p.onStatus(s.id, stageIdFor(s, s.done ? 'open' : 'done'))} aria-label="Toggle done">
                         {s.done && <span>✓</span>}
                       </button>
                       <button className="sub-title" onClick={() => p.onOpen(s.id)}>

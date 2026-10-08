@@ -9,7 +9,8 @@ import { localDay, relative } from '../utils';
 import { usePersisted } from '../settings';
 import { ai } from '../ai';
 import { Avatar } from './Avatar';
-import { dueLabel, statusOf } from './TasksView';
+import { dueLabel } from './TasksView';
+import { stageName, stageOf } from '../stages';
 import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
@@ -1072,11 +1073,11 @@ export function ChatView(p: ViewProps) {
             </a>
           ))}
           {task && (
-            <button className={`cm-task ${statusOf(task)}`} onClick={() => p.onOpenTask(task.id)}>
+            <button className={`cm-task ${task.done ? 'done' : ''}`} onClick={() => p.onOpenTask(task.id)}>
               <SquareCheck size={14} />
               <span>{task.title}</span>
               <em>
-                {statusOf(task) === 'done' ? 'Done' : statusOf(task) === 'doing' ? 'In progress' : 'To do'} · {person(task.userId)?.name.split(' ')[0] ?? 'team queue'}
+                {stageName(stageOf(task))} · {person(task.userId)?.name.split(' ')[0] ?? 'team queue'}
               </em>
             </button>
           )}

@@ -1,0 +1,404 @@
+/* ==========================================================================
+   Tasks: the company's own stages (src/stages.ts), quick capture, the stage
+   settings, and the settings button each app has. Loaded after polish.css.
+   ========================================================================== */
+
+/* ---------- Stage colours ---------- */
+/* One colour per stage. Red stays for late work; waiting stages are always amber, done stages always green. */
+.tone-gray {
+  --st: var(--text-3);
+}
+.tone-accent {
+  --st: var(--accent);
+}
+.tone-blue {
+  --st: #2f6bd8;
+}
+.tone-violet {
+  --st: #7650d4;
+}
+.tone-teal {
+  --st: #0f877d;
+}
+.tone-amber {
+  --st: var(--warn-solid);
+}
+.tone-green {
+  --st: var(--ok-solid);
+}
+:root[data-theme='dark'] .tone-blue {
+  --st: #6d9bef;
+}
+:root[data-theme='dark'] .tone-violet {
+  --st: #a68cf1;
+}
+:root[data-theme='dark'] .tone-teal {
+  --st: #49bcb1;
+}
+
+/* Hollow: not started. Soft: on the go. Solid: waiting for a check, or done. */
+.stage-dot {
+  flex: none;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--st, var(--text-3));
+  background: color-mix(in oklab, var(--st, var(--text-3)) 22%, transparent);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.stage-dot.k-open {
+  background: transparent;
+}
+.stage-dot.k-review,
+.stage-dot.k-done {
+  background: var(--st);
+}
+.due.stage-badge {
+  background: color-mix(in oklab, var(--st) 13%, transparent);
+  color: color-mix(in oklab, var(--st) 74%, var(--text));
+}
+
+/* Board: as many columns as the company has stages. */
+.board-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.board-head .stage-dot {
+  margin: 0 1px 0 0;
+}
+
+/* ---------- Quick capture: "New task" opens the field in place ---------- */
+.new-task-btn kbd {
+  margin-left: 2px;
+}
+.task-add-fold > .fold-in {
+  margin: 0 -3px; /* room for the focus ring, which the fold would otherwise clip */
+}
+.task-add-fold .todo-add {
+  margin: 3px 3px 15px;
+}
+.new-task-slim {
+  display: none;
+}
+@media (max-width: 760px) {
+  .tasks-head .new-task-btn {
+    display: none !important;
+  }
+  .new-task-slim {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    max-height: 44px;
+    margin-bottom: 12px;
+    padding: 0 14px;
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-weight: 600;
+    overflow: hidden;
+    transition: max-height 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), min-height 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), margin 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+  }
+  .new-task-slim:active {
+    background: var(--hover);
+  }
+  .new-task-slim.gone {
+    min-height: 0;
+    max-height: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    border-color: transparent;
+    pointer-events: none;
+  }
+}
+.empty .primary-btn {
+  margin-top: 4px;
+}
+
+/* ---------- Settings: Task stages ---------- */
+.stage-list {
+  display: grid;
+}
+.stage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  transition: background-color 0.18s ease;
+}
+.stage-row.fresh {
+  animation: stageIn 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.stage-row:first-child {
+  border-top: 0;
+}
+.stage-row.leaving {
+  animation: stageOut 0.18s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes stageIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes stageOut {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.stage-swatch {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+.stage-swatch:hover:not(:disabled) {
+  background: var(--hover);
+}
+.stage-swatch:disabled {
+  cursor: default;
+}
+.stage-swatch .stage-dot {
+  width: 14px;
+  height: 14px;
+}
+.stage-name {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  outline: 0;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+.stage-name:hover:not(:disabled) {
+  background: var(--hover);
+}
+.stage-name:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.stage-name::placeholder {
+  color: var(--text-3);
+  font-weight: 500;
+}
+.stage-row .stage-kind {
+  flex: 0 1 190px;
+  min-width: 0;
+}
+.stage-kind-fixed {
+  flex: 0 1 190px;
+  min-width: 0;
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.stage-order {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+}
+.stage-row .icon-btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+  background: none;
+}
+.stage-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+}
+.stage-colors button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+.stage-colors button:hover,
+.stage-colors button[aria-pressed='true'] {
+  background: var(--hover);
+}
+.stage-colors button[aria-pressed='true'] .stage-dot {
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--st);
+}
+.stage-colors .stage-dot {
+  width: 16px;
+  height: 16px;
+}
+.stage-colors-note {
+  margin: 4px 4px 2px;
+}
+.stage-clash {
+  margin: 4px 0 8px;
+}
+.stage-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.stage-kinds {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stage-kinds li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.stage-kinds li strong {
+  flex: none;
+  min-width: 130px;
+  color: var(--text);
+  font-weight: 600;
+}
+.move-pick {
+  display: grid;
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  /* Phones: colour, name and the buttons on one line, what it means under the name. */
+  .stage-row {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto auto;
+    grid-template-areas: 'swatch name order remove' '. kind kind kind';
+    gap: 2px 6px;
+    padding: 8px 0;
+  }
+  .stage-swatch {
+    grid-area: swatch;
+  }
+  .stage-name {
+    grid-area: name;
+    width: 100%;
+  }
+  .stage-row .stage-kind,
+  .stage-kind-fixed {
+    grid-area: kind;
+    justify-self: start;
+    max-width: 100%;
+  }
+  .stage-kind-fixed {
+    padding: 8px 10px;
+  }
+  .stage-order {
+    grid-area: order;
+  }
+  .stage-row > .icon-btn {
+    grid-area: remove;
+  }
+  .stage-order .icon-btn,
+  .stage-row > .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .stage-kinds li {
+    display: grid;
+    gap: 0;
+  }
+}
+
+/* ---------- Each app's settings button ---------- */
+.sb-top .sb-settings {
+  margin-left: auto;
+}
+.sb-top .sb-settings + .collapse-btn {
+  margin-left: 0;
+}
+.sidebar.collapsed .sb-top .sb-settings {
+  margin: 0;
+}
+.app-settings-menu {
+  display: grid;
+  padding: 4px;
+}
+.app-settings-menu button {
+  display: grid;
+  gap: 1px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.app-settings-menu button:hover,
+.app-settings-menu button:focus-visible {
+  background: var(--hover);
+  outline: 0;
+}
+.app-settings-menu strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.app-settings-menu small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-row.fresh,
+  .stage-row.leaving {
+    animation: none;
+  }
+  .stage-dot,
+  .stage-name,
+  .stage-swatch,
+  .stage-colors button,
+  .new-task-slim,
+  .app-settings-menu button {
+    transition: none;
+  }
+}
+
+/* Brain dump next to "New task": the same AI button, quieter, so New task is the one primary action. */
+.tasks-head .ghost-btn.brain-btn {
+  background: none;
+  box-shadow: none;
+  color: var(--text-2);
+}
+.tasks-head .ghost-btn.brain-btn svg {
+  color: #8b5cf6;
+}
+.tasks-head .ghost-btn.brain-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}

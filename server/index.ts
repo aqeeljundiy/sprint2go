@@ -21,6 +21,7 @@ import * as platform from './platform.ts';
 import * as support from './support.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
+import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -288,7 +289,8 @@ function clientLens(me: Person) {
       case 'prefs':
         return d.id === me.id ? d : null;
       case 'workspaces':
-        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: d.clientAccess, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
+        // Task stages (ids and kinds only, the names stay with the team): the portal tells planned, in progress, waiting on them and done.
+        return d.id === workspaceId ? { id: d.id, name: d.name, color: d.color, logo: d.logo, domains: [], accounts: [], members: d.members.map((m: any) => ({ userId: m.userId, role: 'member' })), clientAccess: d.clientAccess, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined, plan: d.plan ? { tier: d.plan.tier, track: d.plan.track, addons: d.plan.addons } : undefined } : null;
       case 'users':
         if (d.id === me.id || d.clientOf?.clientId === clientId || people.some((p) => p.email.toLowerCase() === String(d.email ?? '').toLowerCase()))
           return { id: d.id, name: d.name, email: d.email, color: d.color, title: d.title, photo: d.photo, clientOf: d.clientOf };
@@ -366,7 +368,9 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       const known = new Set((before.history ?? []).map((h: any) => h.id));
       const added = (d.history ?? []).filter((h: any) => !known.has(h.id) && String(h.by).toLowerCase() === email && (h.kind === 'comment' || h.kind === 'review') && can(person, 'comment'));
       const approval = can(person, 'approve') && before.approval?.status === 'waiting' && d.approval && d.approval.status !== 'waiting' ? { ...before.approval, status: d.approval.status, by: email, at: new Date().toISOString(), note: d.approval.note } : before.approval;
-      return { ...before, approval, history: [...(before.history ?? []), ...added.map((h: any) => ({ ...h, toClient: true }))] };
+      // Changes asked on finished work: it goes back to the company's first "in progress" stage (by kind, whatever it's called).
+      const reopen = approval !== before.approval && approval?.status === 'changes' && before.done ? { done: false, status: stageIdFor(before, 'active', cleanStages(w.taskStages)), doneAt: undefined, doneBy: undefined } : {};
+      return { ...before, ...reopen, approval, history: [...(before.history ?? []), ...added.map((h: any) => ({ ...h, toClient: true }))] };
     }
     case 'quotes': {
       // A guest with approval rights answers a quote that was sent: accepted with their name, or declined with a note.
@@ -1698,7 +1702,12 @@ createServer(async (req, res) => {
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
             const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
             const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
-            return { ...d, ...own, plan } as db.Doc;
+            // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
+            // that isn't keeps what was there; an empty one means the usual stages.
+            const asked = (d as any).taskStages;
+            const clean = asked === undefined ? undefined : cleanStages(asked);
+            const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(asked) && asked.length ? before.taskStages : undefined) : clean;
+            return { ...d, ...own, plan, taskStages } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
           const plan = fresh.plan ? { ...fresh.plan, comp: undefined, discount: undefined } : fresh.plan;

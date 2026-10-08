@@ -49,6 +49,7 @@ import { AccountMenu, type SettingsSection } from './components/AccountMenu';
 import { DriveSidebar } from './components/DriveSidebar';
 import { DrivePreview } from './components/DrivePreview';
 import { AppRail, APPS } from './components/AppRail';
+import { AppSettingsButton, appSettingsLinks } from './components/AppSettings';
 import { Avatar } from './components/Avatar';
 import { Notifications } from './components/Notifications';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
@@ -62,6 +63,7 @@ import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
+import { firstOf as firstStage, kindOf as stageKind, registerStages, stageIdFor, stageName, stageOf, stagesFor } from './stages';
 import { celebrate } from './components/ui/confetti';
 import type { AskScope, MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS } from './data/workspaces';
@@ -186,6 +188,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   session.wsId = ws?.id ?? '';
   setBrandName(brandOf(ws)); // white label: an agency's name in place of ours
   setTermWord(ws?.terms?.word); // "Projects" or "Clients", before anything below renders words
+  registerStages(allWorkspaces, ws?.id); // each company's task stages, so every screen reads a task's stage from its company
   // Companies this person is a client of (same sign-in): their portals sit in the workspace switcher.
   const [portalKey, setPortalKey] = usePersisted(`s2g-portal:${user.id}`, '');
   useEffect(() => onWorkspace?.(portalKey && allWorkspaces.some((w) => portalKey.startsWith(w.id + ':')) ? portalKey.split(':')[0] : ws.id), [ws.id, ws.ai, portalKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -883,7 +886,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const have = new Set(todosRef.current.filter((x) => x.threadId === t.id && (shared || x.userId === user.id)).map((x) => x.title.toLowerCase()));
         const next = found
           .filter((f) => !have.has(f.title.toLowerCase()))
-          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: 'todo', threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
+          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: stageIdFor({ workspaceId: ws.id }, 'open'), threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
         // Remember it on the email itself, so no reload or other device reads it again.
         const mark = `${user.id}:${last.id}`;
         setThreads((ts) => ts.map((x) => (x.id === t.id && !x.scannedFor?.includes(mark) ? { ...x, scannedFor: [...(x.scannedFor ?? []), mark].slice(-20) } : x)));
@@ -914,7 +917,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const toggleTodo = (id: string) => {
     const t = todos.find((x) => x.id === id);
-    if (t) setTaskStatus(id, t.done ? 'todo' : 'done');
+    if (t) setTaskStatus(id, stageIdFor(t, t.done ? 'open' : 'done'));
   };
   const deleteTodo = (id: string) => {
     const snapshot = todos;
@@ -1333,7 +1336,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       due: t.due,
       priority: t.priority ?? 'normal',
       done: false,
-      status: t.kind === 'brief' ? 'doing' : 'todo',
+      status: stageIdFor({ workspaceId: ws.id }, t.kind === 'brief' ? 'active' : 'open'),
       source: t.source,
       createdBy: user.id,
       workspaceId: ws.id,
@@ -1363,40 +1366,48 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   function setTaskStatus(id: string, requested: TaskStatus, quiet = false) {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
+    // Stages are the company's own; what happens depends on the kind of stage, not on its name.
+    const list = stagesFor(t.workspaceId);
+    const target = list.find((s) => s.id === requested);
+    if (!target) return;
+    const from = stageOf(t, list);
     // The review step: when the team asks for it, finishing a task sends it to the supervisor first.
     const team = teams.find((x) => x.id === t.teamId);
-    const needsReview = requested === 'done' && !!team?.review && !!t.supervisorId && t.supervisorId !== user.id && !doersOf(t).includes(t.supervisorId) && t.status !== 'review';
-    const status: TaskStatus = needsReview ? 'review' : requested;
+    const reviewStage = firstStage('review', list);
+    const needsReview = target.kind === 'done' && !!reviewStage && !!team?.review && !!t.supervisorId && t.supervisorId !== user.id && !doersOf(t).includes(t.supervisorId) && from.kind !== 'review';
+    const to = needsReview ? reviewStage : target;
+    const status: TaskStatus = to.id;
+    const done = to.kind === 'done';
     const before = { status: t.status, done: t.done, doneAt: t.doneAt, doneBy: t.doneBy, history: t.history };
-    if (status !== (t.done ? 'done' : (t.status ?? 'todo'))) {
+    if (to.id !== from.id) {
       const text = needsReview
         ? 'finished it and sent it for review'
-        : status === 'done'
-          ? t.status === 'review'
+        : done && !t.done
+          ? from.kind === 'review'
             ? 'approved it'
             : 'marked it done'
-          : status === 'waiting'
-            ? `set it to Waiting on ${term.who}`
-            : status === 'doing'
+          : !done && t.done
+            ? to.kind === 'open'
+              ? 'reopened it'
+              : `reopened it (${stageName(to)})`
+            : to.kind === 'active' && from.kind === 'open'
               ? 'started it'
-              : t.done
-                ? 'reopened it'
-                : 'moved it back to To do';
-      logTask(id, needsReview || t.status === 'review' ? 'review' : 'status', text);
+              : `moved it to ${stageName(to)}`;
+      logTask(id, needsReview || from.kind === 'review' ? 'review' : 'status', text);
     }
     if (needsReview) {
-      setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status: 'review', done: false } : x)));
+      setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status, done: false } : x)));
       notify(t.supervisorId!, 'task', `${myFirst} finished ${describe(t)}. Ready for your review`, { app: 'tasks', id });
       if (!quiet) showToast({ text: `Sent to ${firstOf(t.supervisorId)} for review` });
       return;
     }
     // A repeating task: finishing it creates the next one.
     const next: Todo | undefined =
-      status === 'done' && !t.done && t.repeat
+      done && !t.done && t.repeat
         ? {
             ...t,
             id: uid(),
-            status: 'todo',
+            status: stageIdFor(t, 'open', list),
             done: false,
             doneAt: undefined,
             doneBy: undefined,
@@ -1412,15 +1423,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (next) setTodos((ts) => [...ts, next]);
     setTodos((ts) =>
       ts.map((x) =>
-        x.id === id ? { ...x, status, done: status === 'done', doneAt: status === 'done' ? (x.done ? x.doneAt : nowIso()) : undefined, doneBy: status === 'done' ? (x.done ? x.doneBy : user.id) : undefined } : x,
+        x.id === id ? { ...x, status, done, doneAt: done ? (x.done ? x.doneAt : nowIso()) : undefined, doneBy: done ? (x.done ? x.doneBy : user.id) : undefined } : x,
       ),
     );
     // Requests: the client sees each status change.
-    if (t.requestedBy && requestStatus(t).label !== requestStatus({ ...t, status, done: status === 'done' }).label) tellClient(t, `Your request “${t.title}” is now: ${requestStatus({ ...t, status, done: status === 'done' }).label}`);
-    else if (t.visibleToClient && status === 'done' && !t.done) tellClient(t, `“${t.title}” is done`);
-    if (status === 'done' && !t.done) {
-      const tell = new Set([t.supervisorId ?? t.createdBy, ...(t.followers ?? []), ...(t.status === 'review' ? doersOf(t) : [])].filter((x): x is string => !!x && x !== user.id));
-      tell.forEach((uid2) => notify(uid2, 'done', t.status === 'review' ? `${myFirst} approved ${describe(t)}` : `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id }));
+    if (t.requestedBy && requestStatus(t).label !== requestStatus({ ...t, status, done }).label) tellClient(t, `Your request “${t.title}” is now: ${requestStatus({ ...t, status, done }).label}`);
+    else if (t.visibleToClient && done && !t.done) tellClient(t, `“${t.title}” is done`);
+    if (done && !t.done) {
+      const tell = new Set([t.supervisorId ?? t.createdBy, ...(t.followers ?? []), ...(from.kind === 'review' ? doersOf(t) : [])].filter((x): x is string => !!x && x !== user.id));
+      tell.forEach((uid2) => notify(uid2, 'done', from.kind === 'review' ? `${myFirst} approved ${describe(t)}` : `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id }));
       // Finishing the last task of a brief tells the person in charge.
       const br = t.briefId ? todos.find((x) => x.id === t.briefId) : undefined;
       if (br && br.userId !== user.id && todos.filter((x) => x.briefId === br.id && x.id !== id).every((x) => x.done))
@@ -1490,7 +1501,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const sendBack = (id: string, note: string) => {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status: 'doing', done: false } : x)));
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status: stageIdFor(x, 'active'), done: false } : x)));
     logTask(id, 'review', `sent it back: “${note}”`);
     doersOf(t)
       .filter((x) => x !== user.id)
@@ -1701,7 +1712,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const chans = o.archive ? channels.filter((c) => c.clientId === id && !c.archived).map((c) => c.id) : [];
     setClients((cs) => cs.map((c) => (c.id === id ? { ...c, status: 'ended', endedAt: new Date(o.date + 'T12:00').toISOString(), endReason: o.reason || undefined, portalAfterEnd: o.portal, archivedOnEnd: chans } : c)));
     if (chans.length) setChannels((cs) => cs.map((c) => (chans.includes(c.id) ? { ...c, archived: true } : c)));
-    if (o.closeTasks) setTodos((ts) => ts.map((t) => (t.clientId === id && !t.done ? { ...t, done: true, status: 'done', doneAt: nowIso(), doneBy: user.id } : t)));
+    if (o.closeTasks) setTodos((ts) => ts.map((t) => (t.clientId === id && !t.done ? { ...t, done: true, status: stageIdFor(t, 'done'), doneAt: nowIso(), doneBy: user.id } : t)));
     setEnding(null);
     const c = clients.find((x) => x.id === id);
     showToast({ text: `Work with ${c?.name} ended. They’re in Past ${term.many}`, action: { label: 'Undo', run: () => reactivateClient(id) } });
@@ -2472,6 +2483,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? { icon: Video, label: 'Send bot to a meeting', run: () => openSendBot() }
                 : null;
 
+  /** Each app's gear: Settings at that app's section (only sections this person can use). */
+  const appSettings = (app: Mode, place: 'sidebar' | 'phone') => (
+    <AppSettingsButton
+      app={APPS.find((a) => a.id === app)?.name ?? 'App'}
+      links={appSettingsLinks(app, { admin: isAdmin, perms })}
+      onOpen={(id) => (setSettingsSection(id), setSidebarOpen(false), go('settings'))}
+      className={place === 'sidebar' ? 'sb-settings' : 'mt-settings'}
+      big={place === 'phone'}
+    />
+  );
+
   /** The phone's title switcher for each app. */
   const mobileSwitcher = (() => {
     if (mode === 'mail')
@@ -2570,8 +2592,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const paletteItems: PaletteItem[] = [
     // What needs you, so an empty search is already useful.
     ...wsTasks
-      .filter((t) => !t.done && ((t.status === 'review' && t.supervisorId === user.id) || (doersOf(t).includes(user.id) && !!t.due && t.due <= today0)))
-      .map((t) => ({ id: 'n-' + t.id, group: 'Needs you', title: t.title, sub: t.status === 'review' ? 'Waiting for your review' : t.due! < today0 ? 'Late' : 'Due today', icon: ListChecks, run: () => openTask(t.id) })),
+      .filter((t) => !t.done && ((stageKind(t) === 'review' && t.supervisorId === user.id) || (doersOf(t).includes(user.id) && !!t.due && t.due <= today0)))
+      .map((t) => ({ id: 'n-' + t.id, group: 'Needs you', title: t.title, sub: stageKind(t) === 'review' ? 'Waiting for your review' : t.due! < today0 ? 'Late' : 'Due today', icon: ListChecks, run: () => openTask(t.id) })),
     { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, run: () => openDump('') },
     ...(enabled.has('mail') && mailOut ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, run: () => openCompose() }] : []),
     { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, run: () => { openTasks({ kind: 'mine' }); setTimeout(() => document.getElementById('new-task')?.focus(), 200); } },
@@ -2742,6 +2764,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[appMode]}
         collapsed={collapsed && !mobile}
         onCollapse={setCollapsed}
+        settings={appSettings(appMode, 'sidebar')}
         width={Math.min(Math.max(sidebarW, SIDEBAR_MIN), SIDEBAR_MAX)}
         onWidth={setSidebarW}
         mobileTop={
@@ -2976,6 +2999,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             onSearch={() => setPaletteOpen(true)}
             onBell={() => setNoticesOpen(true)}
+            settings={appSettings(mode, 'phone')}
           />
         )}
         {mobile && mode === 'chat' && !chatId && (
@@ -3284,7 +3308,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onBulk={(ids, action) =>
               action === 'delete'
                 ? setTodos((ts) => ts.filter((t) => !ids.includes(t.id)))
-                : setTodos((ts) => ts.map((t) => (ids.includes(t.id) ? { ...t, done: action === 'done', status: action === 'done' ? 'done' : 'todo', doneAt: action === 'done' ? nowIso() : undefined, doneBy: action === 'done' ? user.id : undefined } : t)))
+                : setTodos((ts) => ts.map((t) => (ids.includes(t.id) ? { ...t, done: action === 'done', status: stageIdFor(t, action === 'done' ? 'done' : 'open'), doneAt: action === 'done' ? nowIso() : undefined, doneBy: action === 'done' ? user.id : undefined } : t)))
             }
             onAddTask={(t) => createTask({ ...t, source: t.meetingId ? 'meeting' : 'manual' }, { chat: true })}
             onOpenTask={openTask}
@@ -3520,7 +3544,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 es.map((e) => (e.id === id ? { ...e, start: new Date(new Date(e.start).getTime() + 86_400_000).toISOString(), end: new Date(new Date(e.end).getTime() + 86_400_000).toISOString() } : e)),
               )
             }
-            onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, 'done')}
+            onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, stageIdFor(todos.find((x) => x.id === e.taskId) ?? { workspaceId: ws.id }, 'done'))}
           />
         )}
 
@@ -3726,6 +3750,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 showToast({ text: `${ws.name} deleted` });
               },
               toast: (text) => showToast({ text }),
+              tasks: allWsTasks,
+              onMoveTasks: (moves) => {
+                const by = new Map(moves.map((m) => [m.id, m.patch]));
+                setTodos((ts) => ts.map((t) => (by.has(t.id) ? { ...t, ...by.get(t.id) } : t)));
+                if (moves.length) showToast({ text: `Moved ${moves.length} task${moves.length === 1 ? '' : 's'}` });
+              },
             }}
             onRemoveAccount={(id) => {
               patchWorkspace(ws.id, { accounts: ws.accounts.filter((a) => a.id !== id) });
