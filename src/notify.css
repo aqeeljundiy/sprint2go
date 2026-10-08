@@ -1,0 +1,134 @@
+/* Settings, Notifications: this device's card (NotificationSettings.tsx). */
+.push-card {
+  container-type: inline-size; /* reacts to its own width (the settings pane), not the window's */
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card, 16px);
+  background: var(--surface);
+  transition: border-color 0.2s, background 0.2s;
+}
+.push-card.on {
+  background: linear-gradient(135deg, var(--ok-soft), transparent 70%), var(--surface);
+}
+.push-card.warn {
+  background: linear-gradient(135deg, var(--warn-soft), transparent 70%), var(--surface);
+}
+.push-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.push-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-control, 10px);
+  background: var(--accent-soft);
+  color: var(--accent);
+  transition: background 0.2s, color 0.2s;
+}
+.push-card.on .push-icon {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.push-card.warn .push-icon {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.push-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+.push-text strong {
+  font-weight: 600;
+  text-wrap: balance;
+}
+.push-text small {
+  min-height: 1.4em; /* the line is there while this device is being checked, so nothing jumps */
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 52px; /* lines up with the text, not the icon */
+}
+.push-actions button {
+  min-height: 40px;
+}
+.push-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 52px;
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+}
+.push-steps li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: start;
+  gap: 10px;
+  line-height: 22px;
+}
+.push-steps li svg {
+  vertical-align: -3px;
+  color: var(--accent);
+}
+.push-step-n {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+/* The note under the buttons folds open and shut; the card's gap comes from the note, so a shut one leaves none. */
+.push-fold {
+  margin-top: -16px;
+}
+.push-note {
+  margin: 16px 0 0;
+  padding: 12px 0 0 52px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text-2);
+  animation: tabIn 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.push-note.error {
+  color: var(--danger);
+}
+
+/* Narrow (phones): the buttons take the full width under the text. */
+@container (max-width: 480px) {
+  .push-actions,
+  .push-steps,
+  .push-note {
+    padding-left: 0;
+  }
+  .push-actions button {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .push-card,
+  .push-icon {
+    transition: none;
+  }
+  .push-note {
+    animation: none;
+  }
+}

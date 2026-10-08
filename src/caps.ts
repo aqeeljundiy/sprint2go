@@ -12,6 +12,7 @@ export const caps = {
   calendarLinks: false,
   payments: false,
   desktopUrl: null as string | null,
+  push: false, // notifications on phones and computers (needs the server)
   mailHost: '',
 };
 export function loadCaps() {

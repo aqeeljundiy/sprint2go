@@ -552,6 +552,7 @@ export interface Notice {
   read: boolean;
   link?: { app: AppId | 'settings'; id?: string; msg?: string }; // msg: the exact chat message to land on; settings: id is the section
   url?: string; // a page outside the app (operators: a ticket in the backend)
+  fromGuest?: boolean; // written by a guest (set by the server), for the "Guests" choice in Settings, Notifications
 }
 
 export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';

@@ -26,6 +26,7 @@ import { PROJECT_TYPES } from '../terms';
 import { AgencySection } from './admin/AgencySection';
 import { EmailDeliverySection } from './admin/EmailDelivery';
 import { HelpSection } from './HelpSection';
+import { NotificationSettings } from './NotificationSettings';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -540,15 +541,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             </>
           )}
 
-          {section === 'notifications' && (
-            <>
-              <h2>Notifications</h2>
-              <p className="set-intro">Choose what deserves your attention.</p>
-              <Toggle on={s.notifyNewMail} onChange={(v) => update({ notifyNewMail: v })} label="New email" hint="Show a notification when mail arrives." />
-              <Toggle on={s.notifyEvents} onChange={(v) => update({ notifyEvents: v })} label="Event reminders" hint="10 minutes before a calendar event." />
-              <Toggle on={s.notifySound} onChange={(v) => update({ notifySound: v })} label="Sound" hint="Play a soft chime with notifications." />
-            </>
-          )}
+          {section === 'notifications' && <NotificationSettings s={s} update={update} />}
 
           {section === 'shortcuts' && (
             <>

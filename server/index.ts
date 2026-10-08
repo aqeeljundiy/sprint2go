@@ -19,6 +19,8 @@ import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
+import * as push from './push.ts';
+import * as pushRules from './notifyPush.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
@@ -380,7 +382,8 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       if (d.kind === 'folder') return d.clientId === clientId && d.workspaceId === workspaceId ? d : null;
       return access.uploads && can(person, 'upload') && d.clientId === clientId && String(d.uploadedBy).toLowerCase() === email ? d : null;
     case 'notices':
-      return !before && d.workspaceId === workspaceId && (w.members.some((m: any) => m.userId === d.userId) || String(d.userId).startsWith('email:')) ? d : null;
+      // Marked as from a guest, so the team can choose to hear about guests' replies on their phones.
+      return !before && d.workspaceId === workspaceId && (w.members.some((m: any) => m.userId === d.userId) || String(d.userId).startsWith('email:')) ? { ...d, fromGuest: true } : null;
     case 'rows': {
       // A shared table: guests change only the fields the team opened up, and add rows only if allowed.
       const t = db.getDoc('tables', String((before ?? d).tableId)) as any;
@@ -455,7 +458,20 @@ const json = (res: ServerResponse, status: number, data: unknown) => {
 
 /* ---------- live updates (server-sent events) ---------- */
 
-const clients = new Map<string, { res: ServerResponse; userId: string; token?: string }>();
+/**
+ * Open windows. `visible` and `seen` (the last time the person did something there) come from the app
+ * (/api/presence); `desktop`: the Mac or Windows app, which shows our notifications itself (it can't take web push).
+ */
+const clients = new Map<string, { res: ServerResponse; userId: string; token?: string; visible: boolean; focused: boolean; seen: number; operator?: boolean; desktop?: boolean }>();
+/** Using the app right now: a window in front of them where they did something in the last few minutes. */
+const IDLE_MS = 5 * 60_000;
+const activeNow = (userId: string) => [...clients.values()].some((c) => c.userId === userId && !c.operator && c.visible && Date.now() - c.seen < IDLE_MS);
+const desktopsOf = (userId: string) => [...clients.values()].filter((c) => c.userId === userId && c.desktop && !c.operator);
+pushRules.initPushRules({
+  active: activeNow,
+  // The desktop app shows it when its window isn't the one in front.
+  desktop: { has: (userId) => desktopsOf(userId).length > 0, send: (userId, alert) => desktopsOf(userId).forEach((c) => !c.focused && c.res.write(`event: alert\ndata: ${JSON.stringify(alert)}\n\n`)) },
+});
 /** Sends a change to every open window, each getting only what that person may see. */
 
 /**
@@ -501,6 +517,8 @@ function endGuestAccess(leavers: { email: string; company: string }[]) {
 
 function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) {
   if (!upserts.length && !deletes.length) return;
+  // New notices, guests' messages and arriving mail also go to the phones and computers of people who are away.
+  pushRules.onBroadcast(coll, upserts);
   const views = new Map<string, ReturnType<typeof lens>>();
   for (const [id, c] of clients) {
     if (id === except) continue;
@@ -926,6 +944,7 @@ createServer(async (req, res) => {
       const t = cookie(req, 's2g');
       if (t) {
         db.endSession(t);
+        push.forgetSession(t); // this device stops getting their notifications
         for (const [id, c] of clients) if (c.token === t) (c.res.end(), clients.delete(id));
       }
       setSession(res, null);
@@ -1798,9 +1817,46 @@ createServer(async (req, res) => {
       const id = randomBytes(8).toString('hex');
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       res.write(`event: hello\ndata: ${JSON.stringify({ conn: id })}\n\n`);
-      clients.set(id, { res, userId: me, token: cookie(req, 's2g') });
+      clients.set(id, { res, userId: me, token: cookie(req, 's2g'), visible: true, focused: true, seen: Date.now(), operator: !!session?.operator });
       req.on('close', () => clients.delete(id));
       return;
+    }
+    // The app says whether its window is in front and that someone is using it, so notifications go to phones
+    // only when the person is away (sent on show and hide, and at most once a minute while they work).
+    if (p === '/api/presence' && req.method === 'POST') {
+      const b = await body(req);
+      const c = clients.get(String(b.conn ?? ''));
+      if (c && c.userId === me) {
+        c.visible = b.visible !== false;
+        c.focused = c.visible && b.focused !== false;
+        if (c.visible) c.seen = Date.now();
+        if (b.desktop === true) c.desktop = true;
+      }
+      return json(res, 200, {});
+    }
+
+    /* ---------- notifications on this device (web push) ---------- */
+    if (p === '/api/push/key' && req.method === 'GET') return json(res, 200, { key: push.publicKey() });
+    if (p === '/api/push/subscribe' && req.method === 'POST') {
+      const b = await body(req);
+      const sub = push.validSub(b.subscription);
+      if (!sub) return json(res, 400, { error: 'This browser’s notification address isn’t one we can send to.' });
+      // Someone looking at the app as this person (support) never turns on their notifications.
+      if (session?.operator) return b.refresh === true ? json(res, 200, { on: false }) : json(res, 403, { error: 'Not while you’re looking at the app as someone else.' });
+      const on = push.subscribe(me, token!, sub, String(b.device ?? ''), typeof b.replaces === 'string' ? b.replaces : undefined, b.refresh === true);
+      return json(res, 200, { on });
+    }
+    if (p === '/api/push/subscribe' && req.method === 'DELETE') {
+      const b = await body(req);
+      if (typeof b.endpoint === 'string') push.unsubscribe(me, b.endpoint);
+      return json(res, 200, { on: false });
+    }
+    if (p === '/api/push/test' && req.method === 'POST') {
+      if (tooMany(`push-test:${me}`, 10, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of tests. Try again in a few minutes.' });
+      const b = await body(req);
+      const ws = memberOf(me)[0] as any;
+      const sent = await push.sendToDevice(me, String(b.endpoint ?? ''), { title: ws?.whiteLabel?.enabled ? ws.whiteLabel.name : 'sprint2go', body: 'Notifications work on this device. You’ll get them when you’re away from the app.', url: '/settings?id=notifications', tag: 'test', urgent: true, ttl: 300 });
+      return sent ? json(res, 200, { ok: true }) : json(res, 502, { error: 'The notification service didn’t take it. Turn notifications off and on again on this device.' });
     }
 
     // Vault: shared logins. Only people given access see an item; passwords and 2FA codes leave the server one at a time, logged.
@@ -2017,9 +2073,11 @@ function caps() {
     calendarLinks: false, // .ics links aren't fetched by the server yet
     payments: !!process.env.XENDIT_SECRET,
     desktopUrl: process.env.DESKTOP_URL || null,
+    push: true, // notifications on phones and computers (web push)
     mailHost: mailer.MAIL_HOST,
   };
 }
+
 const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** A company's email changed: check again shortly (several saves in a row count once). */
 function soonReadiness(wsId: string) {
@@ -2094,6 +2152,7 @@ function notifyPeople(userIds: string[], workspaceId: string, text: string, link
 const housekeeping = () => {
   try {
     db.purgeSessions();
+    push.prune();
   } catch (e) {
     console.error('[sessions]', e);
   }
@@ -2152,6 +2211,18 @@ setInterval(() => void hourly(), 60 * 60_000);
 
 // Tables' scheduled rules: checked every minute, each runs once on the days it's due.
 setInterval(() => tablesEngine.runSchedules(tablesEnv), 60_000);
+
+// Calendar reminders ten minutes ahead (for people who keep "Meetings and events" on): a notice in the bell, and on
+// their phone when they're away.
+push.setSubject(PUBLIC_URL, mailer.SUPPORT_EMAIL);
+setInterval(() => {
+  try {
+    const due = pushRules.eventReminders();
+    if (due.length) (db.writeDocs('notices', due, [], null), broadcast('notices', due, []));
+  } catch (e) {
+    console.error('[reminders]', e instanceof Error ? e.message : e);
+  }
+}, 60_000);
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {
