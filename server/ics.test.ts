@@ -1,7 +1,7 @@
 // Run: node --import ./server/register.mjs --test server/ics.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReply, durationMs, findMeetingLink, ianaOf, occurrences, parseIcs, parseInvite, zonedToUtc } from './ics.ts';
+import { buildReply, durationMs, expand, findMeetingLink, ianaOf, occurrences, parseCalendar, parseIcs, parseInvite, zonedToUtc } from './ics.ts';
 
 // What Google Calendar sends (shortened): UTC times, the Meet link in X-GOOGLE-CONFERENCE, folded attendee lines.
 const GOOGLE = [
@@ -232,8 +232,9 @@ test('monthly, yearly, daily and what is not handled', () => {
   const base = { start: '2026-10-13T02:00:00.000Z', end: '2026-10-13T03:00:00.000Z', tz: 'Asia/Jakarta' };
   const secondTue = occurrences({ ...base, rrule: 'FREQ=MONTHLY;BYDAY=2TU;COUNT=3' }, 0, Infinity)!;
   assert.deepEqual(secondTue.map((o) => o.start.slice(0, 10)), ['2026-10-13', '2026-11-10', '2026-12-08']);
+  // DTSTART always counts as the first occurrence (RFC 5545, 3.3.10), even when it isn't a last Friday.
   const lastFri = occurrences({ ...base, rrule: 'FREQ=MONTHLY;BYDAY=-1FR;UNTIL=20270101T000000Z' }, 0, Infinity)!;
-  assert.deepEqual(lastFri.map((o) => o.start.slice(0, 10)), ['2026-10-30', '2026-11-27', '2026-12-25']);
+  assert.deepEqual(lastFri.map((o) => o.start.slice(0, 10)), ['2026-10-13', '2026-10-30', '2026-11-27', '2026-12-25']);
   const days = occurrences({ ...base, rrule: 'FREQ=DAILY;INTERVAL=2;COUNT=3' }, 0, Infinity)!;
   assert.deepEqual(days.map((o) => o.start.slice(0, 10)), ['2026-10-13', '2026-10-15', '2026-10-17']);
   const monthDay = occurrences({ ...base, rrule: 'FREQ=MONTHLY;COUNT=2' }, 0, Infinity)!;
@@ -242,8 +243,13 @@ test('monthly, yearly, daily and what is not handled', () => {
   assert.deepEqual(yearly.map((o) => o.start.slice(0, 10)), ['2026-10-13', '2027-10-13']);
   const biweekly = occurrences({ ...base, rrule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;COUNT=4' }, 0, Infinity)!;
   assert.deepEqual(biweekly.map((o) => o.start.slice(0, 10)), ['2026-10-13', '2026-10-15', '2026-10-27', '2026-10-29']);
-  assert.equal(occurrences({ ...base, rrule: 'FREQ=MONTHLY;BYDAY=TU' }, 0, Infinity), null);
-  assert.equal(occurrences({ ...base, rrule: 'FREQ=MONTHLY;BYDAY=TU;BYSETPOS=2' }, 0, Infinity), null);
+  // One parser for invites and calendar links: every Tuesday of the month, and BYSETPOS, are read now.
+  const everyTue = occurrences({ ...base, rrule: 'FREQ=MONTHLY;BYDAY=TU' }, 0, Infinity, 4)!;
+  assert.deepEqual(everyTue.map((o) => o.start.slice(0, 10)), ['2026-10-13', '2026-10-20', '2026-10-27', '2026-11-03']);
+  assert.equal(everyTue[0].start, '2026-10-13T02:00:00.000Z', '09:00 in Jakarta, every time');
+  const setPos = occurrences({ ...base, rrule: 'FREQ=MONTHLY;BYDAY=TU;BYSETPOS=2' }, 0, Infinity, 3)!;
+  assert.deepEqual(setPos.map((o) => o.start.slice(0, 10)), ['2026-10-13', '2026-11-10', '2026-12-08']);
+  // Hourly and finer isn't how calendars repeat events: the caller keeps the first one.
   assert.equal(occurrences({ ...base, rrule: 'FREQ=HOURLY' }, 0, Infinity), null);
   assert.deepEqual(occurrences({ ...base }, 0, Infinity), [{ start: base.start, end: base.end }]);
 });
@@ -252,4 +258,87 @@ test('junk is not an invite', () => {
   assert.equal(parseInvite('hello'), null);
   assert.equal(parseInvite('BEGIN:VCALENDAR\nMETHOD:REQUEST\nEND:VCALENDAR'), null);
   assert.equal(parseInvite('BEGIN:VCALENDAR\nMETHOD:COUNTER\nBEGIN:VEVENT\nUID:a\nDTSTART:20261020T010000Z\nEND:VEVENT\nEND:VCALENDAR'), null);
+});
+
+/* ---------- calendar links and public holidays (calendarFeeds.ts): the same parser, whole calendars ---------- */
+
+const FEED = [
+  'BEGIN:VCALENDAR',
+  'X-WR-CALNAME:Team',
+  'X-WR-TIMEZONE:Asia/Jakarta',
+  'BEGIN:VEVENT',
+  'UID:standup',
+  'DTSTART;TZID=America/New_York:20261026T090000',
+  'DTEND;TZID=America/New_York:20261026T093000',
+  'RRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=5',
+  'EXDATE;TZID=America/New_York:20261028T090000',
+  'SUMMARY:Standup',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'UID:standup',
+  'RECURRENCE-ID;TZID=America/New_York:20261102T090000',
+  'DTSTART;TZID=America/New_York:20261102T110000',
+  'DTEND;TZID=America/New_York:20261102T113000',
+  'SUMMARY:Standup (moved)',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'UID:holiday',
+  'DTSTART;VALUE=DATE:20261225',
+  'DTEND;VALUE=DATE:20261226',
+  'SUMMARY:Christmas Day',
+  'TRANSP:TRANSPARENT',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'UID:floating',
+  'DTSTART:20261020T090000',
+  'DURATION:PT45M',
+  'SUMMARY:Local review',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'UID:gone',
+  'DTSTART:20261021T090000Z',
+  'STATUS:CANCELLED',
+  'SUMMARY:Cancelled',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'UID:outlook',
+  'DTSTART;TZID=SE Asia Standard Time:20261015T140000',
+  'DTEND;TZID=SE Asia Standard Time:20261015T150000',
+  'RDATE;TZID=SE Asia Standard Time:20261016T140000',
+  'SUMMARY:Lumina',
+  'END:VEVENT',
+  'END:VCALENDAR',
+].join('\r\n');
+
+test('calendar links: repeats, skipped and moved dates, all-day, floating, cancelled, Windows zones and RDATE', () => {
+  const cal = parseCalendar(FEED);
+  assert.equal(cal.name, 'Team');
+  const all = expand(cal, Date.parse('2026-10-01'), Date.parse('2027-01-31'));
+  const standup = all.filter((o) => o.uid === 'standup');
+  assert.deepEqual(
+    standup.map((o) => [o.start, o.title]),
+    [
+      ['2026-10-26T13:00:00.000Z', 'Standup'],
+      ['2026-11-02T16:00:00.000Z', 'Standup (moved)'],
+      ['2026-11-04T14:00:00.000Z', 'Standup'],
+      ['2026-11-09T14:00:00.000Z', 'Standup'],
+    ],
+  );
+  const xmas = all.find((o) => o.uid === 'holiday')!;
+  assert.equal(xmas.allDay, true);
+  assert.equal(xmas.start, '2026-12-25T00:00:00', 'all-day stays floating: the same date everywhere');
+  assert.equal(xmas.transparent, true);
+  // X-WR-TIMEZONE reads floating times: 09:00 in Jakarta.
+  const local = all.find((o) => o.uid === 'floating')!;
+  assert.equal(local.start, '2026-10-20T02:00:00.000Z');
+  assert.equal(local.end, '2026-10-20T02:45:00.000Z');
+  assert.equal(all.some((o) => o.uid === 'gone'), false, 'cancelled events stay off');
+  assert.deepEqual(all.filter((o) => o.uid === 'outlook').map((o) => o.start), ['2026-10-15T07:00:00.000Z', '2026-10-16T07:00:00.000Z']);
+});
+
+test('calendar links: an endless rule is capped, and junk is not a calendar', () => {
+  const cal = parseCalendar('BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nDTSTART:20260101T000000Z\nRRULE:FREQ=DAILY\nSUMMARY:Forever\nEND:VEVENT\nEND:VCALENDAR');
+  assert.equal(expand(cal, Date.parse('2026-01-01'), Date.parse('2036-01-01'), 100).length, 100);
+  assert.throws(() => parseCalendar('hello, not a calendar'), /not-ics/);
+  assert.equal(parseIcs('hello'), null);
 });
