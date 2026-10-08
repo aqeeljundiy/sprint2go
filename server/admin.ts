@@ -10,6 +10,7 @@ import * as platform from './platform.ts';
 import * as support from './support.ts';
 import * as mailer from './mailer.ts';
 import * as aiplan from './aiplan.ts';
+import * as billing from './billing.ts';
 import { offsiteState } from './offsite.ts';
 import { certState } from './mailcert.ts';
 import * as turn from './turn.ts';
@@ -63,8 +64,11 @@ export type State = 'free' | 'trial' | 'paused' | 'comp' | 'paying' | 'suspended
 export function mrrOf(ws: any, people: number): { mrr: number; state: State; after?: number; discount: number } {
   const plan: Plan | undefined = ws.plan;
   if (ws.suspended) return { mrr: 0, state: 'suspended', discount: 0 };
-  if (!plan || plan.tier === 'free') return { mrr: 0, state: 'free', discount: 0 };
-  const gross = monthlyTotal(plan, people).total;
+  // A cancelled plan whose period ended is Free, even before the hourly clock moves it.
+  const ended = !!plan?.cancelAt && plan.cancelAt <= now();
+  // Free with add-ons pays for the add-ons (Free teams can buy them; they're on the invoice).
+  if (!plan || ((plan.tier === 'free' || ended) && !monthlyTotal({ ...plan, tier: 'free' }, people).addons)) return { mrr: 0, state: 'free', discount: 0 };
+  const gross = monthlyTotal(ended ? { ...plan, tier: 'free' } : plan, people).total;
   const discount = discountOf(plan, gross);
   const full = (gross - discount) * (plan.cycle === 'yearly' ? 10 / 12 : 1);
   if (plan.paused) return { mrr: 0, state: 'paused', after: full, discount };
@@ -258,7 +262,8 @@ export async function checkAlerts(ctx: AdminCtx) {
 function invoiceLinesFor(ws: any, people: number) {
   const plan: Plan = ws.plan;
   const t = monthlyTotal(plan, people);
-  const lines: { text: string; amount: number }[] = [{ text: `${planName(plan)} plan, ${people} ${people === 1 ? 'person' : 'people'}${plan.cycle === 'yearly' ? ', yearly (10 months)' : ''}`, amount: plan.cycle === 'yearly' ? t.base * 10 : t.base }];
+  // Free has no plan line: only the add-ons it bought.
+  const lines: { text: string; amount: number }[] = plan.tier === 'free' ? [] : [{ text: `${planName(plan)} plan, ${people} ${people === 1 ? 'person' : 'people'}${plan.cycle === 'yearly' ? ', yearly (10 months)' : ''}`, amount: plan.cycle === 'yearly' ? t.base * 10 : t.base }];
   const a = plan.addons;
   if (a.mailboxes) lines.push({ text: `${a.mailboxes} hosted mailbox${a.mailboxes === 1 ? '' : 'es'}`, amount: a.mailboxes * ADDONS.mailboxes.price });
   if (a.storage50) lines.push({ text: `${a.storage50 * 50} GB extra storage`, amount: a.storage50 * ADDONS.storage50.price });
@@ -376,12 +381,17 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
           overdue: platform.overdueInvoices().map((i) => ({ id: i.id, number: i.number, workspaceId: i.workspaceId, company: name(i.workspaceId), total: i.total, dueAt: i.dueAt })),
           trialsEnding: real.filter((c) => c.state === 'trial' && c.plan?.trialEnds && c.plan.trialEnds < soon).map((c) => ({ id: c.id, name: c.name, trialEnds: c.plan!.trialEnds, after: c.after ?? 0 })),
           atRisk: real.filter((c) => c.health.label === 'risk' && !c.suspended && (c.state === 'paying' || c.state === 'trial')).map((c) => ({ id: c.id, name: c.name, score: c.health.score, mrr: c.mrr || c.after || 0, lastActive: c.lastActive })),
-          signups: Array.from(ctx.signups.entries())
-            .filter(([, s]) => s.until > t)
-            .map(([e, s]) => ({ email: e, name: s.name, code: s.code, until: new Date(s.until).toISOString(), disposable: platform.isDisposable(e) })),
-          codes: Array.from(ctx.codes.entries())
-            .filter(([, c]) => c.until > t)
-            .map(([key, c]) => ({ key, code: c.code, until: new Date(c.until).toISOString() })),
+          // Sign-up and password codes open accounts: only roles that may sign in as people see them.
+          signups: may('impersonate')
+            ? Array.from(ctx.signups.entries())
+                .filter(([, s]) => s.until > t)
+                .map(([e, s]) => ({ email: e, name: s.name, code: s.code, until: new Date(s.until).toISOString(), disposable: platform.isDisposable(e) }))
+            : [],
+          codes: may('impersonate')
+            ? Array.from(ctx.codes.entries())
+                .filter(([, c]) => c.until > t)
+                .map(([key, c]) => ({ key, code: c.code, until: new Date(c.until).toISOString() }))
+            : [],
           deletions: requests.map((r) => ({ ...r, company: name(r.workspaceId) })),
           flagged: flagged.map((u) => ({ id: u.id, name: u.name, email: u.email })),
           warnings: await warnings(ctx),
@@ -1014,7 +1024,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   if (sub === 'invoice/generate' && POST) {
     if (deny('billing')) return true;
     const period = monthStart().slice(0, 7);
-    const done = new Set(platform.invoices().filter((i) => i.period === period && i.status !== 'void').map((i) => i.workspaceId));
+    // The month's plan invoice (an invoice for Boosted credits bought this month doesn't count as one).
+    const done = new Set(platform.invoices().filter((i) => i.period === period && i.status !== 'void' && !billing.isCreditInvoice(i.id)).map((i) => i.workspaceId));
     let made = 0;
     for (const c of companyRows(ctx)) {
       if (c.internal || c.state !== 'paying' || done.has(c.id)) continue;
@@ -1042,6 +1053,12 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     }
     const next = platform.setInvoiceStatus(inv.id, b.status, b.method);
     if (b.status === 'paid') platform.event('invoice.paid', inv.workspaceId, null, `${inv.number} ${rp(inv.total)}`);
+    // A paid credits invoice adds its Boosted emails to the company (once); a voided one cancels the order.
+    if (b.status === 'paid') {
+      const added = billing.invoicePaid(inv.id, saveWs, (ids, text, wsId) => ctx.notifyUsers(ids, text, '/settings/email', wsId));
+      if (added !== null) log('credits.added', inv.workspaceId, `${inv.number}: balance ${added}`);
+    }
+    if (b.status === 'void') billing.invoiceVoided(inv.id);
     log(`invoice.${b.status}`, inv.workspaceId, inv.number);
     return (json(res, 200, { invoice: next }), true);
   }

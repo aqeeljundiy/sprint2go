@@ -1031,7 +1031,21 @@ function Upcoming(p: MeetProps) {
 
 /* ---------------- Send bot ---------------- */
 
-export function SendBotDialog({ clients, botName, languages, real, seed, onSend, onClose }: { clients: Client[]; botName: string; languages?: string[]; real?: boolean; seed?: { title: string; note?: string }; onSend: (d: { url: string; title: string; botName: string; clientId: string; language?: string }) => void; onClose: () => void }) {
+export function SendBotDialog({ clients, botName, languages, real, workspaceId, isOwner, seed, onSend, onClose }: { clients: Client[]; botName: string; languages?: string[]; real?: boolean; workspaceId?: string; isOwner?: boolean; seed?: { title: string; note?: string }; onSend: (d: { url: string; title: string; botName: string; clientId: string; language?: string }) => void; onClose: () => void }) {
+  // The real notetaker: this month's hours left on the plan (the server stops it when they run out).
+  const [minutes, setMinutes] = useState<{ used: number; left: number | null; total: number | null } | null>(null);
+  useEffect(() => {
+    if (!real || !workspaceId) return;
+    let on = true;
+    void fetch(`/api/meet/status?ws=${encodeURIComponent(workspaceId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { minutes?: { used: number; left: number | null; total: number | null } } | null) => on && setMinutes(d?.minutes ?? null), () => {});
+    return () => {
+      on = false;
+    };
+  }, [real, workspaceId]);
+  const hoursOf = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h${min % 60 ? ` ${Math.round(min % 60)} min` : ''}` : `${Math.round(min)} min`);
+  const usedUp = !!minutes && minutes.left !== null && minutes.left < 1;
   const [url, setUrl] = useState('');
   const [language, setLanguage] = useState('');
   const [title, setTitle] = useState(seed?.title ?? '');
@@ -1083,6 +1097,13 @@ export function SendBotDialog({ clients, botName, languages, real, seed, onSend,
             />
           </div>
           {!real && <p className="muted small">Demo: no real bot is sent. You’ll see it join, record a short sample conversation and write the notes.</p>}
+          {minutes && minutes.total !== null && minutes.left !== null && (
+            <p className={usedUp ? 'warn-note small' : 'muted small'}>
+              {usedUp
+                ? `The notetaker’s ${hoursOf(minutes.total)} for this month are used up. ${isOwner ? 'Add 10 more hours in Settings, Plan & billing, Add-ons' : 'An owner can add 10 more hours in Settings, Plan & billing'}, or it starts again on the 1st.`
+                : `${hoursOf(minutes.left)} of the notetaker’s ${hoursOf(minutes.total)} left this month. It leaves the meeting when they run out.`}
+            </p>
+          )}
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
@@ -1090,7 +1111,7 @@ export function SendBotDialog({ clients, botName, languages, real, seed, onSend,
           <button className="ghost-btn" onClick={onClose}>
             Cancel
           </button>
-          <button className="primary-btn" onClick={send}>
+          <button className="primary-btn" onClick={send} disabled={usedUp}>
             <Send size={14} /> Send bot
           </button>
         </footer>

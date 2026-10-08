@@ -134,7 +134,18 @@ function ServerRoot({ me }: { me: string }) {
   // Only a client somewhere (no workspace of their own): straight to their portal.
   if (user && !workspaces.some((w) => w.members.some((m) => m.userId === me))) return <ClientRoot me={user} />;
   if (!user) return <NoWorkspace email="" onBack={() => void signOut()} />;
+  // Companies whose plan is paused (live, as the plan changes): read-only until an owner resumes it.
+  const paused = workspaces.filter((w) => w.plan?.paused && !w.suspended && w.members.some((m) => m.userId === me));
   return (
+    <>
+    {paused.length > 0 && (
+      <div className="op-banner warn" role="status">
+        <span>
+          {paused.map((w) => w.name).join(', ')} {paused.length === 1 ? 'is' : 'are'} paused: everyone can read and export everything, and nothing new is saved, sent or asked of AI.{' '}
+          {paused.some((w) => w.members.some((m) => m.userId === me && m.role === 'owner')) ? 'Resume the plan in Settings, Plan & billing.' : 'An owner can resume the plan in Settings, Plan & billing.'}
+        </span>
+      </div>
+    )}
     <App
       key={user.id}
       user={user}
@@ -155,6 +166,7 @@ function ServerRoot({ me }: { me: string }) {
       }}
       onUpdateUser={(patch) => setUsers((list) => list.map((x) => (x.id === user.id ? { ...x, ...patch } : x)))}
     />
+    </>
   );
 }
 
