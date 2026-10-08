@@ -1714,7 +1714,8 @@ createServer(async (req, res) => {
         if (before) return d;
         // New things carry who made them.
         if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
-        if (coll === 'messages') return d.userId === me ? d : null;
+        // Your own message; a guest's message is theirs when it carries their own email (checked by clientWrite too).
+        if (coll === 'messages') return d.userId === me || (d.userId === 'guest' && String((d as any).guestEmail ?? '').toLowerCase() === String(person.email ?? '').toLowerCase()) ? d : null;
         if (coll === 'notes') return { ...d, ownerId: me } as db.Doc;
         if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
         if (coll === 'drive') return { ...d, uploadedBy: (d as any).uploadedBy ?? me } as db.Doc;
