@@ -7,7 +7,7 @@ import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './
 import { USERS, WORKSPACES } from './data/workspaces';
 import { NOTES } from './data/notes';
 import { ROWS, TABLES } from './data/tables';
-import type { DataTable, TableRow } from './types';
+import type { DataTable, Quote, TableRow } from './types';
 
 /** The demo company's starting data. The browser demo starts from it; the local server copies it into its database on first run. */
 export const seed = () => ({
@@ -29,7 +29,8 @@ export const seed = () => ({
   notes: NOTES,
   tables: TABLES as DataTable[],
   rows: ROWS as TableRow[],
-  prefs: {} as Record<string, Record<string, unknown>>, // each person's settings and views, so they follow them between devices
+  prefs: {} as Record<string, Record<string, unknown>>,
+  quotes: [] as Quote[], // each person's settings and views, so they follow them between devices
 });
 export type Collections = ReturnType<typeof seed>;
 export type CollectionKey = keyof Collections;

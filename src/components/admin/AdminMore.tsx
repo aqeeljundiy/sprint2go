@@ -334,6 +334,7 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
             </Row>
           ))}
         </div>
+        <WhatsAppBlock ws={ws} canManage={canManage} />
         <div className="set-block">
           <h3>Chat</h3>
           <Row title="GIFs and stickers" hint="Off for a more formal workspace">
@@ -351,6 +352,92 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
         </div>
       </fieldset>
     </>
+  );
+}
+
+/* ---------------- WhatsApp Business ---------------- */
+
+/**
+ * WhatsApp for guests: messages from a project's guests land in that project's shared channel, and the team can
+ * write back from a guest's row. Needs a WhatsApp Business number on Meta's Cloud API; the token stays on the server.
+ */
+function WhatsAppBlock({ ws, canManage }: { ws: Workspace; canManage: boolean }) {
+  const [phoneId, setPhoneId] = useState('');
+  const [token, setToken] = useState('');
+  const [display, setDisplay] = useState(ws.whatsapp?.displayPhone ?? '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [open, setOpen] = useState(false);
+  const on = !!ws.whatsapp?.connected;
+  const hook = `${location.origin}/api/whatsapp/webhook`;
+  const connect = async () => {
+    setBusy(true);
+    setErr('');
+    const r = await fetch('/api/whatsapp/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, phoneNumberId: phoneId, token, displayPhone: display }) });
+    setBusy(false);
+    if (!r.ok) return setErr(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t connect.');
+    setToken('');
+    setOpen(false);
+  };
+  const disconnect = () => confirm('Disconnect WhatsApp? Messages from guests stop arriving here.') && void fetch('/api/whatsapp/connect', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) });
+  return (
+    <div className="set-block">
+      <h3>WhatsApp</h3>
+      <Row title="WhatsApp for guests" hint={on ? `Connected${ws.whatsapp?.displayPhone ? ` as ${ws.whatsapp.displayPhone}` : ''}. Guests’ messages land in their project’s shared channel; write back from the Guests tab.` : 'Guests message your WhatsApp Business number; it lands in their project’s shared channel. Needs a number on Meta’s Cloud API.'}>
+        {on ? (
+          <button type="button" className="ghost-btn sm" onClick={disconnect} disabled={!canManage}>
+            Disconnect
+          </button>
+        ) : (
+          <button type="button" className="ghost-btn sm" onClick={() => setOpen((x) => !x)} disabled={!canManage}>
+            Connect
+          </button>
+        )}
+      </Row>
+      <div className={`fold ${open && !on ? 'open' : ''}`}>
+        <div className="fold-in wa-form">
+          <p className="muted small">In Meta for Developers: your app, WhatsApp, API setup. Copy the phone number ID and make a permanent access token (a system user with the WhatsApp permissions).</p>
+          <label className="team-field">
+            <span>Phone number ID</span>
+            <input value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder="e.g. 103912345678901" />
+          </label>
+          <label className="team-field">
+            <span>Access token</span>
+            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG…" autoComplete="off" />
+          </label>
+          <label className="team-field">
+            <span>Shown as</span>
+            <input value={display} onChange={(e) => setDisplay(e.target.value)} placeholder="+62 812 0000 0000 (optional)" />
+          </label>
+          {err && <p className="err small">{err}</p>}
+          <div className="wl-new-actions">
+            <button type="button" className="primary-btn sm" disabled={busy || !phoneId.trim() || token.trim().length < 20} onClick={() => void connect()}>
+              {busy ? 'Connecting…' : 'Connect'}
+            </button>
+          </div>
+        </div>
+      </div>
+      {on && ws.whatsapp && (
+        <div className="wa-hook">
+          <p className="small">In Meta, under Webhooks, subscribe to <b>messages</b> with:</p>
+          <div className="wl-dns">
+            <span className="mono">URL</span>
+            <span className="mono wa-wide">{hook}</span>
+            <button type="button" className="icon-btn sm" title="Copy" onClick={() => void navigator.clipboard?.writeText(hook)}>
+              <Download size={13} />
+            </button>
+          </div>
+          <div className="wl-dns">
+            <span className="mono">Verify</span>
+            <span className="mono wa-wide">{ws.whatsapp.verifyToken}</span>
+            <button type="button" className="icon-btn sm" title="Copy" onClick={() => void navigator.clipboard?.writeText(ws.whatsapp!.verifyToken)}>
+              <Download size={13} />
+            </button>
+          </div>
+          <p className="muted small">Guests need their WhatsApp number on their invite (Guests tab) so we know whose message it is. Numbers we don’t know go to admins as a notification.</p>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -206,6 +206,8 @@ export interface Workspace {
   tabDefaults?: Record<string, { order: string[]; hidden: string[] }>; // tab orders an admin set for everyone
   permissions?: Partial<MemberPermissions>;
   whiteLabel?: WhiteLabel; // an agency running the app under its own brand
+  industry?: Industry; // what the company does: picks the starter tables and brief templates
+  whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string }; // WhatsApp Business (Meta Cloud API); the token stays on the server
   agency?: { id: string; name: string; logo?: string; color?: string }; // a client workspace run by an agency: whose brand it shows // what people with the Member role can do (owners and admins can do everything)
 }
 
@@ -218,6 +220,38 @@ export interface WhiteLabel {
   domain?: string; // e.g. app.theiragency.com, pointed at us with one DNS record
   domainStatus?: 'waiting' | 'verified';
   slug?: string; // try it locally at <slug>.localhost
+}
+
+export type Industry = 'agency' | 'ecommerce' | 'consulting' | 'software' | 'events' | 'other';
+export const INDUSTRIES: { id: Industry; name: string; hint: string }[] = [
+  { id: 'agency', name: 'Agency or studio', hint: 'Clients, campaigns, content' },
+  { id: 'ecommerce', name: 'Brand or online shop', hint: 'Products, launches, suppliers' },
+  { id: 'consulting', name: 'Consulting or services', hint: 'Prospects, proposals, engagements' },
+  { id: 'software', name: 'Software or startup', hint: 'Releases, bugs, customers' },
+  { id: 'events', name: 'Events', hint: 'Venues, vendors, sponsors' },
+  { id: 'other', name: 'Something else', hint: 'Start plain' },
+];
+
+/** A quote or contract for a project: lines of work with prices; the guest accepts by typing their name, and it becomes a brief. */
+export interface Quote {
+  id: string;
+  workspaceId: string;
+  clientId: string;
+  title: string;
+  intro?: string; // a few lines above the items
+  items: { id: string; title: string; qty: number; price: number; days?: number }[]; // days: when it becomes a task, due this many workdays in
+  terms?: string; // payment terms, what's included, validity
+  currency: 'IDR' | 'USD';
+  validUntil?: string; // YYYY-MM-DD
+  status: 'draft' | 'sent' | 'accepted' | 'declined';
+  createdBy: string;
+  createdAt: string;
+  sentAt?: string;
+  decidedAt?: string;
+  decidedBy?: string; // the guest's email
+  signature?: string; // the name they typed to accept
+  note?: string; // what they said when declining
+  briefId?: string; // the brief made from it when accepted
 }
 
 /** What Members can do. Each project's Lead can always manage that project. */
@@ -250,6 +284,7 @@ export interface User {
   hiddenApps?: AppId[]; // apps this person hid from their own sidebar (the company still has them)
   nicknames?: string[]; // "Kiki" for Rizky; used by the brain dump
   clientOf?: { workspaceId: string; clientId: string }; // someone at a client: signs in to their portal only
+  vaultKey?: { pub: JsonWebKey; wrapped: string; salt: string; iv: string }; // the Vault's end-to-end keys: public, and private locked by their passphrase
 }
 
 /** A task. `userId` is the person it's assigned to ('' = not assigned yet, e.g. waiting in a team's queue). */
@@ -360,6 +395,7 @@ export interface ClientPerson {
   invitedBy: string; // a team user id, or a client person's email
   at: string;
   company?: string; // where they work, shown as "Name · Company" (from the invite, or their email domain)
+  phone?: string; // for WhatsApp, with the country code
 }
 
 /** What clients can see and do, set for the company (Settings, Client access) and changeable per client. */
@@ -481,6 +517,7 @@ export interface ChatMessage {
   kind?: 'message' | 'celebration' | 'kudos' | 'system';
   kudosFor?: string; // user id
   guestEmail?: string; // written by a guest
+  via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
   pinned?: boolean;
 }

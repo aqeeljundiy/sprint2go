@@ -211,6 +211,7 @@ function ClientRoot({ me }: { me: User }) {
   const [clients, setClients] = useStored('clients');
   const [teams] = useStored('teams');
   const [todos, setTodos] = useStored('todos');
+  const [quotes, setQuotes] = useStored('quotes');
   const [channels, setChannels] = useStored('channels');
   const [messages, setMessages] = useStored('messages');
   const [meetings] = useStored('meetings');
@@ -289,6 +290,8 @@ function ClientRoot({ me }: { me: User }) {
       actions={actions}
       messages={messages}
       allTasks={todos}
+      quotes={quotes.filter((q) => q.workspaceId === ws.id)}
+      onDecideQuote={(id, status, text) => setQuotes((qs) => qs.map((x) => (x.id === id ? { ...x, status, decidedAt: new Date().toISOString(), decidedBy: me.email, signature: status === 'accepted' ? text || me.name : undefined, note: status === 'declined' && text ? text : undefined } : x)))}
       notices={notices.filter((n) => inbox.includes(n.userId))}
       onReadNotices={() => setNotices((ns) => ns.map((n) => (inbox.includes(n.userId) ? { ...n, read: true } : n)))}
       onSignOut={() => void signOut()}

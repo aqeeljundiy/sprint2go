@@ -968,7 +968,7 @@ export function ChatView(p: ViewProps) {
   const authorOf = (m: ChatMessage) => {
     if (m.guestEmail) {
       const g = channel.guests?.find((x) => x.email === m.guestEmail);
-      return { name: g?.name ?? m.guestEmail, guest: true, person: { name: g?.name ?? m.guestEmail, email: m.guestEmail } };
+      return { name: `${g?.name ?? m.guestEmail}${m.via === 'whatsapp' ? ' · WhatsApp' : ''}`, guest: true, person: { name: g?.name ?? m.guestEmail, email: m.guestEmail } };
     }
     const u = person(m.userId);
     return { name: m.userId === me ? 'You' : (u?.name ?? 'Someone'), guest: false, person: u };

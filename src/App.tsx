@@ -15,7 +15,7 @@ import { Popover } from './components/ui/Popover';
 import { SmoothHeight, TabPane } from './components/ui/Smooth';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
-import type { Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Notice, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -23,7 +23,7 @@ import { rp } from './data/pricing';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { fmtTime } from './calendarUtils';
 import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
-import { BUILT_IN_TEMPLATES, type TaskTemplate } from './data/templates';
+import { templatesFor, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
 import type { VaultItem } from './components/VaultApp';
 import { eventsOn } from './calendarUtils';
@@ -372,6 +372,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Team: clients, chat, notifications, meetings
   const [clients, setClients] = useStored('clients');
   const [channels, setChannels] = useStored('channels');
+  const [quotes, setQuotes] = useStored('quotes');
   const [messages, setMessages] = useStored('messages');
   const [notices, setNotices] = useStored('notices');
   const [meetings, setMeetings] = useStored('meetings');
@@ -959,6 +960,42 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // their teams' work, the clients they work on, and the channels they're in.
   const isAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  /* quotes and contracts */
+  const wsQuotes = useMemo(() => quotes.filter((q) => q.workspaceId === ws.id), [quotes, ws.id]);
+  const saveQuote = (q: Quote) => setQuotes((qs) => (qs.some((x) => x.id === q.id) ? qs.map((x) => (x.id === q.id ? q : x)) : [...qs, q]));
+  const sendQuote = (q: Quote) => {
+    const sent: Quote = { ...q, status: 'sent', sentAt: nowIso() };
+    saveQuote(sent);
+    const client = wsClientsAll.find((c) => c.id === q.clientId);
+    // The guests who can accept hear about it in their shared space.
+    (client ? clientPeople(client, channels) : []).filter((x) => x.status !== 'pending' && x.role === 'approver').forEach((x) => notify(clientInbox(x.email), 'task', `${ws.name} sent you a quote: ${q.title}`, { app: 'projects', id: q.clientId }));
+    showToast({ text: client ? `Sent to ${client.name}. They see it in their shared space.` : 'Sent' });
+  };
+  /** An accepted quote becomes a brief: one task per line, due by its days (or spaced a few days apart). */
+  const briefFromQuote = (q: Quote) => {
+    const client = wsClientsAll.find((c) => c.id === q.clientId);
+    const start = localDay();
+    const brief = createTask({ kind: 'brief', title: q.title, context: [q.intro, q.terms ? `Terms: ${q.terms}` : '', `Quote accepted${q.signature ? ` by ${q.signature}` : ''}: ${q.items.map((i) => `${i.title} (${i.qty} × ${i.price})`).join(', ')}`].filter(Boolean).join('\n\n'), clientId: q.clientId, userId: user.id, due: addWorkdays(start, Math.max(5, ...q.items.map((i, k) => i.days ?? (k + 1) * 3))), source: 'manual' });
+    q.items.forEach((i, k) => createTask({ title: i.title, briefId: brief.id, clientId: q.clientId, userId: '', due: addWorkdays(start, i.days ?? (k + 1) * 3), source: 'manual' }));
+    saveQuote({ ...q, briefId: brief.id });
+    showToast({ text: `Brief made from the quote${client ? ` for ${client.name}` : ''}`, action: { label: 'Open', run: () => openTask(brief.id) } });
+  };
+  /** A guest's answer, when they're viewed or hosted from here (real guests answer through the server's rules). */
+  const decideQuote = (email: string) => (id: string, status: 'accepted' | 'declined', text: string) => {
+    setQuotes((qs) => qs.map((x) => (x.id === id && x.status === 'sent' ? { ...x, status, decidedAt: nowIso(), decidedBy: email, signature: status === 'accepted' ? text || email : undefined, note: status === 'declined' && text ? text : undefined } : x)));
+    const q = quotes.find((x) => x.id === id);
+    if (q) notify(q.createdBy, 'task', `${email} ${status} your quote “${q.title}”`, { app: 'projects', id: q.clientId });
+  };
+  // A quote accepted by a guest: tell its author (notices to teammates come from the app that saw the change).
+  const seenQuotes = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const q of wsQuotes) {
+      const was = seenQuotes.current.get(q.id);
+      if (was && was === 'sent' && (q.status === 'accepted' || q.status === 'declined') && q.decidedBy?.includes('@') && q.createdBy === user.id)
+        showToast({ text: `${q.decidedBy} ${q.status} “${q.title}”`, action: q.status === 'accepted' && !q.briefId ? { label: 'Make the brief', run: () => briefFromQuote(q) } : undefined });
+      seenQuotes.current.set(q.id, q.status);
+    }
+  }, [wsQuotes]); // eslint-disable-line react-hooks/exhaustive-deps
   /** Out of the huddle: off the channel's list; the huddle ends when nobody is left. */
   const leaveHuddle = () => {
     const id = huddleId;
@@ -1544,7 +1581,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return link ? `${location.origin}${link}` : null; // null: they already sign in, nothing to send
   };
   /** Gives someone at a client access to their portal: added to the client's people and its shared channels. */
-  const giveClientAccess = async (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string }, status: ClientPerson['status']) => {
+  const giveClientAccess = async (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string; phone?: string }, status: ClientPerson['status']) => {
     const c = clients.find((x) => x.id === clientId);
     if (!c) return;
     const entry: ClientPerson = { ...person, status, invitedBy: user.id, at: nowIso() };
@@ -1557,7 +1594,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         : { text: `${person.name} invited to ${c.name}` },
     );
   };
-  const inviteClientPerson = (clientId: string, person: { name: string; email: string; role: ClientPerson['role'] }) => void giveClientAccess(clientId, person, 'invited');
+  const inviteClientPerson = (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string; phone?: string }) => void giveClientAccess(clientId, person, 'invited');
   const approveClientPerson = (clientId: string, email: string) => {
     const p = clients.find((x) => x.id === clientId)?.people?.find((x) => x.email === email);
     if (p) void giveClientAccess(clientId, { name: p.name, email: p.email, role: p.role }, 'invited');
@@ -2503,6 +2540,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         actions={actions}
         messages={messages}
         allTasks={todos}
+        quotes={quotes.filter((q) => q.workspaceId === pws.id)}
+        onDecideQuote={decideQuote(user.email)}
         notices={notices.filter((n) => n.workspaceId === pws.id && inbox.includes(n.userId))}
         onReadNotices={() => setNotices((ns) => ns.map((n) => (n.workspaceId === pws.id && inbox.includes(n.userId) ? { ...n, read: true } : n)))}
         onSignOut={onSignOut}
@@ -2533,6 +2572,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           actions={actions}
           messages={messages}
           allTasks={wsTasks}
+          quotes={wsQuotes}
+          onDecideQuote={decideQuote(person.email)}
           notices={notices.filter((n) => n.userId === inbox)}
           onReadNotices={() => setNotices((ns) => ns.map((n) => (n.userId === inbox ? { ...n, read: true } : n)))}
           preview={{ onExit: () => setViewAs(null), people: people.filter((x) => x.status !== 'pending'), onSwitch: (email) => setViewAs({ clientId: vc.id, email }) }}
@@ -2973,6 +3014,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <TasksView
             scope={mode === 'projects' ? projScope : taskScope}
             canInviteGuests={isAdmin || perms.inviteGuests}
+            quotes={wsQuotes}
+            onQuote={{ save: saveQuote, remove: (id) => setQuotes((qs) => qs.filter((x) => x.id !== id)), send: sendQuote, brief: briefFromQuote }}
             tasks={wsTasks}
             clients={wsClientsAll}
             teams={wsTeams}
@@ -3343,6 +3386,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             editing={vaultEditing}
             setEditing={setVaultEditing}
             toast={(text) => showToast({ text })}
+            vaultKey={allUsers.find((u) => u.id === user.id)?.vaultKey}
+            onVaultKey={(record) => onUpdateUser({ vaultKey: record })}
+            adminIds={ws.members.filter((m) => m.role !== 'member').map((m) => m.userId)}
           />
         )}
 
@@ -3697,6 +3743,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onCreate={(w, newUsers) => {
             newUsers.forEach(onInvite);
             setWorkspaces((list) => [...list, w]);
+            // Starter tables for what the company does, so Tables isn't empty on day one.
+            const starters: Record<string, { name: string; template: TemplateId }[]> = {
+              agency: [{ name: 'Leads', template: 'leads' }, { name: 'Content pipeline', template: 'pipeline' }],
+              ecommerce: [{ name: 'Customers', template: 'leads' }, { name: 'Product launches', template: 'pipeline' }],
+              consulting: [{ name: 'Prospects', template: 'leads' }, { name: 'Engagements', template: 'tracker' }],
+              software: [{ name: 'Roadmap', template: 'pipeline' }, { name: 'Bugs', template: 'tracker' }],
+              events: [{ name: 'Sponsors', template: 'leads' }, { name: 'Vendors', template: 'tracker' }],
+            };
+            const made = (starters[w.industry ?? ''] ?? []).map((d) => makeTable(d, w.id, user.id));
+            if (made.length) setTables((ts) => [...ts, ...made]);
             // Every company starts with a #general channel for the whole team.
             setChannels((cs) => [...cs, { id: uid(), workspaceId: w.id, kind: 'channel', name: 'general', members: w.members.map((m) => m.userId), topic: 'Everyone at ' + w.name }]);
             setNewWs(false);
@@ -3891,7 +3947,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       )}
       {tplOpen && (
         <TemplateDialog
-          templates={[...savedTemplates.filter((t) => t.workspaceId === ws.id), ...BUILT_IN_TEMPLATES]}
+          templates={[...savedTemplates.filter((t) => t.workspaceId === ws.id), ...templatesFor(ws.industry)]}
           clients={wsClients}
           users={members}
           me={user.id}

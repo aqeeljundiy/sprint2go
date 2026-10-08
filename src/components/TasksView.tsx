@@ -5,7 +5,7 @@ import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight, SlidersHorizontal, Bookmark } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
 import { ProjectTables } from './tables/TablesApp';
 import { ClientAccessForm } from './admin/ClientAccessForm';
@@ -18,6 +18,8 @@ import { Dot, Select, type Option } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { personOption } from './ui/PeopleList';
+import { QuotesTab } from './Quotes';
+import type { Quote } from '../types';
 
 export type TaskScope =
   | { kind: 'mine' }
@@ -100,9 +102,11 @@ interface Props {
   workspace: Workspace;
   canManage: boolean; // admins change client access
   canInviteGuests?: boolean; // Members may invite guests (company setting); a project's Lead always can
+  quotes?: Quote[];
+  onQuote?: { save: (q: Quote) => void; remove: (id: string) => void; send: (q: Quote) => void; brief: (q: Quote) => void };
   onViewAs: (clientId: string, email: string) => void;
   onPatchClient: (id: string, patch: Partial<Client>) => void;
-  onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string }) => void;
+  onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string; phone?: string }) => void;
   onApproveClientPerson: (clientId: string, email: string) => void;
   onEndClient: (id: string) => void;
   notes: Note[];
@@ -132,7 +136,7 @@ interface Props {
   onOpenThread: (id: string) => void;
   onOpenChannel: (id: string) => void;
   messages: ChatMessage[]; // this workspace's chat, for the client page's Chat tab
-  clientTab?: 'overview' | 'tasks' | 'workload' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal';
+  clientTab?: 'overview' | 'tasks' | 'workload' | 'quotes' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal';
   onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
@@ -167,7 +171,7 @@ export function TasksView(p: Props) {
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'workload' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal'>('overview');
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'workload' | 'quotes' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal'>('overview');
   const [writingOv, setWritingOv] = useState(false);
   const scopeId = 'id' in p.scope ? p.scope.id : '';
   useEffect(() => {
@@ -176,6 +180,8 @@ export function TasksView(p: Props) {
   const [previewAs, setPreviewAs] = useState<string | null>(null);
   const [inviteName, setInviteName] = useState('');
   const [inviteCompany, setInviteCompany] = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
+  const [waTo, setWaTo] = useState<ClientPerson | null>(null); // a WhatsApp message being written to this guest
   const [inviteEmail, setInviteEmail] = useState('');
 
   const scope = p.scope;
@@ -777,6 +783,7 @@ export function TasksView(p: Props) {
               ['overview', 'Overview', 'Overview'],
               ['tasks', overdue ? `Tasks · ${overdue} late` : 'Tasks', 'Tasks'],
               ['workload', 'Workload', 'Workload'],
+              ...(p.onQuote ? ([['quotes', (p.quotes ?? []).some((q) => q.clientId === client.id && q.status === 'sent') ? 'Quotes · waiting' : 'Quotes', 'Quotes']] as const) : []),
               ['chat', 'Chat', 'Chat'],
               ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail', 'Mail'],
               ['meetings', 'Meetings', 'Meetings'],
@@ -1340,6 +1347,11 @@ export function TasksView(p: Props) {
             )}
           </div>
         )}
+        {client && clientTab === 'quotes' && p.onQuote && (
+          <div className="tracking-scroll proj-tab">
+            <QuotesTab client={client} quotes={p.quotes ?? []} users={p.users} me={p.me} canEdit={projectManage} onSave={p.onQuote.save} onDelete={p.onQuote.remove} onSend={p.onQuote.send} onBrief={p.onQuote.brief} onOpenBrief={p.onOpenTask} />
+          </div>
+        )}
         {client && clientTab === 'tables' && (
           <div className="tracking-scroll proj-tab">
             <ProjectTables tables={(p.tables ?? []).filter((t) => t.clientId === client.id)} rows={p.tableRows ?? []} onOpen={(id) => p.onOpenTable?.(id)} onNew={() => p.onNewTable?.(client.id)} />
@@ -1486,6 +1498,11 @@ export function TasksView(p: Props) {
                       ) : (
                         <span className={`guest-status ${g.status}`}>{g.status === 'joined' ? 'Joined' : 'Invited'}</span>
                       )}
+                      {p.workspace.whatsapp?.connected && g.phone && (
+                        <button type="button" className="icon-btn sm wa-btn" title={`WhatsApp ${g.phone}`} aria-label={`WhatsApp ${g.name}`} onClick={() => setWaTo(g)}>
+                          <MessageCircle size={14} />
+                        </button>
+                      )}
                       <Select<ClientPerson['role']>
                         value={g.role}
                         onChange={(role) => setPeople(people.map((x) => (x.email === g.email ? { ...x, role } : x)))}
@@ -1506,12 +1523,14 @@ export function TasksView(p: Props) {
                     <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Name" />
                     <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={client.domain ? `name@${client.domain}` : 'name@company.com'} />
                     <input value={inviteCompany} onChange={(e) => setInviteCompany(e.target.value)} placeholder={companyOf(inviteEmail.trim(), undefined, client) ?? 'Company (optional)'} />
+                    {p.workspace.whatsapp?.connected && <input value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} placeholder="WhatsApp, e.g. +62 812…" />}
                     <button
                       className="ghost-btn sm"
                       disabled={!inviteName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim()) || people.some((x) => x.email.toLowerCase() === inviteEmail.trim().toLowerCase())}
                       onClick={() => {
-                        p.onInviteClientPerson(client.id, { name: inviteName.trim(), email: inviteEmail.trim().toLowerCase(), role: 'collaborator', company: inviteCompany.trim() || undefined });
+                        p.onInviteClientPerson(client.id, { name: inviteName.trim(), email: inviteEmail.trim().toLowerCase(), role: 'collaborator', company: inviteCompany.trim() || undefined, phone: invitePhone.trim() || undefined });
                         setInviteName('');
+                        setInvitePhone('');
                         setInviteCompany('');
                         setInviteEmail('');
                       }}
@@ -1523,6 +1542,7 @@ export function TasksView(p: Props) {
                     <p className="muted small">Only this {term.one}’s Lead or an admin can invite guests.</p>
                   )}
 
+                  {waTo && <WhatsAppDialog to={waTo} workspaceId={p.workspace.id} channelId={p.channels.find((c) => c.clientId === client.id && c.category === 'shared' && !c.archived)?.id} onClose={() => setWaTo(null)} />}
                   <h4>Settings for {client.name}</h4>
                   <ClientAccessForm
                     value={access}
@@ -1617,6 +1637,48 @@ function ProjectWorkload({ tasks, people, users, me, onOpenTask }: { tasks: Todo
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** A WhatsApp message to one guest, sent through the company's number; it's kept in the project's shared channel too. */
+function WhatsAppDialog({ to, workspaceId, channelId, onClose }: { to: ClientPerson; workspaceId: string; channelId?: string; onClose: () => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const send = async () => {
+    setBusy(true);
+    setErr('');
+    const r = await fetch('/api/whatsapp/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId, to: to.phone, text, channelId }) });
+    setBusy(false);
+    if (!r.ok) return setErr(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t send.');
+    onClose();
+  };
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal" role="dialog" aria-label={`WhatsApp ${to.name}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+        <header className="modal-head">
+          <span>
+            <MessageCircle size={14} /> WhatsApp to {to.name} · {to.phone}
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body">
+          <textarea autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Your message" />
+          {err && <p className="err small">{err}</p>}
+          <p className="muted small">Sent from the company’s WhatsApp number. {channelId ? 'A copy stays in the shared channel.' : ''} Outside a 24-hour conversation, Meta only allows approved templates.</p>
+        </div>
+        <footer className="modal-foot">
+          <button className="ghost-btn sm" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-btn sm" disabled={busy || !text.trim()} onClick={() => void send()}>
+            {busy ? 'Sending…' : 'Send'}
+          </button>
+        </footer>
       </div>
     </div>
   );

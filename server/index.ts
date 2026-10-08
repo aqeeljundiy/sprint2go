@@ -214,6 +214,8 @@ function clientLens(me: Person) {
         return myChannels.has(d.id) ? { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests, materials: d.materials, bookmarks: d.bookmarks } : null;
       case 'messages':
         return myChannels.has(d.channelId) ? d : null;
+      case 'quotes':
+        return d.clientId === clientId && d.status !== 'draft' ? d : null; // what was sent to them, never drafts
       case 'todos': {
         if (!tasks.has(d.id)) return null;
         const history = (d.history ?? []).filter((h: any) => h.toClient || String(h.by).includes('@') || (h.kind === 'created' && d.source === 'request'));
@@ -278,6 +280,13 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       const added = (d.history ?? []).filter((h: any) => !known.has(h.id) && String(h.by).toLowerCase() === email && (h.kind === 'comment' || h.kind === 'review') && can(person, 'comment'));
       const approval = can(person, 'approve') && before.approval?.status === 'waiting' && d.approval && d.approval.status !== 'waiting' ? { ...before.approval, status: d.approval.status, by: email, at: new Date().toISOString(), note: d.approval.note } : before.approval;
       return { ...before, approval, history: [...(before.history ?? []), ...added.map((h: any) => ({ ...h, toClient: true }))] };
+    }
+    case 'quotes': {
+      // A guest with approval rights answers a quote that was sent: accepted with their name, or declined with a note.
+      if (!before || before.clientId !== clientId || before.status !== 'sent' || !can(person, 'approve')) return null;
+      if (d.status !== 'accepted' && d.status !== 'declined') return null;
+      if (before.validUntil && before.validUntil < new Date().toISOString().slice(0, 10)) return null;
+      return { ...before, status: d.status, decidedAt: new Date().toISOString(), decidedBy: email, signature: d.status === 'accepted' ? String(d.signature ?? person.name).slice(0, 120) : undefined, note: d.status === 'declined' && d.note ? String(d.note).slice(0, 500) : undefined };
     }
     case 'drive':
       if (before) return null;
@@ -602,6 +611,51 @@ createServer(async (req, res) => {
   if (!p.startsWith('/api/')) return serveStatic(req, res);
   try {
     // Sign in / out
+    // WhatsApp (Meta Cloud API) webhook: Meta checks it once with a token, then posts every incoming message.
+    if (p === '/api/whatsapp/webhook' && req.method === 'GET') {
+      const token = url.searchParams.get('hub.verify_token');
+      const w = workspaces().find((x: any) => x.whatsapp?.verifyToken && x.whatsapp.verifyToken === token) as any;
+      if (url.searchParams.get('hub.mode') === 'subscribe' && w) return (res.writeHead(200, { 'content-type': 'text/plain' }), res.end(url.searchParams.get('hub.challenge') ?? ''));
+      return json(res, 403, {});
+    }
+    if (p === '/api/whatsapp/webhook' && req.method === 'POST') {
+      const b = await body(req).catch(() => ({}));
+      const digits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+      for (const entry of b.entry ?? [])
+        for (const ch of entry.changes ?? []) {
+          const v = ch.value ?? {};
+          const w = workspaces().find((x: any) => x.whatsapp?.connected && x.whatsapp.phoneNumberId === v.metadata?.phone_number_id) as any;
+          if (!w) continue;
+          const names = new Map((v.contacts ?? []).map((c: any) => [digits(c.wa_id), c.profile?.name]));
+          for (const m of v.messages ?? []) {
+            const from = digits(m.from);
+            const text = m.type === 'text' ? String(m.text?.body ?? '') : `[${m.type}]`;
+            // Whose number is it? One of a project's guests → their project's shared channel.
+            const channels = db.allDocs('channels') as any[];
+            const hit = (db.allDocs('clients') as any[])
+              .filter((c) => c.workspaceId === w.id)
+              .flatMap((c) => clientPeople(c, channels).filter((pp) => pp.phone && digits(pp.phone) === from).map((pp) => ({ c, pp })))[0];
+            const at = new Date(Number(m.timestamp) * 1000 || Date.now()).toISOString();
+            if (hit) {
+              const chan = channels.find((x) => x.clientId === hit.c.id && x.category === 'shared' && !x.archived) ?? channels.find((x) => x.clientId === hit.c.id && !x.archived);
+              if (chan) {
+                const doc = { id: randomBytes(8).toString('hex'), channelId: chan.id, userId: 'guest', guestEmail: hit.pp.email, text, at, via: 'whatsapp' } as db.Doc;
+                db.writeDocs('messages', [doc], [], null);
+                broadcast('messages', [doc], []);
+                const notices = (chan.members ?? []).map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', text: `${hit.pp.name} (WhatsApp): ${text.slice(0, 80)}`, at, read: false, link: { app: 'chat', id: chan.id, msg: doc.id } })) as db.Doc[];
+                if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
+                continue;
+              }
+            }
+            // Unknown number: admins get it, with the number, so they can add the person to a project.
+            const admins = (w.members ?? []).filter((x: any) => x.role !== 'member').map((x: any) => x.userId);
+            const notices = admins.map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', text: `WhatsApp from ${names.get(from) ? `${names.get(from)} (+${from})` : '+' + from}: ${text.slice(0, 80)}`, at, read: false, link: { app: 'settings', id: 'apps' } })) as db.Doc[];
+            if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
+          }
+        }
+      return json(res, 200, {});
+    }
+
     // White label: whose brand to show at this address (an agency's subdomain, or <slug>.localhost to try it locally).
     if (p === '/api/brand') {
       const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
@@ -963,7 +1017,10 @@ createServer(async (req, res) => {
         if (!before) return null;
         const photo = typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000 ? d.photo : undefined;
         const hiddenApps = Array.isArray(d.hiddenApps) ? d.hiddenApps.filter((a: unknown) => typeof a === 'string' && /^[a-z]{2,12}$/.test(a)).slice(0, 12) : undefined;
-        return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo, hiddenApps };
+        // The vault key pair: a public key anyone may read, and the private key locked by the passphrase (only its owner can open it).
+        const dk = d.vaultKey as any;
+        const vk = dk && typeof dk === 'object' && typeof dk.wrapped === 'string' && typeof dk.salt === 'string' && typeof dk.iv === 'string' && dk.pub && typeof dk.pub === 'object' ? { pub: dk.pub, wrapped: String(dk.wrapped).slice(0, 4000), salt: String(dk.salt).slice(0, 64), iv: String(dk.iv).slice(0, 64) } : before.vaultKey;
+        return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo, hiddenApps, vaultKey: vk };
       };
       // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
       const ok = (upserts as db.Doc[])
@@ -1085,6 +1142,49 @@ createServer(async (req, res) => {
     }
 
     // Vault: shared logins. Only people given access see an item; passwords and 2FA codes leave the server one at a time, logged.
+    // WhatsApp Business: the token is kept here (like AI keys); the browser only sees that it's connected.
+    if (p === '/api/whatsapp/connect' && req.method === 'POST') {
+      const { workspaceId, phoneNumberId, token, displayPhone } = await body(req);
+      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can connect WhatsApp.' });
+      if (typeof phoneNumberId !== 'string' || !phoneNumberId.trim() || typeof token !== 'string' || token.trim().length < 20) return json(res, 400, { error: 'Paste the phone number ID and a permanent access token from Meta.' });
+      db.saveKey(workspaceId, 'whatsapp', token.trim(), phoneNumberId.trim(), me);
+      const w = db.getDoc('workspaces', workspaceId) as any;
+      const verifyToken = w.whatsapp?.verifyToken ?? randomBytes(12).toString('hex');
+      const doc = { ...w, whatsapp: { phoneNumberId: phoneNumberId.trim(), displayPhone: displayPhone ? String(displayPhone).slice(0, 30) : undefined, connected: true, verifyToken } };
+      db.writeDocs('workspaces', [doc], [], me);
+      broadcast('workspaces', [doc], []);
+      return json(res, 200, { verifyToken });
+    }
+    if (p === '/api/whatsapp/connect' && req.method === 'DELETE') {
+      const { workspaceId } = await body(req);
+      if (!isAdminOf(me, workspaceId)) return json(res, 403, {});
+      db.deleteKey(workspaceId, 'whatsapp');
+      const w = db.getDoc('workspaces', workspaceId) as any;
+      const doc = { ...w, whatsapp: w.whatsapp ? { ...w.whatsapp, connected: false } : undefined };
+      db.writeDocs('workspaces', [doc], [], me);
+      broadcast('workspaces', [doc], []);
+      return json(res, 200, {});
+    }
+    if (p === '/api/whatsapp/send' && req.method === 'POST') {
+      const { workspaceId, to, text, channelId } = await body(req);
+      if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, {});
+      const key = db.loadKey(workspaceId, 'whatsapp');
+      if (!key?.baseUrl) return json(res, 409, { error: 'WhatsApp isn’t connected. Settings, Apps & chat.' });
+      const number = String(to ?? '').replace(/\D/g, '');
+      if (!number || typeof text !== 'string' || !text.trim()) return json(res, 400, { error: 'A number and a message, please.' });
+      const r = await fetch(`https://graph.facebook.com/v21.0/${key.baseUrl}/messages`, { method: 'POST', headers: { authorization: `Bearer ${key.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', to: number, type: 'text', text: { body: text.trim().slice(0, 4000) } }) }).catch(() => null);
+      if (!r?.ok) return json(res, 502, { error: ((await r?.json().catch(() => null)) as any)?.error?.message ?? 'WhatsApp didn’t accept the message.' });
+      if (typeof channelId === 'string') {
+        const chan = db.getDoc('channels', channelId) as any;
+        if (chan && (chan.members ?? []).includes(me)) {
+          const doc = { id: randomBytes(8).toString('hex'), channelId, userId: me, text: text.trim(), at: new Date().toISOString(), via: 'whatsapp' } as db.Doc;
+          db.writeDocs('messages', [doc], [], me);
+          broadcast('messages', [doc], []);
+        }
+      }
+      return json(res, 200, {});
+    }
+
     if (p.startsWith('/api/vault')) {
       const wsId = url.searchParams.get('ws') ?? '';
       const teamsOf = (uid: string) => (db.allDocs('teams') as any[]).filter((t) => (t.members ?? []).includes(uid)).map((t) => t.id);
@@ -1103,7 +1203,7 @@ createServer(async (req, res) => {
         const id = typeof b.id === 'string' && b.id ? b.id : 'v-' + randomBytes(6).toString('hex');
         const before = db.vaultGet(id);
         if (before && !canEdit(before)) return json(res, 403, { error: 'Only the person who added it, or an admin, can change it.' });
-        if (b.totp) {
+        if (b.totp && !String(b.totp).startsWith('enc:')) {
           try {
             db.totpCode(String(b.totp));
           } catch {
@@ -1116,6 +1216,8 @@ createServer(async (req, res) => {
           username: b.meta?.username ? String(b.meta.username).slice(0, 200) : undefined,
           clientId: b.meta?.clientId || undefined,
           access: { everyone: !!b.meta?.access?.everyone, userIds: (b.meta?.access?.userIds ?? []).map(String), teamIds: (b.meta?.access?.teamIds ?? []).map(String) },
+          // End-to-end: the item key wrapped for each person who may open it. The server can't use these.
+          keys: b.meta?.keys && typeof b.meta.keys === 'object' ? Object.fromEntries(Object.entries(b.meta.keys as Record<string, any>).filter(([, k]) => k && typeof k.ct === 'string' && typeof k.iv === 'string' && k.epk).slice(0, 500)) : undefined,
         };
         db.vaultSave({ id, workspaceId: before?.workspaceId ?? b.workspaceId, meta, password: b.password, totp: b.totp, notes: b.notes, by: me });
         db.vaultLog(id, me, before ? 'changed it' : 'added it');
@@ -1130,8 +1232,10 @@ createServer(async (req, res) => {
       }
       if (m[2] === 'reveal' && req.method === 'POST') {
         const { field } = await body(req);
-        if (field !== 'password' && field !== 'notes') return json(res, 400, {});
-        db.vaultLog(item.id, me, field === 'password' ? 'copied the password' : 'read the notes');
+        // The 2FA secret leaves the server only to someone who can edit the login (to move it to end-to-end), or
+        // already encrypted end-to-end (then it's unreadable here anyway).
+        if (field !== 'password' && field !== 'notes' && !(field === 'totp' && (canEdit(item) || item.meta.keys))) return json(res, 400, {});
+        db.vaultLog(item.id, me, field === 'password' ? 'copied the password' : field === 'totp' ? 'used a 2FA code' : 'read the notes');
         return json(res, 200, { value: db.vaultSecret(item.id, field) ?? '' });
       }
       if (m[2] === 'code' && req.method === 'POST') {

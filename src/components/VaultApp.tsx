@@ -9,12 +9,13 @@ import { relative } from '../utils';
 import { server } from '../sync';
 import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
+import { decryptSecret, encryptSecret, isEncrypted, makeVaultKeys, newItemKeys, rewrapVaultKey, setVaultUnlocked, totp as totpCode, unlockVaultKey, unwrapWith, vaultUnlocked, wrapFor, type VaultKeyRecord, type WrappedKey } from '../vaultCrypto';
 
 /** What the browser knows about a login. The password, 2FA secret and notes stay on the server. */
 export interface VaultItem {
   id: string;
   workspaceId: string;
-  meta: { title: string; url?: string; username?: string; clientId?: string; access: { everyone: boolean; userIds: string[]; teamIds: string[] } };
+  meta: { title: string; url?: string; username?: string; clientId?: string; access: { everyone: boolean; userIds: string[]; teamIds: string[] }; keys?: Record<string, WrappedKey> };
   hasPassword: boolean;
   hasTotp: boolean;
   hasNotes: boolean;
@@ -89,7 +90,13 @@ export function VaultView({
   editing,
   setEditing,
   toast,
+  vaultKey,
+  onVaultKey,
+  adminIds = [],
 }: {
+  vaultKey?: VaultKeyRecord; // this person's end-to-end keys (none yet: they set a passphrase first)
+  onVaultKey: (r: VaultKeyRecord) => void;
+  adminIds?: string[]; // admins can always open a login, so they get a key too
   workspaceId: string;
   items: VaultItem[];
   reload: () => void;
@@ -104,6 +111,7 @@ export function VaultView({
   toast: (t: string) => void;
 }) {
   const [code, setCode] = useState<{ id: string; code: string; left: number } | null>(null);
+  const [, setTick] = useState(0); // re-render after unlocking
   const [menu, setMenu] = useState<string | null>(null);
   const [reading, setReading] = useState<{ title: string; value: string } | null>(null);
   const [log, setLog] = useState<{ item: VaultItem; rows: { userId: string; what: string; at: string }[] } | null>(null);
@@ -131,10 +139,22 @@ export function VaultView({
       </section>
     );
 
+  // Locked until the passphrase is typed once in this tab: the private key lives only in memory.
+  const priv = vaultUnlocked(me);
+  if (!priv) return <VaultGate record={vaultKey} me={me} onUnlocked={(k, record) => (setVaultUnlocked(me, k), record && onVaultKey(record), setTick((t) => t + 1))} />;
+
   const shown = items.filter((i) => (filter === '' ? true : filter === 'company' ? !i.meta.clientId : i.meta.clientId === filter));
+  /** A secret of an end-to-end login, decrypted here; a server-locked (older) one comes back as is. */
+  const secretOf = async (it: VaultItem, field: 'password' | 'totp' | 'notes') => {
+    const { value } = await api<{ value: string }>(`/api/vault/${it.id}/reveal`, { method: 'POST', body: JSON.stringify({ field }) });
+    if (!isEncrypted(value)) return value;
+    const w = it.meta.keys?.[me];
+    if (!w) throw new Error('You don’t hold the key to this login. Ask whoever added it to edit and save it, so it’s shared with you.');
+    return decryptSecret(await unwrapWith(priv, w), value);
+  };
   const copyPassword = async (it: VaultItem) => {
     try {
-      const { value } = await api<{ value: string }>(`/api/vault/${it.id}/reveal`, { method: 'POST', body: JSON.stringify({ field: 'password' }) });
+      const value = await secretOf(it, 'password');
       await copySecret(value);
       toast(`Password for ${it.meta.title} copied. The clipboard clears in 30 seconds`);
     } catch (e) {
@@ -143,7 +163,9 @@ export function VaultView({
   };
   async function showCode(id: string) {
     try {
-      const r = await api<{ code: string; secondsLeft: number }>(`/api/vault/${id}/code`, { method: 'POST' });
+      const it = items.find((x) => x.id === id);
+      // End-to-end: the secret is decrypted here and the code worked out here. Older logins: the server does it.
+      const r = it?.meta.keys ? await totpCode(await secretOf(it, 'totp')) : await api<{ code: string; secondsLeft: number }>(`/api/vault/${id}/code`, { method: 'POST' });
       setCode({ id, code: r.code, left: r.secondsLeft });
     } catch (e) {
       toast((e as Error).message);
@@ -193,6 +215,9 @@ export function VaultView({
                     )}
                     <span className="src">
                       <Users size={11} /> {accessLabel(it)}
+                    </span>
+                    <span className={`src vault-e2e${it.meta.keys ? ' on' : ''}`} title={it.meta.keys ? 'Encrypted on your devices; the server can’t read it' : 'Locked by the server. Edit and save to move it to end-to-end'}>
+                      <Lock size={11} /> {it.meta.keys ? 'End-to-end' : 'Server-locked'}
                     </span>
                   </div>
                 </div>
@@ -249,8 +274,11 @@ export function VaultView({
                 className="sel-opt"
                 onClick={async () => {
                   setMenu(null);
-                  const { value } = await api<{ value: string }>(`/api/vault/${current.id}/reveal`, { method: 'POST', body: JSON.stringify({ field: 'notes' }) });
-                  setReading({ title: current.meta.title, value });
+                  try {
+                    setReading({ title: current.meta.title, value: await secretOf(current, 'notes') });
+                  } catch (e) {
+                    toast((e as Error).message);
+                  }
                 }}
               >
                 <Eye size={14} /> Read notes
@@ -291,6 +319,8 @@ export function VaultView({
 
       {editing && (
         <VaultEditor
+          priv={priv}
+          adminIds={adminIds}
           item={editing === 'new' ? null : editing}
           defaultClient={filter && filter !== 'company' ? filter : undefined}
           workspaceId={workspaceId}
@@ -376,6 +406,8 @@ const strongPassword = () => {
 };
 
 function VaultEditor({
+  priv,
+  adminIds,
   item,
   defaultClient,
   workspaceId,
@@ -387,6 +419,8 @@ function VaultEditor({
   onSaved,
   onClose,
 }: {
+  priv: CryptoKey;
+  adminIds: string[];
   item: VaultItem | null;
   defaultClient?: string;
   workspaceId: string;
@@ -411,19 +445,45 @@ function VaultEditor({
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [noKey, setNoKey] = useState<string[]>([]); // people who'd get access but haven't set up their Vault yet
   const save = async () => {
     setBusy(true);
     setError('');
     try {
+      // Who may open it: me, admins, and the people and teams chosen (everyone, when it's for everyone).
+      const inTeam = (u: User) => teamIds.some((t) => teams.find((x) => x.id === t)?.members.includes(u.id));
+      const allowed = users.filter((u) => u.id === me || adminIds.includes(u.id) || everyone || userIds.includes(u.id) || inTeam(u));
+      const withKey = allowed.filter((u) => u.vaultKey);
+      setNoKey(allowed.filter((u) => !u.vaultKey && u.id !== me).map((u) => u.name.split(' ')[0]));
+      // The item key: the one this login already has (if I hold it), or a fresh one.
+      let itemKey: CryptoKey;
+      let keys: Record<string, WrappedKey> = {};
+      const mine = item?.meta.keys?.[me];
+      if (item?.meta.keys && !mine) throw new Error('You don’t hold the key to this login, so you can’t change it. Ask whoever added it to edit and save it, so it’s shared with you.');
+      if (mine) {
+        itemKey = await unwrapWith(priv, mine);
+        for (const u of withKey) keys[u.id] = item!.meta.keys![u.id] ?? (await wrapFor(itemKey, u.vaultKey!.pub));
+      } else {
+        const made = await newItemKeys(withKey.map((u) => ({ id: u.id, pub: u.vaultKey!.pub })));
+        itemKey = made.key;
+        keys = made.keys;
+      }
+      // Secrets: what was typed, else what's saved. An older server-locked login moves to end-to-end on the way.
+      const current = async (field: 'password' | 'totp' | 'notes', has: boolean) => {
+        if (!item || !has) return undefined;
+        const { value } = await api<{ value: string }>(`/api/vault/${item.id}/reveal`, { method: 'POST', body: JSON.stringify({ field }) });
+        return isEncrypted(value) ? (mine ? value : await encryptSecret(itemKey, await decryptSecret(await unwrapWith(priv, mine!), value))) : value ? await encryptSecret(itemKey, value) : undefined;
+      };
+      const enc = async (v: string) => encryptSecret(itemKey, v);
       await api('/api/vault', {
         method: 'POST',
         body: JSON.stringify({
           id: item?.id,
           workspaceId,
-          meta: { title, url: url || undefined, username: username || undefined, clientId: clientId || undefined, access: { everyone, userIds, teamIds } },
-          password: password || undefined,
-          totp: totp ? parseTotp(totp) : undefined,
-          notes: notes || undefined,
+          meta: { title, url: url || undefined, username: username || undefined, clientId: clientId || undefined, access: { everyone, userIds, teamIds }, keys },
+          password: password ? await enc(password) : await current('password', !!item?.hasPassword),
+          totp: totp ? await enc(parseTotp(totp)) : await current('totp', !!item?.hasTotp),
+          notes: notes ? await enc(notes) : await current('notes', !!item?.hasNotes),
         }),
       });
       onSaved();
@@ -498,7 +558,8 @@ function VaultEditor({
                   ))}
                 </div>
                 <PeoplePicker value={userIds} users={users.filter((u) => u.id !== me)} me={me} onChange={setUserIds} label="People" emptyText="Add people" />
-                <small className="muted">You{isAdmin ? '' : ' and admins'} can always see it.</small>
+                <small className="muted">You{isAdmin ? '' : ' and admins'} can always see it. People who haven’t set up their Vault yet get the key once you save again after they do.</small>
+                {noKey.length > 0 && <small className="muted">Not set up yet: {noKey.join(', ')}.</small>}
               </div>
             </div>
           </div>
@@ -517,4 +578,67 @@ function VaultEditor({
       </div>
     </div>
   );
+}
+
+/**
+ * The door to the Vault: a passphrase that only this person knows. The first time, it makes their key pair and
+ * locks the private key with it; after that, it unlocks the key for this tab. Nothing about it reaches the server
+ * in the clear, so a lost passphrase can't be recovered: logins would have to be re-shared by others.
+ */
+function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: string; onUnlocked: (priv: CryptoKey, record?: VaultKeyRecord) => void }) {
+  const [pass, setPass] = useState('');
+  const [again, setAgain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const fresh = !record;
+  const go = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      if (fresh) {
+        if (pass.length < 8) throw new Error('Use at least 8 characters.');
+        if (pass !== again) throw new Error('The two don’t match.');
+        const made = await makeVaultKeys(pass);
+        onUnlocked(made.priv, made.record);
+      } else onUnlocked(await unlockVaultKey(record!, pass));
+    } catch (e) {
+      setError(fresh ? (e as Error).message : 'That’s not it. Try again.');
+    }
+    setBusy(false);
+  };
+  return (
+    <section className="tasks-pane view-enter">
+      <div className="vault-gate">
+        <div className="vault-gate-card">
+          <KeyRound size={22} />
+          <h2>{fresh ? 'Set your Vault passphrase' : 'Unlock the Vault'}</h2>
+          <p className="muted">
+            {fresh
+              ? 'Logins are encrypted on your devices with keys only you hold; the server never sees a password. This passphrase locks your key. There is no reset: if it’s lost, teammates re-share logins with you.'
+              : 'Your key stays in this tab until you close it.'}
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void go();
+            }}
+          >
+            <input type="password" autoFocus value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Passphrase" autoComplete={fresh ? 'new-password' : 'current-password'} />
+            {fresh && <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="Once more" autoComplete="new-password" />}
+            {error && <p className="err small">{error}</p>}
+            <button className="primary-btn" disabled={busy || !pass}>
+              {busy ? 'Working…' : fresh ? 'Set and open' : 'Unlock'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** A new passphrase for the same keys (for the header's "Change passphrase"). */
+export async function changeVaultPassphrase(me: string, record: VaultKeyRecord, next: string) {
+  const priv = vaultUnlocked(me);
+  if (!priv) throw new Error('Unlock the Vault first.');
+  return rewrapVaultKey(priv, record.pub, next);
 }

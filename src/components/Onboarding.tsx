@@ -3,6 +3,7 @@ import { MEETING_LANGUAGES } from '../data/languages';
 import { useState } from 'react';
 import { term, brand as product } from '../terms';
 import { Check, Cloud, MailX, Server, Shuffle, X, type LucideIcon } from 'lucide-react';
+import { INDUSTRIES, type Industry } from '../types';
 import type { Account, AppId, EmailSetup, MailProvider, MeetingSettings, User, Workspace } from '../types';
 import { DEFAULT_MEETINGS, WORKSPACE_COLORS, defaultAI, trialPlan } from '../data/workspaces';
 import { uid } from '../utils';
@@ -66,7 +67,8 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
     const nav = (typeof navigator !== 'undefined' ? navigator.language : 'en').slice(0, 2).toLowerCase();
     return nav === 'id' || nav === 'ms' ? [nav, 'en'] : MEETING_LANGUAGES.some((l) => l.code === nav) ? [nav] : ['en'];
   });
-  const [agency, setAgency] = useState(false); // white label: the company's own brand in place of ours
+  const [agency, setAgency] = useState(false);
+  const [industry, setIndustry] = useState<Industry>('agency'); // white label: the company's own brand in place of ours
   const [mixPart, setMixPart] = useState<'split' | 'keep'>('split'); // "Some of each": which people the guide is about
   const [routingOk, setRoutingOk] = useState(false); // the routing test reached Sprint2go
   const [team, setTeam] = useState<Invite[]>([{ key: 1, name: '', email: '', role: 'member', where: 'sprint2go' }]);
@@ -112,6 +114,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
         members: [{ userId: me.id, role: 'owner' }, ...newUsers.map((u, i) => ({ userId: u.id, role: people[i].role }))],
         apps: mailOn ? apps : apps.filter((a) => a !== 'mail'),
         emailSetup: setup,
+        industry,
         ...(agency ? { whiteLabel: { enabled: true, name: brand.name.trim(), logo: brand.logo, color: brand.color, slug: brand.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') } } : {}),
         ...(setup === 'mix' ? { mailRouting: { dailyCheck: true, ...(routingOk ? { verifiedAt: new Date().toISOString() } : {}) } } : {}),
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,
@@ -203,6 +206,18 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                 <label htmlFor="ob-email">Your work email</label>
                 <input id="ob-email" value={emailInput} onChange={(e) => setMyEmail(e.target.value)} placeholder={suggested || 'you@company.com'} />
                 {emailInput && d && !myEmail.toLowerCase().endsWith('@' + d) && <small className="err">Use an address at @{d}.</small>}
+              </div>
+              <div className="field">
+                <label>What does the company do?</label>
+                <div className="ob-industries">
+                  {INDUSTRIES.map((i) => (
+                    <button key={i.id} type="button" className={`ob-industry ${industry === i.id ? 'on' : ''}`} onClick={() => setIndustry(i.id)}>
+                      <strong>{i.name}</strong>
+                      <small>{i.hint}</small>
+                    </button>
+                  ))}
+                </div>
+                <small className="set-hint">Picks the starter tables and brief templates. Everything can be changed later.</small>
               </div>
               <label className={`ob-agency ${agency ? 'on' : ''}`}>
                 <input type="checkbox" checked={agency} onChange={(e) => setAgency(e.target.checked)} />

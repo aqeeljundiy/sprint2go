@@ -2278,3 +2278,16 @@ button {
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+.ln-download small {
+  display: block;
+  margin-top: 10px;
+  color: var(--text-3);
+}
+.ln-dl {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}

@@ -57,6 +57,8 @@ import { Popover } from './ui/Popover';
 import { dueLabel, isBrief, statusOf } from './TasksView';
 import { useOnePanel } from '../onePanel';
 import { Select } from './ui/Select';
+import { GuestQuotes } from './Quotes';
+import type { Quote } from '../types';
 
 type Mode = 'home' | 'requests' | 'chat' | 'work' | 'files' | 'meet' | 'tables';
 
@@ -69,6 +71,8 @@ interface Props {
   actions: ClientActions;
   messages: ChatMessage[];
   allTasks: Todo[]; // for brief progress (counts only)
+  quotes?: Quote[]; // quotes and contracts sent to this client
+  onDecideQuote?: (id: string, status: 'accepted' | 'declined', text: string) => void;
   notices: Notice[];
   onReadNotices: () => void;
   /** "View as client": a pill to switch person or leave. */
@@ -343,7 +347,8 @@ export function ClientApp(p: Props) {
         <div className="card-body">{body}</div>
       </div>
     );
-    const needs = [...approvals.map((t) => ({ t, text: `Approve “${t.title}”`, go: () => (setMode('work'), setOpenTask(t.id)) })), ...waitingOnMe.map((t) => ({ t, text: `Your request “${t.title}” is waiting on you`, go: () => (setMode('requests'), setOpenTask(t.id)) }))];
+    const quotesToAnswer = (p.quotes ?? []).filter((q) => q.clientId === client.id && q.status === 'sent');
+    const needs = [...quotesToAnswer.map((q) => ({ t: undefined as Todo | undefined, text: `Answer the quote “${q.title}”`, go: () => setMode('work') })), ...approvals.map((t) => ({ t: t as Todo | undefined, text: `Approve “${t.title}”`, go: () => (setMode('work'), setOpenTask(t.id)) })), ...waitingOnMe.map((t) => ({ t, text: `Your request “${t.title}” is waiting on you`, go: () => (setMode('requests'), setOpenTask(t.id)) }))];
     content = (
       <section className="home-pane view-enter">
         <div className="home-scroll">
@@ -362,11 +367,11 @@ export function ClientApp(p: Props) {
               'Needs you',
               needs.length ? (
                 <ul className="home-list">
-                  {needs.map((n) => (
-                    <li key={n.t.id}>
+                  {needs.map((n, i) => (
+                    <li key={n.t?.id ?? 'q' + i}>
                       <button className="home-notice" onClick={n.go}>
                         <span>{n.text}</span>
-                        <time>{n.t.due ? fmtDay(n.t.due) : ''}</time>
+                        <time>{n.t?.due ? fmtDay(n.t.due) : ''}</time>
                       </button>
                     </li>
                   ))}
@@ -529,6 +534,7 @@ export function ClientApp(p: Props) {
       brief ? brief.title : sub === 'approve' ? 'Needs approval' : sub === 'done' ? 'Done' : 'Work',
       brief ? `${brief.due ? `Due ${fmtDay(brief.due)} · ` : ''}${list.filter((t) => t.done).length} of ${list.length} done` : approvals.length ? `${approvals.length} waiting for your approval` : 'Nothing waiting on you',
       <>
+        {!brief && !sub && p.quotes && p.onDecideQuote && <GuestQuotes quotes={p.quotes.filter((q) => q.clientId === client.id)} company={p.ws.name} canApprove={can(person, 'approve') && client.status !== 'ended'} onDecide={p.onDecideQuote} />}
         {brief?.context && <p className="client-brief-context">{brief.context}</p>}
         {groups.length
           ? groups.map((g) => (

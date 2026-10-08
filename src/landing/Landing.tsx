@@ -24,6 +24,7 @@ import {
   Video,
   type LucideIcon,
   Stamp,
+  Download,
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { PLAN_FEATURES, PRICES, rp } from '../data/pricing';
@@ -740,6 +741,26 @@ function Page() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section id="download" className="ln-sec">
+        <div className="ln-wrap ln-head ln-download">
+          <h2 className="rv">{t.download.h}</h2>
+          <p className="rv" style={{ ['--i' as string]: 1 }}>
+            {t.download.p}
+          </p>
+          <div className="ln-dl rv" style={{ ['--i' as string]: 2 }}>
+            <a className="ln-btn" href={`${GITHUB}/releases/latest`} target="_blank" rel="noreferrer">
+              <Download size={16} /> {t.download.mac}
+            </a>
+            <a className="ln-btn outline" href={`${GITHUB}/releases/latest`} target="_blank" rel="noreferrer">
+              <Download size={16} /> {t.download.win}
+            </a>
+          </div>
+          <small className="rv" style={{ ['--i' as string]: 3 }}>
+            {t.download.note}
+          </small>
         </div>
       </section>
 

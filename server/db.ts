@@ -165,11 +165,14 @@ db.exec(`
 `);
 
 export interface VaultMeta {
+  keys?: Record<string, unknown>; // end-to-end: the item key wrapped per person (opaque here)
   title: string;
   url?: string;
   username?: string;
   clientId?: string;
-  access: { everyone: boolean; userIds: string[]; teamIds: string[] };
+  access: { everyone: boolean; userIds: string[]; teamIds: string[]
+  keys?: Record<string, unknown>; // end-to-end: the item key wrapped per person (opaque here)
+};
 }
 export interface VaultRow {
   id: string;

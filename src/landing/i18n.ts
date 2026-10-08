@@ -128,6 +128,7 @@ const en = {
       ['Is it hard to switch over?', 'Most teams start with chat and tasks in an afternoon, then move email when they’re ready. Nothing has to move on day one.'],
     ] as [string, string][],
   },
+  download: { h: 'On your Mac or Windows PC too', p: 'The same app in its own window, with the system’s notifications. Installed from here, not an app store; updates arrive by themselves.', mac: 'Download for Mac', win: 'Download for Windows', note: 'Apple silicon. Intel Macs and Windows builds come from the same place.' },
   final: { h: 'Bring your team’s day into one place', p: 'Start free with up to 5 people. Invite your clients the same afternoon.' },
   foot: 'by Elkiya Group',
   tour: {
@@ -336,6 +337,7 @@ const id: Dict = {
       ['Apakah sulit untuk pindah?', 'Kebanyakan tim mulai dari chat dan tugas dalam satu sore, lalu memindahkan email saat sudah siap. Tidak ada yang harus pindah di hari pertama.'],
     ],
   },
+  download: { h: 'Juga di Mac atau PC Windows Anda', p: 'Aplikasi yang sama di jendelanya sendiri, dengan notifikasi sistem. Dipasang dari sini, bukan app store; pembaruan datang sendiri.', mac: 'Unduh untuk Mac', win: 'Unduh untuk Windows', note: 'Apple silicon. Versi Intel dan Windows tersedia di tempat yang sama.' },
   final: { h: 'Satukan hari kerja tim Anda di satu tempat', p: 'Mulai gratis untuk hingga 5 orang. Undang klien Anda di sore yang sama.' },
   foot: 'oleh Elkiya Group',
   tour: {

@@ -371,3 +371,27 @@ button.team-row:hover,
     display: none;
   }
 }
+.wa-form {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+.wa-hook {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+}
+.wa-hook p {
+  margin: 0;
+}
+.wa-wide {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wa-hook .wl-dns {
+  grid-template-columns: 60px minmax(0, 1fr) 28px;
+}
+.wa-btn {
+  color: #25d366;
+}

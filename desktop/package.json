@@ -1,0 +1,26 @@
+{
+  "name": "sprint2go-desktop",
+  "productName": "Sprint2go",
+  "version": "0.1.0",
+  "description": "Sprint2go for Mac and Windows",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.sprint2go.desktop",
+    "productName": "Sprint2go",
+    "directories": { "output": "release" },
+    "files": ["main.cjs", "preload.cjs", "icon.png"],
+    "mac": { "category": "public.app-category.productivity", "target": ["dmg", "zip"], "icon": "icon.png", "identity": null },
+    "win": { "target": ["nsis", "portable"], "icon": "icon.png" },
+    "nsis": { "oneClick": true, "perMachine": false }
+  }
+}
