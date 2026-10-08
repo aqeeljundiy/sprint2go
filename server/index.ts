@@ -8,10 +8,12 @@ import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Readable } from 'node:stream';
 import * as db from './db.ts';
 import * as ai from './ai.ts';
-import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
+import { AIError, keyHint, testKey, type AIConfig } from './llm.ts';
+import * as aiplan from './aiplan.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { DEFAULT_PERMISSIONS } from '../src/types.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
+import { TOP_UP } from '../src/data/pricing.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
 import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
@@ -532,25 +534,69 @@ const JOB_OF: Record<string, string> = {
   braindump: 'braindump',
   meetingnotes: 'meeting',
 };
-function aiFor(wsId: string, job: string): AIConfig | null {
+/** Whether our keys serve this company: the AI plan (or a trial, or free months on it), unless it pays for AI itself. */
+const onOurAI = (ws: any) => !!ws && ws.ai?.payer !== 'own' && aiplan.planAI(ws).ok;
+/**
+ * Who runs a job for a company, in order: its own pick for the job (with its key), then our AI with the operators'
+ * fallback (AI-plan companies only), else any key the company saved. Each one takes over when the one before fails.
+ */
+function aiFor(wsId: string, job: string): AIConfig[] {
   const ws = workspaces().find((w) => w.id === wsId);
   const pick = ws?.ai?.jobs?.[job];
-  const rec = JOBS.find((j) => j.id === job)?.rec;
+  const chain: AIConfig[] = [];
   if (pick && pick.provider !== 'included') {
     const k = db.loadKey(wsId, pick.provider);
-    if (k) return { provider: pick.provider, model: pick.model, apiKey: k.key, baseUrl: k.baseUrl };
+    if (k) chain.push({ provider: pick.provider, model: pick.model, apiKey: k.key, baseUrl: k.baseUrl });
   }
-  // Included AI (sprint2go pays): the server's own Claude key.
-  if (process.env.ANTHROPIC_API_KEY && ws?.ai?.payer !== 'own') return { provider: 'anthropic', model: rec?.balanced?.startsWith('claude') ? rec.balanced : 'claude-sonnet-5-5', apiKey: process.env.ANTHROPIC_API_KEY, included: true };
+  if (onOurAI(ws)) chain.push(...aiplan.ourChain(job));
+  if (chain.length) return chain;
   // Otherwise any key the company saved, with that provider's model for this kind of job.
+  const rec = JOBS.find((j) => j.id === job)?.rec;
   for (const p of ws?.ai?.providers ?? []) {
     const k = db.loadKey(wsId, p.id);
     const info = PROVIDERS.find((x) => x.id === p.id);
     if (!k || !info || info.kind === 'speech') continue;
     const wanted = [rec?.balanced, rec?.best, rec?.cheap].find((m) => info.models.some((x) => x.id === m));
-    return { provider: p.id, model: wanted ?? info.models.find((m) => m.tier === 'balanced')?.id ?? info.models[0].id, apiKey: k.key, baseUrl: k.baseUrl };
+    return [{ provider: p.id, model: wanted ?? info.models.find((m) => m.tier === 'balanced')?.id ?? info.models[0].id, apiKey: k.key, baseUrl: k.baseUrl }];
   }
-  return null;
+  return [];
+}
+
+/**
+ * Our AI only while the plan's allowance lasts. At the end of it: an automatic top-up when the company has them on
+ * (the existing billing setting), else the company's own keys, else a message saying what to do.
+ */
+function withinAllowance(ws: any, chain: AIConfig[]): { chain: AIConfig[]; message?: string } {
+  if (!ws || !chain.some((c) => c.included)) return { chain };
+  const g = aiplan.gate(ws);
+  if (g.state === 'ok') return { chain };
+  if (g.state === 'topup') {
+    const fresh = db.getDoc('workspaces', ws.id) as any;
+    const next = { ...fresh, plan: { ...fresh.plan, topUps: (fresh.plan?.topUps ?? 0) + 1 } };
+    db.writeDocs('workspaces', [next], [], null);
+    broadcast('workspaces', [next], []);
+    platform.event('ai.topup', ws.id, null, `automatic, ${next.plan.topUps} this month`);
+    const admins = (fresh.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId);
+    notifyUsers(admins, `The AI allowance for this month ran out, so a top-up was added automatically: Rp ${TOP_UP.price.toLocaleString('id-ID')} on the next invoice.`, '/settings/billing', ws.id);
+    return { chain };
+  }
+  const own = chain.filter((c) => !c.included);
+  return own.length ? { chain: own } : { chain: [], message: g.message };
+}
+const NO_AI = 'AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.';
+const OUR_AI_DOWN = 'AI isn’t available right now. We’ve been told; try again in a few minutes.';
+
+/**
+ * A company's plan as the app may save it. Free months, discounts and trials are ours: the app can end a trial (by
+ * picking a plan) but never start or stretch one, since a trial runs on our AI. Top-ups bought this month only go up
+ * from the app; invoicing resets them.
+ */
+function planFromApp(next: any, prev: any) {
+  if (!next) return prev;
+  const max = new Date(Date.now() + 14 * 86_400_000).toISOString();
+  const trialEnds = !next.trialEnds ? undefined : prev ? prev.trialEnds : String(next.trialEnds) > max ? max : next.trialEnds;
+  const topUps = Math.max(prev?.topUps ?? 0, Number(next.topUps) || 0);
+  return { ...next, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined };
 }
 
 const routes: Record<string, (b: any) => Promise<unknown>> = {
@@ -615,7 +661,9 @@ function sttFor(ws: Ws & { meetings?: { languages?: string[] } }, only?: string)
     const k = db.loadKey(ws.id, p);
     if (k) return { provider: p, apiKey: k.key, model: p === 'sumopod' ? 'gemini/gemini-3.5-flash' : null, languages, language: languages[0] ?? 'auto' };
   }
-  return null;
+  // AI-plan companies without a speech key of their own: ours, as the operators picked.
+  const ours = onOurAI(ws) ? aiplan.ourSpeech() : null;
+  return ours ? { ...ours, languages, language: languages[0] ?? 'auto' } : null;
 }
 
 function saveMeeting(m: db.Doc) {
@@ -672,13 +720,16 @@ async function writeMeetingNotes(id: string, again = false) {
     finish({ recording: t.recording }, why, ...t.line);
   };
   if (!m.transcript?.length) return noNotes('No transcript, so no notes');
-  const cfg = aiFor(ws.id, 'meeting');
-  if (!cfg) return noNotes('No AI is set up for meeting notes, so only the transcript is kept');
-  cfg.onUsage = (inTokens, outTokens) => db.logUsage({ workspaceId: ws.id, userId: m.createdBy ?? '', job: 'meeting', provider: cfg.included ? 'included' : cfg.provider, model: cfg.model, inTokens, outTokens });
+  const route = withinAllowance(ws, aiFor(ws.id, 'meeting'));
+  if (!route.chain.length) return noNotes(route.message ? 'The AI allowance for this month is used up, so only the transcript is kept' : onOurAI(ws) ? 'AI wasn’t available, so only the transcript is kept' : 'No AI is set up for meeting notes, so only the transcript is kept');
   try {
     const clients = (db.allDocs('clients') as any[]).filter((c) => c.workspaceId === ws.id && c.status !== 'ended');
     const members = ws.members.map((x: any) => String((db.getDoc('users', x.userId) as any)?.name ?? '').split(' ')[0]).filter(Boolean);
-    const notes = await withAI(cfg, () => ai.meetingNotes({ title: m.title, transcript: m.transcript, clientNames: clients.map((c) => c.name), members }));
+    const notes = await aiplan.runChain(
+      route.chain,
+      (cfg, inTokens, outTokens) => db.logUsage({ workspaceId: ws.id, userId: m.createdBy ?? '', job: 'meeting', provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens }),
+      () => ai.meetingNotes({ title: m.title, transcript: m.transcript, clientNames: clients.map((c) => c.name), members }),
+    );
     const cur = db.getDoc('meetings', id) as any;
     // Transcribing again keeps the filing and the recording as they are.
     const filed = again || cur.filedBy === 'user' ? { clientId: cur.clientId, filedBy: cur.filedBy, by: '' } : fileMeeting(ws, { ...cur, summary: notes.summary }, notes.folder, clients);
@@ -777,15 +828,12 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
 }
 const gzipped = new Map<string, { size: number; stamp: number; body: Buffer }>();
 
-/** What usage rows cost in rupiah at list prices (own keys); included AI counts as 0 here, the plan's allowance covers it. */
+/**
+ * What usage rows cost in rupiah on the company's own keys, at the price list and dollar rate operators keep
+ * (operator console, AI, Prices). Our AI ('included') counts as 0 here: the plan's allowance covers it.
+ */
 function spendRp(rows: { provider: string; model: string; inTokens: number; outTokens: number }[]) {
-  let usd = 0;
-  for (const r of rows) {
-    if (r.provider === 'included') continue;
-    const m = PROVIDERS.find((x) => x.id === r.provider)?.models.find((x) => x.id === r.model);
-    if (m?.price) usd += (r.inTokens * m.price[0] + r.outTokens * m.price[1]) / 1e6;
-  }
-  return usd * 17_500;
+  return aiplan.costRp(rows.filter((r) => r.provider !== 'included'));
 }
 
 /* ---------- routes ---------- */
@@ -1697,11 +1745,10 @@ createServer(async (req, res) => {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
             const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
-            const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
-            return { ...d, ...own, plan } as db.Doc;
+            return { ...d, ...own, plan: planFromApp((d as any).plan, before.plan) } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
-          const plan = fresh.plan ? { ...fresh.plan, comp: undefined, discount: undefined } : fresh.plan;
+          const plan = planFromApp(fresh.plan, undefined);
           return { ...fresh, plan, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
@@ -1933,7 +1980,7 @@ createServer(async (req, res) => {
         }
       }
       db.saveKey(workspaceId, provider, key.trim(), baseUrl, me);
-      return json(res, 200, { keyLast4: key.trim().slice(-4) });
+      return json(res, 200, { keyLast4: keyHint(provider, key) });
     }
     if (p === '/api/ai/keys' && req.method === 'DELETE') {
       const { workspaceId, provider } = await body(req);
@@ -1952,7 +1999,20 @@ createServer(async (req, res) => {
       const wsId = url.searchParams.get('ws') ?? '';
       const asClient = memberOf(me).some((w) => w.id === wsId) ? undefined : portalsOf(me).find((pt) => pt.workspaceId === wsId);
       if (!asClient && !memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
-      return json(res, 200, { live: asClient ? !!aiFor(wsId, 'ask') : Object.values(JOB_OF).some((j) => !!aiFor(wsId, j)) });
+      const w = workspaces().find((x) => x.id === wsId);
+      const jobs = asClient ? ['ask'] : Array.from(new Set(Object.values(JOB_OF)));
+      const usedUp = onOurAI(w) && aiplan.gate(w).state === 'out';
+      const chains = jobs.map((j) => aiFor(wsId, j));
+      const live = chains.some((c) => c.some((x) => !x.included || !usedUp));
+      // Why it's off: the allowance is used up, our AI is down, or nothing is set up.
+      const why = live ? null : usedUp && chains.some((c) => c.length) ? 'used-up' : onOurAI(w) ? 'down' : 'no-key';
+      return json(res, 200, { live, why });
+    }
+    // Settings, AI: who handles the company's data for each job, and what's left of the plan's AI this month.
+    if (p === '/api/ai/plan' && req.method === 'GET') {
+      const wsId = url.searchParams.get('ws') ?? '';
+      if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
+      return json(res, 200, aiplan.companyView(workspaces().find((w) => w.id === wsId)));
     }
     const action = p.match(/^\/api\/ai\/(\w+)$/)?.[1];
     if (action && routes[action] && req.method === 'POST') {
@@ -1977,10 +2037,15 @@ createServer(async (req, res) => {
         if (caps.companyRp && spendRp(rows) >= caps.companyRp) return json(res, 429, { error: `The company’s AI budget for this month (Rp ${caps.companyRp.toLocaleString('id-ID')}) is used up. An admin can raise it in Settings, AI.` });
         if (caps.personRp && spendRp(db.usageSinceFor(b.workspaceId, me, monthStart) as any) >= caps.personRp) return json(res, 429, { error: `Your AI budget for this month (Rp ${caps.personRp.toLocaleString('id-ID')}) is used up. An admin can raise it in Settings, AI.` });
       }
-      const cfg = aiFor(b.workspaceId, JOB_OF[action]);
-      if (!cfg) return json(res, 409, { error: 'no-key' });
-      cfg.onUsage = (inTokens, outTokens) => db.logUsage({ workspaceId: b.workspaceId, userId: me, job: JOB_OF[action], provider: cfg.included ? 'included' : cfg.provider, model: cfg.model, inTokens, outTokens });
-      return json(res, 200, await withAI(cfg, () => routes[action](b)));
+      const job = JOB_OF[action];
+      const route = withinAllowance(capWs, aiFor(b.workspaceId, job));
+      if (!route.chain.length) {
+        if (route.message) return json(res, 429, { error: route.message, reason: 'used-up' });
+        if (onOurAI(capWs)) return json(res, 503, { error: OUR_AI_DOWN });
+        return json(res, 409, { error: 'no-key', message: NO_AI });
+      }
+      const log = (cfg: AIConfig, inTokens: number, outTokens: number) => db.logUsage({ workspaceId: b.workspaceId, userId: me, job, provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens });
+      return json(res, 200, await aiplan.runChain(route.chain, log, () => routes[action](b)));
     }
     return json(res, 404, { error: 'Not found' });
   } catch (err) {
