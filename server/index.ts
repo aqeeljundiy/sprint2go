@@ -119,6 +119,33 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
   // Guests on your projects (some are people at other companies that use Sprint2go): so their names and photos show.
   const guests = new Set((db.allDocs('clients') as any[]).filter((c) => mine.has(c.workspaceId)).flatMap((c) => (c.people ?? []).map((p: any) => String(p.email).toLowerCase())));
   const channelOk = (c: any) => !!c && mine.has(c.workspaceId) && (!(c.private || c.kind === 'dm') || (c.members ?? []).includes(userId));
+  // Tasks: owners and admins see all of a company's; members see their own work, their teams', the projects they're on
+  // (every project when the company allows it) and their channels'. The same rule as the app's.
+  // Built only when a task is checked (most live updates aren't tasks).
+  let taskCtx: { adminOf: Set<string>; seeAll: Set<string>; myTeams: Set<string>; myProjects: Set<string> } | null = null;
+  const doing = (t: any) => t.userId === userId || (t.assignees ?? []).includes(userId) || t.supervisorId === userId;
+  const ctxOf = () =>
+    (taskCtx ??= (() => {
+      const allTodos = db.allDocs('todos') as any[];
+      return {
+        adminOf: new Set(ws.filter((w) => w.members.some((m) => m.userId === userId && m.role !== 'member')).map((w) => w.id)),
+        seeAll: new Set(ws.filter((w) => mine.has(w.id) && ({ ...DEFAULT_PERMISSIONS, ...((w as any).permissions ?? {}) }).seeAllProjects).map((w) => w.id)),
+        myTeams: new Set((db.allDocs('teams') as any[]).filter((t) => (t.members ?? []).includes(userId) || t.leadId === userId).map((t) => t.id)),
+        myProjects: new Set(
+          (db.allDocs('clients') as any[])
+            .filter((c) => mine.has(c.workspaceId) && (c.ownerId === userId || (c.members ?? []).some((m: any) => m.userId === userId) || [...channels.values()].some((ch) => ch.clientId === c.id && (ch.members ?? []).includes(userId)) || allTodos.some((t) => t.clientId === c.id && doing(t))))
+            .map((c) => c.id),
+        ),
+      };
+    })());
+  const taskOk = (t: any) => {
+    const wsId = typeof t.workspaceId === 'string' ? t.workspaceId : firstWs;
+    if (!mine.has(wsId)) return false;
+    if (doing(t) || (t.followers ?? []).includes(userId) || t.createdBy === userId) return true;
+    const c = ctxOf();
+    if (c.adminOf.has(wsId)) return true;
+    return (t.teamId && c.myTeams.has(t.teamId)) || (t.clientId && (c.seeAll.has(wsId) || c.myProjects.has(t.clientId))) || (t.channelId && (channels.get(t.channelId)?.members ?? []).includes(userId));
+  };
   const ok = (coll: string, d: any): boolean => {
     switch (coll) {
       case 'users':
@@ -132,6 +159,8 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
         return mine.has(d.workspaceId) && (d.visibility !== 'private' || d.ownerId === userId); // private notes: only their owner
       case 'channels':
         return channelOk(d);
+      case 'todos':
+        return taskOk(d);
       case 'messages':
         return channelOk(channels.get(d.channelId));
       case 'notices':

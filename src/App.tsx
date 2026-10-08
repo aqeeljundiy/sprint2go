@@ -961,6 +961,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Who sees which tasks: owners and admins see everything; everyone else sees their own work,
   // their teams' work, the clients they work on, and the channels they're in.
   const isAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
+  const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   const myTeamIds = useMemo(() => teams.filter((t) => t.workspaceId === ws.id && (t.members.includes(user.id) || t.leadId === user.id)).map((t) => t.id), [teams, ws.id, user.id]);
   const myClientIds = useMemo(
     () =>
@@ -988,10 +989,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               t.followers?.includes(user.id) ||
               t.createdBy === user.id ||
               (t.teamId && myTeamIds.includes(t.teamId)) ||
-              (t.clientId && myClientIds.includes(t.clientId)) ||
+              (t.clientId && (perms.seeAllProjects || myClientIds.includes(t.clientId))) ||
               (t.channelId && channels.some((c) => c.id === t.channelId && c.members.includes(user.id))),
           ),
-    [allWsTasks, isAdmin, user.id, myTeamIds, myClientIds, channels],
+    [allWsTasks, isAdmin, user.id, myTeamIds, myClientIds, channels, perms.seeAllProjects],
   );
   const wsChannels = useMemo(() => channels.filter((c) => c.workspaceId === ws.id && c.members.includes(user.id) && !c.archived), [channels, ws.id, user.id]);
   // Channels I can see in the sidebar: mine, plus public ones I could join.
@@ -1095,7 +1096,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       showToast({ text: `${t.name} deleted. Its tasks keep their ${term.many}` });
     },
   };
-  const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   const canCreateTeams = isAdmin || perms.createTeams;
   const canCreateProjects = isAdmin || perms.createProjects;
   const seesAllProjects = isAdmin || perms.seeAllProjects;
