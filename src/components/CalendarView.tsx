@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, ChevronLeft, ChevronRight, Clock, Mail, MapPin, Menu, Plus, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
-import { MEETING_NAME, botCanJoin, meetingKind, meetingLinkOf } from '../meetingLink';
+import { ChevronLeft, ChevronRight, Clock, Lock, Mail, MapPin, Menu, Mic, Plus, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef } from '../types';
 import {
   addDays,
@@ -17,6 +16,7 @@ import {
   startOfWeek,
 } from '../calendarUtils';
 import { Avatar } from './Avatar';
+import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../meetingLinks';
 
 export type CalView = 'day' | 'week' | 'month';
 
@@ -45,8 +45,8 @@ interface Props {
   onExtend?: (id: string, minutes: number) => void;
   onTomorrow?: (id: string) => void;
   onTaskDone?: (e: CalEvent) => void;
-  /** Sends the meeting notetaker to the event's call. */
-  onSendBot?: (e: CalEvent) => void;
+  /** Send the meeting notetaker to this event's Meet or Zoom call. */
+  onNotetaker?: (e: CalEvent) => void;
   /** The notetaker was already sent to this event: opens its meeting. */
   sentBot?: (e: CalEvent) => (() => void) | undefined;
 }
@@ -137,12 +137,13 @@ export function CalendarView(props: Props) {
           calendar={calendars.find((c) => c.id === selected.calendarId)}
           onClose={() => props.onSelect(null)}
           onDelete={() => props.onDelete(selected.id)}
+          readOnly={!(props.canEdit?.(selected) ?? true)}
+          onNotetaker={props.onNotetaker ? () => props.onNotetaker!(selected) : undefined}
           onOpenThread={props.onOpenThread}
           task={props.taskOf?.(selected) ?? null}
           onExtend={(m) => props.onExtend?.(selected.id, m)}
           onTomorrow={() => props.onTomorrow?.(selected.id)}
           onTaskDone={() => props.onTaskDone?.(selected)}
-          onSendBot={props.onSendBot ? () => props.onSendBot!(selected) : undefined}
           sentBot={props.sentBot?.(selected)}
         />
       )}
@@ -444,30 +445,33 @@ function EventDetail({
   onExtend,
   onTomorrow,
   onTaskDone,
-  onSendBot,
+  readOnly,
+  onNotetaker,
   sentBot,
 }: {
   event: CalEvent;
   calendar?: CalendarDef;
   onClose: () => void;
   onDelete: () => void;
+  readOnly?: boolean;
+  onNotetaker?: () => void;
   onOpenThread: (id: string) => void;
   task?: { title: string; done: boolean } | null;
   onExtend?: (minutes: number) => void;
   onTomorrow?: () => void;
   onTaskDone?: () => void;
-  onSendBot?: () => void;
   sentBot?: () => void;
 }) {
   const link = meetingLinkOf(event);
-  const kind = link ? meetingKind(link) : null;
   const ended = new Date(event.end).getTime() < Date.now();
   return (
     <aside className="ev-detail" style={{ ['--c' as string]: calendar?.color }}>
       <div className="ev-actions">
-        <button className="icon-btn sm" onClick={onDelete} title="Delete event">
-          <Trash2 size={15} />
-        </button>
+        {!readOnly && (
+          <button className="icon-btn sm" onClick={onDelete} title="Delete event">
+            <Trash2 size={15} />
+          </button>
+        )}
         <button className="icon-btn sm" onClick={onClose} title="Close (Esc)">
           <X size={15} />
         </button>
@@ -480,7 +484,26 @@ function EventDetail({
         <Clock size={16} />
         <span>{fmtRange(event)}</span>
       </div>
-      {event.location && event.location !== link && (
+      {link && !ended && (
+        <div className="ev-join">
+          <a className="primary-btn sm" href={link.url} target="_blank" rel="noopener noreferrer">
+            <Video size={14} /> Join {MEETING_NAME[link.kind]}
+          </a>
+          {sentBot ? (
+            <button type="button" className="link-btn small" onClick={sentBot}>
+              The notetaker is on its way. Open the meeting
+            </button>
+          ) : (
+            onNotetaker &&
+            notetakerJoins(link.kind) && (
+              <button className="ghost-btn sm" onClick={onNotetaker}>
+                <Mic size={14} /> Send notetaker
+              </button>
+            )
+          )}
+        </div>
+      )}
+      {event.location && event.location !== link?.url && (
         <div className="ev-row">
           <MapPin size={16} />
           <span>{event.location}</span>
@@ -493,28 +516,6 @@ function EventDetail({
             {event.organizer ? `Invited by ${event.organizer.name}` : 'From an invite'}
             {event.rsvp === 'tentative' ? '. You said maybe' : event.rsvp === 'accepted' ? '. You’re going' : ''}
           </span>
-        </div>
-      )}
-      {link && !ended && (
-        <div className="ev-row ev-call">
-          <Video size={16} />
-          <a className="primary-btn sm" href={link} target="_blank" rel="noreferrer">
-            Join {kind && kind !== 'other' ? MEETING_NAME[kind] : 'the call'}
-          </a>
-        </div>
-      )}
-      {link && !ended && (sentBot || (onSendBot && botCanJoin(link))) && (
-        <div className="ev-row ev-call">
-          <Bot size={16} />
-          {sentBot ? (
-            <button type="button" className="link-btn small" onClick={sentBot}>
-              The notetaker is on its way. Open the meeting
-            </button>
-          ) : (
-            <button type="button" className="ghost-btn outline sm" onClick={onSendBot}>
-              Send the notetaker
-            </button>
-          )}
         </div>
       )}
       {event.guests?.length ? (
@@ -534,13 +535,19 @@ function EventDetail({
       {event.notes && (
         <div className="ev-row top">
           <StickyNote size={16} />
-          <span>{event.notes}</span>
+          <span className="ev-notes">{event.notes}</span>
         </div>
       )}
       <div className="ev-row muted">
         <span className="dot" style={{ background: calendar?.color, margin: '0 4px' }} />
         <span>{calendar?.name}</span>
       </div>
+      {event.feed && (
+        <div className="ev-row muted small">
+          <Lock size={14} />
+          <span>{event.feed === 'holidays' ? 'Public holiday, shown to everyone in the company.' : 'Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.'}</span>
+        </div>
+      )}
       {task && (
         <div className="ev-task">
           <span className="muted small">{task.done ? 'Task done' : 'Time blocked for a task'}</span>

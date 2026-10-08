@@ -67,6 +67,7 @@ export const WORKSPACES: Workspace[] = [
       { userId: 'u-bayu', role: 'admin' },
     ],
     emailSetup: 'hosted',
+    holidays: { country: 'ID' },
     plan: { ...trialPlan('Elkiya Group', 'aqeel@elkiyagroup.com'), trialEnds: days(9), since: days(-5) },
     ai: defaultAI(false),
     meetings: DEFAULT_MEETINGS,
@@ -95,6 +96,7 @@ export const WORKSPACES: Workspace[] = [
     ],
     // Pixel & Profits keeps its domain on Google Workspace and moves some people to Sprint2go.
     emailSetup: 'mix',
+    holidays: { country: 'ID' },
     plan: {
       track: 'own',
       tier: 'small',

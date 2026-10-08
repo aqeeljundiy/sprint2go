@@ -821,3 +821,215 @@
     justify-content: center;
   }
 }
+
+/* ---------- Calendar links and public holidays ---------- */
+
+/* Add a calendar: options that aren't ready yet still lead somewhere (their calendar link). */
+.source-card {
+  transition: background 0.18s ease-out, border-color 0.18s ease-out;
+}
+.source-tag {
+  flex: none;
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.source-card.later strong {
+  color: var(--text-2);
+}
+
+/* Where to find the link */
+.howto {
+  display: grid;
+  gap: 8px;
+}
+.howto-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.howto-head > span {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.howto .segmented button {
+  padding: 4px 10px;
+}
+.howto-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 12px 10px 30px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.howto-steps li::marker {
+  color: var(--text-3);
+  font-weight: 600;
+}
+.connect-form .link-err {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  animation: fadeIn 0.18s ease-out backwards;
+}
+.connect-form .link-err svg {
+  flex: none;
+  margin-top: 2px;
+}
+.connect-form .field > input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+/* Sidebar: a calendar that stopped updating */
+.cal-warn {
+  flex: none;
+  margin-left: auto;
+  color: var(--warn-solid, #e39a26);
+}
+
+/* A calendar's menu: where it stands, at the top */
+.cal-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 10px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+}
+.cal-status svg {
+  flex: none;
+  margin-top: 2px;
+}
+.cal-status span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.cal-status strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cal-status small {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.cal-status.bad svg,
+.cal-status.bad strong {
+  color: var(--danger);
+}
+.sel-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.cal-menu-note {
+  margin: 6px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+.cal-menu .sel-opt:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Event detail: join the call, read-only notes */
+.ev-join {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 8px 28px;
+}
+a.primary-btn,
+a.ghost-btn {
+  text-decoration: none;
+}
+/* Meet's list rows share the .ev-row name (round2.css): in the detail card they stay one row, icon then text. */
+.ev-detail .ev-row {
+  flex-wrap: nowrap;
+  padding: 7px 0;
+  border-radius: 0;
+}
+.ev-detail .ev-row:hover {
+  background: none;
+}
+.ev-detail .ev-row > span:last-child {
+  flex: 1;
+  min-width: 0;
+}
+.ev-notes {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.ev-row.small {
+  font-size: 12.5px;
+}
+
+/* Dates: public holidays */
+.dp-day {
+  position: relative;
+}
+.dp-day.hol::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.dp-day.hol.on::after {
+  background: #fff;
+}
+.dp-hol {
+  margin: 8px 6px 2px;
+  font-size: 12px;
+  color: var(--danger);
+  animation: fadeIn 0.18s ease-out backwards;
+}
+.hol-chip {
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.hol-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+
+@media (max-width: 760px) {
+  /* An open event card is the thing to read: the add button steps aside instead of covering it. */
+  .fab {
+    transition: transform 0.15s, opacity 0.18s ease-out;
+  }
+  :root:has(.ev-detail:not(.is-leaving)) .fab {
+    opacity: 0;
+    transform: scale(0.9);
+    pointer-events: none;
+  }
+}

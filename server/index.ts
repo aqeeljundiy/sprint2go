@@ -32,6 +32,8 @@ import * as customDomains from './customDomains.ts';
 import * as push from './push.ts';
 import * as pushRules from './notifyPush.ts';
 import * as turn from './turn.ts';
+import * as feeds from './calendarFeeds.ts';
+import { FetchError } from './safeFetch.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
@@ -283,7 +285,15 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
         return mine.has(typeof d.workspaceId === 'string' ? d.workspaceId : firstWs);
     }
   };
-  return (coll, d) => (ok(coll, d) ? d : null);
+  // Outside calendars and their events: by who owns them and what they share (see calendarFeeds.ts).
+  const calendarView = feeds.lensFor(userId, (other) => people.has(other), (wsId) => mine.has(wsId));
+  return (coll, d) => {
+    if (coll === 'calendars' || coll === 'events') {
+      const shaped = calendarView(coll, d);
+      if (shaped !== undefined) return shaped;
+    }
+    return ok(coll, d) ? d : null;
+  };
 }
 
 /** A client person's view: their client's shared work, shaped so internal details never leave the server. */
@@ -1678,6 +1688,7 @@ createServer(async (req, res) => {
       if (left.length) (db.writeDocs('workspaces', left as any, [], me), broadcast('workspaces', left as any, []));
       db.deleteLogin(me);
       db.endSessions(me);
+      feeds.forgetPerson(me); // their calendar links (private addresses) and the events read from them
       for (const [id, c] of clients) if (c.userId === me) (c.res.end(), clients.delete(id));
       const gone = { ...u, name: 'Deleted account', email: '', title: '', photo: undefined, hiddenApps: undefined, vaultKey: undefined, deletedAt: new Date().toISOString() };
       db.writeDocs('users', [gone], [], me);
@@ -2034,6 +2045,9 @@ createServer(async (req, res) => {
         const wsId = coll === 'workspaces' ? d.id : ((d as any).workspaceId ?? before?.workspaceId);
         if (wsId && (db.getDoc('workspaces', wsId) as any)?.suspended) return null;
         if (before && 'workspaceId' in before && d.workspaceId !== before.workspaceId) return null;
+        // Outside calendars, calendar links and public holidays have their own rules.
+        const cal = feeds.checkWrite(coll, d, me, DEMO);
+        if (cal !== 'pass') return cal;
         if (coll === 'workspaces') {
           if (before) {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
@@ -2083,7 +2097,7 @@ createServer(async (req, res) => {
       const dels = mine.size
         ? (deletes as string[]).filter((id) => {
             const before = db.getDoc(coll, id);
-            return !before || (see(coll, before) && mayDelete(before));
+            return !before || (see(coll, before) && mayDelete(before) && feeds.mayDelete(coll, before, me));
           })
         : [];
       const delDocs = dels.map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
@@ -2101,6 +2115,8 @@ createServer(async (req, res) => {
           ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
         }
       const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
+      // Public holidays switched on, off or to another country.
+      const holidaysChanged = coll === 'workspaces' ? (ok as any[]).filter((d) => (db.getDoc('workspaces', d.id) as any)?.holidays?.country !== d.holidays?.country).map((d) => d.id) : [];
       // Email settings changed: check what really works again.
       const emailChanged =
         coll === 'workspaces'
@@ -2121,6 +2137,7 @@ createServer(async (req, res) => {
       db.writeDocs(coll, ok, dels, me);
       for (const id of emailChanged) soonReadiness(id);
       for (const id of addressChanged) customDomains.soon(id);
+      for (const id of holidaysChanged) void feeds.syncHolidays(id).catch((e) => console.error('[holidays]', e instanceof Error ? e.message : e));
       if (leavers.length) endGuestAccess(leavers);
       // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
       if (coll === 'notices' && mailer.systemMailPath() !== 'log')
@@ -2135,6 +2152,7 @@ createServer(async (req, res) => {
       const conn = String(req.headers['x-conn'] ?? '');
       broadcast(coll, ok, dels, clients.get(conn)?.userId === me ? conn : undefined, delDocs);
       if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
+      feeds.afterSync(coll, ok, delDocs);
       // A deleted meeting takes its recording with it.
       if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
       return json(res, 200, { saved: ok.length });
@@ -2147,6 +2165,31 @@ createServer(async (req, res) => {
       const c = turn.credentials(me);
       res.setHeader('cache-control', 'no-store');
       return json(res, 200, c ? { relay: true, iceServers: [{ urls: c.urls, username: c.username, credential: c.credential }], expiresAt: c.expiresAt } : { relay: false, iceServers: [] });
+    }
+    // Calendar links: a private .ics or webcal:// address, read on the server (now, every 30 minutes, and on demand).
+    if (p === '/api/calendars/link' && req.method === 'POST') {
+      if (pset.maintenance.on && !opRecord) return json(res, 503, { error: pset.maintenance.message || 'Changes are paused for a few minutes while sprint2go is updated.' });
+      if (!memberOf(me).length) return json(res, 403, { error: 'Calendars are for people in a company.' });
+      if (tooMany(`callink:${me}`, 12, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of links in a few minutes. Try again shortly.' });
+      try {
+        return json(res, 200, await feeds.addLink(me, await body(req)));
+      } catch (e) {
+        if (e instanceof FetchError) return json(res, 400, { error: e.message });
+        throw e;
+      }
+    }
+    const calRefresh = p.match(/^\/api\/calendars\/([\w-]+)\/refresh$/);
+    if (calRefresh && req.method === 'POST') {
+      const cal = db.getDoc('calendars', calRefresh[1]) as any;
+      const mineToRefresh = cal && ((cal.source === 'ics' && cal.ownerId === me) || (cal.source === 'holidays' && cal.workspaceId && memberOf(me).some((w) => w.id === cal.workspaceId)));
+      if (!mineToRefresh) return json(res, 404, { error: 'No such calendar.' });
+      if (tooMany(`calsync:${me}`, 20, 10 * 60_000)) return json(res, 429, { error: 'It was just updated. Try again in a few minutes.' });
+      if (cal.source === 'holidays') {
+        await feeds.syncHolidays(cal.workspaceId);
+        const after = db.getDoc('calendars', cal.id) as any;
+        return json(res, 200, { ok: !after?.error, error: after?.error });
+      }
+      return json(res, 200, await feeds.refreshLink(cal.id));
     }
 
     // Huddles: WebRTC offers, answers and candidates relayed to one person in a company you share. Audio goes
@@ -2426,6 +2469,7 @@ createServer(async (req, res) => {
     log: (line) => console.log(line),
     notifyAdmins: (wsId, text) => notifyUsers((workspaces().find((w) => w.id === wsId)?.members ?? []).filter((m) => m.role !== 'member').map((m) => m.userId), text, '/settings/agency', wsId),
   });
+  feeds.startCalendarFeeds({ broadcast });
 });
 
 /** Whether the meeting recorder answers, checked every few minutes (the app asks often). */
@@ -2441,7 +2485,7 @@ function caps() {
     boosted: mailer.boostedAvailable(),
     googleCalendar: !!process.env.GOOGLE_CLIENT_ID,
     microsoftCalendar: !!process.env.MS_CLIENT_ID,
-    calendarLinks: false, // .ics links aren't fetched by the server yet
+    calendarLinks: true, // .ics and webcal:// links are read by this server (calendarFeeds.ts)
     payments: !!process.env.XENDIT_SECRET,
     relay: turn.configured, // huddles can fall back to our call relay (TURN) on networks that block direct calls
     // The desktop app: DESKTOP_URL when set, else the newest release on GitHub (its page, and each installer).

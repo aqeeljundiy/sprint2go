@@ -5,6 +5,7 @@ import { term } from '../terms';
 import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, FileText, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search, Megaphone } from 'lucide-react';
 import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, Todo, User } from '../types';
 import { fmtTime } from '../calendarUtils';
+import { meetingLinkOf } from '../meetingLinks';
 import { isMine } from '../identity';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
@@ -845,12 +846,19 @@ function UpNext(p: {
   const action = (x: NextItem) => {
     const t = x.task;
     switch (x.kind) {
-      case 'meeting':
-        return (
+      case 'meeting': {
+        // A call link: join it from here.
+        const link = x.event && meetingLinkOf(x.event);
+        return link ? (
+          <a className="primary-btn sm" href={link.url} target="_blank" rel="noopener noreferrer">
+            <Video size={14} /> Join
+          </a>
+        ) : (
           <button className="primary-btn sm" onClick={() => open(x)}>
             Open
           </button>
         );
+      }
       case 'review':
         return (
           <button className="primary-btn sm" onClick={() => act(x.key, () => p.onDone(t!.id))}>

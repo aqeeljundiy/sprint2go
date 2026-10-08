@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CalendarCheck, CalendarPlus, ChevronRight, Loader2, Video } from 'lucide-react';
 import type { CalEvent, InviteGuest, MailInvite, RsvpStatus } from '../types';
 import { Avatar } from './Avatar';
-import { MEETING_NAME, meetingKind } from '../meetingLink';
+import { MEETING_NAME, findMeetingLink } from '../meetingLinks';
 import { isMine } from '../identity';
 
 /** What the app knows around one invite: answers given, the calendar, later versions. */
@@ -81,7 +81,7 @@ export function InviteCard({ invite: inv, state, conflicts, answerOff, onAnswerO
   const cancelled = inv.method === 'CANCEL' || !!inv.cancelled || !!state.cancelled;
   const past = Date.parse(inv.end) < Date.now();
   const tile = inv.allDay ? 'UTC' : undefined;
-  const kind = inv.url ? meetingKind(inv.url) : null;
+  const kind = inv.url ? (findMeetingLink(inv.url)?.kind ?? null) : null;
   // The organiser's own time, when it differs from yours.
   const theirs = !inv.allDay && inv.tz && inv.tz !== viewerTz && inviteWhen(inv, inv.tz) !== inviteWhen(inv) ? inv.tz : null;
   const isYou = (email: string) => email === inv.you || isMine(email);
@@ -183,7 +183,7 @@ export function InviteCard({ invite: inv, state, conflicts, answerOff, onAnswerO
             )}
             {inv.url && !cancelled && !past && !state.newer && (
               <a className="ghost-btn outline sm mi-join" href={inv.url} target="_blank" rel="noreferrer">
-                <Video size={14} /> Join {kind && kind !== 'other' ? MEETING_NAME[kind] : 'the call'}
+                <Video size={14} /> Join {kind ? MEETING_NAME[kind] : 'the call'}
               </a>
             )}
           </div>

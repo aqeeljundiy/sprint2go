@@ -1,4 +1,5 @@
 import { Popover } from './ui/Popover';
+import { holidayOn } from '../holidayDays';
 import { TabBar } from './ui/TabBar';
 import { ProjectPeople } from './ProjectPeople';
 import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
@@ -420,6 +421,11 @@ export function TasksView(p: Props) {
             )}
             {st.kind !== 'done' && st !== firstOf('open', stages) && groupBy !== 'stage' && <span className={`due stage-badge tone-${toneOf(st)}`}>{stageBadge(st)}</span>}
             {showF('list', 'due') && d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
+            {showF('list', 'due') && !t.done && t.due && d?.cls !== 'overdue' && holidayOn(t.due) && (
+              <span className="hol-chip" title={`Public holiday: ${holidayOn(t.due)}`}>
+                Holiday
+              </span>
+            )}
             {showF('list', 'assignee') && person(t.userId) && (
               <span className="meta-chip person-chip">
                 <Avatar person={person(t.userId)!} size={14} /> {person(t.userId)!.name.split(' ')[0]}

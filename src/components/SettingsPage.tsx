@@ -4,8 +4,9 @@ import { term, brand as product } from '../terms';
 import { Handshake, Ban, Bell, Building2, ChevronDown, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import { DEFAULT_PERMISSIONS } from '../types';
-import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, Todo, User, Workspace } from '../types';
+import type { AISettings, AppId, BlockRule, CalendarDef, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, Todo, User, Workspace } from '../types';
 import { TaskStagesSection } from './admin/TaskStages';
+import { HOLIDAY_COUNTRIES } from '../data/holidays';
 import { AISection } from './admin/AISection';
 import { BillingSection } from './admin/BillingSection';
 import { AppsSection, MyAppsSection, MeetingsSection, PermissionsSection, SecuritySection, StorageSection, TeamsLink } from './admin/AdminMore';
@@ -85,6 +86,9 @@ interface Props {
   onMenu: () => void;
   workspace: Workspace;
   onWorkspace: (p: Partial<Workspace>) => void;
+  /** Public holidays in everyone's calendar: a country, or none. */
+  onHolidays: (country: string | null) => void;
+  holidayCal?: CalendarDef; // the company's holiday calendar, for whether it's keeping up
   onAddAccount: () => void;
   onRemoveAccount: (id: string) => void;
   mailExtras?: React.ReactNode; // Mail & signature: out of office for your mailboxes
@@ -134,7 +138,7 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
+export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -218,6 +222,25 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   ]}
                 />
                 <small>Changes the word everywhere in the app. With Projects, the people you invite are called guests.</small>
+              </div>
+              <div className="field">
+                <label>Public holidays</label>
+                <Select
+                  value={ws.holidays?.country ?? ''}
+                  onChange={(v) => onHolidays(v || null)}
+                  label="Public holidays"
+                  searchable
+                  options={[{ value: '', label: 'Don’t show holidays' }, ...HOLIDAY_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))]}
+                />
+                <small>
+                  {!ws.holidays
+                    ? 'Show your country’s public holidays as all-day items in everyone’s calendar here. Tasks due on a holiday get a note.'
+                    : holidayCal?.error
+                      ? `Couldn’t update them: ${holidayCal.error}${holidayCal.syncedAt ? ` The list from ${relative(holidayCal.syncedAt)} still shows.` : ''}`
+                      : holidayCal?.syncedAt
+                        ? `In everyone’s calendar, and a note on tasks due that day. Checked ${relative(holidayCal.syncedAt)}.`
+                        : 'Adding them to everyone’s calendar…'}
+                </small>
               </div>
               </fieldset>
 

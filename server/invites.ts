@@ -67,7 +67,7 @@ export function eventsFor(inv: StoredInvite, o: { userId: string; workspaceId: s
     end: x.end,
     ...(inv.allDay ? { allDay: true } : {}),
     ...(inv.location ? { location: inv.location } : {}),
-    ...(inv.url ? { meetingUrl: inv.url } : {}),
+    ...(inv.url ? { meetUrl: inv.url } : {}),
     ...(guests.length ? { guests } : {}),
     ...(inv.description ? { notes: inv.description } : {}),
     threadId: o.threadId,
@@ -119,7 +119,7 @@ export function applyInbound(ws: { id: string }, account: Account, inv: StoredIn
       // One date of a repeating event moved.
       const one = mine.find((e) => (e.occurrence ?? e.start) === inv.recurrenceId);
       if (!one) continue;
-      next = [{ ...one, title: inv.title, start: inv.start, end: inv.end, location: inv.location, meetingUrl: inv.url ?? one.meetingUrl, sequence: inv.sequence }];
+      next = [{ ...one, title: inv.title, start: inv.start, end: inv.end, location: inv.location, meetUrl: inv.url ?? one.meetUrl, sequence: inv.sequence }];
       drop = [];
     } else {
       next = eventsFor(inv, { userId, workspaceId: ws.id, threadId: mine[0].threadId ?? threadId, rsvp, mine: [account.email, inv.you ?? ''] }).docs;
@@ -130,7 +130,7 @@ export function applyInbound(ws: { id: string }, account: Account, inv: StoredIn
         return same ? { ...d, id: same.id } : d;
       });
     }
-    const sig = (list: any[]) => JSON.stringify(list.map((e) => [e.title, e.start, e.end, e.location ?? '', e.meetingUrl ?? '']).sort());
+    const sig = (list: any[]) => JSON.stringify(list.map((e) => [e.title, e.start, e.end, e.location ?? '', e.meetUrl ?? '']).sort());
     if (sig(next) === sig(inv.recurrenceId && !inv.rrule ? mine.filter((e) => (e.occurrence ?? e.start) === inv.recurrenceId) : mine)) continue;
     const keepIds = new Set(next.map((d) => d.id));
     const deletes = drop.filter((e) => !keepIds.has(e.id));
