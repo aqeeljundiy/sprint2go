@@ -1,5 +1,7 @@
 # Before launch (audit, 8 Oct 2026)
 
+**Historical.** The blockers below were fixed on 8 and 9 Oct 2026 (write rules, AI caps, production start, files on disk, sign-up and reset by email through our own mail server). What's open now is in BACKLOG.md.
+
 Fixed on 8 Oct: an admin of any company (and anyone can make one) could invite an existing user's id and reset their password. Invites now only go to people who have never signed in, and accepting never overwrites a password.
 
 ## Blockers

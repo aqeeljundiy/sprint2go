@@ -210,12 +210,14 @@ General · People and teams · Apps · Email · Calendars · Meetings (recording
 4. Templates per industry, later a marketplace.
 
 ## 10. Technology
-- Web app (installable on phones): the React prototype grown up.
-- API: Node and TypeScript; Postgres with each company's data kept apart by the database; live updates over WebSockets.
-- AI router: one entry point for every AI job; picks provider and model, applies caps, logs cost, falls back (grown from the meetings app's llm.mjs).
-- Storage: Contabo object storage plus Backblaze backup; connectors for Google Drive, Dropbox, Backblaze.
-- Connectors: Stalwart mail (sending via Amazon SES), Google, Microsoft, Zoho, iCloud, calendar links, the meetings app, Xendit, Paddle.
-- Hosting: Dokploy on Contabo, its own server once customers arrive, nightly off-site backups, staging.sprint2go.com.
+As built (9 Oct 2026):
+- Web app: React and Vite, installable on phones and computers (a service worker that never serves stale builds), with web push; a desktop app (Electron) that updates itself from GitHub releases.
+- Server: one Node 24 and TypeScript process with SQLite (node:sqlite), each company's data kept apart by server-side lenses and write rules; live updates over server-sent events; daily backups, with an off-site copy to S3-compatible storage when configured.
+- Mail: our own mail server inside the app: SMTP in on port 25 with STARTTLS, direct DKIM-signed delivery out, "Some of each" split delivery with Google Workspace, Microsoft 365 and Zoho, calendar invites, aliases, out of office. Amazon SES is the optional paid Boosted sending.
+- AI router: one entry point for every AI job; operators pick provider, model and fallback per job for the AI plan, with caps, costs and margins; companies on their own keys choose freely.
+- Calendars: links (.ics) and public holidays read on the server; Google and Microsoft two-way sync waits for their OAuth apps.
+- Meetings: the notetaker (recorder) as its own Dokploy service.
+- Hosting: Dokploy on Contabo (178.212.35.85), sprint2go.com for the site and app.sprint2go.com for the app, Let's Encrypt through Traefik; GitHub Actions for checks and an uptime watch.
 
 ## 11. Roadmap
 
