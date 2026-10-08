@@ -499,6 +499,21 @@ const routes: Record<string, (b: any) => Promise<unknown>> = {
 const RECORDER_URL = process.env.RECORDER_URL?.replace(/\/$/, '');
 const RECORDER_SECRET = process.env.RECORDER_SECRET ?? '';
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, '');
+/** The marketing site (e.g. https://sprint2go.com) when it lives apart from the app (https://app.sprint2go.com). */
+const SITE_URL = (process.env.SITE_URL ?? '').replace(/\/$/, '');
+const SITE_HOST = SITE_URL ? new URL(SITE_URL).host.toLowerCase() : '';
+const SITE_DOMAIN = SITE_URL ? new URL(SITE_URL).hostname.toLowerCase() : '';
+/** At the marketing address: the landing page and its files only; www goes to the bare domain; the rest goes to the app. */
+function siteRedirect(req: IncomingMessage, res: ServerResponse, p: string) {
+  if (!SITE_HOST) return false;
+  const host = String(req.headers.host ?? '').toLowerCase();
+  const to = (url: string) => (res.writeHead(301, { location: url, 'cache-control': 'max-age=3600' }), res.end(), true);
+  if (host === `www.${SITE_HOST}`) return to(`${SITE_URL}${req.url ?? '/'}`);
+  if (host !== SITE_HOST) return false;
+  const landingFile = /^\/(assets\/|favicon|apple-touch-icon|icon-|manifest\.webmanifest|robots\.txt)/.test(p);
+  if (p === '/' || p === '/welcome' || landingFile || p === '/api/pricing' || p === '/api/health') return false;
+  return to(`${PUBLIC_URL}${req.url ?? '/'}`);
+}
 const BOT_LIVE = new Set(['queued', 'joining', 'waiting_room', 'recording', 'stopping', 'processing']);
 /** What only the bot writes while it's in a meeting; the app's own saves can't overwrite these. */
 const BOT_FIELDS = ['status', 'error', 'log', 'transcript', 'recording', 'minutes', 'at'];
@@ -628,7 +643,7 @@ function brandedHost(req: IncomingMessage) {
   const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
   return (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
 }
-function serveStatic(req: IncomingMessage, res: ServerResponse) {
+function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
   const path = normalize(decodeURIComponent((req.url ?? '/').split('?')[0])).replace(/^(\.\.[/\\])+/, '');
   let file = join(DIST, path);
   const branded = brandedHost(req);
@@ -647,7 +662,8 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
   // The front door: people who aren't signed in see the landing page; /welcome always shows it.
   // At a company's own address there's no landing page: its clients go straight to the branded sign-in.
   const signedIn = !!db.sessionUser(cookie(req, 's2g'));
-  if (((path === '/' && !signedIn) || path === '/welcome') && !branded) {
+  // With a separate marketing site, the app's own address opens on sign-in, not the landing page.
+  if (((path === '/' && (site || (!SITE_HOST && !signedIn))) || path === '/welcome') && !branded) {
     file = join(DIST, 'landing.html');
     // Counted here (no tracking script): where visitors came from, kept in a first-party cookie until they sign up.
     const q = new URL(req.url ?? '/', 'http://x').searchParams;
@@ -661,7 +677,8 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
     const own = String(req.headers.host ?? '').split(':')[0];
     const source = (q.get('utm_source') || q.get('ref') || (refHost && refHost !== own ? refHost : '') || '').toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 60) || 'direct';
     if (path === '/' && req.method === 'GET') platform.countView('/', source);
-    if (source !== 'direct' && !cookie(req, 's2g_src')) res.setHeader('set-cookie', `s2g_src=${source}; Path=/; Max-Age=${30 * 86400}; SameSite=Lax`);
+    // Shared with the app's address (app.sprint2go.com) so sign-ups there know where the visit came from.
+    if (source !== 'direct' && !cookie(req, 's2g_src')) res.setHeader('set-cookie', `s2g_src=${source}; Path=/; Max-Age=${30 * 86400}; SameSite=Lax${SITE_DOMAIN ? `; Domain=${SITE_DOMAIN}` : ''}`);
   }
   else if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html'); // single-page app
   if (!existsSync(file)) {
@@ -707,9 +724,15 @@ createServer(async (req, res) => {
   res.setHeader('x-frame-options', 'DENY');
   res.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' blob: data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss: https:; frame-ancestors 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'self'");
   if (secureCookies()) res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');
-  if (!p.startsWith('/api/')) return serveStatic(req, res);
+  if (siteRedirect(req, res, p)) return;
+  if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
   if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString() });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
+  // Our own DKIM public key (it's published in DNS anyway), so the record can be added without signing in.
+  if (p === '/api/mail/dkim' && req.method === 'GET') {
+    const domain = mailer.SUPPORT_EMAIL.split('@')[1];
+    return json(res, 200, { domain, host: `s2g._domainkey.${domain}`, value: mailer.dkimRecord(domain, 'platform') });
+  }
   // Requests that change things must come from this app, not from another site a signed-in person is looking at.
   if (req.method !== 'GET' && req.headers.origin && !/^\/api\/(hooks\/|whatsapp\/webhook|meet\/recorder)/.test(p)) {
     const o = String(req.headers.origin).replace(/^https?:\/\//, '').toLowerCase();
