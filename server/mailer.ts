@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { mailConfigured, sendRaw, sesIdentity } from './mail.ts';
+import { applyInbound, readInvite } from './invites.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS mail_domains (domain TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, selector TEXT NOT NULL, private_key TEXT NOT NULL, public_key TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -343,7 +344,9 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const hit = accountFor(rcpt.address);
     if (!hit) continue;
     const { ws, account } = hit;
-    const attachments = parsed.attachments.map((a) => {
+    // A calendar invite: read it, and list its .ics once (calendars attach it twice).
+    const cal = readInvite(parsed.attachments, [lower(rcpt.address), lower(account.email)]);
+    const attachments = cal.attachments.map((a) => {
       const id = randomBytes(16).toString('hex');
       db.saveFile({ id, workspaceId: ws.id, by: 'mail', name: a.filename ?? 'attachment', type: a.contentType ?? 'application/octet-stream', size: a.size }, a.content);
       return { name: a.filename ?? 'attachment', size: fmtSize(a.size), url: `/api/files/${id}` };
@@ -360,6 +363,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
       trackersBlocked: trackers || undefined,
       listUnsubscribe: unsubUrl ? { url: unsubUrl, oneClick: unsubOneClick } : undefined,
       auth: authSummary || undefined,
+      invite: cal.invite ?? undefined,
     };
     const threads = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
     const existing = refs.length ? threads.find((t) => (t.messages ?? []).some((m: any) => m.mid && refs.includes(m.mid))) : undefined;
@@ -371,6 +375,8 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ws.id, 'in', spam ? 'spam' : 'inbox', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
     // The first message for a mailbox that wasn't receiving yet unlocks it straight away.
     if (!(ws as any).mailReady?.mailboxes?.[account.id]?.receive) void refreshReadiness(ws.id).catch(() => {});
+    // An update or cancellation of an invite people here answered moves or removes their events.
+    if (cal.invite && !spam) applyInbound(ws, account, cal.invite, thread.id, deps.broadcast, deps.notify);
   }
 }
 
@@ -390,6 +396,7 @@ export interface Outgoing {
   files: { name: string; url: string }[];
   inReplyTo?: string;
   references?: string[];
+  ical?: { method: string; content: string }; // a calendar part, e.g. the REPLY to an invite
 }
 
 const fileBuffer = (url: string): Buffer | null => {
@@ -436,6 +443,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     inReplyTo: o.inReplyTo,
     references: o.references,
     attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url) ?? Buffer.alloc(0) })),
+    icalEvent: o.ical ? { method: o.ical.method, content: o.ical.content, filename: 'invite.ics' } : undefined,
     headers: { 'X-Mailer': 'sprint2go' },
   });
   let raw: Buffer = await composer.compile().build();

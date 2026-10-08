@@ -17,6 +17,8 @@ import * as tablesEngine from './tables.ts';
 import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
+import * as invites from './invites.ts';
+import { buildReply } from './ics.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
 import { gzipSync } from 'node:zlib';
@@ -1314,6 +1316,78 @@ createServer(async (req, res) => {
       } catch (e) {
         return json(res, 400, { error: e instanceof Error ? e.message : 'Could not send.' });
       }
+    }
+
+    /* ---------- mail: calendar invites ---------- */
+    /** A hosted mailbox that can really send, checked afresh when the last check said no; else why not. */
+    const sendBlock = async (ws: any, account: any): Promise<string | null> => {
+      if (account.provider && account.provider !== 'sprint2go') return `${account.email} stays with ${account.provider === 'microsoft' ? 'Microsoft' : 'Google'}, so mail from it goes out there.`;
+      if (ws.mailReady?.mailboxes?.[account.id]?.send) return null;
+      const r = await mailer.refreshReadiness(ws.id);
+      const m = r?.mailboxes[account.id];
+      return m?.send ? null : `Sending isn’t set up for ${account.email} yet. ${m?.sendWhy ?? m?.why ?? ''}`.trim();
+    };
+    if (p === '/api/mail/invite' && req.method === 'POST') {
+      // Yes, Maybe or No to an emailed invite: tells the organiser (an iCalendar REPLY from the mailbox) and puts the
+      // event in this person's calendar, or takes it off.
+      const { threadId, messageId, answer } = await body(req);
+      if (!invites.isRsvp(answer)) return json(res, 400, { error: 'Answer yes, maybe or no.' });
+      const t = db.getDoc('threads', String(threadId ?? '')) as any;
+      const ws = t && (memberOf(me) as any[]).find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId));
+      const account = ws?.accounts.find((a: any) => a.id === t.accountId);
+      if (!t || !account || !(account.users ?? []).includes(me)) return json(res, 403, { error: 'Not your mailbox.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      const msg = (t.messages ?? []).find((m: any) => m.id === messageId);
+      const inv = msg?.invite as invites.StoredInvite | undefined;
+      if (!inv || (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH')) return json(res, 400, { error: 'There’s no invite to answer in this email.' });
+      const own = new Set<string>([String(account.email).toLowerCase(), ...(ws.accounts ?? []).map((a: any) => String(a.email).toLowerCase())]);
+      const tell = inv.method === 'REQUEST' && !!inv.organizer?.email && !own.has(inv.organizer.email);
+      const meName = String((db.getDoc('users', me) as any)?.name ?? account.name ?? '');
+      if (tell) {
+        const blocked = await sendBlock(ws, account);
+        if (blocked) return json(res, 409, { error: `Your answer can’t go out yet. ${blocked}` });
+        const you = inv.you ?? String(account.email).toLowerCase();
+        const name = account.kind === 'shared' ? String(account.name || ws.name) : meName || String(account.name);
+        const said = answer === 'accepted' ? 'Accepted' : answer === 'tentative' ? 'Tentatively accepted' : 'Declined';
+        try {
+          await mailer.queueSend({
+            workspaceId: ws.id,
+            accountId: account.id,
+            threadId: t.id,
+            messageId: 'rsvp-' + randomBytes(6).toString('hex'),
+            from: { name, email: String(account.email).toLowerCase() },
+            to: [inv.organizer!],
+            cc: [],
+            subject: `${said}: ${inv.title}`,
+            text: `${name} ${answer === 'accepted' ? 'accepted' : answer === 'tentative' ? 'might come to' : 'declined'} “${inv.title}”.`,
+            files: [],
+            inReplyTo: msg.mid,
+            references: msg.mid ? [msg.mid] : undefined,
+            ical: { method: 'REPLY', content: buildReply(inv, { name, email: you }, answer) },
+          });
+        } catch (e) {
+          return json(res, 400, { error: e instanceof Error ? e.message : 'Your answer could not be sent.' });
+        }
+      }
+      // The answer, on the email (read fresh: the send may have touched the thread).
+      const fresh = (db.getDoc('threads', t.id) as any) ?? t;
+      const at = new Date().toISOString();
+      const nextThread = { ...fresh, messages: fresh.messages.map((m: any) => (m.id === msg.id ? { ...m, invite: { ...m.invite, answer: { status: answer, at, by: me, sent: tell } } } : m)) };
+      db.writeDocs('threads', [nextThread], [], me);
+      broadcast('threads', [nextThread], []);
+      // This person's calendar: the event (each date of a repeating one), or none after No.
+      const before = invites.eventsOf(inv.uid, ws.id, [me]);
+      const made = answer === 'declined' ? { docs: [] as db.Doc[], firstOnly: false } : invites.eventsFor(inv, { userId: me, workspaceId: ws.id, threadId: t.id, rsvp: answer, mine: [...own] });
+      const docs = made.docs.map((d) => {
+        const same = before.find((e) => (e.occurrence ?? e.start) === ((d as any).occurrence ?? d.start));
+        return same ? { ...d, id: same.id } : d;
+      });
+      const keep = new Set(docs.map((d) => d.id));
+      const gone = before.filter((e) => !keep.has(e.id));
+      db.writeDocs('events', docs, gone.map((e) => e.id), me);
+      if (gone.length) broadcast('events', [], gone.map((e) => e.id), undefined, gone);
+      if (docs.length) broadcast('events', docs, []);
+      return json(res, 200, { sent: tell, events: docs.map((d) => d.id), firstOnly: made.firstOnly });
     }
 
     if (p === '/api/password' && req.method === 'POST') {

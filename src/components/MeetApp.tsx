@@ -34,6 +34,7 @@ import {
   X,
 } from 'lucide-react';
 import type { CalEvent, Client, Meeting, MeetingSettings, MeetingType, Role, Todo, User } from '../types';
+import { MEETING_NAME, botCanJoin, meetingKind, meetingLinkOf } from '../meetingLink';
 import { relative, fullDate } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
@@ -920,7 +921,11 @@ function FolderPage(p: MeetProps & { clientId: string }) {
 /* ---------------- Upcoming ---------------- */
 
 const JOIN_LABEL = { accepted: 'Meetings I organize or accept', organizer: 'Only meetings I organize', all: 'Every meeting with a link', off: 'Off: I pick each one' } as const;
-const linkOf = (e: CalEvent) => (/zoom/i.test(e.location ?? '') ? 'zoom' : /meet|google/i.test(e.location ?? '') ? 'meet' : null);
+/** The kind of call an event has (from its meeting link), or null without one. */
+const linkOf = (e: CalEvent) => {
+  const url = meetingLinkOf(e);
+  return url ? meetingKind(url) : null;
+};
 
 function Upcoming(p: MeetProps) {
   const mode = p.settings.joinMode ?? 'accepted';
@@ -929,7 +934,7 @@ function Upcoming(p: MeetProps) {
   const days = [...new Set(soon.map((e) => new Date(e.start).toDateString()))];
   const dayName = (d: string) => (d === new Date().toDateString() ? 'Today' : d === new Date(now + 86_400_000).toDateString() ? 'Tomorrow' : new Date(d).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' }));
   const joins = (e: CalEvent) => {
-    if (!linkOf(e)) return false;
+    if (!botCanJoin(meetingLinkOf(e))) return false;
     if (e.id in p.overrides) return p.overrides[e.id];
     return mode === 'all' || mode === 'accepted' || (mode === 'organizer' && !e.guests?.length);
   };
@@ -967,7 +972,8 @@ function Upcoming(p: MeetProps) {
                     <span className="ev-main">
                       <strong>{e.title}</strong>
                       <small>
-                        {link === 'zoom' ? 'Zoom' : link === 'meet' ? 'Google Meet' : 'No meeting link'}
+                        {link ? MEETING_NAME[link] : 'No meeting link'}
+                        {link && !botCanJoin(meetingLinkOf(e)) ? ' · the notetaker can’t join this kind of call' : ''}
                         {e.guests?.length ? ` · ${e.guests.length} other${e.guests.length > 1 ? 's' : ''}` : ''}
                         {e.id in p.overrides ? ' · set by you' : ''}
                       </small>
@@ -977,14 +983,14 @@ function Upcoming(p: MeetProps) {
                         <StatusPill m={mt} />
                       </button>
                     ) : (
-                      link &&
+                      botCanJoin(meetingLinkOf(e)) &&
                       startsSoon && (
                         <button className="ghost-btn sm" onClick={() => p.onSendNow(e)}>
                           <Send size={13} /> Send now
                         </button>
                       )
                     )}
-                    {link && (
+                    {botCanJoin(meetingLinkOf(e)) && (
                       <label className="ev-switch" title="Bot joins">
                         <span className="muted small">Bot joins</span>
                         <button
@@ -1015,10 +1021,10 @@ function Upcoming(p: MeetProps) {
 
 /* ---------------- Send bot ---------------- */
 
-export function SendBotDialog({ clients, botName, languages, real, onSend, onClose }: { clients: Client[]; botName: string; languages?: string[]; real?: boolean; onSend: (d: { url: string; title: string; botName: string; clientId: string; language?: string }) => void; onClose: () => void }) {
+export function SendBotDialog({ clients, botName, languages, real, seed, onSend, onClose }: { clients: Client[]; botName: string; languages?: string[]; real?: boolean; seed?: { title: string; note?: string }; onSend: (d: { url: string; title: string; botName: string; clientId: string; language?: string }) => void; onClose: () => void }) {
   const [url, setUrl] = useState('');
   const [language, setLanguage] = useState('');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(seed?.title ?? '');
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [err, setErr] = useState('');
@@ -1039,7 +1045,7 @@ export function SendBotDialog({ clients, botName, languages, real, onSend, onClo
         </header>
         <div className="modal-body connect-form">
           <SmoothHeight>
-          <p className="modal-intro">Paste a Google Meet or Zoom link. Someone in the call has to let the bot in.</p>
+          <p className="modal-intro">{seed ? (seed.note ? `${seed.note} If the meeting also has a Google Meet or Zoom link, paste it here.` : `“${seed.title}” has no meeting link yet. Paste its Google Meet or Zoom link to send the notetaker. Someone in the call has to let it in.`) : 'Paste a Google Meet or Zoom link. Someone in the call has to let the bot in.'}</p>
           <label className="field">
             <span>Meeting link</span>
             <input autoFocus value={url} onChange={(e) => (setUrl(e.target.value), setErr(''))} placeholder="https://meet.google.com/abc-defg-hij" onKeyDown={(e) => e.key === 'Enter' && send()} />

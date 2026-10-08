@@ -35,6 +35,34 @@ export interface Message {
   mid?: string; // the Message-ID on the wire, so replies land in the same thread
   delivery?: { state: 'sending' | 'sent' | 'failed'; at: string; error?: string }; // set by the mail engine for mail you sent
   auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
+  invite?: MailInvite; // a calendar invite in this email (Google Calendar, Outlook...), read by the mail engine
+}
+
+export type RsvpStatus = 'accepted' | 'tentative' | 'declined';
+export interface InviteGuest extends Person {
+  status: RsvpStatus | 'needs-action' | 'delegated';
+  optional?: boolean;
+}
+/** A calendar invite that came by email: the organiser's event, and the answer given from here. */
+export interface MailInvite {
+  method: 'REQUEST' | 'CANCEL' | 'REPLY' | 'PUBLISH'; // an invite or update, a cancellation, someone's answer, or a plain event to add
+  uid: string; // the event's id in the organiser's calendar
+  sequence: number; // goes up with each change the organiser makes
+  title: string;
+  start: string; // ISO. All-day: noon UTC on the first day
+  end: string; // ISO. All-day: a minute past noon UTC on the last day
+  allDay?: boolean;
+  tz?: string; // the organiser's time zone, when the invite names it
+  location?: string;
+  description?: string;
+  url?: string; // the meeting link (Google Meet, Zoom, Teams, Webex)
+  organizer?: Person;
+  attendees: InviteGuest[];
+  rrule?: string; // repeats, e.g. FREQ=WEEKLY;BYDAY=MO
+  recurrenceId?: string; // one changed occurrence of a repeating event
+  cancelled?: boolean;
+  you?: string; // the address of yours that was invited
+  answer?: { status: RsvpStatus; at: string; by: string; sent: boolean }; // sent: the organiser was told
 }
 
 export interface OpenEvent {
@@ -129,6 +157,12 @@ export interface CalEvent {
   workspaceId?: string; // defaults to the first workspace
   userId?: string; // whose calendar (defaults to the first user)
   taskId?: string; // a time block for this task
+  meetingUrl?: string; // Google Meet, Zoom or Teams link (from an invite, or added by hand)
+  inviteUid?: string; // came from an emailed invite: the organiser's event id
+  sequence?: number; // the invite version it shows
+  occurrence?: string; // one of a repeating invite's dates (its original start)
+  rsvp?: RsvpStatus; // what you answered
+  organizer?: Person;
 }
 
 export interface Label {
