@@ -766,6 +766,84 @@ await test('Retention: nothing goes before the notice ends; then old messages go
   assert.equal(db.auditList(5, 'w-ret')[0].detail.startsWith('0 chat messages'), true);
 });
 
+/* the company's time zone (src/jobTimes.ts, server/summaries.ts, server/digest.ts) */
+
+await test('Time zone: a company’s own, else Jakarta; only zones the clock knows', () => {
+  assert.equal(jt.companyTz({ timeZone: 'Europe/Amsterdam' }), 'Europe/Amsterdam');
+  assert.equal(jt.companyTz({}), 'Asia/Jakarta', 'companies from before the choice');
+  assert.equal(jt.companyTz({ timeZone: 'Mars/Olympus' }), 'Asia/Jakarta');
+  assert.equal(jt.isZone('Mars/Olympus'), false);
+  assert.equal(jt.isZone('America/Argentina/Buenos_Aires'), true);
+});
+await test('Summaries: written at 6:00 on the company’s own clock, for its own day', async () => {
+  db.writeDocs('workspaces', [{ id: 'w-ams', name: 'Ams', timeZone: 'Europe/Amsterdam', members: [{ userId: 'aj-ana', role: 'owner' }], accounts: [] }], [], null);
+  db.writeDocs('channels', [{ id: 'ch-ams', workspaceId: 'w-ams', kind: 'channel', name: 'ams', members: ['aj-ana'], summary: { schedule: 'daily', post: false, history: [] } }], [], null);
+  const ams = (day, hour, minute = 0) => jt.zonedTime(day, hour, 'Europe/Amsterdam') + minute * 60_000;
+  db.writeDocs('messages', [{ id: 'ams-1', channelId: 'ch-ams', userId: 'aj-ana', text: 'Late on Monday in Amsterdam', at: new Date(ams('2026-10-12', 23)).toISOString() }], [], null);
+  const mine = (list) => list.filter((x) => x.channelId === 'ch-ams');
+  assert.equal(mine(await summaries.runSummaries(sumDeps(async () => ({ text: 'x' })), at('2026-10-13', 6, 5))).length, 0, '6:05 in Jakarta is still the night before in Amsterdam');
+  const r = mine(await summaries.runSummaries(sumDeps(async () => ({ text: 'Monday in Amsterdam.' })), ams('2026-10-13', 6, 5)));
+  assert.deepEqual(r.map((x) => [x.key, x.state]), [['daily:2026-10-12', 'done']]);
+  assert.deepEqual(sumInputs.filter((i) => i.channel === '#ams').at(-1).messages.map((m) => m.text), ['Late on Monday in Amsterdam'], 'Monday by Amsterdam’s clock (Tuesday in Jakarta)');
+});
+await test('Digest: someone whose device never said a time zone gets it on their company’s clock', () => {
+  db.writeDocs('workspaces', [{ id: 'w-ldn', name: 'Ldn', timeZone: 'Europe/London', members: [{ userId: 'aj-lee', role: 'owner' }], accounts: [] }], [], null);
+  assert.equal(digest.digestPrefs('aj-lee').tz, 'Europe/London');
+  db.writeDocs('prefs', [{ id: 'aj-lee', value: { 'pm-settings:aj-lee': { timeZone: 'Asia/Tokyo' } } }], [], null);
+  assert.equal(digest.digestPrefs('aj-lee').tz, 'Asia/Tokyo', 'their own, once their device says it');
+});
+
+/* invoices bill active people (server/billing.ts) */
+
+const billingMod = await import('../server/billing.ts');
+await test('Billing: a month bills the people on the team who signed in or used it that month, at least one', () => {
+  db.writeDocs('users', [
+    { id: 'bp-1', name: 'One', email: 'one@bp.example' },
+    { id: 'bp-2', name: 'Two', email: 'two@bp.example' },
+    { id: 'bp-3', name: 'Three', email: 'three@bp.example' },
+    { id: 'bp-gone', name: 'Gone', email: 'gone@bp.example', deletedAt: '2026-08-01T00:00:00.000Z' },
+  ], [], null);
+  const ws = { id: 'w-bp', members: ['bp-1', 'bp-2', 'bp-3', 'bp-gone'].map((userId, i) => ({ userId, role: i ? 'member' : 'owner' })) };
+  const day = db.db.prepare('INSERT OR IGNORE INTO activity_days (user_id, day) VALUES (?, ?)');
+  for (const [u, d] of [['bp-1', '2026-09-03'], ['bp-1', '2026-09-20'], ['bp-2', '2026-09-30'], ['bp-3', '2026-08-31'], ['bp-3', '2026-10-01'], ['bp-gone', '2026-09-10']]) day.run(u, d);
+  assert.deepEqual(billingMod.activePeople(ws, '2026-09'), { active: 2, team: 3, period: '2026-09' }, 'September: One and Two; Three was only around in August and October');
+  assert.deepEqual(billingMod.activePeople(ws, '2026-07'), { active: 1, team: 3, period: '2026-07' }, 'nobody around: the plan still bills one');
+});
+
+/* read tracking: reminders and Outlook.com's picture proxy (server/readTracking.ts) */
+
+const readTracking = await import('../server/readTracking.ts');
+await test('Read tracking: Outlook.com’s picture proxy shows as “via Outlook”; desktop Outlook stays a device', () => {
+  assert.deepEqual(readTracking.readAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246 Mozilla/5.0'), { device: '', via: 'outlook' });
+  assert.deepEqual(readTracking.readAgent('Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)'), { device: '', via: 'gmail' });
+  assert.deepEqual(readTracking.readAgent('Microsoft Office/16.0 (Windows NT 10.0; Microsoft Outlook 16.0.4266; Pro)'), { device: 'Windows PC · Outlook' });
+  assert.equal(readTracking.readAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0').via, undefined, 'a real Edge isn’t the proxy');
+});
+await test('Read tracking: “Remind me if no reply” tells the sender once, only when nobody wrote back', () => {
+  db.writeDocs('workspaces', [{ id: 'w-rr', name: 'RR', domains: ['rr.example'], members: [{ userId: 'aj-ana', role: 'owner' }, { userId: 'aj-mo', role: 'member' }], accounts: [{ id: 'rr-box', email: 'ana@rr.example', name: 'Ana', kind: 'personal', users: ['aj-ana'] }] }], [], null);
+  const sent = (id, extra = [], location = 'archive') => ({ id, accountId: 'rr-box', subject: 'Proposal', location, messages: [{ id: 'out', from: { name: 'Ana', email: 'ana@rr.example' }, to: [{ name: 'Budi', email: 'budi@client.example' }], date: new Date().toISOString(), body: 'Here it is' }, ...extra] });
+  db.writeDocs('threads', [
+    sent('rr-quiet'),
+    sent('rr-answered', [{ id: 'in', from: { name: 'Budi', email: 'budi@client.example' }, to: [], date: new Date().toISOString(), body: 'Thanks' }]),
+    sent('rr-colleague', [{ id: 'mo', from: { name: 'Mo', email: 'mo@rr.example' }, to: [], date: new Date().toISOString(), body: 'Nudged him' }]),
+    sent('rr-trashed', [], 'trash'),
+  ], [], null);
+  for (const id of ['rr-quiet', 'rr-answered', 'rr-colleague', 'rr-trashed', 'rr-gone']) readTracking.planReminder({ workspaceId: 'w-rr', accountId: 'rr-box', threadId: id, messageId: 'out', by: 'aj-ana', days: 3 });
+  readTracking.planReminder({ workspaceId: 'w-rr', accountId: 'rr-box', threadId: 'rr-quiet', messageId: 'never', by: 'aj-ana', days: 0 });
+  readTracking.planReminder({ workspaceId: 'w-rr', accountId: 'rr-box', threadId: 'rr-quiet', messageId: 'too-long', by: 'aj-ana', days: 90 });
+  const t0 = Date.now();
+  assert.equal(readTracking.runReplyReminders(t0 + 2 * DAYMS).length, 0, 'not before its day');
+  const told = readTracking.runReplyReminders(t0 + 3 * DAYMS + 60_000);
+  assert.deepEqual(told.map((n) => n.link.id).sort(), ['rr-colleague', 'rr-quiet'], 'a teammate writing isn’t a reply; an answer, the trash or a deleted conversation means none');
+  const n = told.find((x) => x.link.id === 'rr-quiet');
+  assert.equal(n.userId, 'aj-ana');
+  assert.equal(n.kind, 'mail');
+  assert.equal(n.text, 'No reply yet from Budi to “Proposal”. Time to follow up?');
+  assert.ok(db.getDoc('notices', n.id), 'saved for the bell (and push, like any notice)');
+  assert.equal(readTracking.runReplyReminders(t0 + 4 * DAYMS).length, 0, 'once');
+  assert.equal(db.db.prepare("SELECT COUNT(*) AS n FROM mail_remind WHERE message_id IN ('never', 'too-long')").get().n, 0, 'off, or longer than a month: nothing planned');
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');
