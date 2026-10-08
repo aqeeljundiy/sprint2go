@@ -3342,3 +3342,48 @@ p.trial-note > svg:first-child {
 .proj-card-people > :first-child {
   margin-left: 0;
 }
+
+/* Project cards: one column that never grows past the card, so long lines end in "…" instead of spilling out. */
+.proj-card {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.proj-next {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  justify-self: stretch;
+}
+.proj-state {
+  max-width: 100%;
+}
+
+/* Lists of "thing · when" in cards: the thing wraps, the when keeps its place, nothing spills past the card. */
+.home-notice > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.side-card,
+.hub-two > * {
+  min-width: 0;
+}
+/* Two cards side by side only when each gets room; otherwise one under the other. */
+.hub-two {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+
+/* Team rows on Home: in a narrow card the name and the count give way instead of pushing past the edge. */
+.team-row .tr-name {
+  flex: 0 1 120px;
+  min-width: 56px;
+}
+.team-row .bar.wide {
+  min-width: 32px;
+}
+.team-row .tr-num {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: normal;
+  text-align: right;
+}

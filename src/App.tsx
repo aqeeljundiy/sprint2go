@@ -248,7 +248,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     addEventListener('popstate', back);
     return () => removeEventListener('popstate', back);
   }, []);
-  const [collapsed, setCollapsed] = usePersisted('pm-sidebar-collapsed', false);
+  // Tablets (iPad portrait, small landscape): the sidebar starts folded to icons so the page gets the room.
+  // Each size keeps its own choice, so opening it on the iPad doesn't change the laptop.
+  const tablet = useMedia('(min-width: 761px) and (max-width: 1099px)');
+  const [collapsedWide, setCollapsedWide] = usePersisted('pm-sidebar-collapsed', false);
+  const [collapsedTablet, setCollapsedTablet] = usePersisted('pm-sidebar-collapsed-tablet', true);
+  const collapsed = tablet ? collapsedTablet : collapsedWide;
+  const setCollapsed = tablet ? setCollapsedTablet : setCollapsedWide;
   const [sidebarW, setSidebarW] = usePersisted('pm-sidebar-w', 248);
   const [listW, setListW] = usePersisted('pm-list-w', 400);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
