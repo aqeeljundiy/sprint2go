@@ -60,9 +60,9 @@ export function BrandFields({
         <label>Brand colour</label>
         <div className="accent-row">
           {WORKSPACE_COLORS.map((c) => (
-            <button key={c} className={`accent ${value.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => onChange({ color: c })} aria-label={c} />
+            <button key={c} className={`accent-swatch ${value.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => onChange({ color: c })} aria-label={c} />
           ))}
-          <label className="accent custom" title="Custom colour" style={{ background: WORKSPACE_COLORS.includes(value.color) ? undefined : value.color }}>
+          <label className="accent-swatch custom" title="Custom colour" style={{ background: WORKSPACE_COLORS.includes(value.color) ? undefined : value.color }}>
             <input type="color" value={value.color} onChange={(e) => onChange({ color: e.target.value })} />
           </label>
         </div>

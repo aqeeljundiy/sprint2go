@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Columns3, Eye, EyeOff, GripVertical, ImageOff, List, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { CellValue, DataTable, FieldOption, FileRef, TableField, TableRow, TableViewDef } from '../../types';
 import { CellView, type CellCtx } from './Cell';
 import { OPTION_COLORS, fieldIcon, isEmpty, rowName, valueOf, viewFields } from './fields';
@@ -60,8 +60,6 @@ export function BoardView({
   const [dragging, setDragging] = useState<string | null>(null);
   const [colDrag, setColDrag] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null); // the new column's name being typed
-  const [cardsOpen, setCardsOpen] = useState(false);
-  const cardsBtn = useRef<HTMLButtonElement>(null);
   const editable = !readOnly && canEditColumns;
 
   const shown = cardFieldsOf(table, view, group);
@@ -137,33 +135,6 @@ export function BoardView({
 
   return (
     <div className="tb-board-wrap">
-      <div className="tb-board-by">
-        <span className="muted small">Grouped by</span>
-        {readOnly || !group ? (
-          <strong className="small">{group?.name ?? 'nothing yet: add a column'}</strong>
-        ) : (
-          <PickSelect value={group.id} aria-label="Grouped by" onChange={(e) => (e.target.value === '__new' ? newChoiceField(table, onNewField, onView) : onView({ groupBy: e.target.value }))}>
-            {selects.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-            <option value="__new">+ New choice field</option>
-          </PickSelect>
-        )}
-        {hiddenGroups.size > 0 && (
-          <button type="button" className="link-btn small" onClick={() => onView({ hiddenGroups: [] })}>
-            Show {hiddenGroups.size} hidden {hiddenGroups.size === 1 ? 'column' : 'columns'}
-          </button>
-        )}
-        <span className="spacer" />
-        <button ref={cardsBtn} type="button" className="ghost-btn sm" onClick={() => setCardsOpen((o) => !o)}>
-          <SlidersHorizontal size={13} /> Cards
-        </button>
-        <Popover anchor={cardsBtn} open={cardsOpen} onClose={() => setCardsOpen(false)} width={280} align="end" title="Cards">
-          <CardSettings table={table} view={view} group={group} shown={shown} onView={onView} />
-        </Popover>
-      </div>
       <div className={`tb-board${view.cardSize === 'roomy' ? ' roomy' : ''}`}>
         {columns.map((c) => {
           const list = listOf(c.id);
@@ -280,6 +251,57 @@ function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions
 }
 
 /** What each card shows: which fields and in what order, its size, a cover picture, and empty columns. */
+/**
+ * A board's own controls, in the table's toolbar next to Search and Filter (one line, not a row of their own):
+ * which choice field makes the columns, columns you hid, and what each card shows.
+ */
+export function BoardTools({ table, view, onView, onNewField, readOnly }: { table: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void; onNewField: (f: TableField) => void; readOnly?: boolean }) {
+  const selects = table.fields.filter((f) => f.type === 'select');
+  const group = selects.find((f) => f.id === view.groupBy) ?? selects[0];
+  const hidden = view.hiddenGroups ?? [];
+  const groupBtn = useRef<HTMLButtonElement>(null);
+  const cardsBtn = useRef<HTMLButtonElement>(null);
+  const [pop, setPop] = useState<'group' | 'cards' | null>(null);
+  const shown = cardFieldsOf(table, view, group);
+  return (
+    <>
+      {readOnly || !group ? (
+        <span className="tb-board-by-text small">
+          <Columns3 size={13} /> <span className="lbl">{group ? `By ${group.name}` : 'No choice field yet'}</span>
+        </span>
+      ) : (
+        <button ref={groupBtn} type="button" className="ghost-btn sm on" onClick={() => setPop('group')} title="Columns come from this field">
+          <Columns3 size={13} /> <span className="lbl">By {group.name}</span>
+        </button>
+      )}
+      <Popover anchor={groupBtn} open={pop === 'group'} onClose={() => setPop(null)} width={260} title="Columns from">
+        <div className="tb-menu">
+          <p className="muted small tb-menu-note">Each choice of this field is a column. Drag cards between them to change it.</p>
+          {selects.map((f) => (
+            <button key={f.id} type="button" className={group?.id === f.id ? 'on' : ''} onClick={() => (onView({ groupBy: f.id }), setPop(null))}>
+              <List size={14} /> {f.name}
+            </button>
+          ))}
+          <button type="button" onClick={() => (newChoiceField(table, onNewField, onView), setPop(null))}>
+            <Plus size={14} /> New choice field
+          </button>
+        </div>
+      </Popover>
+      {hidden.length > 0 && (
+        <button type="button" className="link-btn small" onClick={() => onView({ hiddenGroups: [] })}>
+          <Eye size={13} /> Show {hidden.length} hidden
+        </button>
+      )}
+      <button ref={cardsBtn} type="button" className="ghost-btn sm" onClick={() => setPop((x) => (x === 'cards' ? null : 'cards'))}>
+        <SlidersHorizontal size={13} /> <span className="lbl">Cards</span>
+      </button>
+      <Popover anchor={cardsBtn} open={pop === 'cards'} onClose={() => setPop(null)} width={280} align="end" title="Cards">
+        <CardSettings table={table} view={view} group={group} shown={shown} onView={onView} />
+      </Popover>
+    </>
+  );
+}
+
 function CardSettings({ table, view, group, shown, onView }: { table: DataTable; view: TableViewDef; group?: TableField; shown: TableField[]; onView: (p: Partial<TableViewDef>) => void }) {
   const usable = viewFields(table, view, true).filter((f) => f.id !== table.fields[0]?.id && f.id !== group?.id && f.type !== 'button');
   const on = shown.map((f) => f.id);

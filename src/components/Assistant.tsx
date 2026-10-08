@@ -3,6 +3,7 @@ import { term } from '../terms';
 import { History, Minus, Plus, Send, Sparkles, X } from 'lucide-react';
 import { relative } from '../utils';
 import { Select } from './ui/Select';
+import { EmptyState } from './ui/EmptyState';
 
 /** What the assistant is looking at. */
 export type AskScope = { kind: 'all' } | { kind: 'client'; id: string } | { kind: 'meeting'; id: string } | { kind: 'channel'; id: string };
@@ -149,7 +150,7 @@ export function Assistant(p: Props) {
       <div className="cs-body">
         {history ? (
           <div className="people-list">
-            {p.chats.length === 0 && <p className="te-empty">No chats yet. Ask your first question below.</p>}
+            {p.chats.length === 0 && <EmptyState compact text="No chats yet. Ask your first question below." />}
             {p.chats.map((c) => (
               <div key={c.id} className="pl-row">
                 <button className="pl-text" onClick={() => (setChatId(c.id), p.setScope(c.scope), setHistory(false))}>

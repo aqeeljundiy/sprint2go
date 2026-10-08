@@ -9,6 +9,9 @@ import { localDay, relative } from '../utils';
 import { usePersisted } from '../settings';
 import { ai } from '../ai';
 import { Avatar } from './Avatar';
+import { Badge, PersonCell } from './ui/Person';
+import { EmptyState } from './ui/EmptyState';
+import { Layer } from './ui/Layer';
 import { dueLabel } from './TasksView';
 import { stageName, stageOf } from '../stages';
 import { DatePicker } from './ui/DatePicker';
@@ -184,7 +187,7 @@ export function ChatSidebar(p: SidebarProps) {
           <span className="sb-label">
             {other ? other.name : c.name}
             {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
-            {c.category === 'shared' || c.guests?.length ? <em className="ext-tag" title={`The ${term.whos} can see this channel`}>{term.whos}</em> : null}
+            {c.category === 'shared' || c.guests?.length ? <Badge small tone="warn" title={`The ${term.whos} can see this channel`}>{term.Whos}</Badge> : null}
           </span>
           {p.unread[c.id] ? <span className="count">{p.unread[c.id]}</span> : null}
         </button>
@@ -472,6 +475,7 @@ export function ChatSidebar(p: SidebarProps) {
       </Popover>
 
       {accessFor && (
+        <Layer>
         <SectionAccess
           section={layout.sections.find((x) => x.id === accessFor)!}
           channels={p.channels.filter((c) => c.kind === 'channel' && !c.archived && sectionOf(c) === accessFor)}
@@ -484,6 +488,7 @@ export function ChatSidebar(p: SidebarProps) {
           }}
           onClose={() => setAccessFor(null)}
         />
+        </Layer>
       )}
 
       <Popover anchor={menuAnchor} open={!!menuChannel} onClose={() => setMenuFor(null)} width={250} title={menuChannel ? (menuChannel.kind === 'dm' ? 'Conversation' : `#${menuChannel.name}`) : ''}>
@@ -539,6 +544,7 @@ export function ChatSidebar(p: SidebarProps) {
       </Popover>
 
       {editing && (
+        <Layer>
         <ViewEditor
           view={editing}
           channels={rooms}
@@ -555,6 +561,7 @@ export function ChatSidebar(p: SidebarProps) {
             setEditing(null);
           }}
         />
+        </Layer>
       )}
     </>
   );
@@ -836,9 +843,7 @@ export function ChatView(p: ViewProps) {
   if (!channel)
     return (
       <section className="chat-pane chat-empty view-enter">
-        <Hash size={28} />
-        <p className="empty-title">Pick a channel or person</p>
-        <p className="empty-sub">{term.One} channels keep every conversation about a {term.one} in one place.</p>
+        <EmptyState icon={<Hash size={22} />} title="Pick a channel or person" text={`${term.One} channels keep every conversation about a ${term.one} in one place.`} />
       </section>
     );
 
@@ -1022,7 +1027,7 @@ export function ChatView(p: ViewProps) {
           {!grouped && (
             <div className="cm-head">
               <strong>{a.name}</strong>
-              {a.guest && <span className="guest-badge">Guest{(() => { const co = companyOf(a.person?.email ?? '', client?.people?.find((x) => x.email === a.person?.email)?.company, client); return co ? ` · ${co}` : ''; })()}</span>}
+              {a.guest && <Badge small tone="warn">Guest{(() => { const co = companyOf(a.person?.email ?? '', client?.people?.find((x) => x.email === a.person?.email)?.company, client); return co ? ` · ${co}` : ''; })()}</Badge>}
               {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
               <time>{relative(m.at)}</time>
               {m.parentId && m.alsoInChannel && !inThread && <span className="muted small">replied in a thread</span>}
@@ -1400,7 +1405,7 @@ export function ChatView(p: ViewProps) {
                 </div>
               );
             })}
-            {!chanTasks.length && <p className="te-empty">Nothing on this list yet. Add one above, or type /task in a message.</p>}
+            {!chanTasks.length && <EmptyState compact text="Nothing on this list yet. Add one above, or type /task in a message." />}
           </div>
         )}
 
@@ -1451,7 +1456,7 @@ export function ChatView(p: ViewProps) {
                 <p>{h.text}</p>
               </div>
             ))}
-            {!(channel.summary?.history ?? []).length && !sinceText && <p className="te-empty">No summaries yet. Click “Update now” for the first one.</p>}
+            {!(channel.summary?.history ?? []).length && !sinceText && <EmptyState compact text="No summaries yet. Click “Update now” for the first one." />}
           </div>
         )}
 
@@ -1460,7 +1465,7 @@ export function ChatView(p: ViewProps) {
         {tab === 'pinned' && (
           <div className="chan-pane">
             {pinned.map((m) => message(m, false))}
-            {!pinned.length && <p className="te-empty">Nothing pinned. Hover a message and click the pin to keep it here: briefs, links, decisions.</p>}
+            {!pinned.length && <EmptyState compact text="Nothing pinned. Hover a message and click the pin to keep it here: briefs, links, decisions." />}
           </div>
         )}
 
@@ -1754,7 +1759,7 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
         {client && (
           <div className="te-list">
             <div className="d-heading">Emails with {client.name}</div>
-            {emails.length === 0 && <p className="te-empty">No emails with @{client?.domain} in inboxes you can open.</p>}
+            {emails.length === 0 && <EmptyState compact text={<>No emails with @{client?.domain} in inboxes you can open.</>} />}
             {emails.map((t) => {
               const last = t.messages[t.messages.length - 1];
               return (
@@ -1782,17 +1787,22 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
               return (
                 u && (
                   <div key={id} className="pl-row">
-                    <span className="dm-av">
-                      <Avatar person={u} size={28} />
-                      <i className={`presence ${p.presence(id)}`} />
-                    </span>
-                    <span className="pl-text">
-                      <strong>
-                        {u.name}
-                        {channel.ownerId === id ? <em className="ext-tag">owner</em> : null}
-                      </strong>
-                      <small>{p.statuses[id] ? `${p.statuses[id].emoji} ${p.statuses[id].text}` : u.title}</small>
-                    </span>
+                    <PersonCell
+                      person={u}
+                      avatar={
+                        <span className="dm-av">
+                          <Avatar person={u} size={28} />
+                          <i className={`presence ${p.presence(id)}`} />
+                        </span>
+                      }
+                      badges={
+                        <>
+                          {id === p.me && <Badge tone="accent">You</Badge>}
+                          {channel.ownerId === id && <Badge>Owner</Badge>}
+                        </>
+                      }
+                      sub={p.statuses[id] ? `${p.statuses[id].emoji} ${p.statuses[id].text}` : u.title || u.email}
+                    />
                   </div>
                 )
               );
@@ -1800,29 +1810,18 @@ function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?:
             {!!channel.guests?.length && <div className="sel-group">Guests · {channel.guests.length}</div>}
             {channel.guests?.map((g) => (
               <div key={g.email} className="pl-row">
-                <span className="guest-av">{g.name.charAt(0)}</span>
-                <span className="pl-text">
-                  <strong>
-                    {g.name}
-                    {companyOf(g.email, client?.people?.find((x) => x.email === g.email)?.company, client) ? ` · ${companyOf(g.email, client?.people?.find((x) => x.email === g.email)?.company, client)}` : ''} <em className="ext-tag">guest</em>
-                  </strong>
-                  <small>
-                    {g.email} · {g.status === 'joined' ? 'joined' : 'invite sent'}
-                  </small>
-                </span>
+                <PersonCell
+                  person={g}
+                  size={28}
+                  badges={<Badge tone="warn">Guest</Badge>}
+                  sub={[companyOf(g.email, client?.people?.find((x) => x.email === g.email)?.company, client), g.email, g.status === 'joined' ? 'joined' : 'invite sent'].filter(Boolean).join(' · ')}
+                />
               </div>
             ))}
             {contacts.length > 0 && <div className="sel-group">Contacts at {client?.name} · from emails</div>}
             {contacts.map((c) => (
               <div key={c.email} className="pl-row">
-                <Avatar person={c} size={28} />
-                <span className="pl-text">
-                  <strong>{c.name}</strong>
-                  <small>
-                    {c.email}
-                    {lastContact(c.email.toLowerCase()) ? ` · last email ${relative(lastContact(c.email.toLowerCase())!)}` : ''}
-                  </small>
-                </span>
+                <PersonCell person={c} size={28} sub={`${c.email}${lastContact(c.email.toLowerCase()) ? ` · last email ${relative(lastContact(c.email.toLowerCase())!)}` : ''}`} />
                 <a className="icon-btn sm" href={`mailto:${c.email}`} title="Email">
                   <Mail size={14} />
                 </a>

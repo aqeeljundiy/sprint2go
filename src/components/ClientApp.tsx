@@ -60,6 +60,7 @@ import { useOnePanel } from '../onePanel';
 import { Select } from './ui/Select';
 import { GuestQuotes } from './Quotes';
 import type { Quote } from '../types';
+import { EmptyState } from './ui/EmptyState';
 
 /** The dot for a task in the guest's view: planned, in progress, waiting on them, or done. */
 const stCls = (t: Todo) => ({ open: 'todo', active: 'doing', review: 'doing', waiting: 'waiting', done: 'done' } as const)[kindOf(t)];
@@ -315,11 +316,11 @@ export function ClientApp(p: Props) {
     );
   };
   const empty = (art: React.ReactNode, title: string, subText: string) => (
-    <div className="empty">
-      <div className="empty-art">{art}</div>
-      <p className="empty-title">{title}</p>
-      <p className="empty-sub">{subText}</p>
-    </div>
+    <EmptyState
+      icon={art}
+      title={title}
+      text={subText}
+    />
   );
   const pane = (heading: string, subtitle: string, body: React.ReactNode, action?: React.ReactNode) => (
     <section className="tasks-pane view-enter" key={`${mode}:${sub}`}>
@@ -382,7 +383,7 @@ export function ClientApp(p: Props) {
                   ))}
                 </ul>
               ) : (
-                <p className="te-empty">Nothing waiting on you. 🎉</p>
+                <EmptyState compact text="Nothing waiting on you. 🎉" />
               ),
             )}
             {access.requests &&
@@ -405,7 +406,7 @@ export function ClientApp(p: Props) {
                       ))}
                   </ul>
                 ) : (
-                  <p className="te-empty">Need something? Send a request and the team picks it up.</p>
+                  <EmptyState compact text="Need something? Send a request and the team picks it up." />
                 ),
                 can(person, 'request') ? ['New request', () => (setMode('requests'), setNewRequest(true))] : undefined,
               )}
@@ -435,7 +436,7 @@ export function ClientApp(p: Props) {
                   })}
                 </ul>
               ) : (
-                <p className="te-empty">The team shares briefs here as work starts.</p>
+                <EmptyState compact text="The team shares briefs here as work starts." />
               ),
               ['Work', () => go('work')],
             )}
@@ -457,7 +458,7 @@ export function ClientApp(p: Props) {
                   );
                 })()
               ) : (
-                <p className="te-empty">No meetings yet.</p>
+                <EmptyState compact text="No meetings yet." />
               ),
               v.meetings.length ? ['Meetings', () => go('meet')] : undefined,
             )}
@@ -481,7 +482,7 @@ export function ClientApp(p: Props) {
                     ))}
                 </ul>
               ) : (
-                <p className="te-empty">Nothing shared yet.</p>
+                <EmptyState compact text="Nothing shared yet." />
               ),
               ['Files', () => go('files')],
             )}
@@ -501,7 +502,7 @@ export function ClientApp(p: Props) {
                   ))}
                 </ul>
               ) : (
-                <p className="te-empty">You’re all caught up.</p>
+                <EmptyState compact text="You’re all caught up." />
               ),
             )}
           </div>
@@ -940,7 +941,7 @@ function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; rec
           )}
         </>
       ) : (
-        <p className="te-empty">The team hasn’t shared notes for this meeting.</p>
+        <EmptyState compact text="The team hasn’t shared notes for this meeting." />
       )}
     </div>
   );

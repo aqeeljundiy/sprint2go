@@ -3,7 +3,7 @@ import { BellOff, Bell, MessageSquare, Pencil, Plus, ShieldCheck, ShieldOff, Tra
 import { Select } from '../../components/ui/Select';
 
 import { rel, dateTime, post, ROLE_HINT, ROLE_LABEL, type OpRole } from '../api';
-import { Badge, Confirm, CopyBtn, Dialog, Empty, Failed, Field, Initials, Loading, Page, Section, Switch, Table, Tabs, useAct, useAdmin, useApi } from '../ui';
+import { Badge, Confirm, CopyBtn, Dialog, Empty, Failed, Field, Loading, Page, Section, Switch, Table, Tabs, useAct, useAdmin, useApi, Who } from '../ui';
 
 export function Team({ tab }: { tab: string }) {
   const { go } = useAdmin();
@@ -80,16 +80,7 @@ function Operators() {
               width: 'minmax(0, 2fr)',
               sort: (o) => o.name ?? o.email,
               render: (o) => (
-                <span className="adm-cell-main with-dot">
-                  <Initials name={o.name ?? o.email} color={o.color} />
-                  <span>
-                    <strong>
-                      {o.name ?? o.email.split('@')[0]}
-                      {o.email === me.email && <Badge tone="accent">you</Badge>}
-                    </strong>
-                    <small>{o.email}</small>
-                  </span>
-                </span>
+                <Who name={o.name ?? o.email.split('@')[0]} email={o.email} color={o.color} badges={o.email === me.email && <Badge tone="accent">You</Badge>} />
               ),
             },
             {

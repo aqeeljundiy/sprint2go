@@ -116,14 +116,12 @@ body {
 }
 
 /* Segmented controls & search: pills */
-.segmented,
 .mode-switch,
 .am-theme {
   border-radius: 9999px;
   background: var(--hover);
   border-color: transparent;
 }
-.segmented button,
 .mode-switch button,
 .am-theme button {
   border-radius: 9999px;

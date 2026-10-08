@@ -4,7 +4,7 @@ import { term } from '../terms';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { Archive, Globe, Hash, Lock, Mail, Megaphone, Plus, Users, X } from 'lucide-react';
 import type { Channel, ChannelCategory, Client, Guest, Policy, Team, User } from '../types';
-import { Avatar } from './Avatar';
+import { Badge, PersonCell } from './ui/Person';
 import { Dot, Select } from './ui/Select';
 
 export const CATEGORY_NAME: Record<ChannelCategory, string> = { get client() { return `${term.Many}`; }, shared: `Shared`, team: 'Teams', get project() { return term.word === 'project' ? 'Other' : 'Projects'; }, social: 'Social' };
@@ -119,16 +119,17 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
             <X size={15} />
           </button>
         </header>
-        <div className="client-tabs chan-tabs">
+        <div className="client-tabs dialog-tabs" role="tablist">
           {(
             [
-              ['about', 'About'],
-              ['people', `People · ${members.length + guests.length}`],
-              ['permissions', 'Permissions'],
+              ['about', 'About', 0],
+              ['people', 'People', members.length + guests.length],
+              ['permissions', 'Permissions', 0],
             ] as const
-          ).map(([id, l]) => (
-            <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
+          ).map(([id, l, n]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
               {l}
+              {n > 0 && <span className="tab-count">{n}</span>}
             </button>
           ))}
         </div>
@@ -200,12 +201,13 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                 <span>Who can find it</span>
                 <div className="segmented wide">
                   <button type="button" className={!priv ? 'on' : ''} onClick={() => setPriv(false)}>
-                    <Globe size={14} /> Public: anyone in the company can join
+                    <Globe size={14} /> Public
                   </button>
                   <button type="button" className={priv ? 'on' : ''} onClick={() => setPriv(true)}>
-                    <Lock size={14} /> Private: invite only
+                    <Lock size={14} /> Private
                   </button>
                 </div>
+                <small className="muted">{priv ? 'Invite only: people join when someone adds them.' : 'Anyone in the company can find it and join.'}</small>
               </div>
             </fieldset>
           )}
@@ -222,14 +224,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                   return (
                     <label key={u.id} className={`pp-row ${on ? 'on' : ''}`}>
                       <input type="checkbox" checked={on} disabled={u.id === me} onChange={() => setMembers((m) => (on ? m.filter((x) => x !== u.id) : [...m, u.id]))} />
-                      <Avatar person={u} size={26} />
-                      <span>
-                        <strong>
-                          {u.name}
-                          {u.id === me ? ' (you)' : ''}
-                        </strong>
-                        <small>{u.title}</small>
-                      </span>
+                      <PersonCell person={u} size={28} sub={u.title || u.email} badges={u.id === me && <Badge tone="accent">You</Badge>} />
                     </label>
                   );
                 })}
@@ -254,12 +249,8 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                 </div>
                 {guests.map((g) => (
                   <div key={g.email} className="guest-row">
-                    <span className="guest-av">{g.name.charAt(0).toUpperCase()}</span>
-                    <span className="gr-text">
-                      <strong>{g.name}</strong>
-                      <small>{g.email}</small>
-                    </span>
-                    <span className={`guest-status ${g.status}`}>{g.status === 'joined' ? 'Joined' : 'Invite sent'}</span>
+                    <PersonCell person={g} size={28} />
+                    <Badge tone={g.status === 'joined' ? 'good' : 'neutral'}>{g.status === 'joined' ? 'Joined' : 'Invite sent'}</Badge>
                     <button type="button" className="icon-btn sm" onClick={() => setGuests((x) => x.filter((y) => y.email !== g.email))} aria-label="Remove guest">
                       <X size={14} />
                     </button>

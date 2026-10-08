@@ -101,6 +101,7 @@
 }
 .task-add .sel-flat,
 .list-tools .sel-flat,
+.task-toolbar .sel-flat,
 .sub-add .sel-flat {
   border-color: transparent;
   background: var(--hover);
@@ -1560,26 +1561,7 @@ button.chat-members:hover {
   padding: 14px 14px 10px;
   border-bottom: 1px solid var(--border);
 }
-.cs-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 10px;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--border);
-  scrollbar-width: none;
-}
-.cs-tabs button {
-  flex: none;
-  padding: 5px 10px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.cs-tabs button.on {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
+/* .cs-tabs: see system.css (one look for every tab bar). */
 .cs-body {
   flex: 1;
   overflow-y: auto;
@@ -1719,9 +1701,6 @@ button.chat-members:hover {
 .chan-modal {
   width: min(600px, 100%);
 }
-.chan-tabs {
-  padding: 0 18px;
-}
 .chan-body fieldset {
   border: 0;
   margin: 0;
@@ -1788,17 +1767,6 @@ button.chat-members:hover {
 .cat-pick button.on {
   border-color: var(--accent);
   background: var(--accent-soft);
-}
-.segmented.wide {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-.segmented.wide button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 12.5px;
 }
 .sel-search.boxed {
   border: 1px solid var(--border);
@@ -1932,9 +1900,6 @@ button.chat-members:hover {
   }
   .cat-pick {
     grid-template-columns: 1fr 1fr;
-  }
-  .segmented.wide {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -3799,41 +3764,9 @@ button.tl:hover,
   }
 }
 
-/* round 2b: channel tabs, views, kudos on Home, referral */
+/* round 2b: channel tabs (look: system.css), views, kudos on Home, referral */
 .chan-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  scrollbar-width: none;
   flex: none;
-}
-.chan-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 10px 9px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-3);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  white-space: nowrap;
-}
-.chan-tabs button:hover {
-  color: var(--text);
-}
-.chan-tabs button.on {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-.chan-tabs span {
-  font-size: 11px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--hover);
-  color: var(--text-2);
 }
 .chan-pane {
   flex: 1;

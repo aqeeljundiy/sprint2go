@@ -10,6 +10,7 @@ import { storageGB, rp } from '../../data/pricing';
 import { DEFAULT_MEETINGS } from '../../data/workspaces';
 import { APPS, useAppOrder } from '../AppRail';
 import { Avatar } from '../Avatar';
+import { Badge, PersonCell } from '../ui/Person';
 import { Select } from '../ui/Select';
 import { server } from '../../sync';
 import { caps } from '../../caps';
@@ -196,8 +197,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
         {live && room && byPerson.length === 0 && <p className="muted small">Nobody has uploaded anything yet.</p>}
         {byPerson.map(({ user: u, bytes }) => (
           <div key={u.id} className="pa-row">
-            <Avatar person={u} size={22} />
-            <span className="pa-title">{u.name}</span>
+            <PersonCell person={u} sub={null} size={24} />
             <span className="muted small">{fmtSize(bytes)}</span>
           </div>
         ))}
@@ -655,12 +655,8 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
                 {people.map((x) => {
                   return (
                     <div key={x.userId} className="pa-row ts-person">
-                      <Avatar person={x.user} size={24} />
-                      <span className="pa-title">
-                        {x.user.name}
-                        {x.userId === me && <span className="you-tag">You</span>}
-                      </span>
-                      <span className={`acct-status ${x.on ? 'ok' : ''}`}>{x.on ? 'On' : 'Not yet'}</span>
+                      <PersonCell person={x.user} badges={x.userId === me && <Badge tone="accent">You</Badge>} />
+                      <Badge tone={x.on ? 'good' : 'warn'}>{x.on ? 'On' : 'Not yet'}</Badge>
                       <span className="ts-person-act">
                         {canReset(x) && (
                           <button type="button" className="ghost-btn sm" onClick={() => setResetting(x.user)}>

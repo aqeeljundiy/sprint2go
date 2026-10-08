@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, LogIn, MonitorSmartphone } from 'lucide-react';
 
 import { rel, dateTime, post, ROLE_LABEL, type PersonRow } from '../api';
-import { Badge, Confirm, CopyBtn, Dialog, Empty, Failed, Initials, Loading, Menu, Page, Section, Table, useAct, useAdmin, useApi } from '../ui';
+import { Badge, Confirm, CopyBtn, Dialog, Empty, Failed, Initials, Loading, Menu, Page, Section, Table, useAct, useAdmin, useApi, Who } from '../ui';
 import { TicketList } from './Tickets';
 
 export function People() {
@@ -38,18 +38,18 @@ export function People() {
             width: 'minmax(0, 2fr)',
             sort: (p) => p.name.toLowerCase(),
             render: (p) => (
-              <span className="adm-cell-main with-dot">
-                <Initials name={p.name} color={p.color} />
-                <span>
-                  <strong>
-                    {p.name}
+              <Who
+                name={p.name}
+                email={p.email}
+                color={p.color}
+                badges={
+                  <>
                     {p.operator && <Badge tone="accent">{ROLE_LABEL[p.operator]}</Badge>}
                     {p.suspended && <Badge tone="bad">Suspended</Badge>}
                     {p.disposable && <Badge tone="warn">Throwaway</Badge>}
-                  </strong>
-                  <small>{p.email}</small>
-                </span>
-              </span>
+                  </>
+                }
+              />
             ),
           },
           {

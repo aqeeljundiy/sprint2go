@@ -301,13 +301,7 @@
   color: var(--text-3);
   font-weight: 400;
 }
-.notices-empty {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding: 30px;
-  color: var(--text-3);
-}
+/* .notices-empty: an EmptyState (system.css). */
 
 /* ---------- Command palette ---------- */
 
@@ -723,31 +717,7 @@
 .brain-btn:hover {
   background: linear-gradient(135deg, #7c3aed, #db2777 70%);
 }
-.client-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-.client-tabs button {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-radius: 9999px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.client-tabs button:hover {
-  background: var(--hover);
-}
-.client-tabs button.on {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
+/* .client-tabs: see system.css (one look for every tab bar). */
 .task-add select {
   border: 0;
   outline: 0;

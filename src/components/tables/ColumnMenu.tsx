@@ -6,6 +6,8 @@ import { FIELD_TYPES, sortWords } from './fields';
 
 /** Kinds of column that can be a row's name. */
 const NAME_TYPES = ['text', 'email', 'phone', 'url', 'number'];
+/** Kinds of column with settings of their own beyond the type (choices, a formula, a currency…). */
+const WITH_SETTINGS = ['select', 'multi', 'button', 'formula', 'rollup', 'rating', 'money', 'link'];
 
 export type ColumnAction = 'edit' | 'primary' | 'asc' | 'desc' | 'filter' | 'group' | 'wrap' | 'pin' | 'unpin' | 'hide' | 'insertLeft' | 'insertRight' | 'left' | 'right' | 'duplicate' | 'delete';
 
@@ -77,13 +79,22 @@ export function ColumnMenu({
           <>
             <input className="tb-fm-name" value={name} aria-label="Column name" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && close()} />
             <textarea className="tb-col-desc" rows={1} value={desc} placeholder="Add a description (what this is for)" aria-label="Description" onChange={(e) => setDesc(e.target.value)} />
-            <button type="button" className="tb-colmenu-type" onClick={() => act('edit')}>
-              {type && <type.icon size={14} />}
-              <span>{type?.label ?? 'Field'}</span>
-              <small className="muted">
-                <Pencil size={11} /> Change type and settings
-              </small>
-            </button>
+            {first && field.type === 'text' ? (
+              // The name column is text and stays text: nothing to change here but its name (above).
+              <p className="tb-colmenu-type fixed">
+                {type && <type.icon size={14} />}
+                <span>{type?.label ?? 'Text'}</span>
+                <small className="muted">Each row’s name</small>
+              </p>
+            ) : (
+              <button type="button" className="tb-colmenu-type" onClick={() => act('edit')}>
+                {type && <type.icon size={14} />}
+                <span>{type?.label ?? 'Field'}</span>
+                <small className="muted">
+                  <Pencil size={11} /> {WITH_SETTINGS.includes(field.type) ? 'Change type and settings' : 'Change type'}
+                </small>
+              </button>
+            )}
           </>
         )}
         <div className="tb-colmenu-sep" />

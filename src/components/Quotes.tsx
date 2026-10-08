@@ -5,6 +5,7 @@ import { term } from '../terms';
 import { localDay, relative, uid } from '../utils';
 import { DatePicker } from './ui/DatePicker';
 import { Select } from './ui/Select';
+import { EmptyState } from './ui/EmptyState';
 
 export const money = (n: number, cur: Quote['currency']) => (cur === 'IDR' ? `Rp ${Math.round(n).toLocaleString('id-ID')}` : `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 export const quoteTotal = (q: Pick<Quote, 'items'>) => q.items.reduce((a, i) => a + i.qty * i.price, 0);
@@ -60,13 +61,11 @@ export function QuotesTab({ client, quotes, users, me, canEdit, onSave, onDelete
         )}
       </div>
       {!mine.length && (
-        <div className="empty">
-          <div className="empty-art">
-            <FileSignature size={20} />
-          </div>
-          <p className="empty-title">No quotes yet</p>
-          <p className="empty-sub">Write what you’ll do and what it costs. The {term.who} sees it in their shared space and accepts with one click.</p>
-        </div>
+        <EmptyState
+          icon={<FileSignature size={20} />}
+          title="No quotes yet"
+          text={<>Write what you’ll do and what it costs. The {term.who} sees it in their shared space and accepts with one click.</>}
+        />
       )}
       <div className="qt-list">
         {mine.map((q) => {

@@ -3,6 +3,7 @@ import { UserPlus, X } from 'lucide-react';
 import type { Client, User } from '../types';
 import { term } from '../terms';
 import { Avatar } from './Avatar';
+import { Badge, PersonCell } from './ui/Person';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
 import { personOption } from './ui/PeopleList';
@@ -38,8 +39,7 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
           <span className="pp-head">Team</span>
           {owner && (
             <div className="pp-row">
-              <Avatar person={owner} size={26} />
-              <span className="pp-name">{owner.name}</span>
+              <PersonCell person={owner} size={28} sub={null} badges={owner.id === me && <Badge tone="accent">You</Badge>} />
               <span className="muted small">Owner</span>
             </div>
           )}
@@ -50,8 +50,7 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
               if (!u) return null;
               return (
                 <div key={m.userId} className="pp-row">
-                  <Avatar person={u} size={26} />
-                  <span className="pp-name">{u.name}</span>
+                  <PersonCell person={u} size={28} sub={null} badges={u.id === me && <Badge tone="accent">You</Badge>} />
                   {canEdit ? (
                     <>
                       <Select<'lead' | 'member'>
@@ -89,11 +88,7 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
           {guests.length ? (
             guests.map((g) => (
               <div key={g.email} className="pp-row">
-                <Avatar person={{ name: g.name, email: g.email, color: client.color }} size={26} />
-                <span className="pp-name">
-                  {g.name}
-                  {g.company ? <small className="muted"> · {g.company}</small> : null}
-                </span>
+                <PersonCell person={{ name: g.name, email: g.email, color: client.color }} size={28} sub={g.company ?? null} />
                 <span className="muted small">{g.status === 'invited' ? 'Invited' : g.role === 'approver' ? 'Approver' : g.role === 'viewer' ? 'Viewer' : 'Collaborator'}</span>
               </div>
             ))

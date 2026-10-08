@@ -3442,6 +3442,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenChannel={openChannel}
             onOpenMeeting={openMeeting}
             onBrainDump={() => openDump('')}
+            dumpInSidebar={mode === 'tasks'}
             onTemplate={() => setTplOpen({ clientId: taskScope.kind === 'client' ? taskScope.id : undefined })}
             onMenu={() => setSidebarOpen(true)}
           />

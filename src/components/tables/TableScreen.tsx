@@ -12,7 +12,7 @@ import { PickSelect } from '../ui/PickSelect';
 import { ProjectPicker } from '../ProjectPicker';
 import { newOption, type CellCtx } from './Cell';
 import { GridView } from './GridView';
-import { BoardView, newChoiceField } from './BoardView';
+import { BoardTools, BoardView, newChoiceField } from './BoardView';
 import { CalendarView, GalleryView, ListView } from './Views';
 import { FieldLine, RecordDrawer } from './RecordDrawer';
 import { AutomationsPanel } from './Automations';
@@ -529,11 +529,13 @@ export function TableScreen(p: ScreenProps) {
                 <Group size={13} /> <span className="lbl">{groupField ? `By ${groupField.name}` : 'Group'}</span>
               </button>
             )}
+            {view.kind === 'board' && <BoardTools table={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} />}
             <button ref={refs.fields} className={`ghost-btn sm${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')}>
               <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
             </button>
           </>
         )}
+        {!!g && view?.kind === 'board' && <BoardTools table={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} readOnly />}
         {canAdd && (
           <button className="primary-btn sm tb-add-row" aria-label="New row" onClick={() => (view?.kind === 'grid' || !view ? setFreshRow(addRow()) : openRowFull(addRow()))}>
             <Plus size={14} /> <span className="lbl">New row</span>

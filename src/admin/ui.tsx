@@ -3,7 +3,11 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, Search, X } from 'lucide-
 import { SmoothHeight } from '../components/ui/Smooth';
 import { Popover } from '../components/ui/Popover';
 import { Select } from '../components/ui/Select';
-import { get, initials, type Perm } from './api';
+import { get, type Perm } from './api';
+import { Avatar } from '../components/Avatar';
+import { Badge as UiBadge, PersonCell } from '../components/ui/Person';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Layer } from '../components/ui/Layer';
 
 /* ---------- the backend's shared state ---------- */
 
@@ -153,8 +157,9 @@ export function deltaOf(now: number, before: number | null | undefined, upIsGood
 
 /* ---------- small parts ---------- */
 
+/** The app's own pill (components/ui/Person.tsx): the console and the app share one look. */
 export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'accent' | 'info'; children: ReactNode }) {
-  return <span className={`adm-badge ${tone}`}>{children}</span>;
+  return <UiBadge tone={tone}>{children}</UiBadge>;
 }
 export function HealthPill({ h }: { h: { score: number; label: string } }) {
   return (
@@ -169,21 +174,17 @@ export function HealthPill({ h }: { h: { score: number; label: string } }) {
 export function Dot({ color }: { color: string }) {
   return <i className="adm-dot" style={{ background: color }} />;
 }
-export function Initials({ name, color, size = 28 }: { name: string; color?: string | null; size?: number }) {
-  return (
-    <span className="adm-avatar" style={{ width: size, height: size, background: color || 'var(--accent)', fontSize: Math.round(size * 0.38) }}>
-      {initials(name)}
-    </span>
-  );
+/** A face for someone with no photo here: the app's avatar, in their colour. */
+export function Initials({ name, color, size = 28, email }: { name: string; color?: string | null; size?: number; email?: string }) {
+  return <Avatar person={{ name, email: email ?? name, color: color || undefined }} size={size} />;
 }
-export function Empty({ title, text, action }: { title: string; text?: string; action?: ReactNode }) {
-  return (
-    <div className="adm-empty">
-      <strong>{title}</strong>
-      {text && <span>{text}</span>}
-      {action}
-    </div>
-  );
+/** Someone in a table: the app's person cell (avatar centred on name and email, badges as pills on the name's line). */
+export function Who({ name, email, color, badges, sub }: { name: string; email?: string; color?: string | null; badges?: ReactNode; sub?: ReactNode | null }) {
+  return <PersonCell person={{ name, email, color }} badges={badges} sub={sub} />;
+}
+/** An empty list: the app's empty state (title, a line on what to do, the action). */
+export function Empty({ title, text, action, icon }: { title: string; text?: string; action?: ReactNode; icon?: ReactNode }) {
+  return <EmptyState className="adm-empty-state" icon={icon} title={title} text={text} action={action} />;
 }
 export function Loading({ rows = 4 }: { rows?: number }) {
   return (
@@ -322,6 +323,7 @@ export function Dialog({ title, onClose, children, foot, size = 'md' }: { title:
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
   return (
+    <Layer>
     <div className="modal-scrim" onMouseDown={onClose}>
       <div className={`modal adm-modal ${size}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Dialog'} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-head">
@@ -336,6 +338,7 @@ export function Dialog({ title, onClose, children, foot, size = 'md' }: { title:
         {foot && <footer className="modal-foot">{foot}</footer>}
       </div>
     </div>
+    </Layer>
   );
 }
 

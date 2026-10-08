@@ -1,0 +1,457 @@
+/* ==========================================================================
+   One design system: the shared pieces every screen uses, in one place, loaded last.
+   - Badge (ui/Person.tsx): one pill for "You", "Owner", "Lead", states.
+   - PersonCell (ui/Person.tsx): avatar centred on name + email, badges on the name's line.
+   - EmptyState (ui/EmptyState.tsx): icon, title, text, action on the 8px scale.
+   - Tab bars and segmented controls: one height, radius, active state and sliding highlight.
+   - Toolbars: search, filters and view options on one line, wrapping on phones.
+   - Rows that leave fold away (useLeaving in ui/Smooth.tsx).
+   ========================================================================== */
+
+:root {
+  --info: #2563eb;
+  --info-soft: color-mix(in oklab, #2563eb 12%, transparent);
+  --ctl-h: 32px; /* buttons, dropdowns, tabs and segmented controls on desktop */
+  --tab-h: 32px;
+}
+:root[data-theme='dark'] {
+  --info: #93b4ff;
+  --info-soft: color-mix(in oklab, #93b4ff 16%, transparent);
+}
+
+/* ---------- Badge ---------- */
+
+span.badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+  background: color-mix(in oklab, var(--text) 7%, transparent);
+  color: var(--text-2);
+}
+span.badge.is-accent {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+span.badge.is-good {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+span.badge.is-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+span.badge.is-bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+span.badge.is-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+/* In a sidebar row or beside a channel name: the same pill, smaller. */
+span.badge.sm {
+  height: 16px;
+  padding: 0 6px;
+  font-size: 10.5px;
+}
+.sb-label > span.badge {
+  margin-left: 6px;
+}
+/* A badge in running text (a heading, a bold name) keeps its distance. */
+strong > span.badge,
+b > span.badge,
+h2 > span.badge,
+h3 > span.badge {
+  margin-left: 6px;
+}
+
+/* ---------- Person cell ---------- */
+
+span.person-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+}
+span.person-cell > .avatar,
+span.person-cell > :first-child {
+  flex: none;
+}
+.person-cell > .person-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.person-text > .person-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--text);
+}
+.person-name > .person-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.person-text > .person-sub {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+/* ---------- Empty state ---------- */
+
+.empty.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 40px 24px;
+  text-align: center;
+  animation: tabIn 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.empty-state > .empty-art {
+  width: 48px;
+  height: 48px;
+  margin: 0 0 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 700;
+}
+.empty-state > .empty-title {
+  margin: 0;
+  max-width: 420px;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--text);
+  text-wrap: balance;
+}
+.empty-state > .empty-sub {
+  margin: 8px 0 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+.empty-state > .empty-action {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.empty-state > .empty-action > * {
+  margin: 0;
+}
+/* Inside a card or panel: a quiet line, no icon. */
+.empty.empty-state.compact {
+  flex: none;
+  align-items: flex-start;
+  padding: 16px;
+  text-align: left;
+}
+.empty-state.compact > .empty-title {
+  font-size: 13.5px;
+}
+.empty-state.compact > .empty-sub {
+  margin-top: 4px;
+  max-width: none;
+}
+.empty-state.compact > .empty-sub:first-child {
+  margin-top: 0;
+}
+/* The old one-line empty (a few places still build their own): the same as a compact EmptyState. */
+.te-empty {
+  margin: 0;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+/* In a card with a heading, the line sits on the heading's edge. */
+.side-card > .empty-state.compact {
+  padding: 4px 18px 16px;
+}
+.empty-state.compact > .empty-action {
+  margin-top: 12px;
+  justify-content: flex-start;
+}
+@media (prefers-reduced-motion: reduce) {
+  .empty.empty-state {
+    animation: none;
+  }
+}
+
+/* ---------- Tab bars and segmented controls ----------
+   Tabs (.client-tabs, .chan-tabs, .cs-tabs) and segmented controls (.segmented) are the same pill: 32px high, fully
+   round, 13px semibold, the chosen one tinted with the accent. The highlight slides between them (slidingTabs.ts).
+   A segmented control sits on a quiet track so it reads as one control; tabs sit on the page. */
+
+.segmented,
+.client-tabs,
+.chan-tabs,
+.cs-tabs {
+  align-items: center;
+  gap: 2px;
+}
+.client-tabs,
+.chan-tabs,
+.cs-tabs {
+  display: flex;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.client-tabs::-webkit-scrollbar,
+.chan-tabs::-webkit-scrollbar,
+.cs-tabs::-webkit-scrollbar {
+  display: none;
+}
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--hover);
+  max-width: 100%;
+}
+.segmented > button,
+.client-tabs > button,
+.chan-tabs > button,
+.cs-tabs > button,
+.client-tabs > [role='tab'],
+.chan-tabs > [role='tab'] {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--tab-h);
+  min-height: 0;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9999px;
+  background: none;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-2);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.segmented > button {
+  height: calc(var(--tab-h) - 4px);
+}
+.segmented > button:hover:not(.on):not(:disabled),
+.client-tabs > button:hover:not(.on),
+.chan-tabs > button:hover:not(.on),
+.cs-tabs > button:hover:not(.on) {
+  color: var(--text);
+  background: color-mix(in oklab, var(--text) 6%, transparent);
+}
+.segmented > button.on,
+.client-tabs > button.on,
+.chan-tabs > button.on,
+.cs-tabs > button.on,
+.client-tabs > [role='tab'][aria-selected='true'],
+.chan-tabs > [role='tab'][aria-selected='true'] {
+  color: var(--accent-text, var(--accent));
+  background: var(--accent-soft);
+  border-bottom-color: transparent;
+}
+.segmented > button svg,
+.client-tabs > button svg,
+.chan-tabs > button svg {
+  flex: none;
+}
+/* The sliding highlight is the same tinted pill on every bar. */
+.segmented > .tab-ink,
+.client-tabs > .tab-ink,
+.chan-tabs > .tab-ink,
+.cs-tabs > .tab-ink {
+  background: var(--accent-soft);
+  box-shadow: none;
+  border-radius: 9999px;
+}
+/* Small counts inside a tab ("Tasks 3"). */
+.tab-count,
+.chan-tabs > button > span,
+.client-tabs > button > .adm-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0 5px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in oklab, var(--text) 7%, transparent);
+  color: var(--text-2);
+}
+/* Tabs at the top of a dialog line up with its title. */
+.modal > .dialog-tabs {
+  min-height: 0;
+  padding: 4px 12px 8px;
+}
+/* Icon-only segments (list / board) are square. */
+.segmented.icon-seg > button {
+  width: calc(var(--tab-h) + 4px);
+  padding: 0;
+}
+/* Two equal halves (a choice inside a form). */
+.segmented.wide {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  width: 100%;
+}
+.segmented.wide > button {
+  min-width: 0;
+}
+/* The arrange button at the end of a rearrangeable tab row. */
+.client-tabs > .tab-edit,
+.client-tabs > .tb-add-view {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--tab-h);
+  height: var(--tab-h);
+  padding: 0;
+  border-radius: 9999px;
+}
+
+/* Phones: every tab and segment is a 40px target. */
+@media (max-width: 760px) {
+  .segmented > button,
+  .client-tabs > button,
+  .chan-tabs > button,
+  .cs-tabs > button {
+    height: 40px;
+  }
+  .segmented > button {
+    height: 36px;
+    min-height: 36px;
+  }
+  .segmented {
+    padding: 2px;
+  }
+  .segmented.icon-seg > button {
+    width: 40px;
+  }
+  .client-tabs,
+  .chan-tabs,
+  .cs-tabs {
+    min-height: 56px;
+    padding: 8px 12px;
+  }
+  .client-tabs > .tab-edit,
+  .client-tabs > .tb-add-view {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ---------- Toolbars ----------
+   Search, filters and how the list is shown sit on one line; on a narrow pane they wrap, search first. */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.toolbar > .spacer {
+  flex: 1 1 0;
+}
+/* Tasks: open / done, group and the quick filters, one row. */
+.task-toolbar {
+  margin: 0;
+}
+.task-toolbar > .sel.sel-flat {
+  min-height: 0;
+  height: calc(var(--tab-h) - 4px);
+  gap: 6px;
+  border-radius: 9999px;
+  padding: 0 10px 0 12px;
+  font-size: 12.5px;
+  background: var(--hover);
+}
+.task-toolbar > .sel.sel-flat:hover,
+.task-toolbar > .sel.sel-flat.open {
+  background: color-mix(in oklab, var(--text) 9%, var(--hover));
+}
+@media (max-width: 760px) {
+  .toolbar > .spacer {
+    display: none;
+  }
+  .task-toolbar > .sel.sel-flat,
+  .quick-chips > button:not(.link-btn) {
+    height: 40px;
+  }
+  .task-toolbar > .link-btn {
+    min-height: 40px;
+  }
+}
+
+/* ---------- Rows that leave ---------- */
+
+.row-leaving {
+  animation: taskOut 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-leaving {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* ---------- Settings nav: an icon never squeezes away beside a long name ---------- */
+
+.settings-nav button svg {
+  flex: none;
+}

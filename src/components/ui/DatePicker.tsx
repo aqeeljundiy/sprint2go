@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
 import { Popover } from './Popover';
 import { holidayOn } from '../../holidayDays';
 
@@ -153,3 +153,88 @@ export const TIMES = Array.from({ length: 96 }, (_, i) => {
   const m = String((i % 4) * 15).padStart(2, '0');
   return `${h}:${m}`;
 });
+
+/** "930", "9:30", "14", "2pm", "2.15 pm" → "09:30", "14:00", "14:15"; null when it isn't a time. */
+export function parseTime(text: string): string | null {
+  const t = text.trim().toLowerCase().replace(/\s+/g, '');
+  const m = t.match(/^(\d{1,2})(?:[:.]?(\d{2}))?(am|pm|a|p)?$/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  const ap = m[3]?.[0];
+  if (ap === 'p' && h < 12) h += 12;
+  if (ap === 'a' && h === 12) h = 0;
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/**
+ * sprint2go's time field: type a time ("9:30", "2pm") or pick one from a list every 15 minutes that opens on the
+ * current time, not at midnight. Value is HH:MM. On phones the list is a bottom sheet like every other picker.
+ */
+export function TimePicker({ value, onChange, label = 'Time', className = '' }: { value: string; onChange: (v: string) => void; label?: string; className?: string }) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const list = useRef<HTMLDivElement>(null);
+  const near = TIMES.reduce((best, t) => (Math.abs(mins(t) - mins(value)) < Math.abs(mins(best) - mins(value)) ? t : best), TIMES[0]);
+  const parsed = parseTime(typed);
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+    setTyped('');
+    btn.current?.focus();
+  };
+  return (
+    <>
+      <button ref={btn} type="button" className={`sel time-sel ${open ? 'open' : ''} ${className}`} onClick={() => setOpen((o) => !o)} aria-label={`${label}: ${value}`} aria-haspopup="listbox" aria-expanded={open}>
+        <Clock size={14} />
+        <span className="sel-text">{value}</span>
+      </button>
+      <Popover anchor={btn} open={open} onClose={() => (setOpen(false), setTyped(''))} width={180} title={label}>
+        <div className="tp">
+          <input
+            className="tp-input"
+            autoFocus
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && parsed) (e.preventDefault(), pick(parsed));
+            }}
+            placeholder="Type a time, like 9:30"
+            aria-label={`Type the ${label.toLowerCase()}`}
+          />
+          {typed && (
+            <button type="button" className={`tp-opt typed ${parsed ? '' : 'bad'}`} disabled={!parsed} onClick={() => parsed && pick(parsed)}>
+              {parsed ?? 'Not a time'}
+            </button>
+          )}
+          <div
+            className="tp-list"
+            role="listbox"
+            aria-label={label}
+            ref={(el) => {
+              list.current = el;
+              // Open on the current time (centred), not at the top of the day.
+              const on = el?.querySelector<HTMLElement>('[aria-selected="true"]');
+              if (el && on && !el.dataset.placed) {
+                el.dataset.placed = '1';
+                el.scrollTop = on.offsetTop - el.clientHeight / 2 + on.offsetHeight / 2;
+              }
+            }}
+          >
+            {TIMES.map((t) => (
+              <button key={t} type="button" role="option" aria-selected={t === near} className={`tp-opt ${t === near ? 'on' : ''}`} onClick={() => pick(t)}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Popover>
+    </>
+  );
+}
+const mins = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+};

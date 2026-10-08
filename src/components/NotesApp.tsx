@@ -7,6 +7,7 @@ import { relative } from '../utils';
 import { htmlToText } from '../sanitize';
 import { RichEditor } from './RichEditor';
 import { Select, Dot } from './ui/Select';
+import { EmptyState } from './ui/EmptyState';
 
 export type NotesFilter = 'all' | 'private' | 'team' | `client:${string}`;
 
@@ -108,13 +109,11 @@ export function NoteEditor({
   if (!note)
     return (
       <section className="notes-pane view-enter">
-        <div className="empty">
-          <div className="empty-art">
-            <NotebookPen size={22} />
-          </div>
-          <p className="empty-title">Pick a note, or write a new one</p>
-          <p className="empty-sub">Private notes, meeting prep, how-tos for the team. Link a note to a {term.one} and it shows on their page.</p>
-        </div>
+        <EmptyState
+          icon={<NotebookPen size={22} />}
+          title="Pick a note, or write a new one"
+          text={<>Private notes, meeting prep, how-tos for the team. Link a note to a {term.one} and it shows on their page.</>}
+        />
       </section>
     );
   const mine = note.ownerId === me;
