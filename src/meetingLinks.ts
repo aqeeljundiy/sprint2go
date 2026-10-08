@@ -41,3 +41,46 @@ export const meetingLinkOf = (e: Pick<CalEvent, 'meetUrl' | 'location' | 'notes'
 
 /** The notetaker joins Google Meet and Zoom. */
 export const notetakerJoins = (k: MeetingKind) => k === 'meet' || k === 'zoom';
+
+/** The same call, whatever extras the link carries (Google adds ?authuser; copies on two calendars may differ). */
+export function callKey(url: string) {
+  try {
+    const u = new URL(url);
+    return `${u.hostname.toLowerCase()}${u.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return url;
+  }
+}
+
+/** The company's "Bot joins automatically" (Settings, Meetings, and Meet's Upcoming). */
+export type JoinMode = 'accepted' | 'organizer' | 'all' | 'off';
+export const JOIN_MODES: { value: JoinMode; label: string; hint: string }[] = [
+  { value: 'accepted', label: 'Meetings people organize or accept', hint: 'Their own events, invites they said yes to, and their linked calendars' },
+  { value: 'organizer', label: 'Only meetings people organize', hint: 'Events they made, or invites they sent' },
+  { value: 'all', label: 'Every meeting with a link', hint: 'Anything on their calendar with a Meet or Zoom link' },
+  { value: 'off', label: 'Off: people pick each one', hint: 'Switch it on per meeting in Meet, Upcoming' },
+];
+
+/**
+ * Whether the notetaker joins an event by the company's rule, before the owner's own switch for that event.
+ * `mine`: the owner's addresses (their email and mailboxes), to tell invites they sent from ones they got.
+ */
+export function joinsByRule(e: Pick<CalEvent, 'organizer' | 'inviteUid' | 'feed' | 'rsvp'>, mode: JoinMode | undefined, mine: (email: string) => boolean): boolean {
+  const m = mode ?? 'accepted';
+  if (m === 'off') return false;
+  if (m === 'all') return true;
+  const org = e.organizer?.email?.toLowerCase();
+  // Made here by hand (no invite behind it) or an invite they sent. A linked calendar doesn't say who organised it.
+  const organizes = org ? mine(org) : !e.inviteUid && !e.feed;
+  if (m === 'organizer') return organizes;
+  // Said yes to the invite, or it's on a calendar they linked (Google and Outlook keep what they're going to).
+  return organizes || e.rsvp === 'accepted' || (e.feed === 'link' && e.rsvp !== 'declined');
+}
+
+/** Whether the notetaker joins this event: the owner's switch for it, else the company's rule; only Meet and Zoom calls. */
+export function botJoins(e: CalEvent, mode: JoinMode | undefined, overrides: Record<string, boolean> | undefined, mine: (email: string) => boolean) {
+  const link = meetingLinkOf(e);
+  if (!link || !notetakerJoins(link.kind) || e.allDay) return false;
+  const own = overrides?.[e.id];
+  return typeof own === 'boolean' ? own : joinsByRule(e, mode, mine);
+}

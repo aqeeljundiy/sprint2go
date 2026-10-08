@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
 import { companyOf } from '../clientView';
-import { FolderPlus, ChevronUp, Handshake, ArrowLeft, ArrowUp, BarChart3, ChevronDown, ChevronRight, Check, LayoutList, Pencil, Compass, FileText, Hash, Image as ImageIcon, ListChecks, Lock, Mail, Menu, MessageSquareReply, Mic, MoreHorizontal, Paperclip, HardDrive, Pin, Pause, Play, Plus, Settings, SmilePlus, Sparkles, SquareCheck, Star, Trash2, Users, Video, X, Headphones } from 'lucide-react';
+import { AlertTriangle, FolderPlus, ChevronUp, Handshake, ArrowLeft, ArrowUp, BarChart3, ChevronDown, ChevronRight, Check, LayoutList, Pencil, Compass, FileText, Hash, Image as ImageIcon, ListChecks, Lock, Mail, Menu, MessageSquareReply, Mic, MoreHorizontal, Paperclip, HardDrive, Pin, Pause, Play, Plus, Settings, SmilePlus, Sparkles, SquareCheck, Star, Trash2, Users, Video, X, Headphones } from 'lucide-react';
 import type { Channel, ChannelCategory, ChatLayout, ChatSection, ChatFile, ChatMessage, ChatView as ChatViewDef, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../types';
 import { localDay, relative } from '../utils';
 import { usePersisted } from '../settings';
@@ -19,6 +19,7 @@ import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 import { ChannelMaterials } from './ChannelMaterials';
 import { personOption } from './ui/PeopleList';
 import { server, uploadFile, wasSkipped } from '../sync';
+import { channelSchedule, nextSummaryDay, settledKey } from '../jobTimes';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -694,6 +695,8 @@ interface ViewProps {
   onToggleTask: (id: string) => void;
   onChannel: (p: Partial<Channel>) => void; // bookmarks, summaries
   summaryCost: string;
+  /** Why scheduled summaries can't be written for this company right now (no AI, allowance used up); fixed where. */
+  summaryOff?: { text: string; fix?: { label: string; run: () => void } };
   since: string; // when I last opened this channel, before now
   onReact: (id: string, emoji: string) => void;
   onVote: (id: string, option: number) => void;
@@ -856,17 +859,17 @@ export function ChatView(p: ViewProps) {
     })),
   ).reverse();
 
-  const nextRun = (sch: string) => {
-    const d = new Date();
-    if (sch === 'monthly') d.setMonth(d.getMonth() + 1, 1);
-    else if (sch === 'weekly') d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
-    else d.setDate(d.getDate() + 1);
-    return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-  };
+  // The schedule the server runs (server/summaries.ts): when the next one comes, and what happened to the last one.
+  const schedule = channelSchedule(channel);
+  const lastRun = channel.summary?.last;
+  const nextDay = nextSummaryDay(schedule, settledKey(lastRun), Date.now(), undefined, !!lastRun);
+  const nextRun = () => (!nextDay ? '' : nextDay === localDay() ? 'today' : new Date(`${nextDay}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }));
+  const lastMissed = lastRun && (lastRun.state === 'off' || lastRun.state === 'failed') && lastRun.key === settledKey(lastRun) ? lastRun : null;
+  const lastRetrying = lastRun?.state === 'failed' && !settledKey(lastRun) ? lastRun : null;
   /** AI summary of a period (this month / week / day) or of what I missed. Only on click, or on the schedule. */
   const summarize = async (kind: 'period' | 'since') => {
     setSummarizing(kind);
-    const sch = channel.summary?.schedule ?? 'monthly';
+    const sch = schedule === 'off' ? 'monthly' : schedule;
     const from = kind === 'since' ? p.since : new Date(Date.now() - (sch === 'daily' ? 1 : sch === 'weekly' ? 7 : 31) * 86_400_000).toISOString();
     const msgs = sorted.filter((m) => m.at > from).map((m) => ({
       who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
@@ -879,7 +882,7 @@ export function ChatView(p: ViewProps) {
     if (kind === 'since') setSinceText(text);
     else {
       const period = sch === 'daily' ? 'Today' : sch === 'weekly' ? 'This week' : new Date().toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' so far';
-      p.onChannel({ summary: { schedule: sch, post: channel.summary?.post ?? false, history: [{ id: Math.random().toString(36).slice(2), text, period, at: new Date().toISOString(), auto: false, by: me }, ...(channel.summary?.history ?? [])] } });
+      p.onChannel({ summary: { schedule, post: channel.summary?.post ?? false, history: [{ id: Math.random().toString(36).slice(2), text, period, at: new Date().toISOString(), auto: false, by: me }, ...(channel.summary?.history ?? [])] } });
       if (channel.summary?.post) p.onSend({ text: `📝 Summary (${period}): ${text}` });
     }
     setSummarizing(null);
@@ -1000,6 +1003,16 @@ export function ChatView(p: ViewProps) {
         <div key={m.id} className="chat-celebration">
           <span>🎉 {m.text}</span>
           <time>{relative(m.at)}</time>
+        </div>
+      );
+    if (m.kind === 'summary')
+      return (
+        <div key={m.id} data-msg={m.id} className="chat-summary">
+          <div className="chat-summary-head">
+            <Sparkles size={13} aria-hidden /> Summary{m.summaryOf ? `, ${m.summaryOf}` : ''}
+            <time>{relative(m.at)}</time>
+          </div>
+          <p>{m.text}</p>
         </div>
       );
     if (m.kind === 'system')
@@ -1408,14 +1421,14 @@ export function ChatView(p: ViewProps) {
           <div className="chan-pane">
             <div className="sum-head">
               <span>
-                <strong>{channel.summary?.schedule && channel.summary.schedule !== 'off' ? `Updated ${channel.summary.schedule === 'monthly' ? 'every month' : channel.summary.schedule === 'weekly' ? 'every week' : 'every day with new messages'}` : 'No automatic summary'}</strong>
+                <strong>{schedule !== 'off' ? `Updated ${schedule === 'monthly' ? 'every month' : schedule === 'weekly' ? 'every week' : 'every day with new messages'}` : 'No automatic summary'}</strong>
                 <small className="muted">
-                  {channel.summary?.schedule && channel.summary.schedule !== 'off' ? `Next: ${nextRun(channel.summary.schedule)} · each update uses ${p.summaryCost}` : `Each summary uses ${p.summaryCost}`}
+                  {schedule === 'off' ? `Each summary uses ${p.summaryCost}` : p.summaryOff ? 'Paused until AI works for this company' : `Next: ${nextRun()} · skipped when nothing happened · each uses ${p.summaryCost}`}
                 </small>
               </span>
               <Select
-                value={channel.summary?.schedule ?? 'monthly'}
-                onChange={(v) => p.onChannel({ summary: { schedule: v, post: channel.summary?.post ?? false, history: channel.summary?.history ?? [] } })}
+                value={schedule}
+                onChange={(v) => p.onChannel({ summary: { ...channel.summary, schedule: v, post: channel.summary?.post ?? false, history: channel.summary?.history ?? [] } })}
                 label="Summary schedule"
                 className="sel-flat"
                 options={[
@@ -1434,9 +1447,26 @@ export function ChatView(p: ViewProps) {
                 {summarizing === 'since' ? 'Reading…' : `Since my last visit (${relative(p.since)})`}
               </button>
               <label className="check-row small">
-                <input type="checkbox" checked={channel.summary?.post ?? false} onChange={(e) => p.onChannel({ summary: { schedule: channel.summary?.schedule ?? 'monthly', post: e.target.checked, history: channel.summary?.history ?? [] } })} /> Post new summaries in the channel
+                <input type="checkbox" checked={channel.summary?.post ?? false} onChange={(e) => p.onChannel({ summary: { ...channel.summary, schedule, post: e.target.checked, history: channel.summary?.history ?? [] } })} /> Post new summaries in the channel
               </label>
             </div>
+            {schedule !== 'off' && (p.summaryOff || lastMissed || lastRetrying) && (
+              <div className="sum-off" role="status">
+                <AlertTriangle size={15} aria-hidden />
+                <span>
+                  {p.summaryOff
+                    ? `Scheduled summaries can’t be written: ${p.summaryOff.text}`
+                    : lastRetrying
+                      ? `The ${lastRetrying.label ?? 'latest'} summary couldn’t be written yet (${lastRetrying.why ?? 'the AI service failed'}). It’s tried again by itself${lastRetrying.retryAt ? ` at ${new Date(lastRetrying.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}.`
+                      : `The ${lastMissed!.label ?? 'last'} summary wasn’t written: ${lastMissed!.why ?? 'the AI service failed'}`}{' '}
+                  {p.summaryOff?.fix && (
+                    <button className="link-btn" onClick={p.summaryOff.fix.run}>
+                      {p.summaryOff.fix.label}
+                    </button>
+                  )}
+                </span>
+              </div>
+            )}
             {sinceText && (
               <div className="sum-card since">
                 <div className="sum-meta">Since your last visit</div>

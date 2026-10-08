@@ -278,6 +278,350 @@ await test('Certificate: with a token, an empty host or localhost is never sent 
   delete process.env.CF_ZONE_ID;
 });
 
+/* ---------- jobs the settings promise: clocks are set by hand, the outside world is faked ---------- */
+
+// Nothing in these tests may reach a real mail server: any delivery goes to a closed local port.
+process.env.MAIL_RELAY_URL = 'smtp://127.0.0.1:9';
+
+/* the notetaker joins by itself (server/autojoin.ts) */
+
+const links = await import('../src/meetingLinks.ts');
+await test('Notetaker rule: organize or accept, organize only, every link, off', () => {
+  const mine = (e) => e === 'ana@aj.example';
+  const own = {};
+  const invited = { inviteUid: 'x', organizer: { name: 'Bo', email: 'bo@else.example' }, rsvp: 'tentative' };
+  assert.equal(links.joinsByRule(own, 'accepted', mine), true);
+  assert.equal(links.joinsByRule(invited, 'accepted', mine), false, 'maybe is not yes');
+  assert.equal(links.joinsByRule({ ...invited, rsvp: 'accepted' }, 'accepted', mine), true);
+  assert.equal(links.joinsByRule({ ...invited, rsvp: 'accepted' }, 'organizer', mine), false);
+  assert.equal(links.joinsByRule({ inviteUid: 'x', organizer: { name: 'Ana', email: 'ana@aj.example' } }, 'organizer', mine), true);
+  assert.equal(links.joinsByRule({ feed: 'link' }, 'accepted', mine), true, 'a linked calendar keeps what they go to');
+  assert.equal(links.joinsByRule(invited, 'all', mine), true);
+  assert.equal(links.joinsByRule(own, 'off', mine), false);
+  const ev = { id: 'e', title: 't', calendarId: 'c', start: '', end: '', meetUrl: 'https://teams.microsoft.com/l/meetup-join/abc' };
+  assert.equal(links.botJoins(ev, 'all', {}, mine), false, 'Teams: the notetaker can’t join');
+  assert.equal(links.botJoins({ ...ev, meetUrl: 'https://zoom.us/j/123' }, 'off', { e: true }, mine), true, 'their own switch wins');
+});
+
+const autojoin = await import('../server/autojoin.ts');
+const T0 = Date.parse('2026-10-12T02:00:00.000Z'); // Monday 9:00 in Jakarta
+const ajEvent = (id, mins, extra = {}) => ({ id, title: `Call ${id}`, calendarId: 'work', start: new Date(T0 + mins * 60_000).toISOString(), end: new Date(T0 + (mins + 30) * 60_000).toISOString(), userId: 'aj-ana', workspaceId: 'w-aj', meetUrl: `https://meet.google.com/abc-defg-${id}`, ...extra });
+db.writeDocs('users', [{ id: 'aj-ana', name: 'Ana Owner', email: 'ana@aj.example' }, { id: 'aj-mo', name: 'Mo Member', email: 'mo@aj.example' }], [], null);
+db.writeDocs('workspaces', [{ id: 'w-aj', name: 'AJ', members: [{ userId: 'aj-ana', role: 'owner' }, { userId: 'aj-mo', role: 'member' }], accounts: [], meetings: { joinMode: 'accepted', botName: 'AJ Notetaker' }, plan: { tier: 'studio', track: 'ai', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false } } }], [], null);
+db.writeDocs('events', [
+  ajEvent('soon', 1),
+  ajEvent('later', 10),
+  ajEvent('maybe', 1, { inviteUid: 'u1', organizer: { name: 'Bo', email: 'bo@else.example' }, rsvp: 'tentative' }),
+  ajEvent('teams', 1, { meetUrl: 'https://teams.microsoft.com/l/meetup-join/xyz' }),
+  ajEvent('skip', 1),
+  { ...ajEvent('soon', 1), id: 'soon-mo', userId: 'aj-mo' }, // the same call on a colleague's calendar
+], [], null);
+db.writeDocs('prefs', [{ id: 'aj-ana', value: { 's2g-join:aj-ana': { skip: false } } }], [], null);
+const ajSent = [];
+const ajNotes = [];
+const ajDeps = { recorderUp: () => true, send: async (_ws, m) => (ajSent.push(m), null), notify: (ids, _ws, text) => ajNotes.push({ ids, text }) };
+await test('Auto-join: only events about to start, with a Meet or Zoom link, that the rules say to record; once per call', async () => {
+  const r = await autojoin.runAutoJoin(ajDeps, T0);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['soon', 'sent']]);
+  assert.equal(ajSent[0].url, 'https://meet.google.com/abc-defg-soon');
+  assert.equal(ajSent[0].createdBy, 'aj-ana');
+  assert.equal(ajSent[0].eventId, 'soon');
+  assert.equal(ajSent[0].bot, true);
+  assert.equal(ajSent[0].botName, 'AJ Notetaker');
+  assert.equal((await autojoin.runAutoJoin(ajDeps, T0 + 30_000)).length, 0, 'never twice');
+  const later = await autojoin.runAutoJoin(ajDeps, T0 + 9 * 60_000);
+  assert.deepEqual(later.map((x) => x.eventId), ['later']);
+});
+await test('Auto-join: nothing while the recorder is down', async () => {
+  db.writeDocs('events', [ajEvent('down', 31)], [], null);
+  assert.equal((await autojoin.runAutoJoin({ ...ajDeps, recorderUp: () => false }, T0 + 30 * 60_000)).length, 0);
+});
+await test('Auto-join: a recorder that refuses marks it failed and tells the owner', async () => {
+  const r = await autojoin.runAutoJoin({ ...ajDeps, send: async () => 'Recorder said 500' }, T0 + 30 * 60_000);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['down', 'failed']]);
+  assert.match(ajNotes.at(-1).text, /couldn’t join “Call down”: Recorder said 500/);
+});
+await test('Auto-join: only admins when "Who can record" says so', async () => {
+  const w = db.getDoc('workspaces', 'w-aj');
+  db.writeDocs('workspaces', [{ ...w, meetings: { ...w.meetings, whoCanRecord: 'admins' } }], [], null);
+  db.writeDocs('events', [{ ...ajEvent('mo', 40), userId: 'aj-mo' }], [], null);
+  const r = await autojoin.runAutoJoin(ajDeps, T0 + 39 * 60_000);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['mo', 'not-allowed']]);
+  db.writeDocs('workspaces', [w], [], null);
+});
+await test('Auto-join: the plan’s meeting-bot hours used up means no bot, and the owner hears why', async () => {
+  const h = autojoin.botHours(db.getDoc('workspaces', 'w-aj'), T0);
+  assert.equal(h.hours, 100, 'Studio AI: 10 hours for each of the 10 included seats');
+  db.writeDocs('meetings', [{ id: 'm-used', workspaceId: 'w-aj', bot: true, minutes: 6000, at: new Date(T0 - 86_400_000).toISOString() }], [], null);
+  db.writeDocs('events', [ajEvent('full', 50)], [], null);
+  const r = await autojoin.runAutoJoin(ajDeps, T0 + 49 * 60_000);
+  assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['full', 'no-hours']]);
+  assert.match(ajNotes.at(-1).text, /100 meeting-bot hours are used up/);
+  db.writeDocs('meetings', [], ['m-used'], null);
+});
+
+/* channel summaries on a schedule (src/jobTimes.ts, server/summaries.ts) */
+
+const jt = await import('../src/jobTimes.ts');
+const at = (day, hour, minute = 0) => jt.zonedTime(day, hour, 'Asia/Jakarta') + minute * 60_000;
+
+await test('Job times: local days, hours and run days in Jakarta', () => {
+  assert.equal(new Date(at('2026-10-09', 6)).toISOString(), '2026-10-08T23:00:00.000Z');
+  assert.deepEqual(jt.localParts(at('2026-10-09', 6, 30), 'Asia/Jakarta'), { day: '2026-10-09', hour: 6, minute: 30, weekday: 5 });
+  assert.equal(jt.runDayOn('weekly', '2026-10-09'), '2026-10-05');
+  assert.equal(jt.runDayOn('monthly', '2026-10-09'), '2026-10-01');
+  assert.deepEqual(jt.summaryPeriod('monthly', '2026-10-01'), { key: 'monthly:2026-09', from: '2026-09-01', to: '2026-10-01', label: 'September 2026' });
+  assert.deepEqual(jt.summaryPeriod('weekly', '2026-10-05'), { key: 'weekly:2026-09-28', from: '2026-09-28', to: '2026-10-05', label: 'Week of 28 September' });
+  assert.equal(jt.summaryPeriod('daily', '2026-10-09').label, 'Thursday 8 October');
+});
+await test('Job times: a summary is due once, from 6:00 on its day; a missed one only when the schedule ran before', () => {
+  assert.equal(jt.summaryDue('daily', undefined, at('2026-10-09', 5)), null, 'not before 6:00');
+  assert.equal(jt.summaryDue('daily', undefined, at('2026-10-09', 6))?.key, 'daily:2026-10-08');
+  assert.equal(jt.summaryDue('daily', 'daily:2026-10-08', at('2026-10-09', 9)), null, 'written already');
+  assert.equal(jt.summaryDue('weekly', undefined, at('2026-10-09', 9)), null, 'a new schedule waits for Monday');
+  assert.equal(jt.summaryDue('weekly', 'weekly:2026-09-21', at('2026-10-06', 9))?.key, 'weekly:2026-09-28', 'missed Monday, caught up on Tuesday');
+  assert.equal(jt.summaryDue('weekly', 'weekly:2026-09-21', at('2026-10-09', 9)), null, 'too late to catch up');
+  assert.equal(jt.summaryDue('monthly', undefined, at('2026-11-01', 6))?.key, 'monthly:2026-10');
+  assert.equal(jt.summaryDue('off', undefined, at('2026-11-01', 6)), null);
+  assert.equal(jt.nextSummaryDay('weekly', undefined, at('2026-10-09', 9)), '2026-10-12');
+  assert.equal(jt.nextSummaryDay('daily', 'daily:2026-10-08', at('2026-10-09', 9)), '2026-10-10');
+  assert.equal(jt.nextSummaryDay('daily', 'daily:2026-10-07', at('2026-10-09', 3)), '2026-10-09');
+  assert.equal(jt.nextSummaryDay('monthly', 'monthly:2026-09', at('2026-10-09', 9)), '2026-11-01');
+  assert.equal(jt.channelSchedule({ kind: 'dm' }), 'off');
+  assert.equal(jt.channelSchedule({ kind: 'channel' }), 'monthly');
+  assert.equal(jt.channelSchedule({ kind: 'channel', digest: true }), 'daily');
+});
+
+const summaries = await import('../server/summaries.ts');
+const S0 = at('2026-10-09', 6, 5); // Friday, just after summaries are written
+db.writeDocs('workspaces', [{ id: 'w-sum', name: 'Sum', members: [{ userId: 'aj-ana', role: 'owner' }], accounts: [] }], [], null);
+db.writeDocs('channels', [
+  { id: 'ch-daily', workspaceId: 'w-sum', kind: 'channel', name: 'design', members: ['aj-ana'], summary: { schedule: 'daily', post: true, history: [{ id: 'old', text: 'Asked by hand', period: 'Today', at: '2026-10-07T03:00:00.000Z', auto: false, by: 'aj-ana' }] } },
+  { id: 'ch-quiet', workspaceId: 'w-sum', kind: 'channel', name: 'quiet', members: ['aj-ana'], summary: { schedule: 'daily', post: false, history: [] } },
+  { id: 'ch-monthly', workspaceId: 'w-sum', kind: 'channel', name: 'general', members: ['aj-ana'] },
+  { id: 'ch-dm', workspaceId: 'w-sum', kind: 'dm', name: '', members: ['aj-ana', 'aj-mo'] },
+], [], null);
+const yesterday = (h) => new Date(at('2026-10-08', h)).toISOString();
+db.writeDocs('messages', [
+  { id: 'sm1', channelId: 'ch-daily', userId: 'aj-ana', text: 'Logo v2 is approved', at: yesterday(10) },
+  { id: 'sm2', channelId: 'ch-daily', userId: 'aj-mo', text: 'Sending files tomorrow', at: yesterday(15), files: [{ name: 'logo.png', size: 10, type: 'image/png' }] },
+  { id: 'sm3', channelId: 'ch-daily', userId: 'aj-ana', text: 'Today, not yesterday', at: new Date(S0 - 60_000).toISOString() },
+  { id: 'sm4', channelId: 'ch-dm', userId: 'aj-ana', text: 'A private chat', at: yesterday(11) },
+], [], null);
+const sumInputs = [];
+const sumDeps = (write) => ({ broadcast: () => {}, write: async (ws, input) => (sumInputs.push(input), write(ws, input)) });
+await test('Summaries: a due one is written once, kept in history and posted; nothing happened means none', async () => {
+  const r = await summaries.runSummaries(sumDeps(async () => ({ text: 'Logo approved; files come tomorrow.' })), S0, 'Asia/Jakarta');
+  assert.deepEqual(r.map((x) => [x.channelId, x.state]).sort(), [['ch-daily', 'done'], ['ch-quiet', 'nothing']], 'monthly waits for the 1st, a DM has no schedule');
+  assert.equal(sumInputs.length, 1, 'no AI for a quiet channel');
+  assert.deepEqual(sumInputs[0].messages.map((m) => m.text), ['Logo v2 is approved', 'Sending files tomorrow'], 'only yesterday, in Jakarta time');
+  assert.equal(sumInputs[0].period, 'Thursday 8 October');
+  assert.deepEqual(sumInputs[0].messages[1].files, ['logo.png']);
+  const ch = db.getDoc('channels', 'ch-daily');
+  assert.equal(ch.summary.history[0].text, 'Logo approved; files come tomorrow.');
+  assert.equal(ch.summary.history[0].auto, true);
+  assert.equal(ch.summary.history[1].id, 'old', 'earlier summaries stay');
+  assert.equal(ch.summary.last.key, 'daily:2026-10-08');
+  const posted = db.allDocs('messages').filter((m) => m.channelId === 'ch-daily' && m.kind === 'summary');
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].summaryOf, 'Thursday 8 October');
+  assert.equal((await summaries.runSummaries(sumDeps(async () => ({ text: 'again' })), S0 + 15 * 60_000, 'Asia/Jakarta')).length, 0, 'never twice');
+});
+await test('Summaries: no working AI means no summary, and the channel says why', async () => {
+  const S1 = at('2026-10-10', 6, 5);
+  db.writeDocs('messages', [{ id: 'sm5', channelId: 'ch-daily', userId: 'aj-ana', text: 'Friday news', at: new Date(at('2026-10-09', 12)).toISOString() }], [], null);
+  const r = (await summaries.runSummaries(sumDeps(async () => ({ off: 'AI isn’t set up for this company.' })), S1, 'Asia/Jakarta')).filter((x) => x.channelId === 'ch-daily');
+  assert.deepEqual(r.map((x) => [x.channelId, x.state]), [['ch-daily', 'off']]);
+  const ch = db.getDoc('channels', 'ch-daily');
+  assert.equal(ch.summary.last.why, 'AI isn’t set up for this company.');
+  assert.equal(ch.summary.history.length, 2, 'nothing added');
+  assert.equal(jt.nextSummaryDay('daily', jt.settledKey(ch.summary.last), S1 + 60_000, 'Asia/Jakarta', true), '2026-10-11', 'Next moves on');
+});
+await test('Summaries: a failure is tried again an hour later, then written', async () => {
+  const S2 = at('2026-10-11', 6, 5);
+  db.writeDocs('messages', [{ id: 'sm6', channelId: 'ch-daily', userId: 'aj-ana', text: 'Saturday news', at: new Date(at('2026-10-10', 12)).toISOString() }], [], null);
+  const daily = (list) => list.filter((x) => x.channelId === 'ch-daily');
+  let r = daily(await summaries.runSummaries(sumDeps(async () => ({ failed: 'timeout' })), S2, 'Asia/Jakarta'));
+  assert.deepEqual(r.map((x) => x.state), ['failed']);
+  assert.equal(daily(await summaries.runSummaries(sumDeps(async () => ({ text: 'too early' })), S2 + 30 * 60_000, 'Asia/Jakarta')).length, 0, 'waits for the retry');
+  r = daily(await summaries.runSummaries(sumDeps(async () => ({ text: 'Saturday: news.' })), S2 + 61 * 60_000, 'Asia/Jakarta'));
+  assert.deepEqual(r.map((x) => [x.key, x.state]), [['daily:2026-10-10', 'done']]);
+});
+await test('Summaries: an older copy saved from the app keeps the server’s summaries and adds asked ones', () => {
+  const before = db.getDoc('channels', 'ch-daily');
+  const stale = { ...before, topic: 'new topic', summary: { schedule: 'weekly', post: false, history: [{ id: 'mine', text: 'Asked now', period: 'This week', at: '2026-10-11T05:00:00.000Z', auto: false }], last: undefined } };
+  const kept = summaries.keepSummaries(stale, before);
+  assert.equal(kept.topic, 'new topic');
+  assert.equal(kept.summary.schedule, 'weekly');
+  assert.deepEqual(kept.summary.last, before.summary.last);
+  assert.ok(kept.summary.history.some((h) => h.id === 'mine') && kept.summary.history.some((h) => h.text === 'Saturday: news.'));
+});
+
+/* undo send (server/mailer.ts): mail waits for the sender's window, Undo takes it back */
+
+process.env.MAIL_ENABLED = '0'; // no SMTP server here, just the engine's bookkeeping
+const mailBroadcasts = [];
+mailer.startMailer({ publicUrl: 'http://localhost', broadcast: (c, u) => mailBroadcasts.push([c, u]), notify: () => {}, log: () => {} });
+db.writeDocs('workspaces', [{ id: 'w-undo', name: 'Undo Co', domains: [], members: [{ userId: 'aj-ana', role: 'owner' }], accounts: [
+  { id: 'ub-ana', email: `ana.undo@${mailer.MAIL_HOST}`, name: 'Ana', kind: 'personal', users: ['aj-ana'] },
+  { id: 'ub-mo', email: `mo.undo@${mailer.MAIL_HOST}`, name: 'Mo', kind: 'personal', users: ['aj-mo'] },
+] }], [], null);
+const outgoing = (messageId) => ({ workspaceId: 'w-undo', accountId: 'ub-ana', threadId: 't-undo', messageId, from: { name: 'Ana', email: `ana.undo@${mailer.MAIL_HOST}` }, to: [{ name: 'Mo', email: `mo.undo@${mailer.MAIL_HOST}` }], cc: [], subject: 'Hello', text: 'Hi Mo', files: [] });
+const inMoBox = () => db.allDocs('threads').filter((t) => t.accountId === 'ub-mo').length;
+db.writeDocs('threads', [{ id: 't-undo', accountId: 'ub-ana', subject: 'Hello', location: 'archive', messages: [{ id: 'msg-1', from: {}, to: [], date: '', body: 'Hi Mo' }] }], [], null);
+await test('Undo send: the email waits, nobody gets it, and Undo takes it back (only its sender)', async () => {
+  const h = mailer.holdSend(outgoing('msg-1'), { userId: 'aj-ana', releaseAt: Date.now() + 20_000 });
+  assert.equal(db.getDoc('threads', 't-undo').messages[0].delivery.state, 'held');
+  assert.equal(mailer.heldUntil('t-undo', 'msg-1'), h.until);
+  assert.equal((await mailer.releaseHeld(Date.now())).length, 0, 'not before its time');
+  assert.equal(inMoBox(), 0, 'our own mailboxes don’t get it while it waits');
+  assert.deepEqual(mailer.cancelHeld('t-undo', 'msg-1', 'aj-mo'), { ok: false, why: 'not-yours' });
+  const back = mailer.cancelHeld('t-undo', 'msg-1', 'aj-ana');
+  assert.equal(back.ok, true);
+  assert.equal(back.email.text, 'Hi Mo');
+  assert.deepEqual(mailer.cancelHeld('t-undo', 'msg-1', 'aj-ana'), { ok: false, why: 'gone' });
+  assert.equal((await mailer.releaseHeld(Date.now() + 60_000)).length, 0, 'an undone email never goes');
+  assert.equal(inMoBox(), 0);
+});
+await test('Undo send: when the window is over it goes out like any email, and can’t be undone', async () => {
+  mailer.holdSend(outgoing('msg-2'), { userId: 'aj-ana', releaseAt: Date.now() + 5_000 });
+  const r = await mailer.releaseHeld(Date.now() + 6_000);
+  assert.deepEqual(r.map((x) => x.state), ['sent']);
+  assert.equal(inMoBox(), 1, 'delivered to the colleague’s mailbox');
+  assert.deepEqual(mailer.cancelHeld('t-undo', 'msg-2', 'aj-ana'), { ok: false, why: 'gone' });
+});
+await test('Undo send: a refused email is marked failed on the message', async () => {
+  const w = db.getDoc('workspaces', 'w-undo');
+  db.writeDocs('workspaces', [{ ...w, accounts: w.accounts.map((a) => (a.id === 'ub-ana' ? { ...a, sendPaused: { reason: 'Too many bounces.' } } : a)) }], [], null);
+  db.writeDocs('threads', [{ ...db.getDoc('threads', 't-undo'), messages: [...db.getDoc('threads', 't-undo').messages, { id: 'msg-3', from: {}, to: [], date: '', body: 'x' }] }], [], null);
+  mailer.holdSend(outgoing('msg-3'), { userId: 'aj-ana', releaseAt: Date.now() - 1 });
+  const r = await mailer.releaseHeld();
+  assert.deepEqual(r.map((x) => x.state), ['failed']);
+  const m = db.getDoc('threads', 't-undo').messages.find((x) => x.id === 'msg-3');
+  assert.equal(m.delivery.state, 'failed');
+  assert.match(m.delivery.error, /paused/);
+  db.writeDocs('workspaces', [w], [], null);
+});
+
+/* email for teammates who are away (server/digest.ts) */
+
+const digest = await import('../server/digest.ts');
+const D0 = at('2026-10-12', 9, 10); // Monday 9:10 in Jakarta
+const hoursAgo = (h) => new Date(D0 - h * 3600_000).toISOString();
+await db.setLogin('aj-ana', 'ana@aj.example', 'unit-test-password');
+await db.setLogin('aj-mo', 'mo@aj.example', 'unit-test-password');
+db.writeDocs('notices', [
+  { id: 'dn-dm', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'Mo messaged you: “lunch?”', at: hoursAgo(3), read: false, link: { app: 'chat', id: 'ch-x', msg: 'mx' } },
+  { id: 'dn-task', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'task', text: 'Mo assigned you “Write the brief”', at: hoursAgo(2), read: false, link: { app: 'tasks', id: 'task-1' } },
+  { id: 'dn-read', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'task', text: 'Already read', at: hoursAgo(2), read: true, link: { app: 'tasks', id: 'task-2' } },
+  { id: 'dn-seen', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'Seen in chat', at: hoursAgo(2), read: false, link: { app: 'chat', id: 'ch-seen', msg: 'my' } },
+  { id: 'dn-before', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'From before she left', at: hoursAgo(5), read: false, link: { app: 'chat', id: 'ch-x' } },
+  { id: 'dn-done', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'done', text: 'Finished work', at: hoursAgo(2), read: false },
+], [], null);
+db.writeDocs('prefs', [{ id: 'aj-ana', value: { 's2g-read:aj-ana': { 'ch-seen': hoursAgo(1) }, 'pm-settings:aj-ana': { timeZone: 'Asia/Jakarta' } } }], [], null);
+const w0 = db.getDoc('workspaces', 'w-aj');
+db.writeDocs('workspaces', [{ ...w0, accounts: [{ id: 'aj-box', email: 'ana@aj.example', name: 'Ana', kind: 'personal', users: ['aj-ana'] }] }], [], null);
+db.writeDocs('threads', [
+  { id: 'dt-reply', accountId: 'aj-box', subject: 'Proposal', location: 'inbox', unread: true, messages: [{ id: 'q1', from: { name: 'Ana', email: 'ana@aj.example' }, to: [], date: hoursAgo(30), body: 'Here it is' }, { id: 'q2', from: { name: 'Budi', email: 'budi@client.example' }, to: [], date: hoursAgo(1.5), body: 'Looks good' }] },
+  { id: 'dt-news', accountId: 'aj-box', subject: 'Newsletter', location: 'inbox', unread: true, messages: [{ id: 'q3', from: { name: 'News', email: 'news@else.example' }, to: [], date: hoursAgo(1.5), body: 'Hi', listUnsubscribe: { url: 'https://x', oneClick: true } }] },
+], [], null);
+const mails = [];
+const digestDeps = (lastActive) => ({ publicUrl: 'https://app.example', lastActive: () => lastActive, send: async (to, subject, text, html) => (mails.push({ to, subject, text, html }), true) });
+await test('Digest: someone away gets one email at 9:00 their time, about what came while they were away', async () => {
+  assert.equal((await digest.runDigests(digestDeps(D0 - 30 * 60_000), D0)).filter((r) => r.userId === 'aj-ana').length, 0, 'not while they’re around');
+  assert.equal((await digest.runDigests(digestDeps(D0 - 4 * 3600_000), at('2026-10-12', 8, 50))).filter((r) => r.userId === 'aj-ana').length, 0, 'not before 9:00');
+  const r = await digest.runDigests(digestDeps(D0 - 4 * 3600_000), D0);
+  assert.deepEqual(r.filter((x) => x.userId === 'aj-ana'), [{ userId: 'aj-ana', items: 3, sent: true }]);
+  const m = mails.at(-1);
+  assert.equal(m.to, 'ana@aj.example');
+  assert.equal(m.subject, '3 things waiting for you in AJ');
+  assert.match(m.text, /Mo messaged you/);
+  assert.match(m.text, /https:\/\/app\.example\/tasks\?ws=w-aj&id=task-1&notice=dn-task/);
+  assert.match(m.text, /Budi replied: Proposal/);
+  for (const not of ['Already read', 'Seen in chat', 'From before she left', 'Finished work', 'Newsletter']) assert.ok(!m.text.includes(not), `${not} is left out`);
+  assert.ok(!/—/.test(m.text + m.html), 'no em dashes');
+  assert.match(m.html, /<a href="https:\/\/app\.example\/mail\?ws=w-aj&amp;id=dt-reply"/);
+});
+await test('Digest: never the same thing twice, and once a day', async () => {
+  db.writeDocs('notices', [{ id: 'dn-new', userId: 'aj-ana', workspaceId: 'w-aj', kind: 'mention', text: 'Something new', at: new Date(D0 + 60_000).toISOString(), read: false, link: { app: 'chat', id: 'ch-x' } }], [], null);
+  assert.equal((await digest.runDigests(digestDeps(D0 - 4 * 3600_000), D0 + 2 * 3600_000)).filter((r) => r.userId === 'aj-ana').length, 0, 'today’s email went already');
+  const r = await digest.runDigests(digestDeps(D0 - 4 * 3600_000), D0 + 24 * 3600_000);
+  assert.deepEqual(r.filter((x) => x.userId === 'aj-ana'), [{ userId: 'aj-ana', items: 1, sent: true }], 'tomorrow: only the new thing');
+});
+await test('Digest: hourly or off, and the kinds switched off in Settings, Notifications stay out', async () => {
+  db.writeDocs('prefs', [{ id: 'aj-mo', value: { 'pm-settings:aj-mo': { emailDigest: 'hourly', notifyTasks: false, timeZone: 'Asia/Jakarta' } } }], [], null);
+  db.writeDocs('notices', [
+    { id: 'dm-1', userId: 'aj-mo', workspaceId: 'w-aj', kind: 'mention', text: 'Ana mentioned you in #design', at: new Date(D0 - 90 * 60_000).toISOString(), read: false, link: { app: 'chat', id: 'ch-d' } },
+    { id: 'dm-2', userId: 'aj-mo', workspaceId: 'w-aj', kind: 'task', text: 'Ana assigned you a task', at: new Date(D0 - 90 * 60_000).toISOString(), read: false, link: { app: 'tasks', id: 't9' } },
+  ], [], null);
+  const r = await digest.runDigests(digestDeps(D0 - 2 * 3600_000), at('2026-10-12', 15));
+  assert.deepEqual(r.filter((x) => x.userId === 'aj-mo'), [{ userId: 'aj-mo', items: 1, sent: true }], 'hourly: any time of day; tasks are off for Mo');
+  db.writeDocs('prefs', [{ id: 'aj-mo', value: { 'pm-settings:aj-mo': { emailDigest: 'off' } } }], [], null);
+  db.writeDocs('notices', [{ id: 'dm-3', userId: 'aj-mo', workspaceId: 'w-aj', kind: 'mention', text: 'More', at: new Date(at('2026-10-12', 15, 30)).toISOString(), read: false }], [], null);
+  assert.equal((await digest.runDigests(digestDeps(D0 - 2 * 3600_000), at('2026-10-12', 17))).filter((x) => x.userId === 'aj-mo').length, 0, 'off');
+});
+
+/* deleting old chat messages (server/retention.ts) */
+
+const retention = await import('../server/retention.ts');
+const R0 = Date.parse('2026-10-09T03:00:00.000Z');
+const DAYMS = 86_400_000;
+await test('Retention: off by default; switching it on starts a week’s notice; a shorter period starts it again', () => {
+  assert.equal(retention.chatOnSave({ history: 'forever' }, undefined, R0).started, undefined);
+  const on = retention.chatOnSave({ history: '1y', deleteFrom: '2000-01-01T00:00:00.000Z', lastRun: { at: 'x' } }, { history: 'forever' }, R0);
+  assert.equal(on.chat.deleteFrom, new Date(R0 + 7 * DAYMS).toISOString(), 'the app can’t set when it starts');
+  assert.equal(on.chat.lastRun, undefined, 'or the last run');
+  assert.equal(on.started.period, '1y');
+  const same = retention.chatOnSave({ history: '1y', celebrations: false }, on.chat, R0 + DAYMS);
+  assert.equal(same.started, undefined);
+  assert.equal(same.chat.deleteFrom, on.chat.deleteFrom);
+  const shorter = retention.chatOnSave({ history: '90d' }, on.chat, R0 + 2 * DAYMS);
+  assert.equal(shorter.chat.deleteFrom, new Date(R0 + 9 * DAYMS).toISOString());
+  assert.equal(retention.chatOnSave({ history: 'forever' }, on.chat, R0).chat.deleteFrom, undefined);
+});
+await test('Retention: nothing goes before the notice ends; then old messages go, except pinned, kept projects and live threads; files stay in Drive', () => {
+  const chat = retention.chatOnSave({ history: '90d', keep: ['c-keep'] }, undefined, R0).chat;
+  db.writeDocs('workspaces', [{ id: 'w-ret', name: 'Ret', members: [{ userId: 'aj-ana', role: 'owner' }], accounts: [], chat }], [], null);
+  db.writeDocs('channels', [
+    { id: 'rc-1', workspaceId: 'w-ret', kind: 'channel', name: 'general', members: ['aj-ana'] },
+    { id: 'rc-keep', workspaceId: 'w-ret', kind: 'channel', name: 'keep', members: ['aj-ana'], clientId: 'c-keep' },
+    { id: 'rc-other', workspaceId: 'w-other', kind: 'channel', name: 'other', members: [] },
+  ], [], null);
+  const old = new Date(R0 - 200 * DAYMS).toISOString();
+  const fresh = new Date(R0 - 5 * DAYMS).toISOString();
+  db.writeDocs('drive', [{ id: 'dv-1', name: 'brief.pdf', kind: 'pdf', parentId: null, size: 5, modified: old, workspaceId: 'w-ret', channelId: 'rc-1' }], [], null);
+  db.writeDocs('messages', [
+    { id: 'rm-old', channelId: 'rc-1', userId: 'aj-ana', text: 'old', at: old },
+    { id: 'rm-file', channelId: 'rc-1', userId: 'aj-ana', text: 'brief', at: old, files: [{ name: 'brief.pdf', size: 5, type: 'application/pdf', driveId: 'dv-1', url: '/api/files/0123456789abcdef0123456789abcdef' }] },
+    { id: 'rm-guestfile', channelId: 'rc-1', userId: 'guest', guestEmail: 'g@client.example', text: '', at: old, files: [{ name: 'photo.jpg', size: 7, type: 'image/jpeg', url: '/api/files/fedcba9876543210fedcba9876543210' }] },
+    { id: 'rm-pinned', channelId: 'rc-1', userId: 'aj-ana', text: 'pinned', at: old, pinned: true },
+    { id: 'rm-root', channelId: 'rc-1', userId: 'aj-ana', text: 'thread start', at: old },
+    { id: 'rm-reply', channelId: 'rc-1', userId: 'aj-ana', text: 'still going', at: fresh, parentId: 'rm-root' },
+    { id: 'rm-new', channelId: 'rc-1', userId: 'aj-ana', text: 'new', at: fresh },
+    { id: 'rm-kept', channelId: 'rc-keep', userId: 'aj-ana', text: 'kept project', at: old },
+    { id: 'rm-elsewhere', channelId: 'rc-other', userId: 'aj-ana', text: 'another company', at: old },
+  ], [], null);
+  const told = [];
+  const deps = { broadcast: () => {}, notify: (ids, ws, text) => told.push(text) };
+  assert.deepEqual(retention.runRetention(deps, R0 + 6 * DAYMS).filter((r) => r.workspaceId === 'w-ret'), [], 'still in the notice week');
+  assert.ok(db.getDoc('messages', 'rm-old'));
+  const r = retention.runRetention(deps, R0 + 7 * DAYMS + 60_000).filter((x) => x.workspaceId === 'w-ret');
+  assert.deepEqual(r, [{ workspaceId: 'w-ret', deleted: 3, files: 2 }]);
+  for (const id of ['rm-old', 'rm-file', 'rm-guestfile']) assert.equal(db.getDoc('messages', id), undefined, `${id} deleted`);
+  for (const id of ['rm-pinned', 'rm-root', 'rm-reply', 'rm-new', 'rm-kept', 'rm-elsewhere']) assert.ok(db.getDoc('messages', id), `${id} kept`);
+  assert.equal(db.getDoc('drive', 'dv-1').url, '/api/files/0123456789abcdef0123456789abcdef', 'the saved copy can be opened');
+  const added = db.allDocs('drive').find((d) => d.url === '/api/files/fedcba9876543210fedcba9876543210');
+  assert.equal(added?.kind, 'image');
+  assert.equal(added?.uploadedBy, 'g@client.example');
+  assert.match(db.auditList(5, 'w-ret')[0].detail, /^3 chat messages older than 90 days/);
+  assert.equal(db.getDoc('workspaces', 'w-ret').chat.lastRun.deleted, 3);
+  assert.match(told.at(-1), /deleted every day: 3 older than 90 days/);
+  assert.deepEqual(retention.runRetention(deps, R0 + 7 * DAYMS + 3600_000).filter((x) => x.workspaceId === 'w-ret'), [], 'once a day');
+  const next = retention.runRetention(deps, R0 + 8 * DAYMS + 60_000).filter((x) => x.workspaceId === 'w-ret');
+  assert.deepEqual(next, [{ workspaceId: 'w-ret', deleted: 0, files: 0 }], 'every run is logged, even with nothing to delete');
+  assert.equal(db.auditList(5, 'w-ret')[0].detail.startsWith('0 chat messages'), true);
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

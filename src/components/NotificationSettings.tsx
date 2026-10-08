@@ -4,6 +4,9 @@ import { SmoothHeight, TabPane } from './ui/Smooth';
 import { brand as product, term } from '../terms';
 import type { Settings } from '../settings';
 import { isIOS, pushState, sendTest, turnOff, turnOn, type PushState } from '../push';
+import { Select } from './ui/Select';
+import { server } from '../sync';
+import { caps } from '../caps';
 
 type Kind = 'notifyMessages' | 'notifyNewMail' | 'notifyTasks' | 'notifyGuests' | 'notifyEvents' | 'notifyOther';
 
@@ -48,6 +51,15 @@ export function NotificationSettings({ s, update }: { s: Settings; update: (p: P
     setBusy('');
     setNote(err ? { text: err, error: true } : { text: 'Sent. It arrives in a few seconds; if it doesn’t, check that notifications are allowed for this browser in your device’s settings.' });
   };
+
+  // Teammates' away email (server/digest.ts) needs a server that can send mail; the demo shows the choice.
+  const mailOn = !server.on || caps.demo || caps.emailNotes;
+  const zoneName = (s.timeZone ?? '').split('/').pop()?.replace(/_/g, ' ') ?? '';
+  const emailHint = !mailOn
+    ? 'This server can’t send email yet, so this is off. Everything still shows in the bell.'
+    : s.emailDigest === 'off'
+      ? 'Off: only the bell, and notifications on your devices.'
+      : `When you haven’t opened ${product.name} for ${s.emailDigest === 'hourly' ? 'an hour' : 'a while'}: one email with your unread messages and mentions, tasks given to you and replies to your email. Never anything you’ve already seen.`;
 
   const ios = isIOS();
   const android = /Android/i.test(navigator.userAgent);
@@ -162,7 +174,27 @@ export function NotificationSettings({ s, update }: { s: Settings; update: (p: P
           </button>
         </label>
       ))}
-      <small className="set-hint">These apply to every device you turn notifications on for, and to the desktop app.</small>
+      <small className="set-hint">These apply to every device you turn notifications on for, to the desktop app, and to the email below.</small>
+
+      <h3>Email when you’re away</h3>
+      <div className="set-row">
+        <span>
+          <strong>What’s waiting, by email</strong>
+          <small>{emailHint}</small>
+        </span>
+        <Select<Settings['emailDigest']>
+          value={mailOn ? s.emailDigest : 'off'}
+          onChange={(v) => update({ emailDigest: v })}
+          label="Email when you’re away"
+          disabled={!mailOn}
+          width={240}
+          options={[
+            { value: 'daily', label: 'Daily at 9:00', hint: zoneName ? `${zoneName} time` : undefined },
+            { value: 'hourly', label: 'Every hour', hint: 'After an hour away' },
+            { value: 'off', label: 'Off', hint: 'The bell and notifications only' },
+          ]}
+        />
+      </div>
     </>
   );
 }

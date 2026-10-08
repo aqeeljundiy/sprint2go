@@ -1,0 +1,172 @@
+/* What the server's scheduled jobs show in the app: the notetaker that joins by itself, channel summaries on a
+   schedule, and deleting old chat messages. Things that appear here fade up a little (jobs-in). */
+
+@keyframes jobs-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ---------- the notetaker joins by itself ---------- */
+
+/* Meet, Upcoming: under a meeting the notetaker will join */
+.ev-main .ev-bot-will {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--accent);
+  font-weight: 500;
+}
+/* Calendar, an event's panel */
+.ev-bot-note {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.ev-bot-note > svg {
+  color: var(--accent);
+}
+.ev-bot-note .link-btn {
+  margin-left: 4px;
+}
+/* Calendar, the event's block in the week and day views */
+.be-bot {
+  flex: none;
+  vertical-align: -1px;
+  margin-right: 3px;
+  color: currentColor;
+  opacity: 0.85;
+}
+
+/* ---------- channel summaries ---------- */
+
+/* Why the schedule can't run (no AI, allowance used up), or why the last one wasn't written */
+.sum-off {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: jobs-in 200ms ease-out backwards;
+}
+.sum-off > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.sum-off .link-btn {
+  font-size: 13px;
+}
+/* A scheduled summary posted in the channel */
+/* lined up with the text of the messages around it (10px row padding, 34px avatar, 10px gap) */
+.chat-summary {
+  margin: 8px 10px 8px 54px;
+  max-width: 680px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  animation: jobs-in 220ms ease-out backwards;
+}
+.chat-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.chat-summary-head > svg {
+  color: var(--accent);
+}
+.chat-summary-head time {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.chat-summary p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sum-off,
+  .chat-summary {
+    animation: none;
+  }
+}
+
+/* ---------- deleting old chat messages ---------- */
+
+.retention-warn {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--warn-soft);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.retention-warn > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.retention-warn p {
+  margin: 0;
+}
+.retention-warn p + p {
+  margin-top: 6px;
+  color: var(--text-2);
+}
+.retention-keep {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.retention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 13px;
+  animation: jobs-in 180ms ease-out backwards;
+}
+.retention-chip .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retention-chip {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .retention-chip {
+    min-height: 40px;
+  }
+  .retention-chip .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+}

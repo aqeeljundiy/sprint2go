@@ -19,6 +19,7 @@ import './mail.css';
 import './admin.css';
 import './notify.css';
 import './security.css';
+import './jobs.css';
 
 startExitAnimations();
 startSlidingTabs();

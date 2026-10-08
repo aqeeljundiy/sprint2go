@@ -1,3 +1,5 @@
+import type { SummaryRun } from './jobTimes';
+
 export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed' | 'scheduled' | 'assigned';
 
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
@@ -33,7 +35,7 @@ export interface Message {
   /** The sender's official unsubscribe link (List-Unsubscribe header). */
   listUnsubscribe?: { url: string; oneClick: boolean };
   mid?: string; // the Message-ID on the wire, so replies land in the same thread
-  delivery?: { state: 'sending' | 'sent' | 'failed'; at: string; error?: string }; // set by the mail engine for mail you sent
+  delivery?: { state: 'held' | 'sending' | 'sent' | 'failed'; at: string; error?: string; until?: string }; // set by the mail engine for mail you sent (held: waiting out the Undo window until `until`)
   auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
   invite?: MailInvite; // a calendar invite in this email (Google Calendar, Outlook...), read by the mail engine
 }
@@ -270,7 +272,10 @@ export interface Workspace {
     gifs: boolean;
     celebrations: boolean;
     whoCanCreate: Policy;
-    history?: 'forever' | '1y' | '90d';
+    history?: 'forever' | '1y' | '90d'; // delete chat messages older than this, every day (server/retention.ts)
+    keep?: string[]; // projects whose channels keep everything
+    deleteFrom?: string; // set by the server: deleting starts here, a week after it was switched on
+    lastRun?: { at: string; deleted: number; files: number; before: string }; // set by the server
     layout?: ChatLayout; // the company's Default sidebar, set by admins
   };
   plan?: Plan;
@@ -629,8 +634,9 @@ export interface ChatMessage {
   voice?: { seconds: number; url?: string; transcript?: string };
   poll?: { question: string; options: { text: string; votes: string[] }[] };
   files?: ChatFile[];
-  kind?: 'message' | 'celebration' | 'kudos' | 'system';
+  kind?: 'message' | 'celebration' | 'kudos' | 'system' | 'summary'; // summary: a channel's scheduled AI summary, posted by sprint2go
   kudosFor?: string; // user id
+  summaryOf?: string; // kind 'summary': the period it covers
   guestEmail?: string; // written by a guest
   via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
@@ -693,6 +699,10 @@ export interface Meeting {
   share?: { token: string; transcript: boolean; video: boolean };
   access?: { watch: 'everyone' | 'attendees' | 'admins'; download: boolean; transcript: 'everyone' | 'attendees' };
   createdBy?: string;
+  // Sent by the server because the calendar said so ("Bot joins automatically")
+  auto?: boolean;
+  eventId?: string; // the calendar event it came from
+  scheduledFor?: string; // when that event starts
 }
 
 export interface MeetingRule {
@@ -825,6 +835,7 @@ export interface ChannelSummary {
   schedule: 'off' | 'daily' | 'weekly' | 'monthly';
   post: boolean; // also post each new summary into the channel
   history: { id: string; text: string; period: string; at: string; auto: boolean; by?: string }[];
+  last?: SummaryRun; // what the server last did on the schedule (set by the server only)
 }
 
 /* ---------- Tables: flexible databases (leads, pipelines, anything) ---------- */

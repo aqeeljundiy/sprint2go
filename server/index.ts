@@ -41,6 +41,10 @@ import * as twostep from './twostep.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
+import * as autojoin from './autojoin.ts';
+import * as summaries from './summaries.ts';
+import * as digest from './digest.ts';
+import * as retention from './retention.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -770,6 +774,23 @@ function saveMeeting(m: db.Doc) {
   broadcast('meetings', [m], []);
 }
 const meetLine = (message: string) => ({ message, at: new Date().toISOString() });
+
+/**
+ * Saves a meeting (queued) and asks the recorder to send the bot to it, from Meet or by itself from a calendar.
+ * Null when it's on its way; otherwise why not (the meeting is then marked failed).
+ */
+async function dispatchBot(ws: any, doc: any): Promise<string | null> {
+  saveMeeting(doc);
+  const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
+  const sent = await recorder('/bots', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    // Video when this kind of meeting keeps video (or might: it's filed after the meeting, and an unneeded video is deleted then).
+    body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws, doc.language), names, announce: ws.meetings?.announce !== false, video: (doc.clientId ? [ws.meetings?.clientMeetings] : [ws.meetings?.clientMeetings, ws.meetings?.internalMeetings]).includes('video') }),
+  }).then(async (r) => (r.ok ? null : ((await r.json().catch(() => ({}))) as any).error ?? `Recorder said ${r.status}`), () => 'The recorder didn’t answer');
+  if (sent) saveMeeting({ ...doc, status: 'failed', error: sent, log: [...(doc.log ?? []), meetLine(`Couldn’t send the bot: ${sent}`)] });
+  return sent;
+}
 
 /** Which project a meeting belongs to: the company's first matching rule, else the project the AI named. */
 function fileMeeting(ws: any, m: any, aiFolder: string, clients: any[]) {
@@ -1569,7 +1590,7 @@ createServer(async (req, res) => {
       const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
       try {
         platform.firstEvent('mail.first', ws.id, me);
-        const r = await mailer.queueSend({
+        const email: mailer.Outgoing = {
           workspaceId: ws.id,
           accountId: account.id,
           threadId: String(b.threadId ?? ''),
@@ -1585,11 +1606,36 @@ createServer(async (req, res) => {
           references: Array.isArray(b.references) ? b.references.filter((x: unknown) => typeof x === 'string') : undefined,
           // Read tracking for the outside recipients, when the sender asked and the company allows it.
           tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me } : undefined,
-        });
-        return json(res, 200, r);
+        };
+        // Undo send (Settings, Mail): the email waits here for the sender's window before anything leaves.
+        const undo = Math.min(mailer.MAX_UNDO_SECONDS, Math.max(0, Math.round(Number(b.undoSeconds) || 0)));
+        if (undo) {
+          const held = mailer.holdSend(email, { userId: me, releaseAt: Date.now() + undo * 1000 });
+          return json(res, 200, { held: true, until: held.until, undoMs: undo * 1000 });
+        }
+        return json(res, 200, await mailer.queueSend(email));
       } catch (e) {
         return json(res, 400, { error: e instanceof Error ? e.message : 'Could not send.' });
       }
+    }
+    // Undo send: an email still waiting comes back as a draft (a reply leaves its conversation). Nothing has left yet,
+    // so nobody gets it. (A scheduled email isn't waiting here until its time; before then it's a draft to change.)
+    if (p === '/api/mail/undo' && req.method === 'POST') {
+      const { threadId, messageId } = await body(req);
+      const tid = String(threadId ?? '');
+      const t = db.getDoc('threads', tid) as any;
+      const at = new Date().toISOString();
+      // Only whoever sent it takes it back (checked with the waiting email itself, even before the thread is saved).
+      const taken = mailer.cancelHeld(tid, String(messageId ?? ''), me);
+      if (!taken.ok) return json(res, 409, { error: taken.why === 'not-yours' ? 'Only the person who sent it can take it back.' : 'Too late: it already went out.' });
+      const rest = (t?.messages ?? []).filter((m: any) => m.id !== messageId);
+      if (t) {
+        // A new email goes back to Drafts; a reply leaves the conversation (the app puts it back in the reply box).
+        const next = rest.length ? { ...t, messages: rest } : { ...t, location: 'drafts', messages: (t.messages ?? []).map((m: any) => ({ ...m, delivery: undefined, date: at })) };
+        db.writeDocs('threads', [next], [], me);
+        broadcast('threads', [next], []);
+      }
+      return json(res, 200, { draft: !rest.length, reply: !!rest.length, threadId: tid, email: { to: taken.email.to, cc: taken.email.cc, subject: taken.email.subject, text: taken.email.text, html: taken.email.html, files: taken.email.files } });
     }
 
     /* ---------- mail: calendar invites, out of office, aliases, removing a mailbox ---------- */
@@ -1930,15 +1976,7 @@ createServer(async (req, res) => {
       if (!RECORDER_URL || !RECORDER_SECRET) return json(res, 409, { error: 'The recorder isn’t set up on this server.' });
       if (typeof meeting.id !== 'string' || !/^[\w-]{4,80}$/.test(meeting.id)) return json(res, 400, { error: 'Bad meeting.' });
       const doc = { ...meeting, bot: true, status: 'queued', createdBy: me, transcript: [], log: [...(meeting.log ?? []).slice(0, 5)] };
-      saveMeeting(doc);
-      const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
-      const sent = await recorder('/bots', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        // Video when this kind of meeting keeps video (or might: it's filed after the meeting, and an unneeded video is deleted then).
-        body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws, doc.language), names, announce: ws.meetings?.announce !== false, video: (doc.clientId ? [ws.meetings?.clientMeetings] : [ws.meetings?.clientMeetings, ws.meetings?.internalMeetings]).includes('video') }),
-      }).then(async (r) => (r.ok ? null : ((await r.json().catch(() => ({}))) as any).error ?? `Recorder said ${r.status}`), () => 'The recorder didn’t answer');
-      if (sent) saveMeeting({ ...doc, status: 'failed', error: sent, log: [...doc.log, meetLine(`Couldn’t send the bot: ${sent}`)] });
+      const sent = await dispatchBot(ws, doc);
       return json(res, sent ? 502 : 200, sent ? { error: sent } : {});
     }
     const meetId = p.match(/^\/api\/meet\/(stop|audio|video|again)\/([\w-]+)$/);
@@ -2184,6 +2222,8 @@ createServer(async (req, res) => {
       const now = new Date().toISOString();
       // Sign-in rules that changed (owners only), for the company's security log and the people they affect.
       const securityChanges: { wsId: string; text: string; required: boolean }[] = [];
+      // Companies that just switched on deleting old chat messages (their admins get the week's notice).
+      const retentionStarted: { wsId: string; from: string; period: retention.Period }[] = [];
       /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
       const guard = (d: db.Doc): db.Doc | null => {
         const before = db.getDoc(coll, d.id) as any;
@@ -2212,12 +2252,17 @@ createServer(async (req, res) => {
             const asked = (d as any).taskStages;
             const clean = asked === undefined ? undefined : cleanStages(asked);
             const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(asked) && asked.length ? before.taskStages : undefined) : clean;
-            return { ...d, ...own, plan, taskStages, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
+            // Deleting old chat messages: the period is the admins'; when it starts (after a week's notice) is the server's.
+            const chat = retention.chatOnSave((d as any).chat, before.chat);
+            if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
+            return { ...d, ...own, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
           const plan = planFromApp(fresh.plan, undefined);
           if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
-          return { ...fresh, plan, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+          const chat = retention.chatOnSave(fresh.chat, undefined);
+          if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
+          return { ...fresh, plan, chat: chat.chat, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
           if (d.id === me) return d; // own profile: already shaped
@@ -2228,6 +2273,8 @@ createServer(async (req, res) => {
         }
         // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts).
         if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
+        // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
+        if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
         if (before) return d;
         // New things carry who made them.
         if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
@@ -2295,6 +2342,12 @@ createServer(async (req, res) => {
         if (c.required) tellTwoStepRequired(c.wsId, me);
       }
       if (leavers.length) endGuestAccess(leavers);
+      for (const r of retentionStarted) {
+        const w = db.getDoc('workspaces', r.wsId) as any;
+        if (w) broadcast('workspaces', [w], []); // the admin who switched it on sees when it starts too
+        if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeText(w.name, r.period, r.from), { app: 'settings', id: 'apps' });
+        db.audit(String(person.email ?? me), 'chat.retention.on', r.wsId, `messages older than ${retention.periodWords(r.period)}, deleting from ${r.from.slice(0, 10)}`);
+      }
       // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
       if (coll === 'notices' && mailer.systemMailPath() !== 'log')
         for (const n of ok as any[]) {
@@ -2661,6 +2714,7 @@ function caps() {
     routingCheck: process.env.MAIL_ENABLED !== '0' && mailer.systemMailPath() !== 'log', // the server can send "Some of each" routing tests
     customDomains: customDomains.dokployOn(), // agencies' own addresses get certificates (Dokploy is set up)
     customTarget: customDomains.TARGET, // what those addresses point at
+    emailNotes: mailer.systemMailPath() !== 'log', // the server can email people (teammates' away emails, guests' notices)
   };
 }
 /**
@@ -2758,6 +2812,13 @@ mailer.onSupportMail(async ({ to, parsed, mid, refs, spam, attachments }) => {
     void mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [email], subject: `Re: ${t.subject} [#${t.number}]`, text: `Thanks, we have your message (ticket #${t.number}) and will reply here. Reply to this email to add anything.`, inReplyTo: mid, references: [mid] }).catch(() => {});
 });
 
+/** A notice in these people's bell, of a kind (the push rules and Settings, Notifications go by it), opening `link`. */
+function tell(userIds: string[], workspaceId: string, kind: string, text: string, link: { app: string; id?: string }) {
+  const at = new Date().toISOString();
+  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind, text: text.slice(0, 300), at, read: false, link })) as db.Doc[];
+  if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
+}
+
 /** A notice for these people (the mail engine uses it for failures and credits). */
 function notifyPeople(userIds: string[], workspaceId: string, text: string, link?: string) {
   const at = new Date().toISOString();
@@ -2849,6 +2910,62 @@ setInterval(() => {
   }
 }, 60_000);
 
+/* ---------- jobs the settings promise (each in its own module, which says what it does) ---------- */
+
+// The notetaker joins by itself (Meet, Upcoming, "Bot joins automatically"): checked every minute.
+const autoJoinDeps: autojoin.AutoJoinDeps = { recorderUp: () => recorderUp, send: dispatchBot, notify: (ids, wsId, text, link) => tell(ids, wsId, 'meeting', text, link) };
+setInterval(() => void autojoin.runAutoJoin(autoJoinDeps).catch((e) => console.error('[autojoin]', e instanceof Error ? e.message : e)), 60_000);
+
+// Channel summaries on their schedule, with the company's AI (its keys, or the plan's allowance).
+const summaryDeps: summaries.SummaryDeps = {
+  broadcast,
+  write: async (ws, input) => {
+    const route = withinAllowance(ws, aiFor(ws.id, 'summary'));
+    if (!route.chain.length) {
+      if (route.message) return { off: route.message };
+      if (onOurAI(ws)) return { failed: 'AI wasn’t available' }; // ours is down: tried again later
+      return { off: 'AI isn’t set up for this company. An admin can add an AI key in Settings, AI, or switch to the AI plan.' };
+    }
+    try {
+      const text = await aiplan.runChain(route.chain, (cfg, inTokens, outTokens) => db.logUsage({ workspaceId: ws.id, userId: '', job: 'summary', provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens }), () => ai.channelSummary(input));
+      return { text };
+    } catch (e) {
+      return { failed: e instanceof AIError ? e.message : 'the AI service failed' };
+    }
+  },
+};
+setTimeout(() => void summaries.runSummaries(summaryDeps).catch((e) => console.error('[summaries]', e instanceof Error ? e.message : e)), 45_000);
+setInterval(() => void summaries.runSummaries(summaryDeps).catch((e) => console.error('[summaries]', e instanceof Error ? e.message : e)), 10 * 60_000);
+
+// Email for teammates who are away (Settings, Notifications), through the system mail; only when it can send. Away
+// means no window in use and no request (opening the app from a notification is one) for a while.
+setInterval(() => {
+  if (mailer.systemMailPath() === 'log') return;
+  const seen = db.lastSeen();
+  const deps: digest.DigestDeps = {
+    publicUrl: PUBLIC_URL,
+    lastActive: (userId) => {
+      const live = [...clients.values()].filter((c) => c.userId === userId && !c.operator);
+      if (live.some((c) => c.visible && Date.now() - c.seen < IDLE_MS)) return Date.now();
+      return Math.max(Date.parse(seen.get(userId) ?? '') || 0, ...live.map((c) => c.seen));
+    },
+    send: (to, subject, text, html, fromName) => mailer.sendNote(to, subject, text, html, fromName),
+  };
+  void digest.runDigests(deps).catch((e) => console.error('[digest]', e instanceof Error ? e.message : e));
+}, 10 * 60_000);
+
+// Deleting old chat messages (Settings, Apps & chat): looked at every hour, run once a day per company.
+const retentionDeps: retention.RetentionDeps = { broadcast, notify: (ids, wsId, text, link) => tell(ids, wsId, 'team', text, link) };
+const retentionTick = () => {
+  try {
+    for (const r of retention.runRetention(retentionDeps)) if (!r.noticeOnly) console.log(`[retention] ${r.workspaceId}: ${r.deleted} old chat messages deleted, ${r.files} files kept in Drive`);
+  } catch (e) {
+    console.error('[retention]', e instanceof Error ? e.message : e);
+  }
+};
+setTimeout(retentionTick, 2 * 60_000);
+setInterval(retentionTick, 60 * 60_000);
+
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {
   if (!RECORDER_URL) return;
@@ -2876,15 +2993,14 @@ setInterval(() => {
     db.writeDocs('threads', threads, [], null);
     broadcast('threads', threads, []);
   }
-  // "Send later" mail goes out for real now.
+  // "Send later" mail goes out for real now, the same way as any email: through the wait in the outbox (its time has
+  // come, so it leaves straight away), where a failure is marked on the email and told to its mailbox's people.
   for (const t of sendNow) {
     const ws = workspaces().find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId)) as any;
     const account = ws?.accounts?.find((a: any) => a.id === t.accountId);
     const m = t.messages[t.messages.length - 1];
     if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
-    void mailer
-      .queueSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null } : undefined })
-      .catch((e) => console.error('[mail] scheduled send', e instanceof Error ? e.message : e));
+    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
   if (due.length) {

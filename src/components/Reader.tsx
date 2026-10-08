@@ -36,6 +36,8 @@ interface Props {
   onStar: (id: string) => void;
   onMarkUnread: (id: string) => void;
   onReply: (id: string, html: string, text: string) => void;
+  /** A reply taken back with Undo: back in the reply box, as it was written. */
+  restoreReply?: { threadId: string; html: string; text: string; key: number } | null;
   /** Why replies can't go out from this mailbox yet; Reply and Forward then explain instead of opening. */
   replyOff?: string;
   onReplyOff?: () => void;
@@ -111,6 +113,15 @@ export function Reader(props: Props) {
     setSuggestions(AI_CACHE.replies.get(key) ?? null);
     setSuggesting(false);
   }, [thread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Undo send on a reply: what was written comes back in the reply box, ready to send again.
+  useEffect(() => {
+    const r = props.restoreReply;
+    if (!r || !thread || r.threadId !== thread.id) return;
+    setReplyInitial(r.html);
+    setReply({ html: r.html, text: r.text });
+    setReplyOpen(true);
+  }, [props.restoreReply?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Suggested replies only when someone asks (AI never runs just because an email was opened).
   const lastMsg = thread?.messages[thread.messages.length - 1];
@@ -394,8 +405,8 @@ export function Reader(props: Props) {
                 </button>
                 {open && m.delivery && (
                   <div className={`delivery-note ${m.delivery.state}`}>
-                    {m.delivery.state === 'sending' ? <Loader2 size={14} className="spin" /> : m.delivery.state === 'sent' ? <Check size={14} /> : <AlertTriangle size={14} />}{' '}
-                    {m.delivery.state === 'sending' ? 'Sending…' : m.delivery.state === 'sent' ? `Delivered ${relative(m.delivery.at)}` : `Could not be delivered: ${m.delivery.error ?? 'the receiving server refused it'}`}
+                    {m.delivery.state === 'held' ? <Clock size={14} /> : m.delivery.state === 'sending' ? <Loader2 size={14} className="spin" /> : m.delivery.state === 'sent' ? <Check size={14} /> : <AlertTriangle size={14} />}{' '}
+                    {m.delivery.state === 'held' ? 'Goes out in a few seconds (Undo is still possible)' : m.delivery.state === 'sending' ? 'Sending…' : m.delivery.state === 'sent' ? `Delivered ${relative(m.delivery.at)}` : `Could not be delivered: ${m.delivery.error ?? 'the receiving server refused it'}`}
                   </div>
                 )}
                 {open && props.blockTrackers && m.trackersBlocked ? (

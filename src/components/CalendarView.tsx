@@ -49,6 +49,9 @@ interface Props {
   onNotetaker?: (e: CalEvent) => void;
   /** The notetaker was already sent to this event: opens its meeting. */
   sentBot?: (e: CalEvent) => (() => void) | undefined;
+  /** The real notetaker joins by itself: whether it will join this event, and changing that for this one event. */
+  botWillJoin?: (e: CalEvent) => boolean;
+  onBotJoin?: (e: CalEvent, join: boolean) => void;
 }
 
 export function CalendarView(props: Props) {
@@ -145,6 +148,8 @@ export function CalendarView(props: Props) {
           onTomorrow={() => props.onTomorrow?.(selected.id)}
           onTaskDone={() => props.onTaskDone?.(selected)}
           sentBot={props.sentBot?.(selected)}
+          botWill={props.onBotJoin ? !!props.botWillJoin?.(selected) : undefined}
+          onBotJoin={props.onBotJoin ? (join) => props.onBotJoin!(selected, join) : undefined}
         />
       )}
     </section>
@@ -339,6 +344,7 @@ function TimeGrid(props: Props & { days: Date[]; color: (id: string) => string }
                     >
                       <span className="be-title">{ev.title}</span>
                       <span className="be-time">
+                        {props.botWillJoin?.(ev) && <Mic size={11} className="be-bot" aria-label="The notetaker will join" />}
                         {fmtTime(s)}
                         {(height >= 40 || dragging) && ` – ${fmtTime(e)}`}
                       </span>
@@ -448,6 +454,8 @@ function EventDetail({
   readOnly,
   onNotetaker,
   sentBot,
+  botWill,
+  onBotJoin,
 }: {
   event: CalEvent;
   calendar?: CalendarDef;
@@ -461,9 +469,12 @@ function EventDetail({
   onTomorrow?: () => void;
   onTaskDone?: () => void;
   sentBot?: () => void;
+  botWill?: boolean; // set when the notetaker joins by itself (the real one): whether it will join this event
+  onBotJoin?: (join: boolean) => void;
 }) {
   const link = meetingLinkOf(event);
   const ended = new Date(event.end).getTime() < Date.now();
+  const startsSoon = new Date(event.start).getTime() - Date.now() < 15 * 60_000;
   return (
     <aside className="ev-detail" style={{ ['--c' as string]: calendar?.color }}>
       <div className="ev-actions">
@@ -493,9 +504,19 @@ function EventDetail({
             <button type="button" className="link-btn small" onClick={sentBot}>
               The notetaker is on its way. Open the meeting
             </button>
+          ) : !notetakerJoins(link.kind) ? null : botWill ? (
+            <span className="ev-bot-note">
+              <Mic size={14} aria-hidden /> The notetaker will join
+              <button type="button" className="link-btn small" onClick={() => onBotJoin?.(false)}>
+                Don’t record
+              </button>
+            </span>
+          ) : onBotJoin && !startsSoon ? (
+            <button className="ghost-btn sm" onClick={() => onBotJoin(true)}>
+              <Mic size={14} /> Record this meeting
+            </button>
           ) : (
-            onNotetaker &&
-            notetakerJoins(link.kind) && (
+            onNotetaker && (
               <button className="ghost-btn sm" onClick={onNotetaker}>
                 <Mic size={14} /> Send notetaker
               </button>

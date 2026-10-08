@@ -2,7 +2,7 @@ import { LanguagePicker } from '../LanguagePicker';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { term, brand as product } from '../../terms';
-import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, ShieldCheck, Users, Video, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, ShieldCheck, Users, Video, X } from 'lucide-react';
 import { DEFAULT_PERMISSIONS, type MemberPermissions } from '../../types';
 import type { AppId, DriveItem, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
 import { fmtSize } from '../../data/drive';
@@ -15,6 +15,7 @@ import { server } from '../../sync';
 import { caps } from '../../caps';
 import { relative } from '../../utils';
 import { loadTwoStep } from '../TwoStep';
+import { JOIN_MODES } from '../../meetingLinks';
 
 const Switch = ({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
   <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
@@ -277,8 +278,16 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         </div>
         <div className="set-block">
           <h3>Notetaker</h3>
-          <Row title="Join meetings from calendars automatically" hint="Coming soon. For now, send the notetaker to a meeting from Meet.">
-            <span className="badge-soon">Not yet</span>
+          {/* The server sends the notetaker by itself (server/autojoin.ts), once the recorder is there to send. */}
+          <Row
+            title="Join meetings from calendars automatically"
+            hint={
+              !server.on || caps.demo || caps.recorder
+                ? 'Google Meet and Zoom calls on people’s calendars. It joins a minute before; anyone can switch it off for one meeting in Meet, Upcoming.'
+                : 'The notetaker isn’t available on this server yet, so it can’t join meetings by itself. This starts working as soon as it is.'
+            }
+          >
+            <Select value={m.joinMode ?? 'accepted'} onChange={(v) => set({ joinMode: v })} options={JOIN_MODES.map((x) => ({ value: x.value, label: x.label, hint: x.hint }))} label="Join meetings from calendars automatically" width={300} disabled={!(!server.on || caps.demo || caps.recorder)} />
           </Row>
           <Row title="Announce recording" hint="The bot says it’s recording when it joins. The host can stop it at any time">
             <Switch on={m.announce} onChange={(v) => set({ announce: v })} />
@@ -326,7 +335,7 @@ export function TeamsLink({ teams, users, onOpen }: { teams: Team[]; users: User
 
 /* ---------------- Apps & chat ---------------- */
 
-export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; canManage: boolean; onWorkspace: (p: Partial<Workspace>) => void }) {
+export function AppsSection({ ws, canManage, onWorkspace, projects }: { ws: Workspace; canManage: boolean; onWorkspace: (p: Partial<Workspace>) => void; projects: { id: string; name: string; color: string }[] }) {
   const apps = ws.apps ?? APPS.map((a) => a.id);
   const chat = { gifs: true, celebrations: true, whoCanCreate: 'everyone' as const, history: 'forever' as const, ...ws.chat };
   const toggleApp = (id: AppId) => onWorkspace({ apps: apps.includes(id) ? apps.filter((a) => a !== id) : [...apps, id] });
@@ -351,12 +360,89 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
           <Row title="Who can create channels" hint={chat.whoCanCreate === 'admins' ? 'Members can still message people directly, and teams get their own channel.' : undefined}>
             <Select value={chat.whoCanCreate} onChange={(v) => onWorkspace({ chat: { ...chat, whoCanCreate: v } })} label="Who can create channels" options={[{ value: 'everyone', label: 'Everyone' }, { value: 'admins', label: 'Only admins' }]} />
           </Row>
-          <Row title="Delete old messages" hint="Coming soon: deleting messages older than a year or 90 days, for everyone. Until then chat history is kept.">
-            <span className="badge-soon">Not yet</span>
+          <Row title="Delete old messages" hint={chat.history === 'forever' ? 'Chat is kept for good.' : undefined}>
+            <Select
+              value={chat.history}
+              onChange={(v) => onWorkspace({ chat: { ...chat, history: v } })}
+              label="Delete old messages"
+              width={260}
+              options={[
+                { value: 'forever', label: 'Never: keep everything' },
+                { value: '1y', label: 'Older than 1 year' },
+                { value: '90d', label: 'Older than 90 days' },
+              ]}
+            />
           </Row>
+          <RetentionDetails ws={ws} chat={chat} projects={projects} onWorkspace={onWorkspace} />
         </div>
       </fieldset>
     </>
+  );
+}
+
+/**
+ * Settings, Apps & chat, "Delete old messages" switched on: what it does (the server deletes, server/retention.ts),
+ * when it starts (a week after it was switched on), the last run, and the projects that keep everything.
+ */
+function RetentionDetails({ ws, chat, projects, onWorkspace }: { ws: Workspace; chat: NonNullable<Workspace['chat']>; projects: { id: string; name: string; color: string }[]; onWorkspace: (p: Partial<Workspace>) => void }) {
+  const on = !!chat.history && chat.history !== 'forever';
+  // Kept while folding closed, so the words don't change on the way out.
+  const [period, setPeriod] = useState(chat.history === '90d' ? '90 days' : '1 year');
+  useEffect(() => {
+    if (on) setPeriod(chat.history === '90d' ? '90 days' : '1 year');
+  }, [on, chat.history]);
+  const keep = chat.keep ?? [];
+  const day = (iso: string) => new Date(iso).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  const status = !server.on
+    ? 'In this demo nothing is deleted.'
+    : chat.lastRun
+      ? `Last run ${relative(chat.lastRun.at)}: ${chat.lastRun.deleted ? `${chat.lastRun.deleted} message${chat.lastRun.deleted === 1 ? '' : 's'} deleted` : 'nothing old enough to delete'}. It runs once a day.`
+      : chat.deleteFrom && chat.deleteFrom > new Date().toISOString()
+        ? `Nothing is deleted before ${day(chat.deleteFrom)}. Admins got a notice; switch it back to Never before then to keep everything.`
+        : chat.deleteFrom
+          ? 'Deleting starts today.'
+          : 'Deleting starts a week after you switch it on, with a notice to admins first.';
+  const setKeep = (ids: string[]) => onWorkspace({ chat: { ...chat, keep: ids } });
+  return (
+    <div className={`fold ${on ? 'open' : ''}`}>
+      <div className="fold-in">
+        <div className="retention-warn" role="note">
+          <AlertTriangle size={16} aria-hidden />
+          <div>
+            <p>
+              <strong>Chat messages older than {period} are deleted for everyone, every day, and can’t be brought back.</strong> Pinned messages, conversations still going and the {term.many} below stay. Files shared in deleted messages stay in Drive.
+            </p>
+            <p>{status}</p>
+          </div>
+        </div>
+        <Row title={`Keep everything for these ${term.many}`} hint={keep.length ? undefined : `Their channels keep all their messages, for ${term.many} with a contract or a legal reason to.`}>
+          <Select
+            value={null}
+            onChange={(id) => setKeep([...keep, id])}
+            label={`Keep everything for a ${term.one}`}
+            placeholder={`Add a ${term.one}`}
+            width={240}
+            options={projects.filter((x) => !keep.includes(x.id)).map((x) => ({ value: x.id, label: x.name, icon: <span className="sel-dot" style={{ background: x.color }} /> }))}
+          />
+        </Row>
+        {!!keep.length && (
+          <div className="retention-keep">
+            {keep.map((id) => {
+              const x = projects.find((c) => c.id === id);
+              return (
+                <span key={id} className="retention-chip">
+                  <span className="sel-dot" style={{ background: x?.color ?? 'var(--text-3)' }} />
+                  {x?.name ?? `A removed ${term.one}`}
+                  <button type="button" className="icon-btn sm" onClick={() => setKeep(keep.filter((k) => k !== id))} aria-label={`Stop keeping everything for ${x?.name ?? 'it'}`}>
+                    <X size={13} />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

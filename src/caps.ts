@@ -25,6 +25,7 @@ export const caps = {
   routingCheck: false, // the server can send "Some of each" routing tests (daily and "Send a test")
   customDomains: false, // agencies' own addresses can get certificates (sprint2go has Dokploy set up)
   customTarget: 'custom.sprint2go.com', // what those addresses point at
+  emailNotes: false, // the server can email people (teammates' away email, guests' notices)
 };
 export function loadCaps() {
   if (!location.protocol.startsWith('http')) return Promise.resolve(caps);
