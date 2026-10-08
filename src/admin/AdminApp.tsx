@@ -1144,7 +1144,7 @@ function Usage({ ctx }: { ctx: Ctx }) {
   const { data, error } = useLoad(() => get('usage'));
   if (error) return <Empty text={error} />;
   if (!data) return <Loading />;
-  const rows = data.companies as { id: string; name: string; state: State; mrr: number; aiRp: number; aiIncludedUses: number; included: boolean; storageBytes: number; recorderMinutes: number; people: number; margin: number }[];
+  const rows = data.companies as { id: string; name: string; state: State; mrr: number; aiRp: number; aiIncludedUses: number; included: boolean; storageBytes: number; recorderMinutes: number; people: number; margin: number; mailOut: number; mailIn: number; boosted: number }[];
   const losing = rows.filter((r) => r.included && r.margin < 0);
   return (
     <>
@@ -1157,6 +1157,7 @@ function Usage({ ctx }: { ctx: Ctx }) {
           { label: 'AI spend', value: rp(data.totals.aiRp), hint: 'list prices, all companies' },
           { label: 'Storage', value: bytes(data.totals.storageBytes) },
           { label: 'Recorder', value: `${Math.round(data.totals.recorderMinutes)} min` },
+          { label: 'Email', value: `${data.totals.mailOut} out · ${data.totals.mailIn} in`, hint: data.totals.boosted ? `${data.totals.boosted} boosted` : 'none boosted' },
           { label: 'Costing more than they pay', value: losing.length, warn: losing.length > 0, hint: 'AI-included plans' },
         ]}
       />
@@ -1169,7 +1170,7 @@ function Usage({ ctx }: { ctx: Ctx }) {
             <span>AI cost</span>
             <span>Margin</span>
             <span>Storage</span>
-            <span>Recorder</span>
+            <span>Email</span>
           </div>
         )}
         {rows.map((r) => (
@@ -1186,7 +1187,9 @@ function Usage({ ctx }: { ctx: Ctx }) {
             </span>
             <span className={r.included && r.margin < 0 ? 'ad-neg' : ''}>{r.included ? rp(r.margin) : <small className="muted">n/a</small>}</span>
             <span>{bytes(r.storageBytes)}</span>
-            <span>{Math.round(r.recorderMinutes)} min</span>
+            <span>
+              {r.mailOut} out · {r.mailIn} in{r.boosted ? <small className="muted"> · {r.boosted} boosted</small> : null}
+            </span>
           </button>
         ))}
       </div>

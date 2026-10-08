@@ -1550,6 +1550,18 @@ createServer(async (req, res) => {
         if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
         return json(res, 200, { items: db.vaultList(wsId).filter(canSee).map((it) => ({ ...it, canEdit: canEdit(it) })) });
       }
+      // Re-share: someone who holds a login's key wraps it for people who don't have it yet. Only keys change.
+      const keysReq = p.match(/^\/api\/vault\/([\w-]+)\/keys$/);
+      if (keysReq && req.method === 'POST') {
+        const it = db.vaultGet(keysReq[1]);
+        if (!it || !canSee(it)) return json(res, 404, { error: 'No such login.' });
+        if (!it.meta.keys?.[me] && !canEdit(it)) return json(res, 403, { error: 'You don’t hold the key to this login.' });
+        const b = await body(req);
+        const added = Object.fromEntries(Object.entries((b.keys ?? {}) as Record<string, any>).filter(([, k]) => k && typeof k.ct === 'string' && typeof k.iv === 'string' && k.epk));
+        db.vaultSave({ id: it.id, workspaceId: it.workspaceId, meta: { ...it.meta, keys: { ...(it.meta.keys ?? {}), ...added } }, by: me });
+        db.vaultLog(it.id, me, `re-shared with ${Object.keys(added).length} people`);
+        return json(res, 200, { ok: true, added: Object.keys(added).length });
+      }
       if (p === '/api/vault' && req.method === 'POST') {
         const b = await body(req);
         if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, {});

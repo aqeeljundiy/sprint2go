@@ -141,6 +141,30 @@ export function VaultView({
 
   // Locked until the passphrase is typed once in this tab: the private key lives only in memory.
   const priv = vaultUnlocked(me);
+  /** Every login I hold the key to: wrap it for each allowed person who has a Vault key but no copy yet. */
+  const reshareAll = async () => {
+    if (!priv) return;
+    let people = 0, logins = 0;
+    for (const it of items) {
+      const mine = it.meta.keys?.[me];
+      if (!mine) continue;
+      const inTeam = (u: User) => it.meta.access.teamIds.some((t) => teams.find((x) => x.id === t)?.members.includes(u.id));
+      const missing = users.filter((u) => u.vaultKey && !it.meta.keys?.[u.id] && (adminIds.includes(u.id) || it.meta.access.everyone || it.meta.access.userIds.includes(u.id) || inTeam(u)));
+      if (!missing.length) continue;
+      try {
+        const itemKey = await unwrapWith(priv, mine);
+        const keys: Record<string, WrappedKey> = {};
+        for (const u of missing) keys[u.id] = await wrapFor(itemKey, u.vaultKey!.pub);
+        await api(`/api/vault/${it.id}/keys`, { method: 'POST', body: JSON.stringify({ keys }) });
+        people += missing.length;
+        logins++;
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not re-share a login.');
+      }
+    }
+    toast(logins ? `Re-shared ${logins} login${logins === 1 ? '' : 's'} with ${people} ${people === 1 ? 'person' : 'people'}.` : 'Everyone who may open your logins already holds the keys.');
+    reload();
+  };
   if (!priv) return <VaultGate record={vaultKey} me={me} onUnlocked={(k, record) => (setVaultUnlocked(me, k), record && onVaultKey(record), setTick((t) => t + 1))} />;
 
   const shown = items.filter((i) => (filter === '' ? true : filter === 'company' ? !i.meta.clientId : i.meta.clientId === filter));
@@ -183,6 +207,11 @@ export function VaultView({
           <h1>{filter === '' ? 'All logins' : filter === 'company' ? 'Company logins' : (clients.find((c) => c.id === filter)?.name ?? 'Logins')}</h1>
           <p>Shared logins and 2FA codes, only for the people you choose</p>
         </div>
+        {priv && items.some((it) => it.meta.keys?.[me]) && (
+          <button className="ghost-btn sm" title="Give everyone who may open a login the key to it (after they set up their Vault, or lost their passphrase)" onClick={() => void reshareAll()}>
+            <Users size={14} /> Re-share all
+          </button>
+        )}
         <button className="primary-btn sm" onClick={() => setEditing('new')}>
           <Plus size={14} /> Add a login
         </button>

@@ -1,0 +1,26 @@
+# Builds the desktop app for Mac and Windows when a version tag is pushed (git tag v0.1.1 && git push --tags),
+# and attaches the installers to a GitHub release of that tag. The landing page's download link points at the
+# latest release.
+name: Desktop app
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
