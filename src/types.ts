@@ -110,9 +110,13 @@ export interface CalendarDef {
   account?: string; // the connected account, e.g. aqeel@gmail.com
   ownerId?: string; // whose connection it is (outside calendars are personal)
   readOnly?: boolean; // calendar links and holidays
-  url?: string; // .ics address
+  url?: string; // .ics address (only its owner ever gets it from the server)
   share?: 'busy' | 'details' | 'private'; // what teammates see
-  syncedAt?: string;
+  syncedAt?: string; // last time it was read successfully
+  checkedAt?: string; // calendar links and holidays: last time the server tried
+  error?: string; // calendar links and holidays: why the last try failed (cleared when one works)
+  workspaceId?: string; // a company's own calendar (public holidays): everyone in it sees it
+  country?: string; // public holidays: which country
 }
 
 export interface CalEvent {
@@ -129,6 +133,9 @@ export interface CalEvent {
   workspaceId?: string; // defaults to the first workspace
   userId?: string; // whose calendar (defaults to the first user)
   taskId?: string; // a time block for this task
+  feed?: 'link' | 'holidays'; // made by the server from a calendar link or public holidays: read only
+  meetUrl?: string; // its video call link, when the server found one
+  busy?: boolean; // a teammate's event shown as busy only (no title or details)
 }
 
 export interface Label {
@@ -218,6 +225,7 @@ export interface Workspace {
   permissions?: Partial<MemberPermissions>;
   whiteLabel?: WhiteLabel; // an agency running the app under its own brand
   industry?: Industry; // what the company does: picks the starter tables and brief templates
+  holidays?: { country: string }; // public holidays in everyone's calendar (src/data/holidays.ts)
   createdAt?: string;
   suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string }; // WhatsApp Business (Meta Cloud API); the token stays on the server

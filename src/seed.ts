@@ -1,7 +1,7 @@
 import type { Status, User, Workspace } from './types';
 import type { TaskTemplate } from './data/templates';
 import { THREADS } from './data/mock';
-import { EVENTS, EXTERNAL_CALENDARS, EXTERNAL_EVENTS } from './data/calendar';
+import { EVENTS, EXTERNAL_EVENTS, SEED_CALENDARS } from './data/calendar';
 import { DRIVE } from './data/drive';
 import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './data/team';
 import { USERS, WORKSPACES } from './data/workspaces';
@@ -15,7 +15,7 @@ export const seed = () => ({
   workspaces: WORKSPACES as Workspace[],
   threads: THREADS,
   events: [...EVENTS, ...EXTERNAL_EVENTS],
-  calendars: EXTERNAL_CALENDARS,
+  calendars: SEED_CALENDARS,
   drive: DRIVE,
   todos: TASKS,
   clients: CLIENTS,

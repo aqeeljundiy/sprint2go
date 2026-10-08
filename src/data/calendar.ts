@@ -66,7 +66,6 @@ export const EVENTS: CalEvent[] = [
 
 export const EXTERNAL_CALENDARS: CalendarDef[] = [
   { id: 'g-aqeel', name: 'Personal', color: '#4285f4', source: 'google', account: 'aqeel.jundiy@gmail.com', ownerId: 'u-aqeel', share: 'busy', syncedAt: new Date(Date.now() - 4 * 60_000).toISOString() },
-  { id: 'hol-id-aqeel', name: 'Indonesian holidays', color: '#dc2626', source: 'holidays', ownerId: 'u-aqeel', readOnly: true, share: 'details' },
   { id: 'ms-faisal', name: 'Calendar', color: '#0078d4', source: 'microsoft', account: 'faisal@tirtonady.co', ownerId: 'u-faisal', share: 'busy', syncedAt: new Date(Date.now() - 9 * 60_000).toISOString() },
 ];
 
@@ -101,13 +100,29 @@ export function externalEvents(cal: CalendarDef): CalEvent[] {
         ext({ title: 'Booked: Glowkind discovery call', calendarId: cal.id, start: at(2, 11), end: at(2, 11, 30), userId: who }),
         ext({ title: 'Booked: intro with Arunika GM', calendarId: cal.id, start: at(8, 14), end: at(8, 14, 30), userId: who }),
       ];
-    case 'holidays': {
-      const day = (iso: string) => ({ start: new Date(iso + 'T00:00').toISOString(), end: new Date(new Date(iso + 'T00:00').getTime() + 86_400_000).toISOString(), allDay: true });
-      return [ext({ title: 'Christmas Day', calendarId: cal.id, userId: who, ...day('2026-12-25') }), ext({ title: 'New Year’s Day', calendarId: cal.id, userId: who, ...day('2027-01-01') })];
-    }
     default:
       return [];
   }
 }
 
-export const EXTERNAL_EVENTS: CalEvent[] = EXTERNAL_CALENDARS.flatMap(externalEvents);
+/* ---------- Public holidays (a company setting; the server replaces these with the real list) ---------- */
+
+const HOLIDAY_CALENDARS: CalendarDef[] = ['pnp', 'elk'].map((ws) => ({ id: `hol-${ws}`, name: 'Holidays in Indonesia', color: '#dc2626', source: 'holidays', workspaceId: ws, readOnly: true, share: 'details', country: 'ID' }));
+const HOLIDAYS: [string, string][] = [
+  ['2026-08-17', 'Indonesian Independence Day'],
+  ['2026-08-25', 'Maulid Nabi Muhammad'],
+  ['2026-12-24', 'Christmas Eve Joint Holiday'],
+  ['2026-12-25', 'Christmas Day'],
+  ['2027-01-01', 'New Year’s Day'],
+];
+const nextDay = (iso: string) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+const HOLIDAY_EVENTS: CalEvent[] = HOLIDAY_CALENDARS.flatMap((c) =>
+  HOLIDAYS.map(([date, title]) => ({ id: `${c.id}-${date}`, title, calendarId: c.id, workspaceId: c.workspaceId, feed: 'holidays' as const, start: `${date}T00:00:00`, end: `${nextDay(date)}T00:00:00`, allDay: true, notes: 'Public holiday in Indonesia.' })),
+);
+
+export const EXTERNAL_EVENTS: CalEvent[] = [...EXTERNAL_CALENDARS.flatMap(externalEvents), ...HOLIDAY_EVENTS];
+export const SEED_CALENDARS: CalendarDef[] = [...EXTERNAL_CALENDARS, ...HOLIDAY_CALENDARS];
