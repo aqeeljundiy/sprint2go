@@ -517,7 +517,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                     <strong>Take an email back after pressing Send</strong>
                     <small>Coming soon. For now your email goes out the moment you press Send.</small>
                   </span>
-                  <span className="badge-soon">Not yet</span>
+                  <Badge>Not yet</Badge>
                 </div>
               ) : (
                 <>
@@ -540,7 +540,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                     <strong>Track opens and clicks</strong>
                     <small>Coming soon: see who opened your email and which links they clicked.</small>
                   </span>
-                  <span className="badge-soon">Not yet</span>
+                  <Badge>Not yet</Badge>
                 </div>
               ) : (
                 <>

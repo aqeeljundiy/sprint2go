@@ -1687,11 +1687,7 @@ function ProjectWorkload({ tasks, people, users, me, onOpenTask }: { tasks: Todo
         {rows.map(({ u, mine, late, soon }) => (
           <div key={u.id} className="team-load">
             <button type="button" className="team-row" onClick={() => setOpenId(openId === u.id ? null : u.id)} aria-expanded={openId === u.id}>
-              <Avatar person={u} size={30} />
-              <span className="team-row-text">
-                <strong>{u.id === me ? `${u.name} (me)` : u.name}</strong>
-                <small className="muted">{[late && `${late} late`, soon && `${soon} due this week`, !mine.length && 'Nothing open here'].filter(Boolean).join(' · ') || `${mine.length} open`}</small>
-              </span>
+              <PersonCell person={u} badges={u.id === me && <Badge tone="accent">You</Badge>} sub={[late && `${late} late`, soon && `${soon} due this week`, !mine.length && 'Nothing open here'].filter(Boolean).join(' · ') || `${mine.length} open`} />
               <span className="team-bar" aria-hidden>
                 <i style={{ width: `${(mine.length / most) * 100}%` }} className={late ? 'bad' : ''} />
               </span>

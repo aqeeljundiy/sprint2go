@@ -362,30 +362,10 @@ body.resizing-x .pane-resize::after {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.am-theme {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
+/* Light / Dark / Auto: a segmented control like every other (system.css). */
+.am-theme.segmented.wide {
   margin: 0 4px 6px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--hover);
-}
-.am-theme button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 6px;
-  border-radius: 7px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-.am-theme button.on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  width: auto;
 }
 .am-item {
   display: flex;

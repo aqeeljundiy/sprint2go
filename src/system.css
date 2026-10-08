@@ -86,6 +86,12 @@ span.person-cell {
   flex: 1 1 auto;
   text-align: left;
 }
+/* A row holding a person never grows wider than its list: a long email ends in "…" instead (rows in a grid list
+   would otherwise size the column to the whole email, pushing the role and buttons out of the card). */
+:where(.acct-block, .acct-row, .pa-row, .pp-row, .team-row, .team-load, .access-row, .pl-row, .guest-row),
+:where(*):has(> span.person-cell) {
+  min-width: 0;
+}
 span.person-cell > .avatar,
 span.person-cell > :first-child {
   flex: none;
@@ -538,6 +544,12 @@ h4,
 .th-text h1 {
   text-wrap: balance;
 }
+/* Lines under a heading don't end on one lonely word either. */
+.th-text p,
+.set-intro,
+.modal-intro {
+  text-wrap: pretty;
+}
 
 /* ---------- Settings nav: an icon never squeezes away beside a long name ---------- */
 
@@ -629,6 +641,11 @@ h4,
     width: 100%;
     max-width: none;
   }
+  /* Drive: the top bar's switcher already names the section; the path shows once you're inside a folder. */
+  .crumbs > .crumb.cur:only-child,
+  .crumbs > .drive-sec-title {
+    display: none;
+  }
   /* The top bar already says "Settings": no second title under it. */
   .settings-head {
     display: none;
@@ -679,8 +696,16 @@ h4,
   }
   /* A task's title: a taller tap area without making the row taller (the line under it stays on top). */
   .task-title-btn {
-    padding-block: 10px;
-    margin-block: -10px;
+    padding-block: 11px;
+    margin-block: -11px;
+  }
+  /* Task stages: the colour dot and the name field are full-size targets too. */
+  .stage-swatch {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .stage-name {
+    min-height: 40px;
   }
   /* Small round controls keep their look; their tap area grows to 40px around them. */
   .todo-check,

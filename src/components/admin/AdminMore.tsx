@@ -166,7 +166,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
           </Row>
           {live && caps.maxUploadMb > 0 && <p className="muted small">One file can be up to {caps.maxUploadMb >= 1024 ? `${+(caps.maxUploadMb / 1024).toFixed(1)} GB` : `${caps.maxUploadMb} MB`}.</p>}
           <Row title={<><Cloud size={14} /> Use your own storage</>} hint={`Coming soon: raw footage and huge files kept in your own Google Drive, Dropbox or Backblaze B2, still showing on the ${term.one} page. Until then everything is saved in ${product.name}.`}>
-            <span className="badge-soon">Not yet</span>
+            <Badge>Not yet</Badge>
           </Row>
         </div>
       </fieldset>
@@ -278,7 +278,7 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         <div className="set-block">
           <h3>Notetaker</h3>
           <Row title="Join meetings from calendars automatically" hint="Coming soon. For now, send the notetaker to a meeting from Meet.">
-            <span className="badge-soon">Not yet</span>
+            <Badge>Not yet</Badge>
           </Row>
           <Row title="Announce recording" hint="The bot says it’s recording when it joins. The host can stop it at any time">
             <Switch on={m.announce} onChange={(v) => set({ announce: v })} />
@@ -352,7 +352,7 @@ export function AppsSection({ ws, canManage, onWorkspace }: { ws: Workspace; can
             <Select value={chat.whoCanCreate} onChange={(v) => onWorkspace({ chat: { ...chat, whoCanCreate: v } })} label="Who can create channels" options={[{ value: 'everyone', label: 'Everyone' }, { value: 'admins', label: 'Only admins' }]} />
           </Row>
           <Row title="Delete old messages" hint="Coming soon: deleting messages older than a year or 90 days, for everyone. Until then chat history is kept.">
-            <span className="badge-soon">Not yet</span>
+            <Badge>Not yet</Badge>
           </Row>
         </div>
       </fieldset>
@@ -623,7 +623,7 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
             </div>
             {OTHER.map((o) => (
               <Row key={o.k} title={o.title} hint={o.why}>
-                <span className="badge-soon">Not yet</span>
+                <Badge>Not yet</Badge>
               </Row>
             ))}
           </>

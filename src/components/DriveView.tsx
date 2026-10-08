@@ -188,7 +188,7 @@ export function DriveView(props: Props) {
               ))}
             </>
           ) : (
-            <h1>{sectionName}</h1>
+            <h1 className="drive-sec-title">{sectionName}</h1>
           )}
         </div>
         <label className="search drive-search">

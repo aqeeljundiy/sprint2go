@@ -424,11 +424,7 @@ function WorkloadTab({ t, tasks, users, onOpenTask }: { t: Team; tasks: Todo[]; 
         {rows.map(({ u, mine, late, week, here }) => (
           <div key={u.id} className="team-load">
             <button type="button" className="team-row" onClick={() => setOpenId(openId === u.id ? null : u.id)} aria-expanded={openId === u.id}>
-              <Avatar person={u} size={30} />
-              <span className="team-row-text">
-                <strong>{u.name}</strong>
-                <small className="muted">{[late && `${late} late`, week && `${week} due this week`, `${here} in ${t.name}`].filter(Boolean).join(' · ')}</small>
-              </span>
+              <PersonCell person={u} sub={[late && `${late} late`, week && `${week} due this week`, `${here} in ${t.name}`].filter(Boolean).join(' · ')} />
               <span className="team-bar" aria-label={`${mine.length} open`}>
                 <i style={{ width: `${(mine.length / most) * 100}%` }} className={late ? 'bad' : mine.length > 8 ? 'warn' : ''} />
               </span>

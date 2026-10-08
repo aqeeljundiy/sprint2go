@@ -1232,7 +1232,7 @@ function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; c
         </div>
       </div>
       {account && (
-        <div className="am-theme">
+        <div className="am-theme segmented wide">
           {(
             [
               ['light', Sun, 'Light'],
