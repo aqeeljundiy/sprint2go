@@ -6,7 +6,7 @@ import { CellView, type CellCtx } from './Cell';
 import { groupRows, isEmpty, rowName, valueOf, viewFields } from './fields';
 
 /** The fields a card or list row shows: the view's visible ones after the name, minus long and empty ones. */
-const cardFields = (t: DataTable, view: TableViewDef, n: number) => viewFields(t, view).slice(1).filter((f) => f.type !== 'longtext' && f.type !== 'button' && f.id !== view.cover).slice(0, n);
+const cardFields = (t: DataTable, view: TableViewDef, n: number) => viewFields(t, view).filter((f) => f.id !== t.fields[0]?.id && f.type !== 'longtext' && f.type !== 'button' && f.id !== view.cover).slice(0, n);
 
 /** A compact list: the name and a few fields on one line per row, grouped if the view groups. */
 export function ListView({ table: t, view, rows, ctx, onOpenRow, onView }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; onOpenRow: (id: string) => void; onView: (p: Partial<TableViewDef>) => void }) {

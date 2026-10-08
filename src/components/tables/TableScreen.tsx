@@ -135,9 +135,9 @@ export function TableScreen(p: ScreenProps) {
       const views = at === undefined || !view ? t.views : t.views.map((v) => {
         if (v.id !== view.id) return v;
         const vis = viewFields(t, v).map((x) => x.id);
-        const rest = viewFields(t, v, true).map((x) => x.id).slice(1);
+        const rest = viewFields(t, v, true).map((x) => x.id);
         const anchorId = vis[at];
-        const idx = anchorId && anchorId !== t.fields[0].id ? rest.indexOf(anchorId) : at <= 0 ? 0 : rest.length;
+        const idx = anchorId ? rest.indexOf(anchorId) : rest.length;
         rest.splice(idx < 0 ? rest.length : idx, 0, f.id);
         return { ...v, order: rest };
       });
@@ -189,7 +189,7 @@ export function TableScreen(p: ScreenProps) {
     if (!f) return;
     remember(`copy of ${f.name}`);
     const copy: TableField = { ...structuredClone(f), id: uid(), name: `${f.name} copy` };
-    const rest = view ? viewFields(t, view, true).map((x) => x.id).slice(1) : [];
+    const rest = view ? viewFields(t, view, true).map((x) => x.id) : [];
     rest.splice(rest.indexOf(id) + 1, 0, copy.id);
     patchTable({ fields: [...t.fields, copy], views: t.views.map((v) => (v.id === view?.id ? { ...v, order: rest } : v)) });
     if (!isComputed(f)) p.setRows((rs) => rs.map((r) => (r.tableId === t.id && !isEmpty(r.values[id]) ? { ...r, values: { ...r.values, [copy.id]: r.values[id] } } : r)));
@@ -596,7 +596,7 @@ export function TableScreen(p: ScreenProps) {
       <div className="tb-body">
         <TabPane key={view?.id ?? 'none'}>
           {!view ? null : view.kind === 'board' ? (
-            <BoardView table={t} view={view} rows={shown} ctx={ctx} onCell={setCell} onOpenRow={(id) => openRowFull(id)} onAddRow={(v) => openRowFull(addRow(v))} onView={patchView} onNewField={(f) => saveField(f)} readOnly={!!g && !g.add && !t.fields.some((f) => g.canEdit(f.id))} canAdd={canAdd} />
+            <BoardView table={t} view={view} rows={shown} ctx={ctx} onCell={setCell} onOpenRow={(id) => openRowFull(id)} onAddRow={(v) => openRowFull(addRow(v))} onView={patchView} onNewField={(f) => saveField(f)} onSaveField={(f) => saveField(f)} canEditColumns={structure} readOnly={!!g && !g.add && !t.fields.some((f) => g.canEdit(f.id))} canAdd={canAdd} />
           ) : view.kind === 'list' ? (
             <ListView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onView={patchView} />
           ) : view.kind === 'gallery' ? (
@@ -622,6 +622,14 @@ export function TableScreen(p: ScreenProps) {
               onSaveField={saveField}
               onDeleteField={deleteField}
               onDuplicateField={duplicateField}
+              onMakeName={(id) => {
+                const f = t.fields.find((x) => x.id === id);
+                if (!f) return;
+                remember(`${f.name} as the name`);
+                // Every view keeps its columns where they are; only which one names the row changes.
+                patchTable({ fields: [f, ...t.fields.filter((x) => x.id !== id)], views: t.views.map((v) => ({ ...v, order: viewFields(t, v, true).map((x) => x.id) })) });
+                p.toast({ text: `${f.name} is now each row’s name` });
+              }}
               onView={patchView}
               onFilterBy={filterBy}
               onMoveRow={moveRow}
@@ -715,6 +723,9 @@ export function TableScreen(p: ScreenProps) {
           onClose={() => (p.setOpenRow(null), setFull(false))}
           onOpenRow={(tableId, rowId) => p.onOpenTable(tableId, rowId)}
           guest={!!g}
+          edit={structure ? { tables: p.tables, channels: p.channels, onSave: (f) => saveField(f), onDelete: deleteField, onHide: (id) => patchTable({ page: { ...t.page, hidden: [...new Set([...(t.page?.hidden ?? []), id])] } }) } : undefined}
+          onPage={structure ? (page) => patchTable({ page }) : undefined}
+          onNewField={structure ? (f) => saveField(f) : undefined}
         />
       )}
     </section>
@@ -926,8 +937,8 @@ function FieldsEditor({ t, view, onView }: { t: DataTable; view: TableViewDef; o
   const [over, setOver] = useState<string | null>(null);
   const drop = (target: string) => {
     if (!drag || drag === target) return (setDrag(null), setOver(null));
-    const rest = all.slice(1).map((f) => f.id).filter((x) => x !== drag);
-    rest.splice(rest.indexOf(target) < 0 ? 0 : rest.indexOf(target), 0, drag);
+    const rest = all.map((f) => f.id).filter((x) => x !== drag);
+    rest.splice(Math.max(0, rest.indexOf(target)), 0, drag);
     onView({ order: rest });
     setDrag(null);
     setOver(null);
@@ -935,27 +946,28 @@ function FieldsEditor({ t, view, onView }: { t: DataTable; view: TableViewDef; o
   return (
     <div className="tab-edit-list">
       <p className="muted small">What this view shows, in this order. Drag to reorder.</p>
-      {all.map((f, i) => {
+      {all.map((f) => {
+        const isName = f.id === t.fields[0].id;
         const I = fieldIcon(f.type);
         return (
           <div
             key={f.id}
             className={`tab-edit-row${hidden.has(f.id) ? ' off' : ''}${over === f.id && drag !== f.id ? ' drop-line' : ''}`}
-            draggable={i > 0}
+            draggable
             onDragStart={() => setDrag(f.id)}
-            onDragOver={(e) => (e.preventDefault(), i > 0 && setOver(f.id))}
+            onDragOver={(e) => (e.preventDefault(), setOver(f.id))}
             onDrop={() => drop(f.id)}
             onDragEnd={() => (setDrag(null), setOver(null))}
           >
-            {i > 0 ? <GripVertical size={14} className="muted tb-drag" /> : <span style={{ width: 14 }} />}
+            <GripVertical size={14} className="muted tb-drag" />
             <I size={13} className="muted" />
             <span className="tab-edit-name">{f.name}</span>
-            {i > 0 ? (
+            {!isName ? (
               <button type="button" className="icon-btn sm" onClick={() => onView({ hidden: hidden.has(f.id) ? [...hidden].filter((x) => x !== f.id) : [...hidden, f.id] })} aria-label={hidden.has(f.id) ? `Show ${f.name}` : `Hide ${f.name}`}>
                 {hidden.has(f.id) ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>
             ) : (
-              <small className="muted">always</small>
+              <small className="muted">row name</small>
             )}
           </div>
         );
@@ -964,7 +976,7 @@ function FieldsEditor({ t, view, onView }: { t: DataTable; view: TableViewDef; o
         <button type="button" className="link-btn small" onClick={() => onView({ hidden: [] })}>
           Show all
         </button>
-        <button type="button" className="link-btn small" onClick={() => onView({ hidden: all.slice(1).map((f) => f.id) })}>
+        <button type="button" className="link-btn small" onClick={() => onView({ hidden: all.filter((f) => f.id !== t.fields[0].id).map((f) => f.id) })}>
           Hide all
         </button>
       </div>

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ArrowDownAZ, ArrowLeft, ArrowRight, ArrowUpAZ, Copy, EyeOff, Filter, Group, PanelLeft, Pencil, Plus, Trash2, WrapText } from 'lucide-react';
+import { Type, ArrowDownAZ, ArrowLeft, ArrowRight, ArrowUpAZ, Copy, EyeOff, Filter, Group, PanelLeft, Pencil, Plus, Trash2, WrapText } from 'lucide-react';
 import type { TableField } from '../../types';
 import { Popover } from '../ui/Popover';
 import { FIELD_TYPES, sortWords } from './fields';
 
-export type ColumnAction = 'edit' | 'asc' | 'desc' | 'filter' | 'group' | 'wrap' | 'pin' | 'unpin' | 'hide' | 'insertLeft' | 'insertRight' | 'left' | 'right' | 'duplicate' | 'delete';
+/** Kinds of column that can be a row's name. */
+const NAME_TYPES = ['text', 'email', 'phone', 'url', 'number'];
+
+export type ColumnAction = 'edit' | 'primary' | 'asc' | 'desc' | 'filter' | 'group' | 'wrap' | 'pin' | 'unpin' | 'hide' | 'insertLeft' | 'insertRight' | 'left' | 'right' | 'duplicate' | 'delete';
 
 /**
  * Everything about one column, from its header: rename it, change what kind it is, sort, filter or group by it,
@@ -17,6 +20,7 @@ export function ColumnMenu({
   field,
   first,
   last,
+  leftmost,
   wrapped,
   pinned,
   grouped,
@@ -31,6 +35,7 @@ export function ColumnMenu({
   field: TableField;
   first: boolean; // the name column: can't be hidden, moved or deleted
   last: boolean;
+  leftmost?: boolean; // shown first in this view
   wrapped: boolean;
   pinned: boolean; // this column is inside the pinned part
   grouped: boolean;
@@ -103,8 +108,13 @@ export function ColumnMenu({
           <WrapText size={14} /> {wrapped ? 'Keep text on one line' : 'Wrap text'}
         </button>
         <button type="button" onClick={() => act(pinned ? 'unpin' : 'pin')}>
-          <PanelLeft size={14} /> {pinned ? (first ? 'Let this column scroll' : 'Unpin columns') : 'Keep in view up to here'}
+          <PanelLeft size={14} /> {pinned ? 'Let columns scroll again' : 'Keep in view up to here'}
         </button>
+        {!first && !fixed && NAME_TYPES.includes(field.type) && (
+          <button type="button" onClick={() => act('primary')}>
+            <Type size={14} /> Use as each row’s name
+          </button>
+        )}
         {!first && (
           <button type="button" onClick={() => act('hide')}>
             <EyeOff size={14} /> Hide in this view
@@ -121,16 +131,16 @@ export function ColumnMenu({
             </button>
           </>
         )}
-        {!first && (
+        {
           <div className="tb-colmenu-row">
-            <button type="button" onClick={() => act('left')}>
+            <button type="button" disabled={leftmost} onClick={() => act('left')}>
               <ArrowLeft size={14} /> Move left
             </button>
             <button type="button" disabled={last} onClick={() => act('right')}>
               Move right <ArrowRight size={14} />
             </button>
           </div>
-        )}
+        }
         {!first && !fixed && field.type !== 'button' && (
           <button type="button" onClick={() => act('duplicate')}>
             <Copy size={14} /> Duplicate column
@@ -141,7 +151,7 @@ export function ColumnMenu({
             <Trash2 size={14} /> Delete column
           </button>
         ) : (
-          <p className="muted small tb-colmenu-note">This is each row’s name, so it stays first and can’t be deleted. You can rename it or change its kind.</p>
+          <p className="muted small tb-colmenu-note">This is each row’s name, so it can’t be hidden or deleted. To use another column as the name, open that column’s menu.</p>
         )}
       </div>
     </Popover>

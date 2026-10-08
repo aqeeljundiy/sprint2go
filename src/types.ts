@@ -763,12 +763,16 @@ export interface TableViewDef {
   hidden?: string[]; // field ids not shown in this view
   order?: string[]; // field order in this view (others follow in the table's order)
   widths?: Record<string, number>; // grid column widths
-  pinned?: number; // grid: how many columns stay in view when scrolling sideways (default 1)
+  pinned?: number; // grid: how many columns stay in view when scrolling sideways (default none)
   wrap?: string[]; // grid: fields whose text wraps onto more lines
   calcs?: Record<string, CalcKind>; // grid: a total under each column
   collapsed?: string[]; // grouped: groups folded shut
   dateField?: string; // calendar: which date field places rows
-  cover?: string; // gallery: the files field whose first picture is the card's cover
+  cover?: string; // gallery and board: the files field whose first picture is the card's cover
+  cardFields?: string[]; // board: fields on each card, in order (default: a few useful ones)
+  cardSize?: 'compact' | 'roomy'; // board
+  hiddenGroups?: string[]; // board: choice columns hidden in this view ('' = the "No status" column)
+  hideEmptyGroups?: boolean; // board: columns without cards are hidden
 }
 
 export interface DataTable {
@@ -784,6 +788,7 @@ export interface DataTable {
   intake?: TableIntake;
   signingSecret?: string; // signs outgoing webhooks (X-Sprint2go-Signature)
   share?: TableShare; // shown to the project's guests
+  page?: { order?: string[]; hidden?: string[]; hideEmpty?: boolean }; // the row page: field order, fields kept off it, empty ones folded
   ruleRuns?: Record<string, string>; // scheduled rule id -> the day it last ran (the server's)
   turns?: Record<string, number>; // "assign in turns": whose turn is next, per person field (the server's)
   log?: TableLogEntry[]; // the last webhook deliveries, both ways

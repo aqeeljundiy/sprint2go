@@ -230,11 +230,19 @@ export function visibleRows(t: DataTable, view: TableViewDef, rows: TableRow[], 
 
 /** Fields in a view's order (its own order first, then any new ones), without the hidden ones unless asked. */
 export function viewFields(t: DataTable, view: TableViewDef, withHidden = false) {
+  // The view's own order. The name field goes first unless someone moved it; it's never hidden.
   const pos = new Map((view.order ?? []).map((id, i) => [id, i]));
-  const first = t.fields[0];
-  const rest = t.fields.slice(1).sort((a, b) => (pos.get(a.id) ?? 1e6 + t.fields.indexOf(a)) - (pos.get(b.id) ?? 1e6 + t.fields.indexOf(b)));
-  const all = first ? [first, ...rest] : rest;
-  return withHidden ? all : all.filter((f, i) => i === 0 || !view.hidden?.includes(f.id));
+  const name = t.fields[0];
+  const rank = (f: TableField) => pos.get(f.id) ?? (f === name ? -1 : 1e6 + t.fields.indexOf(f));
+  const all = [...t.fields].sort((a, b) => rank(a) - rank(b));
+  return withHidden ? all : all.filter((f) => f === name || !view.hidden?.includes(f.id));
+}
+
+/** Moves one field to a new place in a view's order (index among all fields, hidden ones too). */
+export function orderWith(t: DataTable, view: TableViewDef, id: string, at: number) {
+  const order = viewFields(t, view, true).map((f) => f.id).filter((x) => x !== id);
+  order.splice(Math.max(0, Math.min(at, order.length)), 0, id);
+  return order;
 }
 
 export interface RowGroup {

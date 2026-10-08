@@ -4,6 +4,19 @@ import { createPortal } from 'react-dom';
 const PHONE = '(max-width: 760px)';
 
 /**
+ * Open popovers, each with the one it was opened from (its parent). Only one family is open at a time:
+ * opening a popover closes every other one that isn't its parent (or grandparent), so menus never pile up.
+ */
+type Entry = { el: () => HTMLElement | null; parent: Entry | null; close: () => void };
+const openPops = new Set<Entry>();
+const lineage = (e: Entry | null) => {
+  const s = new Set<Entry>();
+  for (let x = e; x; x = x.parent) s.add(x);
+  return s;
+};
+const entryOf = (el: Element | null) => (el ? [...openPops].find((e) => e.el() === el) ?? null : null);
+
+/**
  * A floating panel anchored to a trigger. On phones it becomes a bottom sheet.
  * Closes on outside click, Escape, scroll of the page behind it, and resize.
  */
@@ -25,8 +38,24 @@ export function Popover({
   align?: 'start' | 'end';
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const entry = useRef<Entry | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; up: boolean } | null>(null);
   const sheet = typeof window !== 'undefined' && window.matchMedia(PHONE).matches;
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const me: Entry = { el: () => ref.current, parent: entryOf(anchor.current?.closest('.pop') ?? null), close: () => closeRef.current() };
+    const keep = lineage(me);
+    [...openPops].forEach((e) => !keep.has(e) && e.close());
+    openPops.add(me);
+    entry.current = me;
+    return () => {
+      openPops.delete(me);
+      entry.current = null;
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     if (!open || sheet) return;
@@ -52,9 +81,10 @@ export function Popover({
     const down = (e: MouseEvent | TouchEvent) => {
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchor.current?.contains(t)) return;
-      // A picker opened from inside this one (a dropdown in a popover) isn't "outside".
-      const other = (t as Element).closest?.('.pop, .pop-scrim'); // (its own sheet scrim closes it by itself)
-      if (other && other !== ref.current && !other.classList.contains('is-leaving')) return;
+      // A picker opened from inside this one (a dropdown in a popover) isn't "outside"; any other popover is.
+      const other = (t as Element).closest?.('.pop');
+      if (other && other !== ref.current && entry.current && lineage(entryOf(other)).has(entry.current)) return;
+      if ((t as Element).closest?.('.pop-scrim') && !other) return; // a sheet's own scrim closes that sheet
       onClose();
     };
     const key = (e: KeyboardEvent) => {

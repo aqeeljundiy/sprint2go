@@ -26,6 +26,7 @@ export interface GridProps {
   onSaveField: (f: TableField, at?: number) => void; // at: insert at this view position
   onDeleteField: (id: string) => void;
   onDuplicateField: (id: string) => void;
+  onMakeName: (id: string) => void; // this column becomes each row's name
   onView: (p: Partial<TableViewDef>) => void;
   onFilterBy: (fieldId: string) => void;
   onMoveRow: (id: string, targetId: string, after: boolean, groupValue?: { fieldId: string; value: CellValue }) => void;
@@ -132,8 +133,8 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
   const Icon = fieldIcon(f.type);
   const sort = sortsOf(view).find((x) => x.fieldId === f.id);
   const ro = p.readOnly || p.locked;
-  const first = i === 0;
-  const pinnedN = view.pinned ?? 1;
+  const first = f.id === p.table.fields[0]?.id; // the row's name: can move, can't be hidden or deleted
+  const pinnedN = view.pinned ?? 0;
   const resize = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -161,10 +162,10 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
     const order = viewFields(p.table, view, true).map((x) => x.id);
     const visible = viewFields(p.table, view).map((x) => x.id);
     const swap = visible[i + d];
-    if (!swap || i + d === 0) return;
+    if (!swap) return;
     const a = order.indexOf(f.id), b = order.indexOf(swap);
     [order[a], order[b]] = [order[b], order[a]];
-    p.onView({ order: order.slice(1) });
+    p.onView({ order });
   };
   const action = (a: ColumnAction) => {
     if (a === 'edit') return setEditing(true);
@@ -173,7 +174,8 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
     if (a === 'group') return p.onView({ groupBy: view.groupBy === f.id ? undefined : f.id });
     if (a === 'wrap') return p.onView({ wrap: view.wrap?.includes(f.id) ? view.wrap.filter((x) => x !== f.id) : [...(view.wrap ?? []), f.id] });
     if (a === 'pin') return p.onView({ pinned: i + 1 });
-    if (a === 'unpin') return p.onView({ pinned: first ? 0 : 1 });
+    if (a === 'unpin') return p.onView({ pinned: 0 });
+    if (a === 'primary') return p.onMakeName(f.id);
     if (a === 'hide') return p.onView({ hidden: [...(view.hidden ?? []), f.id] });
     if (a === 'insertLeft') return setInserting(i);
     if (a === 'insertRight') return setInserting(i + 1);
@@ -187,7 +189,7 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
       className={`tb-th${i < pinnedN ? ' pinned' : ''}${dragging ? ' col-dragging' : ''}${dropSide ? ` drop-${dropSide}` : ''}`}
       style={sticky !== undefined ? { left: sticky } : undefined}
       role="columnheader"
-      draggable={!ro && !first}
+      draggable={!ro}
       onDragStart={(e) => (e.dataTransfer.setData('text/plain', f.id), (e.dataTransfer.effectAllowed = 'move'), onDragStart())}
       onDragOver={(e) => {
         e.preventDefault();
@@ -195,7 +197,7 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
         onDragOver(e.clientX > r.left + r.width / 2);
       }}
     >
-      <button ref={ref} type="button" className="tb-th-btn" onClick={() => !ro && setMenu(true)} title={f.description || (ro ? f.name : `${f.name}: click for options, drag to move`)}>
+      <button ref={ref} type="button" className="tb-th-btn" onClick={() => !ro && (menu || editing ? (setMenu(false), setEditing(false)) : setMenu(true))} title={f.description || (ro ? f.name : `${f.name}: click for options, drag to move`)}>
         <Icon size={13} />
         <span>{f.name}</span>
         {sort?.dir === 'asc' && <ArrowDown size={12} className="tb-sorted" />}
@@ -212,6 +214,7 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
             field={f}
             first={first}
             last={i === count - 1}
+            leftmost={i === 0}
             wrapped={!!view.wrap?.includes(f.id)}
             pinned={i < pinnedN}
             grouped={view.groupBy === f.id}
@@ -277,8 +280,9 @@ function FootCell({ f, p, rows, sticky }: { f: TableField; p: GridProps; rows: T
 export function GridView(p: GridProps) {
   const { table: t, view } = p;
   const fields = useMemo(() => viewFields(t, view), [t, view]);
-  const pinnedN = Math.min(view.pinned ?? 1, fields.length);
-  const widths = fields.map((f, i) => widthOf(view, f, i === 0));
+  const pinnedN = Math.min(view.pinned ?? 0, fields.length);
+  const nameId = t.fields[0]?.id;
+  const widths = fields.map((f) => widthOf(view, f, f.id === nameId));
   const cols = `${SEL_W}px ${widths.map((w) => `${w}px`).join(' ')} 48px`;
   const stickyLeft = (i: number) => (i < pinnedN ? SEL_W + widths.slice(0, i).reduce((a, b) => a + b, 0) : undefined);
 
@@ -463,7 +467,7 @@ export function GridView(p: GridProps) {
               wrap={!!view.wrap?.includes(f.id)}
             />
           );
-          if (ci === 0)
+          if (f.id === nameId)
             return (
               <div key={f.id} className={`tb-first${ci < pinnedN ? ' pinned' : ''}`} style={ci < pinnedN ? { left: stickyLeft(ci) } : undefined}>
                 {cell}
@@ -492,8 +496,8 @@ export function GridView(p: GridProps) {
 
   const colDrop = () => {
     if (!colDrag?.over || colDrag.id === colDrag.over.id) return setColDrag(null);
-    const order = viewFields(t, view, true).map((x) => x.id).slice(1).filter((x) => x !== colDrag.id);
-    const at = colDrag.over.id === t.fields[0].id ? 0 : order.indexOf(colDrag.over.id) + (colDrag.over.after ? 1 : 0);
+    const order = viewFields(t, view, true).map((x) => x.id).filter((x) => x !== colDrag.id);
+    const at = order.indexOf(colDrag.over.id) + (colDrag.over.after ? 1 : 0);
     order.splice(at, 0, colDrag.id);
     p.onView({ order });
     setColDrag(null);
@@ -516,7 +520,7 @@ export function GridView(p: GridProps) {
               dropSide={colDrag && colDrag.id !== f.id && colDrag.over?.id === f.id ? (colDrag.over.after ? 'after' : 'before') : null}
               onDragStart={() => setColDrag({ id: f.id })}
               onDragOver={(after) => {
-                if (colDrag && i > 0 && (colDrag.over?.id !== f.id || colDrag.over.after !== after)) setColDrag({ ...colDrag, over: { id: f.id, after } });
+                if (colDrag && (colDrag.over?.id !== f.id || colDrag.over.after !== after)) setColDrag({ ...colDrag, over: { id: f.id, after } });
               }}
             />
           ))}

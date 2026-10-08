@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Maximize2, Minimize2, Send, Trash2, X } from 'lucide-react';
-import type { CellValue, DataTable, TableField, TableRow, User } from '../../types';
+import { ChevronRight, Copy, GripVertical, Maximize2, Minimize2, Plus, Send, Trash2, X } from 'lucide-react';
+import type { CellValue, Channel, DataTable, TableField, TableRow, User } from '../../types';
+import { FieldMenu } from './FieldMenu';
 import { Avatar } from '../Avatar';
 import { relative } from '../../utils';
 import { ButtonCell, CellView, ContactActions, FilesPopover, InlineInput, PickPopover, RatingInput, typesInline, type CellCtx } from './Cell';
@@ -9,9 +10,20 @@ import { cellText, fieldIcon, isComputed, isEmpty, rowName, valueOf } from './fi
 import { useOnePanel } from '../../onePanel';
 
 /** One field on the row page: label on the left, the value (editable in place) on the right. */
-export function FieldLine({ f, row, ctx, onCell, readOnly, table }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean; table?: DataTable }) {
+/** What the row page can do with its fields' settings (people who may change the table's columns). */
+export interface PageEdit {
+  tables: DataTable[];
+  channels: Channel[];
+  onSave: (f: TableField) => void;
+  onDelete: (id: string) => void;
+  onHide: (id: string) => void;
+}
+
+export function FieldLine({ f, row, ctx, onCell, readOnly, table, edit, dragProps }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean; table?: DataTable; edit?: PageEdit; dragProps?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean } }) {
   const ref = useRef<HTMLButtonElement>(null);
+  const labelRef = useRef<HTMLButtonElement>(null);
   const [pop, setPop] = useState(false);
+  const [settings, setSettings] = useState(false);
   const t = table ?? ctx.tables.find((x) => x.id === row.tableId);
   const v = t ? valueOf(t, f, row, ctx) : row.values[f.id];
   const Icon = fieldIcon(f.type);
@@ -51,10 +63,20 @@ export function FieldLine({ f, row, ctx, onCell, readOnly, table }: { f: TableFi
       </>
     );
   return (
-    <div className="tb-rd-line">
-      <span className="tb-rd-label" title={f.description}>
-        <Icon size={13} /> {f.name}
-      </span>
+    <div className="tb-rd-line" {...dragProps}>
+      {edit && t ? (
+        <>
+          <button ref={labelRef} type="button" className="tb-rd-label editable" title={f.description || 'Rename, change type, hide or delete'} onClick={() => setSettings((x) => !x)}>
+            {dragProps?.draggable && <GripVertical size={13} className="tb-rd-grip" />}
+            <Icon size={13} /> <span>{f.name}</span>
+          </button>
+          <FieldMenu anchor={labelRef} open={settings} onClose={() => setSettings(false)} field={f} table={t} tables={edit.tables} onSave={edit.onSave} onDelete={() => edit.onDelete(f.id)} onHide={() => edit.onHide(f.id)} hideLabel="Hide on the row page" users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />
+        </>
+      ) : (
+        <span className="tb-rd-label" title={f.description}>
+          <Icon size={13} /> {f.name}
+        </span>
+      )}
       {editor}
     </div>
   );
@@ -64,7 +86,7 @@ function LongText({ v, onSave, label }: { v: CellValue | undefined; onSave: (v: 
   const start = typeof v === 'string' ? v : '';
   const [text, setText] = useState(start);
   useEffect(() => setText(start), [start]);
-  return <textarea className="tb-rd-text" rows={3} value={text} aria-label={label} placeholder="Empty" onChange={(e) => setText(e.target.value)} onBlur={() => text.trim() !== start && onSave(text.trim() || null)} />;
+  return <textarea className="tb-rd-text" rows={1} value={text} aria-label={label} placeholder="Empty" onChange={(e) => setText(e.target.value)} onBlur={() => text.trim() !== start && onSave(text.trim() || null)} />;
 }
 
 /** The row page: every field, the rows that link here, comments and what changed. */
@@ -83,7 +105,13 @@ export function RecordDrawer({
   guest,
   full,
   onToggleFull,
+  edit,
+  onPage,
+  onNewField,
 }: {
+  edit?: PageEdit; // set when this person may change the table's columns
+  onPage?: (p: NonNullable<DataTable['page']>) => void; // field order and what's shown on every row's page
+  onNewField?: (f: TableField) => void;
   full?: boolean; // shown as a page instead of a side panel
   onToggleFull?: () => void;
   guest?: boolean; // a project's guest: no comments, no duplicate or delete
@@ -104,6 +132,51 @@ export function RecordDrawer({
   const [comment, setComment] = useState('');
   useEffect(() => setTitle(String(row.values[table.fields[0].id] ?? '')), [row.id, row.values, table.fields]);
   const first = table.fields[0];
+  const page = table.page ?? {};
+  const pos = new Map((page.order ?? []).map((id, i) => [id, i]));
+  const rest = table.fields.slice(1).sort((a, b) => (pos.get(a.id) ?? 1e6 + table.fields.indexOf(a)) - (pos.get(b.id) ?? 1e6 + table.fields.indexOf(b)));
+  const hiddenIds = new Set(page.hidden ?? []);
+  const emptyHere = (f: TableField) => f.type !== 'button' && isEmpty(valueOf(table, f, row, ctx));
+  const main = rest.filter((f) => !hiddenIds.has(f.id) && !(page.hideEmpty && emptyHere(f)));
+  const folded = rest.filter((f) => !main.includes(f));
+  const [showFolded, setShowFolded] = useState(false);
+  const [drag, setDrag] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const [adding, setAdding] = useState(false);
+  const dropOn = (target: string) => {
+    if (drag && drag !== target && onPage) {
+      const ids = rest.map((f) => f.id).filter((x) => x !== drag);
+      ids.splice(ids.indexOf(target), 0, drag);
+      onPage({ ...page, order: ids });
+    }
+    setDrag(null);
+    setOverId(null);
+  };
+  const line = (f: TableField, draggable: boolean) => (
+    <FieldLine
+      key={f.id}
+      f={f}
+      row={row}
+      ctx={ctx}
+      table={table}
+      onCell={onCell}
+      edit={edit}
+      readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id))}
+      dragProps={
+        draggable && onPage
+          ? {
+              draggable: true,
+              className: `tb-rd-line${drag === f.id ? ' dragging' : ''}${overId === f.id && drag !== f.id ? ' drop-line' : ''}`,
+              onDragStart: (e) => ((e.dataTransfer.effectAllowed = 'move'), e.dataTransfer.setData('text/plain', f.id), setDrag(f.id)),
+              onDragOver: (e) => (e.preventDefault(), overId !== f.id && setOverId(f.id)),
+              onDrop: (e) => (e.preventDefault(), dropOn(f.id)),
+              onDragEnd: () => (setDrag(null), setOverId(null)),
+            }
+          : undefined
+      }
+    />
+  );
   const userOf = (id: string): User | undefined => ctx.users.find((u) => u.id === id);
   const byName = (id: string) => (id === 'webhook' ? 'A webhook' : id === 'rule' ? 'A rule' : (userOf(id)?.name.split(' ')[0] ?? 'Someone'));
   // Rows in other tables whose link fields point here.
@@ -162,11 +235,46 @@ export function RecordDrawer({
             {row.updatedAt !== row.createdAt ? ` · changed ${relative(row.updatedAt)}` : ''}
           </p>
 
-          <div className="tb-rd-fields">
-            {table.fields.slice(1).map((f) => (
-              <FieldLine key={f.id} f={f} row={row} ctx={ctx} table={table} onCell={onCell} readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id))} />
-            ))}
-          </div>
+          <div className="tb-rd-fields">{main.map((f) => line(f, true))}</div>
+          {folded.length > 0 && (
+            <>
+              <button type="button" className="link-btn small tb-rd-more" onClick={() => setShowFolded((x) => !x)}>
+                <ChevronRight size={13} className={`rot-chev ${showFolded ? 'open' : ''}`} />
+                {showFolded ? 'Hide' : 'Show'} {folded.length} {page.hideEmpty && folded.every((f) => !hiddenIds.has(f.id)) ? 'empty' : 'more'} {folded.length === 1 ? 'field' : 'fields'}
+              </button>
+              <div className={`fold ${showFolded ? 'open' : ''}`}>
+                <div className="fold-in">
+                  <div className="tb-rd-fields">
+                    {folded.map((f) => (
+                      <div key={f.id} className="tb-rd-folded">
+                        {line(f, false)}
+                        {hiddenIds.has(f.id) && onPage && (
+                          <button type="button" className="link-btn small" onClick={() => onPage({ ...page, hidden: (page.hidden ?? []).filter((x) => x !== f.id) })}>
+                            Show on the page
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+          {onPage && (
+            <div className="tb-rd-tools">
+              {onNewField && (
+                <>
+                  <button ref={addRef} type="button" className="link-btn small" onClick={() => setAdding(true)}>
+                    <Plus size={13} /> Add a field
+                  </button>
+                  {edit && <FieldMenu anchor={addRef} open={adding} onClose={() => setAdding(false)} field={null} table={table} tables={edit.tables} onSave={onNewField} users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />}
+                </>
+              )}
+              <label className="check-row small">
+                <input type="checkbox" checked={!!page.hideEmpty} onChange={(e) => onPage({ ...page, hideEmpty: e.target.checked })} /> Fold empty fields away
+              </label>
+            </div>
+          )}
 
           {row.extra && Object.keys(row.extra).length > 0 && (
             <div className="tb-rd-sec">

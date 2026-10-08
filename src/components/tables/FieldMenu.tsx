@@ -25,6 +25,7 @@ export function FieldMenu({
   onDelete,
   onSort,
   onHide,
+  hideLabel = 'Hide in this view',
   users = [],
   channels = [],
   rows,
@@ -45,6 +46,7 @@ export function FieldMenu({
   onDelete?: () => void;
   onSort?: (dir: 'asc' | 'desc') => void;
   onHide?: () => void;
+  hideLabel?: string;
 }) {
   const blank = (): TableField => ({ id: uid(), name: '', type: 'text' });
   const [draft, setDraft] = useState<TableField>(field ?? blank());
@@ -291,7 +293,7 @@ export function FieldMenu({
             )}
             {onHide && !isFirst && (
               <button type="button" onClick={() => (onHide(), onClose())}>
-                <EyeOff size={14} /> Hide in this view
+                <EyeOff size={14} /> {hideLabel}
               </button>
             )}
             {onDelete && !isFirst && (
