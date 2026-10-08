@@ -419,7 +419,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // The real meeting recorder (recorder/), when this server has one; otherwise the bot is a demo.
   const [recorderOn, setRecorderOn] = useState(false);
   useEffect(() => {
-    if (server.on) void fetch('/api/meet/status').then((r) => (r.ok ? r.json() : null)).then((x) => setRecorderOn(!!x?.recorder), () => {});
+    if (server.on) void fetch('/api/meet/status').then((r) => (r.ok ? r.json() : null)).then((x) => setRecorderOn(!!x?.recorder && x.reachable !== false), () => {});
   }, []);
   const meetingsRef = useRef<Meeting[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);

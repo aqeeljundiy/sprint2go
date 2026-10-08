@@ -1061,7 +1061,12 @@ createServer(async (req, res) => {
     }
 
     /* Meetings: send the recorder bot, stop it, play its audio */
-    if (p === '/api/meet/status') return json(res, 200, { recorder: !!RECORDER_URL && !!RECORDER_SECRET });
+    if (p === '/api/meet/status') {
+      const configured = !!RECORDER_URL && !!RECORDER_SECRET;
+      // "reachable" says whether the recorder service answers right now, not just whether it's configured.
+      const reachable = configured ? await recorder('/health', { signal: AbortSignal.timeout(3000) }).then((r) => r.ok, () => false) : false;
+      return json(res, 200, { recorder: configured, reachable });
+    }
     if (p === '/api/meet/bot' && req.method === 'POST') {
       const { meeting } = await body(req);
       const ws = workspaces().find((w) => w.id === meeting?.workspaceId) as any;
