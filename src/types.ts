@@ -495,7 +495,9 @@ export interface Meeting {
   topics?: { name: string; at: number }[]; // ms
   transcript?: { speaker: string; text: string; at: number }[]; // ms since start
   log?: { message: string; at: string }[];
-  recording?: { keep: 'video' | 'audio' | 'notes'; sizeMb: number; downgradeOn?: string };
+  recording?: { keep: 'video' | 'audio' | 'notes'; sizeMb: number; downgradeOn?: string; seconds?: number; url?: string }; // url: audio from the recorder bot
+  bot?: boolean; // sent with the real recorder (the server and the bot update it)
+  needsTasks?: boolean; // the server wrote notes; the sender's app turns the actions into tasks
   share?: { token: string; transcript: boolean; video: boolean };
   access?: { watch: 'everyone' | 'attendees' | 'admins'; download: boolean; transcript: 'everyone' | 'attendees' };
   createdBy?: string;

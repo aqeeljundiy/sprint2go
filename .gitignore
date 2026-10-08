@@ -5,3 +5,5 @@ dist
 !.env.example
 /data
 .DS_Store
+recorder/data
+recorder/.env

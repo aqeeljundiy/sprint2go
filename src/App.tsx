@@ -399,6 +399,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [joinOverrides, setJoinOverrides] = usePersisted<Record<string, boolean>>(`s2g-join:${user.id}`, {});
   const [sentEvents, setSentEvents] = useState<Record<string, string>>({});
   const botTimers = useRef<Record<string, number[]>>({});
+  // The real meeting recorder (recorder/), when this server has one; otherwise the bot is a demo.
+  const [recorderOn, setRecorderOn] = useState(false);
+  useEffect(() => {
+    if (server.on) void fetch('/api/meet/status').then((r) => (r.ok ? r.json() : null)).then((x) => setRecorderOn(!!x?.recorder), () => {});
+  }, []);
   const meetingsRef = useRef<Meeting[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [noticesOpen, setNoticesOpen] = useState(false);
@@ -1774,16 +1779,36 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     });
   };
 
+  // The recorder bot's notes were written on the server: the person who sent it gets the tasks and the heads-up.
+  useEffect(() => {
+    meetings
+      .filter((m) => m.needsTasks && m.createdBy === user.id && m.workspaceId === ws.id)
+      .forEach((m) => {
+        patchMeeting(m.id, { needsTasks: false });
+        if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) m.actions.forEach((_, i) => meetingActionToTask(m, i, true));
+        notify(user.id, 'meeting', `Notes are ready for “${m.title}” · ${m.actions.length} action item${m.actions.length === 1 ? '' : 's'}`, { app: 'meet', id: m.id });
+        showToast({ text: `Notes ready for “${m.title}”`, action: { label: 'Open', run: () => openMeeting(m.id) } });
+      });
+  }, [meetings]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** The demo bot: joins, waits to be let in, records a short sample conversation, leaves and writes notes. */
   const sendBot = (d: { url: string; title: string; botName: string; clientId: string; attendees?: string[]; fromEvent?: string }) => {
     const id = uid();
     const zoom = /zoom/i.test(d.url);
     const m: Meeting = { id, workspaceId: ws.id, title: d.title, at: nowIso(), minutes: 0, clientId: d.clientId || undefined, filedBy: d.clientId ? 'user' : undefined, attendees: d.attendees ?? [], summary: '', actions: [], status: 'queued', platform: zoom ? 'zoom' : 'meet', url: d.url, botName: d.botName, transcript: [], log: [{ message: d.fromEvent ? `Sent from calendar: ${d.title}` : 'Queued', at: nowIso() }], createdBy: user.id };
-    setMeetings((ms) => [m, ...ms]);
     if (d.fromEvent) setSentEvents((s2) => ({ ...s2, [d.fromEvent!]: id }));
     setSendBotOpen(false);
     setMeetPage({ kind: 'meeting', id });
     go('meet');
+    // With the real recorder, the server saves the meeting and the bot fills it in from there.
+    if (recorderOn) {
+      setMeetings((ms) => [{ ...m, bot: true }, ...ms]);
+      void fetch('/api/meet/bot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ meeting: { ...m, bot: true } }) }).then(async (r) => {
+        if (!r.ok) showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t send the notetaker' });
+      });
+      return;
+    }
+    setMeetings((ms) => [m, ...ms]);
     later(id, 1200, () => meetLog(id, `Joining ${zoom ? 'Zoom' : 'Google Meet'} as “${d.botName}”`, { status: 'joining' }));
     later(id, 2800, () => meetLog(id, 'Waiting to be let in', { status: 'waiting_room' }));
     later(id, 5000, () => meetLog(id, `Let in. Posted in the meeting chat: “Hi, I'm ${d.botName}. I'm recording this meeting and taking notes.”`, { status: meetSettings.announce ? 'recording' : 'recording' }));
@@ -1802,6 +1827,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const stopBot = (id: string) => {
     const m = meetings.find((x) => x.id === id);
+    if (m?.bot) return void fetch(`/api/meet/stop/${id}`, { method: 'POST' });
     (botTimers.current[id] ?? []).forEach(clearTimeout);
     botTimers.current[id] = [];
     if (!m || m.status !== 'recording') {

@@ -54,7 +54,7 @@ export const TYPE_LABEL: Record<MeetingType, string> = { sales: 'Sales', get cli
 // Audio only for now (older meetings saved as "video" are shown as audio). Video recording comes later.
 const KEEP_LABEL = { video: 'Audio and notes', audio: 'Audio and notes', notes: 'Notes and transcript only' } as const;
 export const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-const sizeOf = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${Math.round(mb)} MB`);
+const sizeOf = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : mb < 1 ? 'Under 1 MB' : `${Math.round(mb)} MB`);
 
 /* ---------------- Sidebar ---------------- */
 
@@ -300,21 +300,30 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
   const mTasks = p.tasks.filter((t) => t.meetingId === m.id);
   const doneN = mTasks.filter((t) => t.done).length;
   const speakers = [...new Set((m.transcript ?? []).map((l) => l.speaker))];
-  const duration = (m.minutes || 1) * 60_000;
   const rawKeep = m.recording?.keep ?? (status === 'done' ? p.settings.keep : undefined);
   const keep = rawKeep === 'video' ? 'audio' : rawKeep; // audio only for now
+  // A real recording from the bot plays through <audio>; demo meetings run the same controls on a timer.
+  const audio = useRef<HTMLAudioElement>(null);
+  const real = keep === 'audio' && !!m.recording?.url;
+  const duration = real && m.recording?.seconds ? m.recording.seconds * 1000 : (m.minutes || 1) * 60_000;
 
   useEffect(() => {
+    if (real) {
+      const a = audio.current;
+      if (a) void (playing ? a.play().catch(() => setPlaying(false)) : a.pause());
+      return;
+    }
     if (!playing) return;
     const t = setInterval(() => setTime((x) => (x + 1000 >= duration ? (setPlaying(false), duration) : x + 1000)), 250);
     return () => clearInterval(t);
-  }, [playing, duration]);
+  }, [playing, duration, real]);
   useEffect(() => {
     if (tab === 'transcript' && live) tEnd.current?.scrollIntoView({ block: 'end' });
   }, [m.transcript?.length, tab, live]);
 
   const seek = (ms: number) => {
     setTime(ms);
+    if (real && audio.current) audio.current.currentTime = ms / 1000;
     if (keep !== 'notes') setPlaying(true);
   };
 
@@ -422,6 +431,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
               </div>
             ) : (
               <div className={`m-player ${keep}`}>
+                {real && <audio ref={audio} src={m.recording!.url} preload="metadata" onTimeUpdate={(e) => setTime(e.currentTarget.currentTime * 1000)} onEnded={() => setPlaying(false)} />}
                 {keep === 'audio' && (
                   <span className="voice-wave playing-static">
                     {Array.from({ length: 48 }, (_, i) => (

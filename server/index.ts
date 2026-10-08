@@ -4,7 +4,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { Readable } from 'node:stream';
 import * as db from './db.ts';
 import * as ai from './ai.ts';
 import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
@@ -334,6 +335,104 @@ const routes: Record<string, (b: any) => Promise<unknown>> = {
   askmeetings: (b) => ai.askMeetings(b),
 };
 
+/* ---------- the meeting recorder (recorder/, its own service) ---------- */
+
+// Sprint2go asks the recorder to send a bot; the bot reports back to /api/meet/recorder.
+// The audio stays on the recorder and people play it through /api/meet/audio/:id.
+const RECORDER_URL = process.env.RECORDER_URL?.replace(/\/$/, '');
+const RECORDER_SECRET = process.env.RECORDER_SECRET ?? '';
+const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, '');
+const BOT_LIVE = new Set(['queued', 'joining', 'waiting_room', 'recording', 'stopping', 'processing']);
+/** What only the bot writes while it's in a meeting; the app's own saves can't overwrite these. */
+const BOT_FIELDS = ['status', 'error', 'log', 'transcript', 'recording', 'minutes', 'at'];
+const STT = ['groq', 'deepgram', 'sumopod', 'openai'];
+
+const recorder = (path: string, init: RequestInit = {}) =>
+  fetch(`${RECORDER_URL}${path}`, { ...init, headers: { ...(init.headers as Record<string, string>), authorization: `Bearer ${RECORDER_SECRET}` }, signal: AbortSignal.timeout(15_000) });
+
+const sameSecret = (got: string) => {
+  const a = Buffer.from(got), b = Buffer.from(RECORDER_SECRET);
+  return !!RECORDER_SECRET && a.length === b.length && timingSafeEqual(a, b);
+};
+
+/** Speech to text for a company's meetings: the service picked for meeting audio, else any speech key they saved. */
+function sttFor(ws: Ws & { meetings?: { language?: string } }) {
+  const pick = ws.ai?.jobs?.speech?.provider;
+  for (const p of [pick, ...STT]) {
+    if (!p || !STT.includes(p)) continue;
+    const k = db.loadKey(ws.id, p);
+    if (k) return { provider: p, apiKey: k.key, model: p === 'sumopod' ? 'gemini/gemini-3.5-flash' : null, language: ws.meetings?.language ?? 'auto' };
+  }
+  return null;
+}
+
+function saveMeeting(m: db.Doc) {
+  db.writeDocs('meetings', [m], [], null);
+  broadcast('meetings', [m], []);
+}
+const meetLine = (message: string) => ({ message, at: new Date().toISOString() });
+
+/** Which project a meeting belongs to: the company's first matching rule, else the project the AI named. */
+function fileMeeting(ws: any, m: any, aiFolder: string, clients: any[]) {
+  const speakers = (m.transcript ?? []).map((l: any) => String(l.speaker).toLowerCase());
+  const text = `${m.title} ${m.summary}`.toLowerCase();
+  const rule = (ws.meetingRules ?? []).find((r: any) =>
+    r.kind === 'participant' ? speakers.includes(r.value.toLowerCase()) : r.kind === 'domain' ? (m.url ?? '').includes(r.value) || (m.attendees ?? []).some((a: string) => a.toLowerCase().includes(r.value.split('.')[0])) : text.includes(r.value.toLowerCase()),
+  );
+  if (rule) return { clientId: rule.clientId, filedBy: 'rule', by: 'rule' };
+  const c = clients.find((x) => x.name.toLowerCase() === aiFolder.toLowerCase());
+  return c ? { clientId: c.id, filedBy: 'ai', by: 'AI' } : { clientId: undefined, filedBy: undefined, by: '' };
+}
+
+/** After the bot has the transcript: notes with the company's "Meeting notes" AI, filing, what to keep. */
+async function writeMeetingNotes(id: string) {
+  const m = db.getDoc('meetings', id) as any;
+  const ws = workspaces().find((w) => w.id === m?.workspaceId) as any;
+  if (!m || !ws) return;
+  const finish = (extra: Record<string, unknown>, ...lines: string[]) => {
+    const cur = db.getDoc('meetings', id) as any;
+    if (cur) saveMeeting({ ...cur, ...extra, status: 'done', log: [...(cur.log ?? []), ...lines.map(meetLine), meetLine('Done')] });
+  };
+  if (!m.transcript?.length) return finish({}, 'No transcript, so no notes');
+  const cfg = aiFor(ws.id, 'meeting');
+  if (!cfg) return finish({}, 'No AI is set up for meeting notes, so only the transcript is kept');
+  cfg.onUsage = (inTokens, outTokens) => db.logUsage({ workspaceId: ws.id, userId: m.createdBy ?? '', job: 'meeting', provider: cfg.included ? 'included' : cfg.provider, model: cfg.model, inTokens, outTokens });
+  try {
+    const clients = (db.allDocs('clients') as any[]).filter((c) => c.workspaceId === ws.id && c.status !== 'ended');
+    const members = ws.members.map((x: any) => String((db.getDoc('users', x.userId) as any)?.name ?? '').split(' ')[0]).filter(Boolean);
+    const notes = await withAI(cfg, () => ai.meetingNotes({ title: m.title, transcript: m.transcript, clientNames: clients.map((c) => c.name), members }));
+    const cur = db.getDoc('meetings', id) as any;
+    const filed = cur.filedBy === 'user' ? { clientId: cur.clientId, filedBy: 'user', by: '' } : fileMeeting(ws, { ...cur, summary: notes.summary }, notes.folder, clients);
+    const settings = ws.meetings ?? {};
+    const keep = (filed.clientId ? settings.clientMeetings : settings.internalMeetings) === 'notes' ? 'notes' : 'audio';
+    if (keep === 'notes' && cur.recording?.url) await recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
+    const name = clients.find((c) => c.id === filed.clientId)?.name;
+    finish(
+      {
+        title: cur.title || notes.title,
+        summary: notes.summary,
+        keyPoints: notes.keyPoints,
+        decisions: notes.decisions,
+        openQuestions: notes.openQuestions,
+        topics: notes.topics,
+        type: cur.type ?? notes.type,
+        tags: notes.tags,
+        actions: notes.actions,
+        clientId: filed.clientId,
+        filedBy: filed.filedBy,
+        sharedWithClient: cur.sharedWithClient ?? (filed.clientId ? !!settings.shareNotesWithClient : false),
+        recording: keep === 'notes' ? { keep: 'notes', sizeMb: 0 } : cur.recording,
+        needsTasks: true,
+      },
+      'Notes written',
+      ...(filed.by && name ? [`Filed in ${name} by ${filed.by}`] : []),
+      keep === 'notes' ? 'Kept: notes and transcript only (the audio was deleted)' : 'Kept: audio and notes',
+    );
+  } catch (err) {
+    finish({}, `Could not write notes: ${err instanceof AIError ? err.message : 'the AI service failed'}. Try "Write notes again" later.`);
+  }
+}
+
 /* ---------- the app itself ---------- */
 
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp' };
@@ -424,6 +523,31 @@ createServer(async (req, res) => {
       db.setLogin(inv.user_id, inv.email, password);
       res.setHeader('set-cookie', `s2g=${db.newSession(inv.user_id)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}`);
       return json(res, 200, { me: inv.user_id });
+    }
+
+    // The recorder reporting on a bot (no session: it signs with the shared secret).
+    if (p === '/api/meet/recorder' && req.method === 'POST') {
+      if (!sameSecret(String(req.headers.authorization ?? '').replace(/^Bearer /, ''))) return json(res, 401, {});
+      const b = await body(req);
+      const m = db.getDoc('meetings', String(b.id ?? '')) as any;
+      if (!m?.bot) return json(res, 404, {});
+      const next = { ...m };
+      if (Array.isArray(b.log) && b.log.length) next.log = [...(m.log ?? []), ...b.log].slice(-300);
+      if (Array.isArray(b.utterances) && b.utterances.length) next.transcript = [...(m.transcript ?? []), ...b.utterances];
+      if (b.startedAt) next.at = b.startedAt;
+      if (b.error) next.error = String(b.error).slice(0, 300);
+      if (b.status === 'recorded') {
+        if (Array.isArray(b.transcript)) next.transcript = b.transcript;
+        if (b.recording) {
+          next.minutes = Math.max(1, Math.round(b.recording.seconds / 60));
+          next.recording = { keep: 'audio', sizeMb: b.recording.sizeMb, seconds: b.recording.seconds, url: `/api/meet/audio/${m.id}` };
+        }
+        next.status = 'processing';
+        next.log = [...(next.log ?? []), meetLine('Writing notes')];
+      } else if (typeof b.status === 'string' && (BOT_LIVE.has(b.status) || ['failed', 'stopped'].includes(b.status))) next.status = b.status;
+      saveMeeting(next);
+      if (b.status === 'recorded') void writeMeetingNotes(m.id);
+      return json(res, 200, {});
     }
 
     const me = db.sessionUser(cookie(req, 's2g'));
@@ -527,6 +651,53 @@ createServer(async (req, res) => {
     }
 
     // Saves changes and tells everyone else who has the app open.
+    /* Meetings: send the recorder bot, stop it, play its audio */
+    if (p === '/api/meet/status') return json(res, 200, { recorder: !!RECORDER_URL && !!RECORDER_SECRET });
+    if (p === '/api/meet/bot' && req.method === 'POST') {
+      const { meeting } = await body(req);
+      const ws = workspaces().find((w) => w.id === meeting?.workspaceId) as any;
+      if (!ws || !memberOf(me).some((w) => w.id === ws.id)) return json(res, 403, { error: 'Not in this company.' });
+      if (ws.meetings?.whoCanRecord === 'admins' && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can send the notetaker here.' });
+      if (!RECORDER_URL || !RECORDER_SECRET) return json(res, 409, { error: 'The recorder isn’t set up on this server.' });
+      if (typeof meeting.id !== 'string' || !/^[\w-]{4,80}$/.test(meeting.id)) return json(res, 400, { error: 'Bad meeting.' });
+      const doc = { ...meeting, bot: true, status: 'queued', createdBy: me, transcript: [], log: [...(meeting.log ?? []).slice(0, 5)] };
+      saveMeeting(doc);
+      const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
+      const sent = await recorder('/bots', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: doc.id, url: doc.url, botName: doc.botName, callback: `${PUBLIC_URL}/api/meet/recorder`, stt: sttFor(ws), names, announce: ws.meetings?.announce !== false }),
+      }).then(async (r) => (r.ok ? null : ((await r.json().catch(() => ({}))) as any).error ?? `Recorder said ${r.status}`), () => 'The recorder didn’t answer');
+      if (sent) saveMeeting({ ...doc, status: 'failed', error: sent, log: [...doc.log, meetLine(`Couldn’t send the bot: ${sent}`)] });
+      return json(res, sent ? 502 : 200, sent ? { error: sent } : {});
+    }
+    const meetId = p.match(/^\/api\/meet\/(stop|audio)\/([\w-]+)$/);
+    if (meetId) {
+      const m = db.getDoc('meetings', meetId[2]) as any;
+      if (!m?.bot || !memberOf(me).some((w) => w.id === m.workspaceId)) return json(res, 404, { error: 'No such meeting.' });
+      if (meetId[1] === 'stop' && req.method === 'POST') {
+        const r = await recorder(`/bots/${m.id}/stop`, { method: 'POST' }).catch(() => null);
+        // Not running any more (the recorder restarted, say): close it here so it doesn't spin forever.
+        const gone = !r || r.status === 404;
+        saveMeeting({ ...m, status: gone ? (m.status === 'recording' ? 'failed' : 'stopped') : 'stopping', log: [...(m.log ?? []), meetLine(gone ? 'The bot was no longer running' : 'Asked to leave')] });
+        return json(res, 200, {});
+      }
+      if (meetId[1] === 'audio') {
+        const watch = m.access?.watch ?? 'everyone';
+        const me2 = (db.getDoc('users', me) as any)?.name;
+        if ((watch === 'admins' && !isAdminOf(me, m.workspaceId)) || (watch === 'attendees' && !isAdminOf(me, m.workspaceId) && m.createdBy !== me && !(m.attendees ?? []).includes(me2))) return json(res, 403, { error: 'You can’t play this recording.' });
+        const r = await recorder(`/recordings/${m.id}`, { headers: req.headers.range ? { range: String(req.headers.range) } : {} }).catch(() => null);
+        if (!r?.ok || !r.body) return json(res, r?.status === 404 ? 404 : 502, { error: 'Recording not available.' });
+        const h: Record<string, string> = { 'cache-control': 'private, max-age=3600' };
+        for (const k of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
+          const v = r.headers.get(k);
+          if (v) h[k] = v;
+        }
+        res.writeHead(r.status, h);
+        return Readable.fromWeb(r.body as any).pipe(res);
+      }
+    }
+
     if (p === '/api/sync' && req.method === 'POST') {
       const { coll, upserts = [], deletes = [] } = await body(req);
       if (!COLLS.includes(coll)) return json(res, 400, { error: 'Unknown collection' });
@@ -559,15 +730,24 @@ createServer(async (req, res) => {
       const ok = (upserts as db.Doc[])
         .filter((d) => d && typeof d.id === 'string')
         .map((d) => ownProfile(d) ?? (asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
-        .filter(Boolean);
+        .filter(Boolean)
+        .map((d) => {
+          // A meeting the recorder bot is still in: the bot's fields come from the bot, not from an older copy in someone's app.
+          const before = coll === 'meetings' ? (db.getDoc(coll, d!.id) as any) : null;
+          if (!before?.bot || !BOT_LIVE.has(before.status)) return d;
+          return { ...d, bot: true, ...Object.fromEntries(BOT_FIELDS.filter((k) => k in before).map((k) => [k, before[k]])) };
+        }) as db.Doc[];
       const dels = mine.size
         ? (deletes as string[]).filter((id) => {
             const before = db.getDoc(coll, id);
             return !before || see(coll, before);
           })
         : [];
+      const botAudio = coll === 'meetings' ? dels.filter((id: string) => (db.getDoc(coll, id) as any)?.recording?.url) : [];
       db.writeDocs(coll, ok, dels, me);
       broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);
+      // A deleted meeting takes its recording with it.
+      if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
       return json(res, 200, { saved: ok.length });
     }
 
