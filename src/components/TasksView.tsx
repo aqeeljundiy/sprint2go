@@ -767,7 +767,13 @@ export function TasksView(p: Props) {
                             onDragEnd={() => setDragging(null)}
                             onClick={() => p.onOpenTask(t.id)}
                           >
-                            <div className="ct-title">{t.title}</div>
+                            <div className="ct-top">
+                              <div className="ct-title">
+                                {t.priority === 'high' && <i className="ct-high" title="High priority" />}
+                                {t.title}
+                              </div>
+                              {owner ? <Avatar person={owner} size={22} /> : <span className="avatar-empty sm" title="Nobody on it yet">?</span>}
+                            </div>
                             <div className="ct-meta">
                               {c && scope.kind !== 'client' && (
                                 <span className="client-chip" style={{ ['--c' as string]: c.color }}>
@@ -780,8 +786,6 @@ export function TasksView(p: Props) {
                                 </span>
                               )}
                               {d && col.id !== 'done' && <span className={`due ${d.cls}`}>{d.text}</span>}
-                              <span className="spacer" />
-                              {owner ? <Avatar person={owner} size={22} /> : <span className="avatar-empty sm">?</span>}
                             </div>
                           </div>
                         );

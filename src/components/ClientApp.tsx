@@ -823,7 +823,7 @@ function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; rec
     <div className="client-notes">
       {recording !== 'off' && (
         <div className="client-recording">
-          <Video size={16} /> {recording === 'video' ? 'Video' : 'Audio'} recording
+          <Video size={16} /> Audio recording
           <small className="muted">Plays here once recordings are stored on the server.</small>
         </div>
       )}

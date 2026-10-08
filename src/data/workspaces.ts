@@ -3,8 +3,8 @@ import type { AISettings, MeetingSettings, Plan, User, Workspace } from '../type
 const days = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
 
 export const DEFAULT_MEETINGS: MeetingSettings = {
-  keep: 'video',
-  clientMeetings: 'video',
+  keep: 'audio', // audio only for now: video recording comes later
+  clientMeetings: 'audio',
   internalMeetings: 'notes',
   downgradeAfter: 60,
   whoCanRecord: 'everyone',

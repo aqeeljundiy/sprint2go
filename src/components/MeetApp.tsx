@@ -51,7 +51,8 @@ export const STATUS_LABEL: Record<NonNullable<Meeting['status']>, string> = {
 };
 export const LIVE = new Set(['queued', 'joining', 'waiting_room', 'recording', 'stopping', 'processing']);
 export const TYPE_LABEL: Record<MeetingType, string> = { sales: 'Sales', get client() { return `${term.One}`; }, internal: 'Internal', hiring: 'Hiring', partner: 'Partner', one_on_one: '1:1', other: 'Other' };
-const KEEP_LABEL = { video: 'Video, audio and notes', audio: 'Audio and notes', notes: 'Notes and transcript only' } as const;
+// Audio only for now (older meetings saved as "video" are shown as audio). Video recording comes later.
+const KEEP_LABEL = { video: 'Audio and notes', audio: 'Audio and notes', notes: 'Notes and transcript only' } as const;
 export const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 const sizeOf = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${Math.round(mb)} MB`);
 
@@ -300,7 +301,8 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
   const doneN = mTasks.filter((t) => t.done).length;
   const speakers = [...new Set((m.transcript ?? []).map((l) => l.speaker))];
   const duration = (m.minutes || 1) * 60_000;
-  const keep = m.recording?.keep ?? (status === 'done' ? p.settings.keep : undefined);
+  const rawKeep = m.recording?.keep ?? (status === 'done' ? p.settings.keep : undefined);
+  const keep = rawKeep === 'video' ? 'audio' : rawKeep; // audio only for now
 
   useEffect(() => {
     if (!playing) return;
@@ -443,24 +445,15 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                 <span className="muted small">Keep:</span>
                 <Select
                   value={keep ?? p.settings.keep}
-                  onChange={(v) => p.onPatch(m.id, { recording: { keep: v, sizeMb: v === 'video' ? (m.recording?.keep === 'video' ? m.recording.sizeMb : (m.minutes || 30) * 18.3) : v === 'audio' ? (m.minutes || 30) * 0.8 : 0.4 } })}
+                  onChange={(v) => p.onPatch(m.id, { recording: { ...m.recording, keep: v, sizeMb: v === 'audio' ? (m.minutes || 30) * 0.5 : 0.4 } })}
                   label="What to keep"
                   className="sel-flat"
                   width={280}
-                  options={(['video', 'audio', 'notes'] as const).map((k) => ({ value: k, label: KEEP_LABEL[k], hint: k === 'video' ? `About ${sizeOf((m.minutes || 30) * 18.3)}` : k === 'audio' ? `About ${sizeOf((m.minutes || 30) * 0.8)}` : 'Under 1 MB' }))}
+                  options={(['audio', 'notes'] as const).map((k) => ({ value: k, label: KEEP_LABEL[k], hint: k === 'audio' ? `About ${sizeOf((m.minutes || 30) * 0.5)}` : 'Under 1 MB' }))}
                 />
                 {m.recording && <span className="muted small">{sizeOf(m.recording.sizeMb)} of team storage</span>}
                 <button ref={accessBtn} className="link-btn small" onClick={() => setAccessOpen(true)}>
                   <Lock size={12} /> Who can see this
-                </button>
-              </div>
-            )}
-            {status === 'done' && keep === 'video' && m.minutes >= 90 && (
-              <div className="remember warn">
-                This {Math.round(m.minutes / 60)}-hour recording is {sizeOf(m.recording?.sizeMb ?? m.minutes * 18.3)}. Keep the video, or audio and notes only?
-                <span className="spacer" />
-                <button className="ghost-btn sm" onClick={() => p.onPatch(m.id, { recording: { keep: 'audio', sizeMb: m.minutes * 0.8 } })}>
-                  Audio and notes
                 </button>
               </div>
             )}

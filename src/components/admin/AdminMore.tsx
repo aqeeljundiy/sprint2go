@@ -167,9 +167,9 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
 
 /* ---------------- Meetings ---------------- */
 
+// Audio only for now: the notetaker records sound (what the notes come from). Video recording comes later.
 const KEEP: { value: MeetingSettings['keep']; label: string; hint: string }[] = [
-  { value: 'video', label: 'Video, audio and notes', hint: 'About 1.1 GB per hour' },
-  { value: 'audio', label: 'Audio and notes', hint: 'About 30 to 60 MB per hour' },
+  { value: 'audio', label: 'Audio and notes', hint: 'About 30 MB per hour' },
   { value: 'notes', label: 'Notes and transcript only', hint: 'Under 1 MB per hour' },
 ];
 
@@ -184,25 +184,12 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         <div className="set-block">
           <h3>What to keep</h3>
           <Row title={`${term.Who} meetings`} hint={`Meetings with a ${term.who} on the invite`}>
-            <Select value={m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label={`${term.Who} meetings`} width={280} />
+            <Select value={m.clientMeetings === 'video' ? 'audio' : m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label={`${term.Who} meetings`} width={280} />
           </Row>
           <Row title="Internal meetings" hint="Standups, team syncs">
-            <Select value={m.internalMeetings} onChange={(v) => set({ internalMeetings: v })} options={KEEP} label="Internal meetings" width={280} />
+            <Select value={m.internalMeetings === 'video' ? 'audio' : m.internalMeetings} onChange={(v) => set({ internalMeetings: v })} options={KEEP} label="Internal meetings" width={280} />
           </Row>
-          <Row title="Turn video into audio after" hint="Keeps the transcript and notes forever, frees most of the space">
-            <Select
-              value={String(m.downgradeAfter)}
-              onChange={(v) => set({ downgradeAfter: Number(v) as MeetingSettings['downgradeAfter'] })}
-              label="Turn video into audio after"
-              options={[
-                { value: '30', label: '30 days' },
-                { value: '60', label: '60 days' },
-                { value: '90', label: '90 days' },
-                { value: '0', label: 'Never' },
-              ]}
-            />
-          </Row>
-          <p className="muted small">After a long meeting the host is asked once: “This 2-hour recording is 2.2 GB. Keep the video, or audio and notes only?”</p>
+<p className="muted small">The notetaker records audio only for now. Video recording comes later.</p>
         </div>
         <div className="set-block">
           <h3>Permissions</h3>

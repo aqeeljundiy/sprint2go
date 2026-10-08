@@ -57,7 +57,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
   const [setup, setSetup] = useState<EmailSetup>('keep');
   const [provider, setProvider] = useState<MailProvider>('google');
   const [emailInput, setMyEmail] = useState('');
-  const [keep, setKeep] = useState<MeetingSettings['keep']>('video');
+  const [keep, setKeep] = useState<MeetingSettings['keep']>('audio');
   const [team, setTeam] = useState<Invite[]>([{ key: 1, name: '', email: '', role: 'member', where: 'sprint2go' }]);
 
   const d = domain.trim().toLowerCase().replace(/^@/, '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -104,7 +104,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,
         plan: trialPlan(brand.name.trim(), myEmail),
         ai: defaultAI(false),
-        meetings: { ...DEFAULT_MEETINGS, keep, clientMeetings: keep, internalMeetings: keep === 'video' ? 'audio' : keep },
+        meetings: { ...DEFAULT_MEETINGS, keep, clientMeetings: keep, internalMeetings: keep },
       },
       newUsers,
     );
@@ -214,12 +214,11 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
               {apps.includes('meet') && (
                 <div className="ob-keep">
                   <strong>What should meetings keep by default?</strong>
-                  <p className="muted small">The notetaker records the whole meeting for accurate notes, then keeps only this. People can change it per meeting.</p>
-                  <div className="cat-pick three">
+                  <p className="muted small">The notetaker records the meeting’s audio for accurate notes, then keeps only this. People can change it per meeting. Video recording comes later.</p>
+                  <div className="cat-pick">
                     {(
                       [
-                        ['video', 'Video, audio and notes', 'About 1.1 GB per hour'],
-                        ['audio', 'Audio and notes', 'About 50 MB per hour'],
+                        ['audio', 'Audio and notes', 'About 30 MB per hour'],
                         ['notes', 'Notes and transcript only', 'Almost no space'],
                       ] as const
                     ).map(([v, l, h]) => (

@@ -113,7 +113,6 @@ export function ClientAccessForm({
         sel('recordings', [
           { value: 'off', label: 'Off' },
           { value: 'audio', label: 'Audio' },
-          { value: 'video', label: 'Video' },
         ]),
       )}
       {row(
