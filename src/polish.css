@@ -2965,3 +2965,30 @@ kbd {
   display: grid;
   gap: 8px;
 }
+
+/* Project overview: one rhythm. Cards are spaced only by the grid gap, every card pads like the others
+   (the header carries the top padding), and the header actions share one button style. */
+.needs-card,
+.client-notes-card {
+  margin: 0 !important;
+}
+.side-card.overview-card {
+  padding: 0 0 16px !important;
+}
+.side-card.overview-card > :not(h3) {
+  margin-left: 18px;
+  margin-right: 18px;
+}
+.side-card > h3:has(> button) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* Card text lines up with its heading (18px in): rows keep their hover box, the text sits on the same edge. */
+.side-card > .home-list {
+  padding: 4px 8px 8px;
+}
+.side-card > .te-empty {
+  padding: 4px 18px 16px;
+}

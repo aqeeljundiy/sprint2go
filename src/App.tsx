@@ -773,7 +773,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const last = t.messages[t.messages.length - 1];
       try {
         const found = await ai.todos(t, settings.name || user.name);
-        const have = new Set(todosRef.current.filter((x) => x.userId === user.id && x.threadId === t.id).map((x) => x.title.toLowerCase()));
+        // A project's email is shared work: if a teammate's app already made this to-do, don't make it again for you.
+        const shared = !!clientForThread(t);
+        const have = new Set(todosRef.current.filter((x) => x.threadId === t.id && (shared || x.userId === user.id)).map((x) => x.title.toLowerCase()));
         const next = found
           .filter((f) => !have.has(f.title.toLowerCase()))
           .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: 'todo', threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));

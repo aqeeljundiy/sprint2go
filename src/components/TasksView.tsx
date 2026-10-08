@@ -863,7 +863,7 @@ export function TasksView(p: Props) {
             <div className="side-card client-notes-card">
               <h3>
                 Notes
-                <button className="link-btn" onClick={() => p.onNewNote(client.id)}>
+                <button className="ghost-btn sm" onClick={() => p.onNewNote(client.id)}>
                   <Plus size={13} /> New note
                 </button>
               </h3>
