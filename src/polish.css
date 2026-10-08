@@ -3270,3 +3270,58 @@ p.trial-note > svg:first-child {
   gap: 8px;
   padding-top: 8px;
 }
+
+/* Extra bits a task card or row can show (checklist 2/5, comments, last change, who). */
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.meta-chip.ok {
+  color: var(--ok-solid, #10b981);
+}
+.meta-chip.muted {
+  color: var(--text-3);
+}
+.person-chip {
+  gap: 5px;
+}
+
+/* Tasks: saved views as tabs, quick filters as toggles. */
+.task-views {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.task-view-tabs {
+  margin: 0 !important;
+}
+.quick-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quick-chips > button:not(.link-btn) {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  background: var(--hover);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.quick-chips > button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
+}
+.link-like {
+  text-align: left;
+  color: var(--text);
+}
+.link-like:hover {
+  color: var(--accent);
+}

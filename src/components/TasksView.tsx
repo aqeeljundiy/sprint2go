@@ -1,10 +1,11 @@
+import { Popover } from './ui/Popover';
 import { TabBar } from './ui/TabBar';
 import { ProjectPeople } from './ProjectPeople';
 import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronRight, SlidersHorizontal, Bookmark } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
 import { ProjectTables } from './tables/TablesApp';
 import { ClientAccessForm } from './admin/ClientAccessForm';
@@ -137,6 +138,21 @@ interface Props {
   onMenu: () => void;
 }
 
+/** What a task can show on its card (board) or row (list); each person picks, per layout. */
+const TASK_FIELDS: { id: string; name: string }[] = [
+  { id: 'due', name: 'Deadline' },
+  { id: 'assignee', name: 'Who’s on it' },
+  { id: 'project', name: 'Project' },
+  { id: 'team', name: 'Team' },
+  { id: 'brief', name: 'Brief' },
+  { id: 'priority', name: 'High priority mark' },
+  { id: 'checklist', name: 'Checklist progress' },
+  { id: 'comments', name: 'Comments' },
+  { id: 'source', name: 'Where it came from' },
+  { id: 'updated', name: 'Last change' },
+];
+const FIELD_DEFAULTS = { list: ['due', 'project', 'team', 'brief', 'priority', 'checklist', 'source'], board: ['assignee', 'due', 'project', 'team', 'priority', 'checklist'] };
+
 export function TasksView(p: Props) {
   const [layout, setLayout] = usePersisted<'list' | 'board'>('s2g-task-layout', 'list');
   const [groupPref, setGroupBy] = usePersisted<GroupBy>('s2g-task-group', 'client');
@@ -168,7 +184,9 @@ export function TasksView(p: Props) {
   const briefOf = (id?: string) => p.tasks.find((t) => t.id === id && isBrief(t));
 
   // What this page is about (briefs are shown as cards, not rows).
-  const inScope = useMemo(() => {
+  // Quick filters on top of where you are: only late, only high priority, only waiting on the client, only nobody on it.
+  const [quick, setQuick] = useState<string[]>([]);
+  const scoped = useMemo(() => {
     const work = p.tasks.filter((t) => !isBrief(t));
     switch (scope.kind) {
       case 'mine':
@@ -189,6 +207,40 @@ export function TasksView(p: Props) {
         return work;
     }
   }, [p.tasks, scope, p.me]);
+  const inScope = useMemo(
+    () =>
+      scoped.filter(
+        (t) =>
+          (!quick.includes('late') || (!t.done && late(t))) &&
+          (!quick.includes('high') || t.priority === 'high') &&
+          (!quick.includes('waiting') || statusOf(t) === 'waiting' || t.approval?.status === 'waiting') &&
+          (!quick.includes('nobody') || (!t.userId && !(t.assignees?.length))),
+      ),
+    [scoped, quick],
+  );
+
+  /* Saved views: where you are, list or board, open or done, grouping and quick filters, under a name. Just yours. */
+  type SavedView = { id: string; name: string; scope: TaskScope; layout: 'list' | 'board'; filter: Filter; groupBy: GroupBy; quick: string[] };
+  const [views, setViews] = usePersisted<SavedView[]>('s2g-task-views', []);
+  const [viewName, setViewName] = useState('');
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const viewsBtn = useRef<HTMLButtonElement>(null);
+  const nowState = { scope, layout, filter, groupBy: groupPref, quick: [...quick].sort() };
+  const activeView = views.find((v) => JSON.stringify({ scope: v.scope, layout: v.layout, filter: v.filter, groupBy: v.groupBy, quick: [...v.quick].sort() }) === JSON.stringify(nowState));
+  const applyView = (v: SavedView) => {
+    p.onScope(v.scope);
+    setLayout(v.layout);
+    setFilter(v.filter);
+    setGroupBy(v.groupBy);
+    setQuick(v.quick);
+  };
+  const saveView = () => {
+    const name = viewName.trim();
+    if (!name) return;
+    setViews([...views, { id: Date.now().toString(36), name, ...nowState }]);
+    setViewName('');
+    setViewsOpen(false);
+  };
 
   const briefs = useMemo(() => {
     const all = p.tasks.filter(isBrief);
@@ -283,6 +335,30 @@ export function TasksView(p: Props) {
       });
     }, 380);
   };
+  const [taskFields, setTaskFields] = usePersisted<{ list: string[]; board: string[] }>('s2g-task-fields', FIELD_DEFAULTS);
+  const showF = (layoutName: 'list' | 'board', id: string) => (taskFields[layoutName] ?? FIELD_DEFAULTS[layoutName]).includes(id);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
+  const fieldsBtn = useRef<HTMLButtonElement>(null);
+  const extras = (t: Todo, l: 'list' | 'board') => {
+    const comments = (t.history ?? []).filter((h) => h.kind === 'comment').length;
+    const last = t.history?.at(-1)?.at ?? t.createdAt;
+    const cl = t.checklist ?? [];
+    return (
+      <>
+        {showF(l, 'checklist') && cl.length > 0 && (
+          <span className={`meta-chip ${cl.every((x) => x.done) ? 'ok' : ''}`} title="Checklist">
+            <CheckCircle2 size={11} /> {cl.filter((x) => x.done).length}/{cl.length}
+          </span>
+        )}
+        {showF(l, 'comments') && comments > 0 && (
+          <span className="meta-chip" title="Comments">
+            <MessagesSquare size={11} /> {comments}
+          </span>
+        )}
+        {showF(l, 'updated') && last && <span className="meta-chip muted">{relative(last)}</span>}
+      </>
+    );
+  };
   const row = (t: Todo) => {
     const d = t.due ? dueLabel(t.due) : null;
     const src = SOURCE[t.source];
@@ -292,7 +368,7 @@ export function TasksView(p: Props) {
     return (
       <div
         key={t.id}
-        className={`task ${t.done || ticking.has(t.id) ? 'done' : ''} ${ticking.has(t.id) ? 'leaving' : ''} ${t.priority === 'high' ? 'high' : ''} ${statusOf(t) === 'doing' ? 'doing' : ''}`}
+        className={`task ${t.done || ticking.has(t.id) ? 'done' : ''} ${ticking.has(t.id) ? 'leaving' : ''} ${t.priority === 'high' && showF('list', 'priority') ? 'high' : ''} ${statusOf(t) === 'doing' ? 'doing' : ''}`}
         onClick={(e) => !(e.target as HTMLElement).closest('button, input, .sel') && p.onOpenTask(t.id)}
       >
         <button className="todo-check" onClick={() => tick(t)} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
@@ -311,31 +387,39 @@ export function TasksView(p: Props) {
             {statusOf(t) === 'doing' && <span className="due doing">In progress</span>}
             {statusOf(t) === 'waiting' && <span className="due waiting">Waiting on {term.who}</span>}
             {statusOf(t) === 'review' && <span className="due review">Waiting for review</span>}
-            {d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
+            {showF('list', 'due') && d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
+            {showF('list', 'assignee') && person(t.userId) && (
+              <span className="meta-chip person-chip">
+                <Avatar person={person(t.userId)!} size={14} /> {person(t.userId)!.name.split(' ')[0]}
+              </span>
+            )}
             {t.done && (
               <span className="done-info">
                 Done {t.doneBy ? `by ${t.doneBy === p.me ? 'you' : (person(t.doneBy)?.name.split(' ')[0] ?? 'someone')} ` : ''}
                 {t.doneAt ? relative(t.doneAt) : ''}
               </span>
             )}
-            {c && scope.kind !== 'client' && (
+            {showF('list', 'project') && c && scope.kind !== 'client' && (
               <span className="client-chip" style={{ ['--c' as string]: c.color }}>
                 {c.name}
               </span>
             )}
-            {tm && groupBy !== 'team' && scope.kind !== 'team' && (
+            {showF('list', 'team') && tm && groupBy !== 'team' && scope.kind !== 'team' && (
               <span className="team-chip" style={{ ['--c' as string]: tm.color }}>
                 {tm.name}
               </span>
             )}
-            {br && (
+            {showF('list', 'brief') && br && (
               <button className="brief-chip" onClick={() => p.onOpenTask(br.id)} title="Open the brief">
                 <FileText size={11} /> {br.title}
               </button>
             )}
-            <span className="src" title={src.label}>
-              <src.icon size={12} />
-            </span>
+            {showF('list', 'source') && (
+              <span className="src" title={src.label}>
+                <src.icon size={12} />
+              </span>
+            )}
+            {extras(t, 'list')}
             {t.threadId && (
               <button className="todo-src" onClick={() => p.onOpenThread(t.threadId!)}>
                 Open email
@@ -607,6 +691,37 @@ export function TasksView(p: Props) {
           <Sparkles size={14} /> Brain dump
         </button>
         {showTaskList && (
+          <>
+            <button ref={fieldsBtn} className="icon-btn" onClick={() => setFieldsOpen(true)} title={`What ${layout === 'board' ? 'cards' : 'rows'} show`} aria-label="Fields">
+              <SlidersHorizontal size={16} />
+            </button>
+            <Popover anchor={fieldsBtn} open={fieldsOpen} onClose={() => setFieldsOpen(false)} width={240} align="end" title={`On each ${layout === 'board' ? 'card' : 'row'}`}>
+              <div className="tab-edit-list">
+                <p className="muted small">What each {layout === 'board' ? 'card on the board' : 'row in the list'} shows. Just for you.</p>
+                {TASK_FIELDS.map((f) => (
+                  <label key={f.id} className="check-row tb-field-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showF(layout === 'board' ? 'board' : 'list', f.id)}
+                      onChange={(e) => {
+                        const l = layout === 'board' ? 'board' : 'list';
+                        const cur = taskFields[l] ?? FIELD_DEFAULTS[l];
+                        setTaskFields({ ...taskFields, [l]: e.target.checked ? [...cur, f.id] : cur.filter((x) => x !== f.id) });
+                      }}
+                    />{' '}
+                    {f.name}
+                  </label>
+                ))}
+                <div className="tab-edit-foot">
+                  <button type="button" className="link-btn small" onClick={() => setTaskFields({ ...taskFields, [layout === 'board' ? 'board' : 'list']: FIELD_DEFAULTS[layout === 'board' ? 'board' : 'list'] })}>
+                    Back to the usual
+                  </button>
+                </div>
+              </div>
+            </Popover>
+          </>
+        )}
+        {showTaskList && (
           <div className="segmented icon-seg">
             <button className={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')} title="List">
               <List size={15} />
@@ -710,6 +825,63 @@ export function TasksView(p: Props) {
               </button>
             </div>
 
+            <div className="task-views">
+              {views.length > 0 && (
+                <TabBar
+                  storageKey="task-views"
+                  className="client-tabs task-view-tabs"
+                  value={activeView?.id ?? ''}
+                  onSelect={(id) => {
+                    const v = views.find((x) => x.id === id);
+                    if (v) applyView(v);
+                  }}
+                  items={views.map((v) => ({ id: v.id, name: v.name, label: v.name }))}
+                />
+              )}
+              <div className="quick-chips" role="group" aria-label="Quick filters">
+                {(
+                  [
+                    ['late', 'Late'],
+                    ['high', 'High priority'],
+                    ['waiting', `Waiting on ${term.who}`],
+                    ['nobody', 'Nobody on it'],
+                  ] as const
+                ).map(([id, l]) => (
+                  <button key={id} className={quick.includes(id) ? 'on' : ''} aria-pressed={quick.includes(id)} onClick={() => setQuick((q) => (q.includes(id) ? q.filter((x) => x !== id) : [...q, id]))}>
+                    {l}
+                  </button>
+                ))}
+                <span className="spacer" />
+                <button ref={viewsBtn} className="link-btn small" onClick={() => setViewsOpen(true)}>
+                  <Bookmark size={13} /> {activeView ? activeView.name : 'Save as a view'}
+                </button>
+                <Popover anchor={viewsBtn} open={viewsOpen} onClose={() => setViewsOpen(false)} width={280} align="end" title="Your views">
+                  <div className="tab-edit-list">
+                    <p className="muted small">A view remembers where you are, list or board, what’s showing and these filters. Views are just yours and appear as tabs here.</p>
+                    {!activeView && (
+                      <div className="tb-act-row">
+                        <input className="tb-native" autoFocus value={viewName} placeholder="Name, like “My late work”" onChange={(e) => setViewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveView()} />
+                        <button className="primary-btn sm" disabled={!viewName.trim()} onClick={saveView}>
+                          Save
+                        </button>
+                      </div>
+                    )}
+                    {views.map((v) => (
+                      <div key={v.id} className="tab-edit-row">
+                        <Bookmark size={13} className="muted" />
+                        <button type="button" className="tab-edit-name link-like" onClick={() => (applyView(v), setViewsOpen(false))}>
+                          {v.name}
+                        </button>
+                        <button type="button" className="icon-btn sm" aria-label={`Delete ${v.name}`} onClick={() => setViews(views.filter((x) => x.id !== v.id))}>
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </Popover>
+              </div>
+            </div>
+
             {layout === 'list' && (
               <div className="list-tools">
                 <div className="segmented">
@@ -768,7 +940,7 @@ export function TasksView(p: Props) {
                         return (
                           <div
                             key={t.id}
-                            className={`card-task ${t.priority === 'high' ? 'high' : ''}`}
+                            className={`card-task ${t.priority === 'high' && showF('board', 'priority') ? 'high' : ''}`}
                             draggable
                             onDragStart={() => setDragging(t.id)}
                             onDragEnd={() => setDragging(null)}
@@ -776,23 +948,37 @@ export function TasksView(p: Props) {
                           >
                             <div className="ct-top">
                               <div className="ct-title">
-                                {t.priority === 'high' && <i className="ct-high" title="High priority" />}
+                                {t.priority === 'high' && showF('board', 'priority') && <i className="ct-high" title="High priority" />}
                                 {t.title}
                               </div>
-                              {owner ? <Avatar person={owner} size={22} /> : <span className="avatar-empty sm" title="Nobody on it yet">?</span>}
+                              {showF('board', 'assignee') && (owner ? <Avatar person={owner} size={22} /> : <span className="avatar-empty sm" title="Nobody on it yet">?</span>)}
                             </div>
                             <div className="ct-meta">
-                              {c && scope.kind !== 'client' && (
+                              {showF('board', 'project') && c && scope.kind !== 'client' && (
                                 <span className="client-chip" style={{ ['--c' as string]: c.color }}>
                                   {c.name}
                                 </span>
                               )}
-                              {tm && scope.kind !== 'team' && (
+                              {showF('board', 'team') && tm && scope.kind !== 'team' && (
                                 <span className="team-chip" style={{ ['--c' as string]: tm.color }}>
                                   {tm.name}
                                 </span>
                               )}
-                              {d && col.id !== 'done' && <span className={`due ${d.cls}`}>{d.text}</span>}
+                              {showF('board', 'due') && d && col.id !== 'done' && <span className={`due ${d.cls}`}>{d.text}</span>}
+                              {showF('board', 'brief') && briefOf(t.briefId) && (
+                                <span className="meta-chip">
+                                  <FileText size={11} /> {briefOf(t.briefId)!.title}
+                                </span>
+                              )}
+                              {showF('board', 'source') && (
+                                <span className="src" title={SOURCE[t.source].label}>
+                                  {(() => {
+                                    const I = SOURCE[t.source].icon;
+                                    return <I size={12} />;
+                                  })()}
+                                </span>
+                              )}
+                              {extras(t, 'board')}
                             </div>
                           </div>
                         );
