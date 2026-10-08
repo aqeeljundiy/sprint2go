@@ -58,7 +58,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { minutes?: { used: number; total: number | null } } | null) => setBotMinutes(d?.minutes ?? null), () => {});
   }, [ws.id]);
-  const pauseLeft = Math.floor(pauseDaysLeft(plan.pauses));
+  const pauseLeft = Math.ceil(pauseDaysLeft(plan.pauses));
   const trialOn = !!plan.trialEnds && plan.trialEnds > new Date().toISOString();
   const applyCode = async () => {
     setCodeBusy(true);
@@ -418,7 +418,8 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
         )}
       </div>
 
-      {isOwner && plan.tier !== 'free' && (
+      {/* A paid plan only: during the trial there's nothing billed to pause, and "Downgrade to Free" is the way out. */}
+      {isOwner && plan.tier !== 'free' && !trialOn && (
         <div className="set-block">
           <h3>Pause or cancel</h3>
           <div className="set-row">
@@ -429,14 +430,12 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
               <small>
                 {plan.paused
                   ? `Paused: the workspace is read-only and not billed. ${pauseLeft} of this year’s ${PAUSE_DAYS_A_YEAR} days are left; when they run out, the plan resumes by itself.`
-                  : trialOn
-                    ? 'For quiet months once you’re on a paid plan: up to 3 months a year. There’s nothing to pause during the trial.'
-                    : pauseLeft < 1
+                  : pauseLeft < 1
                       ? `Up to 3 months a year, and this year’s ${PAUSE_DAYS_A_YEAR} days are used up.`
                       : `For quiet months: up to 3 months a year (${pauseLeft} days left this year). The workspace becomes read-only and you’re not billed.`}
               </small>
             </span>
-            <button type="button" className="ghost-btn sm" disabled={!plan.paused && (trialOn || pauseLeft < 1)} onClick={() => (set({ paused: !plan.paused }), toast(plan.paused ? 'Plan resumed' : 'Plan paused. Everyone can still read and export everything'))}>
+            <button type="button" className="ghost-btn sm" disabled={!plan.paused && pauseLeft < 1} onClick={() => (set({ paused: !plan.paused }), toast(plan.paused ? 'Plan resumed' : 'Plan paused. Everyone can still read and export everything'))}>
               {plan.paused ? 'Resume' : 'Pause'}
             </button>
           </div>

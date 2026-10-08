@@ -134,18 +134,9 @@ function ServerRoot({ me }: { me: string }) {
   // Only a client somewhere (no workspace of their own): straight to their portal.
   if (user && !workspaces.some((w) => w.members.some((m) => m.userId === me))) return <ClientRoot me={user} />;
   if (!user) return <NoWorkspace email="" onBack={() => void signOut()} />;
-  // Companies whose plan is paused (live, as the plan changes): read-only until an owner resumes it.
-  const paused = workspaces.filter((w) => w.plan?.paused && !w.suspended && w.members.some((m) => m.userId === me));
   return (
     <>
-    {paused.length > 0 && (
-      <div className="op-banner warn" role="status">
-        <span>
-          {paused.map((w) => w.name).join(', ')} {paused.length === 1 ? 'is' : 'are'} paused: everyone can read and export everything, and nothing new is saved, sent or asked of AI.{' '}
-          {paused.some((w) => w.members.some((m) => m.userId === me && m.role === 'owner')) ? 'Resume the plan in Settings, Plan & billing.' : 'An owner can resume the plan in Settings, Plan & billing.'}
-        </span>
-      </div>
-    )}
+    <PausedBanner workspaces={workspaces} me={me} />
     <App
       key={user.id}
       user={user}
@@ -167,6 +158,44 @@ function ServerRoot({ me }: { me: string }) {
       onUpdateUser={(patch) => setUsers((list) => list.map((x) => (x.id === user.id ? { ...x, ...patch } : x)))}
     />
     </>
+  );
+}
+
+/**
+ * Companies whose plan is paused (live, as the plan changes): read-only until an owner resumes it. Said once per
+ * company in this browser session; closing it keeps it closed until the next session (Billing still says so).
+ */
+function PausedBanner({ workspaces, me }: { workspaces: Workspace[]; me: string }) {
+  const key = (id: string) => `s2g-paused-seen:${id}`;
+  const seen = (id: string) => {
+    try {
+      return sessionStorage.getItem(key(id)) === '1';
+    } catch {
+      return false;
+    }
+  };
+  const [closed, setClosed] = useState<string[]>([]);
+  const paused = workspaces.filter((w) => w.plan?.paused && !w.suspended && w.members.some((m) => m.userId === me) && !closed.includes(w.id) && !seen(w.id));
+  if (!paused.length) return null;
+  const close = () => {
+    for (const w of paused)
+      try {
+        sessionStorage.setItem(key(w.id), '1');
+      } catch {
+        /* private window: closed for now */
+      }
+    setClosed((c) => [...c, ...paused.map((w) => w.id)]);
+  };
+  return (
+    <div className="op-banner warn paused-banner" role="status">
+      <span>
+        {paused.map((w) => w.name).join(', ')} {paused.length === 1 ? 'is' : 'are'} paused: everyone can read and export everything, and nothing new is saved, sent or asked of AI.{' '}
+        {paused.some((w) => w.members.some((m) => m.userId === me && m.role === 'owner')) ? 'Resume the plan in Settings, Plan & billing.' : 'An owner can resume the plan in Settings, Plan & billing.'}
+      </span>
+      <button type="button" className="ghost-btn sm" onClick={close}>
+        Got it
+      </button>
+    </div>
   );
 }
 

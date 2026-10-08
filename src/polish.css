@@ -2110,6 +2110,9 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .is-leaving.toast {
   animation: s2gToastOut 0.2s ease forwards !important;
 }
+.is-leaving.paused-banner {
+  animation: s2gFadeOut 0.18s ease-in forwards !important;
+}
 @keyframes s2gFadeOut {
   to {
     opacity: 0;

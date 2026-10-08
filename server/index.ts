@@ -1458,7 +1458,8 @@ createServer(async (req, res) => {
     if (p === '/api/billing/coupon' && req.method === 'POST') {
       const b = await body(req);
       const ws = memberOf(me).find((w: any) => w.id === b.workspaceId) as any;
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only owners and admins can add a code.' });
+      // Billing is the owners' (the billing page says so).
+      if (!ws || !ws.members.some((m: any) => m.userId === me && m.role === 'owner')) return json(res, 403, { error: 'Only owners can add a code.' });
       if (tooMany(`coupon:${ws.id}`, 10, 60 * 60_000)) return json(res, 429, { error: 'Too many tries. Try again later.' });
       if (!ws.plan) return json(res, 400, { error: 'Pick a plan first.' });
       if (ws.plan.discount || (ws.plan.comp?.note ?? '').startsWith('Code ')) return json(res, 409, { error: 'This company already has a code.' });
@@ -1873,6 +1874,10 @@ createServer(async (req, res) => {
       // Settings, Permissions, "Invite guests": a Member needs it, unless they lead this project.
       const leads = client.ownerId === me || (client.members ?? []).some((m: any) => m.userId === me && m.role === 'lead');
       if (memberOf(me).some((x) => x.id === w.id) && !isAdminOf(me, w.id) && !leads && !{ ...DEFAULT_PERMISSIONS, ...(w.permissions ?? {}) }.inviteGuests) return json(res, 403, { error: 'Only admins and its Lead can invite guests here.' });
+      // Only to a project the person can see, and not while the company is read-only.
+      if (memberOf(me).some((x) => x.id === w.id) && !teamLens(me)('clients', client)) return json(res, 404, { error: 'No such project.' });
+      const roInvite = billing.readOnlyWhy(w);
+      if (roInvite) return json(res, 403, { error: roInvite });
       if (!memberOf(me).some((x) => x.id === w.id)) {
         // A client person inviting a colleague.
         const access = accessFor(w, client);

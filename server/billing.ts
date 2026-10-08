@@ -58,7 +58,7 @@ export function pauseOnSave(next: any, prev: any): { paused: boolean | undefined
   const tier = next?.tier ?? prev?.tier;
   const trial = !!(prev?.trialEnds && prev.trialEnds > now());
   if (tier === 'free' || trial) return { paused: undefined, pauses: pauses.length ? pauses : undefined, why: 'Only a paid plan can be paused: there’s nothing to stop billing on Free or during the trial.' };
-  if (pauseDaysLeft(pauses) < 1) return { paused: undefined, pauses, why: `A plan can be paused up to 3 months a year, and this year’s ${PAUSE_DAYS_A_YEAR} days are used up.` };
+  if (pauseDaysLeft(pauses) <= 0) return { paused: undefined, pauses, why: `A plan can be paused up to 3 months a year, and this year’s ${PAUSE_DAYS_A_YEAR} days are used up.` };
   return { paused: true, pauses: [...pauses, { from: now() }] };
 }
 
