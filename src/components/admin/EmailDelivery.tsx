@@ -4,7 +4,7 @@ import type { EmailSetup, MailProvider, Workspace } from '../../types';
 import { brand as product } from '../../terms';
 import { relative } from '../../utils';
 import { SmoothHeight } from '../ui/Smooth';
-import { EmailSetupGuide } from '../EmailSetupGuide';
+import { EmailSetupGuide, providerLabel } from '../EmailSetupGuide';
 import { providerName } from '../Onboarding';
 
 interface Setup {
@@ -19,12 +19,14 @@ interface Setup {
   checks: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] } | null;
   stats: { received: number; spam: number; sent: number; boosted: number; failed: number; queued: number };
   health: Record<'ptr' | 'a' | 'port25' | 'inbound', { ok: boolean; found: string; want: string }>;
+  dnsHost?: { name: string; where: string } | null; // who runs the domain's DNS, from its nameservers
+  nameservers?: string[];
 }
 
 /** Built when shown, so a white-labelled company sees its own name. */
 const receive = (): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
   { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook', body: 'Mail stays where it is. A forwarded copy shows here to read, and replies go out from Gmail or Outlook.' },
-  { id: 'mix', icon: Shuffle, title: 'Some of each', body: `Google or Microsoft keeps the domain and passes the addresses it doesn’t know to ${product.name}.` },
+  { id: 'mix', icon: Shuffle, title: 'Some of each', body: `Google, Microsoft or Zoho keeps the domain and passes the addresses it doesn’t know to ${product.name}.` },
   { id: 'hosted', icon: Server, title: `Move to ${product.name}`, body: 'The domain’s mail comes here. Cancel the other licences.' },
   { id: 'none', icon: MailX, title: 'No email here', body: 'Mail stays off. Chat, Tasks, Calendar and the rest keep working.' },
 ];
@@ -32,6 +34,7 @@ const PROVIDERS: { id: MailProvider; name: string }[] = [
   { id: 'google', name: 'Google Workspace' },
   { id: 'microsoft', name: 'Microsoft 365' },
   { id: 'zoho', name: 'Zoho' },
+  { id: 'imap', name: 'Another provider' },
 ];
 const PACKS = [
   { n: 1000, rp: 15_000 },
@@ -42,20 +45,37 @@ const KEY_NAME: Record<string, string> = { mx: 'Where mail arrives (MX)', spf: '
 const rp = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
 
 /** Settings, Email delivery: where a company's mail lives, how it goes out, the records to add, and whether they're there. */
-export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, toast }: { ws: Workspace; canManage: boolean; firstName: string; onWorkspace: (p: Partial<Workspace>) => void; toast: (t: string) => void }) {
+export function EmailDeliverySection({
+  ws,
+  canManage,
+  firstName,
+  myEmail,
+  onWorkspace,
+  onAddAccount,
+  toast,
+}: {
+  ws: Workspace;
+  canManage: boolean;
+  firstName: string;
+  myEmail?: string; // the person's own mailbox here, for their forwarding address
+  onWorkspace: (p: Partial<Workspace>) => void;
+  onAddAccount?: () => void; // admins: opens "Add an email account"
+  toast: (t: string) => void;
+}) {
   const [info, setInfo] = useState<Setup | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState('');
   const [guide, setGuide] = useState(false);
+  // The records follow what's picked on screen, even before the change has reached the server.
   const load = () =>
-    fetch(`/api/mail/setup?ws=${encodeURIComponent(ws.id)}`)
+    fetch(`/api/mail/setup?ws=${encodeURIComponent(ws.id)}&setup=${ws.emailSetup ?? 'none'}&provider=${ws.emailProvider ?? ''}`)
       .then(async (r) => (r.ok ? setInfo(await r.json()) : setError(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Could not load.')))
       .catch(() => setError('No connection.'));
   useEffect(() => {
     void load();
-  }, [ws.id, ws.emailSetup, ws.mailRoute, ws.domains.join(','), ws.mailChecks?.at]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ws.id, ws.emailSetup, ws.emailProvider, ws.mailRoute, ws.domains.join(','), ws.mailChecks?.at]); // eslint-disable-line react-hooks/exhaustive-deps
   const post = async (path: string, body: unknown) => {
     const r = await fetch(`/api/mail/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
@@ -143,7 +163,7 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
             {(setup === 'keep' || setup === 'mix') && (
               <div className="field ob-provider">
                 <label>Which provider</label>
-                <div className="aw-tones">
+                <div className="aw-tones wrap">
                   {PROVIDERS.map((p) => (
                     <button key={p.id} type="button" className={provider === p.id ? 'on' : ''} onClick={() => onWorkspace({ emailProvider: p.id })}>
                       {p.name}
@@ -154,10 +174,10 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
             )}
             {setup === 'mix' && (
               <p className="small muted">
-                {providerName(provider)} keeps the domain. In its admin console, one routing rule sends mail for unknown addresses to <code className="mono">{info?.host ?? '…'}</code>. People on {product.name} mail can write to colleagues on {providerName(provider)} as usual.
+                {provider === 'imap' ? 'Your mail provider' : providerName(provider)} keeps the domain and its MX records. In its admin settings, mail for addresses it doesn’t know is routed on to <code className="mono">{info?.host ?? '…'}</code>. People on {product.name} mail can write to colleagues on {providerLabel(provider)} as usual.
               </p>
             )}
-            {setup === 'hosted' && ws.domains[0] && <p className="small muted">When the MX record below points here, new mail for {ws.domains[0]} arrives in {product.name}. Old mail can be imported from {providerName(provider)} afterwards.</p>}
+            {setup === 'hosted' && ws.domains[0] && <p className="small muted">When the MX record below points here, new mail for {ws.domains[0]} arrives in {product.name}. Old mail stays where it is for now: bringing it over isn’t available yet.</p>}
             {setup !== 'none' && setup !== 'hosted' && (
               <>
                 <button type="button" className="link-btn small" onClick={() => setGuide((g) => !g)}>
@@ -165,7 +185,17 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
                 </button>
                 <div className={`fold ${guide ? 'open' : ''}`}>
                   <div className="fold-in">
-                    <EmailSetupGuide workspaceId={ws.id} mode={setup === 'mix' ? 'split' : 'forward'} provider={provider} domain={ws.domains[0] ?? ''} first={firstName.toLowerCase()} />
+                    <EmailSetupGuide
+                      workspaceId={ws.id}
+                      mode={setup === 'mix' ? 'split' : 'forward'}
+                      provider={provider}
+                      domain={ws.domains[0] ?? ''}
+                      first={firstName.toLowerCase()}
+                      company={ws.name}
+                      address={myEmail}
+                      onAddMailbox={onAddAccount}
+                      onVerified={setup === 'mix' && canManage ? () => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } }) : undefined}
+                    />
                   </div>
                 </div>
               </>
@@ -238,7 +268,19 @@ export function EmailDeliverySection({ ws, canManage, firstName, onWorkspace, to
           )}
           {info && info.ownDomain && (
             <>
-              <p className="small muted">Add these where you manage {info.domain} (Cloudflare, Niagahoster, GoDaddy…). Changes can take up to an hour to show.</p>
+              <p className="small muted">
+                {info.dnsHost ? (
+                  <>
+                    {info.domain}’s DNS is at <b>{info.dnsHost.name}</b>, so add these there: {info.dnsHost.where}.
+                  </>
+                ) : (
+                  <>
+                    Add these where {info.domain}’s DNS is managed: the company its nameservers belong to, usually where you bought the domain{setup === 'keep' || setup === 'mix' ? `, and often not ${providerLabel(provider)}` : ''}.
+                    {info.nameservers?.length ? ` ${info.domain} uses ${info.nameservers.join(' and ')}.` : ''}
+                  </>
+                )}{' '}
+                Changes can take up to an hour to show.
+              </p>
               <div className="ed-records">
                 {info.records.map((r) => {
                   const res = resultFor(r.key);

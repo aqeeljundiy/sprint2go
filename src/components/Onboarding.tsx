@@ -10,7 +10,9 @@ import { uid } from '../utils';
 import { APPS } from './AppRail';
 import { BrandFields } from './WorkspaceForms';
 import { Select } from './ui/Select';
-import { EmailSetupGuide } from './EmailSetupGuide';
+import { EmailSetupGuide, providerLabel } from './EmailSetupGuide';
+import { server } from '../sync';
+import { caps } from '../caps';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { TIER_NAME, options, rp } from '../data/pricing';
 import { isFreemail } from '../clientView';
@@ -81,6 +83,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
   const mailOn = setup !== 'none';
   const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   const steps = ['Company', 'Apps', 'Email', 'Team'];
+  const realMail = server.on && !caps.demo; // a real server: no pretend routing check during sign-up
 
   const canNext = step === -1 ? true : [
     brand.name.trim().length > 1 && /\./.test(d) && emailOk(myEmail) && myEmail.toLowerCase().endsWith('@' + d),
@@ -300,7 +303,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
               {setup !== 'none' && (
                 <div className="field ob-provider">
                   <label>{setup === 'hosted' ? 'Where is your email today? (to bring your old mail)' : 'Where is your email today?'}</label>
-                  <div className="aw-tones">
+                  <div className="aw-tones wrap">
                     {PROVIDERS.map((p) => (
                       <button key={p.id} className={provider === p.id ? 'on' : ''} onClick={() => setProvider(p.id)}>
                         {p.name}
@@ -322,12 +325,12 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                         </button>
                       </div>
                       <h3 className="esg-title">{mixPart === 'split' ? `Give people a ${d || 'company'} mailbox here` : 'Their mail, copied here'}</h3>
-                      <EmailSetupGuide mode={mixPart === 'split' ? 'split' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} onVerified={() => setRoutingOk(true)} />
+                      <EmailSetupGuide mode={mixPart === 'split' ? 'split' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} company={brand.name} address={myEmail} onVerified={() => setRoutingOk(true)} />
                     </>
                   ) : (
                     <>
                       <h3 className="esg-title">{setup === 'hosted' ? 'How the move works' : 'How forwarding works'}</h3>
-                      <EmailSetupGuide mode={setup === 'hosted' ? 'move' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} />
+                      <EmailSetupGuide mode={setup === 'hosted' ? 'move' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} company={brand.name} address={myEmail} />
                     </>
                   )}
                   <h3 className="esg-title">How your mail goes out</h3>
@@ -394,7 +397,11 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                     </button>
                     {t.email && existingEmails.includes(t.email.toLowerCase()) && <small className="err">Already has an account.</small>}
                     {setup === 'mix' && t.where === 'sprint2go' && t.email && !routingOk && (
-                      <small className="ob-warn">Mail to this address won’t arrive until the routing check in the email step passes. You can still invite them now.</small>
+                      <small className="ob-warn">
+                        {realMail
+                          ? `Mail for it arrives once ${providerLabel(provider)} passes unknown addresses on. Nobody at ${providerLabel(provider)} may have this address.`
+                          : 'Mail to this address won’t arrive until the routing check in the email step passes. You can still invite them now.'}
+                      </small>
                     )}
                     {setup === 'mix' && t.where === 'sprint2go' && t.email && routingOk && <small className="muted">Remove their {providerName(provider)} licence if they have one, or it keeps their mail.</small>}
                   </div>

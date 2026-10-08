@@ -3,6 +3,7 @@ import { SmoothHeight } from './ui/Smooth';
 import { ImagePlus, Inbox, Shield, UserRound, Users, X } from 'lucide-react';
 import type { Account, MailProvider, Role, User, Workspace } from '../types';
 import { PROVIDERS } from './Onboarding';
+import { notAtProvider, providerLabel } from './EmailSetupGuide';
 import { WORKSPACE_COLORS } from '../data/workspaces';
 import { uid } from '../utils';
 import { readLogo, WorkspaceLogo } from './WorkspaceLogo';
@@ -199,7 +200,12 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'shared' ? workspace.name : 'Your name'} />
         </div>
         <p className="modal-note">
-          <Inbox size={14} /> It shows as “Not connected” until it’s signed in.
+          <Inbox size={14} />{' '}
+          {provider !== 'sprint2go'
+            ? 'It shows as “Not connected” until it’s signed in.'
+            : workspace.emailSetup === 'mix'
+              ? `It’s ready once mail for it arrives here, passed on by ${providerLabel(workspace.emailProvider ?? 'google')}. ${notAtProvider(workspace.emailProvider ?? 'google')}`
+              : 'It’s ready once mail for it arrives here. Settings, Email delivery shows whether it receives and sends.'}
         </p>
         </SmoothHeight>
       </div>
@@ -273,8 +279,13 @@ export function InviteMember({
         </div>
         <label className="check-row">
           <input type="checkbox" checked={mailbox} onChange={(e) => setMailbox(e.target.checked)} />
-          Create a mailbox for them on your mail server
+          Create a {product.name} mailbox for them
         </label>
+        {mailbox && workspace.emailSetup === 'mix' && (
+          <small className="muted">
+            Mail for {local.trim() ? email : 'their address'} comes through {providerLabel(workspace.emailProvider ?? 'google')}. {notAtProvider(workspace.emailProvider ?? 'google')}
+          </small>
+        )}
         <div className="field">
           <label>Role</label>
           <div className="kind-pick three">

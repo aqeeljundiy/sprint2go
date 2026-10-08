@@ -1179,10 +1179,16 @@ createServer(async (req, res) => {
       return d.toISOString();
     };
     if (p === '/api/mail/setup' && req.method === 'GET') {
-      const ws = memberOf(me).find((w) => w.id === url.searchParams.get('ws')) as any;
-      if (!ws) return json(res, 403, { error: 'Not in this company.' });
-      const [records, health] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth()]);
-      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain: mailer.mailDomainOf(ws), ownDomain: mailer.mailDomainOf(ws) !== mailer.MAIL_HOST, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health });
+      const saved = memberOf(me).find((w) => w.id === url.searchParams.get('ws')) as any;
+      if (!saved) return json(res, 403, { error: 'Not in this company.' });
+      // The records follow what the screen shows: a choice made a moment ago may not be saved yet.
+      const setupQ = url.searchParams.get('setup') ?? '';
+      const providerQ = url.searchParams.get('provider') ?? '';
+      const ws = { ...saved, ...(['keep', 'mix', 'hosted', 'none'].includes(setupQ) ? { emailSetup: setupQ } : {}), ...(['google', 'microsoft', 'zoho', 'imap'].includes(providerQ) ? { emailProvider: providerQ } : {}) };
+      const domain = mailer.mailDomainOf(ws);
+      const ownDomain = domain !== mailer.MAIL_HOST;
+      const [records, health, dns] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth(), ownDomain ? mailer.dnsHostOf(domain) : Promise.resolve({ dnsHost: null, nameservers: [] as string[] })]);
+      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers });
     }
     if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
       const { threadId } = await body(req);
@@ -1198,7 +1204,10 @@ createServer(async (req, res) => {
     if (p === '/api/mail/ready' && req.method === 'POST') {
       const { workspaceId } = await body(req);
       if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, { error: 'Not in this company.' });
-      return json(res, 200, await mailer.refreshReadiness(String(workspaceId)));
+      const ready = await mailer.refreshReadiness(String(workspaceId));
+      const ws = db.getDoc('workspaces', String(workspaceId)) as any;
+      // "Some of each": which hosted mailboxes at the company's domain really got mail, the proof that routing works.
+      return json(res, 200, { ...ready, routing: ws ? mailer.hostedArrivals(ws) : null });
     }
     if (p === '/api/mail/check' && req.method === 'POST') {
       const { workspaceId } = await body(req);

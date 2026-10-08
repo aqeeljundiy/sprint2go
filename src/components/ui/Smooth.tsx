@@ -14,7 +14,12 @@ export function SmoothHeight({ children, className }: { children: ReactNode; cla
     // Take the parent's layout (a dialog body is usually a grid or a flex column with a gap), so wrapping changes nothing.
     const ps = o.parentElement && getComputedStyle(o.parentElement);
     if (ps && (ps.display.includes('grid') || ps.display.includes('flex'))) {
-      for (const k of ['display', 'flexDirection', 'flexWrap', 'gap', 'rowGap', 'columnGap', 'alignItems', 'justifyItems', 'alignContent', 'gridTemplateColumns'] as const) i.style[k] = ps[k];
+      for (const k of ['display', 'flexDirection', 'flexWrap', 'gap', 'rowGap', 'columnGap', 'alignItems', 'justifyItems', 'alignContent', 'gridTemplateColumns'] as const) {
+        // Computed columns come back in pixels. One column is the default anyway, and freezing it at today's width would
+        // keep it that wide after the window narrows (a phone turned, a pane resized), so only real multi-column grids copy.
+        if (k === 'gridTemplateColumns' && !/\S\s+\S/.test(ps[k].trim())) continue;
+        i.style[k] = ps[k];
+      }
     }
     let last = i.offsetHeight;
     const settle = (e?: TransitionEvent) => {

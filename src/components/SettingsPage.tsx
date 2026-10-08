@@ -19,8 +19,8 @@ import { ClientAccessForm } from './admin/ClientAccessForm';
 import { accessFor } from '../clientView';
 import { Select } from './ui/Select';
 import { changePassword, server } from '../sync';
-import { EmailSetupGuide } from './EmailSetupGuide';
-import { providerName } from './Onboarding';
+import { EmailSetupGuide, providerLabel } from './EmailSetupGuide';
+import { caps } from '../caps';
 import { relative } from '../utils';
 import { PROJECT_TYPES } from '../terms';
 import { AgencySection } from './admin/AgencySection';
@@ -133,6 +133,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const [routingGuide, setRoutingGuide] = useState(false);
   const [accessType, setAccessType] = useState(''); // Guest access: '' = every project, or one project type
   const canManage = myRole !== 'member';
+  const realMail = server.on && !caps.demo; // a real server, not the standalone demo
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
   const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')));
@@ -263,7 +264,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   <h3>Mail routing</h3>
                   <div className="set-block routing-block">
                     <p className="small">
-                      {ws.domains[0] ?? 'Your domain'} stays with {providerName(ws.emailProvider)}, which passes mail for addresses it doesn’t know on to {product.name}.{' '}
+                      {ws.domains[0] ?? 'Your domain'} stays with {providerLabel(ws.emailProvider)}, which passes mail for addresses it doesn’t know on to {product.name}.{' '}
                       {ws.mailRouting?.lastCheck
                         ? ws.mailRouting.lastCheck.ok
                           ? `Last check ${relative(ws.mailRouting.lastCheck.at)}: working.`
@@ -272,18 +273,31 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                           ? `Checked ${relative(ws.mailRouting.verifiedAt)} during setup.`
                           : `Not checked yet: mail to ${product.name} mailboxes may not arrive.`}
                     </p>
-                    <Toggle
-                      on={ws.mailRouting?.dailyCheck ?? true}
-                      onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
-                      label="Check every day"
-                      hint={`A test email each morning. If it stops arriving, admins hear about it straight away. Runs once ${product.name} mail is live.`}
-                    />
+                    {/* The demo plays a daily test; the server doesn't send one, so the real app doesn't offer it. */}
+                    {!realMail && (
+                      <Toggle
+                        on={ws.mailRouting?.dailyCheck ?? true}
+                        onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
+                        label="Check every day"
+                        hint={`A test email each morning. If it stops arriving, admins hear about it straight away. Runs once ${product.name} mail is live.`}
+                      />
+                    )}
                     <button type="button" className="link-btn small" onClick={() => setRoutingGuide((x) => !x)}>
                       {routingGuide ? 'Hide the setup steps' : 'Show the setup steps'}
                     </button>
                     <div className={`fold ${routingGuide ? 'open' : ''}`}>
                       <div className="fold-in">
-                        <EmailSetupGuide workspaceId={ws.id} mode="split" provider={ws.emailProvider ?? 'google'} domain={ws.domains[0] ?? ''} first={(users.find((u) => u.id === me)?.name ?? '').split(' ')[0].toLowerCase()} onVerified={() => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } })} />
+                        <SmoothHeight>
+                          <EmailSetupGuide
+                            workspaceId={ws.id}
+                            mode="split"
+                            provider={ws.emailProvider ?? 'google'}
+                            domain={ws.domains[0] ?? ''}
+                            first={(users.find((u) => u.id === me)?.name ?? '').split(' ')[0].toLowerCase()}
+                            onAddMailbox={canManage ? onAddAccount : undefined}
+                            onVerified={() => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } })}
+                          />
+                        </SmoothHeight>
                       </div>
                     </div>
                   </div>
@@ -594,7 +608,17 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             </>
           )}
           {section === 'help' && <HelpSection workspaceId={ws.id} toast={admin.toast} />}
-          {section === 'email' && <EmailDeliverySection ws={ws} canManage={canManage} firstName={users.find((u) => u.id === me)?.name.split(' ')[0] ?? 'you'} onWorkspace={onWorkspace} toast={admin.toast} />}
+          {section === 'email' && (
+            <EmailDeliverySection
+              ws={ws}
+              canManage={canManage}
+              firstName={users.find((u) => u.id === me)?.name.split(' ')[0] ?? 'you'}
+              myEmail={ws.accounts.find((a) => !a.temp && a.kind === 'personal' && a.users.includes(me))?.email}
+              onWorkspace={onWorkspace}
+              onAddAccount={canManage ? onAddAccount : undefined}
+              toast={admin.toast}
+            />
+          )}
           {section === 'agency' && <AgencySection ws={ws} canManage={canManage} onWorkspace={onWorkspace} brandingAddon={!!plan.addons.branding} onBilling={() => onSection('billing')} />}
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}

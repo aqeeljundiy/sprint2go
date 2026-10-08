@@ -1,5 +1,40 @@
 # Sprint2go backlog
 
+## Design consistency, asked 9 Oct 2026 (Aqeel's screenshots)
+
+One design system everywhere: find every variant of the pieces below in the app and the operator console, keep one, and use it everywhere.
+- **Person cell**: the avatar sits at the top of the name and email instead of centred next to them (Settings people table, operator Team > Operators). Badges like "Owner" and "you" render as a circle behind the first letters instead of a pill on the name's line. One shared person cell (avatar centred, name, email, badge pill) for every table and list.
+- **Empty states**: "No teams yet" has uneven spacing; the button nearly touches the text. One empty state component with even spacing (icon, title, text, action) on the 8 px scale.
+- **Table column menu**: the title column ("Name", tagged Title) offers "Change type and settings", but its type can't change. Show only what applies to it.
+- **Toolbar**: "Grouped by Status" sits on its own row under Search and the filter. Put them on one line (wrapping on phones).
+- **Tab bars**: the New channel dialog's tabs (About, People, Permissions) look different from other tab bars (pill plus an underline). Audit every tab bar and segmented control so they share one look (height, radius, active state, sliding highlight).
+- **Responsiveness**: more screenshots coming from Aqeel; add them here.
+
+## Tasks and app settings, asked 9 Oct 2026
+
+- **Your own task stages**: today there are five fixed stages (To do, In progress, Waiting on client, Review, Done), built into the code (`TaskStatus`, `COLUMNS` in TasksView). Let admins rename, add, reorder, colour and remove stages (for the company, and per project or team if needed). Each stage keeps a kind (open, waiting, done) so Home, reminders and reports still know what counts as finished. Existing tasks move over without changes.
+- **Adding a task**: the "Add a task…" field is always open at the top and takes space. Make it a "New task" button (with a keyboard shortcut) that opens the field in place; Brain dump stays next to it.
+- **Each app opens its own settings**: a settings button in every app's header or sidebar that lands on its section of Settings: Mail (Email delivery, Mail & signature), Notes, Tables, Teams, Meet (Meetings, partly there). Add a Settings section only where an app has something to set.
+
+## AI plan backend, asked 9 Oct 2026
+
+Companies on the AI plan use AI we pay for, with providers and models we choose; companies on their own keys choose freely. Operators need to run that and see whether it pays.
+- **Our keys in the operator console** (today only one ANTHROPIC_API_KEY in the server env, no screen): add, test, rotate and switch off keys per provider, stored encrypted; the env key stays as a fallback.
+- **Models per job for the AI plan**: operators pick provider and model for each job (replies, drafts, Ask, meeting notes, brain dump…), with each model's price shown; changes apply to every AI-plan company.
+- **Only AI-plan companies use our keys**: today `aiFor` (server/index.ts) gives the included key to any company that hasn't chosen "own", whatever its plan. Limit it to the AI plan (and trials), before our key goes live.
+- **Are we losing money**: per company and in total, this month's AI cost (tokens × model prices) next to what the AI plan earns from them (AI price minus the own-keys price, per seat), the margin, and a list of companies costing more than they pay. Per-job cost, a month-end forecast, and spend caps tied to the plan. Model prices editable (Rp per million tokens in and out).
+- **Own-keys companies**: pick any provider and model per job with their keys (exists today); nothing is billed to us.
+
+## Mail, open from 9 Oct 2026
+
+- **Refresh mail** (asked 9 Oct): new mail already arrives live over the sync connection, but there's no way to ask for it. Add a refresh button in the inbox header (pull to refresh on phones) that re-syncs mail, reconnects if the live connection dropped, and re-checks the mailbox status; show "Updated just now" so people trust it. Later, for connected Google/Microsoft mailboxes, it also fetches from them.
+- **Calendar invites in mail** (plan given 9 Oct, waiting for "build"): read the invite inside the email (title, time, organiser, guests, Meet/Zoom link), an invite card with Join and Yes/Maybe/No, answers sent to the organiser as a real calendar reply, accepted invites in sprint2go Calendar (updates and cancellations too), and the notetaker using the event's real link. Today an invite is a plain email with the invite attached twice.
+- **Notetaker "send now" from a calendar event** sends the real bot to a made-up Meet address (App.tsx, onSendNow) instead of the event's link. Fixed by the invites work, or on its own.
+- **Trusted certificate for mail.sprint2go.com**: the mail server's certificate is self-signed, so Google and Microsoft routes must be set without "CA signed certificate" checks. Use the Let's Encrypt certificate Dokploy already has for mail.sprint2go.com (or get our own), then the guides can say to tick them.
+- **Forwarded mail and spam**: forwarding breaks SPF, and we only fall back on DKIM, so forwarded mail from senders without DKIM lands in Spam here. Trust Google's and Microsoft's ARC seal for forwarded copies.
+- **Boosted sending (Amazon) as a real second option** (asked 9 Oct): Email delivery already shows the choice as "Coming soon". Turn it on once Amazon SES is set up: an AWS account with SES out of the sandbox (Amazon reviews a request), SES_KEY, SES_SECRET and SES_REGION in Dokploy, the three DKIM records per domain (already shown), and credits billing. Then companies pick per domain: our mail server (free) or Boosted (paid per email, more dependable delivery to Gmail and Outlook, recommended for new domains).
+- **Company logo in Gmail (BIMI)**: later, once the logo has been in use 12 months (CMC) or is a registered trademark (VMC). Needs the SVG, a default._bimi record and the certificate.
+
 ## Working list (8 Oct 2026): everything asked so far, except going live
 
 Done 8 Oct (this round): Tables polish (Title tag, editable row title, sort rows, the name column's red fixed), our dropdowns everywhere, the "Some of each" email onboarding (split delivery guide, routing test, invite warning, Settings routing block), per-type guest settings, guests play recordings, leavers lose guest access, "Shared with you" in every switcher, narrow Guests tab, white label for agencies (brand, own address, client workspaces, onboarding option, landing section), server task visibility per person, smaller first download (1.06 MB to 450 KB), keyboard on clickable rows, prefs that follow you between devices, search inside everything, huddles, quotes and contracts, industry templates and starter tables, WhatsApp for guests, Vault end-to-end encryption, Mac and Windows app (desktop/), landing download section, pushed to GitHub.

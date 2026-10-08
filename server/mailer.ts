@@ -29,7 +29,7 @@ db.db.exec(`
 
 type Person = { name: string; email: string };
 type Account = { id: string; email: string; name: string; kind: string; users: string[]; provider?: string; connected?: boolean };
-type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean };
+type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean };
 
 export interface MailerDeps {
   publicUrl: string;
@@ -100,6 +100,22 @@ export interface DnsRecord {
   note: string;
   key: string; // which check it belongs to
 }
+/** The SPF include each provider publishes, for companies whose mail also goes out from Google, Microsoft or Zoho. */
+const PROVIDER_SPF: Record<string, string> = { google: 'include:_spf.google.com', microsoft: 'include:spf.protection.outlook.com', zoho: 'include:zohomail.com' };
+const PROVIDER_NAME: Record<string, string> = { google: 'Google Workspace', microsoft: 'Microsoft 365', zoho: 'Zoho Mail' };
+/** The part of the SPF record that lets mail from here through: our address, or Amazon's when sending is Boosted. */
+const spfOurs = (route: 'own' | 'boosted') => (route === 'boosted' ? 'include:amazonses.com' : MAIL_IP ? `ip4:${MAIL_IP}` : `a:${MAIL_HOST}`);
+/** Whether an SPF record lists a mechanism as a pass, whatever else is in it (ip4:1.2.3.4 also matches ip4:1.2.3.4/32). */
+const spfHas = (spf: string, want: string) => {
+  const w = want.toLowerCase();
+  return spf.toLowerCase().split(/\s+/).some((t) => {
+    const m = t.replace(/^\+/, '');
+    return m === w || m === `${w}/32`;
+  });
+};
+/** A domain must have exactly one SPF record; with two, receivers treat it as broken. */
+const spfRecords = (all: string[]) => all.filter((t) => /^v=spf1(\s|$)/i.test(t.trim()));
+
 export async function expectedRecords(ws: Ws): Promise<DnsRecord[]> {
   const domain = mailDomainOf(ws);
   if (domain === MAIL_HOST) return []; // addresses at our own name need nothing
@@ -108,19 +124,66 @@ export async function expectedRecords(ws: Ws): Promise<DnsRecord[]> {
   const out: DnsRecord[] = [];
   if (mode === 'hosted') out.push({ type: 'MX', host: '@', value: MAIL_HOST, note: 'Priority 10. Mail for the domain comes here.', key: 'mx' });
   if (mode === 'mix') out.push({ type: 'MX', host: '@', value: '(stays with your provider)', note: 'Your provider keeps the MX and passes unknown addresses to ' + MAIL_HOST + ' (see the routing steps).', key: 'mx' });
-  const spfParts = ['v=spf1'];
-  if (mode === 'mix' || mode === 'keep') spfParts.push('(your provider’s include)');
-  if (route === 'boosted') spfParts.push('include:amazonses.com');
-  else spfParts.push(MAIL_IP ? `ip4:${MAIL_IP}` : `a:${MAIL_HOST}`);
-  spfParts.push('~all');
-  out.push({ type: 'TXT', host: '@', value: spfParts.join(' '), note: 'Who may send as your domain. Merge with an SPF record you already have.', key: 'spf' });
+  const ours = spfOurs(route);
+  const shared = mode === 'mix' || mode === 'keep';
+  const provider = ws.emailProvider || 'google';
+  const theirs = shared ? PROVIDER_SPF[provider] : undefined;
+  if (theirs)
+    out.push({ type: 'TXT', host: '@', value: `v=spf1 ${theirs} ${ours} ~all`, note: `Lets ${PROVIDER_NAME[provider]} and us send as ${domain}. A domain has one SPF record: if ${domain} already has one, change it to this and keep any other include: it lists.`, key: 'spf' });
+  else if (shared)
+    out.push({ type: 'TXT', host: '@', value: `v=spf1 ${ours} ~all`, note: `Your mail provider most likely has an SPF record for ${domain} already. Don’t add a second one: put ${ours} into it, before the ~all or -all.`, key: 'spf' });
+  else out.push({ type: 'TXT', host: '@', value: `v=spf1 ${ours} ~all`, note: 'Who may send as your domain. Merge with an SPF record you already have.', key: 'spf' });
   if (route === 'boosted') {
     const ses = await sesIdentity(domain).catch(() => null);
     for (const t of ses?.tokens ?? []) out.push({ type: 'CNAME', host: `${t}._domainkey`, value: `${t}.dkim.amazonses.com`, note: 'Signs mail sent through Boosted sending.', key: 'dkim' });
     if (!ses?.tokens?.length) out.push({ type: 'CNAME', host: '(3 records)', value: 'given once Amazon knows the domain', note: 'Signs mail sent through Boosted sending.', key: 'dkim' });
   } else out.push({ type: 'TXT', host: `${SELECTOR}._domainkey`, value: dkimRecord(domain, ws.id), note: 'Signs mail sent from sprint2go so Gmail and Outlook trust it.', key: 'dkim' });
-  out.push({ type: 'TXT', host: '_dmarc', value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, note: 'Tells receivers what to do with mail that fails the checks.', key: 'dmarc' });
+  out.push({ type: 'TXT', host: '_dmarc', value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, note: `Tells receivers what to do with mail that fails the checks. If ${domain} already has a DMARC record, keep yours.`, key: 'dmarc' });
   return out;
+}
+
+/**
+ * Who runs a domain's DNS, from its nameservers: that's where the records go, which is often not the mail provider.
+ * `where` is the path to its record editor, as the company's own screens name it. Cached for 10 minutes.
+ */
+type DnsHost = { name: string; where: string };
+const sameHost = (name: string) => (d: string) => `sign in to ${name}, open ${d} and find its DNS records (often called DNS management or Zone editor)`;
+const DNS_HOSTS: { re: RegExp; name: string; where: (d: string) => string }[] = [
+  { re: /\.ns\.cloudflare\.com$/, name: 'Cloudflare', where: (d) => `dash.cloudflare.com, ${d}, DNS, Records, Add record` },
+  { re: /(^|\.)(dns-parking\.com|hostinger\.[a-z.]+)$/, name: 'Hostinger', where: (d) => `hPanel, Domains, ${d}, DNS / Nameservers, DNS records, Add record` },
+  { re: /(^|\.)domaincontrol\.com$/, name: 'GoDaddy', where: (d) => `GoDaddy, Domain Portfolio, ${d}, DNS, Add New Record` },
+  { re: /(^|\.)registrar-servers\.com$/, name: 'Namecheap', where: (d) => `Namecheap, Domain List, Manage next to ${d}, Advanced DNS, Add New Record` },
+  { re: /(^|\.)awsdns-\d+\.(com|net|org|co\.uk)$/, name: 'Amazon Route 53', where: (d) => `the AWS console, Route 53, Hosted zones, ${d}, Create record` },
+  { re: /(^|\.)squarespacedns\.com$/, name: 'Squarespace', where: (d) => `Squarespace, Domains, ${d}, DNS, Custom records` },
+  { re: /(^|\.)googledomains\.com$/, name: 'Google Cloud DNS or Squarespace', where: (d) => `Squarespace (Domains, ${d}, DNS) if the domain came from Google Domains, otherwise Google Cloud, Cloud DNS, the zone for ${d}` },
+  { re: /(^|\.)bdm\.microsoftonline\.com$/, name: 'Microsoft 365', where: (d) => `admin.microsoft.com, Settings, Domains, ${d}, DNS records` },
+  { re: /(^|\.)azure-dns\.(com|net|org|info)$/, name: 'Azure DNS', where: (d) => `the Azure portal, DNS zones, ${d}, Recordsets` },
+  { re: /(^|\.)digitalocean\.com$/, name: 'DigitalOcean', where: (d) => `DigitalOcean, Networking, Domains, ${d}` },
+  { re: /niagahoster/, name: 'Niagahoster', where: sameHost('Niagahoster') },
+  { re: /domainesia/, name: 'DomaiNesia', where: sameHost('DomaiNesia') },
+  { re: /rumahweb/, name: 'Rumahweb', where: sameHost('Rumahweb') },
+  { re: /idcloudhost/, name: 'IDCloudHost', where: sameHost('IDCloudHost') },
+  { re: /jagoanhosting/, name: 'Jagoan Hosting', where: sameHost('Jagoan Hosting') },
+];
+const SECOND_LEVEL = new Set(['co', 'com', 'net', 'org', 'ac', 'or', 'web', 'my', 'go', 'sch', 'gov', 'edu', 'biz']);
+const dnsHostCache = new Map<string, { at: number; value: { dnsHost: DnsHost | null; nameservers: string[] } }>();
+export async function dnsHostOf(domain: string): Promise<{ dnsHost: DnsHost | null; nameservers: string[] }> {
+  const d = lower(domain);
+  const hit = dnsHostCache.get(d);
+  if (hit && hit.at > Date.now() - 10 * 60_000) return hit.value;
+  // A subdomain has no nameservers of its own: ask its parents, but never a shared suffix like co.id.
+  let name = d;
+  let ns: string[] = [];
+  for (;;) {
+    ns = await pub.resolveNs(name).then((r) => r.map(lower).sort(), () => [] as string[]);
+    const labels = name.split('.');
+    if (ns.length || labels.length <= 2 || (labels.length === 3 && SECOND_LEVEL.has(labels[1]))) break;
+    name = labels.slice(1).join('.');
+  }
+  const known = DNS_HOSTS.find((h) => ns.some((n) => h.re.test(n.replace(/\.$/, ''))));
+  const value = { dnsHost: known ? { name: known.name, where: known.where(name) } : null, nameservers: ns };
+  dnsHostCache.set(d, { at: Date.now(), value });
+  return value;
 }
 
 export interface DnsCheck {
@@ -142,9 +205,12 @@ export async function checkDomain(ws: Ws): Promise<{ domain: string; at: string;
   const mx = await pub.resolveMx(domain).then((r) => r.sort((a, b) => a.priority - b.priority).map((x) => lower(x.exchange)), () => [] as string[]);
   if (mode === 'hosted') checks.push({ key: 'mx', ok: mx[0] === MAIL_HOST, found: mx.join(', ') || 'none', want: MAIL_HOST });
   else if (mode === 'mix' || mode === 'keep') checks.push({ key: 'mx', ok: mx.length > 0 && mx[0] !== MAIL_HOST, found: mx.join(', ') || 'none', want: 'your provider' });
-  const spf = (await txt(domain)).find((t) => t.toLowerCase().startsWith('v=spf1')) ?? '';
-  const spfWant = route === 'boosted' ? 'include:amazonses.com' : MAIL_IP ? `ip4:${MAIL_IP}` : `a:${MAIL_HOST}`;
-  checks.push({ key: 'spf', ok: spf.toLowerCase().includes(spfWant.toLowerCase()) || (route === 'own' && !!MAIL_IP && spf.toLowerCase().includes(`a:${MAIL_HOST}`)), found: spf || 'none', want: spfWant });
+  // Only our part has to be there; whatever else the record lists (the provider's include, a CRM) is theirs to keep.
+  const spfs = spfRecords(await txt(domain));
+  const spf = spfs[0] ?? '';
+  const spfWant = spfOurs(route);
+  const spfUs = spfHas(spf, spfWant) || (route === 'own' && !!MAIL_IP && spfHas(spf, `a:${MAIL_HOST}`));
+  checks.push({ key: 'spf', ok: spfs.length === 1 && spfUs, found: spfs.length > 1 ? `${spfs.length} SPF records, and a domain may only have one. Merge them: ${spfs.join(' | ')}` : spf || 'none', want: spfWant });
   if (route === 'boosted') {
     const ses = await sesIdentity(domain).catch(() => null);
     const tokens = ses?.tokens ?? [];
@@ -596,6 +662,18 @@ export interface MailReady {
 const receivedAt = (addr: string) =>
   !!db.db.prepare("SELECT 1 FROM mail_log WHERE direction = 'in' AND addr = ? AND at >= ? LIMIT 1").get(lower(addr), new Date(Date.now() - 60 * 86_400_000).toISOString());
 
+/**
+ * "Some of each": the mailboxes hosted here at the company's own domain, and which of them really received mail. Their
+ * MX stays with the provider, so mail at one of these addresses proves the provider's routing passes mail on.
+ */
+export function hostedArrivals(ws: Ws): { hosted: string[]; arrived: string[] } {
+  const own = new Set((ws.domains ?? []).map(lower));
+  const hosted = (ws.accounts ?? [])
+    .filter((a) => a.email && !(a as { temp?: boolean }).temp && (!a.provider || a.provider === 'sprint2go') && own.has(lower(a.email.split('@')[1] ?? '')))
+    .map((a) => lower(a.email));
+  return { hosted, arrived: hosted.filter(receivedAt) };
+}
+
 /** Worked out from the real state: DNS seen by public resolvers, the server's ports, and mail that actually arrived. */
 export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: string }; whiteLabel?: unknown }): Promise<MailReady> {
   const at = now();
@@ -621,12 +699,12 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
       signs = !!ses?.dkimVerified;
       why = !mailConfigured() ? 'Boosted sending isn’t available yet.' : signs ? undefined : 'Amazon hasn’t verified the signing records yet.';
     } else {
-      const spf = (await txt(d)).find((t) => t.toLowerCase().startsWith('v=spf1')) ?? '';
-      const spfOk = spf.toLowerCase().includes(MAIL_IP ? `ip4:${MAIL_IP}` : `a:${MAIL_HOST}`) || spf.toLowerCase().includes(`a:${MAIL_HOST}`);
+      const spfs = spfRecords(await txt(d));
+      const spfOk = spfs.length === 1 && (spfHas(spfs[0], spfOurs('own')) || spfHas(spfs[0], `a:${MAIL_HOST}`));
       const dkim = (await txt(`${SELECTOR}._domainkey.${d}`)).find((t) => t.includes('p=')) ?? '';
       const dkimOk = dkim.replace(/\s/g, '').includes(`p=${domainKey(d, ws.id).publicKey}`);
       signs = spfOk && dkimOk;
-      why = signs ? undefined : !spfOk && !dkimOk ? `The SPF and DKIM records for ${d} are missing.` : !spfOk ? `The SPF record for ${d} doesn’t include our server.` : `The DKIM record for ${d} is missing or different.`;
+      why = signs ? undefined : !spfOk && !dkimOk ? `The SPF and DKIM records for ${d} are missing.` : !spfOk ? (spfs.length > 1 ? `${d} has ${spfs.length} SPF records; merge them into one.` : `The SPF record for ${d} doesn’t include our server.`) : `The DKIM record for ${d} is missing or different.`;
     }
     domains.set(d, { mxHere: mx[0] === MAIL_HOST, signs, why });
   }
@@ -639,7 +717,14 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
     if (hosted) {
       const receive = health.inbound.ok && (dom.mxHere || !!ws.mailRouting?.verifiedAt || receivedAt(a.email));
       const send = portOut && dom.signs;
-      const why = !receive ? (setup === 'mix' ? `Mail for ${a.email} isn’t routed here yet: add the routing rule in Google Admin, then send a test.` : `Mail for ${d} still goes elsewhere: point the MX record to ${MAIL_HOST}.`) : !send ? (dom.why ?? 'Outgoing mail is blocked on the server.') : undefined;
+      const prov = PROVIDER_NAME[ws.emailProvider || 'google'] ?? 'your mail provider';
+      const why = !receive
+        ? setup === 'mix'
+          ? `Nothing has arrived for ${a.email} yet. Set up routing at ${prov} (the steps are under Mail routing), make sure the address doesn’t exist there, then send it a test.`
+          : `Mail for ${d} still goes elsewhere: point the MX record to ${MAIL_HOST}.`
+        : !send
+          ? (dom.why ?? 'Outgoing mail is blocked on the server.')
+          : undefined;
       mailboxes[a.id] = { receive, send, why, sendWhy: send ? undefined : !portOut ? 'Outgoing mail is blocked on the server.' : dom.why };
     } else {
       // Stays with Google or Microsoft: a copy arrives here once forwarding is on; sending stays in their app for now.
