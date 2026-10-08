@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpDown, Columns3, EyeOff, Filter, LayoutGrid, Menu, MoreHorizontal, Plus, Search, Table2, Trash2, X } from 'lucide-react';
-import type { CellValue, Client, DataTable, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
+import { Zap, ArrowLeft, ArrowUpDown, Columns3, EyeOff, Filter, LayoutGrid, Menu, MoreHorizontal, Plus, Search, Table2, Trash2, X } from 'lucide-react';
+import type { CellValue, Channel, Client, DataTable, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
+import { AutomationsPanel } from './Automations';
 import { term } from '../../terms';
 import { uid } from '../../utils';
 import { usePersisted } from '../../settings';
@@ -10,7 +11,7 @@ import { ProjectPicker } from '../ProjectPicker';
 import { newOption, type CellCtx } from './Cell';
 import { GridView } from './GridView';
 import { BoardView } from './BoardView';
-import { RecordDrawer } from './RecordDrawer';
+import { FieldLine, RecordDrawer } from './RecordDrawer';
 import { TABLE_COLORS, TEMPLATES, cellText, convertValue, isEmpty, opsFor, optionsFromValues, rowName, templateFields, visibleRows, type TemplateId } from './fields';
 
 type Setter<T> = (fn: (x: T) => T) => void;
@@ -178,6 +179,10 @@ interface ScreenProps {
   onDeleted: () => void;
   onMenu: () => void;
   toast: (t: { text: string; action?: { label: string; run: () => void } }) => void;
+  channels: Channel[];
+  isAdmin: boolean;
+  serverOn: boolean;
+  onCompose: (m: { to: string; subject: string; body: string }) => void;
 }
 
 export function TableScreen(p: ScreenProps) {
@@ -190,6 +195,9 @@ export function TableScreen(p: ScreenProps) {
   const refs = { filter: useRef<HTMLButtonElement>(null), sort: useRef<HTMLButtonElement>(null), fields: useRef<HTMLButtonElement>(null), view: useRef<HTMLButtonElement>(null), more: useRef<HTMLButtonElement>(null), addView: useRef<HTMLButtonElement>(null) };
   const [name, setName] = useState(t.name);
   const [renamingView, setRenamingView] = useState('');
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [running, setRunning] = useState<Set<string>>(new Set());
+  const [asking, setAsking] = useState<{ row: TableRow; f: TableField } | null>(null);
 
   const mine = useMemo(() => p.rows.filter((r) => r.tableId === t.id), [p.rows, t.id]);
   const rowNameOf = (id: string) => {
@@ -292,7 +300,38 @@ export function TableScreen(p: ScreenProps) {
     p.onDeleted();
   };
 
-  const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, addOption };
+  /* buttons */
+  const press = async (row: TableRow, f: TableField, input: Record<string, CellValue> = {}) => {
+    if (!p.serverOn) return p.toast({ text: 'Buttons run on the server; they work once Sprint2go is running on one.' });
+    const key = `${row.id}:${f.id}`;
+    setRunning((x) => new Set(x).add(key));
+    try {
+      const r = await fetch('/api/tables/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tableId: t.id, rowId: row.id, fieldId: f.id, input }) });
+      const out = (await r.json().catch(() => null)) as { ok: boolean; results: { ok: boolean; note: string; open?: string; compose?: { to: string; subject: string; body: string } }[]; error?: string } | null;
+      if (!r.ok || !out) return p.toast({ text: out?.error ?? 'The button didn’t run. Try again.' });
+      for (const x of out.results) {
+        if (x.open) window.open(x.open, '_blank', 'noopener');
+        if (x.compose) p.onCompose(x.compose);
+      }
+      const failed = out.results.filter((x) => !x.ok);
+      p.toast({ text: failed.length ? `${f.button?.label ?? f.name}: ${failed.map((x) => x.note).join(' · ')}` : `${f.button?.label ?? f.name}: ${out.results.map((x) => x.note).join(' · ') || 'done'}` });
+    } finally {
+      setRunning((x) => {
+        const n = new Set(x);
+        n.delete(key);
+        return n;
+      });
+    }
+  };
+  const runButton = (row: TableRow, f: TableField) => {
+    const b = f.button;
+    if (!b) return;
+    if (b.ask?.length) return setAsking({ row, f });
+    if (b.confirm && !confirm(`${b.label || f.name}: run this for “${rowName(t, row)}”?`)) return;
+    void press(row, f);
+  };
+
+  const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, addOption, runButton, running, isAdmin: p.isAdmin };
   const filters = view?.filters ?? [];
   const setFilters = (fs: TableFilter[]) => patchView({ filters: fs });
   const openRow = p.openRow ? mine.find((r) => r.id === p.openRow) : undefined;
@@ -314,6 +353,9 @@ export function TableScreen(p: ScreenProps) {
           <input className="tb-title" value={name} aria-label="Table name" onChange={(e) => setName(e.target.value)} onBlur={() => (name.trim() ? name.trim() !== t.name && patchTable({ name: name.trim() }) : setName(t.name))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
           <ProjectPicker value={t.clientId ?? ''} onChange={(v) => patchTable({ clientId: v || undefined })} projects={p.clients} none="Whole company" label="Belongs to" className="sel-flat" />
         </div>
+        <button className={`ghost-btn sm tb-auto-btn${t.intake?.enabled || t.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title="Data coming in, rules, webhooks">
+          <Zap size={13} /> <span className="lbl">Automations</span>
+        </button>
         <button ref={refs.more} className="icon-btn" onClick={() => setPop('more')} aria-label="Table options">
           <MoreHorizontal size={17} />
         </button>
@@ -434,7 +476,7 @@ export function TableScreen(p: ScreenProps) {
           {!view ? null : view.kind === 'board' ? (
             <BoardView table={t} view={view} rows={shown} ctx={ctx} onCell={setCell} onOpenRow={p.setOpenRow} onAddRow={(v) => p.setOpenRow(addRow(v))} onView={patchView} />
           ) : (
-            <GridView table={t} tables={p.tables} view={view} rows={shown} ctx={ctx} selected={selected} onSelect={setSelected} onCell={setCell} onOpenRow={p.setOpenRow} onAddRow={() => addRow()} onSaveField={saveField} onDeleteField={deleteField} onView={patchView} />
+            <GridView channels={p.channels} table={t} tables={p.tables} view={view} rows={shown} ctx={ctx} selected={selected} onSelect={setSelected} onCell={setCell} onOpenRow={p.setOpenRow} onAddRow={() => addRow()} onSaveField={saveField} onDeleteField={deleteField} onView={patchView} />
           )}
           {view && !shown.length && (mine.length ? (
             <p className="muted small tb-none">No rows match {q.trim() ? 'the search' : 'the filters'}.</p>
@@ -444,6 +486,21 @@ export function TableScreen(p: ScreenProps) {
         </TabPane>
       </div>
 
+      {autoOpen && <AutomationsPanel t={t} tables={p.tables} users={p.users} channels={p.channels} onPatch={patchTable} onClose={() => setAutoOpen(false)} toast={(text) => p.toast({ text })} />}
+      {asking && (
+        <AskDialog
+          table={t}
+          row={asking.row}
+          f={asking.f}
+          ctx={ctx}
+          onRun={(input) => {
+            const a = asking;
+            setAsking(null);
+            void press(a.row, a.f, input);
+          }}
+          onClose={() => setAsking(null)}
+        />
+      )}
       {openRow && (
         <RecordDrawer
           table={t}
@@ -582,5 +639,42 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
         )}
       </div>
     </section>
+  );
+}
+
+/** Before a button runs: the fields it asks for (e.g. "Why lost?"), filled in on the spot. */
+function AskDialog({ table, row, f, ctx, onRun, onClose }: { table: DataTable; row: TableRow; f: TableField; ctx: CellCtx; onRun: (input: Record<string, CellValue>) => void; onClose: () => void }) {
+  const ask = (f.button?.ask ?? []).map((id) => table.fields.find((x) => x.id === id)).filter(Boolean) as TableField[];
+  const [draft, setDraft] = useState<Record<string, CellValue>>(() => Object.fromEntries(ask.map((x) => [x.id, row.values[x.id] ?? null])));
+  const fake: TableRow = { ...row, values: { ...row.values, ...draft } };
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal" role="dialog" aria-label={f.button?.label ?? f.name} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <Zap size={15} /> {f.button?.label || f.name} · {rowName(table, row)}
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body">
+          <div className="tb-rd-fields">
+            {ask.map((x) => (
+              <FieldLine key={x.id} f={x} row={fake} ctx={ctx} onCell={(id, v) => setDraft((d) => ({ ...d, [id]: v }))} />
+            ))}
+          </div>
+        </div>
+        <footer className="modal-foot">
+          <span className="spacer" />
+          <button className="ghost-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-btn" onClick={() => onRun(draft)}>
+            {f.button?.label || 'Run'}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }

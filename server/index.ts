@@ -12,6 +12,7 @@ import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
+import * as tablesEngine from './tables.ts';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
@@ -292,6 +293,9 @@ function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: 
 }
 setInterval(() => clients.forEach((c) => c.res.write(': ping\n\n')), 25_000);
 
+/** Tables' engine (buttons, rules, webhooks) saves through here, so everyone sees the result live. */
+const tablesEnv: tablesEngine.Env = { broadcast: (c, u, d) => broadcast(c, u, d) };
+
 /* ---------- AI: which provider and model does each job ---------- */
 
 const JOB_OF: Record<string, string> = {
@@ -562,6 +566,33 @@ createServer(async (req, res) => {
       return json(res, 200, { me: inv.user_id });
     }
 
+    // A table's own address: forms, ads, Zapier or scripts post rows here (no session: the secret is in the URL).
+    const hook = p.match(/^\/api\/hooks\/([A-Za-z0-9_-]{16,64})$/);
+    if (hook) {
+      res.setHeader('access-control-allow-origin', '*');
+      if (req.method === 'OPTIONS') {
+        res.setHeader('access-control-allow-headers', 'content-type');
+        res.writeHead(204);
+        return res.end();
+      }
+      if (req.method === 'GET') return json(res, 200, { ok: true, hint: 'POST JSON or form data here to add a row.' });
+      if (req.method !== 'POST') return json(res, 405, {});
+      let raw = '';
+      for await (const chunk of req) {
+        raw += chunk;
+        if (raw.length > 1_000_000) return json(res, 413, { error: 'Too large' });
+      }
+      const type = String(req.headers['content-type'] ?? '');
+      let payload: unknown;
+      try {
+        payload = type.includes('application/x-www-form-urlencoded') ? Object.fromEntries(new URLSearchParams(raw)) : raw ? JSON.parse(raw) : {};
+      } catch {
+        return json(res, 400, { error: 'Send JSON or form data' });
+      }
+      const out = tablesEngine.intake(tablesEnv, hook[1], payload);
+      return json(res, out.status, out.body);
+    }
+
     // The recorder reporting on a bot (no session: it signs with the shared secret).
     if (p === '/api/meet/recorder' && req.method === 'POST') {
       if (!sameSecret(String(req.headers.authorization ?? '').replace(/^Bearer /, ''))) return json(res, 401, {});
@@ -690,6 +721,25 @@ createServer(async (req, res) => {
     }
 
     // Saves changes and tells everyone else who has the app open.
+    /* Tables: press a button; send a test webhook */
+    if (p === '/api/tables/run' && req.method === 'POST') {
+      const b = await body(req);
+      const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
+      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId)) return json(res, 404, { error: 'No such table.' });
+      const f = (t.fields ?? []).find((x: any) => x.id === b.fieldId);
+      if (f?.button?.who === 'admins' && !isAdminOf(me, t.workspaceId)) return json(res, 403, { error: 'Only admins can press this button.' });
+      return json(res, 200, await tablesEngine.runButton(tablesEnv, t.id, String(b.rowId ?? ''), String(b.fieldId ?? ''), me, b.input ?? {}));
+    }
+    if (p === '/api/tables/test-hook' && req.method === 'POST') {
+      const b = await body(req);
+      const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
+      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId)) return json(res, 404, { error: 'No such table.' });
+      const a = { kind: 'webhook' as const, url: String(b.url ?? ''), fields: b.fields };
+      const payload = tablesEngine.testPayload(t, a);
+      const out = await tablesEngine.sendHook(t, a.url, payload);
+      return json(res, 200, { ...out, payload, reply: typeof out.reply === 'string' ? out.reply.slice(0, 500) : out.reply });
+    }
+
     /* Meetings: send the recorder bot, stop it, play its audio */
     if (p === '/api/meet/status') return json(res, 200, { recorder: !!RECORDER_URL && !!RECORDER_SECRET });
     if (p === '/api/meet/bot' && req.method === 'POST') {
@@ -810,8 +860,19 @@ createServer(async (req, res) => {
           })
         : [];
       const botAudio = coll === 'meetings' ? dels.filter((id: string) => (db.getDoc(coll, id) as any)?.recording?.url) : [];
+      // Rows: remember them as they were, so rules can tell what was added or changed.
+      const rowsBefore = coll === 'rows' ? new Map(ok.map((d) => [d!.id, db.getDoc('rows', d!.id) as any])) : null;
+      // Tables: the delivery log and the last sample are the server's; mappings merge (a key set to "" means skip it).
+      if (coll === 'tables')
+        for (let i = 0; i < ok.length; i++) {
+          const before = db.getDoc('tables', ok[i]!.id) as any;
+          if (!before) continue;
+          const d = ok[i] as any;
+          ok[i] = { ...d, log: before.log, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
+        }
       db.writeDocs(coll, ok, dels, me);
       broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);
+      if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
       // A deleted meeting takes its recording with it.
       if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
       return json(res, 200, { saved: ok.length });

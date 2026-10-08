@@ -1906,6 +1906,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     if (n.link.app === 'mail' && n.link.id) return openThread(n.link.id);
     if (n.link.app === 'meet') return n.link.id ? openMeeting(n.link.id) : go('meet');
+    if (n.link.app === 'tables' && n.link.id) return openTable(n.link.id, n.link.msg);
     if (n.link.app === 'settings') return (setSettingsSection((n.link.id ?? 'account') as SettingsSection), go('settings'));
     go(n.link.app);
   };
@@ -3195,6 +3196,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onDeleted={() => setTableId(null)}
               onMenu={() => (mobile ? setTableId(null) : setSidebarOpen(true))}
               toast={showToast}
+              channels={wsChannels}
+              isAdmin={isAdmin}
+              serverOn={server.on}
+              onCompose={(m) => openCompose({ initial: { to: m.to ? [{ name: m.to, email: m.to }] : [], cc: [], subject: m.subject, html: textToHtml(m.body) + settings.signature, text: m.body, files: [], track: settings.trackByDefault, trackOptions: DEFAULT_TRACK_OPTIONS, fromId: (myAccounts.find((a) => a.kind === 'personal') ?? myAccounts[0])?.id ?? '' } })}
             />
           ) : (
             <TablesHome tables={wsTables} rows={wsTableRows} clients={wsClientsAll} onOpen={openTable} onNew={() => setNewTableFor({})} onMenu={() => setSidebarOpen(true)} />

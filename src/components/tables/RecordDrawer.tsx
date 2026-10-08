@@ -3,18 +3,19 @@ import { Copy, Send, Trash2, X } from 'lucide-react';
 import type { CellValue, DataTable, TableField, TableRow, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { relative } from '../../utils';
-import { CellView, ContactActions, InlineInput, PickPopover, typesInline, type CellCtx } from './Cell';
+import { ButtonCell, CellView, ContactActions, InlineInput, PickPopover, typesInline, type CellCtx } from './Cell';
 import { cellText, fieldIcon, rowName } from './fields';
 
 /** One field on the row page: label on the left, the value (editable in place) on the right. */
-function FieldLine({ f, row, ctx, onCell, readOnly }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean }) {
+export function FieldLine({ f, row, ctx, onCell, readOnly }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [pop, setPop] = useState(false);
   const v = row.values[f.id];
   const Icon = fieldIcon(f.type);
   const save = (x: CellValue) => onCell(f.id, x);
   let editor: React.ReactNode;
-  if (readOnly) editor = <span className="tb-rd-val ro"><CellView f={f} v={v} ctx={ctx} wrap /></span>;
+  if (f.type === 'button') editor = <span className="tb-rd-btn"><ButtonCell f={f} row={row} ctx={ctx} /></span>;
+  else if (readOnly) editor = <span className="tb-rd-val ro"><CellView f={f} v={v} ctx={ctx} wrap /></span>;
   else if (f.type === 'checkbox') editor = <input type="checkbox" checked={!!v} onChange={(e) => save(e.target.checked)} aria-label={f.name} />;
   else if (f.type === 'longtext') editor = <LongText v={v} onSave={save} label={f.name} />;
   else if (typesInline(f.type))
@@ -82,6 +83,7 @@ export function RecordDrawer({
   useEffect(() => setTitle(String(row.values[table.fields[0].id] ?? '')), [row.id, row.values, table.fields]);
   const first = table.fields[0];
   const userOf = (id: string): User | undefined => ctx.users.find((u) => u.id === id);
+  const byName = (id: string) => (id === 'webhook' ? 'A webhook' : id === 'rule' ? 'A rule' : (userOf(id)?.name.split(' ')[0] ?? 'Someone'));
   // Rows in other tables whose link fields point here.
   const linkedFrom = ctx.tables.flatMap((t) =>
     t.fields
@@ -129,7 +131,7 @@ export function RecordDrawer({
           />
           <p className="muted small tb-rd-meta">
             Added {relative(row.createdAt)}
-            {userOf(row.createdBy) ? ` by ${userOf(row.createdBy)!.name.split(' ')[0]}` : ''}
+            {row.createdBy === 'webhook' ? ' from a webhook' : userOf(row.createdBy) ? ` by ${userOf(row.createdBy)!.name.split(' ')[0]}` : ''}
             {row.updatedAt !== row.createdAt ? ` · changed ${relative(row.updatedAt)}` : ''}
           </p>
 
@@ -138,6 +140,21 @@ export function RecordDrawer({
               <FieldLine key={f.id} f={f} row={row} ctx={ctx} onCell={onCell} readOnly={readOnly} />
             ))}
           </div>
+
+          {row.extra && Object.keys(row.extra).length > 0 && (
+            <div className="tb-rd-sec">
+              <h4>Also received</h4>
+              <p className="muted small">Came in with the data but isn’t in a field. Map it in Automations to give it one.</p>
+              <dl className="tb-extra">
+                {Object.entries(row.extra).map(([k, v]) => (
+                  <div key={k}>
+                    <dt>{k}</dt>
+                    <dd>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
 
           {linkedFrom.length > 0 && (
             <div className="tb-rd-sec">
@@ -191,7 +208,7 @@ export function RecordDrawer({
               <ul className="tb-history">
                 {[...row.history!].reverse().slice(0, 15).map((h, i) => (
                   <li key={i}>
-                    <strong>{userOf(h.by)?.name.split(' ')[0] ?? 'Someone'}</strong> changed {fieldName(h.fieldId)}: <span className="muted">{show(h.fieldId, h.from)}</span> → {show(h.fieldId, h.to)} <small className="muted">· {relative(h.at)}</small>
+                    <strong>{byName(h.by)}</strong> changed {fieldName(h.fieldId)}: <span className="muted">{show(h.fieldId, h.from)}</span> → {show(h.fieldId, h.to)} <small className="muted">· {relative(h.at)}</small>
                   </li>
                 ))}
               </ul>

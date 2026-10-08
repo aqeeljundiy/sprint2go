@@ -3,7 +3,7 @@ import { Check, ExternalLink, Mail, MessageCircle, Phone, Plus, Search, X } from
 import type { CellValue, DataTable, FieldOption, TableField, TableRow, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Popover } from '../ui/Popover';
-import { OPTION_COLORS, isEmpty, money, rowName } from './fields';
+import { OPTION_COLORS, isEmpty, money, passes, rowName } from './fields';
 import { uid } from '../../utils';
 
 export interface CellCtx {
@@ -12,6 +12,36 @@ export interface CellCtx {
   rows: TableRow[];
   /** Adds a choice to a select / multi field and returns its id. */
   addOption: (fieldId: string, label: string) => string;
+  /** Presses a Button field on a row; running holds "rowId:fieldId" while it works. */
+  runButton?: (row: TableRow, f: TableField) => void;
+  running?: Set<string>;
+  isAdmin?: boolean;
+}
+
+/** A Button field's button on a row: hidden where "Show on" doesn't match, busy while it runs. */
+export function ButtonCell({ f, row, ctx }: { f: TableField; row: TableRow; ctx: CellCtx }) {
+  const b = f.button;
+  if (!b || !ctx.runButton) return null;
+  if (b.showWhen) {
+    const sf = ctx.tables.flatMap((t) => t.fields).find((x) => x.id === b.showWhen!.fieldId);
+    if (sf && !passes(b.showWhen, sf, row.values[sf.id], { users: ctx.users, rowName: () => '' })) return null;
+  }
+  const busy = ctx.running?.has(`${row.id}:${f.id}`);
+  const last = [...(row.runs ?? [])].reverse().find((x) => x.fieldId === f.id);
+  const locked = b.who === 'admins' && !ctx.isAdmin;
+  return (
+    <button
+      type="button"
+      className={`tb-run${busy ? ' busy' : ''}${last && !last.ok ? ' failed' : ''}`}
+      style={{ ['--c' as string]: b.color ?? OPTION_COLORS[1] }}
+      disabled={busy || locked}
+      title={locked ? 'Only admins can press this' : last ? `${last.ok ? 'Last run' : 'Failed'}: ${last.note}` : undefined}
+      onClick={(e) => (e.stopPropagation(), ctx.runButton!(row, f))}
+    >
+      {busy ? <span className="tb-spin" aria-hidden /> : null}
+      {b.label || f.name}
+    </button>
+  );
 }
 
 export const Chip = ({ o }: { o: FieldOption }) => (

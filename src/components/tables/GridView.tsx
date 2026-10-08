@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Maximize2, Plus } from 'lucide-react';
-import type { CellValue, DataTable, TableField, TableRow, TableViewDef } from '../../types';
-import { CellView, ContactActions, InlineInput, PickPopover, TextPopover, typesInline, type CellCtx } from './Cell';
+import type { CellValue, Channel, DataTable, TableField, TableRow, TableViewDef } from '../../types';
+import { ButtonCell, CellView, ContactActions, InlineInput, PickPopover, TextPopover, typesInline, type CellCtx } from './Cell';
 import { FieldMenu } from './FieldMenu';
 import { fieldIcon } from './fields';
 
-const DEFAULT_W: Partial<Record<TableField['type'], number>> = { text: 200, longtext: 240, email: 210, phone: 180, url: 190, checkbox: 90, number: 120, money: 150, date: 130, person: 170, select: 150, multi: 200, link: 200 };
+const DEFAULT_W: Partial<Record<TableField['type'], number>> = { button: 150, text: 200, longtext: 240, email: 210, phone: 180, url: 190, checkbox: 90, number: 120, money: 150, date: 130, person: 170, select: 150, multi: 200, link: 200 };
 const widthOf = (view: TableViewDef, f: TableField, first: boolean) => view.widths?.[f.id] ?? (first ? 220 : DEFAULT_W[f.type] ?? 160);
 
 export interface GridProps {
@@ -23,6 +23,7 @@ export interface GridProps {
   onDeleteField: (id: string) => void;
   onView: (p: Partial<TableViewDef>) => void;
   readOnly?: boolean;
+  channels?: Channel[];
 }
 
 /** One cell: shows the value, and edits it in the way that fits the field (typing, a picker, a toggle). */
@@ -32,6 +33,12 @@ function GridCell({ f, row, ctx, onCell, readOnly }: { f: TableField; row: Table
   const [pop, setPop] = useState(false);
   const v = row.values[f.id];
   const save = (x: CellValue) => onCell(row.id, f.id, x);
+  if (f.type === 'button')
+    return (
+      <div className="tb-cell t-button" role="gridcell">
+        <ButtonCell f={f} row={row} ctx={ctx} />
+      </div>
+    );
   const start = () => {
     if (readOnly) return;
     if (f.type === 'checkbox') return save(!v);
@@ -44,9 +51,11 @@ function GridCell({ f, row, ctx, onCell, readOnly }: { f: TableField; row: Table
       className={`tb-cell t-${f.type}${editing || pop ? ' editing' : ''}`}
       role="gridcell"
       tabIndex={0}
-      onClick={() => !editing && start()}
+      // The pickers render elsewhere on the page but React still passes their clicks and keys up to here:
+      // only react to what happened inside the cell itself.
+      onClick={(e) => !editing && e.currentTarget.contains(e.target as Node) && start()}
       onKeyDown={(e) => {
-        if (editing) return;
+        if (editing || !e.currentTarget.contains(e.target as Node)) return;
         if (e.key === 'Enter' || e.key === 'F2') (e.preventDefault(), start());
         if ((e.key === 'Backspace' || e.key === 'Delete') && !readOnly && f.type !== 'checkbox') save(null);
       }}
@@ -66,7 +75,7 @@ function GridCell({ f, row, ctx, onCell, readOnly }: { f: TableField; row: Table
 }
 
 /** A column header: the field's name and kind; click for its settings; drag the edge to resize. */
-function Header({ f, table, tables, view, first, onSaveField, onDeleteField, onView, readOnly }: { f: TableField; first: boolean } & Pick<GridProps, 'table' | 'tables' | 'view' | 'onSaveField' | 'onDeleteField' | 'onView' | 'readOnly'>) {
+function Header({ f, table, tables, view, first, onSaveField, onDeleteField, onView, readOnly, ctx, channels }: { f: TableField; first: boolean } & Pick<GridProps, 'table' | 'tables' | 'view' | 'onSaveField' | 'onDeleteField' | 'onView' | 'readOnly' | 'ctx' | 'channels'>) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const Icon = fieldIcon(f.type);
@@ -113,6 +122,8 @@ function Header({ f, table, tables, view, first, onSaveField, onDeleteField, onV
           isFirst={first}
           onSave={onSaveField}
           onDelete={() => onDeleteField(f.id)}
+          users={ctx.users}
+          channels={channels}
           onSort={(dir) => onView({ sort: { fieldId: f.id, dir } })}
           onHide={() => onView({ hidden: [...(view.hidden ?? []), f.id] })}
         />
@@ -177,7 +188,7 @@ export function GridView(p: GridProps) {
           </button>
         )}
       </div>
-      <FieldMenu anchor={addRef} open={adding} onClose={() => setAdding(false)} field={null} table={p.table} tables={p.tables} onSave={p.onSaveField} />
+      <FieldMenu anchor={addRef} open={adding} onClose={() => setAdding(false)} field={null} table={p.table} tables={p.tables} onSave={p.onSaveField} users={p.ctx.users} channels={p.channels} />
     </div>
   );
 }

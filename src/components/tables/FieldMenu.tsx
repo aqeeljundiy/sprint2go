@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight, EyeOff, Plus, Trash2, X } from 'lucide-react';
-import type { DataTable, FieldType, TableField } from '../../types';
+import type { Channel, DataTable, FieldType, TableField, User } from '../../types';
+import { ButtonSettings } from './Automations';
 import { Popover } from '../ui/Popover';
 import { FIELD_TYPES, OPTION_COLORS, fieldIcon } from './fields';
 import { newOption } from './Cell';
@@ -22,7 +23,11 @@ export function FieldMenu({
   onDelete,
   onSort,
   onHide,
+  users = [],
+  channels = [],
 }: {
+  users?: User[];
+  channels?: Channel[];
   anchor: React.RefObject<HTMLElement | null>;
   open: boolean;
   onClose: () => void;
@@ -49,6 +54,7 @@ export function FieldMenu({
     const next: Partial<TableField> = { type };
     if ((type === 'select' || type === 'multi') && !draft.options?.length) next.options = [];
     if (type === 'money' && !draft.currency) next.currency = 'IDR';
+    if (type === 'button' && !draft.button) next.button = { label: draft.name.trim() || 'Run', actions: [] };
     if (type === 'link' && !draft.linkTable) next.linkTable = tables.find((t) => t.id !== table.id && t.workspaceId === table.workspaceId)?.id;
     // Until someone names it, a column is called after its kind (or, for a link, the table it links to).
     const auto = !draft.name.trim() || FIELD_TYPES.some((f) => f.label === draft.name) || tables.some((t) => t.name === draft.name);
@@ -67,8 +73,8 @@ export function FieldMenu({
   const changingType = !!field && field.type !== draft.type;
 
   return (
-    <Popover anchor={anchor} open={open} onClose={onClose} width={300} title={field ? field.name : 'New field'}>
-      <div className="tb-fm" onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !(e.target as HTMLElement).closest('.tb-fm-opts') && save()}>
+    <Popover anchor={anchor} open={open} onClose={onClose} width={draft.type === 'button' ? 400 : 300} title={field ? field.name : 'New field'}>
+      <div className={`tb-fm${draft.type === 'button' ? ' wide' : ''}`} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !(e.target as HTMLElement).closest('.tb-fm-opts, .tb-btn-set') && save()}>
         <input className="tb-fm-name" autoFocus value={draft.name} placeholder="Field name" onChange={(e) => set({ name: e.target.value })} />
 
         <button type="button" className="tb-fm-type" onClick={() => setTypesOpen((x) => !x)} disabled={isFirst && draft.type === 'text' && !!field} title={isFirst ? 'The first field is each row’s name' : undefined}>
@@ -113,6 +119,8 @@ export function FieldMenu({
             </button>
           </div>
         )}
+
+        {draft.type === 'button' && <ButtonSettings field={draft} t={table} tables={tables} users={users} channels={channels} onChange={(button) => set({ button })} />}
 
         {draft.type === 'money' && (
           <div className="tb-fm-row">
@@ -174,7 +182,7 @@ export function FieldMenu({
           <button type="button" className="ghost-btn sm" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="primary-btn sm" disabled={draft.type === 'link' && !draft.linkTable} onClick={save}>
+          <button type="button" className="primary-btn sm" disabled={(draft.type === 'link' && !draft.linkTable) || (draft.type === 'button' && !draft.button?.actions.length)} onClick={save}>
             {field ? 'Save' : 'Add field'}
           </button>
         </div>

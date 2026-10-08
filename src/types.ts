@@ -635,7 +635,7 @@ export interface ChannelSummary {
 
 /* ---------- Tables: flexible databases (leads, pipelines, anything) ---------- */
 
-export type FieldType = 'text' | 'longtext' | 'number' | 'money' | 'date' | 'select' | 'multi' | 'person' | 'email' | 'phone' | 'url' | 'checkbox' | 'link';
+export type FieldType = 'text' | 'longtext' | 'number' | 'money' | 'date' | 'select' | 'multi' | 'person' | 'email' | 'phone' | 'url' | 'checkbox' | 'link' | 'button';
 
 export interface FieldOption {
   id: string;
@@ -650,6 +650,60 @@ export interface TableField {
   options?: FieldOption[]; // select, multi
   currency?: 'IDR' | 'USD' | 'SGD' | 'EUR'; // money
   linkTable?: string; // link: the table its rows come from
+  button?: ButtonDef; // button: what pressing it does
+}
+
+/**
+ * Something a button or a rule does to a row. Text can use {Field name} to fill in the row's values.
+ * Values for "set" can be "@today", "@me" (whoever pressed) or "@now".
+ */
+export type TableAction =
+  | { kind: 'set'; values: Record<string, CellValue> }
+  | { kind: 'copy' | 'move'; tableId: string } // fields go across by matching names
+  | { kind: 'linked'; tableId: string; linkFieldId?: string } // a new row there, linked back to this one
+  | { kind: 'task'; title: string; assignee?: string; dueDays?: number } // assignee: a person field's id, a user id, or "@me"
+  | { kind: 'email'; toField?: string; subject: string; body: string } // opens a new email, filled in
+  | { kind: 'chat'; channelId: string; text: string }
+  | { kind: 'notify'; who: string; text: string } // who: a person field's id, a user id, or "@me"
+  | { kind: 'webhook'; url: string; fields?: { fieldId: string; key: string }[]; replyTo?: { path: string; fieldId: string }[] }
+  | { kind: 'open'; url: string }; // a link built from the row, like https://wa.me/{Phone}
+
+export interface ButtonDef {
+  label: string;
+  color?: string;
+  confirm?: boolean; // ask "Are you sure?" first
+  ask?: string[]; // fields to fill in before it runs (e.g. "Why lost?")
+  who?: 'team' | 'admins'; // who can press it
+  showWhen?: TableFilter; // only shown on rows that match
+  actions: TableAction[];
+}
+
+/** Runs actions by itself: when a row is added, changed, or a field becomes a value. */
+export interface TableRule {
+  id: string;
+  name: string;
+  on: 'created' | 'updated' | 'becomes';
+  fieldId?: string; // becomes: this field…
+  value?: string; // …becomes this (a choice id, "yes" for a checkbox, or text)
+  actions: TableAction[];
+  enabled: boolean;
+}
+
+/** Data arriving at a table's own URL (forms, ads, Zapier, scripts): which incoming key fills which field. */
+export interface TableIntake {
+  token: string; // the secret part of the URL
+  enabled: boolean;
+  mapping: Record<string, string>; // incoming key (dot path, e.g. data.email) -> field id
+  dedupeField?: string; // same value here = update that row instead of adding one
+  sample?: Record<string, unknown>; // the last delivery, flattened, to map from
+}
+
+export interface TableLogEntry {
+  at: string;
+  dir: 'in' | 'out';
+  ok: boolean;
+  text: string; // what happened, in a sentence
+  rowId?: string;
 }
 
 export interface TableFilter {
@@ -678,6 +732,10 @@ export interface DataTable {
   description?: string;
   fields: TableField[]; // the first is the row's name
   views: TableViewDef[];
+  rules?: TableRule[];
+  intake?: TableIntake;
+  signingSecret?: string; // signs outgoing webhooks (X-Sprint2go-Signature)
+  log?: TableLogEntry[]; // the last webhook deliveries, both ways
   createdBy: string;
   createdAt: string;
 }
@@ -694,5 +752,7 @@ export interface TableRow {
   createdAt: string;
   updatedAt: string;
   comments?: { id: string; by: string; at: string; text: string }[];
+  extra?: Record<string, unknown>; // incoming data no field was mapped to (kept, never lost)
+  runs?: { fieldId: string; at: string; by: string; ok: boolean; note: string }[]; // button presses on this row
   history?: { by: string; at: string; fieldId: string; from: CellValue; to: CellValue }[];
 }
