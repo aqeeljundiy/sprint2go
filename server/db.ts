@@ -271,6 +271,32 @@ export function totpCode(secret: string, now = Date.now()) {
   return { code: String(n % 1_000_000).padStart(6, '0'), secondsLeft: 30 - (Math.floor(now / 1000) % 30) };
 }
 
+/* ---------- two-step sign-in (TOTP), shared by operators and everyone's own accounts ---------- */
+
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32(buf: Buffer) {
+  let bits = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  return (bits.match(/.{1,5}/g) ?? []).map((c) => B32[parseInt(c.padEnd(5, '0'), 2)]).join('');
+}
+/** A new authenticator secret (160 bits, base32). */
+export const newTotpSecret = () => base32(randomBytes(20));
+/**
+ * Which 30-second step a 6-digit code belongs to, allowing one step of clock drift either way; null when it doesn't
+ * match. Steps at or before `after` don't count, so a code that was already used can't be used again.
+ */
+export function totpStep(secret: string, code: string, after = -1): number | null {
+  const c = String(code ?? '').replace(/\D/g, '');
+  if (c.length !== 6) return null;
+  const now = Date.now();
+  for (const d of [-1, 0, 1]) {
+    const t = now + d * 30_000;
+    const step = Math.floor(t / 30_000);
+    if (step > after && timingSafeEqual(Buffer.from(totpCode(secret, t).code), Buffer.from(c))) return step;
+  }
+  return null;
+}
+
 /* ---------- files on disk ---------- */
 
 const FILES = join(DIR, 'files');

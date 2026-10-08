@@ -19,6 +19,7 @@ import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
+import * as twostep from './twostep.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
@@ -68,6 +69,7 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 
 platform.bootstrapOperators();
 admin.loadPricing();
+twostep.startClocks();
 
 // Once, on a production server and only when S2G_PURGE_DEMO=1 is set: the demo companies that a start-up top-up put
 // into the live database by mistake go (with whatever was made inside them, and the demo people's sign-ins). A backup
@@ -439,6 +441,18 @@ function tooMany(key: string, max: number, windowMs: number) {
   return list.length > max;
 }
 const ipOf = (req: IncomingMessage) => String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+/** The brand people see at this address: an agency's name on its own (verified) domain, otherwise ours. */
+function brandNameAt(req: IncomingMessage) {
+  const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
+  const w = (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
+  return String(w?.whiteLabel?.name || 'sprint2go');
+}
+/** Signs someone out everywhere (or everywhere but one session) and closes their live connections. */
+function kick(userId: string, keepToken?: string) {
+  if (keepToken) twostep.endOtherSessions(userId, keepToken);
+  else db.endSessions(userId);
+  for (const [id, c] of clients) if (c.userId === userId && c.token !== keepToken) (c.res.end(), clients.delete(id));
+}
 /** Six digits, sent by email when mail is set up; otherwise in the log (and on screen outside production). */
 const codes = new Map<string, { code: string; tries: number; until: number; data?: any }>();
 const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -877,8 +891,12 @@ createServer(async (req, res) => {
       const good = login && typeof password === 'string' ? await db.checkPassword(password, login.pw_hash) : (await db.burnPasswordTime(String(password ?? '')), false);
       if (!good || !login) return json(res, 401, { error: 'Wrong email or password.' });
       if ((db.getDoc('users', login.user_id) as any)?.suspended) return json(res, 403, { error: 'This account is suspended. Contact support.' });
-      setSession(res, db.newSession(login.user_id));
-      return json(res, 200, { me: login.user_id });
+      const t = db.newSession(login.user_id);
+      setSession(res, t);
+      // Two-step sign-in: the session waits for its code (15 minutes), or for setting it up when a company requires it.
+      const g = twostep.gate(login.user_id, t, null, workspaces() as any);
+      if (g?.need === 'code') twostep.markWaiting(t);
+      return json(res, 200, { me: login.user_id, ...(g ? { twoStep: g.need, companies: g.need === 'setup' ? g.companies : undefined } : {}) });
     }
     // Sign-up: name, email and password, then a 6-digit code sent to the email. Until real email is wired up, the code
     // is printed in the server log and (outside production) shown on screen so the flow can be tried.
@@ -961,7 +979,7 @@ createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (p === '/api/reset/verify' && req.method === 'POST') {
-      const { email, code, password } = await body(req);
+      const { email, code, password, twoStep } = await body(req);
       const mail = String(email ?? '').trim().toLowerCase();
       const c = codes.get(`reset:${mail}`);
       if (!c || c.until < Date.now()) return json(res, 410, { error: 'That code has expired. Ask for a new one.' });
@@ -970,10 +988,15 @@ createServer(async (req, res) => {
       if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
       const login = db.findLogin(mail);
       if (!login) return json(res, 404, { error: 'No account with this email.' });
+      // An email code alone doesn't get past two-step sign-in: the code from the app (or a backup code) comes first.
+      const second = twostep.resetNeedsCode(login.user_id, twoStep);
+      if (second) return json(res, second.status, second.body);
       codes.delete(`reset:${mail}`);
       await db.setLogin(login.user_id, mail, password);
       db.endSessions(login.user_id);
-      setSession(res, db.newSession(login.user_id));
+      const t = db.newSession(login.user_id);
+      if (twostep.isOn(login.user_id)) twostep.markPassed(t);
+      setSession(res, t);
       return json(res, 200, { me: login.user_id });
     }
 
@@ -1042,6 +1065,13 @@ createServer(async (req, res) => {
     const meDoc = personOf(me) as any;
     // A suspended person can still see that they're suspended; nothing else.
     if (meDoc?.suspended) return p === '/api/me' ? json(res, 200, { me, suspended: meDoc.suspended }) : json(res, 403, { error: 'This account is suspended.' });
+    // Two-step sign-in still to do (a code, or setting it up): only that, and signing out.
+    const gate = twostep.gate(me, token, session?.operator ?? null, workspaces() as any);
+    if (gate) {
+      if (p === '/api/me') return json(res, 200, { me, twoStep: gate.need, email: meDoc?.email, companies: gate.need === 'setup' ? gate.companies : undefined });
+      if (!twostep.allowedWhileGated(gate, p, req.method ?? 'GET'))
+        return json(res, gate.need === 'code' ? 401 : 403, { error: gate.need === 'code' ? 'Enter the code from your authenticator app first.' : 'Set up two-step sign-in first. Your company requires it.', twoStep: gate.need });
+    }
     const opRecord = session?.operator ? null : platform.operator(meDoc?.email);
     const pset = platform.settings();
 
@@ -1062,10 +1092,30 @@ createServer(async (req, res) => {
       const op = (db.allDocs('users') as any[]).find((u) => String(u.email ?? '').toLowerCase() === session.operator);
       db.endSession(token!);
       const t = op ? db.newSession(op.id) : null;
-      if (t) platform.markSessionVerified(t);
+      if (t) (platform.markSessionVerified(t), twostep.markPassed(t)); // past both their own and the console's second step
       setSession(res, t);
       db.audit(session.operator, 'person.signin-as.stop', me);
       return json(res, 200, { ok: true });
+    }
+    // Two-step sign-in: each person's own (/api/2fa…), and what company admins see and do (/api/security…).
+    if (p.startsWith('/api/2fa') || p.startsWith('/api/security')) {
+      const handled = await twostep.handle(p, {
+        req,
+        res,
+        url,
+        me,
+        token: token!,
+        json,
+        body,
+        workspaces: workspaces as any,
+        issuer: brandNameAt(req),
+        kick,
+        event: (type, wsId, userId, detail) => platform.event(type, wsId, userId, detail),
+        eventsOf: (wsId) => platform.eventsOf(wsId, 300),
+        notify: notifyUsers,
+        mail: (to, subject, lines) => sendMail(to, subject, lines.join('\n\n'), simpleHtml(brandNameAt(req), lines)),
+      });
+      if (handled) return;
     }
     if (p.startsWith('/api/admin/')) {
       if (!opRecord) return json(res, 403, { error: 'Operators only.' });
@@ -1318,10 +1368,13 @@ createServer(async (req, res) => {
       if (!login || !(await db.checkPassword(String(current ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your current password is wrong.' });
       if (typeof next !== 'string' || next.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
       await db.setLogin(me, u.email!, next);
-      // Everywhere else signs out; this device gets a fresh session.
+      // Everywhere else signs out; this device gets a fresh session (still past its second step).
+      const passed = twostep.sessionPassed(cookie(req, 's2g'));
       db.endSessions(me);
       for (const [id, c] of clients) if (c.userId === me && c.token !== cookie(req, 's2g')) (c.res.end(), clients.delete(id));
-      setSession(res, db.newSession(me));
+      const fresh = db.newSession(me);
+      if (passed) twostep.markPassed(fresh);
+      setSession(res, fresh);
       return json(res, 200, {});
     }
 
@@ -1336,6 +1389,7 @@ createServer(async (req, res) => {
       const left = memberOf(me).map((w) => ({ ...w, members: w.members.filter((m) => m.userId !== me) }));
       if (left.length) (db.writeDocs('workspaces', left as any, [], me), broadcast('workspaces', left as any, []));
       db.deleteLogin(me);
+      twostep.forget(me);
       db.endSessions(me);
       for (const [id, c] of clients) if (c.userId === me) (c.res.end(), clients.delete(id));
       const gone = { ...u, name: 'Deleted account', email: '', title: '', photo: undefined, hiddenApps: undefined, vaultKey: undefined, deletedAt: new Date().toISOString() };
@@ -1403,7 +1457,7 @@ createServer(async (req, res) => {
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
       const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...wClean } = w as any;
-      const ws = { ...wClean, plan: wClean.plan ? { ...wClean.plan, comp: undefined, discount: undefined } : wClean.plan, name: String(w.name).trim().slice(0, 80), members, accounts };
+      const ws = { ...wClean, plan: wClean.plan ? { ...wClean.plan, comp: undefined, discount: undefined } : wClean.plan, security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
       db.writeDocs('users', people, [], me);
       (ws as any).createdAt ??= new Date().toISOString();
@@ -1685,6 +1739,8 @@ createServer(async (req, res) => {
       };
       const admin = memberOf(me).some((w) => isAdminOf(me, w.id));
       const now = new Date().toISOString();
+      // Sign-in rules that changed (owners only), for the company's security log and the people they affect.
+      const securityChanges: { wsId: string; text: string; required: boolean }[] = [];
       /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
       const guard = (d: db.Doc): db.Doc | null => {
         const before = db.getDoc(coll, d.id) as any;
@@ -1698,11 +1754,14 @@ createServer(async (req, res) => {
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
             const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
             const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
-            return { ...d, ...own, plan } as db.Doc;
+            const owner = (before.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
+            const sec = twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
+            if (sec.changed) securityChanges.push({ wsId: d.id, text: sec.changed, required: !!sec.security?.twoStep && !before.security?.twoStep });
+            return { ...d, ...own, plan, security: sec.security } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
           const plan = fresh.plan ? { ...fresh.plan, comp: undefined, discount: undefined } : fresh.plan;
-          return { ...fresh, plan, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+          return { ...fresh, plan, security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
           if (d.id === me) return d; // own profile: already shaped
@@ -1759,6 +1818,17 @@ createServer(async (req, res) => {
           : [];
       db.writeDocs(coll, ok, dels, me);
       for (const id of emailChanged) soonReadiness(id);
+      for (const c of securityChanges) {
+        platform.event('security.rules', c.wsId, me, c.text);
+        if (!c.required) continue;
+        // Switched on: everyone without it hears when it starts to apply, with a link to set it up.
+        const w = db.getDoc('workspaces', c.wsId) as any;
+        const ids = (w?.members ?? []).map((m: any) => m.userId as string).filter((id: string) => id !== me);
+        const on = twostep.onAmong(ids);
+        const due = new Date(twostep.deadline(w.security));
+        const missing = ids.filter((id: string) => !on.has(id));
+        if (missing.length) notifyUsers(missing, `${w.name} now requires two-step sign-in. ${due.getTime() > Date.now() + 60_000 ? `Turn it on by ${due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : 'Turn it on now'} in Settings, Account.`, '/settings/account', w.id);
+      }
       if (leavers.length) endGuestAccess(leavers);
       // Guests don't live in the app all day: a notice for them also goes out as an email (when mail is set up).
       if (coll === 'notices' && mailConfigured())
@@ -2010,6 +2080,10 @@ function caps() {
     microsoftCalendar: !!process.env.MS_CLIENT_ID,
     calendarLinks: false, // .ics links aren't fetched by the server yet
     payments: !!process.env.XENDIT_SECRET,
+    // Other ways to sign in. None is built yet (Google and Microsoft need their sign-in apps, SAML an identity
+    // provider), so Settings shows them switched off with the reason instead of switches that do nothing.
+    signIn: { google: false, microsoft: false, saml: false, googleApp: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET), microsoftApp: !!((process.env.MICROSOFT_CLIENT_ID || process.env.MS_CLIENT_ID) && (process.env.MICROSOFT_CLIENT_SECRET || process.env.MS_CLIENT_SECRET)) },
+    ownStorage: false, // files can't be saved to a company's own cloud yet
     desktopUrl: process.env.DESKTOP_URL || null,
     mailHost: mailer.MAIL_HOST,
   };

@@ -2,7 +2,7 @@
 // happened to each company, internal notes, invoices, coupons, MRR snapshots, grouped errors and simple page counts.
 // Everything here is operator-side; none of it is synced to the app's collections.
 import { createHash, randomBytes } from 'node:crypto';
-import { db, totpCode } from './db.ts';
+import { db, newTotpSecret, totpStep } from './db.ts';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS operators (email TEXT PRIMARY KEY, role TEXT NOT NULL, added_by TEXT, added_at TEXT NOT NULL, totp TEXT, totp_on INTEGER NOT NULL DEFAULT 0, disabled INTEGER NOT NULL DEFAULT 0, alerts INTEGER NOT NULL DEFAULT 1);
@@ -84,15 +84,10 @@ export const resetOperator2fa = (email: string) => db.prepare('UPDATE operators 
 
 /* ---------- operator two-step sign-in (TOTP) ---------- */
 
-const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-function base32(buf: Buffer) {
-  let bits = '';
-  for (const b of buf) bits += b.toString(2).padStart(8, '0');
-  return (bits.match(/.{1,5}/g) ?? []).map((c) => B32[parseInt(c.padEnd(5, '0'), 2)]).join('');
-}
+// The TOTP itself (secrets, codes, clock drift) is shared with everyone's own two-step sign-in (db.ts, twostep.ts).
 /** A new secret (kept until it's confirmed with a code). */
 export function startTotp(email: string) {
-  const secret = base32(randomBytes(20));
+  const secret = newTotpSecret();
   db.prepare('UPDATE operators SET totp = ?, totp_on = 0 WHERE email = ?').run(secret, email.toLowerCase());
   return secret;
 }
@@ -100,8 +95,7 @@ export function startTotp(email: string) {
 export function checkTotp(email: string, code: string) {
   const r = db.prepare('SELECT totp FROM operators WHERE email = ?').get(email.toLowerCase()) as { totp: string | null } | undefined;
   if (!r?.totp) return false;
-  const c = String(code ?? '').replace(/\D/g, '');
-  return [-30_000, 0, 30_000].some((d) => totpCode(r.totp!, Date.now() + d).code === c);
+  return totpStep(r.totp, String(code ?? '')) !== null;
 }
 export const confirmTotp = (email: string) => db.prepare('UPDATE operators SET totp_on = 1 WHERE email = ?').run(email.toLowerCase());
 

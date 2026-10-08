@@ -26,6 +26,7 @@ import { PROJECT_TYPES } from '../terms';
 import { AgencySection } from './admin/AgencySection';
 import { EmailDeliverySection } from './admin/EmailDelivery';
 import { HelpSection } from './HelpSection';
+import { TwoStepRow } from './TwoStep';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -410,16 +411,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
               <h3>Security</h3>
               <PasswordRow />
+              <TwoStepRow toast={admin.toast} />
               <DeleteAccountRow />
-              <div className="set-row">
-                <span>
-                  <strong>Two-step verification</strong>
-                  <small>Recommended for every account.</small>
-                </span>
-                <span className="badge-soon">
-                  <ShieldCheck size={13} /> Coming soon
-                </span>
-              </div>
             </>
           )}
 
@@ -638,7 +631,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {!sections.some((x) => x.id === section) && <p className="muted">Ask an admin about this.</p>}
           {section === 'ai' && sections.some((x) => x.id === 'ai') && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'billing' && sections.some((x) => x.id === 'billing') && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
-          {section === 'security' && <SecuritySection ws={ws} isOwner={myRole === 'owner'} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} users={wsUsers} />}
+          {section === 'security' && <SecuritySection ws={ws} me={me} isOwner={myRole === 'owner'} canManage={canManage} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} onAccount={() => onSection('account')} users={wsUsers} toast={admin.toast} />}
         </div>
       </div>
     </section>

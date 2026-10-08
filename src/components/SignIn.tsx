@@ -4,6 +4,7 @@ import type { User } from '../types';
 import { Avatar } from './Avatar';
 import { Wordmark } from './Logo';
 import { brand as product, setBrandName } from '../terms';
+import { CodeField, codeReady } from './TwoStep';
 
 /** The brand at this address: an agency's (white label), or ours. Read once and shared by the sign-in screens. */
 type BrandInfo = { name?: string; logo?: string; color?: string };
@@ -26,7 +27,7 @@ function useBrandAt() {
   return b;
 }
 /** Our wordmark, or the agency's logo and name. */
-function BrandMark() {
+export function BrandMark() {
   const b = useBrandAt();
   if (!b.name) return <Wordmark height={30} />;
   return (
@@ -300,7 +301,10 @@ export function AcceptInvite({ token, onDone }: { token: string; onDone: () => v
   );
 }
 
-/** Forgot the password: a code by email, then a new password. Every other session of the account ends. */
+/**
+ * Forgot the password: a code by email, then a new password. Every other session of the account ends. With two-step
+ * sign-in on, the code from the authenticator app (or a backup code) is asked too: the email alone isn't enough.
+ */
 function ForgotPassword({ email: start, onBack }: { email: string; onBack: () => void }) {
   const [email, setEmail] = useState(start);
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -309,10 +313,11 @@ function ForgotPassword({ email: start, onBack }: { email: string; onBack: () =>
   const [devCode, setDevCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [second, setSecond] = useState<{ code: string; backup: boolean } | null>(null); // two-step sign-in is on
   const post = async (path: string, body: unknown) => {
     const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const d = (await r.json().catch(() => ({}))) as { error?: string; devCode?: string };
-    if (!r.ok) throw new Error(d.error ?? 'Something went wrong.');
+    const d = (await r.json().catch(() => ({}))) as { error?: string; devCode?: string; twoStep?: string };
+    if (!r.ok) throw Object.assign(new Error(d.error ?? 'Something went wrong.'), { twoStep: d.twoStep });
     return d;
   };
   const send = async (e: React.FormEvent) => {
@@ -333,13 +338,16 @@ function ForgotPassword({ email: start, onBack }: { email: string; onBack: () =>
     setBusy(true);
     setError(null);
     try {
-      await post('/api/reset/verify', { email: email.trim(), code, password: pw });
+      await post('/api/reset/verify', { email: email.trim(), code, password: pw, twoStep: second?.code || undefined });
       location.reload();
     } catch (err) {
-      setError((err as Error).message);
+      // The first time it's asked for, the field opens without an error: it's the next step, not a mistake.
+      if ((err as { twoStep?: string }).twoStep && !second) setSecond({ code: '', backup: false });
+      else setError((err as Error).message);
       setBusy(false);
     }
   };
+  const secondReady = !second || codeReady(second.code, second.backup);
   return (
     <>
       <h1>{step === 'email' ? 'Reset your password' : 'Check your email'}</h1>
@@ -366,8 +374,24 @@ function ForgotPassword({ email: start, onBack }: { email: string; onBack: () =>
             <label>New password</label>
             <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" placeholder="At least 8 characters" />
           </div>
+          <div className={`fold ${second ? 'open' : ''}`}>
+            <div className="fold-in">
+              {second && (
+                <div className="field ts-reset-field">
+                  <label>{second.backup ? 'A backup code' : 'Code from your authenticator app'}</label>
+                  <CodeField backup={second.backup} value={second.code} onChange={(v) => setSecond({ ...second, code: v })} autoFocus compact />
+                  <small>
+                    Two-step sign-in is on for this account, so the email code alone isn’t enough.{' '}
+                    <button type="button" className="link-btn small" onClick={() => setSecond({ code: '', backup: !second.backup })}>
+                      {second.backup ? 'Use the code from your app' : 'Use a backup code'}
+                    </button>
+                  </small>
+                </div>
+              )}
+            </div>
+          </div>
           {error && <p className="signin-error">{error}</p>}
-          <button className="primary-btn signin-btn" disabled={code.replace(/\D/g, '').length !== 6 || pw.length < 8 || busy}>
+          <button className="primary-btn signin-btn" disabled={code.replace(/\D/g, '').length !== 6 || pw.length < 8 || !secondReady || busy}>
             {busy ? 'Saving…' : 'Set the new password'}
           </button>
         </form>

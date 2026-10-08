@@ -33,6 +33,10 @@ export interface Session {
   suspendedIn?: { id: string; name: string; reason: string }[]; // companies that are read-only right now
   maintenance?: string; // changes are paused, with this message
   flags?: string[]; // feature flags on for this person's companies
+  /** Two-step sign-in still to do before the app opens: a code from the app, or setting it up (a company requires it). */
+  twoStep?: 'code' | 'setup';
+  email?: string; // shown on the two-step screen
+  companies?: string[]; // the companies that require two-step sign-in
 }
 export async function probe(): Promise<'none' | 'signed-out' | Session> {
   if (!location.protocol.startsWith('http')) return 'none';
@@ -46,9 +50,11 @@ export async function probe(): Promise<'none' | 'signed-out' | Session> {
   }
 }
 
-export async function signIn(email: string, password: string): Promise<string | null> {
+/** Password sign-in. The answer says when two-step sign-in comes next (a code, or setting it up). */
+export async function signIn(email: string, password: string): Promise<{ error: string } | { me: string; twoStep?: 'code' | 'setup'; companies?: string[] }> {
   const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
-  return r.ok ? null : ((await r.json().catch(() => null))?.error ?? 'Could not sign in.');
+  const d = await r.json().catch(() => null);
+  return r.ok && d ? d : { error: d?.error ?? 'Could not sign in.' };
 }
 export const signOut = () => fetch('/api/logout', { method: 'POST' }).then(() => location.reload());
 export async function changePassword(current: string, next: string): Promise<string | null> {
@@ -110,6 +116,11 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
     if (!upserts.length && !deletes.length) return;
     void fetch('/api/sync', { method: 'POST', headers: { 'content-type': 'application/json', 'x-conn': server.conn }, body: JSON.stringify({ coll: k, upserts, deletes }) })
       .then(async (r) => {
+        if (r.status === 401 || r.status === 403) {
+          // Two-step sign-in became due (a company now requires it): the app reloads into the setup screen.
+          const d = (await r.clone().json().catch(() => ({}))) as { twoStep?: string };
+          if (d.twoStep) return location.reload();
+        }
         if (r.status === 401) return window.dispatchEvent(new CustomEvent('s2g:signed-out'));
         if (!r.ok) {
           synced[k] = before;

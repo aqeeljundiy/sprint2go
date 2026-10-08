@@ -211,7 +211,7 @@ export interface Workspace {
   ai?: AISettings;
   meetings?: MeetingSettings;
   storage?: StorageSettings;
-  security?: { twoStep: boolean; google: boolean; microsoft: boolean; sso: boolean };
+  security?: { twoStep: boolean; google: boolean; microsoft: boolean; sso: boolean; graceDays?: number; twoStepSince?: string }; // twoStepSince: set by the server when the requirement is switched on
   aliases?: Record<string, string>; // learned names: "andi" -> user id, or "contact:<name>"
   teamHome?: Record<string, HomeTemplateId>; // default Home template per team
   tabDefaults?: Record<string, { order: string[]; hidden: string[] }>; // tab orders an admin set for everyone

@@ -1,7 +1,8 @@
 import { LanguagePicker } from '../LanguagePicker';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { term, brand as product } from '../../terms';
-import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, Lock, ShieldCheck, Users, Video } from 'lucide-react';
+import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, ShieldCheck, Users, Video, X } from 'lucide-react';
 import { DEFAULT_PERMISSIONS, type MemberPermissions } from '../../types';
 import type { AppId, DriveItem, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
 import { fmtSize } from '../../data/drive';
@@ -10,9 +11,13 @@ import { DEFAULT_MEETINGS } from '../../data/workspaces';
 import { APPS, useAppOrder } from '../AppRail';
 import { Avatar } from '../Avatar';
 import { Select } from '../ui/Select';
+import { server } from '../../sync';
+import { caps } from '../../caps';
+import { relative } from '../../utils';
+import { loadTwoStep } from '../TwoStep';
 
-const Switch = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
-  <button type="button" role="switch" aria-checked={on} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
+const Switch = ({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
+  <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
     <span />
   </button>
 );
@@ -520,57 +525,195 @@ export function MyAppsSection({ ws, hidden, isAdmin, asked, onHidden, onCompanyA
 
 /* ---------------- Security & data ---------------- */
 
-export function SecuritySection({ ws, isOwner, onWorkspace, onExport, onDelete, users }: {
+type SecurityInfo = {
+  people: { userId: string; role: string; on: boolean }[];
+  required: { since: string | null; from: string; graceDays: number } | null;
+  log: { at: string; type: string; userId: string | null; detail: string | null }[];
+};
+const GRACE = [
+  { value: '0', label: 'Right away', hint: 'At their next sign-in' },
+  { value: '3', label: '3 days' },
+  { value: '7', label: '7 days' },
+  { value: '14', label: '14 days' },
+];
+const longDay = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'long' });
+
+export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExport, onDelete, onAccount, users, toast }: {
   ws: Workspace;
+  me: string;
   isOwner: boolean;
+  canManage: boolean; // owners and admins
   onWorkspace: (p: Partial<Workspace>) => void;
   onExport: () => void;
   onDelete: () => void;
+  onAccount: () => void;
   users: User[];
+  toast: (t: string) => void;
 }) {
-  const sec = ws.security ?? { twoStep: false, google: true, microsoft: true, sso: false };
+  const sec = { twoStep: false, google: false, microsoft: false, sso: false, ...ws.security };
+  const grace = sec.graceDays ?? 7;
   const [typed, setTyped] = useState('');
-  const business = ws.plan?.tier === 'business';
-  const audit = [
-    ['Aqeel', 'changed the AI setup to Balanced', '2 hours ago'],
-    ['Faisal', 'added an Anthropic key', '3 days ago'],
-    ['Aqeel', 'invited Nadia Putri as a guest in #kopikita', '2 weeks ago'],
-    ['Dewi', 'downloaded the September invoice', '1 month ago'],
-  ];
+  const [info, setInfo] = useState<SecurityInfo | null>(null);
+  const [resetting, setResetting] = useState<User | null>(null);
+  const [busy, setBusy] = useState(false);
+  const live = server.on;
+  // Requiring it needs your own on first (the server checks too), so nobody locks themselves out.
+  const [mine, setMine] = useState<boolean | null>(live ? null : true);
+  useEffect(() => {
+    if (live && isOwner) void loadTwoStep().then((st) => setMine(!!st?.on));
+  }, [live, isOwner]);
+  const load = () =>
+    void fetch(`/api/security?workspaceId=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<SecurityInfo>) : null))
+      .then((d) => d && setInfo(d))
+      .catch(() => {});
+  // A switch just changed: the save goes out a moment later, then the list and the log are read again.
+  useEffect(() => {
+    if (!live || !canManage) return;
+    const t = setTimeout(load, info ? 700 : 0);
+    return () => clearTimeout(t);
+  }, [ws.id, sec.twoStep, grace, live, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
+  // When it starts to apply: the day it was switched on (now, if it just was) plus the days people were given.
+  const from = new Date(Date.parse(sec.twoStepSince ?? new Date().toISOString()) + grace * 86_400_000).toISOString();
+  const biting = from <= new Date().toISOString();
+  const nameOf = (id: string | null) => (id === null ? `${product.name} support` : id === me ? 'You' : users.find((u) => u.id === id)?.name ?? 'Someone who left');
+  const people = (info?.people ?? [])
+    .map((x) => ({ ...x, user: users.find((u) => u.id === x.userId) }))
+    .filter((x): x is typeof x & { user: User } => !!x.user)
+    .sort((a, b) => Number(a.on) - Number(b.on) || a.user.name.localeCompare(b.user.name));
+  const missing = people.filter((x) => !x.on && x.userId !== me);
+  const remind = () => {
+    setBusy(true);
+    void fetch('/api/security/remind', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) })
+      .then((r) => r.json())
+      .then((d: { sent?: number; error?: string }) => (toast(d.error ?? `Reminded ${d.sent} ${d.sent === 1 ? 'person' : 'people'}`), load()))
+      .finally(() => setBusy(false));
+  };
+  const myRole = ws.members.find((m) => m.userId === me)?.role;
+  const OTHER = [
+    { k: 'google', title: 'Sign in with Google', why: caps.signIn.googleApp ? 'Coming soon.' : `Coming soon. Needs a Google sign-in app set up by ${product.name}.` },
+    { k: 'microsoft', title: 'Sign in with Microsoft', why: caps.signIn.microsoftApp ? 'Coming soon.' : `Coming soon. Needs a Microsoft sign-in app set up by ${product.name}.` },
+    { k: 'saml', title: 'Single sign-on (SAML)', why: 'Coming soon: Okta, Azure AD or Google Workspace as your company’s sign-in.' },
+  ] as const;
+
   return (
     <>
       <h2>Security & data</h2>
-      <fieldset className="plain" disabled={!isOwner}>
+      <p className="set-intro">How people sign in to {ws.name || 'the company'}, and the company’s data.</p>
+      <div className="set-block">
+        <h3>Sign-in</h3>
+        {canManage ? (
+          <>
+            <Row title="Require two-step sign-in" hint={`Everyone in the company signs in with a code from an authenticator app, not just a password.${!isOwner ? ' Only owners change this.' : !sec.twoStep && mine === false ? ' Turn it on for your own account first.' : ''}`}>
+              {isOwner && !sec.twoStep && mine === false ? (
+                <button type="button" className="ghost-btn outline sm" onClick={onAccount}>
+                  Turn yours on
+                </button>
+              ) : (
+                <Switch on={sec.twoStep} disabled={!isOwner || mine === null} onChange={(v) => onWorkspace({ security: { ...sec, twoStep: v, graceDays: grace } })} />
+              )}
+            </Row>
+            <div className={`fold ${sec.twoStep ? 'open' : ''}`}>
+              <div className="fold-in">
+                <Row title="Time to set it up" hint={sec.twoStep ? (biting ? 'It applies now: anyone without it sets it up before they can go on.' : `From ${longDay(from)}, anyone without it sets it up at sign-in before they can go on. They got a notification.`) : undefined}>
+                  <Select value={String(grace)} disabled={!isOwner} onChange={(v) => onWorkspace({ security: { ...sec, graceDays: Number(v) } })} label="Time to set it up" options={GRACE} width={200} />
+                </Row>
+              </div>
+            </div>
+            {OTHER.map((o) => (
+              <Row key={o.k} title={o.title} hint={o.why}>
+                <span className="badge-soon">Not yet</span>
+              </Row>
+            ))}
+          </>
+        ) : (
+          <Row title="Two-step sign-in" hint={sec.twoStep ? `${ws.name} requires a code from an authenticator app when you sign in${biting ? '.' : `, from ${longDay(from)}.`}` : 'A code from an authenticator app when you sign in. Turn it on for your own account.'}>
+            <button type="button" className="ghost-btn outline sm" onClick={onAccount}>
+              Your settings
+            </button>
+          </Row>
+        )}
+      </div>
+
+      {canManage && live && (
         <div className="set-block">
-          <h3>Sign-in</h3>
-          <Row title="Require two-step sign-in" hint="Everyone in the company confirms sign-ins with an app or passkey">
-            <Switch on={sec.twoStep} onChange={(v) => onWorkspace({ security: { ...sec, twoStep: v } })} />
-          </Row>
-          <Row title="Sign in with Google">
-            <Switch on={sec.google} onChange={(v) => onWorkspace({ security: { ...sec, google: v } })} />
-          </Row>
-          <Row title="Sign in with Microsoft">
-            <Switch on={sec.microsoft} onChange={(v) => onWorkspace({ security: { ...sec, microsoft: v } })} />
-          </Row>
-          <Row title={<><Lock size={14} /> Single sign-on (SAML)</>} hint={business ? 'Okta, Azure AD, Google Workspace' : 'Included in Business'}>
-            <Switch on={sec.sso && business} onChange={(v) => business && onWorkspace({ security: { ...sec, sso: v } })} />
-          </Row>
+          <h3>Two-step sign-in by person</h3>
+          {!info ? (
+            <p className="muted small">Loading…</p>
+          ) : (
+            <>
+              {missing.length > 0 && (
+                <div className="ts-remind">
+                  <span>{missing.length === 1 ? `${missing[0].user.name.split(' ')[0]} hasn’t turned it on yet.` : `${missing.length} people haven’t turned it on yet.`}</span>
+                  <button type="button" className="ghost-btn outline sm" disabled={busy} onClick={remind}>
+                    {busy ? 'Sending…' : 'Send a reminder'}
+                  </button>
+                </div>
+              )}
+              <div className="ts-people">
+                {people.map((x) => {
+                  const canReset = x.on && x.userId !== me && !(x.role === 'owner' && myRole !== 'owner');
+                  return (
+                    <div key={x.userId} className="pa-row ts-person">
+                      <Avatar person={x.user} size={24} />
+                      <span className="pa-title">
+                        {x.user.name}
+                        {x.userId === me && <span className="you-tag">You</span>}
+                      </span>
+                      <span className={`acct-status ${x.on ? 'ok' : ''}`}>{x.on ? 'On' : 'Not yet'}</span>
+                      <span className="ts-person-act">
+                        {canReset && (
+                          <button type="button" className="ghost-btn sm" onClick={() => setResetting(x.user)}>
+                            Reset
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="muted small">Someone lost their phone and their backup codes? Reset theirs: they sign in with just their password, then set it up again{sec.twoStep ? '' : ' if they want'}.</p>
+            </>
+          )}
         </div>
+      )}
+
+      {canManage && (
         <div className="set-block">
           <h3>
-            <ShieldCheck size={15} /> Audit log {business ? '' : <span className="muted small">· full log in Business</span>}
+            <ShieldCheck size={15} /> Security log
           </h3>
-          {audit.map(([who, what, when], i) => (
-            <div key={i} className="pa-row">
-              {users.find((u) => u.name.startsWith(who)) && <Avatar person={users.find((u) => u.name.startsWith(who))!} size={20} />}
-              <span className="pa-title">
-                <b>{who}</b>&nbsp;{what}
-              </span>
-              <span className="muted small">{when}</span>
-            </div>
-          ))}
+          {!live ? (
+            DEMO_LOG.map(([who, what, when], i) => (
+              <div key={i} className="pa-row">
+                {users.find((u) => u.name.startsWith(who)) && <Avatar person={users.find((u) => u.name.startsWith(who))!} size={20} />}
+                <span className="pa-title">
+                  <b>{who}</b>&nbsp;{what}
+                </span>
+                <span className="muted small">{when}</span>
+              </div>
+            ))
+          ) : !info ? (
+            <p className="muted small">Loading…</p>
+          ) : info.log.length === 0 ? (
+            <p className="muted small">Nothing yet. Changes to the sign-in rules and to people’s two-step sign-in show up here.</p>
+          ) : (
+            info.log.map((e, i) => {
+              const u = e.userId ? users.find((x) => x.id === e.userId) : undefined;
+              return (
+                <div key={i} className="pa-row">
+                  {u && <Avatar person={u} size={20} />}
+                  <span className="pa-title">
+                    <b>{nameOf(e.userId)}</b>&nbsp;{e.detail}
+                  </span>
+                  <span className="muted small">{relative(e.at)}</span>
+                </div>
+              );
+            })
+          )}
         </div>
-      </fieldset>
+      )}
+
       <div className="set-block">
         <h3>Your data</h3>
         <Row title={<><Download size={14} /> Export everything</>} hint={`Mail, chat, tasks, ${term.many}, calendars and file lists as one download. Always free, on every plan`}>
@@ -591,7 +734,66 @@ export function SecuritySection({ ws, isOwner, onWorkspace, onExport, onDelete, 
           </div>
         )}
       </div>
+      {resetting && (
+        <ResetTwoStep
+          person={resetting}
+          required={sec.twoStep}
+          onClose={() => setResetting(null)}
+          onReset={async () => {
+            const r = await fetch('/api/security/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, userId: resetting.id }) });
+            const d = (await r.json().catch(() => ({}))) as { error?: string };
+            if (!r.ok) throw new Error(d.error ?? 'Couldn’t reset it.');
+            toast(`Two-step sign-in reset for ${resetting.name.split(' ')[0]}`);
+            setResetting(null);
+            load();
+          }}
+        />
+      )}
     </>
   );
 }
 
+/** The demo's sample log (no server: nothing has really happened). */
+const DEMO_LOG = [
+  ['Aqeel', 'changed the AI setup to Balanced', '2 hours ago'],
+  ['Faisal', 'added an Anthropic key', '3 days ago'],
+  ['Aqeel', 'invited Nadia Putri as a guest in #kopikita', '2 weeks ago'],
+  ['Dewi', 'downloaded the September invoice', '1 month ago'],
+];
+
+/** Confirming a reset: what happens to them, and a nudge to be sure it's really them asking. */
+function ResetTwoStep({ person, required, onClose, onReset }: { person: User; required: boolean; onClose: () => void; onReset: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const first = person.name.split(' ')[0];
+  return createPortal(
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal ts-modal sm" role="dialog" aria-label={`Reset two-step sign-in for ${person.name}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <ShieldCheck size={15} /> Reset two-step sign-in
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body">
+          <p className="ts-text">
+            {first} is signed out everywhere and signs in next time with just their password{required ? ', then sets two-step sign-in up again, since the company requires it' : ''}. They get an email about it.
+          </p>
+          <p className="muted small">Only do this when you’re sure it’s {first} asking, for example on a call or in person.</p>
+          {error && <p className="err small">{error}</p>}
+        </div>
+        <footer className="modal-foot">
+          <button type="button" className="ghost-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="primary-btn danger-btn" disabled={busy} onClick={() => (setBusy(true), setError(''), void onReset().catch((e: Error) => (setError(e.message), setBusy(false))))}>
+            {busy ? 'Resetting…' : `Reset for ${first}`}
+          </button>
+        </footer>
+      </div>
+    </div>,
+    document.body,
+  );
+}

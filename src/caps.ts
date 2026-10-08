@@ -11,6 +11,9 @@ export const caps = {
   microsoftCalendar: false,
   calendarLinks: false,
   payments: false,
+  /** Sign-in methods that work on this server (none yet), and whether its Google and Microsoft sign-in apps exist. */
+  signIn: { google: false, microsoft: false, saml: false, googleApp: false, microsoftApp: false },
+  ownStorage: false, // saving big files to a company's own cloud
   desktopUrl: null as string | null,
   mailHost: '',
 };
