@@ -188,7 +188,7 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
   };
   return (
     <div
-      className={`tb-th${i < pinnedN ? ' pinned' : ''}${dragging ? ' col-dragging' : ''}${dropSide ? ` drop-${dropSide}` : ''}`}
+      className={`tb-th${i < pinnedN ? ' tb-pinned' : ''}${dragging ? ' col-dragging' : ''}${dropSide ? ` drop-${dropSide}` : ''}`}
       style={sticky !== undefined ? { left: sticky } : undefined}
       role="columnheader"
       draggable={!ro}
@@ -247,9 +247,9 @@ function FootCell({ f, p, rows, sticky }: { f: TableField; p: GridProps; rows: T
     setOpen(false);
   };
   const style = sticky !== undefined ? { left: sticky } : undefined;
-  if (f.type === 'button') return <div className={`tb-foot-cell${sticky !== undefined ? ' pinned' : ''}`} style={style} />;
+  if (f.type === 'button') return <div className={`tb-foot-cell${sticky !== undefined ? ' tb-pinned' : ''}`} style={style} />;
   return (
-    <div className={`tb-foot-cell${sticky !== undefined ? ' pinned' : ''}`} style={style}>
+    <div className={`tb-foot-cell${sticky !== undefined ? ' tb-pinned' : ''}`} style={style}>
       <button ref={ref} type="button" className={kind ? 'on' : ''} onClick={() => !p.readOnly && setOpen(true)} disabled={p.readOnly}>
         {kind ? (
           <>
@@ -484,7 +484,7 @@ export function GridView(p: GridProps) {
           );
           if (f.id === nameId)
             return (
-              <div key={f.id} className={`tb-first${ci < pinnedN ? ' pinned' : ''}`} style={ci < pinnedN ? { left: stickyLeft(ci) } : undefined}>
+              <div key={f.id} className={`tb-first${ci < pinnedN ? ' tb-pinned' : ''}`} style={ci < pinnedN ? { left: stickyLeft(ci) } : undefined}>
                 {cell}
                 <button type="button" className="tb-expand" onClick={() => p.onOpenRow(row.id)} title="Open (Shift+Enter)" aria-label="Open row">
                   <Maximize2 size={13} />
@@ -497,7 +497,7 @@ export function GridView(p: GridProps) {
               </div>
             );
           return ci < pinnedN ? (
-            <div key={f.id} className="tb-pin-wrap pinned" style={{ left: stickyLeft(ci) }}>
+            <div key={f.id} className="tb-pin-wrap tb-pinned" style={{ left: stickyLeft(ci) }}>
               {cell}
             </div>
           ) : (

@@ -162,6 +162,7 @@
 /* ---------- grid ---------- */
 
 .tb-grid-wrap {
+  scrollbar-gutter: stable;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -1890,14 +1891,14 @@
   left: auto;
   z-index: auto;
 }
-.tb-first.pinned,
-.tb-pin-wrap.pinned,
-.tb-foot-cell.pinned {
+.tb-first.tb-pinned,
+.tb-pin-wrap.tb-pinned,
+.tb-foot-cell.tb-pinned {
   position: sticky;
   z-index: 1;
   background: var(--surface);
 }
-.tb-th.pinned {
+.tb-th.tb-pinned {
   position: sticky;
   z-index: 3;
 }
@@ -1908,12 +1909,12 @@
 .tb-pin-wrap .tb-cell {
   flex: 1;
 }
-.tb-pin-wrap.pinned:last-of-type,
-.tb-th.pinned + .tb-th:not(.pinned),
-.tb-first.pinned {
+.tb-pin-wrap.tb-pinned:last-of-type,
+.tb-th.tb-pinned + .tb-th:not(.tb-pinned),
+.tb-first.tb-pinned {
   box-shadow: 1px 0 0 var(--border);
 }
-.tb-tr:hover .tb-pin-wrap.pinned {
+.tb-tr:hover .tb-pin-wrap.tb-pinned {
   background: var(--surface-2);
 }
 
