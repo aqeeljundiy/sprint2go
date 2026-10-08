@@ -598,6 +598,12 @@ createServer(async (req, res) => {
   if (!p.startsWith('/api/')) return serveStatic(req, res);
   try {
     // Sign in / out
+    // White label: whose brand to show at this address (an agency's subdomain, or <slug>.localhost to try it locally).
+    if (p === '/api/brand') {
+      const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
+      const w = (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
+      return json(res, 200, w ? { name: w.whiteLabel.name, logo: w.whiteLabel.logo ?? w.logo, color: w.whiteLabel.color ?? w.color } : {});
+    }
     if (p === '/api/login' && req.method === 'POST') {
       const { email, password } = await body(req);
       const login = typeof email === 'string' && db.findLogin(email.trim());

@@ -4,6 +4,7 @@ import type { AIJobId, AISettings, Plan, ProviderId } from '../../types';
 import { JOBS, PROVIDERS, providerOf } from '../../data/aiCatalog';
 import { ALLOWANCE, TOP_UP, options, priceFor, rp, seatsFor, TIER_NAME } from '../../data/pricing';
 import { server } from '../../sync';
+import { brand as product } from '../../terms';
 
 const USD = 17_500; // rupiah per US$, same rate as the AI catalogue
 
@@ -79,7 +80,7 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
     const priced = rs.map((r) => ({ r, price: r.provider === 'included' ? null : priceOf(r.provider, r.model) }));
     const usd = priced.reduce((s, x) => s + (x.price ? usdOf(x.r, x.price) : 0), 0);
     const nameOf = (model: string) => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === model || m.id.split('/').pop() === model.split('/').pop())?.name ?? model;
-    const models = [...new Set(rs.map((r) => (r.provider === 'included' ? 'Sprint2go' : nameOf(r.model))))];
+    const models = [...new Set(rs.map((r) => (r.provider === 'included' ? `${product.name}` : nameOf(r.model))))];
     return { job: j, uses, inT, outT, usd, models, included: rs.every((r) => r.provider === 'included'), unpriced: priced.some((x) => !x.price && x.r.provider !== 'included') };
   }).filter(Boolean) as { job: (typeof JOBS)[number]; uses: number; inT: number; outT: number; usd: number; models: string[]; included: boolean; unpriced: boolean }[];
 
@@ -107,7 +108,7 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
     { id: 'now', name: hasKeys ? 'Your keys, setup now' : 'Your keys, balanced', rp: now.rp, note: now.unpriced ? `${now.unpriced} uses on models without a listed price` : 'List prices of the models you picked' },
     { id: 'cheap', name: 'Your keys, lowest cost', rp: cheap.rp, note: 'DeepSeek and Flash models where they fit' },
     { id: 'best', name: 'Your keys, best quality', rp: best.rp, note: 'Top models for every job' },
-    { id: 'included', name: `Sprint2go AI included`, rp: included, note: `${TIER_NAME[tier]} AI vs ${TIER_NAME[tier]} for ${people} people${topUps ? ` + ${topUps} top-up${topUps > 1 ? 's' : ''}` : ', within the allowance'}` },
+    { id: 'included', name: `${product.name} AI included`, rp: included, note: `${TIER_NAME[tier]} AI vs ${TIER_NAME[tier]} for ${people} people${topUps ? ` + ${topUps} top-up${topUps > 1 ? 's' : ''}` : ', within the allowance'}` },
   ];
   const cheapest = cards.reduce((a, b) => (b.rp < a.rp ? b : a));
   const diff = Math.abs(now.rp - included);
@@ -130,8 +131,8 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
       </div>
       <p className="spend-verdict">
         {now.rp <= included
-          ? `Your own keys cost about ${rp(diff)} a month less than Sprint2go AI included, for this much use. You manage the keys and the provider bills.`
-          : `Sprint2go AI included costs about ${rp(diff)} a month less than your own keys, for this much use, and there are no keys or provider bills to manage.`}
+          ? `Your own keys cost about ${rp(diff)} a month less than ${product.name} AI included, for this much use. You manage the keys and the provider bills.`
+          : `${product.name} AI included costs about ${rp(diff)} a month less than your own keys, for this much use, and there are no keys or provider bills to manage.`}
       </p>
       <h4 className="spend-sub">The same work, a month, on each setup</h4>
       <div className="spend-compare">

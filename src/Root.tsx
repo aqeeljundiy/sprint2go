@@ -16,6 +16,7 @@ import { Onboarding } from './components/Onboarding';
 import { Wordmark } from './components/Logo';
 import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
 import { InstallPrompt } from './components/InstallPrompt';
+import { brand as product, brandOf, setBrandName } from './terms';
 
 /**
  * With the local server: real sign-in, data from the database, live updates.
@@ -118,7 +119,7 @@ function DemoRoot() {
         onForget={(id) => setSignedIn((s) => s.filter((x) => x !== id))}
         onSignIn={(email) => {
           const u = users.find((x) => x.email.toLowerCase() === email.toLowerCase());
-          if (!u) return 'No Sprint2go user with that email. Ask your company admin to invite you.';
+          if (!u) return `No ${product.name} user with that email. Ask your company admin to invite you.`;
           setSignedIn((s) => (s.includes(u.id) ? s : [...s, u.id]));
           setCurrent(u.id);
           return null;
@@ -251,6 +252,7 @@ function ClientRoot({ me }: { me: User }) {
         {start}
       </>
     );
+  setBrandName(brandOf(ws)); // the inviting company's brand (an agency's own, when white-labelled)
   const { person, access } = afterEnd(client, portal.person, accessFor(ws, client));
   const team = users.filter((u) => !u.clientOf);
   const actions = clientActions({

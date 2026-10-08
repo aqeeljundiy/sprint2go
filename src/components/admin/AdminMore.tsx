@@ -1,6 +1,6 @@
 import { LanguagePicker } from '../LanguagePicker';
 import { useState } from 'react';
-import { term } from '../../terms';
+import { term, brand as product } from '../../terms';
 import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, Lock, ShieldCheck, Users, Video } from 'lucide-react';
 import { DEFAULT_PERMISSIONS, type MemberPermissions } from '../../types';
 import type { AppId, DriveItem, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
@@ -120,7 +120,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
           <h3>Use your own storage for big files</h3>
-          <p className="muted small">Raw footage and huge files can live in your own cloud. They still show on the {term.one} page, but they don’t use Sprint2go storage.</p>
+          <p className="muted small">Raw footage and huge files can live in your own cloud. They still show on the {term.one} page, but they don’t use {product.name} storage.</p>
           {st.own ? (
             <Row title={<><Cloud size={14} /> {OWN[st.own.provider]} · {st.own.account}</>} hint={`Files over ${st.own.forFilesOver >= 1000 ? `${st.own.forFilesOver / 1000} GB` : `${st.own.forFilesOver} MB`} are saved there`}>
               <button type="button" className="ghost-btn sm" onClick={() => (onStorage({ ...st, own: undefined }), toast('Disconnected. Files already there stay there'))}>
@@ -269,7 +269,7 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
         </div>
         <div className="set-block">
           <h3>Notetaker</h3>
-          <Row title="Join meetings from calendars automatically" hint="From Google, Outlook and Sprint2go calendars">
+          <Row title="Join meetings from calendars automatically" hint={`From Google, Outlook and ${product.name} calendars`}>
             <Switch on={m.autoJoin} onChange={(v) => set({ autoJoin: v })} />
           </Row>
           <Row title="Announce recording" hint="The bot says it’s recording when it joins. The host can stop it at any time">

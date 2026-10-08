@@ -204,7 +204,20 @@ export interface Workspace {
   aliases?: Record<string, string>; // learned names: "andi" -> user id, or "contact:<name>"
   teamHome?: Record<string, HomeTemplateId>; // default Home template per team
   tabDefaults?: Record<string, { order: string[]; hidden: string[] }>; // tab orders an admin set for everyone
-  permissions?: Partial<MemberPermissions>; // what people with the Member role can do (owners and admins can do everything)
+  permissions?: Partial<MemberPermissions>;
+  whiteLabel?: WhiteLabel; // an agency running the app under its own brand
+  agency?: { id: string; name: string; logo?: string; color?: string }; // a client workspace run by an agency: whose brand it shows // what people with the Member role can do (owners and admins can do everything)
+}
+
+/** An agency's own brand in place of Sprint2go, for its team, its clients' workspaces and its guests. */
+export interface WhiteLabel {
+  enabled: boolean;
+  name: string; // shown wherever the app would say Sprint2go
+  logo?: string; // defaults to the workspace's logo
+  color?: string;
+  domain?: string; // e.g. app.theiragency.com, pointed at us with one DNS record
+  domainStatus?: 'waiting' | 'verified';
+  slug?: string; // try it locally at <slug>.localhost
 }
 
 /** What Members can do. Each project's Lead can always manage that project. */

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MoreVertical, Plus, Share, X } from 'lucide-react';
+import { brand as product } from '../terms';
 
 type BIP = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
 
@@ -63,16 +64,16 @@ export function InstallPrompt() {
 
   return (
     <div className="install-scrim" onMouseDown={later}>
-      <div className="install-sheet" role="dialog" aria-label="Install Sprint2go" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="install-sheet" role="dialog" aria-label={`Install ${product.name}`} onMouseDown={(e) => e.stopPropagation()}>
         <button className="icon-btn sm install-x" onClick={later} aria-label="Not now">
           <X size={16} />
         </button>
         <img src="/icon-192.png" alt="" className="install-icon" />
-        <h2>Get the Sprint2go app</h2>
+        <h2>Get the {product.name} app</h2>
         <p>Add it to your home screen. It opens full screen with its own icon, like any app, and keeps you signed in. No app store needed.</p>
         {deferred ? (
           <button className="primary-btn install-go" onClick={() => void install()}>
-            Install Sprint2go
+            Install {product.name}
           </button>
         ) : ios ? (
           <ol className="install-steps">

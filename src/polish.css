@@ -3418,3 +3418,16 @@ p.trial-note > svg:first-child {
   border-radius: 10px;
   background: #000;
 }
+.signin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+.signin-brand img {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+}

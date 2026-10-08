@@ -2,7 +2,7 @@ import { MEETING_LANGUAGES } from '../data/languages';
 import { useEffect, useRef, useState } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
-import { term } from '../terms';
+import { term, brand as product } from '../terms';
 import { ArrowLeft, Bell, FileText, ListChecks, Loader2, Mail, MessagesSquare, Mic, MicOff, Plus, Sparkles, UserPlus, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
 import { ai, aiLive, type DumpBrief, type DumpTask } from '../ai';
@@ -295,7 +295,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
                   <Bell size={14} /> Tell the {others === 1 ? 'person' : `${others} people`} you assigned:
                 </span>
                 <label className="check-row">
-                  <input type="checkbox" checked disabled /> In Sprint2go
+                  <input type="checkbox" checked disabled /> In {product.name}
                 </label>
                 <label className="check-row">
                   <input type="checkbox" checked={chat} onChange={(e) => setChat(e.target.checked)} />

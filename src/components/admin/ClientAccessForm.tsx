@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { term } from '../../terms';
+import { term, brand as product } from '../../terms';
 import { RotateCcw } from 'lucide-react';
 import { DEFAULT_CLIENT_ACCESS, type ClientAccess, type Team } from '../../types';
 import { Select } from '../ui/Select';
@@ -16,7 +16,7 @@ const LABEL: Record<Key, [string, string]> = {
   get ai() { return [`AI for ${term.whos}`, `Answers only from what the ${term.who} can see. Uses your AI allowance or keys`] as [string, string]; },
   get aiQuestions() { return ['AI questions per month', `For each ${term.one}`] as [string, string]; },
   get uploads() { return [`${term.Whos} upload files`, `Into a “From ${term.who}” folder you can see`] as [string, string]; },
-  hideBranding: ['Hide “Made with Sprint2go”', 'Needs the branding add-on (Plan & billing)'],
+  hideBranding: [`Hide “Made with ${product.name}”`, 'Needs the branding add-on (Plan & billing)'],
 };
 
 /**

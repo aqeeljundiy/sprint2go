@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
-import { term } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
+import { term, brand as product } from '../terms';
+import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import { DEFAULT_PERMISSIONS } from '../types';
 import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
@@ -23,10 +23,12 @@ import { EmailSetupGuide } from './EmailSetupGuide';
 import { providerName } from './Onboarding';
 import { relative } from '../utils';
 import { PROJECT_TYPES } from '../terms';
+import { AgencySection } from './admin/AgencySection';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
   { id: 'permissions', name: 'Permissions', icon: KeySquare, group: 'Company' },
+  { id: 'agency', name: 'White label & agency', icon: Stamp, group: 'Company' },
   { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
   { id: 'clients', get name() { return `${term.Who} access`; }, icon: Handshake, group: 'Company' },
   { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
@@ -95,6 +97,9 @@ interface Props {
     byChannel: { name: string; size: number }[];
     onTeams: (t: Team[]) => void;
     onOpenTeams: (id?: string) => void;
+    clientWorkspaces: Workspace[];
+    onNewClientWorkspace: (name: string, owner?: { name: string; email: string }) => void;
+    onOpenWorkspace: (id: string) => void;
     onTeamHome: (teamId: string, t: HomeTemplateId) => void;
     onAI: (a: AISettings) => void;
     onPlan: (p: Plan) => void;
@@ -129,7 +134,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const canManage = myRole !== 'member';
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
-  const sections = SECTIONS.filter((x) => canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage'));
+  const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')) && !(ws.agency && x.id === 'billing'));
   const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
 
   return (
@@ -257,20 +262,20 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   <h3>Mail routing</h3>
                   <div className="set-block routing-block">
                     <p className="small">
-                      {ws.domains[0] ?? 'Your domain'} stays with {providerName(ws.emailProvider)}, which passes mail for addresses it doesn’t know on to Sprint2go.{' '}
+                      {ws.domains[0] ?? 'Your domain'} stays with {providerName(ws.emailProvider)}, which passes mail for addresses it doesn’t know on to {product.name}.{' '}
                       {ws.mailRouting?.lastCheck
                         ? ws.mailRouting.lastCheck.ok
                           ? `Last check ${relative(ws.mailRouting.lastCheck.at)}: working.`
                           : `Last check ${relative(ws.mailRouting.lastCheck.at)}: the test didn’t arrive. Check the routing rule.`
                         : ws.mailRouting?.verifiedAt
                           ? `Checked ${relative(ws.mailRouting.verifiedAt)} during setup.`
-                          : 'Not checked yet: mail to Sprint2go mailboxes may not arrive.'}
+                          : `Not checked yet: mail to ${product.name} mailboxes may not arrive.`}
                     </p>
                     <Toggle
                       on={ws.mailRouting?.dailyCheck ?? true}
                       onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
                       label="Check every day"
-                      hint="A test email each morning. If it stops arriving, admins hear about it straight away. Runs once Sprint2go mail is live."
+                      hint={`A test email each morning. If it stops arriving, admins hear about it straight away. Runs once ${product.name} mail is live.`}
                     />
                     <button type="button" className="link-btn small" onClick={() => setRoutingGuide((x) => !x)}>
                       {routingGuide ? 'Hide the setup steps' : 'Show the setup steps'}
@@ -427,7 +432,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'appearance' && (
             <>
               <h2>Appearance</h2>
-              <p className="set-intro">Make Sprint2go feel like yours.</p>
+              <p className="set-intro">Make {product.name} feel like yours.</p>
               <h3>Theme</h3>
               <div className="theme-cards">
                 {(['light', 'dark', 'system'] as const).map((t) => (
@@ -586,6 +591,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
+          {section === 'agency' && <AgencySection ws={ws} canManage={canManage} clientWorkspaces={admin.clientWorkspaces} onWorkspace={onWorkspace} onNewClientWorkspace={admin.onNewClientWorkspace} onOpenWorkspace={admin.onOpenWorkspace} />}
           {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
@@ -627,7 +633,7 @@ export function PasswordRow() {
       <div className="set-row">
         <span>
           <strong>Password</strong>
-          <small>{server.on ? (msg?.ok ? msg.text : 'Used to sign in to Sprint2go.') : 'Passwords are checked when the local server runs.'}</small>
+          <small>{server.on ? (msg?.ok ? msg.text : `Used to sign in to ${product.name}.`) : 'Passwords are checked when the local server runs.'}</small>
         </span>
         <button className="ghost-btn outline" disabled={!server.on} onClick={() => (setOpen((o) => !o), setMsg(null))}>
           Change password

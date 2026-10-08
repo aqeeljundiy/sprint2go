@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { term } from '../../terms';
+import { term, brand as product } from '../../terms';
 import { server } from '../../sync';
 import { AISpend } from './AISpend';
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Play, Plus, ShieldOff, Sparkles, Trash2 } from 'lucide-react';
@@ -68,7 +68,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   };
 
   const jobOptions = (): Option[] => [
-    ...(allowIncluded ? [{ value: 'included|included', label: 'Sprint2go (included in your plan)', group: 'Included', icon: <Sparkles size={14} /> }] : []),
+    ...(allowIncluded ? [{ value: 'included|included', label: `${product.name} (included in your plan)`, group: 'Included', icon: <Sparkles size={14} /> }] : []),
     ...ai.providers
       .filter((p) => p.status === 'ok' && !ai.blocked.includes(p.id))
       .flatMap((p) => providerOf(p.id)!.models.map((m) => ({ value: `${p.id}|${m.id}`, label: m.name, hint: providerOf(p.id)!.name, group: providerOf(p.id)!.name }))),
@@ -97,7 +97,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           <div className="payer-pick">
             {(
               [
-                ['sprint2go', 'Sprint2go', included ? `Included in ${planName(plan!)}: shared allowance for the whole company` : 'Needs an “AI included” plan'],
+                ['sprint2go', `${product.name}`, included ? `Included in ${planName(plan!)}: shared allowance for the whole company` : 'Needs an “AI included” plan'],
                 ['own', 'Our own keys', 'Your providers bill you directly. Cheapest plans'],
                 ['both', 'Both', 'Your keys first; the plan’s allowance as backup'],
               ] as const
@@ -163,7 +163,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
 
         <div className="set-block">
           <h3>{ai.payer === 'sprint2go' ? 'Providers' : 'Your AI keys'}</h3>
-          {ai.providers.length === 0 && <p className="muted small">No keys yet. {included && ai.payer !== 'own' ? 'Sprint2go’s AI is used for everything.' : 'Add a key to switch the AI on, then pick which model does each job below.'}</p>}
+          {ai.providers.length === 0 && <p className="muted small">No keys yet. {included && ai.payer !== 'own' ? `${product.name}’s AI is used for everything.` : 'Add a key to switch the AI on, then pick which model does each job below.'}</p>}
           <div className="prov-list">
             {ai.providers.map((c) => {
               const info = providerOf(c.id)!;
@@ -311,7 +311,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                         Uses your {providerOf(cur.provider)!.name} key •••• {ai.providers.find((x) => x.id === cur.provider)!.keyLast4} ·{' '}
                       </>
                     ) : cur?.provider === 'included' ? (
-                      'Sprint2go’s AI · '
+                      `${product.name}’s AI · `
                     ) : null}
                     Suggested: {recModel('balanced')}, cheapest {recModel('cheap')}
                   </small>
@@ -398,7 +398,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
             <details className="set-block advanced">
               <summary>
                 <h3>Which AI does each job</h3>
-                <small className="muted">Sprint2go picks good models for you. Open this to choose your own.</small>
+                <small className="muted">{product.name} picks good models for you. Open this to choose your own.</small>
               </summary>
               {board}
             </details>

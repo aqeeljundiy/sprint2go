@@ -8,6 +8,7 @@ import { relative, uid } from '../../utils';
 import { TabPane } from '../ui/Smooth';
 import { OPTION_COLORS, isComputed, opsFor } from './fields';
 import { guessType } from './csv';
+import { brand as product } from '../../terms';
 
 /** data.full_name -> Full name */
 const humanize = (k: string) => {
@@ -27,7 +28,14 @@ export const ACTION_KINDS: { kind: TableAction['kind']; label: string; hint: str
   { kind: 'linked', label: 'Add a linked row', hint: 'A new row there, linked back here', ruleOk: true },
   { kind: 'assign', label: 'Assign in turns', hint: 'The next salesperson, round robin', ruleOk: true },
   { kind: 'task', label: 'Make a task', hint: 'Assigned, with a due date', ruleOk: true },
-  { kind: 'notify', label: 'Notify someone', hint: 'A notification in Sprint2go', ruleOk: true },
+  {
+    kind: 'notify',
+    label: 'Notify someone',
+    get hint() {
+      return `A notification in ${product.name}`;
+    },
+    ruleOk: true,
+  },
   { kind: 'chat', label: 'Post in a channel', hint: 'A message in Chat', ruleOk: true },
   { kind: 'email', label: 'Write an email', hint: 'Opens a new email, filled in', ruleOk: false },
   { kind: 'open', label: 'Open a link', hint: 'Like https://wa.me/{Phone}', ruleOk: false },

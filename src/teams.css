@@ -282,3 +282,92 @@ button.team-row:hover,
   margin: 0;
   width: 100%;
 }
+
+/* Settings: white label and agency */
+.wl-brand {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+.wl-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.wl-logo img,
+.wl-logo > svg {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--surface-2);
+  padding: 0;
+}
+.wl-logo > svg {
+  padding: 9px;
+  color: var(--text-3);
+}
+.wl-color {
+  width: 44px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.wl-dns {
+  display: grid;
+  grid-template-columns: 70px 90px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+.wl-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.wl-new {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.wl-new input {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+.wl-new input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.wl-new-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.wl-empty {
+  padding: 12px;
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .wl-dns {
+    grid-template-columns: 60px minmax(0, 1fr) 28px;
+  }
+  .wl-dns > :nth-child(2) {
+    display: none;
+  }
+}

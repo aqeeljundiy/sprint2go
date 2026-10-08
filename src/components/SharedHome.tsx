@@ -5,6 +5,7 @@ import type { Channel, ChatMessage, Client, ClientPerson, Todo, Workspace } from
 import { tasksFor } from '../clientView';
 import { relative } from '../utils';
 import { WorkspaceLogo } from './WorkspaceLogo';
+import { brand as product } from '../terms';
 
 type Portal = { key: string; ws: Workspace; client: Client; person: ClientPerson };
 
@@ -21,7 +22,7 @@ export function SharedHome({ name, portals, todos, channels, messages, onOpen, o
   };
   const total = portals.reduce((n, p) => n + waiting(p), 0);
   useEffect(() => {
-    document.title = 'Shared with you · Sprint2go';
+    document.title = `Shared with you · ${product.name}`;
   }, []);
   return (
     <div className="shared-home">

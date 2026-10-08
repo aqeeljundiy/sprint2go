@@ -2,7 +2,7 @@ import { ProjectBadge } from './ProjectBadge';
 import { useEffect, useRef, useState } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
-import { term } from '../terms';
+import { term, brand as product } from '../terms';
 import { Copy, Eye, History, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
 import { relative } from '../utils';
@@ -125,7 +125,7 @@ export function VaultView({
           <div className="empty-art">
             <KeyRound size={22} />
           </div>
-          <p className="empty-title">The Vault needs the Sprint2go server</p>
+          <p className="empty-title">The Vault needs the {product.name} server</p>
           <p className="empty-sub">Passwords are never kept in the browser. Run the local server (npm run server) and sign in to use it.</p>
         </div>
       </section>

@@ -66,6 +66,16 @@ const en = {
     r2: ['Q4 creative brief', 'New comment from Bayu', 'Open'],
     guest: 'Guest · Pixel & Profits',
   },
+  agency: {
+    kicker: 'For agencies',
+    h: 'Your brand, your clients, our engine',
+    lead: 'Run Sprint2go under your agency’s own name, logo and address. Your clients sign in at app.youragency.com and never see us. Set up a whole workspace for each client and bill them your way.',
+    points: ['Your name, logo and colours everywhere: sign-in, app, guest portal, phone app.', 'Your own address, like app.youragency.com, with its own secure connection.', 'A workspace per client, which you run and switch between in one click.', 'You pay our agency price; what you charge is up to you.'],
+    bar: 'app.nusastudio.com',
+    ws: 'Client workspaces',
+    clients: [['KopiKita', '12 people · 3 late'], ['Lumina Skin', '6 people · on track'], ['Arunika Hotels', '9 people · 1 to review']],
+    add: 'New client workspace',
+  },
   ai: {
     kicker: 'AI',
     h: 'AI on your terms',
@@ -246,6 +256,16 @@ const id: Dict = {
     r1: ['Anggaran iklan November (Rp 45 jt)', 'Dimas meminta persetujuan Anda', 'Setujui'],
     r2: ['Brief kreatif Q4', 'Komentar baru dari Bayu', 'Buka'],
     guest: 'Tamu · Pixel & Profits',
+  },
+  agency: {
+    kicker: 'Untuk agensi',
+    h: 'Brand Anda, klien Anda, mesin kami',
+    lead: 'Jalankan Sprint2go dengan nama, logo, dan alamat agensi Anda sendiri. Klien masuk di app.agensianda.com dan tidak pernah melihat kami. Siapkan workspace lengkap untuk tiap klien dan tagih dengan cara Anda.',
+    points: ['Nama, logo, dan warna Anda di mana-mana: halaman masuk, aplikasi, portal tamu, aplikasi ponsel.', 'Alamat Anda sendiri, seperti app.agensianda.com, dengan koneksi aman sendiri.', 'Satu workspace per klien, yang Anda kelola dan buka dalam satu klik.', 'Anda membayar harga agensi kami; berapa yang Anda tagih terserah Anda.'],
+    bar: 'app.nusastudio.com',
+    ws: 'Workspace klien',
+    clients: [['KopiKita', '12 orang · 3 terlambat'], ['Lumina Skin', '6 orang · sesuai jadwal'], ['Arunika Hotels', '9 orang · 1 perlu dicek']],
+    add: 'Workspace klien baru',
   },
   ai: {
     kicker: 'AI',

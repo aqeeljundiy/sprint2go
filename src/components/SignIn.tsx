@@ -3,6 +3,39 @@ import { ArrowLeft, ChevronRight, UserPlus, X } from 'lucide-react';
 import type { User } from '../types';
 import { Avatar } from './Avatar';
 import { Wordmark } from './Logo';
+import { brand as product, setBrandName } from '../terms';
+
+/** The brand at this address: an agency's (white label), or ours. Read once and shared by the sign-in screens. */
+type BrandInfo = { name?: string; logo?: string; color?: string };
+let brandAt: Promise<BrandInfo> | null = null;
+function useBrandAt() {
+  const [b, setB] = useState<BrandInfo>({});
+  useEffect(() => {
+    brandAt ??= fetch('/api/brand')
+      .then((r) => (r.ok ? r.json() : {}))
+      .catch(() => ({}));
+    void brandAt.then((x: BrandInfo) => {
+      if (x.name) {
+        setBrandName(x.name);
+        if (x.color) document.documentElement.style.setProperty('--brand', x.color);
+        document.title = x.name;
+      }
+      setB(x);
+    });
+  }, []);
+  return b;
+}
+/** Our wordmark, or the agency's logo and name. */
+function BrandMark() {
+  const b = useBrandAt();
+  if (!b.name) return <Wordmark height={30} />;
+  return (
+    <span className="signin-brand">
+      {b.logo && <img src={b.logo} alt="" />}
+      <strong>{b.name}</strong>
+    </span>
+  );
+}
 
 interface Props {
   users: User[];
@@ -32,10 +65,10 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
   return (
     <div className="signin">
       <div className="signin-card" key={adding ? 'add' : 'pick'}>
-        <Wordmark height={30} />
+        <BrandMark />
         {adding ? (
           <>
-            <h1>Sign in to Sprint2go</h1>
+            <h1>Sign in to {product.name}</h1>
             <p className="signin-sub">Use the email address your workspace gave you.</p>
             <form onSubmit={submit} className="signin-form">
               <div className="field">
@@ -52,9 +85,9 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
               </button>
               {!realPasswords && <p className="signin-note">Demo: any password works here. The local server checks real passwords.</p>}
             </form>
-            {onCreate && (
+            {onCreate && !product.white && (
               <p className="signin-switch">
-                New to Sprint2go?{' '}
+                New to {product.name}?{' '}
                 <button type="button" className="link-btn" onClick={onCreate}>
                   Create an account
                 </button>
@@ -123,7 +156,7 @@ export function SignUp({ onDone, onSignIn }: { onDone: () => void; onSignIn: () 
       if (!r.ok) setError(d.error ?? 'Something went wrong. Try again.');
       return r.ok ? d : null;
     } catch {
-      setError('Can’t reach Sprint2go. Check your connection.');
+      setError(`Can’t reach ${product.name}. Check your connection.`);
       return null;
     } finally {
       setBusy(false);
@@ -141,7 +174,7 @@ export function SignUp({ onDone, onSignIn }: { onDone: () => void; onSignIn: () 
   return (
     <div className="signin">
       <div className="signin-card" key={step}>
-        <Wordmark height={30} />
+        <BrandMark />
         {step === 'details' ? (
           <>
             <h1>Create your account</h1>
@@ -233,8 +266,8 @@ export function AcceptInvite({ token, onDone }: { token: string; onDone: () => v
   return (
     <div className="signin">
       <div className="signin-card">
-        <Wordmark height={30} />
-        <h1>Welcome to Sprint2go</h1>
+        <BrandMark />
+        <h1>Welcome to {product.name}</h1>
         {email ? (
           <form onSubmit={submit} className="signin-form">
             <p className="signin-sub">Pick a password for {email}.</p>
@@ -248,7 +281,7 @@ export function AcceptInvite({ token, onDone }: { token: string; onDone: () => v
             </div>
             {error && <p className="signin-error">{error}</p>}
             <button className="primary-btn signin-btn" disabled={pw.length < 8 || !pw2 || busy}>
-              {busy ? 'Saving…' : 'Set password and open Sprint2go'}
+              {busy ? 'Saving…' : `Set password and open ${product.name}`}
             </button>
           </form>
         ) : (

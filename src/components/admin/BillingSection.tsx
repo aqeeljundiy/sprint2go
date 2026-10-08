@@ -4,6 +4,7 @@ import type { Plan, Tier, Track, Workspace } from '../../types';
 import { ADDONS, ALLOWANCE, PLAN_FEATURES, PRICES, TIER_NAME, TOP_UP, TRACK_NAME, meetHours, monthlyTotal, options, planName, priceFor, rp, seatsFor, storageGB } from '../../data/pricing';
 import { trialPlan } from '../../data/workspaces';
 import { Select } from '../ui/Select';
+import { brand as product } from '../../terms';
 
 interface Props {
   ws: Workspace;
@@ -60,7 +61,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
   return (
     <>
       <h2>Billing</h2>
-      <p className="set-intro">Your company’s Sprint2go subscription: plan, people, add-ons, payment and invoices.</p>
+      <p className="set-intro">Your company’s {product.name} subscription: plan, people, add-ons, payment and invoices.</p>
       {!isOwner && <p className="modal-note">Only owners can change billing. You can see the plan and invoices.</p>}
 
       <div className="plan-card">
@@ -127,7 +128,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
             <input type="range" min={1} max={120} value={n} onChange={(e) => setN(Number(e.target.value))} />
           </label>
           <p className="muted small">
-            {track === 'own' ? 'Your AI provider bills you directly; Sprint2go costs less.' : `AI included: per person about ${ALLOWANCE.braindump} brain dumps, ${ALLOWANCE.ask} questions, ${ALLOWANCE.meetingHours} meeting hours, ${ALLOWANCE.summary} summaries and ${ALLOWANCE.draft} drafts a month, shared by everyone.`}
+            {track === 'own' ? `Your AI provider bills you directly; ${product.name} costs less.` : `AI included: per person about ${ALLOWANCE.braindump} brain dumps, ${ALLOWANCE.ask} questions, ${ALLOWANCE.meetingHours} meeting hours, ${ALLOWANCE.summary} summaries and ${ALLOWANCE.draft} drafts a month, shared by everyone.`}
             {track === 'own' && n <= 5 ? ' Up to 5 people can also use Free.' : ''}
           </p>
           <div className="tier-grid">

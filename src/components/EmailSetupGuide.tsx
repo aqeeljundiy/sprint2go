@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, Check, Copy, Loader2, Mail } from 'lucide-react';
 import type { MailProvider } from '../types';
 import { providerName } from './Onboarding';
+import { brand as product } from '../terms';
 
 /**
  * How mail gets into Sprint2go, step by step. Two ways:
@@ -53,7 +54,7 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
 
   const sendRecords = [
     { type: 'TXT', host: '@', value: 'v=spf1 include:amazonses.com ~all', note: 'Add to your SPF record (keep what’s there)' },
-    { type: 'CNAME', host: 's2g._domainkey', value: `s2g.${d}.dkim.sprint2go.com`, note: 'Signs mail sent from Sprint2go' },
+    { type: 'CNAME', host: 's2g._domainkey', value: `s2g.${d}.dkim.sprint2go.com`, note: `Signs mail sent from ${product.name}` },
   ];
   const moveRecords = [
     { type: 'MX', host: '@', value: 'mx.sprint2go.com', note: 'Priority 10. Replaces your current MX records' },
@@ -122,13 +123,13 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             body: (
               <>
                 <p>
-                  {d} stays with {providerName(provider)}. People who keep a licence there carry on as today. Everyone else gets a real <b>name@{d}</b> mailbox in Sprint2go, and you stop paying {providerName(provider)} for them.
+                  {d} stays with {providerName(provider)}. People who keep a licence there carry on as today. Everyone else gets a real <b>name@{d}</b> mailbox in {product.name}, and you stop paying {providerName(provider)} for them.
                 </p>
                 <p>
-                  Mail always reaches {providerName(provider)} first. One rule there passes anything for an address it doesn’t know on to Sprint2go. If an address exists in neither, the sender gets the usual “doesn’t exist” reply.
+                  Mail always reaches {providerName(provider)} first. One rule there passes anything for an address it doesn’t know on to {product.name}. If an address exists in neither, the sender gets the usual “doesn’t exist” reply.
                 </p>
                 <p className="esg-tipline">
-                  <b>One place per person.</b> When someone moves to Sprint2go, remove their {providerName(provider)} licence; while it exists, {providerName(provider)} keeps their mail.
+                  <b>One place per person.</b> When someone moves to {product.name}, remove their {providerName(provider)} licence; while it exists, {providerName(provider)} keeps their mail.
                 </p>
               </>
             ),
@@ -147,7 +148,7 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             title: 'Sending',
             body: (
               <>
-                <p>So mail from Sprint2go mailboxes isn’t marked as spam, add these where you manage {d}. Once for the whole company.</p>
+                <p>So mail from {product.name} mailboxes isn’t marked as spam, add these where you manage {d}. Once for the whole company.</p>
                 <Records list={splitRecords} />
                 <Btn k="dns" idle="Check the records" wait="Checking DNS…" ok="Both records found" />
               </>
@@ -158,7 +159,7 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             body: (
               <>
                 <p>
-                  We send a test to <b>check@{d}</b>, an address only Sprint2go has. If it arrives here, {providerName(provider)} passes mail on correctly and you can give people Sprint2go mailboxes.
+                  We send a test to <b>check@{d}</b>, an address only {product.name} has. If it arrives here, {providerName(provider)} passes mail on correctly and you can give people {product.name} mailboxes.
                 </p>
                 <Btn k="route-test" idle="Send the test" wait={`Waiting for it to pass through ${providerName(provider)}…`} ok="It arrived: routing works" ms={2600} />
                 <p className="muted small">After this we send the same test every day and tell admins straight away if it stops arriving, for example when someone changes the rule.</p>
@@ -172,7 +173,7 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             title: 'Your address',
             body: (
               <>
-                <p>Everyone gets a private Sprint2go address that only receives forwarded mail. Yours:</p>
+                <p>Everyone gets a private {product.name} address that only receives forwarded mail. Yours:</p>
                 <Value v={inbox} />
               </>
             ),
@@ -217,7 +218,7 @@ export function EmailSetupGuide({ mode, provider, domain, first, onVerified }: {
             body: (
               <>
                 <p>Send any email to {first || 'you'}@{d} from your phone.</p>
-                <Btn k="test" idle="I sent it" wait="Watching for it…" ok="Arrived in Sprint2go" ms={2200} />
+                <Btn k="test" idle="I sent it" wait="Watching for it…" ok={`Arrived in ${product.name}`} ms={2200} />
               </>
             ),
           },

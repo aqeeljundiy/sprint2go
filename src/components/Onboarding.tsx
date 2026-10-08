@@ -1,7 +1,7 @@
 import { LanguagePicker } from './LanguagePicker';
 import { MEETING_LANGUAGES } from '../data/languages';
 import { useState } from 'react';
-import { term } from '../terms';
+import { term, brand as product } from '../terms';
 import { Check, Cloud, MailX, Server, Shuffle, X, type LucideIcon } from 'lucide-react';
 import type { Account, AppId, EmailSetup, MailProvider, MeetingSettings, User, Workspace } from '../types';
 import { DEFAULT_MEETINGS, WORKSPACE_COLORS, defaultAI, trialPlan } from '../data/workspaces';
@@ -20,12 +20,13 @@ export const PROVIDERS: { id: MailProvider; name: string }[] = [
   { id: 'zoho', name: 'Zoho Mail' },
   { id: 'imap', name: 'Other (IMAP)' },
 ];
-export const providerName = (p?: MailProvider) => (p === 'sprint2go' || !p ? 'Sprint2go' : PROVIDERS.find((x) => x.id === p)?.name ?? 'Other');
+export const providerName = (p?: MailProvider) => (p === 'sprint2go' || !p ? `${product.name}` : PROVIDERS.find((x) => x.id === p)?.name ?? 'Other');
 
-const SETUPS: { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] = [
-  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook, forward here', body: 'Mail stays where it is. A copy of everything comes to Sprint2go and you reply from here as yourself. Nothing moves.' },
-  { id: 'hosted', icon: Server, title: 'Move our email to Sprint2go', body: 'We host your mail, so you can cancel Google or Microsoft. Cheapest per person. Old mail comes with you.' },
-  { id: 'mix', icon: Shuffle, title: 'Some of each', body: 'Keep pricey licences for a few people and give everyone else a Sprint2go mailbox.' },
+// A function, so the product name (an agency's own, when white-labelled) is read when shown.
+const setups = (): { id: EmailSetup; icon: LucideIcon; title: string; body: string }[] => [
+  { id: 'keep', icon: Cloud, title: 'Keep Gmail or Outlook, forward here', body: `Mail stays where it is. A copy of everything comes to ${product.name} and you reply from here as yourself. Nothing moves.` },
+  { id: 'hosted', icon: Server, title: `Move our email to ${product.name}`, body: 'We host your mail, so you can cancel Google or Microsoft. Cheapest per person. Old mail comes with you.' },
+  { id: 'mix', icon: Shuffle, title: 'Some of each', body: `Keep pricey licences for a few people and give everyone else a ${product.name} mailbox.` },
   { id: 'none', icon: MailX, title: 'We don’t need email here', body: 'Switch Mail off. Use Chat, Tasks, Calendar and the rest.' },
 ];
 
@@ -65,6 +66,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
     const nav = (typeof navigator !== 'undefined' ? navigator.language : 'en').slice(0, 2).toLowerCase();
     return nav === 'id' || nav === 'ms' ? [nav, 'en'] : MEETING_LANGUAGES.some((l) => l.code === nav) ? [nav] : ['en'];
   });
+  const [agency, setAgency] = useState(false); // white label: the company's own brand in place of ours
   const [mixPart, setMixPart] = useState<'split' | 'keep'>('split'); // "Some of each": which people the guide is about
   const [routingOk, setRoutingOk] = useState(false); // the routing test reached Sprint2go
   const [team, setTeam] = useState<Invite[]>([{ key: 1, name: '', email: '', role: 'member', where: 'sprint2go' }]);
@@ -110,6 +112,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
         members: [{ userId: me.id, role: 'owner' }, ...newUsers.map((u, i) => ({ userId: u.id, role: people[i].role }))],
         apps: mailOn ? apps : apps.filter((a) => a !== 'mail'),
         emailSetup: setup,
+        ...(agency ? { whiteLabel: { enabled: true, name: brand.name.trim(), logo: brand.logo, color: brand.color, slug: brand.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') } } : {}),
         ...(setup === 'mix' ? { mailRouting: { dailyCheck: true, ...(routingOk ? { verifiedAt: new Date().toISOString() } : {}) } } : {}),
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,
         plan: trialPlan(brand.name.trim(), myEmail),
@@ -201,6 +204,13 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                 <input id="ob-email" value={emailInput} onChange={(e) => setMyEmail(e.target.value)} placeholder={suggested || 'you@company.com'} />
                 {emailInput && d && !myEmail.toLowerCase().endsWith('@' + d) && <small className="err">Use an address at @{d}.</small>}
               </div>
+              <label className={`ob-agency ${agency ? 'on' : ''}`}>
+                <input type="checkbox" checked={agency} onChange={(e) => setAgency(e.target.checked)} />
+                <span>
+                  <strong>We’re an agency</strong>
+                  <small>Run it under our own name and logo for our team and our clients, at our own address, and set up workspaces for clients. Change it any time in Settings, White label & agency.</small>
+                </span>
+              </label>
             </>
           )}
 
@@ -257,9 +267,9 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
           {step === 2 && (
             <>
               <h2>Where does your company’s email live?</h2>
-              <p className="set-intro">Sprint2go works with any of these. You can move people later.</p>
+              <p className="set-intro">{product.name} works with any of these. You can move people later.</p>
               <div className="ob-setups">
-                {SETUPS.map(({ id, icon: Icon, title, body }) => (
+                {setups().map(({ id, icon: Icon, title, body }) => (
                   <button key={id} className={`ob-setup ${setup === id ? 'on' : ''}`} onClick={() => setSetup(id)}>
                     <Icon size={20} />
                     <span>
@@ -288,7 +298,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                     <>
                       <div className="segmented sm esg-who">
                         <button type="button" className={mixPart === 'split' ? 'on' : ''} onClick={() => setMixPart('split')}>
-                          People on Sprint2go mail
+                          People on {product.name} mail
                         </button>
                         <button type="button" className={mixPart === 'keep' ? 'on' : ''} onClick={() => setMixPart('keep')}>
                           People who keep {providerName(provider)}
@@ -338,7 +348,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                         onChange={(v) => setTeam((ts) => ts.map((x) => (x.key === t.key ? { ...x, where: v } : x)))}
                         label="Mailbox"
                         options={[
-                          { value: 'sprint2go', label: 'Mailbox on Sprint2go' },
+                          { value: 'sprint2go', label: `Mailbox on ${product.name}` },
                           { value: 'existing', label: `Stays on ${providerName(provider)}` },
                         ]}
                       />

@@ -1,5 +1,6 @@
 import type { Workspace } from '../types';
 import { initials } from '../utils';
+import { brand } from '../terms';
 
 export function WorkspaceLogo({ ws, size = 28 }: { ws: Pick<Workspace, 'name' | 'logo' | 'color'>; size?: number }) {
   return ws.logo ? (
@@ -42,7 +43,7 @@ export function readLogo(file: File): Promise<string> {
 
 /** Sets the browser tab title and icon to the workspace's brand. */
 export function applyBranding(ws: Workspace) {
-  document.title = `${ws.name} · Sprint2go`;
+  document.title = brand.white ? ws.name : `${ws.name} · Sprint2go`; // an agency's clients see only names they know
   const icon =
     ws.logo ??
     `data:image/svg+xml;charset=utf-8,${encodeURIComponent(

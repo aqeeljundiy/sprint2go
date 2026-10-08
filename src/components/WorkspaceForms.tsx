@@ -6,6 +6,7 @@ import { PROVIDERS } from './Onboarding';
 import { WORKSPACE_COLORS } from '../data/workspaces';
 import { uid } from '../utils';
 import { readLogo, WorkspaceLogo } from './WorkspaceLogo';
+import { brand as product } from '../terms';
 
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 
@@ -167,7 +168,7 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
           <label>Where does this mailbox live?</label>
           <div className="aw-tones wrap">
             <button className={provider === 'sprint2go' ? 'on' : ''} onClick={() => setProvider('sprint2go')}>
-              New Sprint2go mailbox
+              New {product.name} mailbox
             </button>
             {PROVIDERS.map((p) => (
               <button key={p.id} className={provider === p.id ? 'on' : ''} onClick={() => setProvider(p.id)}>

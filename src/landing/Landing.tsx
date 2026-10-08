@@ -23,6 +23,7 @@ import {
   TriangleAlert,
   Video,
   type LucideIcon,
+  Stamp,
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { PLAN_FEATURES, PRICES, rp } from '../data/pricing';
@@ -300,6 +301,48 @@ function GuestMock() {
   );
 }
 
+/** An agency's own app: its name in the address bar, its client workspaces a click away. */
+function AgencyMock() {
+  const { t } = useT();
+  const a = t.agency;
+  return (
+    <div className="mock agency" aria-hidden="true">
+      <div className="mock-bar">
+        <i />
+        <i />
+        <i />
+        <span>{a.bar}</span>
+      </div>
+      <div className="am-body">
+        <div className="am-brand">
+          <span className="am-logo">N</span>
+          <strong>Nusa Studio</strong>
+        </div>
+        <p className="mock-date">{a.ws}</p>
+        <div className="mock-card am-list">
+          {a.clients.map(([name, sub], i) => (
+            <div key={name} className="am-row">
+              <span className="av" style={{ background: ['#b45309', '#db2777', '#0369a1'][i] }}>
+                {name.charAt(0)}
+              </span>
+              <span>
+                <strong>{name}</strong>
+                <small>{sub}</small>
+              </span>
+            </div>
+          ))}
+          <div className="am-row am-add">
+            <span className="av">+</span>
+            <span>
+              <strong>{a.add}</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AIMock() {
   const { t } = useT();
   const rows: [string, string, string][] = [
@@ -566,7 +609,33 @@ function Page() {
         </div>
       </section>
 
-      <section id="ai" className="ln-sec alt">
+      <section id="agency" className="ln-sec alt">
+        <div className="ln-wrap ln-split">
+          <div>
+            <span className="ln-kicker rv">
+              <Stamp size={14} /> {t.agency.kicker}
+            </span>
+            <h2 className="rv" style={{ ['--i' as string]: 1 }}>
+              {t.agency.h}
+            </h2>
+            <p className="ln-lead rv" style={{ ['--i' as string]: 2 }}>
+              {t.agency.lead}
+            </p>
+            <ul className="ln-points">
+              {t.agency.points.map((x, i) => (
+                <li key={x} className="rv" style={{ ['--i' as string]: i + 3 }}>
+                  <Check size={16} /> <span>{x}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rv" style={{ ['--i' as string]: 1 }}>
+            <AgencyMock />
+          </div>
+        </div>
+      </section>
+
+      <section id="ai" className="ln-sec">
         <div className="ln-wrap ln-split">
           <div>
             <span className="ln-kicker rv">
@@ -592,7 +661,7 @@ function Page() {
         </div>
       </section>
 
-      <section className="ln-sec">
+      <section className="ln-sec alt">
         <div className="ln-wrap">
           <div className="ln-head">
             <h2 className="rv">{t.email.h}</h2>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
-import { setTermWord, term } from '../terms';
+import { setTermWord, term, brand as product } from '../terms';
 import {
   ArrowRight,
   Bell,
@@ -495,7 +495,7 @@ export function ClientApp(p: Props) {
               ),
             )}
           </div>
-          {!access.hideBranding && (
+          {!access.hideBranding && !product.white && (
             <p className="client-made">
               Made with <Logo size={12} /> Sprint2go
             </p>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUpDown, CalendarDays, Columns3, Copy, CopyPlus, Download, Eye, EyeOff, FileUp, Filter, GalleryHorizontalEnd, GripVertical, Group, LayoutGrid, List, Maximize2, Menu, MoreHorizontal, PanelRight, Plus, Search, Trash2, Undo2, Users, X, Zap } from 'lucide-react';
 import type { CellValue, Channel, Client, DataTable, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
-import { term } from '../../terms';
+import { term, brand as product } from '../../terms';
 import { uid } from '../../utils';
 import { usePersisted } from '../../settings';
 import { Popover } from '../ui/Popover';
@@ -340,7 +340,7 @@ export function TableScreen(p: ScreenProps) {
 
   /* buttons */
   const press = async (row: TableRow, f: TableField, input: Record<string, CellValue> = {}) => {
-    if (!p.serverOn) return p.toast({ text: 'Buttons run on the server; they work once Sprint2go is running on one.' });
+    if (!p.serverOn) return p.toast({ text: `Buttons run on the server; they work once ${product.name} is running on one.` });
     const key = `${row.id}:${f.id}`;
     setRunning((x) => new Set(x).add(key));
     try {

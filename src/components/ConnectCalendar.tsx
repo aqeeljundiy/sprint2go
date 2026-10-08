@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
-import { term } from '../terms';
+import { term, brand as product } from '../terms';
 import { ArrowLeft, CalendarDays, Check, Globe, Link2, Loader2, X } from 'lucide-react';
 import type { CalendarDef, CalendarSource } from '../types';
 import { Select } from './ui/Select';
 
 export const SOURCE_NAME: Record<CalendarSource, string> = {
-  sprint2go: 'Sprint2go',
+  get sprint2go() {
+    return product.name;
+  },
   google: 'Google Calendar',
   microsoft: 'Outlook / Microsoft 365',
   icloud: 'iCloud',
@@ -115,7 +117,7 @@ export function ConnectCalendar({ me, existing, onConnect, onClose }: Props) {
           <SmoothHeight>
           {step === 'pick' && (
             <>
-              <p className="modal-intro">Bring in the calendars you already use. They show next to your Sprint2go calendar, and teammates only see “Busy” unless you choose otherwise.</p>
+              <p className="modal-intro">Bring in the calendars you already use. They show next to your {product.name} calendar, and teammates only see “Busy” unless you choose otherwise.</p>
               <div className="source-grid">
                 {(['google', 'microsoft', 'icloud', 'ics', 'holidays'] as CalendarSource[]).map((s) => (
                   <button key={s} className="source-card" onClick={() => choose(s)}>
@@ -141,7 +143,7 @@ export function ConnectCalendar({ me, existing, onConnect, onClose }: Props) {
               {(source === 'google' || source === 'microsoft') && (
                 <>
                   <p className="modal-intro">
-                    You’ll sign in with {source === 'google' ? 'Google' : 'Microsoft'} in a new window. Sprint2go only asks for calendar access, never your email or files.
+                    You’ll sign in with {source === 'google' ? 'Google' : 'Microsoft'} in a new window. {product.name} only asks for calendar access, never your email or files.
                   </p>
                   <label className="field">
                     <span>Account</span>

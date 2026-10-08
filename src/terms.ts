@@ -44,3 +44,26 @@ export const term = {
 /** The kinds of projects (a label, for filtering): an agency can still see "just my clients". */
 export const PROJECT_TYPES = ['Client', 'Internal', 'Partner', 'Vendor', 'Event', 'Other'] as const;
 export type ProjectType = (typeof PROJECT_TYPES)[number];
+
+/**
+ * The product's name as people see it: "Sprint2go", or an agency's own name when it runs the app under its brand
+ * (white label). Set from the workspace on screen, or from the address the app was opened at.
+ */
+const brandState: { name: string } = { name: 'Sprint2go' };
+export function setBrandName(n: string | undefined) {
+  brandState.name = n?.trim() || 'Sprint2go';
+}
+export const brand = {
+  get name() {
+    return brandState.name;
+  },
+  /** True when an agency's name replaces ours. */
+  get white() {
+    return brandState.name !== 'Sprint2go';
+  },
+};
+
+/** The name a workspace shows for the product: its own white label, its agency's, or ours. */
+export function brandOf(ws?: { whiteLabel?: { enabled: boolean; name: string }; agency?: { name: string } }) {
+  return ws?.whiteLabel?.enabled ? ws.whiteLabel.name : ws?.agency?.name;
+}
