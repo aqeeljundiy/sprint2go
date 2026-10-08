@@ -17,6 +17,7 @@ import { Avatar } from './Avatar';
 import { Dot, Select, type Option } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { PeoplePicker } from './ui/PeoplePicker';
+import { personOption } from './ui/PeopleList';
 
 export type TaskScope =
   | { kind: 'mine' }
@@ -72,7 +73,7 @@ const byDue = (a: Todo, b: Todo) => (a.due ?? '9999').localeCompare(b.due ?? '99
 export function peopleOptions(users: User[], me: string, unassigned = true): Option[] {
   return [
     ...(unassigned ? [{ value: '', label: 'Not assigned', hint: 'Waits in the team’s queue', icon: <span className="avatar-empty sm">?</span> }] : []),
-    ...users.map((u) => ({ value: u.id, label: u.id === me ? `${u.name} (me)` : u.name, hint: u.title, icon: <Avatar person={u} size={22} /> })),
+    ...users.map((u) => ({ ...personOption(u), label: u.id === me ? `${u.name} (me)` : u.name, hint: u.title, icon: <Avatar person={u} size={22} /> })),
   ];
 }
 export const teamOptions = (teams: Team[]): Option[] => [{ value: '', label: 'No team', icon: <Dot color="var(--text-3)" /> }, ...teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))];

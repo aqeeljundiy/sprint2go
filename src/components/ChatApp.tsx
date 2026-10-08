@@ -51,6 +51,7 @@ import { PeoplePicker } from './ui/PeoplePicker';
 import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 import { ChannelMaterials } from './ChannelMaterials';
+import { personOption } from './ui/PeopleList';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -452,7 +453,7 @@ export function ChatSidebar(p: SidebarProps) {
               label="Message someone"
               searchable
               onChange={(v) => (p.onNewDm(v), setAddingDm(false))}
-              options={p.users.filter((u) => u.id !== p.me && !dmWith.has(u.id)).map((u) => ({ value: u.id, label: u.name, hint: u.title, icon: <Avatar person={u} size={22} /> }))}
+              options={p.users.filter((u) => u.id !== p.me && !dmWith.has(u.id)).map((u) => ({ ...personOption(u), label: u.name, hint: u.title, icon: <Avatar person={u} size={22} /> }))}
             />
           </div>
         ) : (
@@ -1378,7 +1379,7 @@ export function ChatView(p: ViewProps) {
                 onKeyDown={(e) => e.key === 'Enter' && taskTitle.trim() && (p.onCreateTask({ title: taskTitle.trim(), userId: taskWho || me, due: taskDue || undefined }), setTaskTitle(''), setTaskDue(''))}
                 placeholder={`Add to ${title}’s list…`}
               />
-              <Select value={taskWho || me} onChange={setTaskWho} label="Assign to" className="sel-flat" options={users.map((u) => ({ value: u.id, label: u.id === me ? 'Me' : u.name, icon: <Avatar person={u} size={18} /> }))} />
+              <Select value={taskWho || me} onChange={setTaskWho} label="Assign to" className="sel-flat" options={users.map((u) => ({ ...personOption(u), label: u.id === me ? 'Me' : u.name, icon: <Avatar person={u} size={18} /> }))} />
               <DatePicker value={taskDue} onChange={setTaskDue} label="Due" placeholder="Due" className="sel-flat" />
               <button className="primary-btn sm" disabled={!taskTitle.trim()} onClick={() => (p.onCreateTask({ title: taskTitle.trim(), userId: taskWho || me, due: taskDue || undefined }), setTaskTitle(''), setTaskDue(''))}>
                 Add
@@ -1502,7 +1503,7 @@ export function ChatView(p: ViewProps) {
                 <X size={14} />
               </button>
             </div>
-            <Select value={kudos.who || null} onChange={(v) => setKudos({ ...kudos, who: v })} placeholder="Who?" label="Who gets kudos" options={users.filter((u) => u.id !== me).map((u) => ({ value: u.id, label: u.name, icon: <Avatar person={u} size={22} /> }))} />
+            <Select value={kudos.who || null} onChange={(v) => setKudos({ ...kudos, who: v })} placeholder="Who?" label="Who gets kudos" options={users.filter((u) => u.id !== me).map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={22} /> }))} />
             <input className="is-input" value={kudos.text} onChange={(e) => setKudos({ ...kudos, text: e.target.value })} placeholder="For what? e.g. saving the KopiKita invoice" />
             <div className="is-foot">
               <span className="muted small">Shows on everyone’s Home under Wins this week.</span>

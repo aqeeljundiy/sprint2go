@@ -10,6 +10,7 @@ import { APPS, useAppOrder } from '../AppRail';
 import { HOME_TEMPLATES } from '../HomeView';
 import { Avatar } from '../Avatar';
 import { Select } from '../ui/Select';
+import { personOption } from '../ui/PeopleList';
 
 const Switch = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
   <button type="button" role="switch" aria-checked={on} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
@@ -291,7 +292,7 @@ export function TeamsSection({ ws, teams, users, canManage, onTeams, onTeamHome,
             </div>
             <div className="tc-fields">
               <label>Lead</label>
-              <Select value={t.leadId ?? ''} onChange={(v) => patch(t.id, { leadId: v || undefined, members: v && !t.members.includes(v) ? [...t.members, v] : t.members })} label="Lead" options={[{ value: '', label: 'No lead' }, ...users.map((u) => ({ value: u.id, label: u.name, icon: <Avatar person={u} size={20} /> }))]} />
+              <Select value={t.leadId ?? ''} onChange={(v) => patch(t.id, { leadId: v || undefined, members: v && !t.members.includes(v) ? [...t.members, v] : t.members })} label="Lead" options={[{ value: '', label: 'No lead' }, ...users.map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={20} /> }))]} />
               <label>People</label>
               <div className="tc-members">
                 {t.members.map((id) => {
@@ -307,7 +308,7 @@ export function TeamsSection({ ws, teams, users, canManage, onTeams, onTeamHome,
                     )
                   );
                 })}
-                <Select value={null} onChange={(v) => patch(t.id, { members: [...t.members, v] })} placeholder="Add" label="Add person" className="sel-flat" options={users.filter((u) => !t.members.includes(u.id)).map((u) => ({ value: u.id, label: u.name, icon: <Avatar person={u} size={20} /> }))} />
+                <Select value={null} onChange={(v) => patch(t.id, { members: [...t.members, v] })} placeholder="Add" label="Add person" className="sel-flat" options={users.filter((u) => !t.members.includes(u.id)).map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={20} /> }))} />
               </div>
               <label>Home</label>
               <Select<HomeTemplateId> value={ws.teamHome?.[t.id] ?? null} onChange={(v) => onTeamHome(t.id, v)} placeholder="Guess from role" label="Default Home" options={(Object.keys(HOME_TEMPLATES) as HomeTemplateId[]).map((k) => ({ value: k, label: HOME_TEMPLATES[k].name, hint: HOME_TEMPLATES[k].hint }))} />

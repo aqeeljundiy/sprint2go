@@ -6,6 +6,9 @@ import { pushChange } from './sync';
 // With the local server running, every change is saved there and other people's changes arrive live (see sync.ts).
 export const store: Collections = seed();
 
+/** The workspace on screen, for helpers outside React (e.g. which teams to show next to a person). */
+export const session = { wsId: '' };
+
 /** Threads already scanned for to-dos (key: user:thread:lastMessage). */
 export const scanned = new Set<string>();
 

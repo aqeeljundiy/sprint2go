@@ -5,6 +5,7 @@ import { Avatar } from '../Avatar';
 import { Popover } from '../ui/Popover';
 import { OPTION_COLORS, cellText, isEmpty, money, passes, rowName } from './fields';
 import { uid } from '../../utils';
+import { PeopleList } from '../ui/PeopleList';
 
 export interface CellCtx {
   users: User[];
@@ -362,12 +363,23 @@ export function PickPopover({ f, v, ctx, anchor, open, onClose, onSave }: { f: T
     pick(id);
     setQ('');
   };
+  if (f.type === 'person')
+    return (
+      <Popover anchor={anchor} open={open} onClose={onClose} width={300} title={f.name}>
+        <PeopleList
+          users={ctx.users}
+          selected={[...chosen]}
+          extra={chosen.size ? [{ value: '', label: 'Clear', icon: <X size={14} /> }] : []}
+          onPick={(id) => (onSave(id && !chosen.has(id) ? id : null), onClose())}
+        />
+      </Popover>
+    );
   return (
     <Popover anchor={anchor} open={open} onClose={onClose} width={260} title={f.name}>
       <div className="tb-pick">
         <label className="tb-pick-search">
           <Search size={13} />
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={f.type === 'link' ? 'Find a row' : f.type === 'person' ? 'Find someone' : 'Find or add a choice'} onKeyDown={(e) => e.key === 'Enter' && (canAdd ? add() : shown[0] && pick(shown[0].id))} />
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={f.type === 'link' ? 'Find a row' : 'Find or add a choice'} onKeyDown={(e) => e.key === 'Enter' && (canAdd ? add() : shown[0] && pick(shown[0].id))} />
         </label>
         <div className="tb-pick-list">
           {shown.map((i) => (

@@ -17,6 +17,7 @@ import { CalendarView, GalleryView, ListView } from './Views';
 import { FieldLine, RecordDrawer } from './RecordDrawer';
 import { AutomationsPanel } from './Automations';
 import { ButtonDialog, ButtonSetupCtx } from './ButtonDialog';
+import { PersonSelect } from '../ui/PeoplePicker';
 import { ImportDialog, type ImportPlan } from './ImportDialog';
 import { download, rowsToCsv } from './csv';
 import { TABLE_COLORS, cellText, convertValue, fieldIcon, isComputed, isEmpty, opsFor, optionsFromValues, parseIncoming, rowName, sortWords, sortsOf, viewFields, visibleRows } from './fields';
@@ -874,14 +875,7 @@ function FilterEditor({ table, filters, mode, users, onChange, onMode }: { table
                   ))}
                 </PickSelect>
               ) : f.type === 'person' || f.type === 'creator' ? (
-                <PickSelect value={flt.value ?? ''} aria-label="Person" searchable onChange={(e) => set(i, { value: e.target.value })}>
-                  <option value="">Choose someone…</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </PickSelect>
+                <PersonSelect value={flt.value ?? ''} users={users} label="Person" onChange={(v) => set(i, { value: v })} />
               ) : f.type === 'checkbox' ? (
                 <PickSelect value={flt.value ?? 'yes'} aria-label="Value" onChange={(e) => set(i, { value: e.target.value })}>
                   <option value="yes">Checked</option>

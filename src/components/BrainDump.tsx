@@ -10,6 +10,7 @@ import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { peopleOptions, teamOptions } from './TasksView';
+import { personOption } from './ui/PeopleList';
 
 export interface DumpResult {
   tasks: { title: string; clientId?: string; teamId?: string; userId: string; due?: string; priority: 'high' | 'normal' }[];
@@ -158,7 +159,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
     });
 
   const nameOptions = (name: string) => [
-    ...users.map((u) => ({ value: u.id, label: `${name} is ${u.name}`, hint: u.title, icon: <Avatar person={u} size={22} />, group: 'A teammate' })),
+    ...users.map((u) => ({ ...personOption(u), label: `${name} is ${u.name}`, hint: u.title, icon: <Avatar person={u} size={22} />, group: 'A teammate' })),
     { value: '__contact', label: `${name} is a ${term.who} contact`, hint: 'Not on our team. The task stays with you', icon: <span className="avatar-empty sm">C</span>, group: 'Someone else' },
     { value: '__invite', label: `Invite ${name} to the team`, hint: 'Sends an invite by email', icon: <UserPlus size={16} />, group: 'Someone else' },
   ];

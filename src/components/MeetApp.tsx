@@ -165,6 +165,7 @@ export interface MeetProps {
 
 export type { AskScope } from './Assistant';
 import type { AskScope } from './Assistant';
+import { personOption } from './ui/PeopleList';
 
 export function MeetView(p: MeetProps) {
   const pg = p.page;
@@ -786,7 +787,7 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
                     className="sel-flat"
                     options={[
                       { value: '', label: owner && !p.users.some((u) => u.name.split(' ')[0] === owner) ? `${owner} (not a member)` : 'Unassigned' },
-                      ...p.users.map((u) => ({ value: u.id, label: u.name, icon: <Avatar person={u} size={18} /> })),
+                      ...p.users.map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={18} /> })),
                     ]}
                   />
                   <input className="due-input" value={t.due ?? ''} onChange={(e) => p.onPatchTask(t.id, { due: e.target.value || undefined })} placeholder="No due date" onClick={(e) => e.stopPropagation()} aria-label="Due" />
@@ -830,7 +831,7 @@ function MeetTasks(p: MeetProps) {
         <div className="todo-add task-add">
           <Plus size={16} />
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a task…" />
-          <Select value={who} onChange={setWho} label="Assignee" className="sel-flat" options={[{ value: '', label: 'Unassigned' }, ...p.users.map((u) => ({ value: u.id, label: u.name }))]} />
+          <Select value={who} onChange={setWho} label="Assignee" className="sel-flat" options={[{ value: '', label: 'Unassigned' }, ...p.users.map((u) => ({ ...personOption(u), label: u.name }))]} />
           <input className="due-input" value={due} onChange={(e) => setDue(e.target.value)} placeholder="Due (e.g. Friday)" />
           <button className="primary-btn sm" disabled={!title.trim()} onClick={() => (p.onAddTask({ title: title.trim(), userId: who, due: due || undefined }), setTitle(''), setDue(''))}>
             Add

@@ -9,6 +9,7 @@ import { addWorkdays, localDay } from '../utils';
 import { Select } from './ui/Select';
 import { DatePicker, shortDate } from './ui/DatePicker';
 import { Avatar } from './Avatar';
+import { personOption } from './ui/PeopleList';
 
 interface Props {
   templates: TaskTemplate[];
@@ -82,7 +83,7 @@ export function TemplateDialog(p: Props) {
                 </label>
                 <label className="field">
                   <span>In charge</span>
-                  <Select value={ownerId} onChange={setOwnerId} label="In charge" searchable options={p.users.map((u) => ({ value: u.id, label: u.id === p.me ? `${u.name} (me)` : u.name, icon: <Avatar person={u} size={20} /> }))} />
+                  <Select value={ownerId} onChange={setOwnerId} label="In charge" searchable options={p.users.map((u) => ({ ...personOption(u), label: u.id === p.me ? `${u.name} (me)` : u.name, icon: <Avatar person={u} size={20} /> }))} />
                 </label>
               </div>
               <ul className="tpl-tasks">

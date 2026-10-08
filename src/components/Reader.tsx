@@ -42,6 +42,7 @@ import { hasOwnText, sanitize, textToHtml } from '../sanitize';
 import { ai, type Summary } from '../ai';
 import type { Todo } from '../types';
 import type { Attachment } from '../types';
+import { personOption } from './ui/PeopleList';
 
 interface Props {
   thread: Thread | null;
@@ -253,7 +254,7 @@ export function Reader(props: Props) {
               label="Who handles this"
               className="sel-flat assign-sel"
               width={240}
-              options={[{ value: '', label: 'Nobody yet' }, ...props.teammates.map((u) => ({ value: u.id, label: u.name, icon: <Avatar person={u} size={20} /> }))]}
+              options={[{ value: '', label: 'Nobody yet' }, ...props.teammates.map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={20} /> }))]}
               renderValue={(o) => (
                 <>
                   <UserCheck size={14} />

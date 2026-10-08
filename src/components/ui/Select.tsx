@@ -9,6 +9,7 @@ export interface Option<V extends string = string> {
   icon?: ReactNode; // avatar, colour dot or icon
   group?: string;
   danger?: boolean;
+  keywords?: string; // also found by these words (a person's email, title and teams)
 }
 
 /**
@@ -62,7 +63,7 @@ export function Select<V extends string = string>({
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return s ? options.filter((o) => o.label.toLowerCase().includes(s) || o.hint?.toLowerCase().includes(s)) : options;
+    return s ? options.filter((o) => s.split(/\s+/).every((w) => `${o.label} ${o.hint ?? ''} ${o.keywords ?? ''}`.toLowerCase().includes(w))) : options;
   }, [options, q]);
 
   const pick = (o: Option<V>) => {

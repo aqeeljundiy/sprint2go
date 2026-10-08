@@ -5,6 +5,7 @@ import { term } from '../terms';
 import { Avatar } from './Avatar';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
+import { personOption } from './ui/PeopleList';
 
 /**
  * Who's on a project: the owner, teammates (Lead or Member) and guests. Teammates on it see it in their
@@ -81,7 +82,7 @@ export function ProjectPeople({ client, users, me, canEdit, onPatch, onGuests }:
               label="Add a teammate"
               className="sel-flat"
               searchable
-              options={free.map((u) => ({ value: u.id, label: u.name, hint: u.title, icon: <Avatar person={u} size={20} /> }))}
+              options={free.map((u) => ({ ...personOption(u), label: u.name, hint: u.title, icon: <Avatar person={u} size={20} /> }))}
             />
           )}
           <span className="pp-head">Guests</span>

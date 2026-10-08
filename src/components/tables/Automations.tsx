@@ -1,6 +1,8 @@
 import { PickSelect } from '../ui/PickSelect';
+import { PeoplePicker, PersonSelect } from '../ui/PeoplePicker';
+import type { ExtraOption } from '../ui/PeopleList';
 import { useEffect, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Copy, KeyRound, Plus, RefreshCw, ScrollText, Send, Trash2, X, Zap } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Ban, Check, ChevronRight, Copy, KeyRound, MousePointerClick, Plus, RefreshCw, ScrollText, Send, Trash2, UserRound, X, Zap } from 'lucide-react';
 import type { ButtonDef, Channel, DataTable, TableAction, TableField, TableIntake, TableRule, User } from '../../types';
 import { relative, uid } from '../../utils';
 import { TabPane } from '../ui/Smooth';
@@ -92,22 +94,12 @@ export function actionSummary(a: TableAction, t: DataTable, tables: DataTable[],
 
 /** Who an action is for: a person field on the row, whoever pressed, or a named teammate. */
 function PersonSpec({ t, users, value, onChange, label }: { t: DataTable; users: User[]; value?: string; onChange: (v: string) => void; label: string }) {
-  return (
-    <PickSelect value={value ?? ''} aria-label={label} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Nobody</option>
-      {t.fields.filter((f) => f.type === 'person').map((f) => (
-        <option key={f.id} value={f.id}>
-          The row’s {f.name}
-        </option>
-      ))}
-      <option value="@me">Whoever pressed it</option>
-      {users.map((u) => (
-        <option key={u.id} value={u.id}>
-          {u.name}
-        </option>
-      ))}
-    </PickSelect>
-  );
+  const extra: ExtraOption[] = [
+    { value: '', label: 'Nobody', icon: <Ban size={15} /> },
+    ...t.fields.filter((f) => f.type === 'person').map((f) => ({ value: f.id, label: `The row’s ${f.name}`, icon: <UserRound size={15} /> })),
+    { value: '@me', label: 'Whoever pressed it', icon: <MousePointerClick size={15} /> },
+  ];
+  return <PersonSelect value={value ?? ''} users={users} extra={extra} label={label} onChange={onChange} />;
 }
 
 /** A value to set on a field, in the shape the field takes. */
@@ -125,15 +117,16 @@ function ValueInput({ f, users, value, onChange }: { f: TableField; users: User[
     );
   if (f.type === 'person')
     return (
-      <PickSelect value={String(value ?? '')} aria-label={f.name} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">Empty</option>
-        <option value="@me">Whoever pressed it</option>
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.name}
-          </option>
-        ))}
-      </PickSelect>
+      <PersonSelect
+        value={String(value ?? '')}
+        users={users}
+        label={f.name}
+        extra={[
+          { value: '', label: 'Empty', icon: <Ban size={15} /> },
+          { value: '@me', label: 'Whoever pressed it', icon: <MousePointerClick size={15} /> },
+        ]}
+        onChange={(v) => onChange(v || null)}
+      />
     );
   if (f.type === 'checkbox')
     return (
@@ -290,12 +283,9 @@ function ActionCard({ a, i, t, tables, users, channels, onChange, onRemove, onMo
                     ))}
                   </PickSelect>
                 </div>
-                <div className="tb-people">
-                  {users.map((u) => (
-                    <label key={u.id} className="check-row">
-                      <input type="checkbox" checked={a.among.includes(u.id)} onChange={(e) => onChange({ ...a, among: e.target.checked ? [...a.among, u.id] : a.among.filter((x) => x !== u.id) })} /> {u.name}
-                    </label>
-                  ))}
+                <div className="tb-act-row">
+                  <span className="tb-act-label">Among</span>
+                  <PeoplePicker value={a.among} users={users} me="" label="People who take turns" emptyText="Pick people" max={6} onChange={(among) => onChange({ ...a, among })} />
                 </div>
                 <p className="muted small">Each time, the next person in this list gets it, then it starts again from the top.</p>
               </>
@@ -826,14 +816,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                                     <option value="no">Unchecked</option>
                                   </PickSelect>
                                 ) : f.type === 'person' ? (
-                                  <PickSelect value={r.value ?? ''} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })}>
-                                    <option value="">Choose…</option>
-                                    {users.map((u) => (
-                                      <option key={u.id} value={u.id}>
-                                        {u.name}
-                                      </option>
-                                    ))}
-                                  </PickSelect>
+                                  <PersonSelect value={r.value ?? ''} users={users} label="Value" onChange={(v) => setRule(r.id, { value: v })} />
                                 ) : (
                                   <input className="tb-native" value={r.value ?? ''} aria-label="Value" onChange={(e) => setRule(r.id, { value: e.target.value })} />
                                 ))}
@@ -968,14 +951,7 @@ function ScheduleEditor({ t, users, rule, onChange }: { t: DataTable; users: Use
                   ))}
                 </PickSelect>
               ) : f.type === 'person' ? (
-                <PickSelect value={w.value ?? ''} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
-                  <option value="">Choose…</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </PickSelect>
+                <PersonSelect value={w.value ?? ''} users={users} label="Value" onChange={(v) => setWhere(where.map((x, j) => (j === i ? { ...x, value: v } : x)))} />
               ) : f.type === 'date' ? (
                 <PickSelect value={w.value ?? '@today'} aria-label="Value" onChange={(e) => setWhere(where.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}>
                   <option value="@today">today (when it runs)</option>

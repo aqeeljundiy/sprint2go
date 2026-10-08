@@ -30,7 +30,7 @@ import { eventsOn } from './calendarUtils';
 import { useSettings, usePersisted } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
-import { scanned, useStored } from './store';
+import { scanned, session, useStored } from './store';
 import { server } from './sync';
 import { ai, aiLive } from './ai';
 import { Assistant, type AskChat } from './components/Assistant';
@@ -185,6 +185,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const workspaces = allWorkspaces.filter((w) => w.members.some((m) => m.userId === user.id));
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
+  session.wsId = ws?.id ?? '';
   setTermWord(ws?.terms?.word); // "Projects" or "Clients", before anything below renders words
   // Companies this person is a client of (same sign-in): their portals sit in the workspace switcher.
   const [portalKey, setPortalKey] = usePersisted(`s2g-portal:${user.id}`, '');

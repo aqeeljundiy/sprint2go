@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { Check, Plus, Search } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import type { User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Popover } from './Popover';
+import { PeopleList, type ExtraOption } from './PeopleList';
 
 /** Pick one or more people. Shows stacked avatars; opens a searchable list with checkmarks. */
 export function PeoplePicker({
@@ -26,9 +27,7 @@ export function PeoplePicker({
 }) {
   const btn = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
   const chosen = value.map((id) => users.find((u) => u.id === id)).filter(Boolean) as User[];
-  const shown = users.filter((u) => u.name.toLowerCase().includes(q.toLowerCase()));
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
 
   return (
@@ -59,29 +58,61 @@ export function PeoplePicker({
         {!compact && chosen.length > 0 && <span className="sel-text">{chosen.length === 1 ? (chosen[0].id === me ? 'You' : chosen[0].name) : `${chosen.length} people`}</span>}
         {!compact && <Plus size={13} className="sel-chev" />}
       </button>
-      <Popover anchor={btn} open={open} onClose={() => (setOpen(false), setQ(''))} width={260} title={label}>
-        <div className="sel-pop">
-          <label className="sel-search">
-            <Search size={14} />
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" />
-          </label>
-          <ul role="listbox" aria-multiselectable="true">
-            {shown.map((u) => (
-              <li key={u.id}>
-                <button type="button" role="option" aria-selected={value.includes(u.id)} className="sel-opt" onClick={() => toggle(u.id)}>
-                  <span className="sel-icon">
-                    <Avatar person={u} size={22} />
-                  </span>
-                  <span className="sel-label">
-                    {u.id === me ? `${u.name} (me)` : u.name}
-                    <small>{u.title}</small>
-                  </span>
-                  {value.includes(u.id) && <Check size={14} className="sel-check" />}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={300} title={label}>
+        <PeopleList users={users} me={me} selected={value} onPick={toggle} />
+      </Popover>
+    </>
+  );
+}
+
+/**
+ * Pick one person, like a <select> but searchable by name, email, title or team, with recent people first.
+ * `extra` adds choices above the people (e.g. "Nobody", "The row’s owner").
+ */
+export function PersonSelect({
+  value,
+  users,
+  me,
+  onChange,
+  label,
+  placeholder = 'Choose someone…',
+  extra,
+  className = '',
+  width = 300,
+}: {
+  value: string | null | undefined;
+  users: User[];
+  me?: string;
+  onChange: (id: string) => void;
+  label: string;
+  placeholder?: string;
+  extra?: ExtraOption[];
+  className?: string;
+  width?: number;
+}) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const u = users.find((x) => x.id === value);
+  const ex = !u ? extra?.find((o) => o.value === value) : undefined;
+  return (
+    <>
+      <button ref={btn} type="button" className={`sel person-sel ${open ? 'open' : ''} ${u || ex ? '' : 'empty'} ${className}`} onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={label}>
+        {u ? <Avatar person={u} size={20} /> : ex?.icon}
+        <span className="sel-text">{u ? (u.id === me ? `${u.name} (me)` : u.name) : ex?.label ?? placeholder}</span>
+        <ChevronDown size={14} className="sel-chev" />
+      </button>
+      <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={width} title={label}>
+        <PeopleList
+          users={users}
+          me={me}
+          selected={value ? [value] : []}
+          extra={extra}
+          onPick={(id) => {
+            onChange(id);
+            setOpen(false);
+            btn.current?.focus();
+          }}
+        />
       </Popover>
     </>
   );
