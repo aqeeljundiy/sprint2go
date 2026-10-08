@@ -440,6 +440,20 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           </label>
           <div className="set-row">
             <span>
+              <strong>Monthly limit for the company</strong>
+              <small>On your own keys, at list prices. AI stops for everyone when it’s reached. Empty: no limit.</small>
+            </span>
+            <input type="number" className="cap-input" min={0} step={50000} value={ai.caps?.companyRp ?? ''} placeholder="Rp" onChange={(e) => set({ caps: { ...ai.caps, companyRp: e.target.value ? Number(e.target.value) : undefined } })} aria-label="Company limit in rupiah" />
+          </div>
+          <div className="set-row">
+            <span>
+              <strong>Monthly limit per person</strong>
+              <small>Each person stops at this amount; admins raise it here.</small>
+            </span>
+            <input type="number" className="cap-input" min={0} step={10000} value={ai.caps?.personRp ?? ''} placeholder="Rp" onChange={(e) => set({ caps: { ...ai.caps, personRp: e.target.value ? Number(e.target.value) : undefined } })} aria-label="Limit per person in rupiah" />
+          </div>
+          <div className="set-row">
+            <span>
               <strong>Blocked providers</strong>
               <small>Nobody in the company can use these, for example if a {term.who} doesn’t allow data in China</small>
             </span>

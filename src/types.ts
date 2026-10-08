@@ -668,6 +668,7 @@ export interface AISettings {
   auto: { meetingNotes: boolean; emailTodos: boolean; digests: boolean };
   blocked: ProviderId[];
   alerts: boolean;
+  caps?: { companyRp?: number; personRp?: number }; // monthly limits on own-key spending; AI stops when reached
 }
 
 export interface MeetingSettings {

@@ -3437,3 +3437,36 @@ p.trial-note > svg:first-child {
   flex: 1;
   min-height: 240px;
 }
+
+/* the crash screen */
+.crash {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.crash-card {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  width: min(460px, 100%);
+  padding: 26px 24px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.crash-card h1 {
+  margin: 0;
+  font-size: 19px;
+}
+.crash-card p {
+  margin: 0;
+  line-height: 1.5;
+}
+.crash-detail {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--text-3);
+}

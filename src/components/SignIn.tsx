@@ -55,6 +55,7 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
   const [error, setError] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -66,7 +67,9 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
     <div className="signin">
       <div className="signin-card" key={adding ? 'add' : 'pick'}>
         <BrandMark />
-        {adding ? (
+        {adding && forgot ? (
+          <ForgotPassword email={email} onBack={() => setForgot(false)} />
+        ) : adding ? (
           <>
             <h1>Sign in to {product.name}</h1>
             <p className="signin-sub">Use the email address your workspace gave you.</p>
@@ -84,6 +87,11 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
                 {busy ? 'Signing in…' : 'Sign in'}
               </button>
               {!realPasswords && <p className="signin-note">Demo: any password works here. The local server checks real passwords.</p>}
+              {realPasswords && (
+                <button type="button" className="link-btn small signin-forgot" onClick={() => setForgot(true)}>
+                  Forgot your password?
+                </button>
+              )}
             </form>
             {onCreate && !product.white && (
               <p className="signin-switch">
@@ -289,5 +297,86 @@ export function AcceptInvite({ token, onDone }: { token: string; onDone: () => v
         )}
       </div>
     </div>
+  );
+}
+
+/** Forgot the password: a code by email, then a new password. Every other session of the account ends. */
+function ForgotPassword({ email: start, onBack }: { email: string; onBack: () => void }) {
+  const [email, setEmail] = useState(start);
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [code, setCode] = useState('');
+  const [pw, setPw] = useState('');
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const post = async (path: string, body: unknown) => {
+    const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const d = (await r.json().catch(() => ({}))) as { error?: string; devCode?: string };
+    if (!r.ok) throw new Error(d.error ?? 'Something went wrong.');
+    return d;
+  };
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const d = await post('/api/reset', { email: email.trim() });
+      setDevCode(d.devCode ?? null);
+      setStep('code');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+    setBusy(false);
+  };
+  const finish = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await post('/api/reset/verify', { email: email.trim(), code, password: pw });
+      location.reload();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <h1>{step === 'email' ? 'Reset your password' : 'Check your email'}</h1>
+      <p className="signin-sub">{step === 'email' ? 'We send a 6-digit code to the address on your account.' : `If ${email.trim()} has an account, a code is on its way. It works for 15 minutes.`}</p>
+      {step === 'email' ? (
+        <form onSubmit={send} className="signin-form">
+          <div className="field">
+            <label>Email</label>
+            <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
+          </div>
+          {error && <p className="signin-error">{error}</p>}
+          <button className="primary-btn signin-btn" disabled={!email.includes('@') || busy}>
+            {busy ? 'Sending…' : 'Send the code'}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={finish} className="signin-form">
+          <div className="field">
+            <label>Code</label>
+            <input autoFocus inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 digits" autoComplete="one-time-code" />
+            {devCode && <small className="signin-note">No email is set up on this server, so here’s the code: {devCode}</small>}
+          </div>
+          <div className="field">
+            <label>New password</label>
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" placeholder="At least 8 characters" />
+          </div>
+          {error && <p className="signin-error">{error}</p>}
+          <button className="primary-btn signin-btn" disabled={code.replace(/\D/g, '').length !== 6 || pw.length < 8 || busy}>
+            {busy ? 'Saving…' : 'Set the new password'}
+          </button>
+        </form>
+      )}
+      <p className="signin-switch">
+        <button type="button" className="link-btn" onClick={onBack}>
+          Back to sign in
+        </button>
+      </p>
+    </>
   );
 }

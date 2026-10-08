@@ -6,6 +6,7 @@ import { relative } from '../utils';
 import { htmlToText, sanitize } from '../sanitize';
 import { Popover } from './ui/Popover';
 import { RichEditor } from './RichEditor';
+import { uploadFile } from '../sync';
 
 /** Something shown in Materials: an item added here, or a file or link that came from the chat or Drive. */
 interface Entry {
@@ -122,11 +123,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
     void Promise.all(
       ok.map(
         (f) =>
-          new Promise<Material>((res) => {
-            const r = new FileReader();
-            r.onload = () => res({ id: uid(), kind: 'file', title: f.name, file: { name: f.name, type: f.type || 'application/octet-stream', size: f.size, url: String(r.result) }, folderId: folder ?? undefined, addedBy: me, at: new Date().toISOString() });
-            r.readAsDataURL(f);
-          }),
+          uploadFile(f, channel.workspaceId).then((up): Material => ({ id: uid(), kind: 'file', title: f.name, file: { name: f.name, type: up.type, size: f.size, url: up.url }, folderId: folder ?? undefined, addedBy: me, at: new Date().toISOString() })),
       ),
     ).then((items) => save({ ...mats, items: [...mats.items, ...items] }));
   };

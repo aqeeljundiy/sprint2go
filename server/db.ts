@@ -1,6 +1,8 @@
 // The local database: one SQLite file in ./data. Every app collection (threads, todos, channels…) is stored as JSON documents.
 import { DatabaseSync } from 'node:sqlite';
-import { createCipheriv, createDecipheriv, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, n: number) => Promise<Buffer>;
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -16,6 +18,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS invites (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, email TEXT NOT NULL, expires_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS ai_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, user_id TEXT, job TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, in_tokens INTEGER NOT NULL, out_tokens INTEGER NOT NULL, at TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS ai_usage_ws_at ON ai_usage (workspace_id, at);
+  CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, uploaded_by TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL, at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS ai_keys (workspace_id TEXT NOT NULL, provider TEXT NOT NULL, sealed TEXT NOT NULL, base_url TEXT, added_by TEXT, added_at TEXT NOT NULL, PRIMARY KEY (workspace_id, provider));
 `);
 
@@ -49,40 +52,64 @@ export const isEmpty = () => !(db.prepare('SELECT 1 FROM docs LIMIT 1').get() as
 
 /* ---------- logins ---------- */
 
-export function hashPassword(pw: string) {
+export async function hashPassword(pw: string) {
   const salt = randomBytes(16);
-  return `${salt.toString('hex')}:${scryptSync(pw, salt, 64).toString('hex')}`;
+  return `${salt.toString('hex')}:${(await scryptAsync(pw, salt, 64)).toString('hex')}`;
 }
-export function checkPassword(pw: string, stored: string) {
+export async function checkPassword(pw: string, stored: string) {
   const [salt, hash] = stored.split(':');
-  const got = scryptSync(pw, Buffer.from(salt, 'hex'), 64);
+  const got = await scryptAsync(pw, Buffer.from(salt, 'hex'), 64);
   return timingSafeEqual(got, Buffer.from(hash, 'hex'));
 }
+/** Takes as long as a real check, so an unknown email can't be told from a wrong password by the clock. */
+const DUMMY_HASH = `${'00'.repeat(16)}:${'00'.repeat(64)}`;
+export const burnPasswordTime = (pw: string) => checkPassword(pw, DUMMY_HASH).catch(() => false);
 /** For sign-up: the password was hashed when the code was sent, so it never waits around in plain text. */
 export function setLoginHash(userId: string, email: string, hash: string) {
   db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?)').run(userId, email, hash);
 }
-export function setLogin(userId: string, email: string, pw: string) {
-  db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET email = excluded.email, pw_hash = excluded.pw_hash').run(userId, email, hashPassword(pw));
+export async function setLogin(userId: string, email: string, pw: string) {
+  db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET email = excluded.email, pw_hash = excluded.pw_hash').run(userId, email, await hashPassword(pw));
 }
+export const deleteLogin = (userId: string) => db.prepare('DELETE FROM logins WHERE user_id = ?').run(userId);
 export const hasLogin = (userId: string) => !!db.prepare('SELECT 1 FROM logins WHERE user_id = ?').get(userId);
 export function findLogin(email: string) {
   return db.prepare('SELECT user_id, pw_hash FROM logins WHERE email = ?').get(email) as { user_id: string; pw_hash: string } | undefined;
 }
 
 const DAY = 86_400_000;
+// Only a hash of the session token is stored: a copy of the database can't be used to sign in as anyone.
+const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 export function newSession(userId: string) {
   const token = randomBytes(32).toString('base64url');
-  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, new Date().toISOString(), new Date(Date.now() + 30 * DAY).toISOString());
+  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(tokenHash(token), userId, new Date().toISOString(), new Date(Date.now() + 30 * DAY).toISOString());
   return token;
 }
 export function sessionUser(token: string | undefined): string | null {
   if (!token) return null;
-  const r = db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?').get(token) as { user_id: string; expires_at: string } | undefined;
+  const r = db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?').get(tokenHash(token)) as { user_id: string; expires_at: string } | undefined;
   if (!r || r.expires_at < new Date().toISOString()) return null;
   return r.user_id;
 }
-export const endSession = (token: string) => db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+export const endSession = (token: string) => db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash(token));
+/** Everyone signed in as this person is signed out (after a password change or reset). */
+export const endSessions = (userId: string) => db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+export const purgeSessions = () => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
+
+/** A copy of the database into data/backups, keeping the last 14 (one a day). */
+export async function backup() {
+  const dir = join(DIR, 'backups');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `sprint2go-${new Date().toISOString().slice(0, 10)}.db`);
+  await (db as unknown as { backup: (path: string) => Promise<unknown> }).backup(file);
+  const { readdirSync, unlinkSync } = await import('node:fs');
+  readdirSync(dir)
+    .filter((f) => f.startsWith('sprint2go-') && f.endsWith('.db'))
+    .sort()
+    .slice(0, -14)
+    .forEach((f) => unlinkSync(join(dir, f)));
+  return file;
+}
 
 /** An invite link lets a new person pick their own password (valid 7 days, works once). */
 export function newInvite(userId: string, email: string) {
@@ -238,4 +265,25 @@ export function totpCode(secret: string, now = Date.now()) {
   const o = h[h.length - 1] & 0xf;
   const n = ((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
   return { code: String(n % 1_000_000).padStart(6, '0'), secondsLeft: 30 - (Math.floor(now / 1000) % 30) };
+}
+
+/* ---------- files on disk ---------- */
+
+const FILES = join(DIR, 'files');
+export function saveFile(f: { id: string; workspaceId: string; by: string; name: string; type: string; size: number }, data: Buffer) {
+  mkdirSync(FILES, { recursive: true });
+  writeFileSync(join(FILES, f.id), data);
+  db.prepare('INSERT INTO files (id, workspace_id, uploaded_by, name, type, size, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(f.id, f.workspaceId, f.by, f.name, f.type, f.size, new Date().toISOString());
+}
+export function fileInfo(id: string) {
+  const r = db.prepare('SELECT id, workspace_id, uploaded_by, name, type, size FROM files WHERE id = ?').get(id) as any;
+  return r ? { id: r.id as string, workspaceId: r.workspace_id as string, by: r.uploaded_by as string, name: r.name as string, type: r.type as string, size: r.size as number } : null;
+}
+export function fileData(id: string): Buffer | null {
+  const f = join(FILES, id);
+  return existsSync(f) ? readFileSync(f) : null;
+}
+/** One person's usage this period (for their own monthly cap). */
+export function usageSinceFor(workspaceId: string, userId: string, since: string) {
+  return db.prepare('SELECT job, provider, model, SUM(in_tokens) AS inTokens, SUM(out_tokens) AS outTokens FROM ai_usage WHERE workspace_id = ? AND user_id = ? AND at >= ? GROUP BY job, provider, model').all(workspaceId, userId, since);
 }

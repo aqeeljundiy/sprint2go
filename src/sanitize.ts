@@ -11,9 +11,11 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 });
 
 export function sanitize(html: string) {
+  html = html.replace(/url\s*\(/gi, 'url-off(');
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'a', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'font', 'code', 'pre', 'hr'],
     ALLOWED_ATTR: ['href', 'style', 'color', 'size'],
+    FORBID_ATTR: ['srcset'],
   });
 }
 

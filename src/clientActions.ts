@@ -6,6 +6,7 @@ import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, DriveIte
 import { channelsFor, clientInbox, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor, thisMonth } from './clientView';
 import { ai } from './ai';
 import type { MeetSource } from './ai/demo';
+import { uploadFile } from './sync';
 
 type Set<T> = Dispatch<SetStateAction<T>>;
 
@@ -55,17 +56,7 @@ export function clientActions(c: ClientCtx) {
     return { id, create: { id, name, kind: 'folder', parentId: base?.id ?? null, size: 0, modified: now(), workspaceId: c.ws.id, clientId: c.client.id, sharedWithClient: true } };
   };
 
-  const readFiles = (files: File[]) =>
-    Promise.all(
-      files.map(
-        (f) =>
-          new Promise<{ name: string; type: string; size: number; url: string }>((res) => {
-            const r = new FileReader();
-            r.onload = () => res({ name: f.name, type: f.type, size: f.size, url: String(r.result) });
-            r.readAsDataURL(f);
-          }),
-      ),
-    );
+  const readFiles = (files: File[]) => Promise.all(files.map((f) => uploadFile(f, c.ws.id).then((up) => ({ name: f.name, type: up.type, size: f.size, url: up.url }))));
 
   return {
     /** A message in a shared channel. */

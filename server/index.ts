@@ -14,6 +14,8 @@ import { DEFAULT_PERMISSIONS } from '../src/types.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
+import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
+import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
@@ -29,7 +31,7 @@ const COLLS = Object.keys(seed()) as CollectionKey[];
 const toDocs = (key: CollectionKey, value: unknown): db.Doc[] =>
   RECORD_KEYS.includes(key) ? Object.entries(value as Record<string, unknown>).map(([id, v]) => ({ id, value: v })) : (value as db.Doc[]);
 
-if (db.isEmpty()) {
+if (db.isEmpty() && (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production')) {
   const s = seed();
   for (const k of COLLS) db.writeDocs(k, toDocs(k, s[k]), [], null);
   const pw = process.env.SEED_PASSWORD;
@@ -191,6 +193,8 @@ function clientLens(me: Person) {
   const access = accessFor(w, client);
   const channels = db.allDocs('channels') as any[];
   const people = clientPeople(client, channels as any);
+  const listed = people.find((x) => x.email.toLowerCase() === email);
+  if (!listed || listed.status === 'pending') return () => null; // not (or no longer) a guest here
   const myChannels = new Set(channelsFor(email, clientId, channels as any, client.status === 'ended').map((c) => c.id));
   const meetings = new Map(meetingsFor(client, people, db.allDocs('meetings') as any, access).map((x) => [x.meeting.id, x.notes]));
   const files = new Set(filesFor(client, db.allDocs('drive') as any).map((f) => f.id));
@@ -339,6 +343,27 @@ async function body(req: IncomingMessage): Promise<any> {
   }
   return raw ? JSON.parse(raw) : {};
 }
+/** The session cookie: only over https when the app is served over https (behind Dokploy's proxy). */
+const secureCookies = () => PUBLIC_URL.startsWith('https://');
+const setSession = (res: ServerResponse, token: string | null) => res.setHeader('set-cookie', `s2g=${token ?? ''}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${token ? 30 * 86400 : 0}${secureCookies() ? '; Secure' : ''}`);
+/** Attempts per key (an address and an email) in a sliding window: sign-in and codes can't be guessed in bulk. */
+const attempts = new Map<string, number[]>();
+function tooMany(key: string, max: number, windowMs: number) {
+  const now = Date.now();
+  const list = (attempts.get(key) ?? []).filter((t) => now - t < windowMs);
+  list.push(now);
+  attempts.set(key, list);
+  return list.length > max;
+}
+const ipOf = (req: IncomingMessage) => String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+/** Six digits, sent by email when mail is set up; otherwise in the log (and on screen outside production). */
+const codes = new Map<string, { code: string; tries: number; until: number; data?: any }>();
+const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
+async function sendCode(to: string, what: string, code: string) {
+  const sent = await sendMail(to, `${code} is your Sprint2go code`, `${code} is your code to ${what}. It works for 15 minutes.`, simpleHtml('Sprint2go', [`${code} is your code to ${what}.`, 'It works for 15 minutes. If this wasn’t you, ignore this email.'])).catch((e) => (console.error('[mail]', e instanceof Error ? e.message : e), false));
+  if (!sent) console.log(`Code for ${to} (${what}): ${code}`);
+  return sent;
+}
 const json = (res: ServerResponse, status: number, data: unknown) => {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json');
@@ -347,7 +372,7 @@ const json = (res: ServerResponse, status: number, data: unknown) => {
 
 /* ---------- live updates (server-sent events) ---------- */
 
-const clients = new Map<string, { res: ServerResponse; userId: string }>();
+const clients = new Map<string, { res: ServerResponse; userId: string; token?: string }>();
 /** Sends a change to every open window, each getting only what that person may see. */
 
 /**
@@ -391,7 +416,7 @@ function endGuestAccess(leavers: { email: string; company: string }[]) {
   if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
 }
 
-function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: string) {
+function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) {
   if (!upserts.length && !deletes.length) return;
   const views = new Map<string, ReturnType<typeof lens>>();
   for (const [id, c] of clients) {
@@ -399,7 +424,9 @@ function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: 
     if (!views.has(c.userId)) views.set(c.userId, lens(c.userId));
     const see = views.get(c.userId)!;
     const mine = upserts.map((d) => see(coll, d)).filter(Boolean);
-    if (mine.length || deletes.length) c.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: mine, deletes })}\n\n`);
+    // A deletion goes only to people who could see the document (when we still have it to check).
+    const gone = deleted ? deletes.filter((did) => { const d = deleted.find((x) => x.id === did); return !d || !!see(coll, d); }) : deletes;
+    if (mine.length || gone.length) c.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: mine, deletes: gone })}\n\n`);
   }
 }
 setInterval(() => clients.forEach((c) => c.res.write(': ping\n\n')), 25_000);
@@ -618,8 +645,31 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
     res.statusCode = 404;
     return res.end('Build the app first: npm run build');
   }
-  res.setHeader('content-type', TYPES[extname(file)] ?? 'application/octet-stream');
-  res.end(readFileSync(file));
+  const type = TYPES[extname(file)] ?? 'application/octet-stream';
+  res.setHeader('content-type', type);
+  // Built assets have a hash in their name: cached for a year. Pages are checked every time.
+  res.setHeader('cache-control', path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+  const data = readFileSync(file);
+  if (/^(text\/|application\/(javascript|json|manifest))/.test(type) && String(req.headers['accept-encoding'] ?? '').includes('gzip') && data.length > 1024) {
+    let z = gzipped.get(file);
+    if (!z || z.size !== data.length) (z = { size: data.length, body: gzipSync(data) }), gzipped.set(file, z);
+    res.setHeader('content-encoding', 'gzip');
+    res.setHeader('vary', 'accept-encoding');
+    return res.end(z.body);
+  }
+  res.end(data);
+}
+const gzipped = new Map<string, { size: number; body: Buffer }>();
+
+/** What usage rows cost in rupiah at list prices (own keys); included AI counts as 0 here, the plan's allowance covers it. */
+function spendRp(rows: { provider: string; model: string; inTokens: number; outTokens: number }[]) {
+  let usd = 0;
+  for (const r of rows) {
+    if (r.provider === 'included') continue;
+    const m = PROVIDERS.find((x) => x.id === r.provider)?.models.find((x) => x.id === r.model);
+    if (m?.price) usd += (r.inTokens * m.price[0] + r.outTokens * m.price[1]) / 1e6;
+  }
+  return usd * 17_500;
 }
 
 /* ---------- routes ---------- */
@@ -627,7 +677,20 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
 createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const p = url.pathname;
+  // Headers on everything: no framing by other sites, no content sniffing, scripts and styles only from here.
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('referrer-policy', 'strict-origin-when-cross-origin');
+  res.setHeader('x-frame-options', 'DENY');
+  res.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' blob: data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss: https:; frame-ancestors 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'self'");
+  if (secureCookies()) res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');
   if (!p.startsWith('/api/')) return serveStatic(req, res);
+  if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString() });
+  // Requests that change things must come from this app, not from another site a signed-in person is looking at.
+  if (req.method !== 'GET' && req.headers.origin && !/^\/api\/(hooks\/|whatsapp\/webhook|meet\/recorder)/.test(p)) {
+    const o = String(req.headers.origin).replace(/^https?:\/\//, '').toLowerCase();
+    const ok = o === String(req.headers.host ?? '').toLowerCase() || o === PUBLIC_URL.replace(/^https?:\/\//, '').toLowerCase() || o.endsWith('.localhost' + (PORT ? `:${PORT}` : ''));
+    if (!ok) return json(res, 403, { error: 'Requests must come from the app.' });
+  }
   try {
     // Sign in / out
     // WhatsApp (Meta Cloud API) webhook: Meta checks it once with a token, then posts every incoming message.
@@ -683,10 +746,12 @@ createServer(async (req, res) => {
     }
     if (p === '/api/login' && req.method === 'POST') {
       const { email, password } = await body(req);
-      const login = typeof email === 'string' && db.findLogin(email.trim());
-      if (!login || typeof password !== 'string' || !db.checkPassword(password, login.pw_hash)) return json(res, 401, { error: 'Wrong email or password.' });
-      const token = db.newSession(login.user_id);
-      res.setHeader('set-cookie', `s2g=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}`);
+      const mail = String(email ?? '').trim().toLowerCase();
+      if (tooMany(`login:${ipOf(req)}`, 30, 15 * 60_000) || tooMany(`login:${mail}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Wait a few minutes and try again.' });
+      const login = mail && db.findLogin(mail);
+      const good = login && typeof password === 'string' ? await db.checkPassword(password, login.pw_hash) : (await db.burnPasswordTime(String(password ?? '')), false);
+      if (!good || !login) return json(res, 401, { error: 'Wrong email or password.' });
+      setSession(res, db.newSession(login.user_id));
       return json(res, 200, { me: login.user_id });
     }
     // Sign-up: name, email and password, then a 6-digit code sent to the email. Until real email is wired up, the code
@@ -698,10 +763,11 @@ createServer(async (req, res) => {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return json(res, 400, { error: 'That email doesn’t look right.' });
       if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters for the password.' });
       if (db.findLogin(mail)) return json(res, 409, { error: 'There’s already an account with this email. Sign in instead.' });
-      const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-      signups.set(mail, { name: String(name).trim().slice(0, 80), hash: db.hashPassword(password), code, tries: 0, until: Date.now() + 15 * 60_000 });
-      console.log(`Sign-up code for ${mail}: ${code}`);
-      return json(res, 200, { ok: true, ...(process.env.NODE_ENV === 'production' ? {} : { devCode: code }) });
+      if (tooMany(`signup:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try again later.' });
+      const code = newCode();
+      signups.set(mail, { name: String(name).trim().slice(0, 80), hash: await db.hashPassword(password), code, tries: 0, until: Date.now() + 15 * 60_000 });
+      const sent = await sendCode(mail, 'finish signing up', code);
+      return json(res, 200, { ok: true, sent, ...(process.env.NODE_ENV === 'production' || sent ? {} : { devCode: code }) });
     }
     if (p === '/api/signup/verify' && req.method === 'POST') {
       const { email, code } = await body(req);
@@ -720,13 +786,16 @@ createServer(async (req, res) => {
         broadcast('users', [user], []);
       }
       db.setLoginHash(user.id, mail, s.hash);
-      res.setHeader('set-cookie', `s2g=${db.newSession(user.id)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}`);
+      setSession(res, db.newSession(user.id));
       return json(res, 200, { me: user.id });
     }
     if (p === '/api/logout' && req.method === 'POST') {
       const t = cookie(req, 's2g');
-      if (t) db.endSession(t);
-      res.setHeader('set-cookie', 's2g=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+      if (t) {
+        db.endSession(t);
+        for (const [id, c] of clients) if (c.token === t) (c.res.end(), clients.delete(id));
+      }
+      setSession(res, null);
       return json(res, 200, {});
     }
 
@@ -742,9 +811,41 @@ createServer(async (req, res) => {
       if (!inv) return json(res, 404, { error: 'This invite link has expired or was already used.' });
       // Never overwrite an existing sign-in (old links made before this check, or a colleague's invite to someone who already has an account).
       if (db.hasLogin(inv.user_id)) return json(res, 409, { error: 'This account already has a password. Sign in instead.' });
-      db.setLogin(inv.user_id, inv.email, password);
-      res.setHeader('set-cookie', `s2g=${db.newSession(inv.user_id)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}`);
+      await db.setLogin(inv.user_id, inv.email, password);
+      setSession(res, db.newSession(inv.user_id));
       return json(res, 200, { me: inv.user_id });
+    }
+
+    // Forgot the password: a code by email, then a new password. Every session of that account ends.
+    if (p === '/api/reset' && req.method === 'POST') {
+      const mail = String((await body(req)).email ?? '').trim().toLowerCase();
+      if (tooMany(`reset:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try again later.' });
+      const login = mail && db.findLogin(mail);
+      // The answer is the same whether the email is known or not.
+      if (login) {
+        const code = newCode();
+        codes.set(`reset:${mail}`, { code, tries: 0, until: Date.now() + 15 * 60_000 });
+        const sent = await sendCode(mail, 'set a new password', code);
+        return json(res, 200, { ok: true, ...(process.env.NODE_ENV === 'production' || sent ? {} : { devCode: code }) });
+      }
+      await db.burnPasswordTime('x');
+      return json(res, 200, { ok: true });
+    }
+    if (p === '/api/reset/verify' && req.method === 'POST') {
+      const { email, code, password } = await body(req);
+      const mail = String(email ?? '').trim().toLowerCase();
+      const c = codes.get(`reset:${mail}`);
+      if (!c || c.until < Date.now()) return json(res, 410, { error: 'That code has expired. Ask for a new one.' });
+      if (++c.tries > 5) return (codes.delete(`reset:${mail}`), json(res, 429, { error: 'Too many tries. Ask for a new code.' }));
+      if (String(code ?? '').replace(/\D/g, '') !== c.code) return json(res, 400, { error: 'That code isn’t right.' });
+      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
+      const login = db.findLogin(mail);
+      if (!login) return json(res, 404, { error: 'No account with this email.' });
+      codes.delete(`reset:${mail}`);
+      await db.setLogin(login.user_id, mail, password);
+      db.endSessions(login.user_id);
+      setSession(res, db.newSession(login.user_id));
+      return json(res, 200, { me: login.user_id });
     }
 
     // A table's own address: forms, ads, Zapier or scripts post rows here (no session: the secret is in the URL).
@@ -811,9 +912,33 @@ createServer(async (req, res) => {
       const { current, next } = await body(req);
       const u = db.getDoc('users', me) as { email?: string } | undefined;
       const login = u?.email && db.findLogin(u.email);
-      if (!login || !db.checkPassword(String(current ?? ''), login.pw_hash)) return json(res, 400, { error: 'Your current password is wrong.' });
+      if (!login || !(await db.checkPassword(String(current ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your current password is wrong.' });
       if (typeof next !== 'string' || next.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
-      db.setLogin(me, u.email!, next);
+      await db.setLogin(me, u.email!, next);
+      // Everywhere else signs out; this device gets a fresh session.
+      db.endSessions(me);
+      for (const [id, c] of clients) if (c.userId === me && c.token !== cookie(req, 's2g')) (c.res.end(), clients.delete(id));
+      setSession(res, db.newSession(me));
+      return json(res, 200, {});
+    }
+
+    // Deleting the account: the sign-in, sessions and the person's record go; work they did stays with its company.
+    if (p === '/api/account/delete' && req.method === 'POST') {
+      const { password } = await body(req);
+      const u = db.getDoc('users', me) as any;
+      const login = u?.email && db.findLogin(String(u.email).toLowerCase());
+      if (!login || !(await db.checkPassword(String(password ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your password is wrong.' });
+      const owned = memberOf(me).filter((w) => w.members.some((m) => m.userId === me && m.role === 'owner') && !w.members.some((m) => m.userId !== me && m.role === 'owner'));
+      if (owned.length) return json(res, 409, { error: `You’re the only owner of ${owned.map((w: any) => w.name).join(', ')}. Make someone else an owner first, in Settings, General.` });
+      const left = memberOf(me).map((w) => ({ ...w, members: w.members.filter((m) => m.userId !== me) }));
+      if (left.length) (db.writeDocs('workspaces', left as any, [], me), broadcast('workspaces', left as any, []));
+      db.deleteLogin(me);
+      db.endSessions(me);
+      for (const [id, c] of clients) if (c.userId === me) (c.res.end(), clients.delete(id));
+      const gone = { ...u, name: 'Deleted account', email: '', title: '', photo: undefined, hiddenApps: undefined, vaultKey: undefined, deletedAt: new Date().toISOString() };
+      db.writeDocs('users', [gone], [], me);
+      broadcast('users', [gone], []);
+      setSession(res, null);
       return json(res, 200, {});
     }
 
@@ -873,7 +998,8 @@ createServer(async (req, res) => {
       const people = (invited as any[]).filter((u) => u && typeof u.id === 'string' && !db.getDoc('users', u.id) && typeof u.email === 'string' && !taken.has(u.email.toLowerCase()));
       const ids = new Set(people.map((u) => u.id));
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
-      const ws = { ...w, name: String(w.name).trim().slice(0, 80), members };
+      const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
+      const ws = { ...w, name: String(w.name).trim().slice(0, 80), members, accounts };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
       db.writeDocs('users', people, [], me);
       db.writeDocs('workspaces', [ws], [], me);
@@ -1010,6 +1136,38 @@ createServer(async (req, res) => {
       }
     }
 
+    // Files: uploads land on disk under data/files, served back to people in the same company (or guests of it).
+    if (p === '/api/upload' && req.method === 'POST') {
+      const wsId = String(req.headers['x-workspace'] ?? '');
+      const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'file')).slice(0, 200);
+      const type = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].slice(0, 100);
+      const team = memberOf(me).some((w) => w.id === wsId);
+      const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === wsId);
+      if (!team && !guest) return json(res, 403, { error: 'Not in this company.' });
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const c of req) {
+        size += (c as Buffer).length;
+        if (size > 25 * 1024 * 1024) return json(res, 413, { error: 'Files up to 25 MB.' });
+        chunks.push(c as Buffer);
+      }
+      const id = randomBytes(16).toString('hex');
+      db.saveFile({ id, workspaceId: wsId, by: me, name, type, size }, Buffer.concat(chunks));
+      return json(res, 200, { id, url: `/api/files/${id}`, name, type, size });
+    }
+    const fileReq = p.match(/^\/api\/files\/([a-f0-9]{32})$/);
+    if (fileReq && req.method === 'GET') {
+      const f = db.fileInfo(fileReq[1]);
+      if (!f) return json(res, 404, { error: 'No such file.' });
+      const team = memberOf(me).some((w) => w.id === f.workspaceId);
+      const guest = !team && portalsOf(me).some((pt) => pt.workspaceId === f.workspaceId);
+      if (!team && !guest) return json(res, 404, { error: 'No such file.' });
+      const data = db.fileData(f.id);
+      if (!data) return json(res, 404, { error: 'The file is gone.' });
+      res.writeHead(200, { 'content-type': f.type, 'content-length': data.length, 'cache-control': 'private, max-age=86400', 'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}` });
+      return res.end(data);
+    }
+
     if (p === '/api/sync' && req.method === 'POST') {
       const { coll, upserts = [], deletes = [] } = await body(req);
       if (!COLLS.includes(coll)) return json(res, 400, { error: 'Unknown collection' });
@@ -1107,9 +1265,37 @@ createServer(async (req, res) => {
         if (coll === 'notes' || coll === 'drive') return before.ownerId === me;
         return true;
       };
+      const admin = memberOf(me).some((w) => isAdminOf(me, w.id));
+      const now = new Date().toISOString();
+      /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
+      const guard = (d: db.Doc): db.Doc | null => {
+        const before = db.getDoc(coll, d.id) as any;
+        if (before && 'workspaceId' in before && d.workspaceId !== before.workspaceId) return null;
+        if (coll === 'workspaces') {
+          if (before) return isAdminOf(me, d.id) ? d : null; // only admins change a company's settings and people
+          return { ...d, members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+        }
+        if (coll === 'users') {
+          if (d.id === me) return d; // own profile: already shaped
+          if (before) return null; // nobody edits someone else's record
+          if (!admin && mine.size) return null; // new people come in through invites, which admins send
+          const { clientOf: _c, vaultKey: _v, ...rest } = d as any;
+          return rest as db.Doc;
+        }
+        if (before) return d;
+        // New things carry who made them.
+        if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
+        if (coll === 'messages') return d.userId === me ? d : null;
+        if (coll === 'notes') return { ...d, ownerId: me } as db.Doc;
+        if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
+        if (coll === 'drive') return { ...d, uploadedBy: (d as any).uploadedBy ?? me } as db.Doc;
+        if (coll === 'events') return { ...d, createdBy: (d as any).createdBy ?? me } as db.Doc;
+        return d;
+      };
       for (let i = ok.length - 1; i >= 0; i--) {
-        const d = mayWrite(ok[i]!);
-        if (d) ok[i] = d;
+        const d = ownProfile(ok[i]!) ? ok[i]! : mayWrite(ok[i]!);
+        const g = d && (ownProfile(d) ? d : guard(d));
+        if (g) ok[i] = g;
         else ok.splice(i, 1);
       }
       const dels = mine.size
@@ -1118,6 +1304,7 @@ createServer(async (req, res) => {
             return !before || (see(coll, before) && mayDelete(before));
           })
         : [];
+      const delDocs = dels.map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
       const botAudio = coll === 'meetings' ? dels.filter((id: string) => (db.getDoc(coll, id) as any)?.recording?.url) : [];
       // Rows: remember them as they were, so rules can tell what was added or changed.
       const rowsBefore = coll === 'rows' ? new Map(ok.map((d) => [d!.id, db.getDoc('rows', d!.id) as any])) : null;
@@ -1134,7 +1321,18 @@ createServer(async (req, res) => {
       const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
       db.writeDocs(coll, ok, dels, me);
       if (leavers.length) endGuestAccess(leavers);
-      broadcast(coll, ok, dels, req.headers['x-conn'] as string | undefined);
+      // Guests don't live in the app all day: a notice for them also goes out as an email (when mail is set up).
+      if (coll === 'notices' && mailConfigured())
+        for (const n of ok as any[]) {
+          if (!String(n.userId).startsWith('email:') || n.read) continue;
+          const to = String(n.userId).slice(6);
+          const w = db.getDoc('workspaces', n.workspaceId) as any;
+          const brandName = w?.whiteLabel?.enabled ? w.whiteLabel.name : w?.name ?? 'Sprint2go';
+          const origin = w?.whiteLabel?.enabled && w.whiteLabel.domain && w.whiteLabel.domainStatus === 'verified' ? `https://${w.whiteLabel.domain}` : PUBLIC_URL;
+          void sendMail(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin })).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
+        }
+      const conn = String(req.headers['x-conn'] ?? '');
+      broadcast(coll, ok, dels, clients.get(conn)?.userId === me ? conn : undefined, delDocs);
       if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
       // A deleted meeting takes its recording with it.
       if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
@@ -1155,7 +1353,7 @@ createServer(async (req, res) => {
       const id = randomBytes(8).toString('hex');
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       res.write(`event: hello\ndata: ${JSON.stringify({ conn: id })}\n\n`);
-      clients.set(id, { res, userId: me });
+      clients.set(id, { res, userId: me, token: cookie(req, 's2g') });
       req.on('close', () => clients.delete(id));
       return;
     }
@@ -1318,6 +1516,16 @@ createServer(async (req, res) => {
         const ids = clientUserIds(asClient.clientId);
         if (db.monthlyUses(ids, 'ask') >= access.aiQuestions) return json(res, 429, { error: `You’ve used all ${access.aiQuestions} questions for this month.` });
       } else if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, { error: 'Not in this workspace.' });
+      if (tooMany(`ai:${me}`, 40, 60_000)) return json(res, 429, { error: 'That’s a lot of AI in one minute. Give it a moment.' });
+      // Monthly caps (Settings, AI): what the company, and each person, may spend on its own keys this month.
+      const capWs = workspaces().find((w) => w.id === b.workspaceId) as any;
+      const caps = capWs?.ai?.caps as { companyRp?: number; personRp?: number } | undefined;
+      if (caps?.companyRp || caps?.personRp) {
+        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+        const rows = db.usageSince(b.workspaceId, monthStart) as { job: string; provider: string; model: string; inTokens: number; outTokens: number }[];
+        if (caps.companyRp && spendRp(rows) >= caps.companyRp) return json(res, 429, { error: `The company’s AI budget for this month (Rp ${caps.companyRp.toLocaleString('id-ID')}) is used up. An admin can raise it in Settings, AI.` });
+        if (caps.personRp && spendRp(db.usageSinceFor(b.workspaceId, me, monthStart) as any) >= caps.personRp) return json(res, 429, { error: `Your AI budget for this month (Rp ${caps.personRp.toLocaleString('id-ID')}) is used up. An admin can raise it in Settings, AI.` });
+      }
       const cfg = aiFor(b.workspaceId, JOB_OF[action]);
       if (!cfg) return json(res, 409, { error: 'no-key' });
       cfg.onUsage = (inTokens, outTokens) => db.logUsage({ workspaceId: b.workspaceId, userId: me, job: JOB_OF[action], provider: cfg.included ? 'included' : cfg.provider, model: cfg.model, inTokens, outTokens });
@@ -1325,12 +1533,24 @@ createServer(async (req, res) => {
     }
     return json(res, 404, { error: 'Not found' });
   } catch (err) {
-    const status = err instanceof AIError ? err.status : (err as { status?: number }).status === 429 ? 503 : 500;
-    console.error(`[${p}]`, err instanceof Error ? err.message : err);
+    const status = err instanceof AIError ? err.status : (err as { status?: number }).status === 429 ? 503 : err instanceof SyntaxError ? 400 : 500;
+    console.error(`[${new Date().toISOString()}] ${req.method} ${p}`, err instanceof Error ? (status === 500 ? err.stack : err.message) : err);
     // Never leak keys or raw upstream errors.
     json(res, status, { error: err instanceof AIError ? err.message : status === 503 ? 'AI is busy, try again shortly.' : 'Something went wrong.' });
   }
-}).listen(PORT, HOST, () => console.log(`Sprint2go on http://localhost:${PORT}`));
+}).listen(PORT, HOST, () => console.log(`Sprint2go on http://localhost:${PORT}${mailConfigured() ? ' (email on)' : ' (no email: codes go to this log)'}`));
+
+// Once a day: expired sessions go, and a copy of the database lands in data/backups (the last 14 are kept).
+const housekeeping = () => {
+  try {
+    db.purgeSessions();
+  } catch (e) {
+    console.error('[sessions]', e);
+  }
+  db.backup().then((f) => console.log(`Backup: ${f}`)).catch((e) => console.error('[backup]', e instanceof Error ? e.message : e));
+};
+setTimeout(housekeeping, 60_000);
+setInterval(housekeeping, 24 * 60 * 60_000);
 
 /* ---------- background jobs: scheduled mail, snoozes, task reminders ---------- */
 

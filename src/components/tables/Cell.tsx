@@ -6,6 +6,8 @@ import { Popover } from '../ui/Popover';
 import { OPTION_COLORS, cellText, isEmpty, money, passes, rowName } from './fields';
 import { uid } from '../../utils';
 import { PeopleList } from '../ui/PeopleList';
+import { uploadFile } from '../../sync';
+import { session } from '../../store';
 
 export interface CellCtx {
   users: User[];
@@ -198,22 +200,19 @@ export function RatingInput({ v, max, onSave }: { v: CellValue | undefined; max:
 const MAX_FILE = 3 * 1024 * 1024;
 /** A picked file as a small stored copy: pictures shrunk to 1600px, anything else up to 3 MB. */
 async function toRef(file: File): Promise<FileRef> {
+  // Pictures are shrunk to 1600px first; everything then goes to the server (a data URL in the demo).
+  let blob: Blob = file;
+  let type = file.type || 'application/octet-stream';
   if (file.type.startsWith('image/') && file.type !== 'image/gif' && file.type !== 'image/svg+xml') {
     const img = await createImageBitmap(file);
     const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
     const c = Object.assign(document.createElement('canvas'), { width: Math.round(img.width * scale), height: Math.round(img.height * scale) });
     c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-    const url = c.toDataURL('image/jpeg', 0.82);
-    return { name: file.name, size: Math.round((url.length * 3) / 4), type: 'image/jpeg', url };
-  }
-  if (file.size > MAX_FILE) throw new Error(`${file.name} is over 3 MB. Put it in Drive and paste the link instead.`);
-  const url = await new Promise<string>((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result));
-    r.onerror = () => rej(new Error('Couldn’t read the file'));
-    r.readAsDataURL(file);
-  });
-  return { name: file.name, size: file.size, type: file.type || 'application/octet-stream', url };
+    blob = await new Promise<Blob>((res, rej) => c.toBlob((x) => (x ? res(x) : rej(new Error('Couldn’t read the picture'))), 'image/jpeg', 0.82));
+    type = 'image/jpeg';
+  } else if (file.size > MAX_FILE) throw new Error('Files up to 3 MB here; put bigger ones in Drive and link them.');
+  const up = await uploadFile(new File([blob], file.name, { type }), session.wsId, file.name);
+  return { name: file.name, size: up.size, type: up.type, url: up.url };
 }
 
 /** A row's files: see them, add more (pick or drop), remove one. */

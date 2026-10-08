@@ -31,7 +31,7 @@ import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
-import { server } from './sync';
+import { server, uploadFile } from './sync';
 import { ai, aiLive } from './ai';
 import type { AskChat } from './components/Assistant';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
@@ -958,6 +958,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // their teams' work, the clients they work on, and the channels they're in.
   const isAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  // What the server didn't keep, and a session that ended elsewhere.
+  useEffect(() => {
+    const failed = (e: Event) => showToast({ text: (e as CustomEvent<{ error?: string }>).detail.error ?? 'That change couldn’t be saved.', ms: 7000 });
+    const out = () => showToast({ text: 'You were signed out (your password changed, or the session ended). Sign in again.', action: { label: 'Sign in', run: () => location.reload() }, ms: 20000 });
+    window.addEventListener('s2g:save-failed', failed);
+    window.addEventListener('s2g:signed-out', out);
+    return () => (window.removeEventListener('s2g:save-failed', failed), window.removeEventListener('s2g:signed-out', out));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   /* quotes and contracts */
   const wsQuotes = useMemo(() => quotes.filter((q) => q.workspaceId === ws.id), [quotes, ws.id]);
   const saveQuote = (q: Quote) => setQuotes((qs) => (qs.some((x) => x.id === q.id) ? qs.map((x) => (x.id === q.id ? q : x)) : [...qs, q]));
@@ -2162,21 +2170,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const patchDrive = (id: string, patch: Partial<DriveItem>) => setDrive((d) => d.map((i) => (i.id === id ? { ...i, ...patch } : i)));
 
-  const upload = (files: FileList) => {
+  const upload = async (files: FileList) => {
     const parentId = driveSection === 'my' ? driveFolder : null;
-    const added: DriveItem[] = Array.from(files).map((f) => {
+    // Each file goes to the server first (a data URL in the demo), so it's still there tomorrow and on other devices.
+    const added: DriveItem[] = [];
+    for (const f of Array.from(files)) {
       const kind = kindOf(f);
-      return {
-        id: uid(),
-        name: f.name,
-        kind,
-        parentId,
-        size: f.size,
-        modified: new Date().toISOString(),
-        thumb: kind === 'image' || kind === 'video' ? URL.createObjectURL(f) : undefined,
-        workspaceId: ws.id,
-      };
-    });
+      try {
+        const up = await uploadFile(f, ws.id);
+        added.push({ id: uid(), name: f.name, kind, parentId, size: f.size, modified: new Date().toISOString(), url: up.url, thumb: kind === 'image' || kind === 'video' ? up.url : undefined, workspaceId: ws.id, uploadedBy: user.id });
+      } catch (e) {
+        showToast({ text: `${f.name}: ${(e as Error).message}` });
+      }
+    }
+    if (!added.length) return;
     setDrive((d) => [...d, ...added]);
     if (!['my', 'recent', 'media'].includes(driveSection)) setDriveSection('my');
     showToast({ text: `Uploaded ${added.length} file${added.length > 1 ? 's' : ''}` });
@@ -3649,7 +3656,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         multiple
         hidden
         onChange={(e) => {
-          if (e.target.files?.length) upload(e.target.files);
+          if (e.target.files?.length) void upload(e.target.files);
           e.target.value = '';
         }}
       />

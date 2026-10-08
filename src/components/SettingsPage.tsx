@@ -392,6 +392,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
               <h3>Security</h3>
               <PasswordRow />
+              <DeleteAccountRow />
               <div className="set-row">
                 <span>
                   <strong>Two-step verification</strong>
@@ -655,5 +656,45 @@ export function PasswordRow() {
       )}
       </SmoothHeight>
     </>
+  );
+}
+
+/** Deleting the account: the sign-in goes, work stays with its company. The only owner of a company must hand over first. */
+function DeleteAccountRow() {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    if (!confirm('Delete your account? This can’t be undone. Your tasks, messages and files stay with your company.')) return;
+    setBusy(true);
+    const r = await fetch('/api/account/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    const d = (await r.json().catch(() => ({}))) as { error?: string };
+    setBusy(false);
+    if (!r.ok) return setMsg(d.error ?? 'Couldn’t delete the account.');
+    location.href = '/';
+  };
+  if (!server.on) return null;
+  return (
+    <div className="danger-zone">
+      <div className="set-row">
+        <span>
+          <strong>Delete your account</strong>
+          <small>Your sign-in goes for good. What you made stays with the company, marked as a deleted account.</small>
+        </span>
+        <button type="button" className="ghost-btn sm danger" onClick={() => setOpen((x) => !x)}>
+          {open ? 'Cancel' : 'Delete…'}
+        </button>
+      </div>
+      <div className={`fold ${open ? 'open' : ''}`}>
+        <div className="fold-in pw-form">
+          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Your password, to be sure it’s you" autoComplete="current-password" />
+          {msg && <p className="err small">{msg}</p>}
+          <button type="button" className="primary-btn sm danger" disabled={!pw || busy} onClick={() => void go()}>
+            {busy ? 'Deleting…' : 'Delete my account'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

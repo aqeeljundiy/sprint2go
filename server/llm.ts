@@ -67,6 +67,18 @@ async function anthropic(ai: AIConfig, prompt: string, opts: { system: string; s
 
 async function openaiCompatible(ai: AIConfig, prompt: string, opts: { system: string; schema?: Record<string, unknown>; maxTokens?: number }, plainJson = false): Promise<string> {
   const base = (ai.baseUrl || BASE_URLS[ai.provider] || '').replace(/\/$/, '');
+  // A custom base URL must be a public https address: never this server, the network or a cloud metadata service.
+  if (ai.baseUrl) {
+    let h = '';
+    try {
+      const u = new URL(ai.baseUrl);
+      h = u.hostname.toLowerCase();
+      if (u.protocol !== 'https:') throw new Error();
+    } catch {
+      throw new AIError('The provider address must start with https://', 400);
+    }
+    if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h === '::1' || /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|fc|fd|fe80)/.test(h) || /^\d+\.\d+\.\d+\.\d+$/.test(h) === false && !h.includes('.')) throw new AIError('That provider address points inside the network, which isn’t allowed.', 400);
+  }
   if (!base) throw new AIError(`${ai.provider} isn't supported yet. Pick another provider for this job.`, 400);
   const strict = !!opts.schema && STRICT_SCHEMA.has(ai.provider) && !plainJson;
   const system = opts.schema && !strict ? `${opts.system}\n\nReply with a single JSON object that matches this JSON Schema exactly:\n${JSON.stringify(opts.schema)}` : opts.system;

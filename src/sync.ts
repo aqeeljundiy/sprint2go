@@ -91,9 +91,21 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
     const deletes = [...before.keys()].filter((id) => !now.has(id));
     synced[k] = now;
     if (!upserts.length && !deletes.length) return;
-    void fetch('/api/sync', { method: 'POST', headers: { 'content-type': 'application/json', 'x-conn': server.conn }, body: JSON.stringify({ coll: k, upserts, deletes }) }).catch(() => {
-      synced[k] = before; // try again with the next change
-    });
+    void fetch('/api/sync', { method: 'POST', headers: { 'content-type': 'application/json', 'x-conn': server.conn }, body: JSON.stringify({ coll: k, upserts, deletes }) })
+      .then(async (r) => {
+        if (r.status === 401) return window.dispatchEvent(new CustomEvent('s2g:signed-out'));
+        if (!r.ok) {
+          synced[k] = before;
+          window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: ((await r.json().catch(() => ({}))) as { error?: string }).error } }));
+          return;
+        }
+        // The server may have kept fewer changes than were sent (something it doesn't allow): say so, and reload them.
+        const { saved } = (await r.json().catch(() => ({ saved: upserts.length }))) as { saved?: number };
+        if (typeof saved === 'number' && saved < upserts.length) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: 'Part of that change isn’t allowed for your role, so it was left out.' } }));
+      })
+      .catch(() => {
+        synced[k] = before; // try again with the next change
+      });
   }, 250);
 }
 
@@ -101,4 +113,25 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
 export function sendSignal(to: string, data: unknown) {
   if (!server.on) return;
   void fetch('/api/signal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, data }) }).catch(() => {});
+}
+
+/**
+ * Puts a file on the server and returns where it lives. Without a server (the demo) the file stays in the browser
+ * as a data URL, as before.
+ */
+export async function uploadFile(file: File | Blob, workspaceId: string, name = (file as File).name ?? 'file'): Promise<{ url: string; name: string; type: string; size: number }> {
+  const type = file.type || 'application/octet-stream';
+  if (!server.on) {
+    const url = await new Promise<string>((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result));
+      r.onerror = () => rej(new Error('Couldn’t read the file'));
+      r.readAsDataURL(file);
+    });
+    return { url, name, type, size: file.size };
+  }
+  const r = await fetch('/api/upload', { method: 'POST', headers: { 'content-type': type, 'x-file-name': encodeURIComponent(name), 'x-workspace': workspaceId }, body: file });
+  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The upload failed.');
+  const d = (await r.json()) as { url: string; name: string; type: string; size: number };
+  return d;
 }

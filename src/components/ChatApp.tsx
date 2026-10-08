@@ -17,6 +17,7 @@ import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
 import { ChannelMaterials } from './ChannelMaterials';
 import { personOption } from './ui/PeopleList';
+import { uploadFile } from '../sync';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -930,9 +931,19 @@ export function ChatView(p: ViewProps) {
     setMention(null);
     input.current?.focus();
   };
-  const onFiles = (list: FileList | null) => {
+  const onFiles = async (list: FileList | null) => {
     if (!list?.length) return;
-    const files: ChatFile[] = [...list].map((f) => ({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', url: URL.createObjectURL(f) }));
+    // To the server first, so the file is there for everyone and after a reload (a data URL in the demo).
+    const files: ChatFile[] = [];
+    for (const f of [...list]) {
+      try {
+        const up = await uploadFile(f, channel.workspaceId);
+        files.push({ name: f.name, size: f.size, type: up.type, url: up.url });
+      } catch {
+        files.push({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', url: URL.createObjectURL(f) }); // the upload failed: at least this session sees it
+      }
+    }
+    if (!files.length) return;
     p.onSend({ text: text.trim(), files });
     setText('');
   };
@@ -960,7 +971,10 @@ export function ChatView(p: ViewProps) {
       setRec(null);
     };
     if (rec.recorder && rec.recorder.state !== 'inactive') {
-      rec.recorder.onstop = () => finish(URL.createObjectURL(new Blob(rec.chunks, { type: 'audio/webm' })));
+      rec.recorder.onstop = () => {
+        const blob = new Blob(rec.chunks, { type: 'audio/webm' });
+        void uploadFile(blob, channel.workspaceId, 'voice-note.webm').then((up) => finish(up.url)).catch(() => finish(URL.createObjectURL(blob)));
+      };
       rec.recorder.stop();
     } else finish();
   };
