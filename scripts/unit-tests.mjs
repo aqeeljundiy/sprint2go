@@ -222,6 +222,150 @@ await test('Tracking: the app can’t write opens; a tracked message shows what 
   assert.deepEqual(fresh.messages[0].tracking, { 'a@b.example': { opens: [], clicks: [] } }, 'a new message only names who will be tracked');
 });
 
+/* ---------- what a plan allows (server/billing.ts) ---------- */
+
+const billing = await import('../server/billing.ts');
+const platform = await import('../server/platform.ts');
+const DAY = 86_400_000;
+const paidPlan = (extra = {}) => ({ track: 'own', tier: 'small', cycle: 'monthly', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: 'B', emails: ['owner@b.example'] }, since: '2026-01-15T00:00:00.000Z', ...extra });
+await test('Pausing: up to 90 days in any year, never on Free or the trial; resuming closes the pause', () => {
+  const on = billing.pauseOnSave({ paused: true, tier: 'small' }, paidPlan());
+  assert.equal(on.paused, true);
+  assert.equal(on.pauses.length, 1);
+  const off = billing.pauseOnSave({ paused: false, tier: 'small' }, paidPlan({ paused: true, pauses: on.pauses }));
+  assert.equal(off.paused, undefined);
+  assert.ok(off.pauses[0].to, 'the pause has an end');
+  const used = [{ from: new Date(Date.now() - 100 * DAY).toISOString(), to: new Date(Date.now() - 10 * DAY).toISOString() }];
+  assert.equal(Math.round(billing.pauseDaysUsed(used)), 90);
+  assert.match(billing.pauseOnSave({ paused: true, tier: 'small' }, paidPlan({ pauses: used })).why, /3 months a year/);
+  assert.match(billing.pauseOnSave({ paused: true, tier: 'free' }, paidPlan({ tier: 'free' })).why, /paid plan/);
+  assert.match(billing.pauseOnSave({ paused: true, tier: 'studio' }, paidPlan({ tier: 'studio', trialEnds: new Date(Date.now() + 5 * DAY).toISOString() })).why, /trial/);
+  // Pauses from more than a year ago don't count.
+  assert.equal(billing.pauseDaysUsed([{ from: new Date(Date.now() - 500 * DAY).toISOString(), to: new Date(Date.now() - 400 * DAY).toISOString() }]), 0);
+});
+await test('Pausing: a pause that used up the year resumes by itself, and the owners hear it', () => {
+  const ws = { id: 'w-pause', name: 'Paused Co', members: [{ userId: 'u-p', role: 'owner' }], accounts: [], plan: paidPlan({ paused: true, pauses: [{ from: new Date(Date.now() - 91 * DAY).toISOString() }] }) };
+  db.writeDocs('workspaces', [ws], [], null);
+  const told = [];
+  const resumed = billing.resumeExpiredPauses((w) => db.writeDocs('workspaces', [w], [], null), (ids, text) => told.push([ids, text]));
+  assert.deepEqual(resumed, ['w-pause']);
+  assert.equal(db.getDoc('workspaces', 'w-pause').plan.paused, undefined);
+  assert.deepEqual(told[0][0], ['u-p']);
+  assert.equal(billing.readOnlyWhy(db.getDoc('workspaces', 'w-pause')), null);
+  assert.match(billing.readOnlyWhy({ name: 'X', plan: { paused: true } }), /paused, so it’s read-only/);
+});
+await test('Cancelling waits for the end of the paid period, then moves to Free', () => {
+  assert.equal(billing.periodEnd({ cycle: 'monthly' }, new Date('2026-10-09T10:00:00Z')), '2026-11-01T00:00:00.000Z');
+  assert.equal(billing.periodEnd({ cycle: 'yearly', since: '2026-03-15T00:00:00.000Z' }, new Date('2026-10-09T10:00:00Z')), '2027-03-15T00:00:00.000Z');
+  db.writeDocs('workspaces', [{ id: 'w-cancel', name: 'Leaving', members: [{ userId: 'u-c', role: 'owner' }], accounts: [], plan: paidPlan({ cancelAt: new Date(Date.now() - 1000).toISOString() }) }], [], null);
+  billing.endCancelled((w) => db.writeDocs('workspaces', [w], [], null), () => {});
+  assert.equal(db.getDoc('workspaces', 'w-cancel').plan.tier, 'free');
+  assert.equal(db.getDoc('workspaces', 'w-cancel').plan.cancelAt, undefined);
+});
+await test('Hosted mailboxes: one per person on paid plans (shared free), Free pays for each; beyond the room they can’t send', () => {
+  const box = (id, kind = 'personal', extra = {}) => ({ id, email: `${id}@b.example`, name: id, kind, users: [], ...extra });
+  const ws = { id: 'w-box', name: 'Boxes', members: [{ userId: 'u-b1', role: 'owner' }, { userId: 'u-b2', role: 'member' }], accounts: [box('a'), box('b'), box('shared', 'shared'), box('kept', 'personal', { provider: 'google' })], plan: paidPlan() };
+  assert.deepEqual({ ...billing.mailboxes(ws) }, { included: 2, addon: 0, total: 2, sharedFree: true, used: 2 });
+  const more = billing.mailboxesOnSave({ ...ws, accounts: [...ws.accounts, box('c')] }, ws);
+  assert.equal(more.accounts.length, ws.accounts.length, 'a third personal mailbox is refused');
+  assert.match(more.why, /room for 2 personal hosted mailboxes/);
+  assert.equal(billing.mailboxesOnSave({ ...ws, accounts: [...ws.accounts, box('c')], plan: paidPlan({ addons: { mailboxes: 1, storage50: 0, meetHours10: 0, branding: false } }) }, ws).why, undefined, 'with a mailbox add-on it fits');
+  const free = { ...ws, plan: paidPlan({ tier: 'free' }) };
+  assert.equal(billing.mailboxes(free).total, 0);
+  assert.deepEqual([...billing.overRoom(free)], ['a', 'b', 'shared'], 'after a downgrade to Free, every hosted mailbox waits (shared ones too)');
+  assert.equal(billing.overRoom(ws).size, 0);
+});
+await test('Notetaker hours: the plan’s, plus add-ons, minus what bots used this month', () => {
+  const ws = { id: 'w-meet', name: 'Meet', members: [{ userId: 'u-m', role: 'owner' }], accounts: [], plan: paidPlan({ addons: { mailboxes: 0, storage50: 0, meetHours10: 1, branding: false } }) };
+  db.writeDocs('workspaces', [ws], [], null);
+  db.writeDocs('meetings', [{ id: 'mt-1', workspaceId: 'w-meet', bot: true, status: 'done', at: new Date().toISOString(), minutes: 90 }, { id: 'mt-2', workspaceId: 'w-meet', bot: false, status: 'done', at: new Date().toISOString(), minutes: 600 }], [], null);
+  const m = billing.meetMinutes(ws);
+  assert.equal(m.allowance, (4 + 10) * 60, 'Small: 4 hours a person, plus 10');
+  assert.equal(m.used, 90, 'only the bot’s meetings count');
+  assert.equal(m.left, 14 * 60 - 90);
+  assert.equal(billing.meetMinutes({ ...ws, plan: paidPlan({ tier: 'business' }) }).left, Infinity);
+});
+await test('Boosted credits: an invoice by bank transfer; the credits arrive once, when it’s paid', () => {
+  assert.match(billing.creditsBlocked(false), /isn’t available/);
+  assert.match(billing.creditsBlocked(true), /bank details/, 'no bank details yet: nothing to pay into');
+  platform.setSetting('billing', { name: 'sprint2go', address: '', npwp: '', bank: 'BCA 123 456 7890 a.n. PT Test', email: '' });
+  assert.equal(billing.creditsBlocked(true), null);
+  db.writeDocs('workspaces', [{ id: 'w-credits', name: 'Credits', members: [{ userId: 'u-cr', role: 'owner' }], accounts: [], plan: paidPlan(), mailCredits: 10 }], [], null);
+  const ws = db.getDoc('workspaces', 'w-credits');
+  const r = billing.orderCredits(ws, 5000, 'u-cr');
+  assert.equal(r.credits, 5000);
+  assert.equal(r.invoice.status, 'sent');
+  assert.equal(r.invoice.subtotal, 59_000);
+  assert.equal(db.getDoc('workspaces', 'w-credits').mailCredits, 10, 'nothing is added before it’s paid');
+  assert.equal(billing.openOrders('w-credits').length, 1);
+  assert.ok(billing.isCreditInvoice(r.invoice.id));
+  assert.equal(billing.orderCredits(ws, 1234, 'u-cr').error, 'Pick one of the packs.');
+  const save = (w) => db.writeDocs('workspaces', [w], [], null);
+  assert.equal(billing.invoicePaid(r.invoice.id, save, () => {}), 5010);
+  assert.equal(billing.invoicePaid(r.invoice.id, save, () => {}), null, 'paying twice adds nothing more');
+  assert.equal(db.getDoc('workspaces', 'w-credits').mailCredits, 5010);
+  const v = billing.orderCredits(db.getDoc('workspaces', 'w-credits'), 1000, 'u-cr');
+  billing.invoiceVoided(v.invoice.id);
+  assert.equal(billing.invoicePaid(v.invoice.id, save, () => {}), null, 'a voided order never adds credits');
+});
+
+/* ---------- WhatsApp's webhook (server/whatsapp.ts) ---------- */
+
+const whatsapp = await import('../server/whatsapp.ts');
+const { createHmac } = await import('node:crypto');
+await test('WhatsApp: only posts signed with the app’s secret are read; without a secret the webhook is off', () => {
+  delete process.env.WHATSAPP_APP_SECRET;
+  const ws = { id: 'w-wa', name: 'WA', members: [{ userId: 'u-wa', role: 'owner' }], accounts: [], whatsapp: { phoneNumberId: '555', connected: true, verifyToken: 'tok-123' } };
+  db.writeDocs('workspaces', [ws], [], null);
+  const q = (t) => new URLSearchParams({ 'hub.mode': 'subscribe', 'hub.verify_token': t, 'hub.challenge': 'abc' });
+  assert.equal(whatsapp.challenge(q('tok-123'), [ws]).status, 403, 'no secret yet: Meta’s check fails');
+  const raw = Buffer.from(JSON.stringify({ entry: [{ changes: [{ value: { metadata: { phone_number_id: '555' }, messages: [{ from: '62811', type: 'text', text: { body: 'hi' } }] } }] }] }));
+  const sig = (key) => 'sha256=' + createHmac('sha256', key).update(raw).digest('hex');
+  assert.equal(whatsapp.receive(raw, sig('anything'), [ws], () => {}).status, 401);
+  db.saveKey('w-wa', whatsapp.SECRET_KEY, 'a'.repeat(32), undefined, 'u-wa');
+  assert.deepEqual(whatsapp.challenge(q('tok-123'), [ws]), { status: 200, body: 'abc' });
+  assert.equal(whatsapp.challenge(q('tok-124'), [ws]).status, 403);
+  assert.equal(whatsapp.receive(raw, undefined, [ws], () => {}).status, 401, 'unsigned');
+  assert.equal(whatsapp.receive(raw, sig('b'.repeat(32)), [ws], () => {}).status, 401, 'signed with another secret');
+  assert.equal(whatsapp.receive(Buffer.concat([raw, Buffer.from(' ')]), sig('a'.repeat(32)), [ws], () => {}).status, 401, 'a changed body');
+  const out = whatsapp.receive(raw, sig('a'.repeat(32)), [ws], () => {});
+  assert.deepEqual(out, { status: 200, read: 1 });
+  process.env.WHATSAPP_APP_SECRET = 'platform-secret';
+  assert.equal(whatsapp.receive(raw, sig('platform-secret'), [{ ...ws, id: 'w-wa2' }], () => {}).read, 1, 'sprint2go’s own app’s secret works for every company');
+  delete process.env.WHATSAPP_APP_SECRET;
+});
+
+/* ---------- Settings, AI limits (server/aiLimits.ts) ---------- */
+
+const aiLimits = await import('../server/aiLimits.ts');
+await test('AI: blocked providers are never allowed; a key at its monthly cap rests; alerts fire once per level', () => {
+  const ws = { id: 'w-ai', name: 'AI Co', members: [{ userId: 'u-ai', role: 'owner' }], ai: { blocked: ['deepseek'], alerts: true, providers: [{ id: 'anthropic', capUsd: 1 }] } };
+  db.writeDocs('workspaces', [ws], [], null);
+  const may = aiLimits.allowed(ws);
+  assert.equal(may('deepseek'), false);
+  assert.equal(may('deepseek', true), false, 'not even through our own AI');
+  assert.equal(may('anthropic'), true);
+  // US$10 per million output tokens on Claude Sonnet 5.5 (the catalogue's price): 50k tokens is US$0.50, half the cap.
+  db.logUsage({ workspaceId: 'w-ai', userId: 'u-ai', job: 'draft', provider: 'anthropic', model: 'claude-sonnet-5-5', inTokens: 0, outTokens: 50_000 });
+  assert.equal(Math.round(aiLimits.spendUsd('w-ai').anthropic * 100), 50);
+  const told = [];
+  const tell = (ids, text) => told.push(text);
+  aiLimits.checkAlerts(ws, () => 0, tell);
+  assert.equal(told.length, 1);
+  assert.match(told[0], /50% of the Anthropic key|50% of the .* key/);
+  assert.equal(aiLimits.allowed(ws)('anthropic'), true, 'below the cap the key works');
+  db.logUsage({ workspaceId: 'w-ai', userId: 'u-ai', job: 'draft', provider: 'anthropic', model: 'claude-sonnet-5-5', inTokens: 0, outTokens: 60_000 });
+  assert.equal(aiLimits.allowed(ws)('anthropic'), false, 'at its cap the key rests');
+  assert.equal(aiLimits.allowed(ws)('anthropic', true), true, 'our own AI isn’t the company’s key');
+  aiLimits.checkAlerts(ws, () => 0, tell);
+  aiLimits.checkAlerts(ws, () => 0, tell);
+  assert.equal(told.length, 2, 'straight past 80% to 100%: one message, once');
+  assert.match(told[1], /cap .*reached/);
+  const quiet = [];
+  aiLimits.checkAlerts({ ...ws, ai: { ...ws.ai, alerts: false } }, () => 0, (ids, text) => quiet.push(text));
+  assert.equal(quiet.length, 0, 'alerts off: nothing');
+});
+
 /* ---------- backups (server/db.ts) ---------- */
 
 await test('Backups: a labelled one-off sits next to the daily copy and outside its rotation', async () => {

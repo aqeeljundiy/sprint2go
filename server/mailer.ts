@@ -19,6 +19,7 @@ import { domainKey, mayUse, ownership, ownersMap, settle as settleDomain, type O
 import { loadTls, onCertChange, startCertKeeper } from './mailcert.ts';
 import { applyInbound, readInvite } from './invites.ts';
 import { maybeAnswer, type Away } from './away.ts';
+import { overRoom, overRoomWhy } from './billing.ts';
 import * as track from './readTracking.ts';
 export { domainKey };
 
@@ -473,12 +474,15 @@ export interface Outgoing {
   tracking?: { opens: boolean; clicks: boolean; notify: boolean; by: string | null };
 }
 
-const fileBuffer = (url: string): Buffer | null => {
+/** An attachment's content: one of this company's files (never another company's, whatever the address), or inline data. */
+const fileBuffer = (url: string, workspaceId: string): Buffer | null => {
   const m = url.match(/^\/api\/files\/([a-f0-9]{32})$/);
-  if (m) return db.fileData(m[1]);
+  if (m) return db.fileInfo(m[1])?.workspaceId === workspaceId ? db.fileData(m[1]) : null;
   const d = url.match(/^data:[^;]*;base64,(.+)$/);
   return d ? Buffer.from(d[1], 'base64') : null;
 };
+/** Why a company can't send right now: paused or suspended (read-only), or null. */
+const cantSend = (ws: any) => (ws?.suspended ? `${ws.name} is read-only for now, so mail can’t go out.` : ws?.plan?.paused ? `${ws.name} is paused, so mail can’t go out. An owner can resume the plan in Settings, Plan & billing.` : null);
 
 /** Builds the message, signs it and queues one delivery per outside recipient; our own mailboxes get it at once. */
 export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: number; local: number; route: 'own' | 'boosted' }> {
@@ -486,6 +490,13 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   if (!ws) throw new Error('No such company');
   const acct = (ws.accounts ?? []).find((a) => a.id === o.accountId) as (Account & { sendPaused?: { reason: string } }) | undefined;
   if (acct?.sendPaused) throw new Error(`Sending from this mailbox is paused: ${acct.sendPaused.reason} Ask your admin or sprint2go support.`);
+  // Nothing goes out from a paused or suspended company (scheduled mail and automatic answers included), or from a
+  // hosted mailbox beyond the plan's room; the message says so.
+  const blocked = cantSend(ws) ?? (overRoom(ws as any).has(o.accountId) ? overRoomWhy(ws as any) : null);
+  if (blocked) {
+    markDelivery(o.threadId, o.messageId, null, 'failed', blocked);
+    throw new Error(blocked);
+  }
   const recipientsCount = [...o.to, ...o.cc].length;
   const sentLastHour = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 3600_000).toISOString()) as { n: number }).n;
   const sentLastDay = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
@@ -517,7 +528,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     messageId: mid,
     inReplyTo: o.inReplyTo,
     references: o.references,
-    attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url) ?? Buffer.alloc(0) })),
+    attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url, ws.id) ?? Buffer.alloc(0) })),
     icalEvent: o.ical ? { method: o.ical.method, content: o.ical.content, filename: 'invite.ics' } : undefined,
     headers: { 'X-Mailer': 'sprint2go', ...(o.headers ?? {}) },
   };
@@ -1012,6 +1023,8 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
       };
     }
   }
+  // Hosted mailboxes beyond the plan's room receive but don't send (server/billing.ts).
+  for (const id of overRoom(ws as any)) if (mailboxes[id]) mailboxes[id] = { ...mailboxes[id], send: false, sendWhy: overRoomWhy(ws as any) };
   const list = Object.values(mailboxes);
   const firstWhy = (k: 'receive' | 'send') => (k === 'send' ? list.find((m) => !m.send)?.sendWhy : list.find((m) => !m.receive)?.why);
   return { at, receive: list.some((m) => m.receive), send: list.some((m) => m.send), why: { receive: list.some((m) => m.receive) ? undefined : firstWhy('receive'), send: list.some((m) => m.send) ? undefined : firstWhy('send') }, mailboxes };

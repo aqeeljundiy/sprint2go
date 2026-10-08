@@ -333,6 +333,9 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                       <EmailSetupGuide mode={setup === 'hosted' ? 'move' : 'forward'} provider={provider} domain={d} first={me.name.split(' ')[0].toLowerCase()} company={brand.name} address={myEmail} />
                     </>
                   )}
+                  {/* Boosted sending is only a choice where this server has it (the demo shows it as one). */}
+                  {(!server.on || caps.boosted) && (
+                  <>
                   <h3 className="esg-title">How your mail goes out</h3>
                   <div className="ed-routes ob-routes">
                     <button type="button" className={`ed-route ${route === 'own' ? 'on' : ''}`} onClick={() => setRoute('own')}>
@@ -352,6 +355,8 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                       <small>Through Amazon on our account: proven delivery to Gmail and Outlook from day one. Paid per email, from Rp 15.000 per 1,000.</small>
                     </button>
                   </div>
+                  </>
+                  )}
                   <small className="set-hint">You can finish now and do this later from Settings, Email delivery. {preview ? 'In this preview the waits are simulated.' : ''}</small>
                 </>
               )}

@@ -184,9 +184,11 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
           window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: ((await r.json().catch(() => ({}))) as { error?: string }).error } }));
           return;
         }
-        // The server may have kept fewer changes than were sent (something it doesn't allow): say so, and reload them.
-        const { saved } = (await r.json().catch(() => ({ saved: upserts.length }))) as { saved?: number };
-        if (typeof saved === 'number' && saved < upserts.length) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: 'Part of that change isn’t allowed for your role, so it was left out.' } }));
+        // The server may have kept fewer changes than were sent, or kept some differently (something it doesn't allow,
+        // or a plan limit): say why. It sends back what it stored, so the screen shows that.
+        const { saved, why } = (await r.json().catch(() => ({ saved: upserts.length }))) as { saved?: number; why?: string };
+        if (why) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: why } }));
+        else if (typeof saved === 'number' && saved < upserts.length) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: 'Part of that change isn’t allowed for your role, so it was left out.' } }));
       })
       .catch(() => {
         synced[k] = before; // try again with the next change

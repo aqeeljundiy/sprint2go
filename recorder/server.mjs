@@ -63,7 +63,7 @@ createServer(async (req, res) => {
       if (!safeId(b.id) || !/^https:\/\/(meet\.google\.com|([\w-]+\.)?zoom\.us)\//.test(b.url || '') || !/^https?:\/\//.test(b.callback || '')) return json(res, 400, { error: 'Needs an id, a Google Meet or Zoom link, and a callback' });
       if (bots.has(b.id)) return json(res, 409, { error: 'That bot is already running' });
       if (bots.size >= MAX_BOTS) return json(res, 503, { error: `All ${MAX_BOTS} bots are busy` });
-      startBot({ id: b.id, url: b.url, botName: String(b.botName || 'Notetaker').slice(0, 60), callback: b.callback, stt: b.stt ?? null, names: b.names ?? [], announce: b.announce !== false, video: b.video === true });
+      startBot({ id: b.id, url: b.url, botName: String(b.botName || 'Notetaker').slice(0, 60), callback: b.callback, stt: b.stt ?? null, names: b.names ?? [], announce: b.announce !== false, video: b.video === true, maxMinutes: Number(b.maxMinutes) > 0 ? Math.floor(Number(b.maxMinutes)) : undefined });
       return json(res, 202, { ok: true });
     }
 

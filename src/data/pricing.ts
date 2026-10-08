@@ -32,6 +32,42 @@ export const hasBranding = (plan?: { tier?: string; addons?: { branding?: boolea
 
 export const TOP_UP = { price: 99_000, gives: 'about 50 meeting hours, or 110 Ask AI questions, or 120 brain dumps, or 600 email summaries' };
 
+/** Boosted sending credits: one per email to an outside address. Paid by bank transfer until card payments exist. */
+export const MAIL_PACKS = [
+  { n: 1000, price: 15_000 },
+  { n: 5000, price: 59_000 },
+  { n: 25_000, price: 249_000 },
+] as const;
+
+/** A plan can be paused this many days in any 365 (the billing page says "up to 3 months a year"). */
+export const PAUSE_DAYS_A_YEAR = 90;
+/** Days paused in the 365 days before `at` (an open pause counts up to `at`). */
+export function pauseDaysUsed(pauses: { from: string; to?: string }[] | undefined, at = Date.now()) {
+  const start = at - 365 * 86_400_000;
+  let ms = 0;
+  for (const p of pauses ?? []) {
+    const a = Math.max(start, Date.parse(p.from));
+    const b = Math.min(at, p.to ? Date.parse(p.to) : at);
+    if (b > a) ms += b - a;
+  }
+  return ms / 86_400_000;
+}
+export const pauseDaysLeft = (pauses: { from: string; to?: string }[] | undefined, at = Date.now()) => Math.max(0, PAUSE_DAYS_A_YEAR - pauseDaysUsed(pauses, at));
+
+/**
+ * Hosted mailboxes a plan has room for. Paid plans (and the trial) include one personal mailbox per person, and
+ * shared inboxes are free; on Free every hosted mailbox is an add-on. Mailbox add-ons add to either.
+ */
+export function mailboxRoom(plan: Pick<Plan, 'tier' | 'addons' | 'trialEnds'>, people: number, at = new Date().toISOString()) {
+  const trial = !!plan.trialEnds && plan.trialEnds > at;
+  const free = plan.tier === 'free' && !trial;
+  const included = free ? 0 : seatsFor(trial ? 'studio' : plan.tier, people);
+  return { included, addon: plan.addons?.mailboxes ?? 0, total: included + (plan.addons?.mailboxes ?? 0), sharedFree: !free };
+}
+/** The hosted mailboxes that use that room (temporary addresses and mailboxes kept at Google or Microsoft don't). */
+export const countedMailboxes = (accounts: { email?: string; kind?: string; provider?: string; temp?: unknown }[], sharedFree: boolean) =>
+  accounts.filter((a) => !!a.email && !a.temp && (!a.provider || a.provider === 'sprint2go') && !(sharedFree && a.kind === 'shared')).length;
+
 /** What each person adds to the company's shared AI allowance on "AI included" plans (per month). */
 export const ALLOWANCE = { braindump: 10, ask: 20, meetingHours: 6, summary: 50, draft: 30 };
 

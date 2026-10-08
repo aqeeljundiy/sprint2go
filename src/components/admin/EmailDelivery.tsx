@@ -8,6 +8,8 @@ import { relative } from '../../utils';
 import { SmoothHeight } from '../ui/Smooth';
 import { EmailSetupGuide, providerLabel } from '../EmailSetupGuide';
 import { providerName } from '../Onboarding';
+import { MAIL_PACKS, countedMailboxes, mailboxRoom } from '../../data/pricing';
+import { trialPlan } from '../../data/workspaces';
 
 interface Setup {
   host: string;
@@ -17,6 +19,8 @@ interface Setup {
   route: 'own' | 'boosted';
   boostedAvailable: boolean;
   credits: number;
+  /** Boosted credits bought by bank transfer: invoices waiting for payment, and why buying isn't possible here (if so). */
+  creditOrders?: { orders: { invoiceId: string; number: string; credits: number; total: number; dueAt: string }[]; blocked: string | null; bank: string | null };
   records: { type: string; host: string; value: string; note: string; key: string }[];
   checks: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] } | null;
   stats: { received: number; spam: number; sent: number; boosted: number; failed: number; queued: number };
@@ -42,11 +46,6 @@ const PROVIDERS: { id: MailProvider; name: string }[] = [
   { id: 'microsoft', name: 'Microsoft 365' },
   { id: 'zoho', name: 'Zoho' },
   { id: 'imap', name: 'Another provider' },
-];
-const PACKS = [
-  { n: 1000, rp: 15_000 },
-  { n: 5000, rp: 59_000 },
-  { n: 25_000, rp: 249_000 },
 ];
 const KEY_NAME: Record<string, string> = { verify: 'Proof the domain is yours (TXT)', mx: 'Where mail arrives (MX)', spf: 'Who may send (SPF)', dkim: 'Signature (DKIM)', dmarc: 'Policy (DMARC)', ptr: 'Reverse DNS of the server', a: 'The server’s address record', port25: 'Outgoing port 25', inbound: 'Incoming mail port' };
 const rp = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
@@ -81,6 +80,8 @@ export function EmailDeliverySection({
   const [leaving, setLeaving] = useState<string[]>([]); // addresses folding away while they're removed
   const mailboxes = ws.accounts.filter((a) => !a.temp);
   const hostedBoxes = mailboxes.filter((a) => !a.provider || a.provider === 'sprint2go');
+  const room = mailboxRoom(ws.plan ?? trialPlan(ws.name, ''), Math.max(1, ws.members.length));
+  const boxRoom = { ...room, used: countedMailboxes(ws.accounts, room.sharedFree) };
   const aliases = ws.mailAliases ?? [];
   /** Aliases are checked and kept by the server (at your domain, not taken); the demo keeps them here. */
   const saveAliases = async (list: MailAlias[]): Promise<string | null> => {
@@ -134,11 +135,14 @@ export function EmailDeliverySection({
       setBusy(false);
     }
   };
+  // Credits are bought with an invoice paid by bank transfer: they arrive when it's paid, never before.
+  const [ordering, setOrdering] = useState<(typeof MAIL_PACKS)[number] | null>(null);
   const buy = async (n: number) => {
     setBusy(true);
     try {
-      await post('credits', { workspaceId: ws.id, add: n });
-      toast(`${n.toLocaleString('id-ID')} emails added.`);
+      const r = (await post('credits', { workspaceId: ws.id, pack: n })) as { invoice: { number: string; total: number } };
+      toast(`Invoice ${r.invoice.number} for ${rp(r.invoice.total)} is in Plan & billing. The ${n.toLocaleString('id-ID')} emails are added when it’s paid.`);
+      setOrdering(null);
       await load();
     } catch (e) {
       toast((e as Error).message);
@@ -227,6 +231,12 @@ export function EmailDeliverySection({
 
         <div className="set-block">
           <h3>How your mail goes out</h3>
+          {/* Boosted sending only where this server has it: otherwise there's nothing to choose (or buy). */}
+          {server.on && info && !info.boostedAvailable ? (
+            <p className="small muted">
+              Mail goes out from the {product.name} mail server, signed with your domain’s own key.{route === 'boosted' ? ' Boosted sending isn’t available on this server, so it isn’t used.' : ''}
+            </p>
+          ) : (
           <div className="ed-routes">
             <button type="button" className={`ed-route ${route === 'own' ? 'on' : ''}`} disabled={busy} onClick={() => void setRoute('own')}>
               <span className="ed-route-head">
@@ -250,24 +260,48 @@ export function EmailDeliverySection({
               <ul>
                 <li className="pro">Proven delivery to Gmail and Outlook from day one</li>
                 <li className="pro">Bounces and complaints handled for you</li>
-                <li className="con">Paid per email: {PACKS.map((p) => `${p.n.toLocaleString('id-ID')} for ${rp(p.rp)}`).join(', ')}</li>
+                <li className="con">Paid per email: {MAIL_PACKS.map((p) => `${p.n.toLocaleString('id-ID')} for ${rp(p.price)}`).join(', ')}</li>
                 <li className="con">Three extra signing records on your domain</li>
               </ul>
             </button>
           </div>
+          )}
           <SmoothHeight>
-            {route === 'boosted' && info && (
+            {route === 'boosted' && info?.boostedAvailable && (
               <div className="ed-credits">
                 <span>
                   <strong>{info.credits.toLocaleString('id-ID')}</strong> emails left{info.credits === 0 ? '. Mail goes out from our server until you top up.' : '.'}
+                  {!!info.creditOrders?.orders.length && (
+                    <small className="ed-orders">
+                      Waiting for payment:{' '}
+                      {info.creditOrders.orders.map((o) => `${o.credits.toLocaleString('id-ID')} emails (invoice ${o.number}, ${rp(o.total)}, due ${new Date(o.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })})`).join('; ')}
+                      . They’re added when it’s paid.
+                    </small>
+                  )}
                 </span>
-                <span className="ed-packs">
-                  {PACKS.map((p) => (
-                    <button key={p.n} type="button" className="ghost-btn sm" disabled={busy} onClick={() => void buy(p.n)}>
-                      +{p.n.toLocaleString('id-ID')} · {rp(p.rp)}
+                {info.creditOrders?.blocked ? (
+                  <small className="muted">{info.creditOrders.blocked}</small>
+                ) : ordering ? (
+                  <span className="cancel-confirm">
+                    <small>
+                      An invoice for {rp(ordering.price)} plus PPN, paid by bank transfer{info.creditOrders?.bank ? ` to ${info.creditOrders.bank}` : ''}. The emails arrive when it’s paid.
+                    </small>
+                    <button type="button" className="ghost-btn sm" disabled={busy} onClick={() => setOrdering(null)}>
+                      Not now
                     </button>
-                  ))}
-                </span>
+                    <button type="button" className="primary-btn sm" disabled={busy || !canManage} onClick={() => void buy(ordering.n)}>
+                      {busy ? 'Ordering…' : `Order ${ordering.n.toLocaleString('id-ID')}`}
+                    </button>
+                  </span>
+                ) : (
+                  <span className="ed-packs">
+                    {MAIL_PACKS.map((p) => (
+                      <button key={p.n} type="button" className="ghost-btn sm" disabled={busy || !canManage} onClick={() => setOrdering(p)}>
+                        +{p.n.toLocaleString('id-ID')} · {rp(p.price)}
+                      </button>
+                    ))}
+                  </span>
+                )}
               </div>
             )}
           </SmoothHeight>
@@ -390,6 +424,15 @@ export function EmailDeliverySection({
                 )}
               </span>
             </div>
+            {/* The plan's room for hosted mailboxes, where people add them (the server holds the same rule). */}
+            {(setup === 'hosted' || setup === 'mix') && (
+              <p className={`small ${boxRoom.used > boxRoom.total ? 'ed-room over' : 'muted'}`}>
+                {boxRoom.used} of {boxRoom.total} hosted mailbox{boxRoom.total === 1 ? '' : 'es'} in use
+                {boxRoom.sharedFree ? ': one comes with the plan for each person, and shared inboxes are free.' : ': on Free, each hosted mailbox is an add-on.'}
+                {boxRoom.used > boxRoom.total ? ` ${boxRoom.used - boxRoom.total} of them receive mail but can’t send until there’s room.` : ''}
+                {boxRoom.used >= boxRoom.total ? ' For more, an owner adds mailboxes in Settings, Plan & billing, Add-ons.' : ''}
+              </p>
+            )}
             {mailboxes.length === 0 ? (
               <p className="small muted">No mailboxes yet. Add one for each person, and shared inboxes like hello@ for the team.</p>
             ) : (

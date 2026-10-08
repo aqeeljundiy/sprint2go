@@ -19,6 +19,8 @@ const platform = platforms[/zoom\./i.test(job.url) ? 'zoom' : 'meet'];
 
 const ADMIT_TIMEOUT_MS = Number(process.env.ADMIT_TIMEOUT_MIN || 10) * 60_000;
 const MAX_MEETING_MS = Number(process.env.MAX_MEETING_MIN || 180) * 60_000;
+// The company's meeting-bot hours left this month (sprint2go sends it): the bot leaves when they run out.
+const PLAN_MS = Number(job.maxMinutes) > 0 ? Number(job.maxMinutes) * 60_000 : Infinity;
 const ALONE_TIMEOUT_MS = Number(process.env.ALONE_TIMEOUT_MIN || 1) * 60_000;
 const HEADLESS = process.env.BOT_HEADLESS === '1';
 
@@ -204,6 +206,7 @@ async function main() {
     const s = await platform.state(page);
     if (s === 'ended' || s === 'denied') { log('The meeting ended'); assembler.flush(); return finish(page); }
     if (Date.now() - recStart > MAX_MEETING_MS) { log('Hit the maximum meeting length'); assembler.flush(); return finish(page); }
+    if (Date.now() - recStart > PLAN_MS) { log('The company’s meeting-bot hours for this month ran out'); assembler.flush(); return finish(page); }
     const n = await platform.participants(page);
     if (n !== null && n <= 1) {
       aloneSince ??= Date.now();

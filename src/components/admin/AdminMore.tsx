@@ -453,21 +453,26 @@ function RetentionDetails({ ws, chat, projects, onWorkspace }: { ws: Workspace; 
  * write back from a guest's row. Needs a WhatsApp Business number on Meta's Cloud API; the token stays on the server.
  */
 function WhatsAppBlock({ ws, canManage }: { ws: Workspace; canManage: boolean }) {
-  const [phoneId, setPhoneId] = useState('');
+  const [phoneId, setPhoneId] = useState(ws.whatsapp?.phoneNumberId ?? '');
   const [token, setToken] = useState('');
+  const [secret, setSecret] = useState('');
   const [display, setDisplay] = useState(ws.whatsapp?.displayPhone ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [open, setOpen] = useState(false);
   const on = !!ws.whatsapp?.connected;
+  // Meta signs every message with the app's secret; without it, nothing can be checked, so nothing is read.
+  const needsSecret = !caps.whatsappAppSecret;
+  const unchecked = on && !ws.whatsapp?.secured;
   const hook = `${location.origin}/api/whatsapp/webhook`;
   const connect = async () => {
     setBusy(true);
     setErr('');
-    const r = await fetch('/api/whatsapp/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, phoneNumberId: phoneId, token, displayPhone: display }) });
+    const r = await fetch('/api/whatsapp/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, phoneNumberId: phoneId, token, displayPhone: display, appSecret: secret || undefined }) });
     setBusy(false);
     if (!r.ok) return setErr(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t connect.');
     setToken('');
+    setSecret('');
     setOpen(false);
   };
   const disconnect = () => confirm('Disconnect WhatsApp? Messages from guests stop arriving here.') && void fetch('/api/whatsapp/connect', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) });
@@ -475,35 +480,52 @@ function WhatsAppBlock({ ws, canManage }: { ws: Workspace; canManage: boolean })
     <div className="set-block">
       <h3>WhatsApp</h3>
       <Row title="WhatsApp for guests" hint={on ? `Connected${ws.whatsapp?.displayPhone ? ` as ${ws.whatsapp.displayPhone}` : ''}. Guests’ messages land in their project’s shared channel; write back from the Guests tab.` : 'Guests message your WhatsApp Business number; it lands in their project’s shared channel. Needs a number on Meta’s Cloud API.'}>
-        {on ? (
+        {on && !unchecked ? (
           <button type="button" className="ghost-btn sm" onClick={disconnect} disabled={!canManage}>
             Disconnect
           </button>
         ) : (
           <button type="button" className="ghost-btn sm" onClick={() => setOpen((x) => !x)} disabled={!canManage}>
-            Connect
+            {unchecked ? 'Add the app secret' : 'Connect'}
           </button>
         )}
       </Row>
-      <div className={`fold ${open && !on ? 'open' : ''}`}>
+      {unchecked && <p className="warn-note small">Messages from WhatsApp aren’t read yet: Meta signs each one with your app’s secret, and we need it to check that they really come from Meta. Add the app secret to switch it on.</p>}
+      <div className={`fold ${open && (!on || unchecked) ? 'open' : ''}`}>
         <div className="fold-in wa-form">
-          <p className="muted small">In Meta for Developers: your app, WhatsApp, API setup. Copy the phone number ID and make a permanent access token (a system user with the WhatsApp permissions).</p>
-          <label className="team-field">
-            <span>Phone number ID</span>
-            <input value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder="e.g. 103912345678901" />
-          </label>
-          <label className="team-field">
-            <span>Access token</span>
-            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG…" autoComplete="off" />
-          </label>
-          <label className="team-field">
-            <span>Shown as</span>
-            <input value={display} onChange={(e) => setDisplay(e.target.value)} placeholder="+62 812 0000 0000 (optional)" />
-          </label>
+          <p className="muted small">
+            {unchecked
+              ? 'In Meta for Developers: your app, App settings, Basic. Copy the app secret.'
+              : `In Meta for Developers: your app, WhatsApp, API setup. Copy the phone number ID and make a permanent access token (a system user with the WhatsApp permissions)${needsSecret ? '. The app secret is under App settings, Basic.' : '.'}`}
+          </p>
+          {!unchecked && (
+            <>
+              <label className="team-field">
+                <span>Phone number ID</span>
+                <input value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder="e.g. 103912345678901" />
+              </label>
+              <label className="team-field">
+                <span>Access token</span>
+                <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG…" autoComplete="off" />
+              </label>
+            </>
+          )}
+          {(needsSecret || unchecked) && (
+            <label className="team-field">
+              <span>App secret</span>
+              <input type="password" value={secret} onChange={(e) => setSecret(e.target.value.trim())} placeholder="32 letters and numbers" autoComplete="off" />
+            </label>
+          )}
+          {!unchecked && (
+            <label className="team-field">
+              <span>Shown as</span>
+              <input value={display} onChange={(e) => setDisplay(e.target.value)} placeholder="+62 812 0000 0000 (optional)" />
+            </label>
+          )}
           {err && <p className="err small">{err}</p>}
           <div className="wl-new-actions">
-            <button type="button" className="primary-btn sm" disabled={busy || !phoneId.trim() || token.trim().length < 20} onClick={() => void connect()}>
-              {busy ? 'Connecting…' : 'Connect'}
+            <button type="button" className="primary-btn sm" disabled={busy || (unchecked ? secret.length < 32 : !phoneId.trim() || token.trim().length < 20 || (needsSecret && secret.length < 32))} onClick={() => void connect()}>
+              {busy ? 'Saving…' : unchecked ? 'Save the app secret' : 'Connect'}
             </button>
           </div>
         </div>

@@ -1,13 +1,14 @@
 // What a client can see and do. One set of rules for the client app, "View as client" and the local server.
 import { kindOf } from './stages';
+import { hasBranding } from './data/pricing';
 import { DEFAULT_CLIENT_ACCESS, type Channel, type Client, type ClientAccess, type ClientPerson, type DataTable, type DriveItem, type Meeting, type TableRow, type Todo, type User, type Workspace } from './types';
 
 /** A project's guest settings: the company's, then its type's (e.g. Partners see more), then the project's own changes. */
 export const accessFor = (ws: Pick<Workspace, 'clientAccess' | 'plan'> & { clientAccessByType?: Workspace['clientAccessByType'] }, client: Pick<Client, 'access'> & { type?: string }): ClientAccess => {
   const byType = client.type ? ws.clientAccessByType?.[client.type] : undefined;
   const a = { ...DEFAULT_CLIENT_ACCESS, ...(ws.clientAccess ?? {}), ...(byType ?? {}), ...(client.access ?? {}) };
-  // Hiding "Made with sprint2go" needs the branding add-on.
-  return { ...a, hideBranding: a.hideBranding && !!ws.plan?.addons.branding };
+  // Hiding "Made with sprint2go" needs the branding add-on (Business includes it), as the billing page says.
+  return { ...a, hideBranding: a.hideBranding && hasBranding(ws.plan) };
 };
 
 /** Everyone at the client who can sign in: the client's people, plus guests already in its shared channels. */

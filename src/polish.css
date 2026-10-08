@@ -2110,6 +2110,9 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .is-leaving.toast {
   animation: s2gToastOut 0.2s ease forwards !important;
 }
+.is-leaving.paused-banner {
+  animation: s2gFadeOut 0.18s ease-in forwards !important;
+}
 @keyframes s2gFadeOut {
   to {
     opacity: 0;
@@ -3598,6 +3601,25 @@ p.trial-note > svg:first-child {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+/* hosted mailboxes beyond the plan's room */
+.ed-room.over {
+  color: var(--warn);
+}
+/* credits ordered and waiting for the bank transfer */
+.ed-credits .ed-orders {
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.ed-credits .cancel-confirm {
+  align-items: center;
+}
+.ed-credits .cancel-confirm small {
+  flex-basis: 100%;
+  font-size: 12.5px;
+  color: var(--text-3);
 }
 .ed-head {
   display: flex;

@@ -7,7 +7,7 @@
 //   Read from Google's public holiday calendars (no key), cached per country, refreshed once a day.
 import { createHash, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { expand, parseCalendar, type Occurrence } from './ical.ts';
+import { expand, parseCalendar, type Occurrence } from './ics.ts';
 import { FetchError, normalizeUrl, safeGet } from './safeFetch.ts';
 import { findMeetingLink } from '../src/meetingLinks.ts';
 import { holidayCalendarId, holidayCountry, holidayFeedUrl } from '../src/data/holidays.ts';

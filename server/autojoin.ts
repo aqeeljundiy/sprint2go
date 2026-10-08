@@ -7,6 +7,7 @@ import * as db from './db.ts';
 import { botJoins, callKey, meetingLinkOf, notetakerJoins, type JoinMode } from '../src/meetingLinks.ts';
 import { meetHours } from '../src/data/pricing.ts';
 import { teamSize } from './aiplan.ts';
+import { readOnlyWhy } from './billing.ts';
 
 db.db.exec('CREATE TABLE IF NOT EXISTS autojoin (key TEXT PRIMARY KEY, event_id TEXT NOT NULL, workspace_id TEXT NOT NULL, meeting_id TEXT, outcome TEXT NOT NULL, at TEXT NOT NULL)');
 
@@ -66,7 +67,7 @@ export async function runAutoJoin(deps: AutoJoinDeps, now = Date.now()): Promise
       if (!link || !notetakerJoins(link.kind)) continue;
       // The event's company, else the owner's first (a linked calendar belongs to the person, not one company).
       const ws = wss.find((w) => w.id === e.workspaceId && (w.members ?? []).some((m: any) => m.userId === e.userId)) ?? wss.find((w) => (w.members ?? []).some((m: any) => m.userId === e.userId));
-      if (!ws || ws.suspended) continue;
+      if (!ws || ws.suspended || readOnlyWhy(ws)) continue; // a paused company records nothing
       const owner = users.get(e.userId);
       if (!owner || owner.deletedAt || owner.suspended) continue;
       const addresses = new Set<string>([String(owner.email ?? '').toLowerCase(), ...(ws.accounts ?? []).filter((a: any) => (a.users ?? []).includes(e.userId)).map((a: any) => String(a.email).toLowerCase())]);

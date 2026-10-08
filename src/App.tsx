@@ -2178,7 +2178,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const real = { ...m, bot: true, ...(d.language ? { language: d.language } : {}) };
       setMeetings((ms) => [real, ...ms]);
       void fetch('/api/meet/bot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ meeting: real }) }).then(async (r) => {
-        if (!r.ok) showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t send the notetaker' });
+        if (r.ok) return;
+        const error = ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t send the notetaker';
+        // Refused before it was saved (no hours left, a read-only company): the meeting says so instead of waiting forever.
+        setMeetings((ms) => ms.map((x) => (x.id === id && x.status === 'queued' ? { ...x, status: 'failed', error, log: [...(x.log ?? []), { message: `Couldn’t send the bot: ${error}`, at: nowIso() }] } : x)));
+        showToast({ text: error, ms: 7000 });
       });
       return;
     }
@@ -4411,6 +4415,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           botName={meetSettings.botName}
           languages={meetSettings.languages}
           real={recorderOn}
+          workspaceId={ws.id}
+          isOwner={ws.members.some((m) => m.userId === user.id && m.role === 'owner')}
           seed={sendBotSeed ?? undefined}
           onSend={(d) => sendBot({ ...d, ...(sendBotSeed ? { fromEvent: sendBotSeed.fromEvent, attendees: sendBotSeed.attendees } : {}) })}
           onClose={() => setSendBotOpen(false)}

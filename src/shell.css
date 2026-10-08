@@ -1099,6 +1099,14 @@ body.resizing-x .pane-resize::after {
   font-size: 12.5px;
   color: var(--text-3);
 }
+/* a second line under a setting: what's used of a limit */
+.set-row small.use-line {
+  display: block;
+  margin-top: 2px;
+}
+.set-row small.use-line.over {
+  color: var(--warn);
+}
 .toggle-row {
   cursor: pointer;
 }

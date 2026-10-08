@@ -292,7 +292,7 @@ export interface Workspace {
   holidays?: { country: string }; // public holidays in everyone's calendar (src/data/holidays.ts)
   createdAt?: string;
   suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
-  whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string }; // WhatsApp Business (Meta Cloud API); the token stays on the server
+  whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string; secured?: boolean }; // WhatsApp Business (Meta Cloud API); the token and app secret stay on the server. secured: Meta's signatures can be checked, so messages are read
   /** Read tracking on mail to people outside the company (Settings, Security & data). Off: nobody can track. */
   readTracking?: boolean;
 }
@@ -760,6 +760,9 @@ export interface Plan {
   payment?: { method: 'qris' | 'va' | 'card' | 'ewallet'; label: string };
   billing: { company: string; npwp?: string; address?: string; emails: string[] };
   since: string;
+  pauses?: { from: string; to?: string }[]; // the server's record of pauses: up to 3 months in any year
+  cancelAt?: string; // cancelled: the plan moves to Free then, at the end of the period that's paid for (the server's)
+  cancel?: boolean; // the app asks to cancel (true) or to keep the plan (false); the server turns it into cancelAt
 }
 
 export type ProviderId =

@@ -1,5 +1,6 @@
-# Every push and pull request: both typechecks, the build, the demo-only guard, the unit checks and a mail smoke test
-# (the server starts on a throwaway data folder and really receives mail over SMTP).
+# Every push and pull request: both typechecks, the build, the demo-only guard, the unit checks, the calendar parser's
+# tests, a mail smoke test (the server starts on a throwaway data folder and really receives mail over SMTP) and the
+# security and billing checks (who may see and change what, read-only companies, plan limits, signed webhooks, DKIM).
 name: CI
 on:
   push:
@@ -26,5 +27,9 @@ jobs:
         run: node scripts/check-demo-guards.mjs
       - name: Unit checks
         run: node --import ./server/register.mjs scripts/unit-tests.mjs
+      - name: Calendar parser (invites and calendar links)
+        run: node --import ./server/register.mjs --test server/ics.test.ts
       - name: Mail smoke test
         run: node scripts/smoke-mail.mjs
+      - name: Security and billing checks
+        run: node scripts/security-tests.mjs

@@ -26,6 +26,7 @@ export const caps = {
   customDomains: false, // agencies' own addresses can get certificates (sprint2go has Dokploy set up)
   customTarget: 'custom.sprint2go.com', // what those addresses point at
   emailNotes: false, // the server can email people (teammates' away email, guests' notices)
+  whatsappAppSecret: false, // sprint2go's own Meta app signs WhatsApp messages; otherwise each company adds its app secret
 };
 export function loadCaps() {
   if (!location.protocol.startsWith('http')) return Promise.resolve(caps);

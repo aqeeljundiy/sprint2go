@@ -30,6 +30,8 @@ interface PlanView {
   until: string | null;
   route: { job: string; name: string; run: RoutePick | null; backup: RoutePick | null }[];
   allowance: { unlimited: boolean; share: number; left: Record<string, number | null>; pool: Record<string, number>; uses: Record<string, number>; seats: number; topUps: number; resets: string } | null;
+  spendUsd?: Record<string, number>; // this month, on each of the company's own keys (list prices)
+  capped?: string[]; // keys resting at their monthly cap until the 1st
 }
 const jobWord = (name: string) => (/^Ask AI/.test(name) ? name : name.charAt(0).toLowerCase() + name.slice(1));
 const joinAnd = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
@@ -158,7 +160,9 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   const pool = { braindump: ALLOWANCE.braindump * seats, ask: ALLOWANCE.ask * seats, meeting: ALLOWANCE.meetingHours * seats, summary: ALLOWANCE.summary * seats, draft: ALLOWANCE.draft * seats } as Record<string, number>;
   // With the server: this month's real uses and what's left of the shared allowance. Without one: the demo's sample.
   const allowance = view?.allowance;
-  const usedShare = allowance ? allowance.share : Math.min(0.95, usage.reduce((s, [, n, k]) => s + n / (pool[k] || 1), 0) / usage.length);
+  // On a server the numbers are the server's; the sample numbers are for the demo only (none while they load).
+  const showUsage = !!allowance || !server.on;
+  const usedShare = allowance ? allowance.share : server.on ? 0 : Math.min(0.95, usage.reduce((s, [, n, k]) => s + n / (pool[k] || 1), 0) / usage.length);
   const leftOf = (k: string) => (allowance ? allowance.left[k] : Math.round(pool[k] * (1 - usedShare)));
   const usedUp = !!allowance && !allowance.unlimited && allowance.share >= 1;
 
@@ -216,7 +220,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
         {included && ai.payer !== 'own' && (
           <div className="set-block">
             <h3>Left this month</h3>
-            {allowance?.unlimited ? null : (
+            {allowance?.unlimited || !showUsage ? null : (
               <div className="allow-meter">
                 <span className="bar wide">
                   <span style={{ width: `${Math.min(1, usedShare) * 100}%` }} className={usedShare > 0.8 ? 'warn' : ''} />
@@ -259,14 +263,18 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                 )}
               </div>
             )}
-            <div className="usage-grid">
-              {usage.map(([l, n, k]) => (
-                <div key={k}>
-                  <b>{allowance ? allowance.uses[k] ?? 0 : n}</b>
-                  <span>{allowance ? (k === 'meeting' ? 'Meetings with notes' : l) : l} {allowance ? <em>this month</em> : <em>of {pool[k]}</em>}</span>
-                </div>
-              ))}
-            </div>
+            {showUsage ? (
+              <div className="usage-grid">
+                {usage.map(([l, n, k]) => (
+                  <div key={k}>
+                    <b>{allowance ? allowance.uses[k] ?? 0 : n}</b>
+                    <span>{allowance ? (k === 'meeting' ? 'Meetings with notes' : l) : l} {allowance ? <em>this month</em> : <em>of {pool[k]}</em>}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="lazy-wait" aria-hidden />
+            )}
           </div>
         )}
 
@@ -276,7 +284,10 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           <div className="prov-list">
             {ai.providers.map((c) => {
               const info = providerOf(c.id)!;
-              const pct = c.capUsd ? Math.min(100, (c.spentUsd / c.capUsd) * 100) : 0;
+              // This month's spend: the server's count of every call on this key (the demo keeps a sample).
+              const spent = server.on ? view?.spendUsd?.[c.id] ?? 0 : c.spentUsd;
+              const resting = !!view?.capped?.includes(c.id);
+              const pct = c.capUsd ? Math.min(100, (spent / c.capUsd) * 100) : 0;
               return (
                 <div key={c.id} className={`prov ${ai.blocked.includes(c.id) ? 'blocked' : ''}`}>
                   <span className="prov-mark">{info.name.charAt(0)}</span>
@@ -308,7 +319,8 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                       <span className="bar wide">
                         <span style={{ width: `${pct}%` }} className={pct > 80 ? 'warn' : ''} />
                       </span>
-                      about US${c.spentUsd.toFixed(2)} this month{c.capUsd ? ` of US$${c.capUsd} cap` : ''}
+                      about US${spent.toFixed(2)} this month{c.capUsd ? ` of US$${c.capUsd} cap` : ''}
+                      {resting ? '. At its cap: it rests until the 1st' : ''}
                     </span>
                   </span>
                   <span className="prov-cap">
@@ -576,7 +588,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           <label className="set-row toggle-row">
             <span>
               <strong>Alert admins at 50%, 80% and 100%</strong>
-              <small>Of the allowance or a provider’s cap. At the cap, automatic jobs pause and buttons ask first</small>
+              <small>Of the plan’s allowance, the company’s limit and each key’s cap. A key at its cap rests until the 1st</small>
             </span>
             <button type="button" role="switch" aria-checked={ai.alerts} className={`switch ${ai.alerts ? 'on' : ''}`} onClick={() => set({ alerts: !ai.alerts })}>
               <span />

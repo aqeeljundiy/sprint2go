@@ -31,6 +31,7 @@ const LEAVING = [
   '.ev-detail',
   '.inline-sheet',
   '.fab',
+  '.paused-banner',
 ].join(',');
 
 const MS = 200;

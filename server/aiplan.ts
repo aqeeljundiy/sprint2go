@@ -250,12 +250,12 @@ export function ourChain(job: string): AIConfig[] {
   }
   return out;
 }
-/** Our speech to text for the meeting recorder (AI-plan companies without a speech key of their own). */
-export function ourSpeech() {
+/** Our speech to text for the meeting recorder (AI-plan companies without a speech key of their own), skipping providers the company blocked. */
+export function ourSpeech(may: (provider: string) => boolean = () => true) {
   const c = config();
   const r = c.jobs.speech;
   for (const x of [r.primary, r.fallback]) {
-    const k = x && keyFor(x.provider, c);
+    const k = x && may(x.provider) && keyFor(x.provider, c);
     if (x && k) return { provider: x.provider, apiKey: k.key, model: x.provider === 'sumopod' ? x.model : null };
   }
   return null;
