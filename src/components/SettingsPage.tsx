@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, CreditCard, HardDrive, KeyRound, KeySquare, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
+import { DEFAULT_PERMISSIONS } from '../types';
 import type { AISettings, AppId, BlockRule, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, User, Workspace } from '../types';
 import { AISection } from './admin/AISection';
 import { BillingSection } from './admin/BillingSection';
-import { AppsSection, MyAppsSection, MeetingsSection, SecuritySection, StorageSection, TeamsLink } from './admin/AdminMore';
+import { AppsSection, MyAppsSection, MeetingsSection, PermissionsSection, SecuritySection, StorageSection, TeamsLink } from './admin/AdminMore';
 import { trialPlan } from '../data/workspaces';
 import { Avatar } from './Avatar';
 import { BrandFields } from './WorkspaceForms';
@@ -21,6 +22,7 @@ import { changePassword, server } from '../sync';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
+  { id: 'permissions', name: 'Permissions', icon: KeySquare, group: 'Company' },
   { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
   { id: 'clients', get name() { return `${term.Who} access`; }, icon: Handshake, group: 'Company' },
   { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
@@ -119,6 +121,9 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
   const canManage = myRole !== 'member';
+  const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  // Members see the company's money (plan, billing, AI costs) only when the company allows it.
+  const sections = SECTIONS.filter((x) => canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage'));
   const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
 
   return (
@@ -131,9 +136,9 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
       </header>
       <div className="settings-body">
         <nav className="settings-nav">
-          {SECTIONS.map(({ id, name, icon: Icon, group }, i) => (
+          {sections.map(({ id, name, icon: Icon, group }, i) => (
             <span key={id} className="settings-nav-item">
-              {(i === 0 || SECTIONS[i - 1].group !== group) && <span className="settings-group">{group === 'Company' ? ws.name || 'Company' : 'You'}</span>}
+              {(i === 0 || sections[i - 1].group !== group) && <span className="settings-group">{group === 'Company' ? ws.name || 'Company' : 'You'}</span>}
               <button className={section === id ? 'on' : ''} onClick={() => onSection(id)}>
                 <Icon size={16} /> {name}
               </button>
@@ -503,7 +508,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             </>
           )}
 
-          {section === 'storage' && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} byChannel={admin.byChannel} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
+          {section === 'storage' && sections.some((x) => x.id === 'storage') && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} byChannel={admin.byChannel} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'clients' && (
             <>
               <h2>{term.Who} access</h2>
@@ -518,6 +523,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
+          {section === 'permissions' && <PermissionsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'myapps' && myApps && (
@@ -532,8 +538,9 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             />
           )}
           {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}
-          {section === 'ai' && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
-          {section === 'billing' && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
+          {!sections.some((x) => x.id === section) && <p className="muted">Ask an admin about this.</p>}
+          {section === 'ai' && sections.some((x) => x.id === 'ai') && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
+          {section === 'billing' && sections.some((x) => x.id === 'billing') && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
           {section === 'security' && <SecuritySection ws={ws} isOwner={myRole === 'owner'} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} users={wsUsers} />}
         </div>
       </div>

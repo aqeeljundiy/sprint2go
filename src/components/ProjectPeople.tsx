@@ -11,7 +11,7 @@ import { personOption } from './ui/PeopleList';
  * Who's on a project: the owner, teammates (Lead or Member) and guests. Teammates on it see it in their
  * sidebar and get its news; guests are invited from the Guests tab.
  */
-export function ProjectPeople({ client, users, me, canEdit, onPatch, onGuests }: { client: Client; users: User[]; me: string; canEdit: boolean; onPatch: (p: Partial<Client>) => void; onGuests: () => void }) {
+export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit, onPatch, onGuests }: { client: Client; users: User[]; me: string; canEdit: boolean; canInvite?: boolean; onPatch: (p: Partial<Client>) => void; onGuests: () => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const members = client.members ?? [];
@@ -100,9 +100,11 @@ export function ProjectPeople({ client, users, me, canEdit, onPatch, onGuests }:
           ) : (
             <p className="muted small">No guests yet. Guests see what you share in their own space.</p>
           )}
-          <button type="button" className="ghost-btn sm" onClick={() => (setOpen(false), onGuests())}>
-            <UserPlus size={13} /> Invite a guest
-          </button>
+          {canInvite && (
+            <button type="button" className="ghost-btn sm" onClick={() => (setOpen(false), onGuests())}>
+              <UserPlus size={13} /> Invite a guest
+            </button>
+          )}
         </div>
       </Popover>
     </>

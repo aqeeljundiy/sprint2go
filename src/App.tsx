@@ -1096,6 +1096,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   const canCreateTeams = isAdmin || perms.createTeams;
+  const canCreateProjects = isAdmin || perms.createProjects;
+  const seesAllProjects = isAdmin || perms.seeAllProjects;
 
   /** The DM channel between me and someone (created on first use). */
   const dmWith = (otherId: string) => {
@@ -2625,16 +2627,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             scope={projScope}
             tasks={wsTasks}
             clients={wsClientsAll}
-            isAdmin={isAdmin}
+            isAdmin={seesAllProjects}
             myClientIds={myClientIds}
             onScope={(sc) => {
               setProjScope(sc);
               setSidebarOpen(false);
             }}
-            onAddClient={(name, domain, type) => {
-              const c = createProject(name, { domain, type });
-              setProjScope({ kind: 'client', id: c.id });
-            }}
+            onAddClient={
+              canCreateProjects
+                ? (name, domain, type) => {
+                    const c = createProject(name, { domain, type });
+                    setProjScope({ kind: 'client', id: c.id });
+                  }
+                : undefined
+            }
           />
           ) : appMode === 'tasks' ? (
           <TasksSidebar
@@ -2652,10 +2658,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }}
             projectsApp={enabled.has('projects')}
             onBrainDump={() => setDump('')}
-            onAddClient={(name, domain, type) => {
-              const c = createProject(name, { domain, type });
-              setTaskScope({ kind: 'client', id: c.id });
-            }}
+            onAddClient={
+              canCreateProjects
+                ? (name, domain, type) => {
+                    const c = createProject(name, { domain, type });
+                    setTaskScope({ kind: 'client', id: c.id });
+                  }
+                : undefined
+            }
           />
           ) : appMode === 'meet' ? (
           <MeetSidebar
@@ -2874,20 +2884,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <ProjectsHome
             key={projNew}
             startAdding={projNew > 0}
-            projects={isAdmin ? wsClientsAll : wsClientsAll.filter((c) => myClientIds.includes(c.id))}
+            projects={seesAllProjects ? wsClientsAll : wsClientsAll.filter((c) => myClientIds.includes(c.id))}
             tasks={wsTasks}
             users={members}
             onOpen={(id) => setProjScope({ kind: 'client', id })}
-            onCreate={(name, type) => {
-              const c = createProject(name, { type });
-              setProjScope({ kind: 'client', id: c.id });
-            }}
+            onCreate={
+              canCreateProjects
+                ? (name, type) => {
+                    const c = createProject(name, { type });
+                    setProjScope({ kind: 'client', id: c.id });
+                  }
+                : undefined
+            }
             onMenu={() => setSidebarOpen(true)}
           />
         )}
         {(mode === 'tasks' || (mode === 'projects' && projScope.kind !== 'projects')) && (
           <TasksView
             scope={mode === 'projects' ? projScope : taskScope}
+            canInviteGuests={isAdmin || perms.inviteGuests}
             tasks={wsTasks}
             clients={wsClientsAll}
             teams={wsTeams}
@@ -3269,6 +3284,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               toast={showToast}
               channels={wsChannels}
               isAdmin={isAdmin}
+              canEditTables={perms.editTables}
+              canDeleteThings={perms.deleteThings}
               serverOn={server.on}
               onCompose={(m) => openCompose({ initial: { to: m.to ? [{ name: m.to, email: m.to }] : [], cc: [], subject: m.subject, html: textToHtml(m.body) + settings.signature, text: m.body, files: [], track: settings.trackByDefault, trackOptions: DEFAULT_TRACK_OPTIONS, fromId: (myAccounts.find((a) => a.kind === 'personal') ?? myAccounts[0])?.id ?? '' } })}
             />

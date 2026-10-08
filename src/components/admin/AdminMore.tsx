@@ -2,6 +2,7 @@ import { LanguagePicker } from '../LanguagePicker';
 import { useState } from 'react';
 import { term } from '../../terms';
 import { ArrowDown, ArrowUp, Cloud, Download, FileText, HardDrive, Lock, ShieldCheck, Users, Video } from 'lucide-react';
+import { DEFAULT_PERMISSIONS, type MemberPermissions } from '../../types';
 import type { AppId, DriveItem, MeetingSettings, Plan, StorageSettings, Team, User, Workspace } from '../../types';
 import { fmtSize } from '../../data/drive';
 import { storageGB, rp } from '../../data/pricing';
@@ -24,6 +25,38 @@ const Row = ({ title, hint, children }: { title: React.ReactNode; hint?: string;
     {children}
   </div>
 );
+
+/* ---------------- What Members can do ---------------- */
+
+export function PermissionsSection({ ws, canManage, onWorkspace }: { ws: Workspace; canManage: boolean; onWorkspace: (p: Partial<Workspace>) => void }) {
+  const p = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  const set = (k: keyof MemberPermissions, v: boolean) => onWorkspace({ permissions: { ...ws.permissions, [k]: v } });
+  const rows: { k: keyof MemberPermissions; title: string; hint: string }[] = [
+    { k: 'createProjects', title: `Start new ${term.many}`, hint: `They become the ${term.one}’s Lead` },
+    { k: 'seeAllProjects', title: `See every ${term.one}`, hint: `Off: only the ${term.many} they’re on` },
+    { k: 'inviteGuests', title: 'Invite guests', hint: `Bring a ${term.who}’s people into a ${term.one}. Its Lead always can.` },
+    { k: 'editTables', title: 'Change how tables work', hint: 'Columns, views and automations. Adding and editing rows is always allowed.' },
+    { k: 'createTeams', title: 'Create teams', hint: 'They lead the team they make' },
+    { k: 'deleteThings', title: 'Delete things', hint: `${term.Many}, tables and channels, and other people’s notes and files. Their own are always theirs to delete.` },
+    { k: 'seeBilling', title: 'See plan, billing and AI usage', hint: 'What the company pays and what the AI costs' },
+  ];
+  return (
+    <>
+      <h2>Permissions</h2>
+      <p className="set-intro">Owners and admins can do everything. These switches decide what people with the Member role can do. A {term.one}’s Lead can always manage that {term.one}: its people, guests and settings.</p>
+      <fieldset className="plain" disabled={!canManage}>
+        <div className="set-block">
+          <h3>What Members can do</h3>
+          {rows.map(({ k, title, hint }) => (
+            <Row key={k} title={title} hint={hint}>
+              <Switch on={p[k]} onChange={(v) => set(k, v)} />
+            </Row>
+          ))}
+        </div>
+      </fieldset>
+    </>
+  );
+}
 
 /* ---------------- Storage ---------------- */
 

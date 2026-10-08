@@ -99,6 +99,7 @@ interface Props {
   files: DriveItem[];
   workspace: Workspace;
   canManage: boolean; // admins change client access
+  canInviteGuests?: boolean; // Members may invite guests (company setting); a project's Lead always can
   onViewAs: (clientId: string, email: string) => void;
   onPatchClient: (id: string, patch: Partial<Client>) => void;
   onInviteClientPerson: (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string }) => void;
@@ -618,6 +619,8 @@ export function TasksView(p: Props) {
   if (scope.kind === 'past')
     return <PastClients clients={p.clients} tasks={p.tasks} canManage={p.canManage} onOpen={(id) => p.onScope({ kind: 'client', id })} onReactivate={p.onReactivateClient} />;
 
+  // Admins, the owner and the project's Leads manage a project: its status, people, guests and their access.
+  const projectManage = !!client && (p.canManage || client.ownerId === p.me || (client.members ?? []).some((m) => m.userId === p.me && m.role === 'lead'));
   return (
     <section className="tasks-pane view-enter">
       <header className="tracking-head tasks-head">
@@ -638,7 +641,7 @@ export function TasksView(p: Props) {
         <div className="th-text">
           <h1>{heading}</h1>
           <p>
-            {client && (p.canManage || client.ownerId === p.me) ? (
+            {client && projectManage ? (
               <Select<string>
                 value={client.type ?? ''}
                 onChange={(v) => p.onPatchClient(client.id, { type: v || undefined })}
@@ -658,14 +661,14 @@ export function TasksView(p: Props) {
               <span className="ended-chip">
                 <Archive size={12} /> Ended{client.endedAt ? ` ${new Date(client.endedAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
               </span>
-              {(p.canManage || client.ownerId === p.me) && (
+              {projectManage && (
                 <button className="ghost-btn sm" onClick={() => p.onReactivateClient(client.id)}>
                   <RotateCcw size={13} /> Work with them again
                 </button>
               )}
             </span>
           ) : (
-            (p.canManage || client.ownerId === p.me) && (
+            projectManage && (
               <span className="client-status">
                 <Select<'lead' | 'active' | 'paused'>
                   value={client.status as 'lead' | 'active' | 'paused'}
@@ -684,7 +687,7 @@ export function TasksView(p: Props) {
               </span>
             )
           ))}
-        {client && <ProjectPeople client={client} users={p.users} me={p.me} canEdit={p.canManage || client.ownerId === p.me || (client.members ?? []).some((m) => m.userId === p.me && m.role === 'lead')} onPatch={(x) => p.onPatchClient(client.id, x)} onGuests={() => setClientTab('portal')} />}
+        {client && <ProjectPeople client={client} users={p.users} me={p.me} canEdit={projectManage} canInvite={projectManage || !!p.canInviteGuests} onPatch={(x) => p.onPatchClient(client.id, x)} onGuests={() => setClientTab('portal')} />}
         <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
           <LayoutTemplate size={14} /> <span>Template</span>
         </button>
@@ -1420,7 +1423,7 @@ export function TasksView(p: Props) {
                       {g.status === 'pending' ? (
                         <>
                           <span className="guest-status invited">Asked to join</span>
-                          {p.canManage && (
+                          {projectManage && (
                             <button className="primary-btn sm" onClick={() => p.onApproveClientPerson(client.id, g.email)}>
                               Approve
                             </button>
@@ -1434,16 +1437,17 @@ export function TasksView(p: Props) {
                         onChange={(role) => setPeople(people.map((x) => (x.email === g.email ? { ...x, role } : x)))}
                         label="Role"
                         className="sel-flat"
-                        disabled={!p.canManage}
+                        disabled={!projectManage}
                         options={(['viewer', 'collaborator', 'approver'] as const).map((r) => ({ value: r, label: ROLE_NAME[r], hint: ROLE_HINT[r] }))}
                       />
-                      {p.canManage && (
+                      {projectManage && (
                         <button className="icon-btn sm" aria-label="Remove access" title="Remove access" onClick={() => setPeople(people.filter((x) => x.email !== g.email))}>
                           <X size={14} />
                         </button>
                       )}
                     </div>
                   ))}
+                  {(projectManage || p.canInviteGuests) ? (
                   <div className="pa-invite">
                     <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Name" />
                     <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={client.domain ? `name@${client.domain}` : 'name@company.com'} />
@@ -1461,6 +1465,9 @@ export function TasksView(p: Props) {
                       <Plus size={13} /> Invite
                     </button>
                   </div>
+                  ) : (
+                    <p className="muted small">Only this {term.one}’s Lead or an admin can invite guests.</p>
+                  )}
 
                   <h4>Settings for {client.name}</h4>
                   <ClientAccessForm
@@ -1468,7 +1475,7 @@ export function TasksView(p: Props) {
                     company={company}
                     overrides={client.access}
                     teams={p.teams}
-                    canManage={p.canManage}
+                    canManage={projectManage}
                     brandingAvailable={!!p.workspace.plan?.addons.branding}
                     onChange={(patch) => p.onPatchClient(client.id, { access: { ...(client.access ?? {}), ...patch } })}
                     onReset={(k) => {

@@ -10,6 +10,7 @@ import * as db from './db.ts';
 import * as ai from './ai.ts';
 import { AIError, testKey, withAI, type AIConfig } from './llm.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
+import { DEFAULT_PERMISSIONS } from '../src/types.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import * as tablesEngine from './tables.ts';
@@ -892,10 +893,56 @@ createServer(async (req, res) => {
           if (!before?.bot || !BOT_LIVE.has(before.status)) return d;
           return { ...d, bot: true, ...Object.fromEntries(BOT_FIELDS.filter((k) => k in before).map((k) => [k, before[k]])) };
         }) as db.Doc[];
+      // What Members may do (Settings > Permissions); owners and admins can do everything.
+      const permsOf = (wsId: string) => ({ ...DEFAULT_PERMISSIONS, ...((db.getDoc('workspaces', wsId) as any)?.permissions ?? {}) });
+      const limited = (wsId: unknown) => typeof wsId === 'string' && mine.has(wsId) && !isAdminOf(me, wsId);
+      const mayWrite = (d: db.Doc): db.Doc | null => {
+        const wsId = d.workspaceId as string;
+        if (!limited(wsId)) return d;
+        const p = permsOf(wsId);
+        const before = db.getDoc(coll, d.id) as any;
+        if (coll === 'clients' && !before && !p.createProjects) return null;
+        if (coll === 'teams') {
+          if (!before) return p.createTeams ? d : null;
+          if (before.leadId === me) return d;
+          // Anyone else changes only themselves: in or out (in only when the team is open), or asking to join.
+          const wasIn = (before.members ?? []).includes(me);
+          const nowIn = ((d as any).members ?? []).includes(me);
+          const others = (before.members ?? []).filter((x: string) => x !== me);
+          const members = nowIn && !wasIn && before.join !== 'open' ? before.members ?? [] : [...others, ...(nowIn ? [me] : [])];
+          const ask = ((d as any).requests ?? []).find((x: any) => x?.userId === me);
+          const requests = [...(before.requests ?? []).filter((x: any) => x.userId !== me), ...(ask && !members.includes(me) ? [{ userId: me, at: String(ask.at ?? new Date().toISOString()) }] : [])];
+          return { ...before, members, requests } as db.Doc;
+        }
+        if (coll === 'tables' && before && !p.editTables && before.createdBy !== me) {
+          // Rows and new choices yes; the columns themselves, automations and sharing stay as they were.
+          const fields = (before.fields ?? []).map((bf: any) => {
+            const nf = ((d as any).fields ?? []).find((x: any) => x.id === bf.id);
+            return nf && nf.type === bf.type ? { ...bf, options: nf.options ?? bf.options } : bf;
+          });
+          return { ...d, fields, rules: before.rules, intake: before.intake, signingSecret: before.signingSecret, share: before.share } as db.Doc;
+        }
+        return d;
+      };
+      const mayDelete = (before: any) => {
+        if (!before || !limited(before.workspaceId)) return true;
+        if (coll === 'teams') return false; // only admins delete teams
+        if (permsOf(before.workspaceId).deleteThings) return true;
+        if (coll === 'clients') return false;
+        if (coll === 'tables') return before.createdBy === me;
+        if (coll === 'channels') return before.kind === 'dm' || before.ownerId === me;
+        if (coll === 'notes' || coll === 'drive') return before.ownerId === me;
+        return true;
+      };
+      for (let i = ok.length - 1; i >= 0; i--) {
+        const d = mayWrite(ok[i]!);
+        if (d) ok[i] = d;
+        else ok.splice(i, 1);
+      }
       const dels = mine.size
         ? (deletes as string[]).filter((id) => {
             const before = db.getDoc(coll, id);
-            return !before || see(coll, before);
+            return !before || (see(coll, before) && mayDelete(before));
           })
         : [];
       const botAudio = coll === 'meetings' ? dels.filter((id: string) => (db.getDoc(coll, id) as any)?.recording?.url) : [];

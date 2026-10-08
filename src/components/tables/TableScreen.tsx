@@ -41,6 +41,8 @@ interface ScreenProps {
   toast: (t: { text: string; action?: { label: string; run: () => void } }) => void;
   channels: Channel[];
   isAdmin: boolean;
+  canEditTables?: boolean; // Members may change columns, views and automations (company setting)
+  canDeleteThings?: boolean; // Members may delete tables they didn't make (company setting)
   serverOn: boolean;
   onCompose: (m: { to: string; subject: string; body: string }) => void;
   /** A project's guest looking at a shared table: what they may do. */
@@ -75,6 +77,8 @@ export function TableScreen(p: ScreenProps) {
   const rowMenuAnchor = useRef<HTMLSpanElement>(null);
   const [tip, setTip] = usePersisted('s2g-tables-tip', true);
   const g = p.guest;
+  // Columns, views and automations: admins, whoever made the table, and Members when the company allows it.
+  const structure = !g && (p.isAdmin || p.canEditTables !== false || t.createdBy === p.me);
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [asking, setAsking] = useState<{ row: TableRow; f: TableField } | null>(null);
   useEffect(() => setName(t.name), [t.name]);
@@ -409,7 +413,7 @@ export function TableScreen(p: ScreenProps) {
             <Users size={13} /> <span className="lbl">{t.share?.enabled ? 'Shared' : 'Share'}</span>
           </button>
         )}
-        {!g && (
+        {structure && (
           <button className={`ghost-btn sm tb-auto-btn${t.intake?.enabled || t.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title="Data coming in, rules, webhooks">
             <Zap size={13} /> <span className="lbl">Automations</span>
           </button>
@@ -437,9 +441,11 @@ export function TableScreen(p: ScreenProps) {
             <button type="button" onClick={() => (setPop(null), exportCsv())}>
               <Download size={14} /> Download CSV{view && shown.length !== mine.length ? ` (${shown.length} shown)` : ''}
             </button>
-            <button type="button" className="danger" onClick={() => (setPop(null), deleteTable())}>
-              <Trash2 size={14} /> Delete table
-            </button>
+            {(p.isAdmin || p.canDeleteThings || t.createdBy === p.me) && (
+              <button type="button" className="danger" onClick={() => (setPop(null), deleteTable())}>
+                <Trash2 size={14} /> Delete table
+              </button>
+            )}
           </div>
         </Popover>
       </header>
@@ -451,10 +457,10 @@ export function TableScreen(p: ScreenProps) {
           value={view?.id ?? ''}
           canHide={false}
           order={{ order: t.views.map((v) => v.id), hidden: [] }}
-          onOrder={g ? undefined : (o) => patchTable({ views: o.order.map((id) => t.views.find((v) => v.id === id)!).filter(Boolean) })}
+          onOrder={!structure ? undefined : (o) => patchTable({ views: o.order.map((id) => t.views.find((v) => v.id === id)!).filter(Boolean) })}
           onSelect={(id) => {
             if (id !== view?.id) return (setViewId(id), setSelected(new Set()));
-            if (g) return;
+            if (!structure) return;
             // Clicking the open view: its settings, under its tab.
             refs.view.current = document.querySelector<HTMLButtonElement>(`.tb-views [role=tab].on`);
             setRenamingView(view.name);
@@ -462,10 +468,10 @@ export function TableScreen(p: ScreenProps) {
           }}
           items={t.views.map((v) => {
             const I = viewIcon(v.kind);
-            return { id: v.id, name: v.name, title: v.id === view?.id && !g ? 'View settings' : undefined, label: <><I size={13} /> {v.name}</> };
+            return { id: v.id, name: v.name, title: v.id === view?.id && structure ? 'View settings' : undefined, label: <><I size={13} /> {v.name}</> };
           })}
           extra={
-            !g && (
+            structure && (
               <button ref={refs.addView} className="tb-add-view" onClick={() => setPop('addView')} title="Add a view">
                 <Plus size={14} />
               </button>
@@ -600,6 +606,7 @@ export function TableScreen(p: ScreenProps) {
           ) : (
             <GridView
               locked={!!g}
+              fixedColumns={!structure}
               canAdd={canAdd}
               channels={p.channels}
               table={t}

@@ -19,7 +19,7 @@ interface Props {
   myClientIds: string[];
   onScope: (s: TaskScope) => void;
   onBrainDump: () => void;
-  onAddClient: (name: string, domain?: string, type?: string) => void;
+  onAddClient?: (name: string, domain?: string, type?: string) => void;
   projectsApp?: boolean; // projects have their own app: no project list here
 }
 
@@ -42,7 +42,7 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
 
   const save = () => {
     if (!name.trim()) return;
-    onAddClient(name.trim(), domain.trim().replace(/^@/, '') || undefined, type || undefined);
+    onAddClient?.(name.trim(), domain.trim().replace(/^@/, '') || undefined, type || undefined);
     setName('');
     setDomain('');
     setType('');
@@ -157,10 +157,12 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
             </div>
           </div>
         ) : (
-          <button className="nav-item" onClick={() => setAdding(true)} title={`Add ${term.one}`}>
-            <Plus size={17} />
-            <span className="sb-label">Add {term.one}</span>
-          </button>
+          onAddClient && (
+            <button className="nav-item" onClick={() => setAdding(true)} title={`Add ${term.one}`}>
+              <Plus size={17} />
+              <span className="sb-label">Add {term.one}</span>
+            </button>
+          )
         )}
       </nav>
         </>

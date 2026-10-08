@@ -34,6 +34,7 @@ export interface GridProps {
   onClear: (cells: { rowId: string; fieldId: string }[]) => void;
   readOnly?: boolean;
   locked?: boolean; // guests: no field settings, no selecting rows, no new fields
+  fixedColumns?: boolean; // Members without "Change how tables work": rows yes, columns no
   canAdd?: boolean;
   channels?: Channel[];
   toast?: (t: string) => void;
@@ -214,6 +215,7 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
             wrapped={!!view.wrap?.includes(f.id)}
             pinned={i < pinnedN}
             grouped={view.groupBy === f.id}
+            fixed={p.fixedColumns}
             onRename={(name) => p.onSaveField({ ...f, name })}
             onDescribe={(description) => p.onSaveField({ ...f, description: description || undefined })}
             onAction={action}
@@ -519,7 +521,7 @@ export function GridView(p: GridProps) {
             />
           ))}
           <div className="tb-th tb-add-col">
-            {!p.readOnly && !p.locked && (
+            {!p.readOnly && !p.locked && !p.fixedColumns && (
               <button ref={addRef} type="button" className="icon-btn sm" title="Add a column" onClick={() => setAdding(true)}>
                 <Plus size={15} />
               </button>

@@ -214,7 +214,7 @@ export interface MemberPermissions {
   seeBilling: boolean; // plan, billing and AI usage
   createTeams: boolean;
 }
-export const DEFAULT_PERMISSIONS: MemberPermissions = { createProjects: true, inviteGuests: true, seeAllProjects: true, editTables: true, deleteThings: false, seeBilling: false, createTeams: false };
+export const DEFAULT_PERMISSIONS: MemberPermissions = { createProjects: true, inviteGuests: true, seeAllProjects: false, editTables: true, deleteThings: false, seeBilling: false, createTeams: false };
 
 export type Role = 'owner' | 'admin' | 'member';
 

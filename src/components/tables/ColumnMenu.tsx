@@ -20,6 +20,7 @@ export function ColumnMenu({
   wrapped,
   pinned,
   grouped,
+  fixed,
   onRename,
   onDescribe,
   onAction,
@@ -33,6 +34,7 @@ export function ColumnMenu({
   wrapped: boolean;
   pinned: boolean; // this column is inside the pinned part
   grouped: boolean;
+  fixed?: boolean; // this person can't change the table's columns: only how this view shows them
   onRename: (name: string) => void;
   onDescribe: (d: string) => void;
   onAction: (a: ColumnAction) => void;
@@ -58,15 +60,27 @@ export function ColumnMenu({
   return (
     <Popover anchor={anchor} open={open} onClose={close} width={264} title={field.name}>
       <div className="tb-colmenu">
-        <input className="tb-fm-name" value={name} aria-label="Column name" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && close()} />
-        <textarea className="tb-col-desc" rows={1} value={desc} placeholder="Add a description (what this is for)" aria-label="Description" onChange={(e) => setDesc(e.target.value)} />
-        <button type="button" className="tb-colmenu-type" onClick={() => act('edit')}>
-          {type && <type.icon size={14} />}
-          <span>{type?.label ?? 'Field'}</span>
-          <small className="muted">
-            <Pencil size={11} /> Change type and settings
-          </small>
-        </button>
+        {fixed ? (
+          <p className="tb-colmenu-fixed">
+            {type && <type.icon size={14} />}
+            <span>
+              <strong>{field.name}</strong>
+              <small className="muted">{field.description || `${type?.label ?? 'Field'}. Only admins change columns here.`}</small>
+            </span>
+          </p>
+        ) : (
+          <>
+            <input className="tb-fm-name" value={name} aria-label="Column name" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && close()} />
+            <textarea className="tb-col-desc" rows={1} value={desc} placeholder="Add a description (what this is for)" aria-label="Description" onChange={(e) => setDesc(e.target.value)} />
+            <button type="button" className="tb-colmenu-type" onClick={() => act('edit')}>
+              {type && <type.icon size={14} />}
+              <span>{type?.label ?? 'Field'}</span>
+              <small className="muted">
+                <Pencil size={11} /> Change type and settings
+              </small>
+            </button>
+          </>
+        )}
         <div className="tb-colmenu-sep" />
         {sortable && (
           <>
@@ -97,12 +111,16 @@ export function ColumnMenu({
           </button>
         )}
         <div className="tb-colmenu-sep" />
-        <button type="button" onClick={() => act('insertLeft')}>
-          <Plus size={14} /> Add a column to the left
-        </button>
-        <button type="button" onClick={() => act('insertRight')}>
-          <Plus size={14} /> Add a column to the right
-        </button>
+        {!fixed && (
+          <>
+            <button type="button" onClick={() => act('insertLeft')}>
+              <Plus size={14} /> Add a column to the left
+            </button>
+            <button type="button" onClick={() => act('insertRight')}>
+              <Plus size={14} /> Add a column to the right
+            </button>
+          </>
+        )}
         {!first && (
           <div className="tb-colmenu-row">
             <button type="button" onClick={() => act('left')}>
@@ -113,12 +131,12 @@ export function ColumnMenu({
             </button>
           </div>
         )}
-        {!first && field.type !== 'button' && (
+        {!first && !fixed && field.type !== 'button' && (
           <button type="button" onClick={() => act('duplicate')}>
             <Copy size={14} /> Duplicate column
           </button>
         )}
-        {!first ? (
+        {fixed ? null : !first ? (
           <button type="button" className="danger" onClick={() => confirm(`Delete the “${field.name}” column and everything in it?`) && act('delete')}>
             <Trash2 size={14} /> Delete column
           </button>

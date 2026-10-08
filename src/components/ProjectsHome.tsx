@@ -15,7 +15,7 @@ import { SmoothHeight } from './ui/Smooth';
  * The Projects app's home: every project, the ones that need something first. Each card says what's wrong (late,
  * nobody on it, waiting on a guest) or that it's on track, and opens the project's hub.
  */
-export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu, startAdding }: { startAdding?: boolean; projects: Client[]; tasks: Todo[]; users: User[]; onOpen: (id: string) => void; onCreate: (name: string, type?: string) => void; onMenu: () => void }) {
+export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu, startAdding }: { startAdding?: boolean; projects: Client[]; tasks: Todo[]; users: User[]; onOpen: (id: string) => void; onCreate?: (name: string, type?: string) => void; onMenu: () => void }) {
   const [adding, setAdding] = useState(!!startAdding);
   const [name, setName] = useState('');
   const [type, setType] = useState('');
@@ -42,7 +42,7 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
   const rows = live.map((c) => ({ c, s: stats(c) })).sort((a, b) => b.s.late - a.s.late || b.s.nobody - a.s.nobody || a.c.name.localeCompare(b.c.name));
   const save = () => {
     if (!name.trim()) return;
-    onCreate(name.trim(), type || undefined);
+    onCreate?.(name.trim(), type || undefined);
     setName('');
     setType('');
     setAdding(false);
@@ -79,9 +79,11 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
             ))}
           </div>
         </Popover>
-        <button className="primary-btn sm" onClick={() => setAdding((a) => !a)}>
-          <Plus size={14} /> New {term.one}
-        </button>
+        {onCreate && (
+          <button className="primary-btn sm" onClick={() => setAdding((a) => !a)}>
+            <Plus size={14} /> New {term.one}
+          </button>
+        )}
       </header>
       <div className="tracking-scroll">
         <SmoothHeight>
@@ -105,9 +107,11 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
             </div>
             <p className="empty-title">No {term.many} yet</p>
             <p className="empty-sub">A {term.one} holds everything about one piece of work: its tasks, chat, mail, meetings, files, notes, logins and the guests you invite.</p>
-            <button className="primary-btn sm" onClick={() => setAdding(true)}>
-              <Plus size={14} /> New {term.one}
-            </button>
+            {onCreate && (
+              <button className="primary-btn sm" onClick={() => setAdding(true)}>
+                <Plus size={14} /> New {term.one}
+              </button>
+            )}
           </div>
         ) : (
           <div className="proj-grid">

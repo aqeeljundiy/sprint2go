@@ -16,7 +16,7 @@ interface Props {
   isAdmin: boolean;
   myClientIds: string[];
   onScope: (s: TaskScope) => void;
-  onAddClient: (name: string, domain?: string, type?: string) => void;
+  onAddClient?: (name: string, domain?: string, type?: string) => void; // missing: this person can't start projects
 }
 
 /**
@@ -40,7 +40,7 @@ export function ProjectsSidebar({ scope, tasks, clients: allClients, isAdmin, my
 
   const save = () => {
     if (!name.trim()) return;
-    onAddClient(name.trim(), domain.trim().replace(/^@/, '') || undefined, type || undefined);
+    onAddClient?.(name.trim(), domain.trim().replace(/^@/, '') || undefined, type || undefined);
     setName('');
     setDomain('');
     setType('');
@@ -49,10 +49,12 @@ export function ProjectsSidebar({ scope, tasks, clients: allClients, isAdmin, my
 
   return (
     <>
-      <button className="compose-btn" onClick={() => setAdding((a) => !a)} title={`New ${term.one}`}>
-        <Plus size={16} />
-        <span className="sb-label">New {term.one}</span>
-      </button>
+      {onAddClient && (
+        <button className="compose-btn" onClick={() => setAdding((a) => !a)} title={`New ${term.one}`}>
+          <Plus size={16} />
+          <span className="sb-label">New {term.one}</span>
+        </button>
+      )}
       <SmoothHeight>
         {adding && (
           <div className="add-client sb-label">
