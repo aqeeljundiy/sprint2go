@@ -2047,7 +2047,19 @@ createServer(async (req, res) => {
       if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });
       // Streamed, with ranges, so a long video plays and seeks without loading the whole file.
       const total = statSync(path).size;
-      const head = { 'content-type': f.type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=86400', 'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}` };
+      // The type is the uploader's word, so only kinds that can't run code open in the browser (images, video, audio, PDF,
+      // plain text); anything else (HTML, scripts, documents) downloads as a plain file. What opens is sandboxed too, so
+      // even an image format with scripts (SVG) can't act as the person who opened it.
+      const base = String(f.type ?? '').split(';')[0].trim().toLowerCase();
+      const viewable = /^(image\/(png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml|heic|heif)|video\/[\w.+-]+|audio\/[\w.+-]+|application\/pdf|text\/plain)$/.test(base);
+      const head = {
+        'content-type': viewable ? f.type : 'application/octet-stream',
+        'accept-ranges': 'bytes',
+        'cache-control': 'private, max-age=86400',
+        'content-disposition': `${viewable ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.name)}`,
+        // The browser's own PDF viewer doesn't open inside a sandbox; a PDF can't run page scripts anyway.
+        ...(base === 'application/pdf' ? {} : { 'content-security-policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox" }),
+      };
       const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
       if (range && total > 0) {
         const start = range[1] ? Number(range[1]) : Math.max(0, total - Number(range[2]));
