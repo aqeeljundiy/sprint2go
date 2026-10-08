@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, ArrowLeft, Building2, ClipboardList, CreditCard, Eye, Gauge, Inbox, LifeBuoy, LogOut, Megaphone, Menu, Monitor, Moon, Search, ServerCog, ShieldCheck, Sun, TrendingUp, UserCog, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, ArrowLeft, Building2, ClipboardList, CreditCard, Eye, Gauge, Inbox, LifeBuoy, LogOut, Megaphone, Menu, Monitor, Moon, Search, ServerCog, ShieldCheck, Sparkles, Sun, TrendingUp, UserCog, Users, X, type LucideIcon } from 'lucide-react';
 import { Wordmark } from '../components/Logo';
 import { signOut } from '../sync';
 import { ApiError, get, post, ROLE_LABEL, type Perm } from './api';
@@ -13,12 +13,13 @@ import { Growth } from './pages/Growth';
 import { Product } from './pages/Product';
 import { Platform } from './pages/Platform';
 import { Team } from './pages/Team';
+import { AIPage } from './pages/AI';
 
 type Item = { id: string; label: string; icon: LucideIcon; perm?: Perm };
 const NAV: { group: string; items: Item[] }[] = [
   { group: 'Inbox', items: [{ id: 'today', label: 'Today', icon: Gauge }, { id: 'tickets', label: 'Tickets', icon: LifeBuoy }] },
   { group: 'Customers', items: [{ id: 'companies', label: 'Companies', icon: Building2 }, { id: 'people', label: 'People', icon: Users }] },
-  { group: 'Business', items: [{ id: 'money', label: 'Money', icon: CreditCard }, { id: 'growth', label: 'Growth', icon: TrendingUp }] },
+  { group: 'Business', items: [{ id: 'money', label: 'Money', icon: CreditCard }, { id: 'ai', label: 'AI', icon: Sparkles }, { id: 'growth', label: 'Growth', icon: TrendingUp }] },
   { group: 'Run', items: [{ id: 'product', label: 'Product', icon: Megaphone }, { id: 'platform', label: 'Platform', icon: ServerCog }, { id: 'team', label: 'Team & settings', icon: UserCog }] },
 ];
 
@@ -140,6 +141,7 @@ export function AdminApp() {
   else if (section === 'companies') page = a ? <CompanyPage id={a} tab={b || 'overview'} key={a} /> : <Companies />;
   else if (section === 'people') page = a ? <PersonPage id={a} key={a} /> : <People />;
   else if (section === 'money') page = <Money tab={a || 'revenue'} />;
+  else if (section === 'ai') page = <AIPage tab={a || 'margin'} />;
   else if (section === 'growth') page = <Growth />;
   else if (section === 'product') page = <Product tab={a || 'announcements'} />;
   else if (section === 'platform') page = <Platform tab={a || 'health'} />;
@@ -253,6 +255,10 @@ const JUMPS = [
   { title: 'Revenue', to: '/admin/money/revenue' },
   { title: 'Invoices', to: '/admin/money/invoices' },
   { title: 'Plans & coupons', to: '/admin/money/plans' },
+  { title: 'AI margin', to: '/admin/ai/margin' },
+  { title: 'Our AI keys', to: '/admin/ai/keys' },
+  { title: 'AI models per job', to: '/admin/ai/models' },
+  { title: 'AI prices', to: '/admin/ai/prices' },
   { title: 'Growth', to: '/admin/growth' },
   { title: 'Announcements', to: '/admin/product/announcements' },
   { title: 'Feature flags', to: '/admin/product/flags' },

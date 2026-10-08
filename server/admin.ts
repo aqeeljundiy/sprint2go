@@ -10,6 +10,7 @@ import * as db from './db.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
 import * as mailer from './mailer.ts';
+import * as aiplan from './aiplan.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
 
@@ -207,6 +208,7 @@ async function warnings(ctx: AdminCtx) {
   const fresh = platform.errorGroups().filter((e) => !e.resolvedAt && e.lastAt > new Date(Date.now() - DAY).toISOString() && e.count >= 3);
   if (fresh.length) out.push({ kind: 'errors', level: 'normal', text: `${fresh.length} error${fresh.length === 1 ? '' : 's'} happening repeatedly today.`, to: '/admin/platform/errors' });
   if (!sys.https && sys.production) out.push({ kind: 'https', level: 'normal', text: 'The app runs over http. Add the real domain and a certificate.', to: '/admin/platform' });
+  out.push(...aiplan.problems(mrrOf)); // our AI keys, prices, and whether the AI plan pays for itself
   return out;
 }
 
@@ -303,6 +305,9 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   // Everything else needs a confirmed second step in this session.
   if (!op.totpOn) return (json(res, 428, { error: 'Set up two-step sign-in first.', enroll: true }), true);
   if (!verified) return (json(res, 401, { error: 'Enter your 2FA code.', verify: true }), true);
+
+  /* ----- AI: our keys, the model for each job, prices, and whether the AI plan pays (server/aiplan.ts) ----- */
+  if (sub === 'ai' || sub.startsWith('ai/')) return aiplan.handleAdmin(sub, { req, res, json, body, may, deny, log, email, mrrOf });
 
   /* ----- Today ----- */
   if (sub === 'today' && GET) {

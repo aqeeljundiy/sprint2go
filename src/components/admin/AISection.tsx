@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { term, brand as product } from '../../terms';
 import { server } from '../../sync';
 import { AISpend } from './AISpend';
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Play, Plus, ShieldOff, Sparkles, Trash2 } from 'lucide-react';
 import type { AIJobId, AISettings, ProviderConn, ProviderId, User, Workspace } from '../../types';
-import { JOBS, PROVIDERS, costPer100, presetJobs, providerOf } from '../../data/aiCatalog';
-import { ALLOWANCE, planName, rp, seatsFor } from '../../data/pricing';
+import { CRED_FIELDS, JOBS, PROVIDERS, costPer100, presetJobs, providerOf } from '../../data/aiCatalog';
+import { ALLOWANCE, TOP_UP, planName, rp, seatsFor } from '../../data/pricing';
 import { defaultAI } from '../../data/workspaces';
 import { Select, type Option } from '../ui/Select';
 
@@ -22,13 +22,81 @@ interface Props {
 
 const KIND_NAME = { direct: 'Direct', gateway: 'One key, many models', cloud: 'Company cloud account', private: 'Private', speech: 'Speech to text' } as const;
 
+type RoutePick = { provider: string; providerName: string; model: string; modelName: string; warn: string | null };
+/** What the server says about this company and our AI (GET /api/ai/plan). */
+interface PlanView {
+  eligible: boolean;
+  why: 'plan' | 'trial' | 'comp' | null;
+  until: string | null;
+  route: { job: string; name: string; run: RoutePick | null; backup: RoutePick | null }[];
+  allowance: { unlimited: boolean; share: number; left: Record<string, number | null>; pool: Record<string, number>; uses: Record<string, number>; seats: number; topUps: number; resets: string } | null;
+}
+const jobWord = (name: string) => (/^Ask AI/.test(name) ? name : name.charAt(0).toLowerCase() + name.slice(1));
+const joinAnd = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+/** "Who handles your data": each company that processes a job on our AI, in plain words, as the operators set it. */
+function DataRoute({ view, both }: { view: PlanView; both: boolean }) {
+  const groups = new Map<string, { pick: RoutePick; jobs: string[] }>();
+  for (const r of view.route) {
+    if (!r.run) continue;
+    const k = `${r.run.provider}|${r.run.model}`;
+    const g = groups.get(k) ?? { pick: r.run, jobs: [] };
+    g.jobs.push(jobWord(r.name));
+    groups.set(k, g);
+  }
+  const backups = Array.from(new Map(view.route.flatMap((r) => (r.backup ? [[`${r.backup.provider}|${r.backup.model}`, r.backup] as const] : []))).values()).filter((b) => !groups.has(`${b.provider}|${b.model}`));
+  const down = view.route.filter((r) => !r.run).map((r) => jobWord(r.name));
+  const warns = Array.from(new Map([...Array.from(groups.values()).map((g) => g.pick), ...backups].filter((x) => x.warn).map((x) => [x.provider, x])).values());
+  return (
+    <>
+      <p className="muted small">
+        On {product.name}’s AI, these companies process what each job sends them. We choose the models{both ? '; jobs you set to your own keys use those first' : ''}. This list always shows what runs today.
+      </p>
+      {Array.from(groups.values()).map((g) => (
+        <div key={`${g.pick.provider}|${g.pick.model}`} className="set-row">
+          <span>
+            <strong>
+              {g.pick.providerName} ({g.pick.modelName})
+            </strong>
+            <small>For {joinAnd(g.jobs)}</small>
+          </span>
+        </div>
+      ))}
+      {backups.length > 0 && <p className="muted small">If one of them is down, {joinAnd(backups.map((b) => `${b.providerName} (${b.modelName})`))} takes over for that job.</p>}
+      {down.length > 0 && (
+        <p className="muted small">
+          Not available on {product.name}’s AI right now: {joinAnd(down)}. To use {down.length === 1 ? 'it' : 'them'} now, add your own key below.
+        </p>
+      )}
+      {warns.map((w) => (
+        <p key={w.provider} className="warn-note">
+          <AlertTriangle size={14} /> {w.providerName}: {w.warn}
+        </p>
+      ))}
+    </>
+  );
+}
+
 /** Workspace settings → AI: who pays, providers and keys, presets, per-job routing with the guide, limits, usage. */
 export function AISection({ ws, people, users, me, canManage, onAI, onBilling, toast }: Props) {
   const ai = ws.ai ?? defaultAI(ws.plan?.track === 'own');
   const plan = ws.plan;
-  const included = plan?.track === 'ai' && plan.tier !== 'free';
+  // Whether our AI serves this company comes from the server (the AI plan, a trial, or free months on it);
+  // until it answers, the plan says it.
+  const [view, setView] = useState<PlanView | null>(null);
+  useEffect(() => {
+    if (!server.on) return;
+    let on = true;
+    void fetch(`/api/ai/plan?ws=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: PlanView | null) => on && setView(d), () => {});
+    return () => {
+      on = false;
+    };
+  }, [ws.id, plan?.track, plan?.tier, plan?.trialEnds, plan?.topUps, ai.payer]);
+  const included = view ? view.eligible : plan?.track === 'ai' && plan.tier !== 'free';
   const set = (p: Partial<AISettings>) => onAI({ ...ai, ...p });
-  const [adding, setAdding] = useState<{ id: ProviderId | null; key: string; url: string; state: 'idle' | 'testing' | 'error'; message?: string } | null>(null);
+  const [adding, setAdding] = useState<{ id: ProviderId | null; key: string; url: string; fields?: Record<string, string>; state: 'idle' | 'testing' | 'error'; message?: string } | null>(null);
   const [testing, setTesting] = useState<AIJobId | null>(null);
   const [tested, setTested] = useState<Partial<Record<AIJobId, string>>>({});
   const connected = ai.providers.filter((p) => p.status === 'ok').map((p) => p.id);
@@ -42,14 +110,18 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   const addProvider = () => {
     if (!adding?.id) return;
     const info = providerOf(adding.id)!;
-    const key = adding.key.trim();
-    if (key.length < 16 || (info.needsUrl && !/^https?:\/\//.test(adding.url.trim()) && adding.id === 'custom')) {
+    // Company cloud accounts (Bedrock, Vertex, Azure) send their details together, as JSON, in the key.
+    const cred = CRED_FIELDS[adding.id];
+    const fields = adding.fields ?? {};
+    const key = cred ? JSON.stringify(Object.fromEntries(cred.fields.map((f) => [f.key, (fields[f.key] ?? '').trim()]))) : adding.key.trim();
+    const url = cred ? (fields[cred.url] ?? '').trim() : adding.url.trim();
+    if (cred ? !cred.fields.every((f) => f.optional || fields[f.key]?.trim()) : key.length < 16 || (info.needsUrl && !/^https?:\/\//.test(url) && adding.id === 'custom')) {
       setAdding({ ...adding, state: 'error' });
       return;
     }
     setAdding({ ...adding, state: 'testing' });
     const save = (keyLast4: string) => {
-      const conn: ProviderConn = { id: adding.id!, keyLast4, addedAt: new Date().toISOString(), addedBy: me, status: 'ok', baseUrl: adding.url.trim() || undefined, spentUsd: 0 };
+      const conn: ProviderConn = { id: adding.id!, keyLast4, addedAt: new Date().toISOString(), addedBy: me, status: 'ok', baseUrl: url || undefined, spentUsd: 0 };
       const providers = [...ai.providers.filter((p) => p.id !== conn.id), conn];
       const jobs = ai.preset === 'custom' ? ai.jobs : presetJobs(ai.preset === 'best' ? 'best' : ai.preset === 'cheap' ? 'cheap' : 'balanced', providers.map((p) => p.id), allowIncluded);
       onAI({ ...ai, providers, jobs, payer: ai.payer === 'sprint2go' ? 'both' : ai.payer });
@@ -57,8 +129,8 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
       toast(`${info.name} connected. The key is encrypted and only the last 4 characters are kept`);
     };
     // With the local server the key is tested with a tiny real request, then stored encrypted there.
-    if (!server.on) return void setTimeout(() => save(key.slice(-4)), 900);
-    void fetch('/api/ai/keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: adding.id, key, baseUrl: adding.url.trim() || undefined }) })
+    if (!server.on) return void setTimeout(() => save((cred ? fields.accessKeyId || fields.apiKey || '····' : key).slice(-4)), 900);
+    void fetch('/api/ai/keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: adding.id, key, baseUrl: url || undefined }) })
       .then(async (r) => {
         const d = (await r.json().catch(() => ({}))) as { keyLast4?: string; error?: string };
         if (r.ok && d.keyLast4) save(d.keyLast4);
@@ -84,7 +156,11 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   ] as const;
   const seats = plan ? seatsFor(plan.tier, people) : people;
   const pool = { braindump: ALLOWANCE.braindump * seats, ask: ALLOWANCE.ask * seats, meeting: ALLOWANCE.meetingHours * seats, summary: ALLOWANCE.summary * seats, draft: ALLOWANCE.draft * seats } as Record<string, number>;
-  const usedShare = Math.min(0.95, usage.reduce((s, [, n, k]) => s + n / (pool[k] || 1), 0) / usage.length);
+  // With the server: this month's real uses and what's left of the shared allowance. Without one: the demo's sample.
+  const allowance = view?.allowance;
+  const usedShare = allowance ? allowance.share : Math.min(0.95, usage.reduce((s, [, n, k]) => s + n / (pool[k] || 1), 0) / usage.length);
+  const leftOf = (k: string) => (allowance ? allowance.left[k] : Math.round(pool[k] * (1 - usedShare)));
+  const usedUp = !!allowance && !allowance.unlimited && allowance.share >= 1;
 
   return (
     <>
@@ -119,42 +195,75 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           )}
         </div>
 
-        {plan?.tier === 'free' && (
+        {plan?.tier === 'free' && !included && (
           <div className="set-block">
-            <h3>Free AI this month</h3>
-            <div className="allow-meter">
-              <span className="bar wide">
-                <span style={{ width: '40%' }} />
-              </span>
-              <p>
-                Left: <b>3 brain dumps</b>, <b>6 Ask AI questions</b>, <b>1 meeting hour</b>, <b>12 summaries</b>. Add your own key above for unlimited AI, or{' '}
-                <button type="button" className="link-btn" onClick={onBilling}>
-                  pick a plan
-                </button>
-                .
-              </p>
-            </div>
+            <h3>AI on Free</h3>
+            <p className="muted small">
+              Free doesn’t include AI from {product.name}. Add your own key above and it works right away, with no limit from us, or{' '}
+              <button type="button" className="link-btn" onClick={onBilling}>
+                pick a plan with AI included
+              </button>
+              .
+            </p>
+          </div>
+        )}
+        {included && ai.payer !== 'own' && view && (
+          <div className="set-block">
+            <h3>Who handles your data</h3>
+            <DataRoute view={view} both={ai.payer === 'both'} />
           </div>
         )}
         {included && ai.payer !== 'own' && (
           <div className="set-block">
             <h3>Left this month</h3>
-            <div className="allow-meter">
-              <span className="bar wide">
-                <span style={{ width: `${usedShare * 100}%` }} className={usedShare > 0.8 ? 'warn' : ''} />
-              </span>
-              <p>
-                About <b>{Math.round(pool.meeting * (1 - usedShare))} meeting hours</b>, or <b>{Math.round(pool.ask * (1 - usedShare))} questions</b>, or{' '}
-                <b>{Math.round(pool.braindump * (1 - usedShare))} brain dumps</b> left, shared by the whole company.
-              </p>
-            </div>
+            {allowance?.unlimited ? null : (
+              <div className="allow-meter">
+                <span className="bar wide">
+                  <span style={{ width: `${Math.min(1, usedShare) * 100}%` }} className={usedShare > 0.8 ? 'warn' : ''} />
+                </span>
+                {usedUp ? (
+                  <p>
+                    <b>Used up for this month.</b>{' '}
+                    {view?.why === 'trial' ? (
+                      <>
+                        The trial’s AI starts again on the 1st.{' '}
+                        <button type="button" className="link-btn" onClick={onBilling}>
+                          Pick a plan
+                        </button>{' '}
+                        or add your own key above to carry on now.
+                      </>
+                    ) : view?.why === 'comp' ? (
+                      'It starts again on the 1st. Add your own key above to carry on now.'
+                    ) : plan?.autoTopUp?.on ? (
+                      <>
+                        Automatic top-ups reached their monthly limit.{' '}
+                        <button type="button" className="link-btn" onClick={onBilling}>
+                          Raise the limit or add a top-up
+                        </button>
+                        .
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className="link-btn" onClick={onBilling}>
+                          Add a top-up
+                        </button>{' '}
+                        ({rp(TOP_UP.price)}) to carry on, or turn on automatic top-ups.
+                      </>
+                    )}
+                  </p>
+                ) : (
+                  <p>
+                    About <b>{leftOf('meeting') ?? 0} meeting hours</b>, or <b>{leftOf('ask') ?? 0} questions</b>, or <b>{leftOf('braindump') ?? 0} brain dumps</b> left, shared by the whole company
+                    {allowance?.topUps ? `, with ${allowance.topUps} top-up${allowance.topUps === 1 ? '' : 's'} this month` : ''}.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="usage-grid">
               {usage.map(([l, n, k]) => (
                 <div key={k}>
-                  <b>{n}</b>
-                  <span>
-                    {l} <em>of {pool[k]}</em>
-                  </span>
+                  <b>{allowance ? allowance.uses[k] ?? 0 : n}</b>
+                  <span>{allowance ? (k === 'meeting' ? 'Meetings with notes' : l) : l} {allowance ? <em>this month</em> : <em>of {pool[k]}</em>}</span>
                 </div>
               ))}
             </div>
@@ -252,11 +361,46 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                   <AlertTriangle size={14} /> {providerOf(adding.id)!.warn}
                 </p>
               )}
-              {adding.id && (
+              {adding.id && CRED_FIELDS[adding.id] && (
                 <>
-                  {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : adding.id === 'bedrock' ? 'Region, e.g. ap-southeast-3' : 'Endpoint'} />}
+                  {CRED_FIELDS[adding.id]!.fields.map((f) =>
+                    f.multiline ? (
+                      <textarea
+                        key={f.key}
+                        rows={4}
+                        spellCheck={false}
+                        autoComplete="off"
+                        aria-label={f.label}
+                        value={adding.fields?.[f.key] ?? ''}
+                        onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
+                        placeholder={`${f.label}: ${f.placeholder ?? ''}`}
+                      />
+                    ) : (
+                      <input
+                        key={f.key}
+                        type={f.secret ? 'password' : 'text'}
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-label={f.label}
+                        value={adding.fields?.[f.key] ?? ''}
+                        onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
+                        placeholder={`${f.label}${f.optional ? ' (optional)' : ''}${f.placeholder ? `: ${f.placeholder}` : ''}`}
+                      />
+                    ),
+                  )}
+                  <p className="muted small">{CRED_FIELDS[adding.id]!.help}</p>
+                  {adding.state === 'error' && <p className="err">{adding.message ?? 'Fill in every field.'}</p>}
+                </>
+              )}
+              {adding.id && !CRED_FIELDS[adding.id] && (
+                <>
+                  {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : 'Endpoint'} />}
                   <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} />
                   {adding.state === 'error' && <p className="err">{adding.message ?? `That doesn’t look like a valid key${providerOf(adding.id)!.needsUrl ? ' and address' : ''}.`}</p>}
+                </>
+              )}
+              {adding.id && (
+                <>
                   <p className="muted small">{server.on ? 'We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.' : 'Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.'}</p>
                 </>
               )}

@@ -225,12 +225,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const sendable = myAccounts.filter((a) => boxReady(a.id).send);
   // AI: on when the company has it (included or its own key), or in a demo.
   const [aiOn, setAiOn] = useState(true);
+  const [aiWhy, setAiWhy] = useState<'no-key' | 'down' | 'used-up' | null>(null); // why it's off: nothing set up, our AI is down, or the allowance is used up
   useEffect(() => {
     if (!server.on) return setAiOn(true);
     let on = true;
     fetch(`/api/ai/status?ws=${encodeURIComponent(ws.id)}`)
       .then((r) => (r.ok ? r.json() : { live: false }))
-      .then((d: { live: boolean }) => on && setAiOn(d.live || caps.demo), () => on && setAiOn(caps.demo));
+      .then((d: { live: boolean; why?: 'no-key' | 'down' | 'used-up' | null }) => on && (setAiOn(d.live || caps.demo), setAiWhy(d.why ?? null)), () => on && setAiOn(caps.demo));
     return () => {
       on = false;
     };
@@ -481,8 +482,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** A feature that depends on something not set up: say what's missing (and where to fix it, for admins). */
   const explainOff = (text: string, fix?: SettingsSection) =>
     showToast({ text, ms: 7000, action: fix && ws.members.some((m) => m.userId === user.id && m.role !== 'member') ? { label: 'Set it up', run: () => (setSettingsSection(fix), go('settings')) } : undefined });
-  const openDump = (t: string) => (aiOn ? setDump(t) : explainOff('AI isn’t set up for this company yet, so the brain dump can’t turn notes into tasks.', 'ai'));
-  const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : explainOff('AI isn’t set up for this company yet.', 'ai'));
+  const aiOff = (what: string) =>
+    aiWhy === 'used-up'
+      ? explainOff('The company’s AI allowance for this month is used up. An admin can add a top-up in Settings, Plan & billing.', 'billing')
+      : aiWhy === 'down'
+        ? explainOff('AI isn’t available right now. We’ve been told; try again in a few minutes.')
+        : explainOff(`AI isn’t set up for this company yet${what}. An admin can add an AI key in Settings, AI, or switch to the AI plan.`, 'ai');
+  const openDump = (t: string) => (aiOn ? setDump(t) : aiOff(', so the brain dump can’t turn notes into tasks'));
+  const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : aiOff(''));
   const botOn = !server.on || caps.demo || recorderOn;
   const openSendBot = () => (botOn ? setSendBotOpen(true) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
   const calendarsOn = !server.on || caps.demo || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
@@ -1216,8 +1223,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** What one AI channel summary costs this company, said plainly. */
   const summaryCost = (() => {
-    const included = ws.plan?.track === 'ai' && ws.plan.tier !== 'free' && ws.ai?.payer !== 'own';
-    if (ws.plan?.tier === 'free' && !ws.ai?.providers.length) return '1 of your free AI summaries this month';
+    const trial = !!ws.plan?.trialEnds && ws.plan.trialEnds > nowIso();
+    const included = ((ws.plan?.track === 'ai' && ws.plan.tier !== 'free') || trial) && ws.ai?.payer !== 'own';
     if (included) return 'about 1 summary from your AI allowance';
     const job = ws.ai?.jobs.digest ?? ws.ai?.jobs.summary;
     const c = job ? costPer100(JOBS.find((j) => j.id === 'digest')!, job.provider, job.model) : null;

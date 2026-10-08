@@ -21,6 +21,12 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, uploaded_by TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL, at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS ai_keys (workspace_id TEXT NOT NULL, provider TEXT NOT NULL, sealed TEXT NOT NULL, base_url TEXT, added_by TEXT, added_at TEXT NOT NULL, PRIMARY KEY (workspace_id, provider));
 `);
+// Which provider really answered: for our own AI (provider 'included') it's the one the operators picked for the job.
+try {
+  db.exec('ALTER TABLE ai_usage ADD COLUMN via TEXT');
+} catch {
+  /* already there */
+}
 
 /* ---------- documents ---------- */
 
@@ -169,8 +175,8 @@ export const deleteKey = (workspaceId: string, provider: string) => db.prepare('
 
 /* ---------- AI usage log (tokens per call, for the cost estimate in Settings, AI) ---------- */
 
-export function logUsage(u: { workspaceId: string; userId: string; job: string; provider: string; model: string; inTokens: number; outTokens: number }) {
-  db.prepare('INSERT INTO ai_usage (workspace_id, user_id, job, provider, model, in_tokens, out_tokens, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(u.workspaceId, u.userId, u.job, u.provider, u.model, u.inTokens, u.outTokens, new Date().toISOString());
+export function logUsage(u: { workspaceId: string; userId: string; job: string; provider: string; model: string; inTokens: number; outTokens: number; via?: string }) {
+  db.prepare('INSERT INTO ai_usage (workspace_id, user_id, job, provider, model, in_tokens, out_tokens, at, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(u.workspaceId, u.userId, u.job, u.provider, u.model, u.inTokens, u.outTokens, new Date().toISOString(), u.via ?? null);
 }
 export function usageSince(workspaceId: string, since: string) {
   return db

@@ -102,15 +102,80 @@ export const PROVIDERS: ProviderInfo[] = [
       { id: 'google/gemini-3.5-flash', name: 'Gemini 3.5 Flash', tier: 'fast' },
     ],
   },
-  { id: 'bedrock', name: 'AWS Bedrock', kind: 'cloud', keyHint: 'Access key + region of your AWS account', note: 'Your own AWS account and region', needsUrl: true, models: [{ id: 'anthropic.claude-sonnet-5-5', name: 'Claude Sonnet 5.5 on Bedrock', tier: 'balanced', price: [2, 10] }] },
-  { id: 'vertex', name: 'Google Vertex AI', kind: 'cloud', keyHint: 'Service account JSON of your Google Cloud project', note: 'Your own Google Cloud project', needsUrl: true, models: [{ id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro on Vertex', tier: 'best' }] },
-  { id: 'azure', name: 'Azure OpenAI', kind: 'cloud', keyHint: 'Key + endpoint of your Azure resource', note: 'Your own Azure subscription', needsUrl: true, models: [{ id: 'gpt-5', name: 'GPT-5 on Azure', tier: 'best' }] },
+  {
+    id: 'bedrock',
+    name: 'AWS Bedrock',
+    kind: 'cloud',
+    keyHint: 'Access key + region of your AWS account',
+    note: 'Claude in your own AWS account and region',
+    needsUrl: true,
+    models: [
+      { id: 'anthropic.claude-sonnet-5-5', name: 'Claude Sonnet 5.5 on Bedrock', tier: 'balanced', price: [2, 10] },
+      { id: 'anthropic.claude-haiku-4-5', name: 'Claude Haiku 4.5 on Bedrock', tier: 'fast' },
+    ],
+  },
+  {
+    id: 'vertex',
+    name: 'Google Vertex AI',
+    kind: 'cloud',
+    keyHint: 'Service account JSON of your Google Cloud project',
+    note: 'Gemini in your own Google Cloud project',
+    needsUrl: true,
+    models: [
+      { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro on Vertex', tier: 'best' },
+      { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash on Vertex', tier: 'fast' },
+    ],
+  },
+  { id: 'azure', name: 'Azure OpenAI', kind: 'cloud', keyHint: 'Key + endpoint of your Azure resource', note: 'Your own Azure subscription. Uses the model of your deployment', needsUrl: true, models: [{ id: 'gpt-5', name: 'GPT-5 on Azure', tier: 'best' }] },
   { id: 'custom', name: 'Any OpenAI-compatible server', kind: 'private', keyHint: 'Base URL (and key if it has one): Ollama, vLLM, LM Studio', note: 'AI on your own server, nothing leaves the company', needsUrl: true, models: [{ id: 'custom', name: 'Your model', tier: 'balanced' }] },
   { id: 'deepgram', name: 'Deepgram', kind: 'speech', keyHint: 'from console.deepgram.com', note: 'Voice notes and meeting audio', models: [{ id: 'nova-3', name: 'Nova 3', tier: 'best' }] },
   { id: 'groq', name: 'Groq', kind: 'speech', keyHint: 'gsk_… from console.groq.com', note: 'Fast speech to text', models: [{ id: 'whisper-large-v3', name: 'Whisper large v3', tier: 'balanced' }] },
 ];
 
 export const providerOf = (id: ProviderId | 'included') => PROVIDERS.find((p) => p.id === id);
+
+/** A field of a company cloud account (instead of one key). */
+export interface CredField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  secret?: boolean;
+  multiline?: boolean;
+  optional?: boolean;
+}
+/**
+ * Company cloud accounts need more than one key. The form shows these fields and sends them as JSON in the key, so
+ * the server keeps them encrypted together. `url` names the field shown next to the key afterwards.
+ */
+export const CRED_FIELDS: Partial<Record<ProviderId, { fields: CredField[]; url: string; help: string }>> = {
+  bedrock: {
+    url: 'region',
+    help: 'An IAM user or role with bedrock-mantle:CreateInference on the Claude models, and model access switched on in the Bedrock console.',
+    fields: [
+      { key: 'region', label: 'AWS region', placeholder: 'us-east-1' },
+      { key: 'accessKeyId', label: 'Access key ID', placeholder: 'AKIA…' },
+      { key: 'secretAccessKey', label: 'Secret access key', secret: true },
+    ],
+  },
+  vertex: {
+    url: 'region',
+    help: 'A service account with the Vertex AI User role. In Google Cloud: IAM, Service accounts, Keys, Add key, JSON.',
+    fields: [
+      { key: 'region', label: 'Region', placeholder: 'global, or e.g. asia-southeast2', optional: true },
+      { key: 'serviceAccount', label: 'Service account key (the JSON file)', placeholder: '{ "type": "service_account", … }', secret: true, multiline: true },
+    ],
+  },
+  azure: {
+    url: 'endpoint',
+    help: 'From Azure AI Foundry: the resource endpoint, the name you gave the deployment, and one of the resource’s keys.',
+    fields: [
+      { key: 'endpoint', label: 'Endpoint', placeholder: 'https://your-resource.openai.azure.com' },
+      { key: 'deployment', label: 'Deployment name', placeholder: 'gpt-5' },
+      { key: 'apiVersion', label: 'API version', placeholder: 'v1', optional: true },
+      { key: 'apiKey', label: 'API key', secret: true },
+    ],
+  },
+};
 
 export interface JobInfo {
   id: AIJobId;

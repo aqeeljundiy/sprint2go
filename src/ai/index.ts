@@ -43,7 +43,7 @@ const plain = (t: Thread) => ({
 class NoKey extends Error {}
 async function call<T>(action: string, body: object): Promise<T> {
   const res = await fetch(`${URL()}/api/ai/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, workspaceId: state.workspaceId }) });
-  if (res.status === 409) throw new NoKey();
+  if (res.status === 409) throw new NoKey((await res.json().catch(() => null))?.message ?? '');
   if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'AI request failed');
   return res.json() as Promise<T>;
 }
@@ -54,7 +54,7 @@ function run<T>(action: string, body: object, demoRun: () => Promise<T>): Promis
     if (e instanceof NoKey) {
       state.live = false;
       // On a real server there are no made-up answers: say what's missing instead.
-      if (server.on && !caps.demo) throw new Error('AI isn’t set up for this company yet. An admin can add it in Settings, AI.');
+      if (server.on && !caps.demo) throw new Error(e.message || 'AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.');
       return demoRun();
     }
     throw e;
