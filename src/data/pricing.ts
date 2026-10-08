@@ -27,6 +27,9 @@ export const ADDONS = {
   branding: { name: 'Remove “Made with Sprint2go” from shared spaces', price: 49_000, unit: 'per month' },
 } as const;
 
+/** The branding add-on, or Business, which includes it. A company's own address for its guests goes live only with it. */
+export const hasBranding = (plan?: { tier?: string; addons?: { branding?: boolean } } | null) => plan?.tier === 'business' || !!plan?.addons?.branding;
+
 export const TOP_UP = { price: 99_000, gives: 'about 50 meeting hours, or 110 Ask AI questions, or 120 brain dumps, or 600 email summaries' };
 
 /** What each person adds to the company's shared AI allowance on "AI included" plans (per month). */

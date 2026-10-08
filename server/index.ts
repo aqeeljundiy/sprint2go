@@ -13,12 +13,14 @@ import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { DEFAULT_PERMISSIONS } from '../src/types.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
+import { hasBranding } from '../src/data/pricing.ts';
 import * as tablesEngine from './tables.ts';
 import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
+import * as customDomains from './customDomains.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 
@@ -713,10 +715,43 @@ async function writeMeetingNotes(id: string, again = false) {
 /* ---------- the app itself ---------- */
 
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp' };
-/** The company whose own address this request came to (its clients' door), if any. */
-function brandedHost(req: IncomingMessage) {
-  const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
-  return (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
+/** The company whose own address this request came to (its clients' door), if any: a live address, or <slug>.localhost to try it. */
+function brandedHost(req: IncomingMessage): any {
+  const host = hostOf(req);
+  if (host.endsWith('.localhost')) return (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host);
+  return isOurHost(host) ? undefined : customDomains.liveAt(host);
+}
+const hostOf = (req: IncomingMessage) => String(req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+/** Addresses that open the app itself: its own, the marketing site's, the mail name, local ones and APP_HOSTS. */
+const OUR_HOSTS = new Set(
+  [PUBLIC_URL, SITE_URL]
+    .filter(Boolean)
+    .map((u) => new URL(u).hostname.toLowerCase())
+    .concat(SITE_DOMAIN ? [`www.${SITE_DOMAIN}`] : [], mailer.MAIL_HOST, (process.env.APP_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)),
+);
+const isOurHost = (host: string) => OUR_HOSTS.has(host) || host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+/**
+ * Requests to an address that's neither ours nor a live agency address get a plain page, never the app. Only when the
+ * app knows its own address (PUBLIC_URL); /api/health answers everywhere (the certificate check uses it).
+ */
+function strangerHost(req: IncomingMessage, res: ServerResponse, p: string) {
+  if (!process.env.PUBLIC_URL || p === '/api/health') return false;
+  const host = hostOf(req);
+  if (!host || isOurHost(host) || customDomains.liveAt(host)) return false;
+  const pending = customDomains.pendingAt(host);
+  res.statusCode = pending ? 503 : 404;
+  res.setHeader('cache-control', 'no-store');
+  if (pending) res.setHeader('retry-after', '120');
+  if (p.startsWith('/api/')) return (res.setHeader('content-type', 'application/json'), res.end(JSON.stringify({ error: 'This address isn’t set up.' })), true);
+  res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.end(req.method === 'HEAD' ? undefined : customDomains.notSetUpPage(pending));
+  return true;
+}
+/** A company's own address and its state are the server's: a save from the app keeps what the server has. */
+function ownAddress(next: any, before: any) {
+  if (!next && !before?.domain) return next;
+  const { domain, domainStatus, domainCheck } = before ?? {};
+  return { ...(next ?? before), domain, domainStatus, domainCheck };
 }
 function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
   const path = normalize(decodeURIComponent((req.url ?? '/').split('?')[0])).replace(/^(\.\.[/\\])+/, '');
@@ -800,6 +835,7 @@ createServer(async (req, res) => {
   res.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' blob: data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss: https:; frame-ancestors 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'self'");
   if (secureCookies()) res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');
   if (siteRedirect(req, res, p)) return;
+  if (strangerHost(req, res, p)) return;
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
   if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString() });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
@@ -865,8 +901,7 @@ createServer(async (req, res) => {
 
     // White label: whose brand to show at this address (an agency's subdomain, or <slug>.localhost to try it locally).
     if (p === '/api/brand') {
-      const host = String(req.headers.host ?? '').split(':')[0].toLowerCase();
-      const w = (db.allDocs('workspaces') as any[]).find((x) => x.whiteLabel?.enabled && ((x.whiteLabel.domain && x.whiteLabel.domain.toLowerCase() === host && x.whiteLabel.domainStatus === 'verified') || (x.whiteLabel.slug && `${x.whiteLabel.slug}.localhost` === host)));
+      const w = brandedHost(req);
       return json(res, 200, { ...(w ? { name: w.whiteLabel.name, logo: w.whiteLabel.logo ?? w.logo, color: w.whiteLabel.color ?? w.color } : {}), mailHost: mailer.MAIL_HOST, mailIp: mailer.MAIL_IP || undefined, boosted: mailer.boostedAvailable() });
     }
     if (p === '/api/login' && req.method === 'POST') {
@@ -1240,6 +1275,30 @@ createServer(async (req, res) => {
       // "Some of each": which hosted mailboxes at the company's domain really got mail, the proof that routing works.
       return json(res, 200, { ...ready, routing: ws ? mailer.hostedArrivals(ws) : null });
     }
+    // White label: the company's own address for its guests. Setting it (or clearing it with an empty address) starts
+    // the DNS check; "check" looks again now. The state lands on the workspace (whiteLabel.domainStatus/domainCheck).
+    if ((p === '/api/white-label/domain' || p === '/api/white-label/check') && req.method === 'POST') {
+      const b = await body(req);
+      const wsId = String(b.workspaceId ?? '');
+      const ws = db.getDoc('workspaces', wsId) as any;
+      if (!ws || !isAdminOf(me, wsId)) return json(res, 403, { error: 'Only admins can change the address.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only for now.' });
+      if (tooMany(`domain:${wsId}`, 30, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of checks. Wait a few minutes; we also check every hour by ourselves.' });
+      if (p === '/api/white-label/check') {
+        if (!ws.whiteLabel?.domain) return json(res, 400, { error: 'Add an address first.' });
+        await customDomains.check(wsId);
+        return json(res, 200, { whiteLabel: (db.getDoc('workspaces', wsId) as any)?.whiteLabel ?? null });
+      }
+      const clear = b.domain === null || String(b.domain ?? '').trim() === '';
+      if (!clear && !ws.whiteLabel?.enabled) return json(res, 400, { error: 'Switch on your brand first.' });
+      const c = clear ? { host: null } : customDomains.cleanHost(b.domain);
+      if ('error' in c) return json(res, 400, { error: c.error });
+      const owner = c.host ? customDomains.ownerOf(c.host) : undefined;
+      if (owner && owner !== wsId) return json(res, 409, { error: 'Another company already uses this address. If it’s yours, write to us and we’ll sort it out.' });
+      platform.event('company.address', wsId, me, c.host ?? 'removed');
+      await customDomains.setAddress(wsId, c.host);
+      return json(res, 200, { whiteLabel: (db.getDoc('workspaces', wsId) as any)?.whiteLabel ?? null });
+    }
     if (p === '/api/mail/check' && req.method === 'POST') {
       const { workspaceId } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
@@ -1403,7 +1462,7 @@ createServer(async (req, res) => {
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
       const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...wClean } = w as any;
-      const ws = { ...wClean, plan: wClean.plan ? { ...wClean.plan, comp: undefined, discount: undefined } : wClean.plan, name: String(w.name).trim().slice(0, 80), members, accounts };
+      const ws = { ...wClean, plan: wClean.plan ? { ...wClean.plan, comp: undefined, discount: undefined } : wClean.plan, whiteLabel: ownAddress(wClean.whiteLabel, undefined), name: String(w.name).trim().slice(0, 80), members, accounts };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
       db.writeDocs('users', people, [], me);
       (ws as any).createdAt ??= new Date().toISOString();
@@ -1695,14 +1754,15 @@ createServer(async (req, res) => {
         if (coll === 'workspaces') {
           if (before) {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
-            // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
+            // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts,
+            // and the company's own address with its state (changed through /api/white-label/domain only).
             const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt };
             const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
-            return { ...d, ...own, plan } as db.Doc;
+            return { ...d, ...own, plan, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel) } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, ...fresh } = d as any;
           const plan = fresh.plan ? { ...fresh.plan, comp: undefined, discount: undefined } : fresh.plan;
-          return { ...fresh, plan, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
+          return { ...fresh, plan, whiteLabel: ownAddress(fresh.whiteLabel, undefined), createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] } as db.Doc; // whoever makes a company owns it
         }
         if (coll === 'users') {
           if (d.id === me) return d; // own profile: already shaped
@@ -1757,8 +1817,17 @@ createServer(async (req, res) => {
               return !b || pick(b) !== pick(d);
             }).map((d) => d.id)
           : [];
+      // The branding add-on or the brand switch changed: the company's own address may go live (or pause) now.
+      const addressChanged =
+        coll === 'workspaces'
+          ? (ok as any[]).filter((d) => {
+              const b = db.getDoc('workspaces', d.id) as any;
+              return b?.whiteLabel?.domain && (hasBranding(b.plan) !== hasBranding(d.plan) || !!b.whiteLabel.enabled !== !!d.whiteLabel?.enabled);
+            }).map((d) => d.id)
+          : [];
       db.writeDocs(coll, ok, dels, me);
       for (const id of emailChanged) soonReadiness(id);
+      for (const id of addressChanged) customDomains.soon(id);
       if (leavers.length) endGuestAccess(leavers);
       // Guests don't live in the app all day: a notice for them also goes out as an email (when mail is set up).
       if (coll === 'notices' && mailConfigured())
@@ -1767,7 +1836,7 @@ createServer(async (req, res) => {
           const to = String(n.userId).slice(6);
           const w = db.getDoc('workspaces', n.workspaceId) as any;
           const brandName = w?.whiteLabel?.enabled ? w.whiteLabel.name : w?.name ?? 'sprint2go';
-          const origin = w?.whiteLabel?.enabled && w.whiteLabel.domain && w.whiteLabel.domainStatus === 'verified' ? `https://${w.whiteLabel.domain}` : PUBLIC_URL;
+          const origin = customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL;
           void sendMail(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin })).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
         }
       const conn = String(req.headers['x-conn'] ?? '');
@@ -1993,6 +2062,11 @@ createServer(async (req, res) => {
 }).listen(PORT, HOST, () => {
   console.log(`sprint2go on http://localhost:${PORT}${mailConfigured() ? ' (email on)' : ' (no email: codes go to this log)'}`);
   mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
+  customDomains.start({
+    broadcast,
+    log: (line) => console.log(line),
+    notifyAdmins: (wsId, text) => notifyUsers((workspaces().find((w) => w.id === wsId)?.members ?? []).filter((m) => m.role !== 'member').map((m) => m.userId), text, '/settings/agency', wsId),
+  });
 });
 
 /** Whether the meeting recorder answers, checked every few minutes (the app asks often). */
@@ -2012,6 +2086,8 @@ function caps() {
     payments: !!process.env.XENDIT_SECRET,
     desktopUrl: process.env.DESKTOP_URL || null,
     mailHost: mailer.MAIL_HOST,
+    customDomains: customDomains.dokployOn(), // agencies' own addresses get certificates (Dokploy is set up)
+    customTarget: customDomains.TARGET, // what those addresses point at
   };
 }
 const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();

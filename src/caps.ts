@@ -13,6 +13,8 @@ export const caps = {
   payments: false,
   desktopUrl: null as string | null,
   mailHost: '',
+  customDomains: false, // agencies' own addresses can get certificates (sprint2go has Dokploy set up)
+  customTarget: 'custom.sprint2go.com', // what those addresses point at
 };
 export function loadCaps() {
   if (!location.protocol.startsWith('http')) return Promise.resolve(caps);
