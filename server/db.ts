@@ -145,6 +145,8 @@ export function seal(plain: string) {
   const enc = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
   return [iv, c.getAuthTag(), enc].map((b) => b.toString('base64')).join('.');
 }
+/** A value only this server can make (an HMAC with the master key), e.g. a company's domain-verification token. */
+export const keyedHash = (s: string) => createHmac('sha256', MASTER).update(s).digest('hex');
 export function unseal(sealed: string) {
   const [iv, tag, enc] = sealed.split('.').map((x) => Buffer.from(x, 'base64'));
   const d = createDecipheriv('aes-256-gcm', MASTER, iv);

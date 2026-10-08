@@ -17,6 +17,7 @@ import * as tablesEngine from './tables.ts';
 import { mailConfigured, sendMail, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
+import { ownership as domainOwnership } from './domains.ts';
 import * as platform from './platform.ts';
 import * as support from './support.ts';
 import { gzipSync } from 'node:zlib';
@@ -1219,7 +1220,9 @@ createServer(async (req, res) => {
       const domain = mailer.mailDomainOf(ws);
       const ownDomain = domain !== mailer.MAIL_HOST;
       const [records, health, dns] = await Promise.all([mailer.expectedRecords(ws), mailer.serverHealth(), ownDomain ? mailer.dnsHostOf(domain) : Promise.resolve({ dnsHost: null, nameservers: [] as string[] })]);
-      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers });
+      // Whose domain it is, and the record that proves it.
+      const ownership = ownDomain ? domainOwnership(ws, domain) : null;
+      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership });
     }
     if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
       const { threadId } = await body(req);

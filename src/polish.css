@@ -3696,6 +3696,39 @@ p.trial-note > svg:first-child {
 :root[data-theme='dark'] .ed-found {
   color: #fbbf24;
 }
+/* The domain belongs to another company: what's wrong and what to do, above its one record. */
+.ed-owner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: color-mix(in srgb, #b45309 10%, transparent);
+  animation: viewIn 0.2s ease-out backwards;
+}
+.ed-owner svg {
+  flex: none;
+  margin-top: 2px;
+  color: #b45309;
+}
+:root[data-theme='dark'] .ed-owner svg {
+  color: #fbbf24;
+}
+/* Not proven yet: one line, and the TXT record that proves it. */
+.ed-owner-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ed-owner {
+    animation: none;
+  }
+}
 @media (max-width: 760px) {
   .ed-routes {
     grid-template-columns: 1fr;
