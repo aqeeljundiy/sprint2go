@@ -12,7 +12,16 @@ Still open:
 - Vault: a way to recover when someone forgets their passphrase (an admin re-share flow exists by editing and saving each login; a "re-share all" button would help).
 - Waiting on Aqeel: the word for clients and the Guest / Shared space naming, trying drags and a Member login, the two "Untitled table"s, the screens to tidy.
 
-Going live (not now): Dokploy deploy, real email (mail server and SES, connecting Google/Microsoft/Zoho mailboxes, the daily routing check sending for real), file storage, server write checks, AI cost caps, production setup, sign-up/reset/billing, security fixes, guest email notifications, external calendar sync, real payments.
+Going live, done 8 Oct: sessions hashed and purged, Secure cookie on https, sign-in throttling, Origin check on every write, security headers (CSP, frame-ancestors, HSTS), gzip and immutable asset caching, a crash screen, "could not save" and "signed out" toasts; server write rules (nothing crosses companies, admins only for company settings, own profile only, authors stamped by the server, deletions only broadcast to those who saw the doc, guests must be on the list); no demo data in production (S2G_DEMO=1 brings it back), /api/health, daily SQLite backups (14 kept); uploads on disk and served only to the company and its guests (Drive, chat, voice notes, materials, table files, guest uploads); AI spend caps per company and per person plus a per-minute limit, no private provider URLs; forgot-password by email code, account deletion; outgoing email through SES when SES_KEY, SES_SECRET, SES_REGION and MAIL_FROM are set (sign-up and reset codes, guest notices); the meeting recorder as its own Dokploy service (`recorder/`, reached over the Docker network, RECORDER_URL and RECORDER_SECRET on the app).
+
+Needs an account or a decision from Aqeel before it can be finished:
+- A real domain pointed at 178.212.35.85 (A record), then Let's Encrypt in Dokploy and PUBLIC_URL=https://... (the Secure cookie and HSTS switch on by themselves). Until then the sslip.io address is http only.
+- SES keys and a verified sender (MAIL_FROM) in the Dokploy env, or codes stay in the server log.
+- Inbound email (the mail server) and connecting Google/Microsoft/Zoho mailboxes: a mail host plus OAuth apps.
+- External calendar sync: Google and Microsoft OAuth credentials.
+- WhatsApp: a Meta Business number; the webhook needs the https domain.
+- Real payments: a Xendit or Midtrans account (parked).
+- Desktop: a GitHub release with the .dmg and a Windows build (needs CI or a Windows machine).
 
 ## UI polish pass (asked 5 Oct 2026): first pass done 5 Oct, keep reviewing screen by screen
 
