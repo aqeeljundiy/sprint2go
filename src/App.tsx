@@ -34,6 +34,7 @@ import { scanned, session, useStored } from './store';
 import { live, resync, server, uploadFile } from './sync';
 import { InviteCard, type InviteState } from './components/InviteCard';
 import { MEETING_NAME, botCanJoin, meetingKind, meetingLinkOf } from './meetingLink';
+import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
 import { EmailDeliverySection } from './components/admin/EmailDelivery';
 import { ai, aiLive } from './ai';
@@ -3872,6 +3873,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               toast: (text) => showToast({ text }),
             }}
             onRemoveAccount={(id) => setRemoveAcct(ws.accounts.find((a) => a.id === id) ?? null)}
+            mailExtras={
+              <OutOfOffice
+                accounts={myAccounts.filter((a) => !a.temp)}
+                canSend={(id) => (boxReady(id).send ? null : (boxReady(id).sendWhy ?? boxReady(id).why ?? 'Sending isn’t set up for this mailbox yet.'))}
+                onSave={async (a, away) => {
+                  if (!server.on) {
+                    patchWorkspace(ws.id, { accounts: ws.accounts.map((x) => (x.id === a.id ? { ...x, away: { ...away, since: away.on ? nowIso() : undefined } } : x)) });
+                    return null;
+                  }
+                  const r = await fetch('/api/mail/away', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, accountId: a.id, away }) }).catch(() => null);
+                  return r?.ok ? null : (((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? 'No connection. Try again.');
+                }}
+              />
+            }
           />
         )}
       </main>

@@ -346,6 +346,71 @@
   text-decoration: none;
 }
 
+/* ---------- Out of office (Settings, Mail & signature) ---------- */
+
+.ooo-hint {
+  display: block;
+  margin: -4px 0 8px;
+}
+.ooo-list {
+  display: flex;
+  flex-direction: column;
+}
+.ooo + .ooo {
+  border-top: 1px solid var(--border);
+}
+.ooo .set-row small.ooo-warn {
+  color: var(--warn);
+}
+.ooo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 16px;
+}
+.ooo-form .field {
+  margin: 0;
+}
+.ooo-form textarea {
+  resize: vertical;
+  min-height: 104px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  outline: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ooo-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ooo-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.ooo-dates .date-sel {
+  width: 100%;
+}
+.ooo-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.switch.off {
+  opacity: 0.5;
+  cursor: help;
+}
+@media (max-width: 520px) {
+  .ooo-dates {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- Email delivery: mailboxes and other addresses ---------- */
 
 .ed-head-actions {
@@ -391,3 +456,18 @@
   }
 }
 
+/* Phones: every control here is at least 40px to tap. */
+@media (max-width: 760px) {
+  .list-sync .icon-btn,
+  .ed-record .ed-rec-del,
+  .ed-rec-tools .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .mi-guests {
+    min-height: 40px;
+  }
+  .ooo-actions button {
+    min-height: 40px;
+  }
+}

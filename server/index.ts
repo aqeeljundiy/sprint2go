@@ -1318,7 +1318,7 @@ createServer(async (req, res) => {
       }
     }
 
-    /* ---------- mail: calendar invites, aliases, removing a mailbox ---------- */
+    /* ---------- mail: calendar invites, out of office, aliases, removing a mailbox ---------- */
     /** A hosted mailbox that can really send, checked afresh when the last check said no; else why not. */
     const sendBlock = async (ws: any, account: any): Promise<string | null> => {
       if (account.provider && account.provider !== 'sprint2go') return `${account.email} stays with ${account.provider === 'microsoft' ? 'Microsoft' : 'Google'}, so mail from it goes out there.`;
@@ -1388,6 +1388,32 @@ createServer(async (req, res) => {
       if (gone.length) broadcast('events', [], gone.map((e) => e.id), undefined, gone);
       if (docs.length) broadcast('events', docs, []);
       return json(res, 200, { sent: tell, events: docs.map((d) => d.id), firstOnly: made.firstOnly });
+    }
+    if (p === '/api/mail/away' && req.method === 'POST') {
+      // Out of office for one mailbox: its people (or an admin) set it; the server keeps it and answers mail with it.
+      const { workspaceId, accountId, away } = await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
+      const account = ws?.accounts?.find((a: any) => a.id === accountId);
+      if (!ws || !account || (!(account.users ?? []).includes(me) && !isAdminOf(me, ws.id))) return json(res, 403, { error: 'Not your mailbox.' });
+      if (ws.suspended) return json(res, 403, { error: 'This company is read-only right now.' });
+      const a = away && typeof away === 'object' ? away : {};
+      const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
+      const instant = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
+      const next = { on: !!a.on, from: day(a.from), until: day(a.until), fromAt: instant(a.fromAt), untilAt: instant(a.untilAt), subject: String(a.subject ?? '').slice(0, 200), message: String(a.message ?? '').slice(0, 5000) };
+      if (next.on && !next.message.trim()) return json(res, 400, { error: 'Write the message people get back.' });
+      if (next.fromAt && next.untilAt && next.untilAt < next.fromAt) return json(res, 400, { error: 'The last day is before the first.' });
+      if (next.on) {
+        const blocked = await sendBlock(ws, account);
+        if (blocked) return json(res, 409, { error: `Out of office can’t answer yet. ${blocked}` });
+      }
+      const prev = account.away ?? {};
+      const same = prev.on && next.on && prev.subject === next.subject && prev.message === next.message && prev.fromAt === next.fromAt && prev.untilAt === next.untilAt;
+      const saved = { ...next, since: next.on ? (same ? prev.since : new Date().toISOString()) : undefined };
+      const latest = db.getDoc('workspaces', ws.id) as any;
+      const nextWs = { ...latest, accounts: latest.accounts.map((x: any) => (x.id === account.id ? { ...x, away: saved } : x)) };
+      db.writeDocs('workspaces', [nextWs], [], me);
+      broadcast('workspaces', [nextWs], []);
+      return json(res, 200, { away: saved });
     }
     if (p === '/api/mail/aliases' && req.method === 'POST') {
       // Extra addresses that deliver into mailboxes here. Checked here: at the company's own domain, not anyone's
@@ -1835,6 +1861,8 @@ createServer(async (req, res) => {
             if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
             // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts.
             const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases };
+            // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
+            if (Array.isArray((d as any).accounts)) (d as any).accounts = (d as any).accounts.map((a: any) => ({ ...a, away: (before.accounts ?? []).find((b: any) => b.id === a.id)?.away }));
             const plan = (d as any).plan ? { ...(d as any).plan, comp: before.plan?.comp, discount: before.plan?.discount } : (d as any).plan;
             return { ...d, ...own, plan } as db.Doc;
           }

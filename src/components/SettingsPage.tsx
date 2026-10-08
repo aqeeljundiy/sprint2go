@@ -82,6 +82,7 @@ interface Props {
   onWorkspace: (p: Partial<Workspace>) => void;
   onAddAccount: () => void;
   onRemoveAccount: (id: string) => void;
+  mailExtras?: React.ReactNode; // Mail & signature: out of office for your mailboxes
   users: User[];
   me: string; // current user id
   onPhoto?: (photo: string | undefined) => void;
@@ -126,7 +127,7 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
+export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -488,6 +489,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <div className="signature-box">
                 <RichEditor initialHtml={s.signature} placeholder="Your signature" onChange={(html) => update({ signature: html })} />
               </div>
+              {mailExtras}
               <h3>Undo send</h3>
               <div className="segmented">
                 {[0, 5, 10, 20].map((n) => (

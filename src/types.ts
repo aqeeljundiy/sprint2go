@@ -207,6 +207,19 @@ export interface Account {
   users: string[]; // user ids who can open this mailbox
   /** A throwaway address: made in seconds, shared with a few people, deleted by itself (or by hand). */
   temp?: { createdBy: string; createdAt: string; expiresAt?: string };
+  away?: AwayReply; // out of office
+}
+
+/** Out of office: an automatic answer, once per sender every 4 days, while it's on and inside its dates. */
+export interface AwayReply {
+  on: boolean;
+  from?: string; // YYYY-MM-DD, the first day away (as the person picked it)
+  until?: string; // YYYY-MM-DD, the last day away
+  fromAt?: string; // ISO: the start of the first day, where the person is
+  untilAt?: string; // ISO: the end of the last day
+  subject: string;
+  message: string;
+  since?: string; // set by the server when it was switched on or changed: everyone gets the new answer
 }
 
 /** Another address that delivers into mailboxes: sales@ into Dewi's and Bayu's, or info@ into the hello@ shared inbox. */

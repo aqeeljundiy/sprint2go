@@ -19,6 +19,7 @@ import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { mailConfigured, sendRaw, sesIdentity } from './mail.ts';
 import { applyInbound, readInvite } from './invites.ts';
+import { maybeAnswer, type Away } from './away.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS mail_domains (domain TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, selector TEXT NOT NULL, private_key TEXT NOT NULL, public_key TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -29,7 +30,7 @@ db.db.exec(`
 `);
 
 type Person = { name: string; email: string };
-type Account = { id: string; email: string; name: string; kind: string; users: string[]; provider?: string; connected?: boolean };
+type Account = { id: string; email: string; name: string; kind: string; users: string[]; provider?: string; connected?: boolean; away?: Away };
 type Alias = { id: string; address: string; to: string[] };
 type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean; mailAliases?: Alias[] };
 
@@ -392,6 +393,8 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     if (!(ws as any).mailReady?.mailboxes?.[account.id]?.receive) void refreshReadiness(ws.id).catch(() => {});
     // An update or cancellation of an invite people here answered moves or removes their events.
     if (cal.invite && !spam) applyInbound(ws, account, cal.invite, thread.id, deps.broadcast, deps.notify);
+    // Out of office (not for addresses that reach several mailboxes: someone else is around).
+    if (!shared) void maybeAnswer({ workspaceId: ws.id, account, canSend: !!(ws as any).mailReady?.mailboxes?.[account.id]?.send, parsed, envelopeFrom: sender, mid, refs, spam, send: queueSend, log: deps.log });
   }
 }
 
@@ -412,6 +415,7 @@ export interface Outgoing {
   inReplyTo?: string;
   references?: string[];
   ical?: { method: string; content: string }; // a calendar part, e.g. the REPLY to an invite
+  headers?: Record<string, string>; // extra headers (Auto-Submitted on an out-of-office answer)
 }
 
 const fileBuffer = (url: string): Buffer | null => {
@@ -459,7 +463,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     references: o.references,
     attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url) ?? Buffer.alloc(0) })),
     icalEvent: o.ical ? { method: o.ical.method, content: o.ical.content, filename: 'invite.ics' } : undefined,
-    headers: { 'X-Mailer': 'sprint2go' },
+    headers: { 'X-Mailer': 'sprint2go', ...(o.headers ?? {}) },
   });
   let raw: Buffer = await composer.compile().build();
   if (route === 'own' && domain && domain !== MAIL_HOST) {
@@ -484,6 +488,8 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     localCount++;
+    // A colleague away gets to answer too (their answer carries Auto-Submitted, so it never answers back).
+    if (!shared) void maybeAnswer({ workspaceId: hit.ws.id, account: hit.account, canSend: !!(hit.ws as any).mailReady?.mailboxes?.[hit.account.id]?.send, parsed, envelopeFrom: o.from.email, mid, refs: o.references ?? [], spam: false, send: queueSend, log: deps.log });
   }
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
   for (const p of remote) ins.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, raw, now(), 'queued', now());
@@ -513,7 +519,8 @@ export const LIMITS = { hour: Number(process.env.MAIL_LIMIT_HOUR ?? 200), day: N
 /** After a failure: a mailbox whose recent mail mostly bounces is paused, and its company is told. */
 function watchBounces(row: any) {
   if (!row.account_id || row.workspace_id === 'platform') return;
-  const recent = db.db.prepare("SELECT state FROM outbox WHERE account_id = ? AND state IN ('sent', 'failed') ORDER BY created_at DESC LIMIT 50").all(row.account_id) as { state: string }[];
+  if (String(row.message_id ?? '').startsWith('auto-')) return; // out-of-office answers go to whoever wrote, valid or not
+  const recent = db.db.prepare("SELECT state FROM outbox WHERE account_id = ? AND state IN ('sent', 'failed') AND COALESCE(message_id, '') NOT LIKE 'auto-%' ORDER BY created_at DESC LIMIT 50").all(row.account_id) as { state: string }[];
   const failed = recent.filter((r) => r.state === 'failed').length;
   if (recent.length < 20 || failed / recent.length < 0.1) return;
   const ws = db.getDoc('workspaces', row.workspace_id) as any;
@@ -575,6 +582,7 @@ export async function pump() {
 /** When every recipient of a message is settled, the message shows sent or failed, and failures tell the sender. */
 function settle(row: any, error?: string) {
   if (row.workspace_id === 'platform') return;
+  if (String(row.message_id ?? '').startsWith('auto-')) return; // an out-of-office answer: nobody to tell
   const open = db.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'queued'").get(row.thread_id, row.message_id) as { n: number };
   if (open.n) return;
   const failed = db.db.prepare("SELECT to_addr, error FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'failed'").all(row.thread_id, row.message_id) as { to_addr: string; error: string }[];
