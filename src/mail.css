@@ -927,6 +927,7 @@
 /* The AI line: one sentence about the thread, tap to open the rest. */
 .ai-sum {
   flex: 1 1 100%;
+  min-width: 0; /* the sentence shortens with "…" instead of widening the reader */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1108,6 +1109,20 @@
 .cb-mentions button.hi,
 .cb-mentions button:hover {
   background: var(--hover);
+}
+
+/* Attachments never make the reader wider: a long file name shortens with "…". */
+.attachments > .attachment {
+  min-width: 0;
+  max-width: 100%;
+}
+.attachment > div {
+  min-width: 0;
+}
+.attachment .file-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* A reader next to the list, about 440px wide: less padding, the long date gives way. */
