@@ -49,6 +49,8 @@ import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
 import * as digest from './digest.ts';
 import * as retention from './retention.ts';
+import * as sandbox from './sandbox.ts';
+import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
@@ -253,8 +255,9 @@ function lens(userId: string): (coll: string, d: any) => any | null {
   const me = personOf(userId);
   const portals = portalsOf(userId).map((pt) => clientLens({ ...me!, clientOf: pt }));
   const team = teamLens(userId);
-  // Everyone sees their own profile, even a new account with no company and nothing shared yet.
-  const self = (coll: string, d: any) => (coll === 'users' && d.id === userId ? d : null);
+  // Everyone sees their own profile and settings, even a new account with no company and nothing shared yet (only
+  // their demo company, say).
+  const self = (coll: string, d: any) => ((coll === 'users' || coll === 'prefs' || coll === 'statuses') && d.id === userId ? d : null);
   if (!portals.length) return (coll, d) => team(coll, d) ?? self(coll, d);
   return (coll, d) => team(coll, d) ?? portals.map((l) => l(coll, d)).find(Boolean) ?? self(coll, d);
 }
@@ -462,7 +465,32 @@ function visibleState(userId: string) {
   const see = lens(userId);
   const out: Record<string, db.Doc[]> = {};
   for (const k of COLLS) out[k] = db.allDocs(k).map((d) => see(k, d)).filter(Boolean);
+  // Their own demo company (server/sandbox.ts), when they have one open: only ever theirs.
+  if (demoOpen(userId)) for (const [k, docs] of Object.entries(sandbox.docsOf(userId))) if (out[k]) out[k].push(...docs);
   return out;
+}
+
+/**
+ * Whether someone may open a demo company of their own: a real sign-in, in a company that lets its people (Settings,
+ * Apps & chat; one is enough), or with no company yet and not someone's guest. Guests never see it.
+ */
+function demoAllowed(userId: string) {
+  const u = personOf(userId) as any;
+  if (!u || u.suspended || u.deletedAt || !db.hasLogin(userId)) return false;
+  const mine = memberOf(userId) as any[];
+  if (mine.length) return mine.some((w) => w.demoCompany !== false);
+  return !u.clientOf && portalsOf(userId).length === 0;
+}
+/** Their demo company is made, shown, and still allowed. */
+const demoOpen = (userId: string) => sandbox.info(userId)?.hidden === false && demoAllowed(userId);
+/** A change in someone's demo company goes to their other open windows only (never to anyone else, never as a push). */
+function broadcastSandbox(owner: string, coll: string, upserts: db.Doc[], deletes: string[], except?: string) {
+  if (!upserts.length && !deletes.length) return;
+  for (const [id, c] of clients) if (id !== except && c.userId === owner) c.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts, deletes })}\n\n`);
+}
+/** Their demo company was made again, hidden or shown: their other windows load everything again. */
+function reloadWindows(owner: string, except?: string) {
+  for (const [id, c] of clients) if (id !== except && c.userId === owner) c.res.write('event: reload\ndata: {}\n\n');
 }
 
 /**
@@ -1103,21 +1131,16 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
   if (((path === '/' && (site || (!SITE_HOST && !signedIn))) || path === '/welcome') && !branded) {
     file = join(DIST, 'landing.html');
     // Counted here (no tracking script): where visitors came from, kept in a first-party cookie until they sign up.
-    const q = new URL(req.url ?? '/', 'http://x').searchParams;
-    const ref = String(req.headers.referer ?? '');
-    let refHost = '';
-    try {
-      refHost = ref ? new URL(ref).hostname.replace(/^www\./, '') : '';
-    } catch {
-      /* not a URL */
-    }
-    const own = String(req.headers.host ?? '').split(':')[0];
-    const source = (q.get('utm_source') || q.get('ref') || (refHost && refHost !== own ? refHost : '') || '').toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 60) || 'direct';
+    const source = visitSource(req);
     if (path === '/' && req.method === 'GET') platform.countView('/', source);
     // Shared with the app's address (app.sprint2go.com) so sign-ups there know where the visit came from.
     if (source !== 'direct' && !cookie(req, 's2g_src')) res.setHeader('set-cookie', `s2g_src=${source}; Path=/; Max-Age=${30 * 86400}; SameSite=Lax${SITE_DOMAIN ? `; Domain=${SITE_DOMAIN}` : ''}`);
   }
-  else if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html'); // single-page app
+  else if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) {
+    file = join(DIST, 'index.html'); // single-page app
+    // "Try it without signing up" (/try): the demo in the browser, with nothing saved here. Only the page view counts.
+    if (/^\/try\/?$/.test(path) && req.method === 'GET' && !branded) platform.countView('/try', visitSource(req));
+  }
   if (!existsSync(file)) {
     res.statusCode = 404;
     return res.end('Build the app first: npm run build');
@@ -1138,6 +1161,19 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
   res.end(data);
 }
 const gzipped = new Map<string, { size: number; stamp: number; body: Buffer }>();
+/** Where a visit came from: ?utm_source= or ?ref=, else the site that linked here, else "direct". */
+function visitSource(req: IncomingMessage) {
+  const q = new URL(req.url ?? '/', 'http://x').searchParams;
+  const ref = String(req.headers.referer ?? '');
+  let refHost = '';
+  try {
+    refHost = ref ? new URL(ref).hostname.replace(/^www\./, '') : '';
+  } catch {
+    /* not a URL */
+  }
+  const own = String(req.headers.host ?? '').split(':')[0];
+  return (q.get('utm_source') || q.get('ref') || (refHost && refHost !== own ? refHost : '') || '').toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 60) || 'direct';
+}
 
 /**
  * What usage rows cost in rupiah on the company's own keys, at the price list and dollar rate operators keep
@@ -1410,7 +1446,33 @@ createServer(async (req, res) => {
           .map((w: any) => ({ id: w.id, name: w.name, reason: w.suspended.reason })),
         maintenance: pset.maintenance.on ? pset.maintenance.message || 'sprint2go is being updated. You can read everything; changes are paused for a few minutes.' : undefined,
         flags: flagsFor(memberOf(me).map((w: any) => w.id), pset.flags),
+        demo: sandbox.stateOf(me, demoAllowed(me)), // their own demo company: not made yet, open, or hidden
       });
+    /* ---------- their own demo company (server/sandbox.ts) ---------- */
+    // Open: made from the demo data the first time (in their time zone), shown again when it was hidden.
+    if ((p === '/api/sandbox' || p === '/api/sandbox/reset') && req.method === 'POST') {
+      if (!demoAllowed(me)) return json(res, 403, { error: 'Your company switched the demo company off.' });
+      if (session?.operator) return json(res, 403, { error: 'That’s theirs to open: you’re signed in as them.' });
+      if (tooMany(`sandbox:${me}`, 20, 60 * 60_000)) return json(res, 429, { error: 'That’s a lot of demo companies in an hour. Try again later.' });
+      const { tz } = await body(req);
+      const row = sandbox.info(me);
+      if (p === '/api/sandbox/reset' && !row) return json(res, 404, { error: 'There’s no demo company to reset.' });
+      if (!row || p === '/api/sandbox/reset') await sandbox.make(me, { name: String(meDoc?.name ?? '') }, typeof tz === 'string' ? tz : undefined);
+      else if (row.hidden) sandbox.setHidden(me, false);
+      reloadWindows(me, String(req.headers['x-conn'] ?? ''));
+      return json(res, 200, { demo: sandbox.stateOf(me, true), workspaceId: sandboxWsId(me) });
+    }
+    if (p === '/api/sandbox/hide' && req.method === 'POST') {
+      if (!sandbox.info(me)) return json(res, 404, { error: 'There’s no demo company.' });
+      sandbox.setHidden(me, true);
+      reloadWindows(me, String(req.headers['x-conn'] ?? ''));
+      return json(res, 200, { demo: sandbox.stateOf(me, demoAllowed(me)) });
+    }
+    // They're looking at it: it isn't "unused" (the cleanup takes demo companies nobody opened for a month).
+    if (p === '/api/sandbox/seen' && req.method === 'POST') {
+      if (demoOpen(me)) sandbox.touch(me);
+      return json(res, 200, {});
+    }
     // Back from "sign in as": the operator's own session again (still past their 2FA).
     if (p === '/api/admin/signin-as/stop' && req.method === 'POST') {
       if (!session?.operator) return json(res, 400, { error: 'Not signed in as someone.' });
@@ -1991,6 +2053,7 @@ createServer(async (req, res) => {
       twostep.forget(me);
       db.endSessions(me);
       feeds.forgetPerson(me); // their calendar links (private addresses) and the events read from them
+      sandbox.remove(me); // their demo company, with everything in it
       for (const [id, c] of clients) if (c.userId === me) (c.res.end(), clients.delete(id));
       const gone = { ...u, name: 'Deleted account', email: '', title: '', photo: undefined, hiddenApps: undefined, vaultKey: undefined, deletedAt: new Date().toISOString() };
       db.writeDocs('users', [gone], [], me);
@@ -2057,9 +2120,9 @@ createServer(async (req, res) => {
     if (p === '/api/workspace' && req.method === 'POST') {
       const { workspace: w, users: invited = [] } = await body(req);
       if (!w || typeof w.id !== 'string' || typeof w.name !== 'string' || !w.name.trim()) return json(res, 400, { error: 'Give the company a name.' });
-      if (db.getDoc('workspaces', w.id)) return json(res, 409, { error: 'That workspace already exists.' });
+      if (db.getDoc('workspaces', w.id) || isSandboxId(w.id)) return json(res, 409, { error: 'That workspace already exists.' });
       const taken = new Set((db.allDocs('users') as any[]).map((u) => String(u.email ?? '').toLowerCase()));
-      const people = (invited as any[]).filter((u) => u && typeof u.id === 'string' && !db.getDoc('users', u.id) && typeof u.email === 'string' && !taken.has(u.email.toLowerCase()));
+      const people = (invited as any[]).filter((u) => u && typeof u.id === 'string' && !isSandboxId(u.id) && !db.getDoc('users', u.id) && typeof u.email === 'string' && !taken.has(u.email.toLowerCase()));
       const ids = new Set(people.map((u) => u.id));
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
@@ -2090,6 +2153,7 @@ createServer(async (req, res) => {
       if (typeof email !== 'string' || !email.includes('@')) return json(res, 400, { error: 'Invalid email' });
       const target = String(userId ?? '');
       if (!target) return json(res, 400, { error: 'Who?' });
+      if (isSandboxId(target)) return json(res, 403, { error: 'The people in the demo company are made up: nobody is invited from it.' });
       // An invite sets a password, so it can only be for someone who has never signed in: a new person (not saved yet,
       // their doc may still be on its way) or someone added to a company you run. Never an existing account.
       if (db.hasLogin(target)) return json(res, 409, { error: 'They already have a sign-in.' });
@@ -2235,6 +2299,7 @@ createServer(async (req, res) => {
       const wsId = String(req.headers['x-workspace'] ?? '');
       const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'file')).slice(0, 200);
       const type = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].slice(0, 100);
+      if (isSandboxId(wsId)) return json(res, 403, { error: 'The demo company doesn’t keep files on our server.' });
       const team = memberOf(me).some((w) => w.id === wsId);
       // A guest uploads only on a project that's still going, with a role that adds things (files in the project's
       // folder, or attached to their messages): never a viewer, someone waiting for approval, or after the work ended.
@@ -2357,8 +2422,35 @@ createServer(async (req, res) => {
 
     if (p === '/api/sync' && req.method === 'POST') {
       if (pset.maintenance.on && !opRecord) return json(res, 503, { error: pset.maintenance.message || 'Changes are paused for a few minutes while sprint2go is updated.' });
-      const { coll, upserts = [], deletes = [] } = await body(req);
+      const incoming = await body(req);
+      const coll = incoming.coll;
       if (!COLLS.includes(coll)) return json(res, 400, { error: 'Unknown collection' });
+      // Their own demo company first (server/sandbox.ts): what belongs in it is saved there and goes to their other
+      // windows only. The rest carries on as a real change. Nothing of the demo ever reaches the real documents.
+      const conn0 = String(req.headers['x-conn'] ?? '');
+      const sbSender = clients.get(conn0)?.userId === me ? conn0 : undefined;
+      let sbSaved = 0;
+      let sbWhy: string | undefined;
+      const allUpserts = (Array.isArray(incoming.upserts) ? incoming.upserts : []) as db.Doc[];
+      const allDeletes = (Array.isArray(incoming.deletes) ? incoming.deletes : []).filter((x: unknown) => typeof x === 'string') as string[];
+      const inDemo = (d: db.Doc) => !!d && typeof d.id === 'string' && (isSandboxId(d.id) || !!sandbox.info(me)) && sandbox.belongs(me, coll, d, !!db.getDoc(coll, d.id));
+      const demoUps = allUpserts.filter(inDemo);
+      const demoDels = allDeletes.filter((id) => !!sandbox.getDoc(me, coll, id));
+      if (demoUps.length || demoDels.length) {
+        if (demoOpen(me)) {
+          const r = sandbox.write(me, coll, demoUps, demoDels);
+          sbSaved = r.saved.length;
+          sbWhy = r.why;
+          broadcastSandbox(me, coll, r.saved, r.deleted, sbSender);
+          // What wasn't kept goes back to this window as it's stored.
+          const back = r.refused.map((id) => sandbox.getDoc(me, coll, id)).filter(Boolean) as db.Doc[];
+          const gone = r.refused.filter((id) => !sandbox.getDoc(me, coll, id));
+          if (sbSender && (back.length || gone.length)) clients.get(sbSender)?.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: back, deletes: gone })}\n\n`);
+        } else sbWhy = 'The demo company is closed, so that wasn’t kept.';
+      }
+      const upserts = allUpserts.filter((d) => !demoUps.includes(d));
+      const deletes = allDeletes.filter((id) => !demoDels.includes(id));
+      if (!upserts.length && !deletes.length) return json(res, 200, { saved: sbSaved, ...(sbWhy ? { why: sbWhy } : {}) });
       if (['todos', 'messages', 'events', 'rows', 'notes', 'drive'].includes(coll) && upserts.length) {
         const wsId = (upserts as any[]).find((d) => d?.workspaceId)?.workspaceId;
         if (wsId && memberOf(me).some((w) => w.id === wsId) && !db.getDoc(coll, upserts[0].id)) platform.firstEvent('first.use', wsId, me, coll);
@@ -2391,10 +2483,13 @@ createServer(async (req, res) => {
         const vk = dk && typeof dk === 'object' && typeof dk.wrapped === 'string' && typeof dk.salt === 'string' && typeof dk.iv === 'string' && dk.pub && typeof dk.pub === 'object' ? { pub: dk.pub, wrapped: String(dk.wrapped).slice(0, 4000), salt: String(dk.salt).slice(0, 64), iv: String(dk.iv).slice(0, 64) } : before.vaultKey;
         return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo, hiddenApps, vaultKey: vk };
       };
+      // Your own settings and status, whoever you are (someone with only a demo company has no company to write into).
+      const ownRecord = (d: db.Doc) => (coll === 'prefs' || coll === 'statuses') && d.id === me;
       // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
       const ok = (upserts as db.Doc[])
-        .filter((d) => d && typeof d.id === 'string')
-        .map((d) => ownProfile(d) ?? (asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
+        // Ids that start like a demo company's are the demo's own (src/sandbox.ts): never made as real documents.
+        .filter((d) => d && typeof d.id === 'string' && !(isSandboxId(d.id) && !db.getDoc(coll, d.id)))
+        .map((d) => ownProfile(d) ?? (ownRecord(d) || asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
         .filter(Boolean)
         .map((d) => {
           // A project's picture: a small image only (like profile photos).
@@ -2597,10 +2692,11 @@ createServer(async (req, res) => {
         if (g) ok[i] = g;
         else ok.splice(i, 1);
       }
-      const dels = mine.size
+      const dels = mine.size || ((coll === 'prefs' || coll === 'statuses') && (deletes as string[]).includes(me))
         ? (deletes as string[]).filter((id) => {
             const before = db.getDoc(coll, id) as any;
             if (!before) return true;
+            if ((coll === 'prefs' || coll === 'statuses') && id === me) return true; // your own
             // Nothing in a read-only company is deleted either.
             const ro = billing.readOnlyWhy(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
             if (ro) return (say(ro), false);
@@ -2690,7 +2786,8 @@ createServer(async (req, res) => {
       feeds.afterSync(coll, ok, delDocs);
       // A deleted meeting takes its recording with it.
       if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
-      return json(res, 200, { saved: ok.length, ...(why.length ? { why: why.join(' ') } : {}) });
+      if (sbWhy) say(sbWhy);
+      return json(res, 200, { saved: ok.length + sbSaved, ...(why.length ? { why: why.join(' ') } : {}) });
     }
 
     // Huddles: where audio may travel. With a call relay (TURN_URLS, TURN_SECRET) each team member gets its addresses
@@ -3022,6 +3119,8 @@ createServer(async (req, res) => {
     const action = p.match(/^\/api\/ai\/(\w+)$/)?.[1];
     if (action && routes[action] && req.method === 'POST') {
       const b = await body(req);
+      // The demo company never uses anyone's AI (ours or a company's keys): the app answers with samples there.
+      if (isSandboxId(b.workspaceId)) return json(res, 403, { error: 'The demo company uses sample AI answers.' });
       const asClient = memberOf(me).some((w) => w.id === b.workspaceId) ? undefined : portalsOf(me).find((pt) => pt.workspaceId === b.workspaceId);
       if (asClient) {
         // Client people: only "Ask AI", only when the company switched it on, within the monthly limit.
@@ -3231,6 +3330,13 @@ const housekeeping = () => {
     push.prune();
   } catch (e) {
     console.error('[sessions]', e);
+  }
+  // Demo companies nobody opened for a month go; the next time they open it, it's made again, fresh.
+  try {
+    const gone = sandbox.cleanup();
+    if (gone.length) console.log(`[sandbox] ${gone.length} unused demo companies removed`);
+  } catch (e) {
+    console.error('[sandbox]', e instanceof Error ? e.message : e);
   }
   db.backup()
     .then(async (f) => {

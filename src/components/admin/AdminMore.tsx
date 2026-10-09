@@ -17,6 +17,7 @@ import { caps } from '../../caps';
 import { relative } from '../../utils';
 import { loadTwoStep } from '../TwoStep';
 import { JOIN_MODES } from '../../meetingLinks';
+import { isSandbox } from '../../sandbox';
 
 const Switch = ({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
   <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
@@ -351,7 +352,15 @@ export function AppsSection({ ws, canManage, onWorkspace, projects }: { ws: Work
             </Row>
           ))}
         </div>
-        <WhatsAppBlock ws={ws} canManage={canManage} />
+        {!isSandbox(ws) && (
+          <div className="set-block">
+            <h3>Demo company</h3>
+            <Row title="Let our people open the demo company" hint="Everyone gets their own private copy of a sample agency to try things in. Nobody else sees it, and nothing in it is sent anywhere. Guests never see it.">
+              <Switch on={ws.demoCompany !== false} onChange={(v) => onWorkspace({ demoCompany: v })} />
+            </Row>
+          </div>
+        )}
+        {!isSandbox(ws) && <WhatsAppBlock ws={ws} canManage={canManage} />}
         <div className="set-block">
           <h3>Chat</h3>
           <Row title="Celebrate finished work" hint={`A small confetti and a note in the ${term.one}’s channel when a task is done`}>

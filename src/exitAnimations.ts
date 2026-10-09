@@ -32,6 +32,7 @@ const LEAVING = [
   '.inline-sheet',
   '.fab',
   '.paused-banner',
+  '.demo-bar',
 ].join(',');
 
 const MS = 200;

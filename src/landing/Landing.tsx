@@ -35,6 +35,8 @@ import { LangCtx, STR, startLang, useT, type Lang } from './i18n';
 
 const APP = '/signin';
 const SIGNUP = '/signup';
+/** The demo in the browser, on the app's address (the site sends /try there): nothing to sign up for, nothing saved. */
+const TRY = '/try';
 const GITHUB = 'https://github.com/aqeeljundiy';
 
 const GithubMark = ({ size = 16 }: { size?: number }) => (
@@ -494,12 +496,15 @@ function Page() {
               <a href={SIGNUP} className="ln-btn primary lg">
                 {t.nav.start} <ArrowRight size={16} />
               </a>
-              <a href="#product" className="ln-btn ghost lg">
-                {t.hero.tour}
+              <a href={TRY} className="ln-btn outline lg">
+                {t.hero.try}
               </a>
             </div>
             <small className="ln-fine a" style={{ ['--d' as string]: '.52s' }}>
-              {t.hero.fine}
+              {t.hero.fine}{' '}
+              <a href="#product" className="ln-fine-link">
+                {t.hero.tour}
+              </a>
             </small>
           </div>
           <div className="ln-hero-art a" style={{ ['--d' as string]: '.3s' }}>
@@ -783,9 +788,14 @@ function Page() {
         <div className="ln-wrap rv">
           <h2>{t.final.h}</h2>
           <p>{t.final.p}</p>
-          <a href={SIGNUP} className="ln-btn white lg">
-            {t.nav.start} <ArrowRight size={16} />
-          </a>
+          <div className="ln-final-cta">
+            <a href={SIGNUP} className="ln-btn white lg">
+              {t.nav.start} <ArrowRight size={16} />
+            </a>
+            <a href={TRY} className="ln-btn on-blue lg">
+              {t.hero.try}
+            </a>
+          </div>
         </div>
       </section>
 

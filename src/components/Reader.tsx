@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { brand as product, term } from '../terms';
-import { AlertTriangle, Archive, ArrowLeft, Ban, CalendarCheck, CalendarPlus, Check, Clock, Eye, EyeOff, FileText, Forward, HardDriveUpload, Inbox, ListChecks, Loader2, Mail, MailMinus, Reply, Send, ShieldAlert, ShieldCheck, Sparkles, Star, StickyNote, Trash2, UserCheck } from 'lucide-react';
+import { AlertTriangle, Archive, ArrowLeft, Ban, CalendarCheck, CalendarPlus, Check, Clock, Eye, EyeOff, FileText, Forward, HardDriveUpload, Inbox, ListChecks, ListPlus, Loader2, Mail, MailMinus, Reply, Send, ShieldAlert, ShieldCheck, Sparkles, Star, StickyNote, Trash2, UserCheck } from 'lucide-react';
 import type { CalEvent, Message, Person, Thread, User, Client } from '../types';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
@@ -53,6 +53,8 @@ interface Props {
   myName: string;
   todos: Todo[]; // to-dos that came from this thread
   onToggleTodo: (id: string) => void;
+  /** "Make a task": a task from this email, for you, with its project. */
+  onMakeTask?: (threadId: string) => void;
   onOpenTodos: () => void;
   unsubscribedAt?: string;
   onUnsubscribe: (t: Thread) => void;
@@ -297,6 +299,11 @@ export function Reader(props: Props) {
             {summary === 'loading' ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
             {summary === 'loading' ? 'Reading…' : summary ? 'Hide summary' : 'Summarize'}
           </button>
+          {props.onMakeTask && (
+            <button className="ai-chip" onClick={() => props.onMakeTask!(thread.id)}>
+              <ListPlus size={13} /> Make a task
+            </button>
+          )}
           {props.todos.length > 0 && (
             <button className="ai-chip todo" onClick={props.onOpenTodos}>
               <ListChecks size={13} /> {props.todos.filter((t) => !t.done).length || '✓'} to-do{props.todos.length > 1 ? 's' : ''} from this email

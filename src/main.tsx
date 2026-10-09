@@ -4,6 +4,7 @@ import Root from './Root';
 import { startExitAnimations } from './exitAnimations';
 import { startSlidingTabs } from './slidingTabs';
 import { diagnostics, reportCrash, startDiagnostics } from './diagnostics';
+import { startTryOut, trying } from './tryOut';
 import './styles.css';
 import './calendar.css';
 import './shell.css';
@@ -22,6 +23,7 @@ import './security.css';
 import './jobs.css';
 import './system.css';
 
+startTryOut(); // /try: the demo in this tab, nothing sent to our server
 startExitAnimations();
 startSlidingTabs();
 startDiagnostics();
@@ -76,4 +78,5 @@ createRoot(document.getElementById('root')!).render(
 );
 
 // Installable on phones and desktops (Add to Home Screen). Only in the built app, so development never gets a stale worker.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => {});
+// Not in the try-out: nothing installs and nothing asks for notifications there.
+if (import.meta.env.PROD && 'serviceWorker' in navigator && !trying) void navigator.serviceWorker.register('/sw.js').catch(() => {});

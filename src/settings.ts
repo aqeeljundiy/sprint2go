@@ -56,9 +56,27 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/**
+ * Where this browser keeps things. "Try it without signing up" (/try) keeps its own under a prefix, so nothing from
+ * the try-out mixes with a real account on the same browser (or is sent up with its settings) and Start over can
+ * clear it all.
+ */
+let prefix = '';
+export const lsKey = (key: string) => prefix + key;
+export const setStoragePrefix = (p: string) => void (prefix = p);
+/** Clears everything kept under the current prefix (the try-out's Start over). */
+export function clearPrefixed() {
+  if (!prefix) return;
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith(prefix)) localStorage.removeItem(k);
+  } catch {
+    /* storage blocked: nothing was kept */
+  }
+}
+
 function load(key: string, defaults: Settings, legacyKey?: string): Settings {
   try {
-    const raw = localStorage.getItem(key) ?? (legacyKey ? localStorage.getItem(legacyKey) : null);
+    const raw = localStorage.getItem(lsKey(key)) ?? (legacyKey ? localStorage.getItem(lsKey(legacyKey)) : null);
     if (raw) return { ...defaults, ...JSON.parse(raw) };
   } catch {}
   return defaults;
@@ -101,7 +119,7 @@ export function useSettings(user: { id: string; name: string; title: string; col
 
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(settings));
+      localStorage.setItem(lsKey(key), JSON.stringify(settings));
     } catch {}
     shared.set(key, settings);
     pushPref(key, settings);
@@ -142,7 +160,7 @@ export function usePersisted<T>(key: string, initial: T) {
   const [value, setValue] = useState<T>(() => {
     if (shared.has(key)) return shared.get(key) as T;
     try {
-      const raw = localStorage.getItem(key);
+      const raw = localStorage.getItem(lsKey(key));
       if (raw != null) return JSON.parse(raw) as T;
     } catch {}
     return initial;
@@ -159,7 +177,7 @@ export function usePersisted<T>(key: string, initial: T) {
     shared.set(key, value);
     subs.get(key)?.forEach((fn) => fn !== (setValue as unknown) && (fn as (v: T) => void)(value));
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      localStorage.setItem(lsKey(key), JSON.stringify(value));
     } catch {}
     pushPref(key, value);
   }, [key, value]);

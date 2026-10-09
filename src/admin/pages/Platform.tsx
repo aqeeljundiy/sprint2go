@@ -73,6 +73,7 @@ interface System {
   warnings: { kind: string; text: string; level: string; to?: string }[];
   alerts: { kind: string; at: string; text: string }[];
   backupTest: { at: string; file: string; ok: boolean; detail: string } | null;
+  demoCompanies?: { total: number; activeWeek: number; bytes: number; keepDays: number };
 }
 interface Cert {
   source: 'file' | 'acme' | 'self-signed' | 'none';
@@ -147,6 +148,16 @@ function Health() {
               },
               { label: 'Build', value: data.build ? `Running build from ${dateTime(data.build.builtAt)}${data.build.commit ? ` · ${data.build.commit.slice(0, 7)}` : ''} · Node ${data.node}` : data.built ? `Built ${dateTime(data.built)} · Node ${data.node}` : 'unknown' },
               { label: 'Call relay', value: <Relay relay={data.relay} />, ok: data.relay.configured && !!data.relay.reachable },
+              ...(data.demoCompanies
+                ? [
+                    {
+                      label: 'Demo companies',
+                      value: data.demoCompanies.total
+                        ? `${data.demoCompanies.total} people have their own, ${data.demoCompanies.activeWeek} used this week · ${bytes(data.demoCompanies.bytes)} · removed after ${data.demoCompanies.keepDays} days unused`
+                        : `Nobody has opened one yet · removed after ${data.demoCompanies.keepDays} days unused`,
+                    },
+                  ]
+                : []),
             ]}
           />
         </Section>

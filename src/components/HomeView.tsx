@@ -126,6 +126,8 @@ interface Props {
   onDismissNews?: (id: string) => void;
   /** What the company hasn't set up yet (admins only): each row opens the right place. */
   setup?: { key: string; label: string; hint: string; done: boolean; onOpen: () => void }[];
+  /** At the top of Home: the demo company's "Try this" list, or the invitation to look around it first. */
+  top?: ReactNode;
 }
 
 /** The template that fits a person: owners get the company view, team leads the team view, then by team. */
@@ -712,6 +714,8 @@ export function HomeView(p: Props) {
             )}
           </div>
         ))}
+
+        {p.top}
 
         {p.setup && p.setup.some((x) => !x.done) && (
           <section className="setup-card">

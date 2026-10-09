@@ -3,7 +3,10 @@ import type { User, Workspace } from './types';
 import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
 import { usePersisted, useSettings } from './settings';
 import { applyRemote, useStored } from './store';
-import { connect, loadMailInfo, probe, server, signIn, signOut, type Session } from './sync';
+import { connect, loadMailInfo, probe, reloadAll, server, setDemo, signIn, signOut, type Session } from './sync';
+import { trying, startOver, endTryOut } from './tryOut';
+import { SAMPLE_COMPANY } from './sandbox';
+import { DemoBar, ResetDemoDialog, openDemoCompany, useDemoState } from './components/DemoCompany';
 import { setAIWorkspace } from './ai';
 import App from './App';
 import { clientActions } from './clientActions';
@@ -48,6 +51,8 @@ export default function Root() {
     void fetch('/api/pricing')
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { pricing?: PricingOverride } | null) => applyPricing(d?.pricing), () => {});
+    // "Try it without signing up": the demo in this tab, without asking the server who's signed in.
+    if (trying) return setMode('demo');
     void probe().then(async (r) => {
       if (r === 'none') return setMode('demo');
       await loadCaps(); // what this server can do, before anything shows (features that can't work stay hidden)
@@ -56,6 +61,7 @@ export default function Root() {
       if (r.twoStep) return setMode('two-step'); // the password is done; the code (or setting it up) comes first
       server.operator = !!r.operator;
       server.flags = r.flags ?? [];
+      setDemo(r.demo ?? null); // their own demo company
       void loadMailInfo();
       if (!r.suspended && !admin) await connect(applyRemote);
       setMode('ready');
@@ -86,7 +92,7 @@ export default function Root() {
     );
   if (mode === 'two-step' && session?.twoStep) return <TwoStepGate need={session.twoStep} email={session.email} companies={session.companies} />;
   if (mode === 'ready' && session?.suspended) return <Suspended reason={session.suspended.reason} />;
-  if (admin && (mode === 'ready' || mode === 'demo')) return <AdminApp />;
+  if (admin && !trying && (mode === 'ready' || mode === 'demo')) return <AdminApp />;
   if (mode === 'ready' && session)
     return (
       <>
@@ -202,7 +208,8 @@ function PausedBanner({ workspaces, me }: { workspaces: Workspace[]; me: string 
 /** The demo: several people signed in on one device, switch between them freely. */
 function DemoRoot() {
   const [users, setUsers] = usePersisted<User[]>('s2g-users', USERS);
-  const [workspaces, setWorkspaces] = usePersisted<Workspace[]>('s2g-workspaces', WORKSPACES);
+  // The try-out opens on the richer of the demo's two companies.
+  const [workspaces, setWorkspaces] = usePersisted<Workspace[]>('s2g-workspaces', trying ? [...WORKSPACES].sort((a) => (a.id === SAMPLE_COMPANY ? -1 : 1)) : WORKSPACES);
   const [signedIn, setSignedIn] = usePersisted<string[]>('s2g-signed-in', SIGNED_IN_DEFAULT);
   const [current, setCurrent] = usePersisted<string | null>('s2g-user', USERS[0].id);
 
@@ -231,6 +238,7 @@ function DemoRoot() {
   return (
     <App
       key={user.id}
+      topBar={trying ? <TryBar /> : undefined}
       user={user}
       signedInUsers={signedInUsers}
       allUsers={users}
@@ -248,6 +256,38 @@ function DemoRoot() {
       }}
       onUpdateUser={(patch) => setUsers((list) => list.map((x) => (x.id === user.id ? { ...x, ...patch } : x)))}
     />
+  );
+}
+
+/** On top of the try-out: what it is, the real sign-up, and starting over (after a question). */
+function TryBar() {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <DemoBar
+        text={
+          <>
+            <strong>You’re trying {product.name}.</strong> Nothing is saved on our server.
+          </>
+        }
+      >
+        <a className="primary-btn sm" href="/signup" onClick={endTryOut}>
+          Sign up free
+        </a>
+        <button type="button" className="ghost-btn sm" onClick={() => setAsking(true)}>
+          Start over
+        </button>
+      </DemoBar>
+      {asking && (
+        <ResetDemoDialog
+          title="Start the try-out over?"
+          text="Everything you changed here goes, and the demo begins again. Nothing was saved anywhere else."
+          confirm="Start over"
+          onReset={async () => (startOver(), true)}
+          onClose={() => setAsking(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -269,6 +309,17 @@ function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
 function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }) {
   useSettings(me);
   const [open, setOpen] = useState(true);
+  const demo = useDemoState();
+  const [opening, setOpening] = useState<string | null>(null); // null, 'busy', or why it didn't open
+  useEffect(() => void (document.title = product.name), []); // back here from the demo company: its name goes
+  // Their own demo company: made (or shown again), then the app opens on it.
+  const lookAround = async () => {
+    setOpening('busy');
+    const r = await openDemoCompany();
+    if (r.error) return setOpening(r.error);
+    setOpen(false);
+    await reloadAll().catch(() => {});
+  };
   return (
     <div className="signin">
       <div className="signin-card">
@@ -278,6 +329,12 @@ function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }
         <button className="primary-btn signin-btn" onClick={() => setOpen(true)}>
           Set up my company
         </button>
+        {demo?.allowed && demo.state !== 'on' && (
+          <button type="button" className="ghost-btn outline signin-btn" onClick={() => void lookAround()} disabled={opening === 'busy'}>
+            {opening === 'busy' ? 'Opening the demo company…' : demo.state === 'hidden' ? 'Show the demo company' : 'Look around a demo company first'}
+          </button>
+        )}
+        {opening && opening !== 'busy' && <p className="signin-error">{opening}</p>}
         <p className="signin-switch">
           Joining a team instead? Ask them to invite {me.email}, then{' '}
           <button type="button" className="link-btn" onClick={() => void signOut()}>

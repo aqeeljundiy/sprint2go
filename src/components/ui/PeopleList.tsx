@@ -6,20 +6,21 @@ import { session, store } from '../../store';
 /** Teams in the workspace on screen. */
 const wsTeams = () => store.teams.filter((t) => !session.wsId || t.workspaceId === session.wsId);
 import { Avatar } from '../Avatar';
+import { lsKey } from '../../settings';
 
 const RECENT_KEY = 's2g-recent-people';
 
 /** People this person picked lately, newest first (kept in this browser). */
 export function recentPeople(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as string[];
+    return JSON.parse(localStorage.getItem(lsKey(RECENT_KEY)) ?? '[]') as string[];
   } catch {
     return [];
   }
 }
 export function noteRecent(id: string) {
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...recentPeople().filter((x) => x !== id)].slice(0, 8)));
+    localStorage.setItem(lsKey(RECENT_KEY), JSON.stringify([id, ...recentPeople().filter((x) => x !== id)].slice(0, 8)));
   } catch {
     /* private window: no recents */
   }

@@ -44,6 +44,7 @@ interface ScreenProps {
   canEditTables?: boolean; // Members may change columns, views and automations (company setting)
   canDeleteThings?: boolean; // Members may delete tables they didn't make (company setting)
   serverOn: boolean;
+  inDemo?: boolean; // the demo company: buttons, webhooks and imports stay inside it
   onCompose: (m: { to: string; subject: string; body: string }) => void;
   /** A project's guest looking at a shared table: what they may do. */
   guest?: { canEdit: (fieldId: string) => boolean; add: boolean; download: boolean };
@@ -340,7 +341,7 @@ export function TableScreen(p: ScreenProps) {
 
   /* buttons */
   const press = async (row: TableRow, f: TableField, input: Record<string, CellValue> = {}) => {
-    if (!p.serverOn) return p.toast({ text: `Buttons run on the server; they work once ${product.name} is running on one.` });
+    if (!p.serverOn) return p.toast({ text: p.inDemo ? 'Buttons don’t run in the demo company: they reach other apps and send email.' : `Buttons run on the server; they work once ${product.name} is running on one.` });
     const key = `${row.id}:${f.id}`;
     setRunning((x) => new Set(x).add(key));
     try {

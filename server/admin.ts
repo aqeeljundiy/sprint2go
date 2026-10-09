@@ -15,6 +15,7 @@ import { offsiteState } from './offsite.ts';
 import { certState } from './mailcert.ts';
 import * as turn from './turn.ts';
 import * as twostep from './twostep.ts';
+import * as sandbox from './sandbox.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
 
@@ -204,6 +205,8 @@ function systemInfo(ctx: AdminCtx) {
     liveConnections: ctx.sseClients(),
     sessions: db.sessionCount(),
     flags,
+    // People's own demo companies: only here, never in the business numbers (they're kept apart: server/sandbox.ts).
+    demoCompanies: sandbox.stats(),
   };
 }
 

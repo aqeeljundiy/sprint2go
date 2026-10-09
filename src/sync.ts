@@ -5,10 +5,13 @@ import { RECORD_KEYS, type Collections, type CollectionKey } from './seed';
 import { startPresence } from './presence';
 import { askBigFile } from './components/BigFileDialog';
 import { store } from './store';
+import { isSandboxId, type DemoState } from './sandbox';
 
 type Doc = { id: string; [k: string]: unknown };
 
-export const server = { on: false, conn: '', operator: false, flags: [] as string[] }; // operator: may open /admin; flags: features switched on from the backend
+// operator: may open /admin; flags: features switched on from the backend; demo: this person's own demo company
+// (src/sandbox.ts), null without a server.
+export const server = { on: false, conn: '', operator: false, flags: [] as string[], demo: null as DemoState | null };
 export const hasFlag = (key: string) => server.flags.includes(key);
 /** This server's mail name and address (for the records a company adds), and whether Boosted sending exists here. */
 export const mailInfo = { host: '', ip: '', boosted: false };
@@ -36,6 +39,7 @@ export interface Session {
   suspendedIn?: { id: string; name: string; reason: string }[]; // companies that are read-only right now
   maintenance?: string; // changes are paused, with this message
   flags?: string[]; // feature flags on for this person's companies
+  demo?: DemoState; // their own demo company: allowed, and not made yet, open or hidden
   /** Two-step sign-in still to do before the app opens: a code from the app, or setting it up (a company requires it). */
   twoStep?: 'code' | 'setup';
   email?: string; // shown on the two-step screen
@@ -125,6 +129,8 @@ export async function connect(apply: <K extends CollectionKey>(k: K, v: Collecti
   // The desktop app's notifications (it can't take web push): shown by the app itself (pushBridge.ts).
   src.addEventListener('alert', (e) => window.dispatchEvent(new CustomEvent('s2g:alert', { detail: JSON.parse((e as MessageEvent).data) })));
   src.addEventListener('signal', (e) => window.dispatchEvent(new CustomEvent('s2g:signal', { detail: JSON.parse((e as MessageEvent).data) })));
+  // Their demo company was made again, hidden or shown in another window: load everything again.
+  src.addEventListener('reload', () => void reloadAll().catch(() => {}));
   src.addEventListener('change', (e) => {
     const { coll, upserts, deletes } = JSON.parse((e as MessageEvent).data) as { coll: CollectionKey; upserts: Doc[]; deletes: string[] };
     const base = synced[coll] ?? new Map();
@@ -156,6 +162,19 @@ export async function resync(only: CollectionKey[] = ['threads', 'workspaces']) 
   if (!server.on || !reload) return;
   if (!es || es.readyState !== EventSource.OPEN) listen?.();
   await reload(only);
+}
+
+/** Everything again (after the demo company was made, reset, hidden or shown), and where the demo company stands. */
+export async function reloadAll() {
+  if (!server.on || !reload) return;
+  const me = await fetch('/api/me').then((r) => (r.ok ? (r.json() as Promise<Session>) : null), () => null);
+  if (me?.demo) setDemo(me.demo);
+  await reload();
+}
+/** The demo company's state changed: the switcher, Help and Settings follow. */
+export function setDemo(d: DemoState | null) {
+  server.demo = d;
+  window.dispatchEvent(new CustomEvent('s2g:demo'));
 }
 
 /** Called on every local change: sends only what changed, a moment later (several quick edits go together). */
@@ -231,6 +250,15 @@ async function roomFor(workspaceId: string): Promise<{ askOverMb: number; left: 
 }
 /** Set by the app for the company on screen (the demo has no server to ask). */
 export const uploadPolicy = { askOverMb: 500, storageTotal: 0 };
+/** The largest file the demo company keeps (inline, in its own documents). */
+const SANDBOX_FILE = 2 * MB;
+const asDataUrl = (file: Blob) =>
+  new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result));
+    r.onerror = () => rej(new Error('Couldn’t read the file'));
+    r.readAsDataURL(file);
+  });
 
 /**
  * Puts a file on the server and returns where it lives. Without a server (the demo) the file stays in the browser
@@ -239,6 +267,12 @@ export const uploadPolicy = { askOverMb: 500, storageTotal: 0 };
  */
 export async function uploadFile(file: File | Blob, workspaceId: string, name = (file as File).name ?? 'file'): Promise<{ url: string; name: string; type: string; size: number }> {
   const type = file.type || 'application/octet-stream';
+  // DEMO ONLY: the demo company keeps small files (a voice note, a screenshot) inside its own documents, never as
+  // uploads on our server, so they count toward nobody's storage and go with a Reset.
+  if (isSandboxId(workspaceId)) {
+    if (file.size > SANDBOX_FILE) throw new Error(`The demo company keeps files up to ${size(SANDBOX_FILE)}, and nothing in it is saved as a real upload.`);
+    return { url: await asDataUrl(file), name, type, size: file.size };
+  }
   if (file.size >= 10 * MB) {
     const room = await roomFor(workspaceId);
     if (room) {
@@ -247,15 +281,7 @@ export async function uploadFile(file: File | Blob, workspaceId: string, name = 
       if (room.askOverMb > 0 && file.size > room.askOverMb * MB && !(await askBigFile({ name, size: file.size, left: room.total ? room.left : null, total: room.total || null }))) throw new UploadSkipped(name);
     }
   }
-  if (!server.on) {
-    const url = await new Promise<string>((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result));
-      r.onerror = () => rej(new Error('Couldn’t read the file'));
-      r.readAsDataURL(file);
-    });
-    return { url, name, type, size: file.size };
-  }
+  if (!server.on) return { url: await asDataUrl(file), name, type, size: file.size };
   const r = await fetch('/api/upload', { method: 'POST', headers: { 'content-type': type, 'x-file-name': encodeURIComponent(name), 'x-workspace': workspaceId }, body: file });
   if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The upload failed.');
   const d = (await r.json()) as { url: string; name: string; type: string; size: number };

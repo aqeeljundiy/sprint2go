@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Check, LifeBuoy, Loader2, Paperclip, Send, X } from 'lucide-react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { uploadFile, wasSkipped } from '../sync';
@@ -29,7 +29,7 @@ type File2 = { name: string; url: string; size?: string };
 const statusText = (t: Ticket) => (t.status === 'waiting' ? 'We replied' : t.status === 'resolved' || t.status === 'closed' ? 'Solved' : 'Waiting for us');
 
 /** Settings, Help & support: write to the sprint2go team and follow the answers here (they come by email too). Always sprint2go, also for white-labelled companies: this is for their team, not their guests. */
-export function HelpSection({ workspaceId, toast }: { workspaceId: string; toast: (t: string) => void }) {
+export function HelpSection({ workspaceId, toast, extra }: { workspaceId: string; toast: (t: string) => void; extra?: ReactNode }) {
   const [list, setList] = useState<Ticket[] | null>(null);
   const [supportEmail, setSupportEmail] = useState('');
   const [open, setOpen] = useState<string | null>(null);
@@ -84,6 +84,7 @@ export function HelpSection({ workspaceId, toast }: { workspaceId: string; toast
           )}
         </TabPane>
       </SmoothHeight>
+      {extra && <div className="help-extra">{extra}</div>}
     </>
   );
 }

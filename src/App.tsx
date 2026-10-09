@@ -34,7 +34,9 @@ import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, REPLY_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
-import { live, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
+import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
+import { isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
+import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
 import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
@@ -77,6 +79,7 @@ import { htmlToText, textToHtml } from './sanitize';
 import { rowName } from './components/tables/core';
 import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
+import { routeBase } from './tryOut';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -101,7 +104,7 @@ const APP_IDS = APPS.map((a) => a.id) as string[];
 // app.sprint2go.com/mail, /chat… on a real server; #/mail when opened as a local file.
 const hashRouting = !location.protocol.startsWith('http');
 function readRoute(): Mode {
-  const raw = hashRouting ? location.hash.replace(/^#\/?/, '') : location.pathname.replace(/^\//, '');
+  const raw = hashRouting ? location.hash.replace(/^#\/?/, '') : location.pathname.slice(routeBase.length).replace(/^\//, '');
   const first = raw.split('/')[0];
   return APP_IDS.includes(first) ? (first as AppId) : first === 'settings' ? 'settings' : 'home';
 }
@@ -109,7 +112,7 @@ function writeRoute(m: Mode) {
   try {
     if (hashRouting) {
       if (location.hash !== `#/${m}`) history.replaceState(null, '', `#/${m}`);
-    } else if (location.pathname !== `/${m}`) history.pushState(null, '', `/${m}`);
+    } else if (location.pathname !== `${routeBase}/${m}`) history.pushState(null, '', `${routeBase}/${m}`);
   } catch {
     /* some previews forbid history changes */
   }
@@ -172,9 +175,11 @@ interface AppProps {
   onInvite: (u: User) => Promise<string | null>; // the invite link, when the local server makes one
   onWorkspace?: (id: string) => void;
   onUpdateUser: (patch: Partial<User>) => void;
+  /** A bar on top of everything (the try-out's "You're trying sprint2go"). */
+  topBar?: React.ReactNode;
 }
 
-export default function App({ user, signedInUsers, allUsers, workspaces: allWorkspaces, setWorkspaces, onSwitchUser, onAddUser, onSignOut, onInvite: inviteUser, onWorkspace, onUpdateUser }: AppProps) {
+export default function App({ user, signedInUsers, allUsers, workspaces: allWorkspaces, setWorkspaces, onSwitchUser, onAddUser, onSignOut, onInvite: inviteUser, onWorkspace, onUpdateUser, topBar }: AppProps) {
   const [settings, updateSettings] = useSettings(user);
   const [previewOnboarding, setPreviewOnboarding] = useState(() => new URLSearchParams(location.search).get('preview') === 'onboarding');
   setPhotos(allUsers); // every Avatar finds people's photos by email
@@ -192,6 +197,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [wsId, setWsId] = usePersisted(`pm-ws:${user.id}`, workspaces[0]?.id ?? '');
   const ws = workspaces.find((w) => w.id === wsId) ?? workspaces[0];
   session.wsId = ws?.id ?? '';
+  // Their own demo company (src/sandbox.ts): everything in it behaves as the demo, and nothing in it leaves it.
+  // `real`: what's on screen is real, so the server does the real thing (sending, the notetaker, calendar links).
+  const inSandbox = isSandbox(ws);
+  const real = server.on && !inSandbox;
+  const demo = useDemoState(); // their demo company: allowed, and not made yet, open or hidden
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [resettingDemo, setResettingDemo] = useState(false);
+  const [demoInviteOff, setDemoInviteOff] = usePersisted(`s2g-demo-invite-off:${user.id}`, false);
+  // Looking at the demo company: it isn't unused (the server removes ones nobody opened for a month).
+  useEffect(() => {
+    if (inSandbox && server.on) demoCompanySeen();
+  }, [inSandbox, ws.id]);
   // Uploads ask before big files (Settings, Storage); the demo has no server to ask, so it uses these.
   uploadPolicy.askOverMb = ws?.storage?.askOver ?? 500;
   uploadPolicy.storageTotal = ws ? storageGB(ws.plan ?? trialPlan(ws.name, ''), ws.members.length) * 1024 ** 3 : 0;
@@ -218,8 +235,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     () => ws.accounts.filter((a) => a.users.includes(user.id)).sort((a, b) => Number(a.kind === 'shared') - Number(b.kind === 'shared')),
     [ws.accounts, user.id],
   );
-  // What really works (worked out on the server). The standalone demo and demo servers have everything on.
-  const demoOk = !server.on || caps.demo;
+  // What really works (worked out on the server). The standalone demo, demo servers and the demo company have everything on.
+  const demoOk = !server.on || caps.demo || inSandbox;
   const ready = ws.mailReady;
   const boxReady = (id: string): { receive: boolean; send: boolean; why?: string; sendWhy?: string } => (demoOk ? { receive: true, send: true } : ready?.mailboxes?.[id] ?? { receive: false, send: false, why: ready ? undefined : 'Checking your email setup…' });
   const mailIn = myAccounts.some((a) => boxReady(a.id).receive);
@@ -236,7 +253,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [aiOn, setAiOn] = useState(true);
   const [aiWhy, setAiWhy] = useState<'no-key' | 'down' | 'used-up' | null>(null); // why it's off: nothing set up, our AI is down, or the allowance is used up
   useEffect(() => {
-    if (!server.on) return setAiOn(true);
+    if (!server.on || inSandbox) return (setAiOn(true), setAiWhy(null)); // the demo company answers with samples
     let on = true;
     fetch(`/api/ai/status?ws=${encodeURIComponent(ws.id)}`)
       .then((r) => (r.ok ? r.json() : { live: false }))
@@ -400,8 +417,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [leaving, setLeaving] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
   // Latest values for timers that fire later.
-  const latest = useRef({ threads, notifyOpens: settings.notifyOpens });
-  latest.current = { threads, notifyOpens: settings.notifyOpens };
+  const latest = useRef({ threads, notifyOpens: settings.notifyOpens, workspaces: allWorkspaces });
+  latest.current = { threads, notifyOpens: settings.notifyOpens, workspaces: allWorkspaces };
 
   // Calendar
   const [events, setEvents] = useStored('events');
@@ -502,9 +519,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         : explainOff(`AI isn’t set up for this company yet${what}. An admin can add an AI key in Settings, AI, or switch to the AI plan.`, 'ai');
   const openDump = (t: string) => (aiOn ? setDump(t) : aiOff(', so the brain dump can’t turn notes into tasks'));
   const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : aiOff(''));
-  const botOn = !server.on || caps.demo || recorderOn;
+  const botOn = !server.on || caps.demo || inSandbox || recorderOn;
   const openSendBot = () => (botOn ? (setSendBotSeed(null), setSendBotOpen(true)) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
-  const calendarsOn = !server.on || caps.demo || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
+  const calendarsOn = !server.on || caps.demo || inSandbox || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
   const go = (m: Mode) => {
     if (m !== 'settings') setLastMode(m);
     setMode(m);
@@ -526,7 +543,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, []);
   const readyAsked = useRef(0);
   const refreshMail = async () => {
-    if (!server.on) return void setMailLive({ down: false, at: Date.now() });
+    if (!real) return void setMailLive({ down: false, at: Date.now() });
     // The mailbox check looks at DNS and the server's ports: once a minute is plenty.
     if (Date.now() - readyAsked.current > 60_000) {
       readyAsked.current = Date.now();
@@ -592,6 +609,76 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setSelectedEventId(null);
     setSidebarOpen(false);
     if (mode === 'settings') setMode(lastMode);
+  };
+
+  /* ---------------- The demo company (src/sandbox.ts, server/sandbox.ts) ---------------- */
+
+  const sandboxWs = workspaces.find((w) => isSandbox(w));
+  /** Opens their own demo company: made the first time, shown again when it was hidden. */
+  const openDemo = async () => {
+    if (sandboxWs) return (switchWorkspace(sandboxWs.id), go('home'));
+    setDemoBusy(true);
+    const r = await openDemoCompany();
+    if (r.error) return (setDemoBusy(false), showToast({ text: r.error, ms: 7000 }));
+    await reloadAll().catch(() => {});
+    setDemoBusy(false);
+    if (r.workspaceId) switchWorkspace(r.workspaceId);
+    go('home');
+  };
+  const hideDemo = async () => {
+    const other = workspaces.find((w) => !isSandbox(w));
+    setDemoBusy(true);
+    const err = await hideDemoCompany();
+    setDemoBusy(false);
+    if (err) return showToast({ text: err });
+    if (other) switchWorkspace(other.id);
+    await reloadAll().catch(() => {});
+    showToast({ text: 'The demo company is hidden. Help & support brings it back.', ms: 7000, action: { label: 'Undo', run: () => void openDemo() } });
+  };
+  const resetDemo = async (): Promise<boolean> => {
+    const err = await resetDemoCompany();
+    if (err) return (showToast({ text: err }), false);
+    await reloadAll().catch(() => {});
+    setResettingDemo(false);
+    go('home');
+    showToast({ text: 'The demo company is new again' });
+    return true;
+  };
+  /** In the switcher until it's made: "Demo company". Hidden ones come back from Help & support, not from here. */
+  const demoEntry = !sandboxWs && demo?.allowed && demo.state === 'none' ? { busy: demoBusy, onOpen: () => void openDemo() } : null;
+  /** Ticks something off the demo company's "Try this" list (only when it was really done there). */
+  const tried = (key: TryKey) => {
+    if (!inSandbox) return;
+    setWorkspaces((list) => list.map((w) => (w.id === ws.id && w.sandbox && !w.sandbox.tried?.includes(key) ? { ...w, sandbox: { ...w.sandbox, tried: [...(w.sandbox.tried ?? []), key] } } : w)));
+  };
+  /** "Try this" back on the demo company's Home (from Help & support). */
+  const showTryList = () => {
+    if (!sandboxWs?.sandbox) return void openDemo();
+    patchWorkspace(sandboxWs.id, { sandbox: { ...sandboxWs.sandbox, listOff: false } });
+    switchWorkspace(sandboxWs.id);
+    go('home');
+  };
+  /** "Show me": where each thing on the list is done (it doesn't do it for them). */
+  const goTry = (key: TryKey) => {
+    const id = (seedId: string) => `${sandboxWsId(user.id)}-${seedId}`;
+    const has = <T extends { id: string }>(list: T[], x: string) => list.some((d) => d.id === x);
+    switch (key) {
+      case 'reply':
+      case 'email-task':
+        return has(threads, id('t1')) ? openThread(id('t1')) : go('mail');
+      case 'stage':
+        return openTasks({ kind: 'mine' });
+      case 'ask':
+        return openAsk(has(clients, id('c-kopikita')) ? { kind: 'client', id: id('c-kopikita') } : { kind: 'all' });
+      case 'guest':
+        return has(clients, id('c-kopikita')) ? openClient(id('c-kopikita'), 'portal') : go(enabled.has('projects') ? 'projects' : 'tasks');
+      case 'voice':
+        return openChannel(has(channels, id('dm-aqeel-rizky')) ? id('dm-aqeel-rizky') : (wsChannels[0]?.id ?? ''));
+      case 'event':
+        return (go('calendar'), openNewEvent());
+      case 'meeting':
+        return has(meetings, id('mt-kopikita')) ? openMeeting(id('mt-kopikita')) : go('meet');
+    }
   };
 
   const contacts = useMemo(() => {
@@ -716,7 +803,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       showToast({ text: `Reply not sent. ${why} What you wrote is back in the reply box.`, ms: 10000, action: { label: 'Open', run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
     };
     // With the server, the mail engine sends it for real, threaded under the message it answers.
-    if (server.on && acct && (!acct.provider || acct.provider === 'sprint2go')) {
+    if (real && acct && (!acct.provider || acct.provider === 'sprint2go')) {
       const refs = t.messages.map((m) => m.mid).filter(Boolean) as string[];
       void fetch('/api/mail/send', {
         method: 'POST',
@@ -734,7 +821,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             : notSent(await refusal(r, 'The mail engine refused it.')),
         async () => notSent(await refusal(null, '')),
       );
-    } else showToast({ text: 'Reply sent' });
+    } else showToast({ text: inSandbox ? 'Reply sent in the demo company. Nothing left it.' : 'Reply sent' });
+    if (inSandbox && clientForThread(t)) tried('reply');
   };
 
   /** `scheduled`: a "send later" draft keeps its tracking, so the server tracks it when it goes out. */
@@ -769,12 +857,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const thread = toThread(m, 'archive');
     // Mail to one of our own mailboxes arrives straight in its inbox (an alias: in each of its mailboxes). With the
     // server, the mail engine does that, for mailboxes this person can't open too.
+    // The demo company delivers only to its own mailboxes: nothing in it reaches a real one.
+    const pool = inSandbox ? [ws] : allWorkspaces;
     const boxesFor = (email: string) => {
       const e = email.toLowerCase();
-      const direct = allAccounts.filter((a) => a.email === e);
-      return direct.length ? direct : allWorkspaces.flatMap((w) => (w.mailAliases ?? []).filter((al) => al.address === e).flatMap((al) => w.accounts.filter((a) => al.to.includes(a.id))));
+      const direct = pool.flatMap((w) => w.accounts).filter((a) => a.email === e);
+      return direct.length ? direct : pool.flatMap((w) => (w.mailAliases ?? []).filter((al) => al.address === e).flatMap((al) => w.accounts.filter((a) => al.to.includes(a.id))));
     };
-    const delivered: Thread[] = (server.on ? [] : [...new Map([...m.to, ...m.cc].flatMap((p) => boxesFor(p.email)).filter((a) => a.id !== m.fromId).map((a) => [a.id, a] as const)).values()])
+    const delivered: Thread[] = (real ? [] : [...new Map([...m.to, ...m.cc].flatMap((p) => boxesFor(p.email)).filter((a) => a.id !== m.fromId).map((a) => [a.id, a] as const)).values()])
       .map((a) => ({
         ...thread,
         id: uid(),
@@ -826,7 +916,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
     // With the server: the mail engine really sends it (our own mailboxes already have their copies).
-    const handedOver = server.on && !!from && (!from.provider || from.provider === 'sprint2go');
+    const handedOver = real && !!from && (!from.provider || from.provider === 'sprint2go');
     if (handedOver) {
       void fetch('/api/mail/send', {
         method: 'POST',
@@ -848,9 +938,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return;
     } else if (demoOk && thread.messages[0].tracking) simulateOpen(thread);
     // Without the mail engine (the demo), nothing has left yet: Undo just puts it back.
-    const canUndo = !!settings.undoSend && !server.on;
+    const canUndo = !!settings.undoSend && !real;
     showToast({
-      text: 'Message sent',
+      text: inSandbox ? 'Sent in the demo company. Nothing left it.' : 'Message sent',
       ms: canUndo ? settings.undoSend * 1000 : 4000,
       action: canUndo
         ? {
@@ -915,13 +1005,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (mode !== 'mail') go('mail');
   };
 
-  // Scheduled mail goes out on time; snoozed mail comes back to the inbox (the backend does both on the server).
+  // Scheduled mail goes out on time; snoozed mail comes back to the inbox (the backend does both on the server, for
+  // real mailboxes; here only for the demo and the demo company's mailboxes).
   useEffect(() => {
-    if (server.on) return; // the local server does this for everyone
     const tick = () => {
       const now = new Date().toISOString();
+      const demoBoxes = new Set(latest.current.workspaces.filter((w) => isSandbox(w)).flatMap((w) => w.accounts.map((a) => a.id)));
+      const ours = (t: Thread) => !server.on || demoBoxes.has(t.accountId);
+      const due = (t: Thread) => ours(t) && ((!!t.sendAt && t.sendAt <= now) || (!!t.snoozedUntil && t.snoozedUntil <= now));
+      if (!latest.current.threads.some(due)) return;
       setThreads((ts) =>
         ts.map((t) => {
+          if (!ours(t)) return t;
           if (t.sendAt && t.sendAt <= now) return { ...t, sendAt: undefined, location: 'archive', messages: t.messages.map((m) => ({ ...m, date: now })) };
           if (t.snoozedUntil && t.snoozedUntil <= now) return { ...t, snoozedUntil: undefined, unread: true };
           return t;
@@ -932,12 +1027,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return () => clearInterval(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Task reminders: ping everyone doing the task when its time comes (the backend sends these as push and email too).
+  // Task reminders: ping everyone doing the task when its time comes (the backend does this for real companies, with
+  // push and email too; here only for the demo and the demo company).
   useEffect(() => {
-    if (server.on) return; // the local server does this for everyone
     const tick = () => {
       const now = new Date().toISOString();
-      const due = todosRef.current.filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
+      const due = todosRef.current.filter((t) => (!server.on || isSandboxId(t.workspaceId)) && t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
       if (!due.length) return;
       setTodos((ts) => ts.map((t) => (due.some((d) => d.id === t.id) ? { ...t, reminded: true } : t)));
       setNotices((ns) => [
@@ -1036,6 +1131,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     scan();
   }, [wsThreads]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** "Make a task" on an email: a task from it for you, with its project and a link back to the email. */
+  const taskFromThread = (id: string) => {
+    const t = threads.find((x) => x.id === id);
+    if (!t) return;
+    const task = createTask({ title: t.subject.replace(/^((re|fwd?)\s*:\s*)+/i, '').trim() || 'Follow up on this email', userId: user.id, source: 'ai', threadId: t.id, clientId: clientForThread(t)?.id });
+    tried('email-task');
+    showToast({ text: 'Task made from this email', action: { label: 'Open', run: () => openTask(task.id) } });
+  };
   const toggleTodo = (id: string) => {
     const t = todos.find((x) => x.id === id);
     if (t) setTaskStatus(id, stageIdFor(t, t.done ? 'open' : 'done'));
@@ -1501,6 +1604,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const done = to.kind === 'done';
     const before = { status: t.status, done: t.done, doneAt: t.doneAt, doneBy: t.doneBy, history: t.history };
     if (to.id !== from.id) {
+      tried('stage');
       const text = needsReview
         ? 'finished it and sent it for review'
         : done && !t.done
@@ -1804,7 +1908,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   /** With the local server: a link where a client person sets their password and signs in to their portal. */
   const makeClientInvite = (clientId: string) => async (p: { name: string; email: string }) => {
-    if (!server.on) return null;
+    if (!real) return null; // the demo, and the demo company: nobody gets a link
     const r = await fetch('/api/client-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, clientId, ...p }) });
     if (!r.ok) return null;
       const { link } = (await r.json()) as { link: string | null };
@@ -1819,9 +1923,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setChannels((chs) => chs.map((ch) => (ch.clientId === clientId && ch.category === 'shared' && !ch.guests?.some((g) => g.email === person.email) ? { ...ch, guests: [...(ch.guests ?? []), { email: person.email, name: person.name, status: 'invited', invitedBy: user.id, at: nowIso() }] } : ch)));
     const link = await makeClientInvite(clientId)(person);
     showToast(
-      link
-        ? { text: `${person.name.split(' ')[0]} can sign in with their invite link`, action: { label: 'Copy link', run: () => void navigator.clipboard?.writeText(link) }, ms: 20000 }
-        : { text: `${person.name} invited to ${c.name}` },
+      inSandbox
+        ? { text: `${person.name} added to ${c.name}. It’s the demo company, so no invite goes out.`, ms: 6000 }
+        : link
+          ? { text: `${person.name.split(' ')[0]} can sign in with their invite link`, action: { label: 'Copy link', run: () => void navigator.clipboard?.writeText(link) }, ms: 20000 }
+          : { text: `${person.name} invited to ${c.name}` },
     );
   };
   const inviteClientPerson = (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string; phone?: string }) => void giveClientAccess(clientId, person, 'invited');
@@ -1849,7 +1955,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   const loadVault = () => {
-    if (!server.on) return;
+    if (!real) return;
     void fetch(`/api/vault?ws=${encodeURIComponent(ws.id)}`)
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((d: { items: VaultItem[] }) => setVaultItems(d.items));
@@ -1906,8 +2012,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setNotices((ns) => [...to.map((e) => ({ id: uid(), userId: clientInbox(e), workspaceId: ws.id, kind: 'task' as const, text, at: nowIso(), read: false, link: { app: 'tasks' as const, id: t.id } })), ...ns]);
   };
 
+  /** Inviting from the demo company: it says it's the demo, and where to invite people for real. */
+  const demoNoInvites = () => {
+    const realWs = workspaces.find((w) => !isSandbox(w));
+    showToast({ text: 'This is the demo company, so nobody is invited from here. Invite your team in your real company.', ms: 7000, action: realWs ? { label: `Go to ${realWs.name}`, run: () => switchWorkspace(realWs.id) } : undefined });
+  };
   /** Free covers 5 people: the 6th invite shows the price at that moment instead of a wall. */
   const openInvite = () => {
+    if (inSandbox) return demoNoInvites();
     if (ws.plan?.tier === 'free' && members.length >= 5) {
       showToast({ text: 'Free covers 5 people. Add more on Small for Rp 39.000 per person a month', action: { label: 'See plans', run: () => (setSettingsSection('billing'), go('settings')) }, ms: 8000 });
       return;
@@ -1938,6 +2050,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** Sources for a scope: meetings, emails, chat and tasks, shaped the same way for the AI. */
   const askAnything = async (q: string, scope: AskScope) => {
+    tried('ask');
     const client = scope.kind === 'client' ? wsClients.find((c) => c.id === scope.id) : undefined;
     const meetSrc = (m: Meeting) => ({ kind: 'M' as const, id: m.id, title: m.title, summary: m.summary, transcript: m.transcript ?? [], actions: m.actions.map((a) => ({ title: a.title, owner: a.owner, done: !!todos.find((t) => t.id === a.taskId)?.done })) });
     const mailSrc = (t: Thread) => ({ kind: 'E' as const, id: t.id, title: t.subject, summary: t.messages[t.messages.length - 1].body.slice(0, 300), transcript: t.messages.map((m, i) => ({ speaker: m.from.name, text: m.body.slice(0, 400), at: i })), actions: [] });
@@ -1995,6 +2108,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** Invite someone by name and email (from the brain dump's "Who is Andi?"). */
   const inviteByName = (name: string, email: string): User => {
+    // The demo company's people are made up: nobody real is invited from it, so the work stays with you.
+    if (inSandbox) return (demoNoInvites(), user);
     const existing = allUsers.find((u) => u.email.toLowerCase() === email);
     const u: User = existing ?? { id: uid(), name: name.charAt(0).toUpperCase() + name.slice(1), email, title: 'Invited', color: ['#0ea5e9', '#f97316', '#8b5cf6', '#10b981'][allUsers.length % 4] };
     if (!existing) onInvite(u);
@@ -2027,6 +2142,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!ch) return;
     const files = pl.files ? saveChatFiles(pl.files, ch) : undefined;
     const msgId = uid();
+    if (pl.voice) tried('voice');
     setMessages((ms) => [...ms, { id: msgId, channelId: chatId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor }]);
     const text = pl.text;
     const where = ch.kind === 'dm' ? 'a message' : `#${ch.name}`;
@@ -2192,6 +2308,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       });
   }, [meetings]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The demo company's "Try this": a meeting with notes was opened.
+  useEffect(() => {
+    if (inSandbox && mode === 'meet' && meetPage.kind === 'meeting' && meetings.some((m) => m.id === meetPage.id && !!m.summary)) tried('meeting');
+  }, [inSandbox, mode, meetPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** The demo bot: joins, waits to be let in, records a short sample conversation, leaves and writes notes. */
   const sendBot = (d: { url: string; title: string; botName: string; clientId: string; attendees?: string[]; fromEvent?: string; language?: string }) => {
     const id = uid();
@@ -2201,8 +2322,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setSendBotOpen(false);
     setMeetPage({ kind: 'meeting', id });
     go('meet');
-    // With the real recorder, the server saves the meeting and the bot fills it in from there.
-    if (recorderOn) {
+    // With the real recorder, the server saves the meeting and the bot fills it in from there (never from the demo company).
+    if (recorderOn && real) {
       const real = { ...m, bot: true, ...(d.language ? { language: d.language } : {}) };
       setMeetings((ms) => [real, ...ms]);
       void fetch('/api/meet/bot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ meeting: real }) }).then(async (r) => {
@@ -2352,7 +2473,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers]);
   const myEvents = useMemo(() => visibleEvents.filter((e) => !e.calendarId.startsWith('mate-')), [visibleEvents]);
   // The notetaker joining by itself: the server does it when the real recorder answers; the demo keeps its switches.
-  const autoJoin: 'live' | 'demo' | 'off' = recorderOn ? 'live' : demoOk ? 'demo' : 'off';
+  const autoJoin: 'live' | 'demo' | 'off' = recorderOn && real ? 'live' : demoOk ? 'demo' : 'off';
   // (It joins from two minutes before the start until a minute after; a meeting already going gets "Send now".)
   const botWillJoin = (e: CalEvent) => autoJoin === 'live' && (e.userId ?? user.id) === user.id && !e.calendarId.startsWith('mate-') && new Date(e.start).getTime() > Date.now() - 60_000 && botJoins(e, meetSettings.joinMode, joinOverrides, isMine);
   const setBotJoin = (eventId: string, join: boolean | null) =>
@@ -2388,6 +2509,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const saveEvent = (e: Omit<CalEvent, 'id'>) => {
     const ev = { ...e, id: uid(), workspaceId: ws.id, userId: user.id };
+    tried('event');
     setEvents((es) => [...es, ev]);
     setNewEventAt(null);
     setCalCursor(new Date(ev.start));
@@ -2512,7 +2634,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ms: extra ? 8000 : 5000,
         action: status !== 'declined' ? { label: 'View', run: () => showInvite(inv.uid, inv.start) } : undefined,
       });
-    if (server.on) {
+    if (real) {
       try {
         const r = await fetch('/api/mail/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: t.id, messageId: m.id, answer: status }) });
         const d = (await r.json().catch(() => ({}))) as { error?: string; sent?: boolean; firstOnly?: boolean };
@@ -2527,7 +2649,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         return false;
       }
     }
-    // The demo (no server): answered here, and nothing is sent.
+    // The demo (no server, or the demo company): answered here, and nothing is sent.
     const at = nowIso();
     setThreads((ts) => ts.map((x) => (x.id !== t.id ? x : { ...x, messages: x.messages.map((y) => (y.id === m.id ? { ...y, invite: { ...inv, answer: { status, at, by: user.id, sent: false } } } : y)) })));
     setEvents((es) => [
@@ -2558,7 +2680,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Removing a mailbox: its mail moves to another mailbox or goes with it, and its address stops receiving. */
   const removeMailbox = async (a: Account, moveTo: string | null): Promise<boolean> => {
     const target = moveTo ? ws.accounts.find((x) => x.id === moveTo) : undefined;
-    if (server.on) {
+    if (real) {
       const r = await fetch('/api/mail/mailbox/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, accountId: a.id, moveTo }) }).catch(() => null);
       if (!r?.ok) {
         showToast({ text: ((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? 'No connection: the mailbox wasn’t removed.' });
@@ -3044,7 +3166,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   return (
     <TabDefaultsCtx.Provider value={tabDefaults}>
     <ProjectsCtx.Provider value={projectsCtx}>
-    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''}`}>
+    {inSandbox ? <DemoCompanyBar busy={demoBusy} onReset={() => setResettingDemo(true)} onHide={() => void hideDemo()} /> : topBar}
+    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''} ${inSandbox || topBar ? 'with-demo-bar' : ''}`}>
       <AppRail
         current={mode}
         enabled={enabledApps}
@@ -3062,6 +3185,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setSettingsSection('workspace');
               go('settings');
             }}
+            demo={demoEntry}
           />
         }
         account={
@@ -3120,6 +3244,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setSettingsSection('workspace');
               go('settings');
             }}
+            demo={demoEntry}
           />
             <button className="ghost-btn outline sm" onClick={() => go('settings')}>
               Settings
@@ -3154,7 +3279,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSync={async (id) => {
               const cal = extCals.find((c) => c.id === id);
               // Links and holidays are read by the server: ask it to read them again now.
-              if (server.on && (cal?.source === 'ics' || cal?.source === 'holidays')) {
+              if (real && (cal?.source === 'ics' || cal?.source === 'holidays')) {
                 const r = (await fetch(`/api/calendars/${id}/refresh`, { method: 'POST' })
                   .then((x) => x.json())
                   .catch(() => ({ ok: false, error: 'Couldn’t reach the server. Try again in a moment.' }))) as { ok?: boolean; error?: string };
@@ -3171,7 +3296,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setExtCals((cs) => cs.filter((c) => c.id !== id));
               setEvents((es) => es.filter((e) => e.calendarId !== id));
               // A link is put back and read again by the server (its events come back with it).
-              const relink = server.on && cal.source === 'ics';
+              const relink = real && cal.source === 'ics';
               showToast({ text: `${cal.name} removed`, action: { label: 'Undo', run: () => (relink ? setExtCals((cs) => [...cs, cal]) : (setExtCals(snapshot.extCals), setEvents(snapshot.events))) } });
             }}
             companyName={ws.name}
@@ -3180,8 +3305,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onHolidaysOff={() => {
               const before = ws.holidays;
               patchWorkspace(ws.id, { holidays: undefined });
-              if (!server.on) demoHolidays(null);
-              showToast({ text: 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !server.on && demoHolidays(before?.country ?? null)) } });
+              if (!real) demoHolidays(null);
+              showToast({ text: 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
             }}
             hidden={hiddenCals}
             busyDays={busyDays}
@@ -3354,6 +3479,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             unread={myNotices.filter((n) => !n.read).length}
             onWorkspace={switchWorkspace}
             onAddWorkspace={() => setNewWs(true)}
+            demo={demoEntry}
             portals={portalItems}
             onPortal={setPortalKey}
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
@@ -3473,8 +3599,23 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onMenu={() => setSidebarOpen(true)}
             news={news.filter((n) => !newsSeen.includes(n.id))}
             onDismissNews={(id) => setNewsSeen((s) => [...s.slice(-50), id])}
+            top={
+              inSandbox && ws.sandbox && !ws.sandbox.listOff ? (
+                <TryList
+                  tried={ws.sandbox.tried ?? []}
+                  onGo={goTry}
+                  onClose={() => (patchWorkspace(ws.id, { sandbox: { ...ws.sandbox!, listOff: true } }), showToast({ text: 'The list is in Help & support whenever you want it' }))}
+                  onDone={(() => {
+                    const realWs = workspaces.find((w) => !isSandbox(w));
+                    return realWs ? { label: `Go to ${realWs.name}`, run: () => switchWorkspace(realWs.id) } : { label: 'Set up your company', run: () => setNewWs(true) };
+                  })()}
+                />
+              ) : !inSandbox && demo?.allowed && demo.state === 'none' && !demoInviteOff && !allWsTasks.length && !wsClientsAll.length ? (
+                <DemoInvite busy={demoBusy} onOpen={() => void openDemo()} onClose={() => setDemoInviteOff(true)} />
+              ) : undefined
+            }
             setup={
-              ws.members.some((m) => m.userId === user.id && m.role !== 'member')
+              !inSandbox && ws.members.some((m) => m.userId === user.id && m.role !== 'member')
                 ? [
                     {
                       key: 'email',
@@ -3534,7 +3675,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             files={drive.filter((d) => (d.workspaceId ?? 'pnp') === ws.id)}
             workspace={ws}
             canManage={isAdmin}
-            onViewAs={(clientId, email) => setViewAs({ clientId, email })}
+            onViewAs={(clientId, email) => (tried('guest'), setViewAs({ clientId, email }))}
             onPatchClient={patchClient}
             onInviteClientPerson={inviteClientPerson}
             onApproveClientPerson={approveClientPerson}
@@ -3579,6 +3720,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? {
                     joined: huddleId === chatId,
                     onJoin: () => {
+                      tried('voice');
                       if (huddleId && huddleId !== chatId) leaveHuddle();
                       setChannels((cs) => cs.map((c) => (c.id === chatId ? { ...c, huddle: { by: c.huddle?.by ?? user.id, at: c.huddle?.at ?? nowIso(), members: [...new Set([...(c.huddle?.members ?? []), user.id])] } } : c)));
                       setHuddleId(chatId);
@@ -3663,7 +3805,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onStop={stopBot}
             onRegenerate={(id) => finishMeeting(id, true)}
             onTranscribeAgain={
-              recorderOn
+              recorderOn && real
                 ? (id, language) =>
                     void fetch(`/api/meet/again/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language }) }).then(async (r) =>
                       showToast({ text: r.ok ? 'Transcribing again. The notes update when it’s done.' : (((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t transcribe again') }),
@@ -3690,7 +3832,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSendNow={(e) => sendNotetakerTo(e)}
             demo={demoOk}
             calendarsSyncedAt={linkCals.reduce<string | undefined>((a, c) => (c.syncedAt && (!a || c.syncedAt > a) ? c.syncedAt : a), undefined)}
-            onSyncCalendars={server.on && linkCals.some((c) => c.source === 'ics') ? refreshLinks : demoOk ? () => showToast({ text: 'Synced' }) : undefined}
+            onSyncCalendars={real && linkCals.some((c) => c.source === 'ics') ? refreshLinks : demoOk ? () => showToast({ text: 'Synced' }) : undefined}
             onAsk={setAskScope}
             onSend={() => openSendBot()}
             onMenu={() => setSidebarOpen(true)}
@@ -3785,7 +3927,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onWidth={setListW}
               onRefresh={refreshMail}
               updatedAt={mailLive.at}
-              offline={server.on && mailLive.down}
+              offline={real && mailLive.down}
               onQuery={setQuery}
               onFilter={setFilter}
               onOpen={open}
@@ -3848,6 +3990,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               myName={settings.name || user.name}
               todos={selected ? myTodos.filter((t) => t.threadId === selected.id) : []}
               onToggleTodo={toggleTodo}
+              onMakeTask={enabled.has('tasks') ? taskFromThread : undefined}
               onOpenTodos={() => openTasks({ kind: 'mine' })}
               unsubscribedAt={selected && incomingFrom(selected) ? unsubscribed[domainOf(incomingFrom(selected)!.email)] : undefined}
               onUnsubscribe={unsubscribe}
@@ -3975,7 +4118,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               isAdmin={isAdmin}
               canEditTables={perms.editTables}
               canDeleteThings={perms.deleteThings}
-              serverOn={server.on}
+              serverOn={real}
+              inDemo={inSandbox}
               onCompose={(m) => openCompose({ initial: { to: m.to ? [{ name: m.to, email: m.to }] : [], cc: [], subject: m.subject, html: textToHtml(m.body) + settings.signature, text: m.body, files: [], track: settings.trackByDefault, trackOptions: DEFAULT_TRACK_OPTIONS, fromId: (myAccounts.find((a) => a.kind === 'personal') ?? myAccounts[0])?.id ?? '' } })}
             />
           ) : (
@@ -4073,6 +4217,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
         {mode === 'settings' && (
           <SettingsPage
+            demo={
+              demo && server.on
+                ? { inDemo: inSandbox, allowed: demo.allowed, state: demo.state, listOff: !!sandboxWs?.sandbox?.listOff, busy: demoBusy, onOpen: () => void openDemo(), onList: showTryList, realWorkspaceId: workspaces.find((w) => !isSandbox(w))?.id }
+                : undefined
+            }
             email={ME.email}
             settings={settings}
             update={updateSettings}
@@ -4084,7 +4233,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onWorkspace={(p) => patchWorkspace(ws.id, p)}
             onHolidays={(country) => {
               patchWorkspace(ws.id, { holidays: country ? { country } : undefined });
-              if (!server.on) demoHolidays(country);
+              if (!real) demoHolidays(country);
             }}
             holidayCal={extCals.find((c) => c.id === holidayCalendarId(ws.id))}
             onAddAccount={() => setNewAcct(true)}
@@ -4154,7 +4303,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 accounts={myAccounts.filter((a) => !a.temp)}
                 canSend={(id) => (boxReady(id).send ? null : (boxReady(id).sendWhy ?? boxReady(id).why ?? 'Sending isn’t set up for this mailbox yet.'))}
                 onSave={async (a, away) => {
-                  if (!server.on) {
+                  if (!real) {
                     patchWorkspace(ws.id, { accounts: ws.accounts.map((x) => (x.id === a.id ? { ...x, away: { ...away, since: away.on ? nowIso() : undefined } } : x)) });
                     return null;
                   }
@@ -4316,6 +4465,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           </div>
         </Popover>
       )}
+      {resettingDemo && inSandbox && <ResetDemoDialog onReset={resetDemo} onClose={() => setResettingDemo(false)} />}
       {newWs && (
         <Onboarding
           me={user}
@@ -4381,7 +4531,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           existing={myExtCals}
           workspace={ws}
           isAdmin={isAdmin}
-          live={server.on}
+          live={real}
           demo={demoOk}
           google={caps.googleCalendar}
           microsoft={caps.microsoftCalendar}
@@ -4401,9 +4551,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onHolidays={(country) => {
             const before = ws.holidays;
             patchWorkspace(ws.id, { holidays: country ? { country } : undefined });
-            if (!server.on) demoHolidays(country);
+            if (!real) demoHolidays(country);
             setConnectCal(false);
-            showToast({ text: country ? `Holidays in ${holidayCountry(country)?.name ?? country} now show for everyone at ${ws.name}` : 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !server.on && demoHolidays(before?.country ?? null)) } });
+            showToast({ text: country ? `Holidays in ${holidayCountry(country)?.name ?? country} now show for everyone at ${ws.name}` : 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
           }}
         />
       )}
@@ -4458,7 +4608,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           clients={wsClients}
           botName={meetSettings.botName}
           languages={meetSettings.languages}
-          real={recorderOn}
+          real={recorderOn && real}
           workspaceId={ws.id}
           isOwner={ws.members.some((m) => m.userId === user.id && m.role === 'owner')}
           seed={sendBotSeed ?? undefined}
