@@ -438,7 +438,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const threads = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
     const existing = refs.length ? threads.find((t) => (t.messages ?? []).some((m: any) => m.mid && refs.includes(m.mid))) : undefined;
     const thread = existing
-      ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, messages: [...existing.messages, msg] }
+      ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, snoozeIfNoReply: undefined, messages: [...existing.messages, msg] }
       : { id: 't-' + randomBytes(6).toString('hex'), accountId: account.id, subject: cleanSubject(parsed.subject ?? '') || '(no subject)', location: spam ? 'spam' : 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: ws.id };
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
@@ -462,6 +462,7 @@ export interface Outgoing {
   from: Person;
   to: Person[];
   cc: Person[];
+  bcc?: Person[]; // they get it; nobody sees them in the headers (or in teammates' copies)
   subject: string;
   text: string;
   html?: string;
@@ -500,7 +501,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     markDelivery(o.threadId, o.messageId, null, 'failed', blocked);
     throw new Error(blocked);
   }
-  const recipientsCount = [...o.to, ...o.cc].length;
+  const recipientsCount = [...o.to, ...o.cc, ...(o.bcc ?? [])].length;
   const sentLastHour = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 3600_000).toISOString()) as { n: number }).n;
   const sentLastDay = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
   if (sentLastHour + recipientsCount > LIMITS.hour || sentLastDay + recipientsCount > LIMITS.day)
@@ -509,7 +510,10 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   if (domain && domain !== MAIL_HOST && !mayUse(ws, domain)) throw new Error(`Another company uses ${domain}, so mail can’t be sent from it here. An admin can prove it’s yours in Settings, Email delivery.`);
   const mid = `<${randomBytes(12).toString('hex')}@${domain || MAIL_HOST}>`;
   let route: 'own' | 'boosted' = ws.mailRoute === 'boosted' && boostedAvailable() ? 'boosted' : 'own';
-  const recipients = [...o.to, ...o.cc].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
+  const recipients = [...o.to, ...o.cc, ...(o.bcc ?? [])].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
+  // What everyone sees as the recipients: Bcc never shows (the headers leave it out, and so do teammates' copies).
+  const hidden = new Set((o.bcc ?? []).map((p) => lower(p.email)));
+  const shown = recipients.filter((p) => !hidden.has(p.email) || [...o.to, ...o.cc].some((x) => lower(x.email) === p.email));
   const mine = localAccounts();
   const local = recipients.filter((p) => mine.has(p.email));
   const remote = recipients.filter((p) => !mine.has(p.email));
@@ -559,7 +563,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   for (const { hit, shared } of localBoxes) {
     if (hit.account.id === o.accountId) continue;
     const parsed = await simpleParser(raw);
-    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: recipients, date: now(), body: o.text, html: o.html, attachments: parsed.attachments.length ? o.files.map((f, i) => ({ name: f.name, size: fmtSize(parsed.attachments[i]?.size ?? 0), url: f.url })) : undefined };
+    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: o.html, attachments: parsed.attachments.length ? o.files.map((f, i) => ({ name: f.name, size: fmtSize(parsed.attachments[i]?.size ?? 0), url: f.url })) : undefined };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);

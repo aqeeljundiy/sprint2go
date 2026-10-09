@@ -6,7 +6,7 @@ export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'sp
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
 export type Location = 'inbox' | 'drafts' | 'archive' | 'spam' | 'trash';
 
-export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' };
+export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string };
 
 export interface Person {
   name: string;
@@ -23,6 +23,7 @@ export interface Message {
   id: string;
   from: Person;
   to: Person[];
+  bcc?: Person[]; // the sender's own copy only: who got it without the others seeing
   date: string; // ISO
   body: string; // plain-text version (used for snippets and search)
   html?: string; // rich version, when the message was written with formatting
@@ -120,8 +121,10 @@ export interface Thread {
   messages: Message[];
   invite?: Invite;
   assignee?: string; // shared inboxes: who is handling it
-  notes?: { id: string; by: string; text: string; at: string }[]; // internal notes, only the team sees them
+  assignedBy?: string; // who gave it to them (set by the server)
+  notes?: { id: string; by: string; text: string; at: string }[]; // comments: only the people with this mailbox see them, never the sender
   snoozedUntil?: string; // hidden from the inbox until then
+  snoozeIfNoReply?: string; // "only if no reply": the last message when it was snoozed; anyone writing since cancels the comeback (src/mailRules.ts)
   scannedFor?: string[]; // `${userId}:${lastMessageId}`: already read for to-dos (so the AI reads each email once)
   sendAt?: string; // scheduled to send
   workspaceId?: string; // set by the server for mail it received
