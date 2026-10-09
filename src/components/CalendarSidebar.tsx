@@ -30,7 +30,7 @@ interface Props {
   onHolidaysOff: () => void;
   /** My open tasks without a time block yet: drag one onto the calendar. */
   toPlan?: { id: string; title: string; sub?: string; late?: boolean }[];
-  onPlan?: (id: string) => void; // no drag (phones): block the next free morning slot
+  onPlan?: (id: string) => void; // pick a time for it (phones can't drag): how long, then a free slot
 }
 
 export function CalendarSidebar({ cursor, calendars, external, teammates, shownMates, hidden, busyDays, onCursor, onToggle, onToggleMate, onNew, onAddCalendar, onShare, onSync, onRemove, companyName, isAdmin, onHolidays, onHolidaysOff, toPlan = [], onPlan }: Props) {
@@ -103,13 +103,14 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
       {toPlan.length > 0 && (
         <>
           <div className="nav-heading sb-label">Plan your tasks</div>
-          <p className="muted small sb-label plan-hint">Drag a task onto the calendar to block time for it.</p>
+          <p className="muted small sb-label plan-hint">Drag a task onto the calendar, or click it to pick a time.</p>
           <nav className="nav plan-list">
             {toPlan.slice(0, 8).map((t) => (
               <div
                 key={t.id}
                 className={`plan-task sb-label ${t.late ? 'late' : ''}`}
                 draggable
+                onClick={() => onPlan?.(t.id)}
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/s2g-task', t.id);
                   e.dataTransfer.effectAllowed = 'copy';
@@ -122,7 +123,7 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
                   {t.sub && <small>{t.sub}</small>}
                 </span>
                 {onPlan && (
-                  <button className="icon-btn sm pt-add" title="Block time tomorrow morning" onClick={() => onPlan(t.id)}>
+                  <button className="icon-btn sm pt-add" title="Pick a time" aria-label={`Pick a time for “${t.title}”`} onClick={(e) => (e.stopPropagation(), onPlan(t.id))}>
                     <CalendarPlus size={14} />
                   </button>
                 )}

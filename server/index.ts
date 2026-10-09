@@ -54,6 +54,7 @@ import * as imports from './imports.ts';
 import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
 import * as connector from './connector.ts';
+import { eventReminders, reminderText } from './eventReminders.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -3592,6 +3593,16 @@ setInterval(() => {
     db.writeDocs('todos', todos, [], null);
     db.writeDocs('notices', notices, [], null);
     broadcast('todos', todos, []);
+    broadcast('notices', notices, []);
+  }
+  // Event reminders ("10 minutes before"): one notification to the event's owner, sent again if the event moves.
+  const ring = eventReminders(db.allDocs('events') as any[], Date.parse(now));
+  if (ring.length) {
+    const events = ring.map((e) => ({ ...e, remindedFor: e.start }));
+    const notices = ring.map((e) => ({ id: randomBytes(6).toString('hex'), userId: e.userId, workspaceId: e.workspaceId ?? '', kind: 'meeting', text: reminderText(e, Date.parse(now)), at: now, read: false, link: { app: 'calendar', id: e.id } }));
+    db.writeDocs('events', events, [], null);
+    db.writeDocs('notices', notices, [], null);
+    broadcast('events', events, []);
     broadcast('notices', notices, []);
   }
 }, 30_000);

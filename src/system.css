@@ -559,24 +559,6 @@ h4,
 
 /* ---------- Phones (tap targets, fields and labels are in src/mobile/shell.css) ---------- */
 @media (max-width: 767px) {
-  /* Calendar: the date on its own line with New event; Today, the arrows and Day / Week / Month under it. */
-  .cal-header h1 {
-    order: 1;
-    flex: 1 0 100%;
-  }
-  .cal-header .cal-new {
-    display: none; /* the round + at the bottom is New event on phones: one, not two */
-  }
-  .cal-header .cal-nav {
-    order: 3;
-  }
-  .cal-header .segmented {
-    order: 4;
-    flex: 1;
-  }
-  .cal-header .cal-nav .ghost-btn.sm {
-    margin-right: 0;
-  }
   /* Many choices in one segmented control (Guest access per project type): one row you can swipe. */
   .access-types .segmented {
     flex-wrap: nowrap;
@@ -640,8 +622,7 @@ h4,
   .sel-search {
     min-height: 40px;
   }
-  .segmented > button,
-  .cal-new {
+  .segmented > button {
     min-width: 40px;
   }
   .setup-text,

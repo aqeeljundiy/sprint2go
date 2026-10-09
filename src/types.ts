@@ -177,6 +177,8 @@ export interface CalEvent {
   organizer?: Person;
   feed?: 'link' | 'holidays'; // made by the server from a calendar link or public holidays: read only
   busy?: boolean; // a teammate's event shown as busy only (no title or details)
+  remind?: number; // minutes before the start to remind its owner (a notification; the server sends it)
+  remindedFor?: string; // the start the reminder went out for (the server's: moving the event sets it again)
 }
 
 export interface Label {

@@ -51,6 +51,7 @@ import { Reader } from './components/Reader';
 import { Compose, type Outgoing } from './components/Compose';
 import type { CalView } from './components/CalendarView';
 import { CalendarSidebar } from './components/CalendarSidebar';
+import { ScheduleTask } from './components/calendar/ScheduleTask';
 import { AccountMenu, type SettingsSection } from './components/AccountMenu';
 import { DriveSidebar } from './components/DriveSidebar';
 import { DrivePreview } from './components/DrivePreview';
@@ -439,9 +440,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [shownMates, setShownMates] = useState<Set<string>>(new Set());
   const [connectCal, setConnectCal] = useState<false | true | 'holidays'>(false);
   const [calCursor, setCalCursor] = useState(new Date());
-  const [calView, setCalView] = useState<CalView>(() => (matchMedia(PHONE).matches ? 'day' : 'week'));
+  // The last view, remembered on this device (phones and wide screens each keep their own).
+  const [calViewPhone, setCalViewPhone] = usePersisted<CalView>('s2g-cal-view:phone', 'schedule');
+  const [calViewWide, setCalViewWide] = usePersisted<CalView>('s2g-cal-view:wide', 'week');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [newEventAt, setNewEventAt] = useState<Date | null>(null);
+  const [editEventId, setEditEventId] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState<Todo | null>(null); // a task getting a time (Schedule)
+  const calView = mobile ? calViewPhone : calViewWide;
+  const setCalView = (v: CalView) => (mobile ? setCalViewPhone(v) : setCalViewWide(v));
 
   // Drive
   const [drive, setDrive] = useStored('drive');
@@ -1167,23 +1174,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setTodos((list) => list.filter((t) => t.id !== id));
     showToast({ text: 'To-do deleted', action: { label: 'Undo', run: () => setTodos(snapshot) } });
   };
-  const todoToCalendar = (t: Todo) => {
-    const start = new Date(`${t.due ?? localDay(new Date(Date.now() + 86_400_000))}T09:00`);
+  /** A task gets a time: how long, then a free slot (the Schedule sheet). From the task's panel, its row and Calendar. */
+  const todoToCalendar = (t: Todo) => setScheduling(t);
+  const blockTask = (t: Todo, start: Date, minutes: number) => {
     const ev: CalEvent = {
       id: uid(),
       title: t.title,
       calendarId: 'work',
       start: start.toISOString(),
-      end: new Date(start.getTime() + 30 * 60_000).toISOString(),
+      end: new Date(start.getTime() + minutes * 60_000).toISOString(),
       threadId: t.threadId,
       taskId: t.id,
       workspaceId: ws.id,
       userId: user.id,
     };
     setEvents((es) => [...es, ev]);
+    setScheduling(null);
     showToast({
-      text: `Added to calendar · ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} 9:00`,
-      action: { label: 'View', run: () => { go('calendar'); setCalCursor(start); setSelectedEventId(ev.id); } },
+      text: `Blocked ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(start)} for “${t.title}”`,
+      action: { label: 'Undo', run: () => setEvents((es) => es.filter((e) => e.id !== ev.id)) },
     });
   };
 
@@ -2518,7 +2527,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return out;
   }, [sentEvents, wsMeetings, myEvents]);
   const busyDays = useMemo(() => new Set(myEvents.map((e) => new Date(e.start).toDateString())), [myEvents]);
-  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
 
   function openNewEvent(at?: Date) {
     const d = at ?? new Date(calCursor);
@@ -2527,14 +2535,37 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setSidebarOpen(false);
   }
 
-  const saveEvent = (e: Omit<CalEvent, 'id'>) => {
-    const ev = { ...e, id: uid(), workspaceId: ws.id, userId: user.id };
+  /** New event, or a new task with its time blocked (the editor's Event | Task switch). */
+  const saveEvent = (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task' = 'event') => {
+    const start = new Date(e.start);
+    const task = kind === 'task' ? createTask({ title: e.title, userId: user.id, due: localDay(start), source: 'manual' }) : null;
+    const ev: CalEvent = task ? { id: uid(), title: task.title, calendarId: 'work', start: e.start, end: e.end, allDay: e.allDay, notes: e.notes, remind: e.remind, taskId: task.id, workspaceId: ws.id, userId: user.id } : { ...e, id: uid(), workspaceId: ws.id, userId: user.id };
     tried('event');
     setEvents((es) => [...es, ev]);
     setNewEventAt(null);
-    setCalCursor(new Date(ev.start));
-    setSelectedEventId(ev.id);
-    showToast({ text: 'Event created' });
+    setCalCursor(start);
+    if (!mobile) setSelectedEventId(ev.id);
+    showToast({
+      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : 'Event created',
+      action: { label: 'Undo', run: () => (setEvents((es) => es.filter((x) => x.id !== ev.id)), task && setTodos((ts) => ts.filter((x) => x.id !== task.id))) },
+    });
+  };
+  /** Changes from the editor. Times that moved set the reminder going again (the server keeps track). */
+  const updateEvent = (id: string, e: Omit<CalEvent, 'id'>) => {
+    const before = events.find((x) => x.id === id);
+    if (!before) return;
+    setEvents((es) => es.map((x) => (x.id === id ? { ...x, ...e, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind } : x)));
+    setEditEventId(null);
+    showToast({ text: 'Event saved', action: { label: 'Undo', run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
+  };
+  const duplicateEvent = (id: string) => {
+    const e = events.find((x) => x.id === id);
+    if (!e) return;
+    const { inviteUid: _u, sequence: _s, occurrence: _o, rsvp: _r, organizer: _org, remindedFor: _rf, feed: _f, ...rest } = e;
+    const copy: CalEvent = { ...rest, id: uid(), title: e.title, workspaceId: ws.id, userId: user.id };
+    setEvents((es) => [...es, copy]);
+    if (!mobile) setSelectedEventId(copy.id);
+    showToast({ text: `Copy of “${e.title}” added`, action: { label: 'Undo', run: () => setEvents((es) => es.filter((x) => x.id !== copy.id)) } });
   };
 
   /** My outside calendars other than holidays (links, and the demo's pretend Google and Outlook ones). */
@@ -2694,6 +2725,94 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         onOpenCalendar={() => showInvite(inv.uid, inv.start)}
       />
     );
+  };
+
+
+  /**
+   * Invites waiting for an answer in my mail, shown on the calendar (dashed) so they can be answered there too. Once
+   * answered they become ordinary events (the server makes them), so they're never shown twice.
+   */
+  const pendingInvites = useMemo(() => {
+    const now = Date.now();
+    const out: CalEvent[] = [];
+    const seen = new Set<string>();
+    for (const t of wsThreads) {
+      if (t.location === 'trash' || t.location === 'spam') continue;
+      for (const m of t.messages) {
+        const inv = m.invite;
+        if (!inv || inv.method !== 'REQUEST' || inv.cancelled || Date.parse(inv.end) < now) continue;
+        const key = `${inv.uid}|${inv.recurrenceId ?? ''}`;
+        if (seen.has(key)) continue;
+        const st = inviteState(t, m);
+        if (st.answer || st.onCalendar || st.cancelled || st.newer) continue;
+        seen.add(key);
+        // All-day invites come as noon UTC on the first and last day: here they cover those days.
+        const day = (iso: string) => {
+          const d = new Date(iso);
+          return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+        };
+        const start = inv.allDay ? day(inv.start) : new Date(inv.start);
+        const end = inv.allDay ? new Date(day(inv.end).getTime() + 86_400_000) : new Date(inv.end);
+        out.push({
+          id: `inv:${t.id}:${m.id}`,
+          title: inv.title,
+          calendarId: 'work',
+          start: start.toISOString(),
+          end: end.toISOString(),
+          allDay: inv.allDay,
+          location: inv.location,
+          meetUrl: inv.url,
+          notes: inv.description,
+          guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })),
+          threadId: t.id,
+          inviteUid: inv.uid,
+          organizer: inv.organizer,
+          workspaceId: ws.id,
+          userId: user.id,
+        });
+      }
+    }
+    return out;
+  }, [wsThreads, events]); // eslint-disable-line react-hooks/exhaustive-deps
+  const calEvents = useMemo(() => (pendingInvites.length ? [...visibleEvents, ...pendingInvites] : visibleEvents), [visibleEvents, pendingInvites]);
+  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? calEvents.find((e) => e.id === selectedEventId) ?? null;
+  /** Calendars a new event can go in (not read-only ones like links and holidays). */
+  const addToCals = useMemo(() => [...CALENDARS, ...myExtCals.filter((c) => !c.readOnly)], [myExtCals]);
+  /** People to invite besides teammates: the projects' guests and anyone already a guest of my events. */
+  const guestContacts = useMemo(() => {
+    const seen = new Map<string, Person>();
+    for (const c of wsClients) for (const p of c.people ?? []) seen.set(p.email.toLowerCase(), { name: p.name, email: p.email });
+    for (const e of myEvents) for (const g of e.guests ?? []) if (!seen.has(g.email.toLowerCase())) seen.set(g.email.toLowerCase(), g);
+    return [...seen.values()].filter((p) => !members.some((u) => u.email.toLowerCase() === p.email.toLowerCase()));
+  }, [wsClients, myEvents, members]);
+  /** Schedule: my open tasks with a due date (and the ones done today), each on its day with its checkbox. */
+  const myDueTasks = useMemo(
+    () => wsTasks.filter((t) => t.due && !isBrief(t) && doersOf(t).includes(user.id) && (!t.done || (!!t.doneAt && localDay(new Date(t.doneAt)) === localDay()))).map((t) => ({ id: t.id, title: t.title, due: t.due!, done: t.done })),
+    [wsTasks, user.id],
+  );
+  /** The invite email behind an event (the newest one), to answer it from the calendar. */
+  const inviteOf = (e: CalEvent) => {
+    if (e.id.startsWith('inv:')) {
+      const [, tid, mid] = e.id.split(':');
+      const t = threads.find((x) => x.id === tid);
+      const m = t?.messages.find((x) => x.id === mid);
+      return t && m ? { t, m } : null;
+    }
+    if (!e.inviteUid) return null;
+    const t = threads.find((x) => x.id === e.threadId) ?? wsThreads.find((x) => x.messages.some((m) => m.invite?.uid === e.inviteUid));
+    const m = t && [...t.messages].reverse().find((x) => x.invite?.uid === e.inviteUid && x.invite?.method !== 'REPLY');
+    return t && m ? { t, m } : null;
+  };
+  const rsvpEvent = (e: CalEvent, status: RsvpStatus) => {
+    const found = inviteOf(e);
+    if (!found) return showToast({ text: 'The invite email for this event isn’t here any more, so the answer can’t be sent from sprint2go.' });
+    if (e.id.startsWith('inv:') || status === 'declined') setSelectedEventId(null);
+    void answerInvite(found.t, found.m, status);
+  };
+  /** What the guests answered, as the invite says it. */
+  const answersOf = (e: CalEvent) => {
+    const inv = inviteOf(e)?.m.invite;
+    return inv ? Object.fromEntries(inv.attendees.map((a) => [a.email.toLowerCase(), a.status])) : undefined;
   };
 
 
@@ -2945,6 +3064,81 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   );
 
   /** The phone's title switcher for each app. */
+  /** Calendar's side panel: calendars on and off, teammates, holidays, connect, tasks to plan (a sheet on phones). */
+  const calendarPanel = (
+    <CalendarSidebar
+      cursor={calCursor}
+      calendars={CALENDARS}
+      external={myExtCals}
+      teammates={members.filter((u) => u.id !== user.id)}
+      shownMates={shownMates}
+      onToggleMate={(id) =>
+        setShownMates((m) => {
+          const n = new Set(m);
+          n.has(id) ? n.delete(id) : n.add(id);
+          return n;
+        })
+      }
+      onAddCalendar={() => (calendarsOn ? setConnectCal(true) : explainOff('Connecting Google, Outlook and iCloud calendars comes soon. Events made here already sync to everyone.'))}
+      toPlan={wsTasks
+        .filter((t) => !t.done && !isBrief(t) && doersOf(t).includes(user.id) && !events.some((e) => e.taskId === t.id && new Date(e.end).getTime() > Date.now()))
+        .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
+        .map((t) => ({ id: t.id, title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.due ? dueLabel(t.due).text : ''].filter(Boolean).join(' · '), late: !!t.due && t.due < localDay() }))}
+      onPlan={(id) => {
+        const t = todos.find((x) => x.id === id);
+        if (t) todoToCalendar(t);
+      }}
+      onShare={(id, share) => setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, share } : c)))}
+      onSync={async (id) => {
+        const cal = extCals.find((c) => c.id === id);
+        // Links and holidays are read by the server: ask it to read them again now.
+        if (real && (cal?.source === 'ics' || cal?.source === 'holidays')) {
+          const r = (await fetch(`/api/calendars/${id}/refresh`, { method: 'POST' })
+            .then((x) => x.json())
+            .catch(() => ({ ok: false, error: 'Couldn’t reach the server. Try again in a moment.' }))) as { ok?: boolean; error?: string };
+          showToast({ text: r.ok ? `${cal.name} is up to date` : `${cal.name} didn’t update. ${r.error ?? 'Try again later.'}`, ms: r.ok ? undefined : 8000 });
+          return;
+        }
+        setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, syncedAt: nowIso() } : c)));
+        showToast({ text: 'Synced' });
+      }}
+      onRemove={(id) => {
+        const cal = extCals.find((c) => c.id === id);
+        if (!cal) return;
+        const snapshot = { extCals, events };
+        setExtCals((cs) => cs.filter((c) => c.id !== id));
+        setEvents((es) => es.filter((e) => e.calendarId !== id));
+        // A link is put back and read again by the server (its events come back with it).
+        const relink = real && cal.source === 'ics';
+        showToast({ text: `${cal.name} removed`, action: { label: 'Undo', run: () => (relink ? setExtCals((cs) => [...cs, cal]) : (setExtCals(snapshot.extCals), setEvents(snapshot.events))) } });
+      }}
+      companyName={ws.name}
+      isAdmin={isAdmin}
+      onHolidays={() => setConnectCal('holidays')}
+      onHolidaysOff={() => {
+        const before = ws.holidays;
+        patchWorkspace(ws.id, { holidays: undefined });
+        if (!real) demoHolidays(null);
+        showToast({ text: 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
+      }}
+      hidden={hiddenCals}
+      busyDays={busyDays}
+      onCursor={(d) => {
+        setCalCursor(d);
+        setSidebarOpen(false);
+        if (mode !== 'calendar') go('calendar');
+      }}
+      onToggle={(id) =>
+        setHiddenCals((h) => {
+          const n = new Set(h);
+          n.has(id) ? n.delete(id) : n.add(id);
+          return n;
+        })
+      }
+      onNew={() => openNewEvent()}
+    />
+  );
+
   const mobileSwitcher = (() => {
     if (mode === 'mail')
       return {
@@ -3352,77 +3546,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         }
         panel={
           appMode === 'calendar' ? (
-          <CalendarSidebar
-            cursor={calCursor}
-            calendars={CALENDARS}
-            external={myExtCals}
-            teammates={members.filter((u) => u.id !== user.id)}
-            shownMates={shownMates}
-            onToggleMate={(id) =>
-              setShownMates((m) => {
-                const n = new Set(m);
-                n.has(id) ? n.delete(id) : n.add(id);
-                return n;
-              })
-            }
-            onAddCalendar={() => (calendarsOn ? setConnectCal(true) : explainOff('Connecting Google, Outlook and iCloud calendars comes soon. Events made here already sync to everyone.'))}
-            toPlan={wsTasks
-              .filter((t) => !t.done && !isBrief(t) && doersOf(t).includes(user.id) && !events.some((e) => e.taskId === t.id && new Date(e.end).getTime() > Date.now()))
-              .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
-              .map((t) => ({ id: t.id, title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.due ? dueLabel(t.due).text : ''].filter(Boolean).join(' · '), late: !!t.due && t.due < localDay() }))}
-            onPlan={(id) => {
-              const t = todos.find((x) => x.id === id);
-              if (t) todoToCalendar(t);
-            }}
-            onShare={(id, share) => setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, share } : c)))}
-            onSync={async (id) => {
-              const cal = extCals.find((c) => c.id === id);
-              // Links and holidays are read by the server: ask it to read them again now.
-              if (real && (cal?.source === 'ics' || cal?.source === 'holidays')) {
-                const r = (await fetch(`/api/calendars/${id}/refresh`, { method: 'POST' })
-                  .then((x) => x.json())
-                  .catch(() => ({ ok: false, error: 'Couldn’t reach the server. Try again in a moment.' }))) as { ok?: boolean; error?: string };
-                showToast({ text: r.ok ? `${cal.name} is up to date` : `${cal.name} didn’t update. ${r.error ?? 'Try again later.'}`, ms: r.ok ? undefined : 8000 });
-                return;
-              }
-              setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, syncedAt: nowIso() } : c)));
-              showToast({ text: 'Synced' });
-            }}
-            onRemove={(id) => {
-              const cal = extCals.find((c) => c.id === id);
-              if (!cal) return;
-              const snapshot = { extCals, events };
-              setExtCals((cs) => cs.filter((c) => c.id !== id));
-              setEvents((es) => es.filter((e) => e.calendarId !== id));
-              // A link is put back and read again by the server (its events come back with it).
-              const relink = real && cal.source === 'ics';
-              showToast({ text: `${cal.name} removed`, action: { label: 'Undo', run: () => (relink ? setExtCals((cs) => [...cs, cal]) : (setExtCals(snapshot.extCals), setEvents(snapshot.events))) } });
-            }}
-            companyName={ws.name}
-            isAdmin={isAdmin}
-            onHolidays={() => setConnectCal('holidays')}
-            onHolidaysOff={() => {
-              const before = ws.holidays;
-              patchWorkspace(ws.id, { holidays: undefined });
-              if (!real) demoHolidays(null);
-              showToast({ text: 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
-            }}
-            hidden={hiddenCals}
-            busyDays={busyDays}
-            onCursor={(d) => {
-              setCalCursor(d);
-              setSidebarOpen(false);
-              if (mode !== 'calendar') go('calendar');
-            }}
-            onToggle={(id) =>
-              setHiddenCals((h) => {
-                const n = new Set(h);
-                n.has(id) ? n.delete(id) : n.add(id);
-                return n;
-              })
-            }
-            onNew={() => openNewEvent()}
-          />
+            calendarPanel
           ) : appMode === 'drive' ? (
           <DriveSidebar
             section={mode === 'drive' ? driveSection : null}
@@ -4120,8 +4244,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
         {mode === 'calendar' && (
           <CalendarView
-            events={visibleEvents}
+            events={calEvents}
             calendars={allCals}
+            addTo={addToCals}
             cursor={calCursor}
             view={calView}
             selected={selectedEvent}
@@ -4129,9 +4254,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onView={setCalView}
             onSelect={setSelectedEventId}
             onCreate={(d) => openNewEvent(d)}
+            onSave={saveEvent}
+            onEdit={(id) => (setSelectedEventId(null), setEditEventId(id))}
             onDelete={deleteEvent}
+            onDuplicate={duplicateEvent}
             onOpenThread={openThread}
-            onMenu={() => setSidebarOpen(true)}
+            onRsvp={rsvpEvent}
+            answersOf={answersOf}
+            team={members}
+            contacts={guestContacts}
+            me={user.id}
+            dueTasks={myDueTasks}
+            onToggleTask={toggleTodo}
+            onOpenTask={openTask}
+            calendarsPanel={calendarPanel}
             canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
             onNotetaker={botOn ? sendNotetakerTo : undefined}
             botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
@@ -4595,7 +4731,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           }}
         />
       )}
-      {newEventAt && <EventEditor start={newEventAt} calendars={[...CALENDARS, ...myExtCals.filter((c) => !c.readOnly)]} onSave={saveEvent} onClose={() => setNewEventAt(null)} />}
+      {newEventAt && <EventEditor start={newEventAt} calendars={addToCals} team={members} contacts={guestContacts} me={user.id} onSave={saveEvent} onClose={() => setNewEventAt(null)} />}
+      {editEventId && events.some((e) => e.id === editEventId) && (
+        <EventEditor
+          start={new Date(events.find((e) => e.id === editEventId)!.start)}
+          event={events.find((e) => e.id === editEventId)}
+          calendars={addToCals}
+          team={members}
+          contacts={guestContacts}
+          me={user.id}
+          onSave={(e) => updateEvent(editEventId, e)}
+          onClose={() => setEditEventId(null)}
+        />
+      )}
+      {scheduling && <ScheduleTask title={scheduling.title} events={myEvents} onPick={(start, mins) => blockTask(scheduling, start, mins)} onClose={() => setScheduling(null)} />}
       {connectCal && (
         <ConnectCalendar
           me={{ id: user.id, email: user.email }}
