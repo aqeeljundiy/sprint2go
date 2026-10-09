@@ -7,6 +7,7 @@ import { SmoothHeight } from '../ui/Smooth';
 import { ProjectPicker } from '../ProjectPicker';
 import { TABLE_COLORS, TEMPLATES, templateFields, type TemplateId } from './fields';
 import { EmptyState } from '../ui/EmptyState';
+import { useCreateAction } from '../../mobile/chrome';
 
 /* ---------- sidebar ---------- */
 
@@ -158,6 +159,7 @@ export function ProjectTables({ tables, rows, onOpen, onNew, bare }: { tables: D
 
 /** Tables with none open: every table as a card (company first, then each project's), or how to start. */
 export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { tables: DataTable[]; rows: TableRow[]; clients: Client[]; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void }) {
+  useCreateAction('tables', { label: 'New table', icon: Plus, run: onNew });
   const groups = [{ id: '', name: 'Company', list: tables.filter((t) => !t.clientId) }, ...clients.map((c) => ({ id: c.id, name: c.name, list: tables.filter((t) => t.clientId === c.id) }))].filter((g) => g.list.length);
   return (
     <section className="tasks-pane view-enter">

@@ -166,6 +166,7 @@ export interface MeetProps {
   onSyncCalendars?: () => void;
   onAsk: (scope: AskScope) => void;
   onSend: () => void;
+  canSendBot?: boolean; // the notetaker works here (else Meet has no create button on phones)
   onMenu: () => void;
   toast: (t: string) => void;
 }
@@ -175,9 +176,11 @@ import type { AskScope } from './Assistant';
 import { personOption } from './ui/PeopleList';
 import { EmptyState } from './ui/EmptyState';
 import { DatePicker } from './ui/DatePicker';
+import { useCreateAction } from '../mobile/chrome';
 
 export function MeetView(p: MeetProps) {
   const pg = p.page;
+  useCreateAction('meet', p.canSendBot !== false && { label: 'Send the notetaker', icon: Bot, run: p.onSend });
   if (pg.kind === 'meeting') {
     const m = p.meetings.find((x) => x.id === pg.id);
     if (!m)

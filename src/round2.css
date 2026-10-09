@@ -574,7 +574,7 @@ button.cell:hover {
   gap: 4px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .drawer {
     width: 100%;
     border-left: 0;
@@ -942,7 +942,7 @@ button.cell:hover {
   flex: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .home-grid.cards {
     grid-template-columns: 1fr;
   }
@@ -1889,7 +1889,7 @@ button.chat-members:hover {
     box-shadow: var(--shadow-lg);
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .chat-side {
     width: 100%;
     border-left: 0;
@@ -2249,7 +2249,7 @@ button.chat-members:hover {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
   background: color-mix(in srgb, var(--accent) 4%, var(--surface));
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .pa-grid,
   .portal-two {
     grid-template-columns: 1fr;
@@ -2937,7 +2937,7 @@ button.chat-members:hover {
     grid-template-columns: 1fr 1fr;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .settings-nav-item {
     display: contents;
   }
@@ -3605,7 +3605,7 @@ button.tl:hover,
   font-weight: 500;
   color: var(--text-3);
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .ask-drawer {
     right: 0;
     left: 0;
@@ -3614,9 +3614,6 @@ button.tl:hover,
     height: 88dvh;
     border-bottom: 0;
     border-radius: 20px 20px 0 0;
-  }
-  .ask-pill {
-    bottom: calc(76px + env(safe-area-inset-bottom));
   }
 }
 .ask-scope {
@@ -3720,7 +3717,7 @@ button.tl:hover,
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tl {
     grid-template-columns: 40px 1fr;
   }
@@ -3752,7 +3749,7 @@ button.tl:hover,
 .m-tasks .todo-group {
   min-width: 0;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .m-task {
     flex-wrap: wrap;
   }
@@ -4188,12 +4185,12 @@ button.tl:hover,
 .is-leaving.huddle {
   animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .huddle {
     left: 12px;
     right: 12px;
     width: auto;
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(var(--bar-space) + 12px);
   }
   .huddle-btn .lbl {
     display: none;

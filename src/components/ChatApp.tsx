@@ -24,6 +24,9 @@ import { ChannelMaterials } from './ChannelMaterials';
 import { personOption } from './ui/PeopleList';
 import { server, uploadFile, wasSkipped } from '../sync';
 import { channelSchedule, companyTz, nextSummaryDay, settledKey } from '../jobTimes';
+import { Sheet } from './ui/Sheet';
+import { SquarePen, Search as SearchIcon } from 'lucide-react';
+import { useCreateAction, useFocusedScreen } from '../mobile/chrome';
 
 const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
@@ -91,6 +94,8 @@ export function ChatSidebar(p: SidebarProps) {
   const [collapsed, setCollapsed] = usePersisted<string[]>(`s2g-chat-collapsed:${p.me}:${p.workspaceId}`, []);
   const [editing, setEditing] = useState<ChatViewDef | null>(null);
   const [addingDm, setAddingDm] = useState(false);
+  const [newMsg, setNewMsg] = useState(false); // the phone's create button: who to write to
+  useCreateAction('chat', { label: 'New message', icon: SquarePen, run: () => setNewMsg(true) });
   const [browsing, setBrowsing] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
@@ -565,7 +570,44 @@ export function ChatSidebar(p: SidebarProps) {
         />
         </Layer>
       )}
+      {newMsg && <NewMessageSheet users={p.users} me={p.me} onPick={p.onNewDm} onNewChannel={p.onNewChannel} onClose={() => setNewMsg(false)} />}
     </>
+  );
+}
+
+/** New message: pick someone to write to, or start a channel. Chat's create button, and New, Message in More. */
+export function NewMessageSheet({ users, me, onPick, onNewChannel, onClose }: { users: User[]; me: string; onPick: (userId: string) => void; onNewChannel?: () => void; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const s = q.trim().toLowerCase();
+  const people = users.filter((u) => u.id !== me && (!s || s.split(/\s+/).every((w) => `${u.name} ${u.email} ${u.title ?? ''}`.toLowerCase().includes(w))));
+  return (
+    <Sheet onClose={onClose} title="New message" size="tall">
+      <label className="sheet-search">
+        <SearchIcon size={16} />
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="To: a name or email" aria-label="Who to message" />
+      </label>
+      <div className="as-list">
+        {onNewChannel && !s && (
+          <button type="button" className="as-item" onClick={() => (onClose(), onNewChannel())}>
+            <Hash size={18} className="as-icon" />
+            <span className="as-label">
+              New channel
+              <small>A place for a team, a {term.one} or a topic</small>
+            </span>
+          </button>
+        )}
+        {people.map((u) => (
+          <button key={u.id} type="button" className="as-item" onClick={() => (onClose(), onPick(u.id))}>
+            <Avatar person={u} size={30} />
+            <span className="as-label">
+              {u.name}
+              {u.title && <small>{u.title}</small>}
+            </span>
+          </button>
+        ))}
+        {people.length === 0 && <p className="sheet-empty">Nobody here is called “{q}”</p>}
+      </div>
+    </Sheet>
   );
 }
 
@@ -778,6 +820,7 @@ function dueIn(text: string): { due?: string; rest: string } {
 
 export function ChatView(p: ViewProps) {
   const { channel, users, me } = p;
+  useFocusedScreen(!!p.onBack); // phones: a channel (and its threads) takes the whole screen, the tab bar steps aside
   const [text, setText] = useState('');
   const [mention, setMention] = useState<string | null>(null);
   const [tab, setTab] = useState<'messages' | 'materials' | 'tasks' | 'pinned' | 'summary' | 'about'>('messages');

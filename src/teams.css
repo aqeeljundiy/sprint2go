@@ -257,7 +257,7 @@ button.team-row:hover,
   padding-top: 12px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .team-tabs {
     padding: 8px 16px;
   }
@@ -540,7 +540,7 @@ button.team-row:hover,
 .link-btn.cd-remove:hover:not(:disabled) {
   color: var(--danger);
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .cd-address input,
   .cd-address .primary-btn {
     min-height: 44px;

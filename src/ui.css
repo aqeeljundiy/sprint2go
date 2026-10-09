@@ -432,7 +432,7 @@ input[type='checkbox']:disabled {
   overflow: auto;
   padding: 20px 28px 28px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .modal.big-modal {
     height: 92dvh;
   }
@@ -513,7 +513,7 @@ input[type='checkbox']:disabled {
 .tp-opt.bad {
   color: var(--text-3);
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tp-input,
   .tp-opt {
     height: 40px;

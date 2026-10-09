@@ -61,6 +61,7 @@ import { Select } from './ui/Select';
 import { GuestQuotes } from './Quotes';
 import type { Quote } from '../types';
 import { EmptyState } from './ui/EmptyState';
+import { PHONE } from '../mobile/media';
 
 /** The dot for a task in the guest's view: planned, in progress, waiting on them, or done. */
 const stCls = (t: Todo) => ({ open: 'todo', active: 'doing', review: 'doing', waiting: 'waiting', done: 'done' } as const)[kindOf(t)];
@@ -95,9 +96,9 @@ const fmtDay = (iso: string) => new Date(iso).toLocaleDateString([], { weekday: 
 const ROLE: Record<ClientPerson['role'], string> = { viewer: 'Viewer', collaborator: 'Collaborator', approver: 'Approver' };
 
 function useMobile() {
-  const [m, setM] = useState(() => matchMedia('(max-width: 760px)').matches);
+  const [m, setM] = useState(() => matchMedia(PHONE).matches);
   useEffect(() => {
-    const mq = matchMedia('(max-width: 760px)');
+    const mq = matchMedia(PHONE);
     const on = () => setM(mq.matches);
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
@@ -742,7 +743,7 @@ export function ClientApp(p: Props) {
         {mobile && (
           <MobileTop
             title={title}
-            switcher={
+            menu={
               mode === 'work'
                 ? { value: sub, label: 'Which work', onChange: setSub, options: [{ value: '', label: 'Work' }, { value: 'approve', label: 'Needs approval' }, { value: 'done', label: 'Done' }, ...briefs.map((b) => ({ value: `brief:${b.id}`, label: b.title, group: 'Briefs' }))] }
                 : mode === 'files'
@@ -766,7 +767,7 @@ export function ClientApp(p: Props) {
       </main>
 
       {mobile && (
-        <nav className="tabbar">
+        <nav className="tabbar guest-bar">
           {MODES.slice(0, 5).map(([id, label, Icon, n]) => (
             <button key={id} className={mode === id ? 'on' : ''} onClick={() => go(id)}>
               <span className="tab-icon">

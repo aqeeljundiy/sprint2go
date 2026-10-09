@@ -1,0 +1,1052 @@
+/* ==========================================================================
+   Phone layer: the shell. Top bar, bottom bar and its create button, More, search, the keyboard and the device
+   basics (safe areas, 16px fields, 44px targets, 12px labels).
+   Loaded after src/system.css with the rest of src/mobile/ (one file per area, see docs/mobile-kit.md).
+   Breakpoints: phones max-width 767px, narrow max-width 599px, tiny max-width 359px. Panes that change with
+   their own width use container queries on an inner element (never on anything holding a fixed overlay).
+   ========================================================================== */
+
+:root {
+  --badge: #d93636; /* unread counts: a solid red that keeps white text readable in both themes */
+  --tabbar-h: 64px; /* the bar row: a 52px pill with 6px above and below */
+  --bar-space: 0px; /* how much of the bottom the bar takes (phones only) */
+  --fab-space: 0px; /* extra room lists keep under a floating create button (tiny phones only) */
+  --tap: 44px; /* the smallest tap target on a phone */
+}
+
+/* Phone-only chrome. */
+.tabbar,
+.mobile-top,
+.mobile-list {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* The bar's room at the bottom: gone on focused screens (.bar-away), the keyboard's height while typing. */
+  :root {
+    --bar-space: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  }
+  :root.bar-away {
+    --bar-space: env(safe-area-inset-bottom);
+  }
+  :root.kb-open {
+    --bar-space: var(--kb, 0px);
+  }
+
+  /* ---------- Device basics ---------- */
+
+  /* Fields at 16px. iPhone zooms the page into a smaller field and leaves it zoomed. Fields set their own sizes all
+     over the app, so this floor is the one phone rule that needs !important. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='button']):not([type='submit']),
+  textarea,
+  select,
+  [contenteditable='true'],
+  [contenteditable=''] {
+    font-size: 16px !important;
+  }
+
+  /* Tap targets: 44px. */
+  .ghost-btn,
+  .primary-btn,
+  .danger-btn,
+  .sel,
+  .date-sel,
+  .time-sel,
+  .settings-nav button {
+    min-height: var(--tap);
+  }
+  .icon-btn,
+  .icon-btn.sm,
+  .icon-btn.xs {
+    min-width: var(--tap);
+    min-height: var(--tap);
+  }
+
+  /* Labels: 12px at least (chips, times, small print, section labels). Each selector keeps its own weight, so a
+     bigger size set more specifically elsewhere still wins. Calendar grids, avatars and badges keep theirs. */
+  .nav-heading,
+  .chip,
+  .row-count,
+  .invite-date span,
+  .invite-kicker,
+  .source-tag,
+  .account-text small,
+  .am-storage small,
+  .seen-chip,
+  .tp-note,
+  .tm-row small,
+  .tm-remind small,
+  .tm-foot,
+  .feed time,
+  .ws-name small,
+  .ws-menu-title,
+  .ws-unread,
+  .acct-text small,
+  .kind-pick small,
+  .acct-status,
+  .signin-note,
+  .am-label,
+  .am-user small,
+  .you-tag,
+  .demo-tag,
+  .ai-head small,
+  .ais-label,
+  .settings-content h3,
+  .d-heading,
+  .tm-title,
+  .nt-text time,
+  .palette-group,
+  .client-chip,
+  .lead-tag,
+  .home-notice time,
+  .chat-day span,
+  .cm-head time,
+  .ob-steps b,
+  .ob-dns td small,
+  .ob-industry small,
+  .sel-group,
+  .sel-label small,
+  .big-nav small,
+  .team-chip,
+  .brief-chip,
+  .brief-badge,
+  .wl-text em,
+  .wl-text small,
+  .ht-brief,
+  .pulse-num span,
+  .load-text small,
+  .ext-tag,
+  .guest-badge,
+  .reaction b,
+  .chat-celebration time,
+  .cf-text small,
+  .gif-tag,
+  .pl-text small,
+  .cat-pick button small,
+  .pp-row small,
+  .gr-text small,
+  .guest-status,
+  .cv-toggle small,
+  .ap-tag,
+  .cal-share,
+  .settings-group,
+  .usage-grid span,
+  .prov-cap,
+  .job-pick small,
+  .tier-name em,
+  .tier small,
+  .plat,
+  .m-status,
+  .qt-status,
+  .qt-gh,
+  .tb-sel .tb-n,
+  .tb-fm-label,
+  .tb-act-n,
+  .tb-kinds small,
+  .tb-step-n,
+  .tb-maptable-row.head,
+  .tb-foot-cell button small,
+  .tb-colmenu-type small,
+  .tb-menu-2line small,
+  .tb-gfield small,
+  .tb-board.roomy .tb-card-f small,
+  .tb-name-tag,
+  .team-lead-tag,
+  .h-body time,
+  .chip.client-chip,
+  .chip.assignee-chip,
+  .spend-src,
+  .spend-table th,
+  .spend-card small,
+  .spend-card.best em,
+  .req-chip,
+  .h-tag,
+  .req-status,
+  .client-made,
+  .plan-task small,
+  .note-item small,
+  .vault-code small,
+  .type-tag,
+  .type-chips button,
+  .ob-preview-tag,
+  .nav-item .count,
+  .prov-uses em,
+  .esg-steps button b,
+  .ct-meta > .due,
+  .ct-meta > .client-chip,
+  .ct-meta > .team-chip,
+  .lang-chips .lang-main,
+  .pp-head,
+  .meta-chip,
+  .ed-route-head em,
+  .mi-g-name small,
+  span.badge,
+  span.badge.sm,
+  .tab-count,
+  .chan-tabs > button > span {
+    font-size: 12px;
+  }
+
+  .hide-mobile,
+  kbd,
+  .message-head time .rel {
+    display: none !important;
+  }
+
+  /* ---------- The page: top bar, the screen, room for the bar ---------- */
+
+  .app {
+    padding: 0 0 var(--bar-space);
+    gap: 0;
+  }
+  .rail {
+    display: none;
+  }
+  .main {
+    flex-direction: column;
+  }
+  .main > .mobile-top {
+    flex: none;
+  }
+  .main > :not(.mobile-top) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* No ☰ drawers on phones: the top bar's switchers replace them. The sidebar stays in the page, out of sight. */
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(300px, 86vw);
+    z-index: 45;
+    visibility: hidden;
+    transform: translateX(-104%);
+  }
+  .menu-btn,
+  .sidebar-scrim,
+  .scrim,
+  .collapse-btn,
+  .sb-resize {
+    display: none;
+  }
+  .account-menu {
+    width: calc(min(300px, 86vw) - 16px);
+  }
+
+  /* ---------- Top bar: workspace, title switcher, search ---------- */
+
+  .mobile-top {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    min-height: 56px;
+    padding: max(6px, env(safe-area-inset-top)) 6px 6px 8px;
+    background: color-mix(in oklab, var(--bg) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .mt-ws,
+  .mt-back {
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    min-width: var(--tap);
+    min-height: var(--tap);
+    border-radius: 12px;
+    transition: background 0.15s;
+  }
+  .mt-back {
+    color: var(--accent);
+  }
+  .mt-ws:active,
+  .mt-back:active {
+    background: var(--hover);
+  }
+  .mt-ws-dot {
+    position: absolute;
+    top: 5px;
+    right: 4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--badge);
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  .mt-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 64vw;
+    min-height: var(--tap);
+    margin: 0;
+    padding: 0 8px;
+    border-radius: 12px;
+    font-size: 19px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  button.mt-title:active,
+  .mt-title.open {
+    background: var(--hover);
+  }
+  .mt-title-text {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .mt-chev {
+    flex: none;
+    color: var(--text-3);
+    transition: transform 0.2s var(--ease);
+  }
+  .mt-title.open .mt-chev {
+    transform: rotate(180deg);
+  }
+  .mobile-top .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .mt-bell {
+    position: relative;
+  }
+  .mt-bell i {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--badge);
+    color: #fff;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+  }
+  .ws-unread {
+    margin-left: auto;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* A list as the whole screen (chat's channels, notes). */
+  .mobile-list {
+    display: block;
+    overflow-y: auto;
+    padding: 8px 6px calc(24px + var(--fab-space));
+    background: var(--surface);
+  }
+  .mobile-list .nav-item {
+    min-height: 48px;
+    font-size: 15px;
+  }
+  .mobile-list .nav-more {
+    opacity: 1;
+    background: none;
+  }
+  .mobile-list .status-btn,
+  .mobile-list .view-bar {
+    margin-left: 6px;
+    margin-right: 6px;
+  }
+
+  /* The create button is the list's New on phones: no second one at the top of the list. */
+  .mobile-list > .compose-btn {
+    display: none;
+  }
+
+  /* Lists no longer keep room for a floating button: the create button sits in the bar row. */
+  .rows,
+  .home-scroll,
+  .drive-scroll,
+  .tracking-scroll,
+  .meet-pane.detail .meet-detail {
+    padding-bottom: calc(24px + var(--fab-space));
+  }
+
+  /* ---------- Bottom bar: four apps and More in a pill, the create button at the end of the row ---------- */
+
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 35;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 0px;
+    column-gap: 0;
+    align-items: center;
+    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+    background: var(--bg);
+    transition:
+      grid-template-columns 0.22s var(--ease),
+      column-gap 0.22s var(--ease),
+      transform 0.24s var(--ease),
+      opacity 0.2s ease-out;
+  }
+  .tabbar.has-create {
+    grid-template-columns: minmax(0, 1fr) 52px;
+    column-gap: 8px;
+  }
+  /* A focused screen or the keyboard: the bar steps down out of the way. */
+  .bar-away .tabbar {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform 0.18s cubic-bezier(0.4, 0, 1, 1),
+      opacity 0.16s ease-in;
+  }
+  .tabbar-pill {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    height: 52px;
+    padding: 3px;
+    border-radius: 26px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 20px -12px rgba(16, 18, 24, 0.3);
+  }
+  .tabbar-pill button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    border-radius: 22px;
+    color: var(--text-3);
+    transition:
+      color 0.2s,
+      background 0.2s;
+  }
+  .tabbar-pill button.on {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+  }
+  .tabbar-pill button:active {
+    background: var(--hover);
+  }
+  .tab-icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 24px;
+  }
+  .tab-icon i {
+    position: absolute;
+    top: -4px;
+    left: calc(50% + 3px);
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--badge);
+    box-shadow: 0 0 0 2px var(--surface);
+    color: #fff;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+  }
+  .tab-label {
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .tabbar-create {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 8px 22px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+    opacity: 0;
+    transform: scale(0.6);
+    pointer-events: none;
+    transition:
+      transform 0.2s var(--ease),
+      opacity 0.16s ease-out,
+      background 0.15s;
+  }
+  .tabbar.has-create .tabbar-create {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+  .tabbar.has-create .tabbar-create:active {
+    transform: scale(0.93);
+  }
+
+  /* Toasts and docked things sit above the bar. */
+  .toast {
+    bottom: calc(var(--bar-space) + 12px);
+    width: calc(100% - 32px);
+    justify-content: space-between;
+    z-index: var(--z-toast);
+  }
+  .ask-pill {
+    bottom: calc(var(--bar-space) + 12px);
+  }
+
+  /* ---------- More ---------- */
+
+  .more-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% - 8px);
+    min-height: 46px;
+    margin: 0 4px 6px;
+    padding: 0 12px;
+    border-radius: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 14px;
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .more-search svg {
+    flex: none;
+  }
+  .more-search:active {
+    background: var(--hover);
+  }
+  .more-search span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .more-new-row {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+  }
+  .more-new-row button {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    min-height: 64px;
+    padding: 6px 0;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-2);
+    transition: background 0.15s;
+  }
+  .more-new-row button:active {
+    background: var(--hover);
+  }
+  .more-new-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .more-apps2 {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin: 6px 0 2px;
+  }
+  .more-apps2 button {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    align-content: start;
+    gap: 5px;
+    min-height: 76px;
+    padding: 8px 2px;
+    border-radius: 14px;
+    transition: background 0.15s;
+  }
+  .more-apps2 button:active,
+  .more-apps2 button.on {
+    background: var(--hover);
+  }
+  .more-app-icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--text-2);
+  }
+  .more-apps2 button.on .more-app-icon {
+    color: var(--accent);
+  }
+  .more-app-icon i {
+    position: absolute;
+    top: -5px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--badge);
+    box-shadow: 0 0 0 2px var(--surface);
+    color: #fff;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 18px;
+  }
+  .more-app-icon i.live {
+    top: -3px;
+    right: -3px;
+    min-width: 12px;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    background: var(--ok-solid);
+  }
+  .more-app-name {
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .more-app-live {
+    margin-top: -4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ok);
+  }
+  .more-count {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--badge);
+    color: #fff;
+    font-size: 12px;
+  }
+  .more-ellipsis {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .more-edit {
+    display: grid;
+    gap: 8px;
+    padding: 0 4px;
+  }
+  .more-reset {
+    justify-self: center;
+    min-height: var(--tap);
+  }
+
+  /* Notifications, as a sheet from More. */
+  .notices-sheet .notices {
+    position: static;
+    width: auto;
+    max-height: none;
+    border: 0;
+    box-shadow: none;
+    animation: none;
+    background: none;
+  }
+
+  /* ---------- Search: the whole screen on a phone, above the keyboard ---------- */
+
+  .palette-scrim {
+    padding: 0;
+    align-items: stretch;
+    bottom: var(--kb, 0px);
+    backdrop-filter: none;
+  }
+  .palette {
+    width: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+  }
+  .palette-input {
+    padding: 6px 6px 6px 16px;
+  }
+  .palette li button {
+    min-height: 48px;
+  }
+  .pi-sub {
+    max-width: 45%;
+  }
+
+  /* ---------- The keyboard: what's at the bottom rides above it ---------- */
+
+  .modal-scrim,
+  .pop-scrim,
+  .compose,
+  .compose.max,
+  .compose.min {
+    bottom: var(--kb, 0px);
+  }
+  .modal {
+    max-height: calc(100dvh - var(--kb, 0px) - 24px);
+  }
+  .kb-open .modal,
+  .kb-open .compose,
+  .kb-open .compose.max,
+  .kb-open .compose.min {
+    padding-bottom: 0;
+  }
+}
+
+/* An app's settings opened over the app (the title switcher's Settings rows): just the section, no page chrome. */
+.settings-pane.embedded {
+  height: auto;
+  min-height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.settings-pane.embedded .settings-head,
+.settings-pane.embedded .settings-nav {
+  display: none;
+}
+.settings-pane.embedded .settings-body {
+  display: block;
+}
+.settings-pane.embedded .settings-content {
+  padding: 16px 16px 32px;
+}
+.settings-pane.embedded .settings-content > h2:first-child {
+  display: none; /* the screen's own title already says it */
+}
+
+/* From 1024px mail's list and reader sit side by side, so the reader can be narrow: a long address shortens instead
+   of running under the date. */
+.message-from .email {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Tablets: the rail keeps the phone bar's apps on top, the rest under a line. */
+.rail-sep {
+  display: block;
+  height: 1px;
+  margin: 4px 12px;
+  background: var(--border);
+}
+
+/* The install prompt's steps: each one's words wrap as a line of text, icons inline. */
+.install-step {
+  flex: 1;
+  min-width: 0;
+  font-style: normal;
+}
+.install-step svg {
+  display: inline;
+  vertical-align: -3px;
+  margin: 0 2px;
+}
+
+/* Pull a list down to search (phones). */
+.pull-search {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 64px);
+  left: 50%;
+  z-index: 31;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -12px) scale(0.96);
+  transition:
+    opacity 0.15s,
+    transform 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.pull-search.on {
+  opacity: calc(0.35 + 0.65 * var(--pull, 0));
+  transform: translate(-50%, calc(-12px + 16px * var(--pull, 0))) scale(1);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.pull-search.ready {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+@media (min-width: 768px) {
+  .pull-search {
+    display: none;
+  }
+}
+
+/* Tiny phones: the pill takes the row, the create button floats above it and lists keep room under it. */
+@media (max-width: 359px) {
+  :root {
+    --fab-space: 72px;
+  }
+  .tabbar {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .tabbar.has-create {
+    grid-template-columns: minmax(0, 1fr) 0px;
+    column-gap: 0;
+  }
+  .tabbar-create {
+    position: fixed;
+    right: 12px;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* ---------- Search chips (every width) ---------- */
+
+.palette-close {
+  display: none; /* phones only: desktop has Escape */
+}
+.palette-chips {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+}
+.palette-chips button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.palette-chips button:hover {
+  background: var(--hover);
+}
+.palette-chips button.on {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-text);
+}
+@media (max-width: 767px) {
+  .palette-close {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap);
+    padding: 0 10px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .palette-chips button {
+    min-height: 36px;
+  }
+}
+
+/* ---------- Edit the bar (phones, and the company's bar in Settings) ---------- */
+
+.bar-edit {
+  display: grid;
+  gap: 10px;
+}
+.bar-preview {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 4px;
+  border-radius: 24px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.bar-preview span {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.bar-edit-hint {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.bar-list {
+  position: relative;
+}
+.bar-row,
+.bar-cut {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  transition: transform 0.18s var(--ease);
+}
+.bar-row {
+  gap: 12px;
+  padding: 0 4px 0 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 500;
+  touch-action: pan-y;
+  transition:
+    transform 0.18s var(--ease),
+    box-shadow 0.18s;
+}
+.bar-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.bar-row.on-bar .bar-row-icon {
+  color: var(--accent);
+}
+.bar-row-icon {
+  flex: none;
+  color: var(--text-3);
+  transition: color 0.15s;
+}
+.bar-row-name {
+  flex: 1;
+  min-width: 0;
+}
+.bar-row.lifted {
+  z-index: 2;
+  transition: box-shadow 0.18s;
+  box-shadow: 0 12px 30px -12px rgba(16, 18, 24, 0.4);
+}
+.bar-grip {
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  color: var(--text-3);
+  cursor: grab;
+}
+.bar-cut {
+  gap: 10px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.bar-cut::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.bar-defaults-icons {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--text-3);
+}
+
+/* ---------- Lists inside sheets: a search field on top, the empty line, the picked row ---------- */
+
+.sheet-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 0 12px;
+  min-height: 44px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-3);
+}
+.sheet-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.sheet-search {
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.sheet-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--text);
+  font-size: 15px;
+}
+.sheet-empty {
+  padding: 16px 12px;
+  color: var(--text-3);
+  text-align: center;
+}
+.as-item.on {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar,
+  .bar-away .tabbar,
+  .tabbar-create,
+  .bar-row,
+  .bar-cut,
+  .pull-search,
+  .mt-chev {
+    transition: none;
+  }
+}

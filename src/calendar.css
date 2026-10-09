@@ -673,7 +673,7 @@
 .ev-times > .time-sel {
   min-width: 92px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .field-row > .date-sel,
   .ev-times {
     flex: 1 1 100%;
@@ -751,7 +751,7 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .cal-pane {
     border-radius: 0;
     border: 0;
@@ -1038,14 +1038,3 @@ a.ghost-btn {
   color: var(--text-2);
 }
 
-@media (max-width: 760px) {
-  /* An open event card is the thing to read: the add button steps aside instead of covering it. */
-  .fab {
-    transition: transform 0.15s, opacity 0.18s ease-out;
-  }
-  :root:has(.ev-detail:not(.is-leaving)) .fab {
-    opacity: 0;
-    transform: scale(0.9);
-    pointer-events: none;
-  }
-}

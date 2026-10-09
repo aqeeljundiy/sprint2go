@@ -83,7 +83,7 @@
 .new-task-slim {
   display: none;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tasks-head .new-task-btn {
     display: none !important;
   }
@@ -291,7 +291,7 @@
   display: grid;
   gap: 8px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   /* Phones: colour, name and the buttons on one line, what it means under the name. */
   .stage-row {
     display: grid;

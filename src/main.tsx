@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import Root from './Root';
 import { startExitAnimations } from './exitAnimations';
 import { startSlidingTabs } from './slidingTabs';
+import { startKeyboard } from './mobile/keyboard';
 import { diagnostics, reportCrash, startDiagnostics } from './diagnostics';
 import { startTryOut, trying } from './tryOut';
 import './styles.css';
@@ -22,10 +23,12 @@ import './notify.css';
 import './security.css';
 import './jobs.css';
 import './system.css';
+import './mobile/index.css'; // the phone layer: always last
 
 startTryOut(); // /try: the demo in this tab, nothing sent to our server
 startExitAnimations();
 startSlidingTabs();
+startKeyboard();
 startDiagnostics();
 
 /** A crash somewhere shows this instead of a blank page; nothing is lost, the data lives on the server. */

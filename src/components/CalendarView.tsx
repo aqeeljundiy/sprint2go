@@ -16,6 +16,8 @@ import {
   startOfWeek,
 } from '../calendarUtils';
 import { Avatar } from './Avatar';
+import { CalendarPlus } from 'lucide-react';
+import { useCreateAction } from '../mobile/chrome';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../meetingLinks';
 
 export type CalView = 'day' | 'week' | 'month';
@@ -56,6 +58,16 @@ interface Props {
 
 export function CalendarView(props: Props) {
   const { calendars, cursor, view, selected } = props;
+  // Phones: New event is the create button, at the next whole hour of the day on screen.
+  useCreateAction('calendar', {
+    label: 'New event',
+    icon: CalendarPlus,
+    run: () => {
+      const d = new Date(props.cursor);
+      d.setHours(new Date().getHours() + 1, 0, 0, 0);
+      props.onCreate(d);
+    },
+  });
   const color = (id: string) => calendars.find((c) => c.id === id)?.color ?? '#888';
 
   const step = (dir: 1 | -1) => {

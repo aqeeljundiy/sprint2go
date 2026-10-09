@@ -8,6 +8,7 @@ import { ButtonCell, CellView, ContactActions, FilesPopover, InlineInput, PickPo
 import { DatePicker } from '../ui/DatePicker';
 import { cellText, fieldIcon, isComputed, isEmpty, rowName, valueOf } from './fields';
 import { useOnePanel } from '../../onePanel';
+import { useFocusedScreen } from '../../mobile/chrome';
 
 /** One field on the row page: label on the left, the value (editable in place) on the right. */
 /** What the row page can do with its fields' settings (people who may change the table's columns). */
@@ -128,6 +129,7 @@ export function RecordDrawer({
   readOnly?: boolean;
 }) {
   useOnePanel(onClose);
+  useFocusedScreen(); // a record is a page of its own on phones: the tab bar steps aside
   const [title, setTitle] = useState(String(row.values[table.fields[0].id] ?? ''));
   const [comment, setComment] = useState('');
   useEffect(() => setTitle(String(row.values[table.fields[0].id] ?? '')), [row.id, row.values, table.fields]);

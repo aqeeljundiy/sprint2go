@@ -1,0 +1,45 @@
+/* ==========================================================================
+   Phone rules for everything else: onboarding, the guest portal, Teams, Vault, the demo bar, sign in.
+   Owned by the "everything else" builder (docs/mobile-kit.md says who owns what).
+   Loaded after src/system.css and src/mobile/shell.css, so a rule here wins over the old ones without
+   !important. As a screen is redone, move its old phone rules here and delete them where they were.
+   Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
+   ========================================================================== */
+
+/* The guest portal's bottom bar: its look from before Phase 0, kept until the guest portal is redone (Phase 8). The
+   team app's bar (.tabbar with .tabbar-pill) is in shell.css. */
+@media (max-width: 767px) {
+  .tabbar.guest-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    column-gap: 0;
+    padding: 0 0 env(safe-area-inset-bottom);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border-top: 1px solid var(--border);
+    backdrop-filter: saturate(1.4) blur(16px);
+  }
+  .guest-bar button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-3);
+    transition: color 0.2s;
+  }
+  .guest-bar button.on {
+    color: var(--accent);
+  }
+  .guest-bar .tab-icon {
+    width: 52px;
+    height: 28px;
+    border-radius: 14px;
+    transition: background 0.25s var(--ease);
+  }
+  .guest-bar button.on .tab-icon {
+    background: var(--accent-soft);
+  }
+}

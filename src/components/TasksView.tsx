@@ -4,6 +4,7 @@ import { TabBar } from './ui/TabBar';
 import { ProjectPeople } from './ProjectPeople';
 import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
 import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, FolderInput, ChevronDown, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
@@ -24,6 +25,7 @@ import { PeoplePicker } from './ui/PeoplePicker';
 import { personOption } from './ui/PeopleList';
 import { QuotesTab } from './Quotes';
 import type { Quote } from '../types';
+import { useCreateAction } from '../mobile/chrome';
 
 export type TaskScope =
   | { kind: 'mine' }
@@ -142,6 +144,7 @@ interface Props {
   onWriteOverview: (clientId: string) => Promise<void>;
   onOpenMeeting: (id: string) => void;
   onBrainDump: () => void;
+  addKey?: number; // bump to open the new task field (New, Task in More)
   dumpInSidebar?: boolean; // the Tasks sidebar already has Brain dump at its top: no second one in the header
   onTemplate: () => void;
   onMenu: () => void;
@@ -161,6 +164,9 @@ const TASK_FIELDS: { id: string; name: string }[] = [
   { id: 'updated', name: 'Last change' },
 ];
 const FIELD_DEFAULTS = { list: ['due', 'project', 'team', 'brief', 'priority', 'checklist', 'source'], board: ['assignee', 'due', 'project', 'team', 'priority', 'checklist'] };
+
+/** The last "New task" asked for from outside (More), so coming back to Tasks later doesn't open the field again. */
+let handledAdd = 0;
 
 export function TasksView(p: Props) {
   const [layout, setLayout] = usePersisted<'list' | 'board'>('s2g-task-layout', 'list');
@@ -323,10 +329,22 @@ export function TasksView(p: Props) {
   const addInput = useRef<HTMLInputElement>(null);
   const addRow = useRef<HTMLDivElement>(null);
   const newBtn = useRef<HTMLButtonElement>(null);
-  const openAdd = () => {
-    setAdding(true);
-    requestAnimationFrame(() => addInput.current?.focus());
+  // Opened by a tap: the field shows and takes focus in the same tap, so a phone's keyboard comes up with it (iPhone only
+  // opens the keyboard for focus given during the tap itself). From an effect it waits a frame instead.
+  const openAdd = (now: unknown = true) => {
+    const focus = () => (addInput.current?.focus(), addRow.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    if (now === false) return void (setAdding(true), requestAnimationFrame(focus));
+    flushSync(() => setAdding(true));
+    focus();
   };
+  // Phones: New task is the create button by the tab bar. "New, Task" in More opens the field too (addKey bumps).
+  useCreateAction('tasks', scope.kind !== 'grid' && scope.kind !== 'briefs' && !client && { label: 'New task', icon: Plus, run: openAdd });
+  useEffect(() => {
+    if (p.addKey && p.addKey !== handledAdd) {
+      handledAdd = p.addKey;
+      openAdd(false);
+    }
+  }, [p.addKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const onAddBlur = () =>
     setTimeout(() => {
       const a = document.activeElement;

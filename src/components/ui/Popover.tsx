@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-
-const PHONE = '(max-width: 760px)';
+import { PHONE } from '../../mobile/media';
 
 /**
  * Open popovers, each with the one it was opened from (its parent). Only one family is open at a time:
