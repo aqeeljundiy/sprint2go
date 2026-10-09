@@ -5,9 +5,9 @@
 const id: Record<string, string> = {
   // ChatApp, the composer, a conversation and its messages, huddles, drafts, Chat in App.tsx
   // The sidebar and the phone's chat list (ChatApp.tsx): views, sections, tiles, rows
-  'Company default': 'Bawaan perusahaan',
+  'Company default': 'Bawaan',
   'Sections your admins set for everyone': 'Bagian yang diatur admin untuk semua orang',
-  'Built in': 'Bawaan',
+  'Built in': 'Siap pakai',
   'Unread first': 'Belum dibaca dulu',
   'What needs you on top': 'Yang perlu Anda di atas',
   Recent: 'Terbaru',
@@ -33,7 +33,10 @@ const id: Record<string, string> = {
   '{n} drafts': '{n} draf',
   '{n} to send': '{n} akan dikirim',
   'Nothing waiting': 'Tidak ada yang menunggu',
-  'Your saved messages': 'Pesan tersimpan Anda',
+  // The tiles' lines are short (a phone's tile is about 20 letters wide)
+  'tile::Nothing waiting': 'Tidak ada draf',
+  'tile::Nothing saved': 'Belum ada pesan',
+  'Your saved messages': 'Pesan tersimpan',
   '{name} and {n} more': '{name} dan {n} lainnya',
   'Mark unread': 'Tandai belum dibaca',
   Unmute: 'Bunyikan',
@@ -562,7 +565,7 @@ const id: Record<string, string> = {
   Purpose: 'Tujuan',
   'Not set': 'Belum diatur',
   Category: 'Kategori',
-  'Account owner': 'Penanggung jawab akun',
+  'Account owner': 'Pengelola akun',
   'Channel owner': 'Pemilik channel',
   'Private, invite only': 'Privat, hanya lewat undangan',
   'Public in the company': 'Publik di perusahaan',

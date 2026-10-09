@@ -15,6 +15,7 @@ import { dueLabel } from '../TasksView';
 import { CATEGORY_ONE, categoryText } from '../ChannelDialog';
 import type { Presence } from '../ChatApp';
 import { statusText } from './chatPrefs';
+import { periodWords } from './Message';
 import { t, tx } from '../../i18n';
 import { fmtDate, fmtTime, fmtWeekday } from '../../i18n/format';
 
@@ -132,9 +133,9 @@ export function SummaryPane(p: {
             {p.summaryOff
               ? t('Scheduled summaries can’t be written: {why}', { why: p.summaryOff.text })
               : lastRetrying
-                ? `${lastRetrying.label ? t('The {period} summary couldn’t be written yet ({why}).', { period: lastRetrying.label, why: failed(lastRetrying.why) }) : t('The latest summary couldn’t be written yet ({why}).', { why: failed(lastRetrying.why) })} ${lastRetrying.retryAt ? t('It’s tried again by itself at {time}.', { time: fmtTime(lastRetrying.retryAt) }) : t('It’s tried again by itself.')}`
+                ? `${lastRetrying.label ? t('The {period} summary couldn’t be written yet ({why}).', { period: periodWords(lastRetrying.label, lastRetrying.at), why: failed(lastRetrying.why) }) : t('The latest summary couldn’t be written yet ({why}).', { why: failed(lastRetrying.why) })} ${lastRetrying.retryAt ? t('It’s tried again by itself at {time}.', { time: fmtTime(lastRetrying.retryAt) }) : t('It’s tried again by itself.')}`
                 : lastMissed!.label
-                  ? t('The {period} summary wasn’t written: {why}', { period: lastMissed!.label, why: failed(lastMissed!.why) })
+                  ? t('The {period} summary wasn’t written: {why}', { period: periodWords(lastMissed!.label, lastMissed!.at), why: failed(lastMissed!.why) })
                   : t('The last summary wasn’t written: {why}', { why: failed(lastMissed!.why) })}{' '}
             {p.summaryOff?.fix && (
               <button className="link-btn" onClick={p.summaryOff.fix.run}>
@@ -153,7 +154,7 @@ export function SummaryPane(p: {
       {(channel.summary?.history ?? []).map((h) => (
         <div key={h.id} className="sum-card">
           <div className="sum-meta">
-            {h.period} · {h.auto ? t('scheduled') : t('asked by {name}', { name: person(h.by ?? '')?.name.split(' ')[0] ?? t('someone') })} · {relative(h.at)}
+            {periodWords(h.period, h.at)} · {h.auto ? t('scheduled') : t('asked by {name}', { name: person(h.by ?? '')?.name.split(' ')[0] ?? t('someone') })} · {relative(h.at)}
           </div>
           <p>{h.text}</p>
         </div>

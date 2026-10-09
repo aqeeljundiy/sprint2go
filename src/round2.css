@@ -3403,6 +3403,10 @@ button.tl:hover,
   border-color: var(--accent);
   background: var(--surface);
 }
+/* "Tenggat (mis. Jumat)" is longer than "Due (e.g. Friday)". */
+:lang(id) .due-input {
+  width: 150px;
+}
 .jump {
   font-size: 12px;
   font-weight: 700;
@@ -3735,6 +3739,9 @@ button.tl:hover,
   }
   .due-input {
     width: 96px;
+  }
+  :lang(id) .due-input {
+    width: 140px;
   }
 }
 .m-glance {

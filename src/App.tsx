@@ -107,7 +107,7 @@ import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
-import { mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
+import { mark, msg, phrase, t, textOf, tn, tx, type Msg } from './i18n';
 import { fmtDay, fmtList } from './i18n/format';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
@@ -3468,7 +3468,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         label: t('Meet'),
         value: meetPage.kind === 'folder' ? `folder:${meetPage.clientId}` : meetPage.kind === 'meeting' ? 'list' : meetPage.kind,
         options: [
-          { value: 'list', label: t('Meetings'), group: t('Meet') },
+          { value: 'list', label: tx('meet', 'Meetings'), group: t('Meet') },
           { value: 'upcoming', label: t('Upcoming'), group: t('Meet') },
           { value: 'tasks', label: t('Tasks from meetings'), group: t('Meet') },
           { value: 'unfiled', label: t('Unfiled'), group: t('Meet') },

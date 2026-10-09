@@ -22,7 +22,7 @@ import { dmOther, followedThreads, isMutedValue, readFallback, shortTime, STATUS
 export { statusText };
 import { preview } from './chat/Message';
 import { ConfirmSheet, chanName } from './chat/Sheets';
-import { mark, t, tn } from '../i18n';
+import { mark, t, tn, tx } from '../i18n';
 import { tj } from '../i18n/tj';
 import { fmtNumber } from '../i18n/format';
 
@@ -224,8 +224,8 @@ export function ChatSidebar(p: SidebarProps) {
   const tileState: Record<TileId, { line: string; hot: boolean; hidden?: boolean; icon: ReactNode }> = {
     catchup: { icon: <Inbox size={18} />, line: unreadConvos.length ? tn(unreadConvos.length, '{n} new', '{n} new') : t('Caught up'), hot: unreadConvos.length > 0 },
     threads: { icon: <MessagesSquare size={18} />, line: newReplies ? tn(newReplies, '{n} new reply', '{n} new replies') : t('Caught up'), hot: newReplies > 0 },
-    drafts: { icon: <SendHorizontal size={18} />, line: [draftCount ? tn(draftCount, '{n} draft', '{n} drafts') : '', scheduled ? tn(scheduled, '{n} to send', '{n} to send') : ''].filter(Boolean).join(', ') || t('Nothing waiting'), hot: false },
-    saved: { icon: <Bookmark size={18} />, line: nextReminder ? t('Reminder {when}', { when: whenText(nextReminder.remindAt!) }) : chat.saved.length ? t('Your saved messages') : t('Nothing saved'), hot: false },
+    drafts: { icon: <SendHorizontal size={18} />, line: [draftCount ? tn(draftCount, '{n} draft', '{n} drafts') : '', scheduled ? tn(scheduled, '{n} to send', '{n} to send') : ''].filter(Boolean).join(', ') || tx('tile', 'Nothing waiting'), hot: false },
+    saved: { icon: <Bookmark size={18} />, line: nextReminder ? t('Reminder {when}', { when: whenText(nextReminder.remindAt!) }) : chat.saved.length ? t('Your saved messages') : tx('tile', 'Nothing saved'), hot: false },
     live: { icon: <Headphones size={18} />, line: live.length ? (live.length > 1 ? t('{name} and {n} more', { name: chanName(live[0], p.users, p.me), n: fmtNumber(live.length - 1) }) : chanName(live[0], p.users, p.me)) : '', hot: true, hidden: !live.length },
   };
   const tiles = chat.tiles.order.filter((id) => !chat.tiles.hidden.includes(id) && !tileState[id].hidden);

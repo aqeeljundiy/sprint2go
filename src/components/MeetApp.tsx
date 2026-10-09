@@ -107,9 +107,9 @@ export function MeetSidebar({ page, meetings, clients, canSend, onPage, onSend, 
         </button>
       )}
       <nav className="nav">
-        <button className={`nav-item ${is('list') ? 'active' : ''}`} onClick={() => onPage({ kind: 'list' })} title={t('Meetings')}>
+        <button className={`nav-item ${is('list') ? 'active' : ''}`} onClick={() => onPage({ kind: 'list' })} title={tx('meet', 'Meetings')}>
           <Video size={17} />
-          <span className="sb-label">{t('Meetings')}</span>
+          <span className="sb-label">{tx('meet', 'Meetings')}</span>
           {live ? <span className="count live-count">{tn(live, '{n} live', '{n} live')}</span> : null}
         </button>
         <button className={`nav-item ${is('upcoming') ? 'active' : ''}`} onClick={() => onPage({ kind: 'upcoming' })} title={t('Upcoming')}>

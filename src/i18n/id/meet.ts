@@ -11,13 +11,14 @@ const id: Record<string, string> = {
   '{n} live': '{n} live',
   Upcoming: 'Mendatang',
   'Tasks from meetings': 'Tugas dari rapat',
+  'meet::Meetings': 'Semua rapat', // the list of meetings, under the app's own name (Rapat)
   'Ask AI about your meetings': 'Tanya AI tentang rapat Anda',
   Folders: 'Folder',
   Folder: 'Folder',
   Unfiled: 'Tanpa folder',
   'Meetings to file': 'Rapat yang belum masuk folder',
   'Meeting settings': 'Pengaturan rapat',
-  'Filing rules & settings': 'Aturan folder & pengaturan',
+  'Filing rules & settings': 'Aturan & pengaturan',
 
   // A meeting's status (STATUS_LABEL)
   Queued: 'Dalam antrean',
@@ -164,7 +165,7 @@ const id: Record<string, string> = {
   'Delete task': 'Hapus tugas',
   'Action items from every meeting, plus your own.': 'Tindak lanjut dari semua rapat, ditambah tugas Anda sendiri.',
   'meet::Open': 'Terbuka',
-  Mine: 'Milik Anda',
+  Mine: 'Saya', // a tab next to Terbuka, Selesai and Semua: short, so all four fit on a phone
   'Add a task…': 'Tambah tugas…',
   'Due (e.g. Friday)': 'Tenggat (mis. Jumat)',
   'Nothing finished yet.': 'Belum ada yang selesai.',
