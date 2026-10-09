@@ -2615,7 +2615,7 @@ body.resizing-x .pane-resize::after {
 
 @media (max-width: 1250px) {
   .tracking-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr); /* the tracked list can be narrower than its filters: they scroll */
   }
   .kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));

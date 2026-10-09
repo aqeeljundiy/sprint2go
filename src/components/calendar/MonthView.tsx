@@ -100,7 +100,7 @@ export function MonthView({
     <div className="mg">
       <div className="mg-head">
         {cells.slice(0, 7).map((d) => (
-          <span key={d.getDay()}>{d.toLocaleDateString([], { weekday: 'short' })}</span>
+          <span key={d.getDay()}>{fmtDate(d, { weekday: 'short' })}</span>
         ))}
       </div>
       <div className="mg-body">

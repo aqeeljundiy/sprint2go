@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { addMonths, monthGrid, sameDay } from '../../calendarUtils';
 import { useSwipeNav } from './useSwipeNav';
-import { fmtDate, fmtWeekdayLong } from '../../i18n/format';
+import { fmtDate, fmtMonth, fmtWeekdayLong } from '../../i18n/format';
 
 /**
  * The mini month that folds down from the calendar's title: tap a day to go there (it folds back up), swipe it or use
@@ -32,7 +32,7 @@ export function MonthDrop({ open, cursor, busyOf, months, onPick }: { open: bool
             <button type="button" className="icon-btn" onClick={() => setMonth((m) => addMonths(m, -by))} aria-label={months ? 'Previous year' : 'Previous month'}>
               <ChevronLeft size={18} />
             </button>
-            <span className="md-title">{months ? month.getFullYear() : month.toLocaleDateString([], { month: 'long', year: 'numeric' })}</span>
+            <span className="md-title">{months ? month.getFullYear() : fmtMonth(month)}</span>
             <button type="button" className="icon-btn" onClick={() => setMonth((m) => addMonths(m, by))} aria-label={months ? 'Next year' : 'Next month'}>
               <ChevronRight size={18} />
             </button>
