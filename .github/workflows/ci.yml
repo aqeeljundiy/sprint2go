@@ -1,7 +1,8 @@
 # Every push and pull request: both typechecks, the build, the demo-only guard, the unit checks, the calendar parser's
 # tests, a mail smoke test (the server starts on a throwaway data folder and really receives mail over SMTP) and the
 # security and billing checks (who may see and change what, read-only companies, plan limits, signed webhooks, DKIM),
-# and the demo company and try-out checks (each person's demo company stays theirs and nothing in it leaves).
+# the demo company and try-out checks (each person's demo company stays theirs and nothing in it leaves), and the AI
+# apps connector (sign-in with OAuth and PKCE, every MCP tool, each person sees only their own, outward things are drafts).
 name: CI
 on:
   push:
@@ -38,3 +39,5 @@ jobs:
         run: node scripts/ai-models-e2e.mjs
       - name: Demo company and try-out (kept apart, nothing leaves, /try)
         run: node scripts/sandbox-tests.mjs
+      - name: AI apps connector (OAuth with PKCE, MCP tools, who sees what, drafts)
+        run: node scripts/mcp-tests.mjs

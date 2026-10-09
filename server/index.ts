@@ -52,6 +52,7 @@ import * as retention from './retention.ts';
 import * as sandbox from './sandbox.ts';
 import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
+import * as connector from './connector.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -618,7 +619,7 @@ function tellTwoStepRequired(wsId: string, by: string | null) {
 /** Signs someone out everywhere (or everywhere but one session) and closes their live connections. */
 function kick(userId: string, keepToken?: string) {
   if (keepToken) twostep.endOtherSessions(userId, keepToken);
-  else db.endSessions(userId);
+  else (db.endSessions(userId), connector.endAll(userId, 'signed out everywhere'));
   for (const [id, c] of clients) if (c.userId === userId && c.token !== keepToken) (c.res.end(), clients.delete(id));
 }
 /**
@@ -1183,6 +1184,397 @@ function spendRp(rows: { provider: string; model: string; inTokens: number; outT
   return aiplan.costRp(rows.filter((r) => r.provider !== 'included'));
 }
 
+/**
+ * Every change to the documents passes here, from the app (/api/sync) and from the AI apps people connect
+ * (server/mcp.ts), so both follow one set of rules: who may see and change what, read-only companies, what Members
+ * may do, and the demo company. `conn`: the window that sent it (it gets back what was stored differently);
+ * `operator`: an operator signed in as `me` from the backend.
+ */
+function applySync(me: string, incoming: any, from: { conn?: string; operator?: string | null } = {}): { status: number; body: { saved?: number; why?: string; error?: string } } {
+  const pset = platform.settings();
+  const session = from.operator ? { operator: from.operator } : null;
+  const opRecord = session ? null : platform.operator((personOf(me) as any)?.email);
+  if (pset.maintenance.on && !opRecord) return { status: 503, body: { error: pset.maintenance.message || 'Changes are paused for a few minutes while sprint2go is updated.' } };
+  const coll = incoming?.coll;
+  if (!COLLS.includes(coll)) return { status: 400, body: { error: 'Unknown collection' } };
+  // Their own demo company first (server/sandbox.ts): what belongs in it is saved there and goes to their other
+  // windows only. The rest carries on as a real change. Nothing of the demo ever reaches the real documents.
+  const conn0 = from.conn ?? '';
+  const sbSender = clients.get(conn0)?.userId === me ? conn0 : undefined;
+  let sbSaved = 0;
+  let sbWhy: string | undefined;
+  const allUpserts = (Array.isArray(incoming.upserts) ? incoming.upserts : []) as db.Doc[];
+  const allDeletes = (Array.isArray(incoming.deletes) ? incoming.deletes : []).filter((x: unknown) => typeof x === 'string') as string[];
+  const inDemo = (d: db.Doc) => !!d && typeof d.id === 'string' && (isSandboxId(d.id) || !!sandbox.info(me)) && sandbox.belongs(me, coll, d, !!db.getDoc(coll, d.id));
+  const demoUps = allUpserts.filter(inDemo);
+  const demoDels = allDeletes.filter((id) => !!sandbox.getDoc(me, coll, id));
+  if (demoUps.length || demoDels.length) {
+    if (demoOpen(me)) {
+      const r = sandbox.write(me, coll, demoUps, demoDels);
+      sbSaved = r.saved.length;
+      sbWhy = r.why;
+      broadcastSandbox(me, coll, r.saved, r.deleted, sbSender);
+      // What wasn't kept goes back to this window as it's stored.
+      const back = r.refused.map((id) => sandbox.getDoc(me, coll, id)).filter(Boolean) as db.Doc[];
+      const gone = r.refused.filter((id) => !sandbox.getDoc(me, coll, id));
+      if (sbSender && (back.length || gone.length)) clients.get(sbSender)?.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: back, deletes: gone })}\n\n`);
+    } else sbWhy = 'The demo company is closed, so that wasn’t kept.';
+  }
+  const upserts = allUpserts.filter((d) => !demoUps.includes(d));
+  const deletes = allDeletes.filter((id) => !demoDels.includes(id));
+  if (!upserts.length && !deletes.length) return { status: 200, body: { saved: sbSaved, ...(sbWhy ? { why: sbWhy } : {}) } };
+  if (['todos', 'messages', 'events', 'rows', 'notes', 'drive'].includes(coll) && upserts.length) {
+    const wsId = (upserts as any[]).find((d) => d?.workspaceId)?.workspaceId;
+    if (wsId && memberOf(me).some((w) => w.id === wsId) && !db.getDoc(coll, upserts[0].id)) platform.firstEvent('first.use', wsId, me, coll);
+  }
+  const person = personOf(me)!;
+  const mine = new Set(memberOf(me).map((w) => w.id));
+  const see = teamLens(me);
+  const portals = portalsOf(me).map((pt) => ({ ...person, clientOf: pt }));
+  // Team changes: nobody can write into a workspace they're not in, or change or delete something they can't see.
+  const asTeam = (d: db.Doc) => {
+    if (!mine.size) return false;
+    const before = db.getDoc(coll, d.id);
+    if (before) return !!see(coll, before);
+    // New: workspaces and people can be added; notices go to anyone in your companies; anything else must be
+    // something you'd be able to see (e.g. a message in a channel you're in).
+    if (coll === 'workspaces' || coll === 'users') return true;
+    if (coll === 'notices') return mine.has(d.workspaceId as string);
+    if (coll === 'statuses') return d.id === me;
+    return !!see(coll, d);
+  };
+  // Your own profile: name, title, colour and photo (a small image), whoever you are. Nothing else on it.
+  const ownProfile = (d: db.Doc) => {
+    if (coll !== 'users' || d.id !== me) return null;
+    const before = db.getDoc('users', me);
+    if (!before) return null;
+    const photo = typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000 ? d.photo : undefined;
+    const hiddenApps = Array.isArray(d.hiddenApps) ? d.hiddenApps.filter((a: unknown) => typeof a === 'string' && /^[a-z]{2,12}$/.test(a)).slice(0, 12) : undefined;
+    // The vault key pair: a public key anyone may read, and the private key locked by the passphrase (only its owner can open it).
+    const dk = d.vaultKey as any;
+    const vk = dk && typeof dk === 'object' && typeof dk.wrapped === 'string' && typeof dk.salt === 'string' && typeof dk.iv === 'string' && dk.pub && typeof dk.pub === 'object' ? { pub: dk.pub, wrapped: String(dk.wrapped).slice(0, 4000), salt: String(dk.salt).slice(0, 64), iv: String(dk.iv).slice(0, 64) } : before.vaultKey;
+    return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo, hiddenApps, vaultKey: vk };
+  };
+  // Your own settings and status, whoever you are (someone with only a demo company has no company to write into).
+  const ownRecord = (d: db.Doc) => (coll === 'prefs' || coll === 'statuses') && d.id === me;
+  // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
+  const ok = (upserts as db.Doc[])
+    // Ids that start like a demo company's are the demo's own (src/sandbox.ts): never made as real documents.
+    .filter((d) => d && typeof d.id === 'string' && !(isSandboxId(d.id) && !db.getDoc(coll, d.id)))
+    .map((d) => ownProfile(d) ?? (ownRecord(d) || asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
+    .filter(Boolean)
+    .map((d) => {
+      // A project's picture: a small image only (like profile photos).
+      if (coll === 'clients' && d && 'photo' in d && d.photo != null && !(typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000)) return { ...d, photo: undefined };
+      // A meeting the recorder bot is still in: the bot's fields come from the bot, not from an older copy in someone's app.
+      const before = coll === 'meetings' ? (db.getDoc(coll, d!.id) as any) : null;
+      // Keeping less of a finished recording deletes it on the recorder, so the storage really comes back.
+      if (before?.recording?.url && !BOT_LIVE.has(before.status) && RECORDER_URL) {
+        const keep = (d as any).recording?.keep;
+        if (keep === 'notes') {
+          void recorder(`/recordings/${d!.id}`, { method: 'DELETE' }).catch(() => {});
+          return { ...d, recording: { keep: 'notes', sizeMb: 0 } };
+        }
+        if (keep === 'audio' && before.recording.videoUrl) {
+          void recorder(`/recordings/${d!.id}?only=video`, { method: 'DELETE' }).catch(() => {});
+          return { ...d, recording: { ...before.recording, keep: 'audio', videoUrl: undefined, videoMb: undefined } };
+        }
+      }
+      if (!before?.bot || !BOT_LIVE.has(before.status)) return d;
+      return { ...d, bot: true, ...Object.fromEntries(BOT_FIELDS.filter((k) => k in before).map((k) => [k, before[k]])) };
+    }) as db.Doc[];
+  // What Members may do (Settings > Permissions); owners and admins can do everything.
+  const permsOf = (wsId: string) => ({ ...DEFAULT_PERMISSIONS, ...((db.getDoc('workspaces', wsId) as any)?.permissions ?? {}) });
+  const limited = (wsId: unknown) => typeof wsId === 'string' && mine.has(wsId) && !isAdminOf(me, wsId);
+  const mayWrite = (d: db.Doc): db.Doc | null => {
+    const wsId = d.workspaceId as string;
+    if (!limited(wsId)) return d;
+    const p = permsOf(wsId);
+    const before = db.getDoc(coll, d.id) as any;
+    if (coll === 'clients' && !before && !p.createProjects) return null;
+    // Who's a guest is changed by admins, the project's lead, or Members allowed to invite guests ("Invite guests"),
+    // whether on the project or in one of its channels: being listed is what opens the portal.
+    if ((coll === 'clients' || coll === 'channels') && before && !p.inviteGuests) {
+      const project = db.getDoc('clients', String(coll === 'clients' ? before.id : before.clientId ?? '')) as any;
+      const leads = !!project && (project.ownerId === me || (project.members ?? []).some((m: any) => m.userId === me && m.role === 'lead'));
+      const key = coll === 'clients' ? 'people' : 'guests';
+      if (!leads && JSON.stringify((d as any)[key] ?? []) !== JSON.stringify(before[key] ?? [])) {
+        say('Only admins and the project’s Lead can change who its guests are here.');
+        return { ...d, [key]: before[key] } as db.Doc;
+      }
+    }
+    if (coll === 'teams') {
+      if (!before) return p.createTeams ? d : null;
+      if (before.leadId === me) return d;
+      // Anyone else changes only themselves: in or out (in only when the team is open), or asking to join.
+      const wasIn = (before.members ?? []).includes(me);
+      const nowIn = ((d as any).members ?? []).includes(me);
+      const others = (before.members ?? []).filter((x: string) => x !== me);
+      const members = nowIn && !wasIn && before.join !== 'open' ? before.members ?? [] : [...others, ...(nowIn ? [me] : [])];
+      const ask = ((d as any).requests ?? []).find((x: any) => x?.userId === me);
+      const requests = [...(before.requests ?? []).filter((x: any) => x.userId !== me), ...(ask && !members.includes(me) ? [{ userId: me, at: String(ask.at ?? new Date().toISOString()) }] : [])];
+      return { ...before, members, requests } as db.Doc;
+    }
+    if (coll === 'tables' && before && !p.editTables && before.createdBy !== me) {
+      // Rows and new choices yes; the columns themselves, automations and sharing stay as they were.
+      const fields = (before.fields ?? []).map((bf: any) => {
+        const nf = ((d as any).fields ?? []).find((x: any) => x.id === bf.id);
+        return nf && nf.type === bf.type ? { ...bf, options: nf.options ?? bf.options } : bf;
+      });
+      return { ...d, fields, rules: before.rules, intake: before.intake, signingSecret: before.signingSecret, share: before.share } as db.Doc;
+    }
+    return d;
+  };
+  const mayDelete = (before: any) => {
+    // Someone else's chat message: its author, admins, or members allowed to delete things.
+    if (coll === 'messages' && before && before.userId !== me) {
+      const chan = db.getDoc('channels', String(before.channelId)) as any;
+      return !!chan && (isAdminOf(me, chan.workspaceId) || permsOf(chan.workspaceId).deleteThings);
+    }
+    if (!before || !limited(before.workspaceId)) return true;
+    if (coll === 'teams') return false; // only admins delete teams
+    if (permsOf(before.workspaceId).deleteThings) return true;
+    if (coll === 'clients') return false;
+    if (coll === 'tables') return before.createdBy === me;
+    if (coll === 'channels') return before.kind === 'dm' || before.ownerId === me;
+    if (coll === 'notes' || coll === 'drive') return before.ownerId === me;
+    return true;
+  };
+  const admin = memberOf(me).some((w) => isAdminOf(me, w.id));
+  const now = new Date().toISOString();
+  // Sign-in rules that changed (owners only), for the company's security log and the people they affect.
+  const securityChanges: { wsId: string; text: string; required: boolean }[] = [];
+  // Companies that just switched on deleting old chat messages (their admins get the week's notice).
+  const retentionStarted: { wsId: string; from: string; period: retention.Period }[] = [];
+  // Why something wasn't saved (or was saved differently), for the app to say.
+  const why: string[] = [];
+  const say = (text: string | undefined | null) => void (text && !why.includes(text) && why.push(text));
+  /** The company of a document, as stored (or as sent, for a new one). */
+  const wsOfDoc = (d: any, before: any) => (coll === 'workspaces' ? d.id : (d.workspaceId ?? before?.workspaceId ?? (coll === 'messages' ? (db.getDoc('channels', String(d.channelId ?? before?.channelId)) as any)?.workspaceId : undefined)));
+  /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
+  const guard = (d: db.Doc): db.Doc | null => {
+    const before = db.getDoc(coll, d.id) as any;
+    // A suspended or paused company is read-only for everyone in it (its guests too). A paused plan can still be
+    // resumed (or changed) by an owner: the plan is all that changes.
+    const wsId = wsOfDoc(d, before);
+    const wsDoc = wsId ? (db.getDoc('workspaces', wsId) as any) : null;
+    const ro = billing.readOnlyWhy(wsDoc);
+    if (ro) {
+      const owner = (wsDoc?.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
+      if (coll === 'workspaces' && before && !wsDoc.suspended && owner && JSON.stringify((d as any).plan) !== JSON.stringify(before.plan)) {
+        const p = planFromApp((d as any).plan, before.plan);
+        say(p.why);
+        return { ...before, plan: p.plan } as db.Doc;
+      }
+      say(ro);
+      return null;
+    }
+    if (before && 'workspaceId' in before && d.workspaceId !== before.workspaceId) return null;
+    // Outside calendars, calendar links and public holidays have their own rules.
+    const cal = feeds.checkWrite(coll, d, me, DEMO);
+    if (cal !== 'pass') return cal;
+    if (coll === 'workspaces') {
+      if (before) {
+        if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
+        // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts,
+        // the routing checks' results (the admins only switch the daily check on or off), the company's own address
+        // with its state (changed through /api/white-label/domain only), the mail aliases (set through the server)
+        // and WhatsApp (connected through the server: its number decides whose messages arrive here).
+        const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+        // Boosted sending only where this server has it.
+        if ((d as any).mailRoute === 'boosted' && before.mailRoute !== 'boosted' && !mailer.boostedAvailable()) (d as any).mailRoute = before.mailRoute;
+        // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
+        if (Array.isArray((d as any).accounts)) (d as any).accounts = (d as any).accounts.map((a: any) => ({ ...a, away: (before.accounts ?? []).find((b: any) => b.id === a.id)?.away }));
+        const owner = (before.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
+        // The plan and billing are the owners' (the billing page says so); admins' saves keep it as it was.
+        const asked = planFromApp((d as any).plan, before.plan);
+        const planChanged = JSON.stringify((d as any).plan ?? null) !== JSON.stringify(before.plan ?? null);
+        if (!owner && planChanged) say('Only owners can change the plan and billing.');
+        const plan = owner ? asked.plan : before.plan;
+        if (owner) say(asked.why);
+        // An operator looking at the app as someone can't change the company's sign-in rules.
+        const sec = session?.operator ? { security: before.security, changed: null } : twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
+        if (sec.changed) securityChanges.push({ wsId: d.id, text: sec.changed, required: !!sec.security?.twoStep && !before.security?.twoStep });
+        // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
+        // that isn't keeps what was there; an empty one means the usual stages.
+        const askedStages = (d as any).taskStages;
+        const clean = askedStages === undefined ? undefined : cleanStages(askedStages);
+        const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(askedStages) && askedStages.length ? before.taskStages : undefined) : clean;
+        // Deleting old chat messages: the period is the admins'; when it starts (after a week's notice) is the server's.
+        const chat = retention.chatOnSave((d as any).chat, before.chat);
+        if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
+        // Hosted mailboxes only as many as the plan has room for.
+        const boxes = billing.mailboxesOnSave({ ...(d as any), plan }, before);
+        say(boxes.why);
+        // The company's time zone: one the clock knows, else it stays as it was.
+        const timeZone = isZone((d as any).timeZone) ? (d as any).timeZone : before.timeZone;
+        return { ...d, ...own, timeZone, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
+      }
+      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...fresh } = d as any;
+      if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
+      const plan = planFromApp(fresh.plan, undefined).plan;
+      if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
+      const chat = retention.chatOnSave(fresh.chat, undefined);
+      if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
+      if (fresh.mailRoute === 'boosted' && !mailer.boostedAvailable()) fresh.mailRoute = 'own';
+      const made = { ...fresh, plan, chat: chat.chat, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] }; // whoever makes a company owns it
+      return { ...made, accounts: billing.mailboxesOnSave(made, undefined).accounts } as db.Doc;
+    }
+    // A notice goes to someone in that company (or one of its guests), and only links inside the app.
+    if (coll === 'notices' && !before) {
+      const to = String((d as any).userId ?? '');
+      const inWs = (wsDoc?.members ?? []).some((m: any) => m.userId === to);
+      const guestOfWs = to.startsWith('email:') && (db.allDocs('clients') as any[]).some((c) => c.workspaceId === wsId && clientPeople(c, db.allDocs('channels') as any).some((x) => x.email.toLowerCase() === to.slice(6)));
+      if (!inWs && !guestOfWs) return null;
+      const url = (d as any).url;
+      if (url !== undefined && !(typeof url === 'string' && url.startsWith('/') && !url.startsWith('//'))) return { ...d, url: undefined } as db.Doc;
+    }
+    // Someone else's chat message: reactions, votes, pins and the task made from it, never what it says.
+    if (coll === 'messages' && before && before.userId !== me) {
+      const { reactions, poll, pinned, taskId, alsoInChannel } = d as any;
+      const votes = poll && before.poll ? { ...before.poll, options: before.poll.options.map((o: any, i: number) => ({ ...o, votes: Array.isArray(poll.options?.[i]?.votes) ? poll.options[i].votes : o.votes })) } : before.poll;
+      return { ...before, reactions, poll: votes, pinned, taskId, alsoInChannel } as db.Doc;
+    }
+    if (coll === 'users') {
+      if (d.id === me) return d; // own profile: already shaped
+      if (before) return null; // nobody edits someone else's record
+      if (!admin && mine.size) return null; // new people come in through invites, which admins send
+      const { clientOf: _c, vaultKey: _v, ...rest } = d as any;
+      return rest as db.Doc;
+    }
+    // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts).
+    if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
+    // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
+    if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
+    if (before) return d;
+    // New things carry who made them.
+    if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
+    // Your own message; a guest's message is theirs when it carries their own email (checked by clientWrite too).
+    if (coll === 'messages') return d.userId === me || (d.userId === 'guest' && String((d as any).guestEmail ?? '').toLowerCase() === String(person.email ?? '').toLowerCase()) ? d : null;
+    if (coll === 'notes') return { ...d, ownerId: me } as db.Doc;
+    if (coll === 'channels' && d.kind === 'channel' && !d.teamId && limited(d.workspaceId) && (db.getDoc('workspaces', String(d.workspaceId)) as any)?.chat?.whoCanCreate === 'admins') return null; // only admins start channels here
+    if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
+    if (coll === 'drive') return { ...d, uploadedBy: (d as any).uploadedBy ?? me } as db.Doc;
+    if (coll === 'events') return { ...d, createdBy: (d as any).createdBy ?? me } as db.Doc;
+    return d;
+  };
+  for (let i = ok.length - 1; i >= 0; i--) {
+    const d = ownProfile(ok[i]!) ? ok[i]! : mayWrite(ok[i]!);
+    const g = d && (ownProfile(d) ? d : guard(d));
+    if (g) ok[i] = g;
+    else ok.splice(i, 1);
+  }
+  const dels = mine.size || ((coll === 'prefs' || coll === 'statuses') && (deletes as string[]).includes(me))
+    ? (deletes as string[]).filter((id) => {
+        const before = db.getDoc(coll, id) as any;
+        if (!before) return true;
+        if ((coll === 'prefs' || coll === 'statuses') && id === me) return true; // your own
+        // Nothing in a read-only company is deleted either.
+        const ro = billing.readOnlyWhy(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
+        if (ro) return (say(ro), false);
+        return see(coll, before) && mayDelete(before) && feeds.mayDelete(coll, before, me);
+      })
+    : [];
+  const delDocs = dels.map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
+  const botAudio = coll === 'meetings' ? dels.filter((id: string) => (db.getDoc(coll, id) as any)?.recording?.url) : [];
+  // Rows: remember them as they were, so rules can tell what was added or changed.
+  const rowsBefore = coll === 'rows' ? new Map(ok.map((d) => [d!.id, db.getDoc('rows', d!.id) as any])) : null;
+  // Tables: the delivery log and the last sample are the server's; mappings merge (a key set to "" means skip it).
+  if (coll === 'tables')
+    for (let i = 0; i < ok.length; i++) {
+      const before = db.getDoc('tables', ok[i]!.id) as any;
+      if (!before) continue;
+      const d = ok[i] as any;
+      // listening: once a test arrives the server switches it off; an older copy can't switch it back on unless it asks afresh.
+      const listening = !!d.intake?.listening && String(d.intake?.listenFrom ?? '') > String(before.intake?.testAt ?? '');
+      ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
+    }
+  const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
+  // Public holidays switched on, off or to another country.
+  const holidaysChanged = coll === 'workspaces' ? (ok as any[]).filter((d) => (db.getDoc('workspaces', d.id) as any)?.holidays?.country !== d.holidays?.country).map((d) => d.id) : [];
+  // Email settings changed: check what really works again.
+  const emailChanged =
+    coll === 'workspaces'
+      ? (ok as any[]).filter((d) => {
+          const b = db.getDoc('workspaces', d.id) as any;
+          const pick = (w: any) => JSON.stringify([w?.emailSetup, w?.domains, w?.mailRoute, w?.mailRouting, (w?.accounts ?? []).map((a: any) => [a.id, a.email, a.provider]), w?.plan?.tier, w?.plan?.addons?.mailboxes, w?.plan?.trialEnds]);
+          return !b || pick(b) !== pick(d);
+        }).map((d) => d.id)
+      : [];
+  // The branding add-on or the brand switch changed: the company's own address may go live (or pause) now.
+  const addressChanged =
+    coll === 'workspaces'
+      ? (ok as any[]).filter((d) => {
+          const b = db.getDoc('workspaces', d.id) as any;
+          return b?.whiteLabel?.domain && (hasBranding(b.plan) !== hasBranding(d.plan) || !!b.whiteLabel.enabled !== !!d.whiteLabel?.enabled);
+        }).map((d) => d.id)
+      : [];
+  db.writeDocs(coll, ok, dels, me);
+  for (const id of emailChanged) soonReadiness(id);
+  for (const id of addressChanged) customDomains.soon(id);
+  for (const id of holidaysChanged) void feeds.syncHolidays(id).catch((e) => console.error('[holidays]', e instanceof Error ? e.message : e));
+  for (const c of securityChanges) {
+    platform.event('security.rules', c.wsId, me, c.text);
+    if (c.required) tellTwoStepRequired(c.wsId, me);
+  }
+  if (leavers.length) endGuestAccess(leavers);
+  for (const r of retentionStarted) {
+    const w = db.getDoc('workspaces', r.wsId) as any;
+    if (w) broadcast('workspaces', [w], []); // the admin who switched it on sees when it starts too
+    if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeText(w.name, r.period, r.from, companyTz(w)), { app: 'settings', id: 'apps' });
+    db.audit(String(person.email ?? me), 'chat.retention.on', r.wsId, `messages older than ${retention.periodWords(r.period)}, deleting from ${r.from.slice(0, 10)}`);
+  }
+  // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
+  if (coll === 'notices' && mailer.systemMailPath() !== 'log')
+    for (const n of ok as any[]) {
+      if (!String(n.userId).startsWith('email:') || n.read) continue;
+      const to = String(n.userId).slice(6);
+      const w = db.getDoc('workspaces', n.workspaceId) as any;
+      const brandName = w?.whiteLabel?.enabled ? w.whiteLabel.name : w?.name ?? 'sprint2go';
+      const origin = customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL;
+      void mailer.sendNote(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin }), brandName).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
+    }
+  const conn = from.conn ?? '';
+  const sender = clients.get(conn)?.userId === me ? conn : undefined;
+  broadcast(coll, ok, dels, sender, delDocs);
+  // What the server saved differently from what this window sent goes back to it too, so it shows what's stored.
+  if (sender) {
+    const sent = new Map((upserts as db.Doc[]).filter((d) => d && typeof d.id === 'string').map((d) => [d.id, d]));
+    // Only where something the window sent was stored differently (fields the server merely adds, like who made
+    // it, don't need a round trip that could land on top of the next edit).
+    const reshaped = ok.filter((d) => {
+      const s = sent.get(d.id) as any;
+      return !!s && Object.keys(s).some((k) => JSON.stringify(s[k]) !== JSON.stringify((d as any)[k]));
+    });
+    // Refused: changes go back to what's stored, refused new things go away, refused deletions come back.
+    const refused = [...sent.keys()].filter((id) => !ok.some((d) => d.id === id));
+    const kept = [...refused, ...(deletes as string[]).filter((id) => !dels.includes(id))].map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
+    const see2 = lens(me);
+    const back = [...reshaped, ...kept].map((d) => see2(coll, d)).filter(Boolean);
+    const gone = refused.filter((id) => !db.getDoc(coll, id));
+    if (back.length || gone.length) clients.get(sender)?.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: back, deletes: gone })}\n\n`);
+  }
+  if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
+  feeds.afterSync(coll, ok, delDocs);
+  // A deleted meeting takes its recording with it.
+  if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
+  if (sbWhy) say(sbWhy);
+  return { status: 200, body: { saved: ok.length + sbSaved, ...(why.length ? { why: why.join(' ') } : {}) } };
+}
+
+// AI apps people connect (server/connector.ts): they see through the same lens and save through the same rules.
+connector.init({
+  lens: teamLens,
+  write: (userId, coll, upserts, deletes = []) => applySync(userId, { coll, upserts, deletes }),
+  memberOf: (userId) => memberOf(userId) as any,
+  demoOpen,
+  event: (type, wsId, userId, detail) => platform.event(type, wsId, userId, detail),
+  // The address AI apps use: PUBLIC_URL when it's set (https://app.sprint2go.com), else the one this request came to.
+  origin: (req) => (process.env.PUBLIC_URL || !/^[\w.:[\]-]+$/.test(String(req.headers.host ?? '')) ? PUBLIC_URL : `http://${req.headers.host}`),
+  ip: ipOf,
+  tooMany,
+});
+
 /* ---------- routes ---------- */
 
 createServer(async (req, res) => {
@@ -1199,6 +1591,8 @@ createServer(async (req, res) => {
   // Read tracking's picture and links in mail people sent (server/readTracking.ts): public, rate limited, and they
   // answer the same whatever happened.
   if (p.startsWith('/t/') && readTracking.serveTracking(req, res, url, ipOf(req), tooMany(`track:${ipOf(req)}`, 600, 60_000))) return;
+  // Connected AI apps: /mcp and the sign-in addresses they expect (OAuth and /.well-known). /oauth/authorize is a page.
+  if ((p === '/mcp' || p.startsWith('/oauth/') || p.startsWith('/.well-known/oauth-') || p === '/.well-known/openid-configuration') && (await connector.handlePublic(req, res, url))) return;
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
   if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString(), build: BUILD });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
@@ -1353,6 +1747,7 @@ createServer(async (req, res) => {
       codes.delete(`reset:${mail}`);
       await db.setLogin(login.user_id, mail, password);
       db.endSessions(login.user_id);
+      connector.endAll(login.user_id, 'password reset'); // connected AI apps too: they connect again with the new password
       const t = db.newSession(login.user_id);
       if (twostep.isOn(login.user_id)) twostep.markPassed(t);
       setSession(res, t);
@@ -1530,6 +1925,8 @@ createServer(async (req, res) => {
       });
       return handled ? undefined : json(res, 404, { error: 'No such admin route.' });
     }
+    // Connecting an AI app (the consent screen at /oauth/authorize) and each person's connected apps (Settings, Account).
+    if (p.startsWith('/api/oauth/') && (await connector.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body }))) return;
 
     /* ---------- help and support, for everyone signed in ---------- */
     if (p === '/api/support' && req.method === 'GET') {
@@ -2032,6 +2429,7 @@ createServer(async (req, res) => {
       // Everywhere else signs out; this device gets a fresh session (still past its second step).
       const passed = twostep.sessionPassed(cookie(req, 's2g'));
       db.endSessions(me);
+      connector.endAll(me, 'password changed');
       for (const [id, c] of clients) if (c.userId === me && c.token !== cookie(req, 's2g')) (c.res.end(), clients.delete(id));
       const fresh = db.newSession(me);
       if (passed) twostep.markPassed(fresh);
@@ -2052,6 +2450,7 @@ createServer(async (req, res) => {
       db.deleteLogin(me);
       twostep.forget(me);
       db.endSessions(me);
+      connector.endAll(me, 'account deleted');
       feeds.forgetPerson(me); // their calendar links (private addresses) and the events read from them
       sandbox.remove(me); // their demo company, with everything in it
       for (const [id, c] of clients) if (c.userId === me) (c.res.end(), clients.delete(id));
@@ -2421,373 +2820,8 @@ createServer(async (req, res) => {
     }
 
     if (p === '/api/sync' && req.method === 'POST') {
-      if (pset.maintenance.on && !opRecord) return json(res, 503, { error: pset.maintenance.message || 'Changes are paused for a few minutes while sprint2go is updated.' });
-      const incoming = await body(req);
-      const coll = incoming.coll;
-      if (!COLLS.includes(coll)) return json(res, 400, { error: 'Unknown collection' });
-      // Their own demo company first (server/sandbox.ts): what belongs in it is saved there and goes to their other
-      // windows only. The rest carries on as a real change. Nothing of the demo ever reaches the real documents.
-      const conn0 = String(req.headers['x-conn'] ?? '');
-      const sbSender = clients.get(conn0)?.userId === me ? conn0 : undefined;
-      let sbSaved = 0;
-      let sbWhy: string | undefined;
-      const allUpserts = (Array.isArray(incoming.upserts) ? incoming.upserts : []) as db.Doc[];
-      const allDeletes = (Array.isArray(incoming.deletes) ? incoming.deletes : []).filter((x: unknown) => typeof x === 'string') as string[];
-      const inDemo = (d: db.Doc) => !!d && typeof d.id === 'string' && (isSandboxId(d.id) || !!sandbox.info(me)) && sandbox.belongs(me, coll, d, !!db.getDoc(coll, d.id));
-      const demoUps = allUpserts.filter(inDemo);
-      const demoDels = allDeletes.filter((id) => !!sandbox.getDoc(me, coll, id));
-      if (demoUps.length || demoDels.length) {
-        if (demoOpen(me)) {
-          const r = sandbox.write(me, coll, demoUps, demoDels);
-          sbSaved = r.saved.length;
-          sbWhy = r.why;
-          broadcastSandbox(me, coll, r.saved, r.deleted, sbSender);
-          // What wasn't kept goes back to this window as it's stored.
-          const back = r.refused.map((id) => sandbox.getDoc(me, coll, id)).filter(Boolean) as db.Doc[];
-          const gone = r.refused.filter((id) => !sandbox.getDoc(me, coll, id));
-          if (sbSender && (back.length || gone.length)) clients.get(sbSender)?.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: back, deletes: gone })}\n\n`);
-        } else sbWhy = 'The demo company is closed, so that wasn’t kept.';
-      }
-      const upserts = allUpserts.filter((d) => !demoUps.includes(d));
-      const deletes = allDeletes.filter((id) => !demoDels.includes(id));
-      if (!upserts.length && !deletes.length) return json(res, 200, { saved: sbSaved, ...(sbWhy ? { why: sbWhy } : {}) });
-      if (['todos', 'messages', 'events', 'rows', 'notes', 'drive'].includes(coll) && upserts.length) {
-        const wsId = (upserts as any[]).find((d) => d?.workspaceId)?.workspaceId;
-        if (wsId && memberOf(me).some((w) => w.id === wsId) && !db.getDoc(coll, upserts[0].id)) platform.firstEvent('first.use', wsId, me, coll);
-      }
-      const person = personOf(me)!;
-      const mine = new Set(memberOf(me).map((w) => w.id));
-      const see = teamLens(me);
-      const portals = portalsOf(me).map((pt) => ({ ...person, clientOf: pt }));
-      // Team changes: nobody can write into a workspace they're not in, or change or delete something they can't see.
-      const asTeam = (d: db.Doc) => {
-        if (!mine.size) return false;
-        const before = db.getDoc(coll, d.id);
-        if (before) return !!see(coll, before);
-        // New: workspaces and people can be added; notices go to anyone in your companies; anything else must be
-        // something you'd be able to see (e.g. a message in a channel you're in).
-        if (coll === 'workspaces' || coll === 'users') return true;
-        if (coll === 'notices') return mine.has(d.workspaceId as string);
-        if (coll === 'statuses') return d.id === me;
-        return !!see(coll, d);
-      };
-      // Your own profile: name, title, colour and photo (a small image), whoever you are. Nothing else on it.
-      const ownProfile = (d: db.Doc) => {
-        if (coll !== 'users' || d.id !== me) return null;
-        const before = db.getDoc('users', me);
-        if (!before) return null;
-        const photo = typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000 ? d.photo : undefined;
-        const hiddenApps = Array.isArray(d.hiddenApps) ? d.hiddenApps.filter((a: unknown) => typeof a === 'string' && /^[a-z]{2,12}$/.test(a)).slice(0, 12) : undefined;
-        // The vault key pair: a public key anyone may read, and the private key locked by the passphrase (only its owner can open it).
-        const dk = d.vaultKey as any;
-        const vk = dk && typeof dk === 'object' && typeof dk.wrapped === 'string' && typeof dk.salt === 'string' && typeof dk.iv === 'string' && dk.pub && typeof dk.pub === 'object' ? { pub: dk.pub, wrapped: String(dk.wrapped).slice(0, 4000), salt: String(dk.salt).slice(0, 64), iv: String(dk.iv).slice(0, 64) } : before.vaultKey;
-        return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo, hiddenApps, vaultKey: vk };
-      };
-      // Your own settings and status, whoever you are (someone with only a demo company has no company to write into).
-      const ownRecord = (d: db.Doc) => (coll === 'prefs' || coll === 'statuses') && d.id === me;
-      // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
-      const ok = (upserts as db.Doc[])
-        // Ids that start like a demo company's are the demo's own (src/sandbox.ts): never made as real documents.
-        .filter((d) => d && typeof d.id === 'string' && !(isSandboxId(d.id) && !db.getDoc(coll, d.id)))
-        .map((d) => ownProfile(d) ?? (ownRecord(d) || asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
-        .filter(Boolean)
-        .map((d) => {
-          // A project's picture: a small image only (like profile photos).
-          if (coll === 'clients' && d && 'photo' in d && d.photo != null && !(typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000)) return { ...d, photo: undefined };
-          // A meeting the recorder bot is still in: the bot's fields come from the bot, not from an older copy in someone's app.
-          const before = coll === 'meetings' ? (db.getDoc(coll, d!.id) as any) : null;
-          // Keeping less of a finished recording deletes it on the recorder, so the storage really comes back.
-          if (before?.recording?.url && !BOT_LIVE.has(before.status) && RECORDER_URL) {
-            const keep = (d as any).recording?.keep;
-            if (keep === 'notes') {
-              void recorder(`/recordings/${d!.id}`, { method: 'DELETE' }).catch(() => {});
-              return { ...d, recording: { keep: 'notes', sizeMb: 0 } };
-            }
-            if (keep === 'audio' && before.recording.videoUrl) {
-              void recorder(`/recordings/${d!.id}?only=video`, { method: 'DELETE' }).catch(() => {});
-              return { ...d, recording: { ...before.recording, keep: 'audio', videoUrl: undefined, videoMb: undefined } };
-            }
-          }
-          if (!before?.bot || !BOT_LIVE.has(before.status)) return d;
-          return { ...d, bot: true, ...Object.fromEntries(BOT_FIELDS.filter((k) => k in before).map((k) => [k, before[k]])) };
-        }) as db.Doc[];
-      // What Members may do (Settings > Permissions); owners and admins can do everything.
-      const permsOf = (wsId: string) => ({ ...DEFAULT_PERMISSIONS, ...((db.getDoc('workspaces', wsId) as any)?.permissions ?? {}) });
-      const limited = (wsId: unknown) => typeof wsId === 'string' && mine.has(wsId) && !isAdminOf(me, wsId);
-      const mayWrite = (d: db.Doc): db.Doc | null => {
-        const wsId = d.workspaceId as string;
-        if (!limited(wsId)) return d;
-        const p = permsOf(wsId);
-        const before = db.getDoc(coll, d.id) as any;
-        if (coll === 'clients' && !before && !p.createProjects) return null;
-        // Who's a guest is changed by admins, the project's lead, or Members allowed to invite guests ("Invite guests"),
-        // whether on the project or in one of its channels: being listed is what opens the portal.
-        if ((coll === 'clients' || coll === 'channels') && before && !p.inviteGuests) {
-          const project = db.getDoc('clients', String(coll === 'clients' ? before.id : before.clientId ?? '')) as any;
-          const leads = !!project && (project.ownerId === me || (project.members ?? []).some((m: any) => m.userId === me && m.role === 'lead'));
-          const key = coll === 'clients' ? 'people' : 'guests';
-          if (!leads && JSON.stringify((d as any)[key] ?? []) !== JSON.stringify(before[key] ?? [])) {
-            say('Only admins and the project’s Lead can change who its guests are here.');
-            return { ...d, [key]: before[key] } as db.Doc;
-          }
-        }
-        if (coll === 'teams') {
-          if (!before) return p.createTeams ? d : null;
-          if (before.leadId === me) return d;
-          // Anyone else changes only themselves: in or out (in only when the team is open), or asking to join.
-          const wasIn = (before.members ?? []).includes(me);
-          const nowIn = ((d as any).members ?? []).includes(me);
-          const others = (before.members ?? []).filter((x: string) => x !== me);
-          const members = nowIn && !wasIn && before.join !== 'open' ? before.members ?? [] : [...others, ...(nowIn ? [me] : [])];
-          const ask = ((d as any).requests ?? []).find((x: any) => x?.userId === me);
-          const requests = [...(before.requests ?? []).filter((x: any) => x.userId !== me), ...(ask && !members.includes(me) ? [{ userId: me, at: String(ask.at ?? new Date().toISOString()) }] : [])];
-          return { ...before, members, requests } as db.Doc;
-        }
-        if (coll === 'tables' && before && !p.editTables && before.createdBy !== me) {
-          // Rows and new choices yes; the columns themselves, automations and sharing stay as they were.
-          const fields = (before.fields ?? []).map((bf: any) => {
-            const nf = ((d as any).fields ?? []).find((x: any) => x.id === bf.id);
-            return nf && nf.type === bf.type ? { ...bf, options: nf.options ?? bf.options } : bf;
-          });
-          return { ...d, fields, rules: before.rules, intake: before.intake, signingSecret: before.signingSecret, share: before.share } as db.Doc;
-        }
-        return d;
-      };
-      const mayDelete = (before: any) => {
-        // Someone else's chat message: its author, admins, or members allowed to delete things.
-        if (coll === 'messages' && before && before.userId !== me) {
-          const chan = db.getDoc('channels', String(before.channelId)) as any;
-          return !!chan && (isAdminOf(me, chan.workspaceId) || permsOf(chan.workspaceId).deleteThings);
-        }
-        if (!before || !limited(before.workspaceId)) return true;
-        if (coll === 'teams') return false; // only admins delete teams
-        if (permsOf(before.workspaceId).deleteThings) return true;
-        if (coll === 'clients') return false;
-        if (coll === 'tables') return before.createdBy === me;
-        if (coll === 'channels') return before.kind === 'dm' || before.ownerId === me;
-        if (coll === 'notes' || coll === 'drive') return before.ownerId === me;
-        return true;
-      };
-      const admin = memberOf(me).some((w) => isAdminOf(me, w.id));
-      const now = new Date().toISOString();
-      // Sign-in rules that changed (owners only), for the company's security log and the people they affect.
-      const securityChanges: { wsId: string; text: string; required: boolean }[] = [];
-      // Companies that just switched on deleting old chat messages (their admins get the week's notice).
-      const retentionStarted: { wsId: string; from: string; period: retention.Period }[] = [];
-      // Why something wasn't saved (or was saved differently), for the app to say.
-      const why: string[] = [];
-      const say = (text: string | undefined | null) => void (text && !why.includes(text) && why.push(text));
-      /** The company of a document, as stored (or as sent, for a new one). */
-      const wsOfDoc = (d: any, before: any) => (coll === 'workspaces' ? d.id : (d.workspaceId ?? before?.workspaceId ?? (coll === 'messages' ? (db.getDoc('channels', String(d.channelId ?? before?.channelId)) as any)?.workspaceId : undefined)));
-      /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
-      const guard = (d: db.Doc): db.Doc | null => {
-        const before = db.getDoc(coll, d.id) as any;
-        // A suspended or paused company is read-only for everyone in it (its guests too). A paused plan can still be
-        // resumed (or changed) by an owner: the plan is all that changes.
-        const wsId = wsOfDoc(d, before);
-        const wsDoc = wsId ? (db.getDoc('workspaces', wsId) as any) : null;
-        const ro = billing.readOnlyWhy(wsDoc);
-        if (ro) {
-          const owner = (wsDoc?.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
-          if (coll === 'workspaces' && before && !wsDoc.suspended && owner && JSON.stringify((d as any).plan) !== JSON.stringify(before.plan)) {
-            const p = planFromApp((d as any).plan, before.plan);
-            say(p.why);
-            return { ...before, plan: p.plan } as db.Doc;
-          }
-          say(ro);
-          return null;
-        }
-        if (before && 'workspaceId' in before && d.workspaceId !== before.workspaceId) return null;
-        // Outside calendars, calendar links and public holidays have their own rules.
-        const cal = feeds.checkWrite(coll, d, me, DEMO);
-        if (cal !== 'pass') return cal;
-        if (coll === 'workspaces') {
-          if (before) {
-            if (!isAdminOf(me, d.id)) return null; // only admins change a company's settings and people
-            // What the server and operators own stays as the server has it: readiness, credits, suspension, discounts,
-            // the routing checks' results (the admins only switch the daily check on or off), the company's own address
-            // with its state (changed through /api/white-label/domain only), the mail aliases (set through the server)
-            // and WhatsApp (connected through the server: its number decides whose messages arrive here).
-            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
-            // Boosted sending only where this server has it.
-            if ((d as any).mailRoute === 'boosted' && before.mailRoute !== 'boosted' && !mailer.boostedAvailable()) (d as any).mailRoute = before.mailRoute;
-            // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
-            if (Array.isArray((d as any).accounts)) (d as any).accounts = (d as any).accounts.map((a: any) => ({ ...a, away: (before.accounts ?? []).find((b: any) => b.id === a.id)?.away }));
-            const owner = (before.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
-            // The plan and billing are the owners' (the billing page says so); admins' saves keep it as it was.
-            const asked = planFromApp((d as any).plan, before.plan);
-            const planChanged = JSON.stringify((d as any).plan ?? null) !== JSON.stringify(before.plan ?? null);
-            if (!owner && planChanged) say('Only owners can change the plan and billing.');
-            const plan = owner ? asked.plan : before.plan;
-            if (owner) say(asked.why);
-            // An operator looking at the app as someone can't change the company's sign-in rules.
-            const sec = session?.operator ? { security: before.security, changed: null } : twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
-            if (sec.changed) securityChanges.push({ wsId: d.id, text: sec.changed, required: !!sec.security?.twoStep && !before.security?.twoStep });
-            // Task stages: only a list the app can work with (known kinds, at least one open and one done stage). A list
-            // that isn't keeps what was there; an empty one means the usual stages.
-            const askedStages = (d as any).taskStages;
-            const clean = askedStages === undefined ? undefined : cleanStages(askedStages);
-            const taskStages = clean === DEFAULT_STAGES ? (Array.isArray(askedStages) && askedStages.length ? before.taskStages : undefined) : clean;
-            // Deleting old chat messages: the period is the admins'; when it starts (after a week's notice) is the server's.
-            const chat = retention.chatOnSave((d as any).chat, before.chat);
-            if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
-            // Hosted mailboxes only as many as the plan has room for.
-            const boxes = billing.mailboxesOnSave({ ...(d as any), plan }, before);
-            say(boxes.why);
-            // The company's time zone: one the clock knows, else it stays as it was.
-            const timeZone = isZone((d as any).timeZone) ? (d as any).timeZone : before.timeZone;
-            return { ...d, ...own, timeZone, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
-          }
-          const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...fresh } = d as any;
-          if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
-          const plan = planFromApp(fresh.plan, undefined).plan;
-          if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
-          const chat = retention.chatOnSave(fresh.chat, undefined);
-          if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
-          if (fresh.mailRoute === 'boosted' && !mailer.boostedAvailable()) fresh.mailRoute = 'own';
-          const made = { ...fresh, plan, chat: chat.chat, whiteLabel: ownAddress(fresh.whiteLabel, undefined), security: twostep.securityOnSave(undefined, fresh.security, true, twostep.isOn(me)).security, createdAt: new Date().toISOString(), members: [{ userId: me, role: 'owner' }, ...((d.members ?? []) as any[]).filter((m) => m.userId !== me)] }; // whoever makes a company owns it
-          return { ...made, accounts: billing.mailboxesOnSave(made, undefined).accounts } as db.Doc;
-        }
-        // A notice goes to someone in that company (or one of its guests), and only links inside the app.
-        if (coll === 'notices' && !before) {
-          const to = String((d as any).userId ?? '');
-          const inWs = (wsDoc?.members ?? []).some((m: any) => m.userId === to);
-          const guestOfWs = to.startsWith('email:') && (db.allDocs('clients') as any[]).some((c) => c.workspaceId === wsId && clientPeople(c, db.allDocs('channels') as any).some((x) => x.email.toLowerCase() === to.slice(6)));
-          if (!inWs && !guestOfWs) return null;
-          const url = (d as any).url;
-          if (url !== undefined && !(typeof url === 'string' && url.startsWith('/') && !url.startsWith('//'))) return { ...d, url: undefined } as db.Doc;
-        }
-        // Someone else's chat message: reactions, votes, pins and the task made from it, never what it says.
-        if (coll === 'messages' && before && before.userId !== me) {
-          const { reactions, poll, pinned, taskId, alsoInChannel } = d as any;
-          const votes = poll && before.poll ? { ...before.poll, options: before.poll.options.map((o: any, i: number) => ({ ...o, votes: Array.isArray(poll.options?.[i]?.votes) ? poll.options[i].votes : o.votes })) } : before.poll;
-          return { ...before, reactions, poll: votes, pinned, taskId, alsoInChannel } as db.Doc;
-        }
-        if (coll === 'users') {
-          if (d.id === me) return d; // own profile: already shaped
-          if (before) return null; // nobody edits someone else's record
-          if (!admin && mine.size) return null; // new people come in through invites, which admins send
-          const { clientOf: _c, vaultKey: _v, ...rest } = d as any;
-          return rest as db.Doc;
-        }
-        // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts).
-        if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
-        // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
-        if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
-        if (before) return d;
-        // New things carry who made them.
-        if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
-        // Your own message; a guest's message is theirs when it carries their own email (checked by clientWrite too).
-        if (coll === 'messages') return d.userId === me || (d.userId === 'guest' && String((d as any).guestEmail ?? '').toLowerCase() === String(person.email ?? '').toLowerCase()) ? d : null;
-        if (coll === 'notes') return { ...d, ownerId: me } as db.Doc;
-        if (coll === 'channels' && d.kind === 'channel' && !d.teamId && limited(d.workspaceId) && (db.getDoc('workspaces', String(d.workspaceId)) as any)?.chat?.whoCanCreate === 'admins') return null; // only admins start channels here
-        if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
-        if (coll === 'drive') return { ...d, uploadedBy: (d as any).uploadedBy ?? me } as db.Doc;
-        if (coll === 'events') return { ...d, createdBy: (d as any).createdBy ?? me } as db.Doc;
-        return d;
-      };
-      for (let i = ok.length - 1; i >= 0; i--) {
-        const d = ownProfile(ok[i]!) ? ok[i]! : mayWrite(ok[i]!);
-        const g = d && (ownProfile(d) ? d : guard(d));
-        if (g) ok[i] = g;
-        else ok.splice(i, 1);
-      }
-      const dels = mine.size || ((coll === 'prefs' || coll === 'statuses') && (deletes as string[]).includes(me))
-        ? (deletes as string[]).filter((id) => {
-            const before = db.getDoc(coll, id) as any;
-            if (!before) return true;
-            if ((coll === 'prefs' || coll === 'statuses') && id === me) return true; // your own
-            // Nothing in a read-only company is deleted either.
-            const ro = billing.readOnlyWhy(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
-            if (ro) return (say(ro), false);
-            return see(coll, before) && mayDelete(before) && feeds.mayDelete(coll, before, me);
-          })
-        : [];
-      const delDocs = dels.map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
-      const botAudio = coll === 'meetings' ? dels.filter((id: string) => (db.getDoc(coll, id) as any)?.recording?.url) : [];
-      // Rows: remember them as they were, so rules can tell what was added or changed.
-      const rowsBefore = coll === 'rows' ? new Map(ok.map((d) => [d!.id, db.getDoc('rows', d!.id) as any])) : null;
-      // Tables: the delivery log and the last sample are the server's; mappings merge (a key set to "" means skip it).
-      if (coll === 'tables')
-        for (let i = 0; i < ok.length; i++) {
-          const before = db.getDoc('tables', ok[i]!.id) as any;
-          if (!before) continue;
-          const d = ok[i] as any;
-          // listening: once a test arrives the server switches it off; an older copy can't switch it back on unless it asks afresh.
-          const listening = !!d.intake?.listening && String(d.intake?.listenFrom ?? '') > String(before.intake?.testAt ?? '');
-          ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
-        }
-      const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
-      // Public holidays switched on, off or to another country.
-      const holidaysChanged = coll === 'workspaces' ? (ok as any[]).filter((d) => (db.getDoc('workspaces', d.id) as any)?.holidays?.country !== d.holidays?.country).map((d) => d.id) : [];
-      // Email settings changed: check what really works again.
-      const emailChanged =
-        coll === 'workspaces'
-          ? (ok as any[]).filter((d) => {
-              const b = db.getDoc('workspaces', d.id) as any;
-              const pick = (w: any) => JSON.stringify([w?.emailSetup, w?.domains, w?.mailRoute, w?.mailRouting, (w?.accounts ?? []).map((a: any) => [a.id, a.email, a.provider]), w?.plan?.tier, w?.plan?.addons?.mailboxes, w?.plan?.trialEnds]);
-              return !b || pick(b) !== pick(d);
-            }).map((d) => d.id)
-          : [];
-      // The branding add-on or the brand switch changed: the company's own address may go live (or pause) now.
-      const addressChanged =
-        coll === 'workspaces'
-          ? (ok as any[]).filter((d) => {
-              const b = db.getDoc('workspaces', d.id) as any;
-              return b?.whiteLabel?.domain && (hasBranding(b.plan) !== hasBranding(d.plan) || !!b.whiteLabel.enabled !== !!d.whiteLabel?.enabled);
-            }).map((d) => d.id)
-          : [];
-      db.writeDocs(coll, ok, dels, me);
-      for (const id of emailChanged) soonReadiness(id);
-      for (const id of addressChanged) customDomains.soon(id);
-      for (const id of holidaysChanged) void feeds.syncHolidays(id).catch((e) => console.error('[holidays]', e instanceof Error ? e.message : e));
-      for (const c of securityChanges) {
-        platform.event('security.rules', c.wsId, me, c.text);
-        if (c.required) tellTwoStepRequired(c.wsId, me);
-      }
-      if (leavers.length) endGuestAccess(leavers);
-      for (const r of retentionStarted) {
-        const w = db.getDoc('workspaces', r.wsId) as any;
-        if (w) broadcast('workspaces', [w], []); // the admin who switched it on sees when it starts too
-        if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeText(w.name, r.period, r.from, companyTz(w)), { app: 'settings', id: 'apps' });
-        db.audit(String(person.email ?? me), 'chat.retention.on', r.wsId, `messages older than ${retention.periodWords(r.period)}, deleting from ${r.from.slice(0, 10)}`);
-      }
-      // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
-      if (coll === 'notices' && mailer.systemMailPath() !== 'log')
-        for (const n of ok as any[]) {
-          if (!String(n.userId).startsWith('email:') || n.read) continue;
-          const to = String(n.userId).slice(6);
-          const w = db.getDoc('workspaces', n.workspaceId) as any;
-          const brandName = w?.whiteLabel?.enabled ? w.whiteLabel.name : w?.name ?? 'sprint2go';
-          const origin = customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL;
-          void mailer.sendNote(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin }), brandName).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
-        }
-      const conn = String(req.headers['x-conn'] ?? '');
-      const sender = clients.get(conn)?.userId === me ? conn : undefined;
-      broadcast(coll, ok, dels, sender, delDocs);
-      // What the server saved differently from what this window sent goes back to it too, so it shows what's stored.
-      if (sender) {
-        const sent = new Map((upserts as db.Doc[]).filter((d) => d && typeof d.id === 'string').map((d) => [d.id, d]));
-        // Only where something the window sent was stored differently (fields the server merely adds, like who made
-        // it, don't need a round trip that could land on top of the next edit).
-        const reshaped = ok.filter((d) => {
-          const s = sent.get(d.id) as any;
-          return !!s && Object.keys(s).some((k) => JSON.stringify(s[k]) !== JSON.stringify((d as any)[k]));
-        });
-        // Refused: changes go back to what's stored, refused new things go away, refused deletions come back.
-        const refused = [...sent.keys()].filter((id) => !ok.some((d) => d.id === id));
-        const kept = [...refused, ...(deletes as string[]).filter((id) => !dels.includes(id))].map((id) => db.getDoc(coll, id)).filter(Boolean) as db.Doc[];
-        const see2 = lens(me);
-        const back = [...reshaped, ...kept].map((d) => see2(coll, d)).filter(Boolean);
-        const gone = refused.filter((id) => !db.getDoc(coll, id));
-        if (back.length || gone.length) clients.get(sender)?.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: back, deletes: gone })}\n\n`);
-      }
-      if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
-      feeds.afterSync(coll, ok, delDocs);
-      // A deleted meeting takes its recording with it.
-      if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
-      if (sbWhy) say(sbWhy);
-      return json(res, 200, { saved: ok.length + sbSaved, ...(why.length ? { why: why.join(' ') } : {}) });
+      const r = applySync(me, await body(req), { conn: String(req.headers['x-conn'] ?? ''), operator: session?.operator ?? null });
+      return json(res, r.status, r.body);
     }
 
     // Huddles: where audio may travel. With a call relay (TURN_URLS, TURN_SECRET) each team member gets its addresses
