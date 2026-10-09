@@ -369,7 +369,7 @@ function PhoneCalendar({ table: t, view, rows, ctx, field: df, onOpenRow, onAddR
             <button type="button" className="icon-btn" onClick={() => go(-1)} aria-label="Previous month">
               <ChevronLeft size={20} />
             </button>
-            <strong>{month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</strong>
+            <strong className="tb-pcal-month">{month.toLocaleDateString(undefined, { month: 'long', year: month.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}</strong>
             <button type="button" className="icon-btn" onClick={() => go(1)} aria-label="Next month">
               <ChevronRight size={20} />
             </button>

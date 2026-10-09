@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, ArrowUpDown, CheckSquare, ChevronDown, Copy, CopyPlus, Download, EyeOff, FileUp, Filter, Group, LayoutTemplate, Link2, Maximize2, Menu, MoreHorizontal, Palette, PanelRight, Plus, Search, SlidersHorizontal, Table2, Trash2, Undo2, Users, X, Zap } from 'lucide-react';
+import { ArrowRightLeft, ArrowUpDown, Check, CheckSquare, ChevronDown, Copy, CopyPlus, Download, EyeOff, FileUp, Filter, Group, LayoutTemplate, Link2, Maximize2, Menu, MoreHorizontal, Palette, PanelRight, Plus, Search, SlidersHorizontal, Table2, Trash2, Undo2, Users, X, Zap } from 'lucide-react';
 import type { CellValue, Channel, Client, DataTable, RowTemplate, TableField, TableRow, TableViewDef, TableViewTweak, User } from '../../types';
 import { term, brand as product } from '../../terms';
 import { uid } from '../../utils';
 import { usePersisted } from '../../settings';
 import { Popover } from '../ui/Popover';
+import { Sheet } from '../ui/Sheet';
 import { TabPane } from '../ui/Smooth';
 import { PickSelect } from '../ui/PickSelect';
 import { ProjectPicker } from '../ProjectPicker';
@@ -82,7 +83,7 @@ export function TableScreen(p: ScreenProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selecting, setSelecting] = useState(false); // narrow screens: picking several rows
   const [pop, setPop] = useState<null | 'filter' | 'sort' | 'fields' | 'group' | 'colors' | 'view' | 'more' | 'addView' | 'newRow'>(null);
-  const [sheet, setSheet] = useState<null | 'views' | 'filter' | 'settings' | 'bulk'>(null);
+  const [sheet, setSheet] = useState<null | 'views' | 'filter' | 'settings' | 'bulk' | 'tables'>(null);
   const refs = { filter: useRef<HTMLButtonElement>(null), sort: useRef<HTMLButtonElement>(null), fields: useRef<HTMLButtonElement>(null), group: useRef<HTMLButtonElement>(null), colors: useRef<HTMLButtonElement>(null), more: useRef<HTMLButtonElement>(null), newRow: useRef<HTMLButtonElement>(null) };
   const tabAnchor = useRef<HTMLElement | null>(null);
   const addViewAnchor = useRef<HTMLElement | null>(null);
@@ -98,7 +99,7 @@ export function TableScreen(p: ScreenProps) {
   const [full, setFull] = useState(false);
   const [rowMenu, setRowMenu] = useState<{ rowId: string; x: number; y: number } | null>(null);
   const [editCell, setEditCell] = useState<{ rowId: string; fieldId: string; title?: string } | null>(null);
-  const [quick, setQuick] = useState<{ values: Record<string, CellValue>; label?: string } | null>(null);
+  const [quick, setQuick] = useState<{ values: Record<string, CellValue>; title?: string } | null>(null);
   const quickInput = useRef<HTMLInputElement>(null);
   const rowMenuAnchor = useRef<HTMLSpanElement>(null);
   const [tip, setTip] = usePersisted('s2g-tables-tip', true);
@@ -491,7 +492,8 @@ export function TableScreen(p: ScreenProps) {
     else openRowFull(id);
   };
   /** Quick create (phones and narrow panes): a sheet that asks for the name, with the keyboard up. */
-  const openQuick = (values: Record<string, CellValue> = {}, label?: string) => openWithFocus(() => setQuick({ values, label }), quickInput);
+  const openQuick = (values: Record<string, CellValue> = {}, title?: string) => openWithFocus(() => setQuick({ values, title }), quickInput);
+  const inGroup = (label?: string) => (label ? `New row in ${label}` : undefined);
   const quickMade = (nm: string, tpl: RowTemplate | undefined, again: boolean) => {
     if (!quick) return;
     const first = t.fields[0];
@@ -502,7 +504,7 @@ export function TableScreen(p: ScreenProps) {
 
   // Phones: the create button adds a row (templates on a long-press); the title switches between tables.
   const templates = t.templates ?? [];
-  useCreateAction('tables', !g && canAdd && !!view && { label: 'New row', icon: Plus, run: () => openQuick(), more: templates.map((x) => ({ label: `New “${x.name}”`, icon: LayoutTemplate, run: () => openQuick(templateValues(t, x, p.me), x.name) })) });
+  useCreateAction('tables', !g && canAdd && !!view && { label: 'New row', icon: Plus, run: () => openQuick(), more: templates.map((x) => ({ label: `New “${x.name}”`, icon: LayoutTemplate, run: () => openQuick(templateValues(t, x, p.me), `New “${x.name}”`) })) });
   const projectName = (id?: string) => (id ? (p.clients.find((c) => c.id === id)?.name ?? term.One) : 'Company');
   useTitleMenu(
     'tables',
@@ -582,13 +584,25 @@ export function TableScreen(p: ScreenProps) {
   return (
     <ButtonSetupCtx.Provider value={setButtonFor}>
     <section ref={paneRef} className={`tasks-pane tb-pane view-enter${narrow ? ' tb-narrow' : ''}${phone ? ' tb-phone' : ''}`}>
-      {(!phone || g) && (
+      {g && phone && (
+        <header className="tb-guest-head">
+          {p.tables.length > 1 ? (
+            <button type="button" className="tb-guest-title" onClick={() => setSheet('tables')} aria-haspopup="dialog">
+              <span>{t.name}</span>
+              <ChevronDown size={17} className="muted" />
+            </button>
+          ) : (
+            <h2 className="tb-guest-title">
+              <span>{t.name}</span>
+            </h2>
+          )}
+          {t.description && <p className="muted small">{t.description}</p>}
+        </header>
+      )}
+      {!phone && (
         <header className="tracking-head tasks-head tb-head-bar">
           <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
             <Menu size={18} />
-          </button>
-          <button className="icon-btn tb-back" onClick={p.onMenu} aria-label="All tables">
-            <ArrowLeft size={18} />
           </button>
           <button type="button" className="client-badge tb-badge" style={{ background: t.color }} title={g || !structure ? t.name : 'Change colour'} disabled={!!g || !structure} onClick={() => patchTable({ color: TABLE_COLORS[(TABLE_COLORS.indexOf(t.color) + 1) % TABLE_COLORS.length] })}>
             {t.name.charAt(0).toUpperCase()}
@@ -772,13 +786,13 @@ export function TableScreen(p: ScreenProps) {
                 <Filter size={13} /> <span className="lbl">{nFilters ? `${nFilters} filter${nFilters === 1 ? '' : 's'}` : 'Filter'}</span>
               </button>
               {view.kind !== 'calendar' && (
-                <button ref={refs.sort} className={`ghost-btn sm${sorts.length ? ' on' : ''}`} onClick={() => setPop('sort')}>
+                <button ref={refs.sort} className={`ghost-btn sm tb-quiet${sorts.length ? ' on' : ''}`} onClick={() => setPop('sort')} title="Sort" aria-label="Sort">
                   <ArrowUpDown size={13} /> <span className="lbl">{sorts.length ? `Sorted${sorts.length > 1 ? ` (${sorts.length})` : `: ${t.fields.find((f) => f.id === sorts[0].fieldId)?.name}`}` : 'Sort'}</span>
                 </button>
               )}
               {structure && (view.kind === 'grid' || view.kind === 'list') && (
-                <button ref={refs.group} className={`ghost-btn sm${groupField ? ' on' : ''}`} onClick={() => setPop('group')}>
-                  <Group size={13} /> <span className="lbl">{groupField ? `By ${groupField.name}${view.subGroupBy ? ', then more' : ''}` : 'Group'}</span>
+                <button ref={refs.group} className={`ghost-btn sm tb-quiet${groupField ? ' on' : ''}`} onClick={() => setPop('group')} title={groupField ? `Grouped by ${groupField.name}${view.subGroupBy ? `, then by ${t.fields.find((f) => f.id === view.subGroupBy)?.name ?? 'another field'}` : ''}` : 'Group'} aria-label="Group">
+                  <Group size={13} /> <span className="lbl">{groupField ? `By ${groupField.name}` : 'Group'}</span>
                 </button>
               )}
               {/* A board's "Cards" is what its fields menu would be (what each card shows): one button, not two. */}
@@ -788,13 +802,13 @@ export function TableScreen(p: ScreenProps) {
                 structure &&
                 view.kind !== 'calendar' &&
                 view.kind !== 'timeline' && (
-                  <button ref={refs.fields} className={`ghost-btn sm${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')}>
+                  <button ref={refs.fields} className={`ghost-btn sm tb-quiet${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')} title="Fields in this view" aria-label="Fields">
                     <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
                   </button>
                 )
               )}
               {structure && view.kind !== 'calendar' && view.kind !== 'timeline' && (
-                <button ref={refs.colors} className={`ghost-btn sm${view.colors?.length ? ' on' : ''}`} onClick={() => setPop('colors')}>
+                <button ref={refs.colors} className={`ghost-btn sm tb-quiet${view.colors?.length ? ' on' : ''}`} onClick={() => setPop('colors')} title="Colours" aria-label="Colours">
                   <Palette size={13} /> <span className="lbl">{view.colors?.length ? `Colours (${view.colors.length})` : 'Colours'}</span>
                 </button>
               )}
@@ -899,7 +913,7 @@ export function TableScreen(p: ScreenProps) {
               ctx={ctx}
               onCell={setCell}
               onOpenRow={(id) => openRowFull(id)}
-              onAddRow={(v, label) => (narrow ? openQuick(v, label) : openRowFull(addRow(v)))}
+              onAddRow={(v, label) => (narrow ? openQuick(v, inGroup(label)) : openRowFull(addRow(v)))}
               onView={patchView}
               onNewField={(f) => saveField(f)}
               onSaveField={(f) => saveField(f)}
@@ -919,7 +933,7 @@ export function TableScreen(p: ScreenProps) {
               collapsed={collapsedSet}
               onCollapse={foldGroup}
               canAdd={canAdd}
-              h={{ onOpen: (id) => openRowFull(id), onToggle: toggle, actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id }), onAdd: (v, label) => openQuick(v, label) }}
+              h={{ onOpen: (id) => openRowFull(id), onToggle: toggle, actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id }), onAdd: (v, label) => openQuick(v, inGroup(label)) }}
             />
           ) : view.kind === 'list' ? (
             <ListView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onView={patchView} />
@@ -938,7 +952,7 @@ export function TableScreen(p: ScreenProps) {
               onNewField={(f) => saveField(f)}
               readOnly={!!g || !structure}
               narrow={narrow}
-              onLongPressDay={canAdd && dateField ? (day) => openQuick({ [dateField.id]: day }, new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })) : undefined}
+              onLongPressDay={canAdd && dateField ? (day) => openQuick({ [dateField.id]: day }, `New row on ${new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`) : undefined}
             />
           ) : view.kind === 'timeline' ? (
             <TimelineView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onValues={setValues} onView={patchShared} onNewField={(f) => saveField(f)} readOnly={!!g && !(dateField && g.canEdit(dateField.id))} narrow={narrow} canAdd={canAdd} onAddRow={(values) => (narrow ? openQuick(values) : openRowFull(addRow(values)))} />
@@ -1044,11 +1058,24 @@ export function TableScreen(p: ScreenProps) {
         )}
       </Popover>
 
+      {sheet === 'tables' && (
+        <Sheet title="Shared tables" onClose={() => setSheet(null)} className="tb-sheet">
+          <div className="as-list">
+            {p.tables.map((x) => (
+              <button key={x.id} type="button" className="as-item" aria-current={x.id === t.id} onClick={() => (setSheet(null), p.onOpenTable(x.id))}>
+                <i className="tb-dot" style={{ background: x.color }} />
+                <span className="as-label">{x.name}</span>
+                {x.id === t.id && <Check size={18} className="as-check" />}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
       {sheet === 'views' && <ViewsSheet table={t} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
       {sheet === 'filter' && view && <FilterSheet table={t} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
       {sheet === 'settings' && view && <SettingsSheet table={t} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
       {sheet === 'bulk' && <BulkEditSheet table={t} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}
-      {quick && <QuickCreate table={t} where={quick.label} inputRef={quickInput} onCreate={quickMade} onClose={() => setQuick(null)} />}
+      {quick && <QuickCreate table={t} title={quick.title} inputRef={quickInput} onCreate={quickMade} onClose={() => setQuick(null)} />}
       {editRow && editField && <EditSheet table={t} field={editField} row={editRow} ctx={ctx} title={editCell?.title} onSave={(v) => setCell(editRow.id, editField.id, v)} onClose={() => setEditCell(null)} canCreate={!g} />}
 
       {importing && <ImportDialog table={t} rows={mine} users={p.users} onImport={importPlan} onClose={() => setImporting(false)} />}

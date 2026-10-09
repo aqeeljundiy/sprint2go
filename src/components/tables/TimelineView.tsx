@@ -175,7 +175,7 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
             <div className="tb-tl-months">
               {months.map((m, i) => (
                 <span key={i} style={{ left: m.left, width: m.width }}>
-                  {m.width > 40 ? m.label : ''}
+                  <b>{m.label}</b>
                 </span>
               ))}
             </div>
@@ -228,7 +228,7 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
                 >
                   {span && (
                     <div
-                      className={`tb-tl-bar${live?.moved ? ' dragging' : ''}`}
+                      className={`tb-tl-bar${live?.moved ? ' dragging' : ''}${(e - s + 1) * dw < 90 ? ' short' : ''}`}
                       style={{ left: (s - from) * dw, width: (e - s + 1) * dw, ...(tint ? { ['--c' as string]: tint } : {}) }}
                       onPointerDown={startDrag('move')}
                       role="button"

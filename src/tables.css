@@ -94,6 +94,15 @@
   color: var(--accent);
   background: var(--accent-soft);
 }
+/* A middling pane: the quieter tools keep their icons and lose their words (they say them on hover). */
+@container (max-width: 1080px) {
+  .tb-bar .tb-quiet .lbl {
+    display: none;
+  }
+  .tb-search input {
+    width: 110px;
+  }
+}
 @container (max-width: 767px) {
   .tb-bar .ghost-btn .lbl {
     display: none;
@@ -1168,10 +1177,6 @@
   min-height: 32px;
 }
 
-/* Phones: the table keeps its name in the header, with a back arrow to the list of tables. */
-.tb-head-bar .tb-back {
-  display: none;
-}
 .tb-home-head .th-text {
   display: block !important;
 }
@@ -3322,7 +3327,22 @@
   align-items: center;
   gap: 6px;
 }
-.tb-sec-head input {
+.tb-lay-sec {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+.tb-lay-sec > p,
+.tb-lay-sec > .tb-set-h {
+  margin: 0;
+}
+.tb-lay-sec > .tab-edit-list:empty {
+  display: none;
+}
+.tb-lay-sec > .link-btn {
+  justify-self: start;
+}
+.modal-body .tb-sec-head input {
   flex: 1;
   min-width: 0;
   font: inherit;
@@ -3334,10 +3354,10 @@
   color: var(--text);
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
-.tb-sec-head input:hover {
+.modal-body .tb-sec-head input:hover {
   background: var(--hover);
 }
-.tb-sec-head input:focus {
+.modal-body .tb-sec-head input:focus {
   outline: none;
   background: var(--surface);
   box-shadow: 0 0 0 1.5px var(--accent);
@@ -3533,13 +3553,20 @@
   position: absolute;
   top: 0;
   height: 24px;
-  padding: 4px 8px 0;
+  padding-top: 4px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-2);
   border-left: 1px solid var(--border);
   white-space: nowrap;
-  overflow: hidden;
+}
+/* The month's name stays in view at the left while its days scroll by. */
+.tb-tl-months b {
+  position: sticky;
+  left: calc(var(--tl-name) + 8px);
+  display: inline-block;
+  padding: 0 8px;
+  font-weight: 600;
 }
 .tb-tl-days {
   display: grid;
@@ -3652,6 +3679,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A bar too short for its name: the name sits just after it. */
+.tb-tl-bar.short .tb-tl-label {
+  position: absolute;
+  left: calc(100% + 6px);
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
+}
 .tb-tl-grip {
   flex: none;
   align-self: stretch;
@@ -3684,4 +3719,71 @@
   max-height: min(70vh, 640px);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* Template and layout dialogs: the body scrolls, Save stays in view; values inside a card are plain fields. */
+.modal.tb-tpl-modal,
+.modal.tb-layout-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tb-tpl-modal > .modal-body,
+.tb-layout-modal > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tb-tpl-body .tb-rd-input,
+.tb-tpl-body .tb-rd-text {
+  border-color: transparent;
+  background: transparent;
+  padding: 4px 8px;
+  margin-left: -8px;
+}
+.tb-tpl-body .tb-rd-input:hover,
+.tb-tpl-body .tb-rd-text:hover {
+  background: var(--hover);
+}
+.tb-tpl-body .tb-rd-input:focus,
+.tb-tpl-body .tb-rd-text:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+.tb-tpl-body .tb-rd-line {
+  min-height: 36px;
+}
+.tb-repeat-row .pick-select,
+.tb-repeat-row .sel {
+  width: auto;
+  flex: none;
+}
+.tb-tpl-actions {
+  justify-content: flex-start;
+}
+.tb-tpl-actions > * {
+  flex: none;
+}
+.tb-tpl-modal .tb-tpl-body input.tb-rd-input,
+.tb-tpl-modal .tb-tpl-body textarea.tb-rd-text {
+  border-color: transparent;
+  background: transparent;
+}
+.tb-tpl-modal .tb-tpl-body input.tb-rd-input:hover,
+.tb-tpl-modal .tb-tpl-body textarea.tb-rd-text:hover {
+  background: var(--hover);
+}
+.tb-tpl-modal .tb-tpl-body input.tb-rd-input:focus,
+.tb-tpl-modal .tb-tpl-body textarea.tb-rd-text:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+.tb-repeat-row > * {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+.tb-tpl-actions > .link-btn {
+  margin: 0;
 }

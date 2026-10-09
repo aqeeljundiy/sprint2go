@@ -8,6 +8,35 @@
    (under 600 px, measured in TableScreen), so a Tables view in a narrow pane on a laptop reads the same way.
    ========================================================================== */
 
+/* A guest's table on a phone: its name (a switcher when several are shared), then the toolbar row. */
+.tb-guest-head {
+  flex: none;
+  display: grid;
+  gap: 2px;
+  padding: 10px 16px 6px;
+}
+.tb-guest-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tap, 44px);
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-align: left;
+}
+.tb-guest-title > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-guest-head > p {
+  margin: 0;
+}
+
 /* ---------- one toolbar row: the view, then Search, Filter, Settings (and + where there's no create button) ---------- */
 
 .tb-phonebar {
@@ -325,6 +354,10 @@
 .tb-crd-group > .fold > .fold-in {
   overflow: hidden;
 }
+/* The cards' outline isn't clipped where a group folds. */
+.tb-crd-group .tb-crd-list {
+  padding: 1px 1px 4px;
+}
 .tb-crd-sub {
   padding-left: 4px;
 }
@@ -411,6 +444,10 @@
 }
 .tb-set-page > .ghost-btn {
   justify-self: start;
+}
+.tb-set-page > p,
+.tb-set-page > .tb-set-h {
+  margin: 0;
 }
 .tb-kind-pick {
   display: grid;
@@ -504,6 +541,7 @@
 }
 .tb-page-title {
   display: block;
+  min-height: var(--tap, 44px);
   width: calc(100% + 16px);
   margin: 0 -8px 2px;
   padding: 6px 8px;
@@ -750,6 +788,7 @@ button.tb-page-title:active {
 .tb-pcal-head strong {
   font-size: 16px;
   padding: 0 4px;
+  white-space: nowrap;
 }
 .tb-pcal-head .icon-btn {
   width: var(--tap, 44px);
@@ -854,7 +893,8 @@ button.tb-page-title:active {
 }
 .tb-ag-fold,
 .tb-ag-add {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
   gap: 6px;
   min-height: var(--tap, 44px);
@@ -891,6 +931,10 @@ button.tb-page-title:active {
 .tb-grid-wrap.touch .tb-expand {
   display: none;
 }
+.tb-grid-wrap.touch .tb-group-toggle,
+.tb-grid-wrap.touch .tb-grid-add {
+  min-height: var(--tap, 44px);
+}
 
 /* ---------- moved here from src/tables.css (the old phone rules) ---------- */
 
@@ -898,20 +942,6 @@ button.tb-page-title:active {
   .tb-rd-line {
     grid-template-columns: 1fr;
     gap: 2px;
-  }
-  /* The guest portal keeps the table's own header on phones: its name and a way back. */
-  .tasks-head.tb-head-bar .th-text {
-    display: flex;
-    flex: 1;
-  }
-  .tb-head-bar .tb-badge {
-    display: none;
-  }
-  .tb-head-bar .tb-back {
-    display: grid;
-  }
-  .tb-title {
-    font-size: 17px;
   }
   .tb-imap-row {
     grid-template-columns: 1fr;

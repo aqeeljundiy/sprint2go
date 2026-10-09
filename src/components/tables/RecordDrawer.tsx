@@ -129,6 +129,12 @@ export interface RecordProps {
   readOnly?: boolean;
 }
 
+/** Phones pin a few key fields by themselves when the table hasn't chosen: the status, a person, a date, an amount. */
+export function autoPins(table: DataTable) {
+  const status = statusField(table);
+  return [status, ...(['person', 'date', 'money'] as const).map((k) => table.fields.slice(1).find((f) => f.type === k))].filter((f): f is TableField => !!f && f.id !== table.fields[0]?.id).map((f) => f.id);
+}
+
 /** How the page lays out a row's fields: pinned ones, the rest in order, named sections, and what's folded away. */
 function layoutOf(table: DataTable, row: TableRow, ctx: CellCtx, foldEmpty: boolean, autoPin = false) {
   const page = table.page ?? {};
@@ -137,12 +143,7 @@ function layoutOf(table: DataTable, row: TableRow, ctx: CellCtx, foldEmpty: bool
   const hiddenIds = new Set(page.hidden ?? []);
   const emptyHere = (f: TableField) => f.type !== 'button' && isEmpty(valueOf(table, f, row, ctx));
   const exists = new Set(table.fields.map((f) => f.id));
-  // Phones pin a few key fields by themselves when the table hasn't chosen: the status, a person, a date, an amount.
-  const auto = () => {
-    const status = statusField(table);
-    return [status, ...(['person', 'date', 'money'] as const).map((k) => table.fields.slice(1).find((f) => f.type === k))].filter((f): f is TableField => !!f).map((f) => f.id);
-  };
-  const pinIds = page.pinned ?? (autoPin ? auto() : []);
+  const pinIds = page.pinned ?? (autoPin ? autoPins(table) : []);
   const pinned = pinIds.filter((id) => exists.has(id)).map((id) => table.fields.find((f) => f.id === id)!).slice(0, 5);
   const pinnedIds = new Set(pinned.map((f) => f.id));
   const main = page.main ? table.fields.find((f) => f.id === page.main && f.type === 'button') : undefined;
@@ -594,7 +595,6 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
     <>
       {!guest && <Comments row={row} ctx={ctx} me={me} onComment={onComment} />}
       <History table={table} row={row} ctx={ctx} />
-      {guest && !row.history?.length && <p className="muted small tb-pf-none">No changes yet.</p>}
     </>
   );
   const filesPane = <div className="tb-pf-list">{fileFields.map(field)}</div>;

@@ -9,18 +9,21 @@ import { PickSelect } from '../ui/PickSelect';
 import { PersonSelect } from '../ui/PeoplePicker';
 import { FieldLine } from './RecordDrawer';
 import type { CellCtx } from './Cell';
-import { isComputed, repeatWords } from './fields';
+import { fieldIcon, isComputed, repeatWords } from './fields';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /** One value in a template: a date can be "the day it's made", a person "whoever adds it". */
 function TemplateValue({ t, f, tpl, ctx, onValue }: { t: DataTable; f: TableField; tpl: RowTemplate; ctx: CellCtx; onValue: (id: string, v: CellValue) => void }) {
   const v = tpl.values[f.id];
+  const Icon = fieldIcon(f.type);
   if (f.type === 'date')
     return (
       <div className="tb-rd-line">
         <span className="tb-rd-labelcell">
-          <span className="tb-rd-label">{f.name}</span>
+          <span className="tb-rd-label">
+            <Icon size={13} /> {f.name}
+          </span>
         </span>
         <span className="tb-tpl-val">
           <button type="button" className={`tb-chip linked${v === '@today' ? ' on' : ''}`} aria-pressed={v === '@today'} onClick={() => onValue(f.id, v === '@today' ? null : '@today')}>
@@ -34,9 +37,11 @@ function TemplateValue({ t, f, tpl, ctx, onValue }: { t: DataTable; f: TableFiel
     return (
       <div className="tb-rd-line">
         <span className="tb-rd-labelcell">
-          <span className="tb-rd-label">{f.name}</span>
+          <span className="tb-rd-label">
+            <Icon size={13} /> {f.name}
+          </span>
         </span>
-        <PersonSelect value={typeof v === 'string' ? v : ''} users={ctx.users} label={f.name} placeholder="Empty" extra={[{ value: '', label: 'Empty', icon: <X size={15} /> }, { value: '@me', label: 'Whoever adds it', icon: <UserRound size={15} /> }]} onChange={(id) => onValue(f.id, id || null)} />
+        <PersonSelect className="sel-flat" value={typeof v === 'string' ? v : ''} users={ctx.users} label={f.name} placeholder="Empty" extra={[{ value: '', label: 'Empty', icon: <X size={15} /> }, { value: '@me', label: 'Whoever adds it', icon: <UserRound size={15} /> }]} onChange={(id) => onValue(f.id, id || null)} />
       </div>
     );
   const fake: TableRow = { id: `tpl-${tpl.id}`, workspaceId: t.workspaceId, tableId: t.id, values: tpl.values, order: 0, createdBy: '', createdAt: '', updatedAt: '' };

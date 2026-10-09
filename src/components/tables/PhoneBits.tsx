@@ -383,7 +383,7 @@ function AutomationsPhone({ t, a }: { t: DataTable; a: SettingsActions }) {
  * Quick create: the name only (fields come later), from a template when there are some, with "Create and add
  * another" for runs of rows. The sheet opens with the keyboard up.
  */
-export function QuickCreate({ table, where, inputRef, onCreate, onClose }: { table: DataTable; where?: string; inputRef: React.RefObject<HTMLInputElement | null>; onCreate: (name: string, tpl: RowTemplate | undefined, again: boolean) => void; onClose: () => void }) {
+export function QuickCreate({ table, title, inputRef, onCreate, onClose }: { table: DataTable; title?: string; inputRef: React.RefObject<HTMLInputElement | null>; onCreate: (name: string, tpl: RowTemplate | undefined, again: boolean) => void; onClose: () => void }) {
   const [name, setName] = useState('');
   const templates = table.templates ?? [];
   const [tpl, setTpl] = useState<string>(templates.find((x) => x.isDefault)?.id ?? '');
@@ -398,7 +398,7 @@ export function QuickCreate({ table, where, inputRef, onCreate, onClose }: { tab
   };
   return (
     <Sheet
-      title={where ? `New row in ${where}` : `New row in ${table.name}`}
+      title={title ?? `New row in ${table.name}`}
       onClose={onClose}
       className="tb-sheet tb-quick-sheet"
       footer={
