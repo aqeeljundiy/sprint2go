@@ -8,6 +8,8 @@ import * as push from './push.ts';
 import { clientPeople, companyOf } from '../src/clientView.ts';
 import { mutedFor } from './chatLater.ts';
 import { fromPerson } from '../src/mailRules.ts';
+import { msg, t, textOf } from '../src/i18n/index.ts';
+import { langOf, inLang } from './lang.ts';
 
 /** What someone can switch on or off (Settings, Notifications); stored with their other settings. */
 export type PushKind = 'messages' | 'mail' | 'tasks' | 'guests' | 'meetings' | 'other';
@@ -97,7 +99,9 @@ function notices(docs: any[]) {
     const url = n.url ? String(n.url) : `/${l.app ?? ''}${q({ ws: n.workspaceId, id: l.id, msg: l.msg, notice: n.id })}`;
     const tag = l.app === 'chat' && l.id ? `chat:${l.id}` : l.app === 'tasks' && l.id ? `task:${l.id}` : l.app === 'mail' && l.id ? `mail:${l.id}` : l.app === 'calendar' && l.id ? `event:${l.id}` : `n:${n.id}`;
     const kind = kindOf(n);
-    const send = () => alert(n.userId, kind, { title: wsName(n.workspaceId), body: String(n.text ?? ''), url, tag, notice: n.id, urgent: kind === 'messages' || kind === 'guests' || l.app === 'calendar', ttl: l.app === 'calendar' ? 15 * 60 : undefined });
+    // In the recipient's language: a notice saved with msg() is written out again in theirs (src/i18n, textOf).
+    const body = inLang(langOf(n.userId, n.workspaceId), () => textOf({ text: String(n.text ?? ''), tr: n.tr }));
+    const send = () => alert(n.userId, kind, { title: wsName(n.workspaceId), body, url, tag, notice: n.id, urgent: kind === 'messages' || kind === 'guests' || l.app === 'calendar', ttl: l.app === 'calendar' ? 15 * 60 : undefined });
     // About an email (given to you, a mention in its comments): held, and dropped once the notice was read elsewhere.
     if (l.app === 'mail') hold(() => (db.getDoc('notices', n.id) as any)?.read === false && send());
     else send();
@@ -116,8 +120,13 @@ function guestMessages(docs: any[]) {
     const person = client ? clientPeople(client, db.allDocs('channels') as any).find((x) => x.email.toLowerCase() === email) : undefined;
     const company = client ? companyOf(email, person?.company, client) : undefined;
     const who = `${person?.name ?? email}${company ? ` (${company})` : ''}`;
-    const body = String(m.text ?? '').trim() || (m.files?.length ? 'Sent a file' : m.voice ? 'Sent a voice note' : 'Sent a message');
-    for (const uid of team) alert(uid, 'guests', { title: `${who} in #${ch.name}`, body, url: `/chat${q({ ws: ch.workspaceId, id: ch.id, msg: m.id })}`, tag: `chat:${ch.id}`, urgent: true });
+    // Each person's words in their own language; the guest's own message as written.
+    const words = (uid: string) =>
+      inLang(langOf(uid, ch.workspaceId), () => ({
+        title: t('{who} in {channel}', { who, channel: `#${ch.name}` }),
+        body: String(m.text ?? '').trim() || (m.files?.length ? t('Sent a file') : m.voice ? t('Sent a voice note') : t('Sent a message')),
+      }));
+    for (const uid of team) alert(uid, 'guests', { ...words(uid), url: `/chat${q({ ws: ch.workspaceId, id: ch.id, msg: m.id })}`, tag: `chat:${ch.id}`, urgent: true });
   }
 }
 
@@ -185,7 +194,7 @@ export function eventReminders(): db.Doc[] {
     const wsId = e.workspaceId ?? (db.allDocs('workspaces') as any[]).find((w) => (w.members ?? []).some((m: any) => m.userId === e.userId))?.id;
     if (!wsId) continue;
     const mins = Math.max(1, Math.round((start - now) / 60_000));
-    out.push({ id: `n-${randomBytes(6).toString('hex')}`, userId: e.userId, workspaceId: wsId, kind: 'meeting', text: `Starting in ${mins} minute${mins === 1 ? '' : 's'}: ${String(e.title ?? 'Event').slice(0, 120)}`, at, read: false, link: { app: 'calendar', id: e.id } });
+    out.push({ id: `n-${randomBytes(6).toString('hex')}`, userId: e.userId, workspaceId: wsId, kind: 'meeting', ...(mins === 1 ? msg('Starting in 1 minute: {title}', { title: String(e.title ?? 'Event').slice(0, 120) }) : msg('Starting in {n} minutes: {title}', { n: mins, title: String(e.title ?? 'Event').slice(0, 120) })), at, read: false, link: { app: 'calendar', id: e.id } });
   }
   return out;
 }

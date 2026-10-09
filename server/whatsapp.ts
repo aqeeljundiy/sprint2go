@@ -6,6 +6,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as db from './db.ts';
 import { clientPeople } from '../src/clientView.ts';
+import { msg } from '../src/i18n/index.ts';
 
 type Ws = { id: string; members: { userId: string; role: string }[]; whatsapp?: { phoneNumberId?: string; connected?: boolean; verifyToken?: string; secured?: boolean } };
 type Broadcast = (coll: string, upserts: db.Doc[], deletes: string[]) => void;
@@ -101,7 +102,7 @@ function takeMessages(w: Ws, v: any, broadcast: Broadcast) {
         const doc = { id: randomBytes(8).toString('hex'), channelId: chan.id, userId: 'guest', guestEmail: hit.pp.email, text, at, via: 'whatsapp' } as db.Doc;
         db.writeDocs('messages', [doc], [], null);
         broadcast('messages', [doc], []);
-        const notices = (chan.members ?? []).map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', text: `${hit.pp.name} (WhatsApp): ${text.slice(0, 80)}`, at, read: false, link: { app: 'chat', id: chan.id, msg: doc.id } })) as db.Doc[];
+        const notices = (chan.members ?? []).map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', ...msg('{name} (WhatsApp): {text}', { name: hit.pp.name, text: text.slice(0, 80) }), at, read: false, link: { app: 'chat', id: chan.id, msg: doc.id } })) as db.Doc[];
         if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
         continue;
       }
@@ -109,7 +110,7 @@ function takeMessages(w: Ws, v: any, broadcast: Broadcast) {
     // Unknown number: admins get it, with the number, so they can add the person to a project.
     const admins = (w.members ?? []).filter((x) => x.role !== 'member').map((x) => x.userId);
     const name = names.get(from);
-    const notices = admins.map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', text: `WhatsApp from ${name ? `${name} (+${from})` : '+' + from}: ${text.slice(0, 80)}`, at, read: false, link: { app: 'settings', id: 'apps' } })) as db.Doc[];
+    const notices = admins.map((uid: string) => ({ id: randomBytes(8).toString('hex'), userId: uid, workspaceId: w.id, kind: 'mention', ...msg('WhatsApp from {who}: {text}', { who: name ? `${name} (+${from})` : '+' + from, text: text.slice(0, 80) }), at, read: false, link: { app: 'settings', id: 'apps' } })) as db.Doc[];
     if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
   }
 }

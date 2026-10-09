@@ -6,7 +6,7 @@ import { cellText, guessField, isEmpty, parseIncoming, passes, repeatWords, rowN
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
 import { stageIdFor, stagesFrom } from '../src/stages.ts';
 import { companyTz } from '../src/jobTimes.ts';
-import { mark } from '../src/i18n/index.ts';
+import { mark, msg } from '../src/i18n/index.ts';
 
 export interface Env {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
@@ -203,7 +203,7 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
       const stages = stagesFrom({ client: t.clientId ? (db.getDoc('clients', t.clientId) as any) : null, workspace: db.getDoc('workspaces', t.workspaceId) as any });
       const task = { id: uid(), title, userId: who, assignees: who ? [who] : [], due, done: false, status: stageIdFor(t, 'open', stages), priority: 'normal', source: 'manual', workspaceId: t.workspaceId, clientId: t.clientId, createdBy: me, createdAt: now(), notes: `From ${t.name}: ${rowName(t, r)}`, history: [{ id: uid(), at: now(), by: me, kind: 'created' }] };
       save(env, 'todos', [task]);
-      if (who && who !== me) save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', text: `New task: ${title}`, at: now(), read: false, link: { app: 'tasks', id: task.id } }]);
+      if (who && who !== me) save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', ...msg('New task: {title}', { title }), at: now(), read: false, link: { app: 'tasks', id: task.id } }]);
       return { ok: true, note: `Task made${who ? ` for ${users.find((u) => u.id === who)?.name.split(' ')[0] ?? 'someone'}` : ''}` };
     }
     case 'email': {
@@ -305,7 +305,7 @@ export function afterRowWrite(env: Env, before: Map<string, TableRow | undefined
     for (const f of t.fields.filter((x) => x.type === 'person')) {
       const who = r.values[f.id];
       if (typeof who === 'string' && who && who !== by && who !== (was?.values[f.id] ?? null))
-        save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', text: `${rowName(t, r)} in ${t.name} is yours (${f.name})`, at: now(), read: false, link: { app: 'tables', id: t.id, msg: r.id } }]);
+        save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', ...msg('{row} in {table} is yours ({field})', { row: rowName(t, r), table: t.name, field: f.name }), at: now(), read: false, link: { app: 'tables', id: t.id, msg: r.id } }]);
     }
     const rules = (t.rules ?? []).filter((x) => x.enabled && x.actions.length && x.on !== 'schedule');
     if (!rules.length) continue;

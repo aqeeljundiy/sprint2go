@@ -13,6 +13,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as db from './db.ts';
+import { msg, phrase } from '../src/i18n/index.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS mail_track (token TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, account_id TEXT, thread_id TEXT NOT NULL, message_id TEXT NOT NULL, recipient TEXT NOT NULL, opens INTEGER NOT NULL, clicks INTEGER NOT NULL, notify INTEGER NOT NULL, by_user TEXT, links TEXT, created_at TEXT NOT NULL);
@@ -378,7 +379,7 @@ function tellSender(row: Row, ws: any, via?: string) {
   const at = now();
   const notices = who
     .filter((u) => wantsOpens(u) && (ws.members ?? []).some((m: any) => m.userId === u))
-    .map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId: ws.id, kind: 'mail', event: 'opened', text: `${name} opened “${subject}”${via ? ` in ${PROXY_NAME[via as Via] ?? 'their mail app'}` : ''}`, at, read: false, link: { app: 'mail', id: row.thread_id } }));
+    .map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId: ws.id, kind: 'mail', event: 'opened', ...(via ? msg('{name} opened “{subject}” in {app}', { name, subject, app: PROXY_NAME[via as Via] ?? phrase('their mail app') }) : msg('{name} opened “{subject}”', { name, subject })), at, read: false, link: { app: 'mail', id: row.thread_id } }));
   if (!notices.length) return;
   db.writeDocs('notices', notices as Doc[], [], null);
   deps.broadcast('notices', notices as Doc[], []);

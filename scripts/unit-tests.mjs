@@ -354,7 +354,7 @@ await test('AI: blocked providers are never allowed; a key at its monthly cap re
   db.logUsage({ workspaceId: 'w-ai', userId: 'u-ai', job: 'draft', provider: 'anthropic', model: 'claude-sonnet-5-5', inTokens: 0, outTokens: 50_000 });
   assert.equal(Math.round(aiLimits.spendUsd('w-ai').anthropic * 100), 50);
   const told = [];
-  const tell = (ids, text) => told.push(text);
+  const tell = (ids, text) => told.push(text?.text ?? text);
   aiLimits.checkAlerts(ws, () => 0, tell);
   assert.equal(told.length, 1);
   assert.match(told[0], /50% of the Anthropic key|50% of the .* key/);

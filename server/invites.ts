@@ -5,6 +5,8 @@ import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { occurrences, parseInvite, type IcsEvent } from './ics.ts';
 import { inviteCalendarTimes } from '../src/inviteTimes.ts';
+import { msg, phrase } from '../src/i18n/index.ts';
+import type { Said } from './lang.ts';
 
 type Att = ParsedMail['attachments'][number];
 export type StoredInvite = IcsEvent & { you?: string; answer?: { status: Rsvp; at: string; by: string; sent: boolean } };
@@ -90,7 +92,7 @@ export const eventsOf = (uid: string, workspaceId: string, userIds: string[]) =>
   (db.allDocs('events') as any[]).filter((e) => e.inviteUid === uid && e.workspaceId === workspaceId && userIds.includes(e.userId));
 
 type Broadcast = (coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) => void;
-type Notify = (userIds: string[], workspaceId: string, text: string, link?: string) => void;
+type Notify = (userIds: string[], workspaceId: string, text: Said, link?: string) => void; // msg(): each reader's language
 
 /**
  * An invite email for an event people here already answered: an update moves their events (a newer version only),
@@ -99,13 +101,13 @@ type Notify = (userIds: string[], workspaceId: string, text: string, link?: stri
 export function applyInbound(ws: { id: string }, account: Account, inv: StoredInvite, threadId: string, broadcast: Broadcast, notify: Notify) {
   const evs = eventsOf(inv.uid, ws.id, account.users ?? []);
   if (!evs.length) return;
-  const who = inv.organizer?.name ?? 'The organiser';
+  const who = inv.organizer?.name ?? phrase('The organiser');
   if (inv.method === 'CANCEL' || inv.cancelled) {
     const gone = inv.recurrenceId ? evs.filter((e) => (e.occurrence ?? e.start) === inv.recurrenceId) : evs;
     if (!gone.length) return;
     db.writeDocs('events', [], gone.map((e) => e.id), null);
     broadcast('events', [], gone.map((e) => e.id), undefined, gone);
-    notify([...new Set(gone.map((e) => e.userId as string))], ws.id, `${who} cancelled “${inv.title}”${inv.recurrenceId ? ' on one of its dates' : ''}. It’s off your calendar.`, '/mail');
+    notify([...new Set(gone.map((e) => e.userId as string))], ws.id, inv.recurrenceId ? msg('{name} cancelled “{title}” on one of its dates. It’s off your calendar.', { name: who, title: inv.title }) : msg('{name} cancelled “{title}”. It’s off your calendar.', { name: who, title: inv.title }), '/mail');
     return;
   }
   if (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH') return;
@@ -141,5 +143,5 @@ export function applyInbound(ws: { id: string }, account: Account, inv: StoredIn
     broadcast('events', next, []);
     changed.push(userId);
   }
-  if (changed.length) notify(changed, ws.id, `${who} changed “${inv.title}”. Your calendar has the new details.`, '/mail');
+  if (changed.length) notify(changed, ws.id, msg('{name} changed “{title}”. Your calendar has the new details.', { name: who, title: inv.title }), '/mail');
 }

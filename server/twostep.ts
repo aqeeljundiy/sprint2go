@@ -8,7 +8,9 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import QRCode from 'qrcode';
 import * as db from './db.ts';
-import { mark } from '../src/i18n/index.ts';
+import { mark, msg, t } from '../src/i18n/index.ts';
+import { datePhrase, forUser, requestLang, sayIn, type Lang, type Said } from './lang.ts';
+import { companyTz } from '../src/jobTimes.ts';
 
 db.db.exec(`CREATE TABLE IF NOT EXISTS two_step (user_id TEXT PRIMARY KEY, secret TEXT, pending TEXT, on_at TEXT, last_step INTEGER NOT NULL DEFAULT 0, backup TEXT NOT NULL DEFAULT '[]')`);
 db.db.exec('CREATE TABLE IF NOT EXISTS trusted_devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL, used_at TEXT NOT NULL, expires_at TEXT NOT NULL)');
@@ -255,7 +257,7 @@ export interface Ctx {
   /** A security event in a company's log. */
   event: (type: string, workspaceId: string, userId: string | null, detail?: string) => void;
   eventsOf: (workspaceId: string) => { at: string; type: string; userId: string | null; detail: string | null }[];
-  notify: (userIds: string[], text: string, url?: string, workspaceId?: string) => void;
+  notify: (userIds: string[], text: Said, url?: string, workspaceId?: string) => void; // msg(): each reader's language
   mail: (to: string, subject: string, lines: string[]) => Promise<unknown>;
 }
 
@@ -390,7 +392,9 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
       return send(200, {
         people: ws.members.map((m) => ({ userId: m.userId, role: m.role, on: on.has(m.userId) })),
         required: sec.twoStep ? { since: sec.twoStepSince ?? null, from: deadline(sec), graceDays: sec.graceDays ?? DEFAULT_GRACE } : null,
-        log: ctx.eventsOf(ws.id).filter((e) => e.type.startsWith('security.')).slice(0, 30),
+        // Saved in English; the ones with names or numbers in them go back in the asker's language (the fixed ones the
+        // app translates itself).
+        log: ctx.eventsOf(ws.id).filter((e) => e.type.startsWith('security.')).slice(0, 30).map((e) => ({ ...e, detail: logLine(e.detail, requestLang(req)) })),
       });
     }
     if (p === '/api/security/remind' && POST) {
@@ -399,7 +403,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
       if (!missing.length) return send(200, { sent: 0 });
       const sec = ws.security ?? {};
       const when = sec.twoStep ? new Date(deadline(sec)) : null;
-      const text = when && when.getTime() > Date.now() ? `${ws.name} asks you to turn on two-step sign-in by ${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. It takes a minute in Settings, Account.` : `${ws.name} asks you to turn on two-step sign-in. It takes a minute in Settings, Account.`;
+      const text = when && when.getTime() > Date.now() ? msg('{company} asks you to turn on two-step sign-in by {date}. It takes a minute in Settings, Account.', { company: String(ws.name ?? ''), date: datePhrase(when, { tz: companyTz(ws as any) }) }) : msg('{company} asks you to turn on two-step sign-in. It takes a minute in Settings, Account.', { company: String(ws.name ?? '') });
       ctx.notify(missing, text, '/settings/account', ws.id);
       ctx.event('security.2fa-remind', ws.id, me, `reminded ${missing.length} ${missing.length === 1 ? 'person' : 'people'} to turn on two-step sign-in`);
       return send(200, { sent: missing.length });
@@ -417,7 +421,10 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
       db.audit(email || me, 'person.2fa-reset', target, `by ${role} of ${ws.name}`);
       ctx.event('security.2fa-reset', ws.id, me, `reset two-step sign-in for ${them?.name ?? 'someone'}`);
       if (them?.email)
-        void ctx.mail(them.email, 'Your two-step sign-in was reset', [`${user?.name ?? 'An admin'} at ${ws.name} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.`, ws.security?.twoStep ? `${ws.name} requires it, so you’ll set it up again the next time you sign in.` : 'You can turn it on again in Settings, Account.', 'If you didn’t ask for this, tell your admin straight away.']).catch(() => {});
+        void (() => {
+          const m = resetMail(target, ws, user?.name);
+          return ctx.mail(them.email!, m.subject, m.lines);
+        })().catch(() => {});
       return send(200, { ok: true });
     }
     return send(404, { error: mark('No such route.') });
@@ -449,4 +456,48 @@ export function startClocks() {
     started.push(w.id);
   }
   return started;
+}
+
+/** The email to someone whose two-step sign-in an admin reset: in their language (theirs, else the company's). */
+function resetMail(userId: string, ws: { id: string; name?: string; security?: { twoStep?: boolean } }, by: string | undefined) {
+  return forUser(userId, ws.id, () => ({
+    subject: t('Your two-step sign-in was reset'),
+    lines: [
+      by ? t('{name} at {company} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.', { name: by, company: ws.name ?? '' }) : t('An admin at {company} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.', { company: ws.name ?? '' }),
+      ws.security?.twoStep ? t('{company} requires it, so you’ll set it up again the next time you sign in.', { company: ws.name ?? '' }) : t('You can turn it on again in Settings, Account.'),
+      t('If you didn’t ask for this, tell your admin straight away.'),
+    ],
+  }));
+}
+
+/** Security log lines with names or numbers in them, as the server writes them in English, and their words. */
+const LOG_LINES: [RegExp, (m: RegExpMatchArray) => Said][] = [
+  [/^required two-step sign-in \((\d+) days to set it up\)$/, (m) => msg('required two-step sign-in ({n} days to set it up)', { n: m[1] })],
+  [/^required two-step sign-in \(right away\)$/, () => msg('required two-step sign-in (right away)')],
+  [/^gave people (\d+) days to set up two-step sign-in$/, (m) => msg('gave people {n} days to set up two-step sign-in', { n: m[1] })],
+  [/^gave people no time to set up two-step sign-in$/, () => msg('gave people no time to set up two-step sign-in')],
+  [/^forgot 1 remembered device$/, () => msg('forgot 1 remembered device')],
+  [/^forgot (\d+) remembered devices$/, (m) => msg('forgot {n} remembered devices', { n: m[1] })],
+  [/^forgot a remembered device \((.+)\)$/, (m) => msg('forgot a remembered device ({device})', { device: m[1] })],
+  [/^signed out everywhere else$/, () => msg('signed out everywhere else')],
+  [/^signed out everywhere else and forgot 1 remembered device$/, () => msg('signed out everywhere else and forgot 1 remembered device')],
+  [/^signed out everywhere else and forgot (\d+) remembered devices$/, (m) => msg('signed out everywhere else and forgot {n} remembered devices', { n: m[1] })],
+  [/^signed in with a backup code \((\d+) left\)$/, (m) => msg('signed in with a backup code ({n} left)', { n: m[1] })],
+  [/^asked (.+) to remember them for (\d+) days$/, (m) => msg('asked {device} to remember them for {n} days', { device: m[1], n: m[2] })],
+  [/^reminded 1 person to turn on two-step sign-in$/, () => msg('reminded 1 person to turn on two-step sign-in')],
+  [/^reminded (\d+) people to turn on two-step sign-in$/, (m) => msg('reminded {n} people to turn on two-step sign-in', { n: m[1] })],
+  [/^reset two-step sign-in for (.+)$/, (m) => msg('reset two-step sign-in for {name}', { name: m[1] })],
+  [/^(.+) reset two-step sign-in for (.+)$/, (m) => msg('{by} reset two-step sign-in for {name}', { by: m[1], name: m[2] })],
+  [/^connected (.+) \(([^()]+)\)$/, (m) => msg('connected {app} ({host})', { app: m[1], host: m[2] })],
+  [/^connected (.+)$/, (m) => msg('connected {app}', { app: m[1] })],
+  [/^disconnected (.+)$/, (m) => msg('disconnected {app}', { app: m[1] })],
+];
+/** A saved security log line in `l` when it has names or numbers in it; fixed ones as saved (the app translates them). */
+export function logLine(detail: string | null | undefined, l: Lang): string | null {
+  if (!detail) return detail ?? null;
+  for (const [re, said] of LOG_LINES) {
+    const m = detail.match(re);
+    if (m) return sayIn(l, said(m));
+  }
+  return detail;
 }

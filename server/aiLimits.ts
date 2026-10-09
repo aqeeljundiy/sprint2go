@@ -5,6 +5,8 @@
 import * as db from './db.ts';
 import * as aiplan from './aiplan.ts';
 import { PROVIDERS } from '../src/data/aiCatalog.ts';
+import { msg, phrase, type Msg } from '../src/i18n/index.ts';
+import type { Said } from './lang.ts';
 
 db.db.exec('CREATE TABLE IF NOT EXISTS ai_alerts (workspace_id TEXT NOT NULL, month TEXT NOT NULL, meter TEXT NOT NULL, level INTEGER NOT NULL, at TEXT NOT NULL, PRIMARY KEY (workspace_id, month, meter, level))');
 
@@ -43,18 +45,19 @@ export function allowed(ws: Ws | undefined) {
  * After AI ran: when one of the company's meters crossed 50%, 80% or 100% this month for the first time, its admins
  * hear it (unless the company switched alerts off). Each level once a month per meter.
  */
-export function checkAlerts(ws: Ws | undefined, spendRp: (wsId: string) => number, notify: (userIds: string[], text: string, url: string, wsId: string) => void) {
+export function checkAlerts(ws: Ws | undefined, spendRp: (wsId: string) => number, notify: (userIds: string[], text: Said, url: string, wsId: string) => void) {
   if (!ws || ws.ai?.alerts === false) return;
   const month = monthStart().slice(0, 7);
-  const meters: { key: string; share: number; what: string }[] = [];
+  // `what`: words translated when the notice is read (phrase(), src/i18n).
+  const meters: { key: string; share: number; what: Msg }[] = [];
   if (aiplan.planAI(ws).ok) {
     const a = aiplan.allowanceOf(ws);
-    if (!a.unlimited && a.capRp > 0) meters.push({ key: 'allowance', share: a.usedRp / a.capRp, what: 'the AI allowance for this month' });
+    if (!a.unlimited && a.capRp > 0) meters.push({ key: 'allowance', share: a.usedRp / a.capRp, what: phrase('the AI allowance for this month') });
   }
   const limit = ws.ai?.caps?.companyRp;
-  if (limit && limit > 0) meters.push({ key: 'company', share: spendRp(ws.id) / limit, what: 'the company’s AI limit for this month' });
+  if (limit && limit > 0) meters.push({ key: 'company', share: spendRp(ws.id) / limit, what: phrase('the company’s AI limit for this month') });
   const spend = spendUsd(ws.id);
-  for (const p of ws.ai?.providers ?? []) if ((p.capUsd ?? 0) > 0) meters.push({ key: `key:${p.id}`, share: (spend[p.id] ?? 0) / p.capUsd!, what: `the ${name(p.id)} key’s monthly cap (US$${p.capUsd})` });
+  for (const p of ws.ai?.providers ?? []) if ((p.capUsd ?? 0) > 0) meters.push({ key: `key:${p.id}`, share: (spend[p.id] ?? 0) / p.capUsd!, what: phrase('the {provider} key’s monthly cap ({cap})', { provider: name(p.id), cap: `US$${p.capUsd}` }) });
   const admins = (ws.members ?? []).filter((m) => m.role !== 'member').map((m) => m.userId);
   for (const m of meters) {
     const level = [100, 80, 50].find((l) => m.share * 100 >= l);
@@ -66,11 +69,11 @@ export function checkAlerts(ws: Ws | undefined, spendRp: (wsId: string) => numbe
     const text =
       level >= 100
         ? m.key.startsWith('key:')
-          ? `AI: ${m.what} is reached, so that key rests until the 1st. Raise the cap in Settings, AI.`
+          ? msg('AI: {what} is reached, so that key rests until the 1st. Raise the cap in Settings, AI.', { what: m.what })
           : m.key === 'company'
-            ? `AI: ${m.what} is reached, so AI stops for everyone until the 1st. Raise it in Settings, AI.`
-            : `AI: ${m.what} is used up. Settings, Plan & billing has top-ups.`
-        : `AI: ${level}% of ${m.what} is used.`;
+            ? msg('AI: {what} is reached, so AI stops for everyone until the 1st. Raise it in Settings, AI.', { what: m.what })
+            : msg('AI: {what} is used up. Settings, Plan & billing has top-ups.', { what: m.what })
+        : msg('AI: {level}% of {what} is used.', { level, what: m.what });
     notify(admins, text, m.key === 'allowance' ? '/settings/billing' : '/settings/ai', ws.id);
   }
 }

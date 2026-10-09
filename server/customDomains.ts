@@ -17,7 +17,8 @@ import * as db from './db.ts';
 import { dnsHostOf, MAIL_IP } from './mailer.ts';
 import { hasBranding } from '../src/data/pricing.ts';
 import type { DomainCheck, DomainStatus } from '../src/types.ts';
-import { mark } from '../src/i18n/index.ts';
+import { mark, msg } from '../src/i18n/index.ts';
+import type { Said } from './lang.ts';
 
 db.db.exec(`CREATE TABLE IF NOT EXISTS custom_domains (host TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, dokploy_id TEXT, created_at TEXT NOT NULL)`);
 
@@ -229,7 +230,7 @@ export function probe(host: string): Promise<{ ok: boolean; why?: string }> {
 export interface Deps {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
   log: (line: string) => void;
-  notifyAdmins: (wsId: string, text: string) => void; // a notice in the bell of the company's owners and admins
+  notifyAdmins: (wsId: string, text: Said) => void; // a notice in the bell of the company's owners and admins (msg())
 }
 let deps: Deps = { broadcast: () => {}, log: (l) => console.log(l), notifyAdmins: () => {} };
 let hostIndex: { at: number; map: Map<string, string> } | null = null;
@@ -294,7 +295,7 @@ async function checkNow(wsId: string) {
   const r = await probe(host);
   lastProbe.set(host, Date.now());
   if (r.ok) {
-    if (status !== 'live') (deps.log(`[domains] ${host}: live`), deps.notifyAdmins(wsId, `${host} is live. Invite links for your guests now use it.`));
+    if (status !== 'live') (deps.log(`[domains] ${host}: live`), deps.notifyAdmins(wsId, msg('{host} is live. Invite links for your guests now use it.', { host })));
     return save(wsId, host, { domainStatus: 'live', domainCheck: { ...base, since, liveAt: before?.liveAt ?? now() } });
   }
   // Not answering yet. A live address that stops answering is our problem to fix, not the agency's: it stays live.

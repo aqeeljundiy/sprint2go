@@ -62,7 +62,7 @@ import { eventReminders, reminderWords } from './eventReminders.ts';
 import * as notesTrash from './notesTrash.ts';
 import * as mailApps from './mailApps.ts';
 import * as lang from './lang.ts';
-import { mark, msg, phrase, t } from '../src/i18n/index.ts';
+import { mark, msg, phrase, t, textOf } from '../src/i18n/index.ts';
 import { fmtDayLong, fmtMonth } from '../src/i18n/format.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
@@ -665,10 +665,32 @@ function kick(userId: string, keepToken?: string) {
  */
 const codes = new Map<string, { code: string; tries: number; until: number; data?: any }>();
 const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
-async function sendCode(to: string, what: string, code: string) {
-  const sent = await mailer.sendNote(to, `${code} is your sprint2go code`, `${code} is your code to ${what}. It works for 15 minutes.`, simpleHtml('sprint2go', [`${code} is your code to ${what}.`, 'It works for 15 minutes. If this wasn’t you, ignore this email.'])).catch((e) => (console.error('[mail]', e instanceof Error ? e.message : e), false));
-  if (!sent) console.log(`Code for ${to} (${what}): ${code}`);
+/** The code email, in `l` (the language of the screen that asked for it): to finish signing up or to set a new password. */
+export function codeMail(what: 'signup' | 'reset', code: string, l: lang.Lang) {
+  return lang.inLang(l, () => {
+    const line = what === 'signup' ? t('{code} is your code to finish signing up.', { code }) : t('{code} is your code to set a new password.', { code });
+    return { subject: t('{code} is your sprint2go code', { code }), text: `${line} ${t('It works for 15 minutes.')}`, html: simpleHtml('sprint2go', [line, t('It works for 15 minutes. If this wasn’t you, ignore this email.')]) };
+  });
+}
+async function sendCode(to: string, what: 'signup' | 'reset', code: string, l: lang.Lang) {
+  const m = codeMail(what, code, l);
+  const sent = await mailer.sendNote(to, m.subject, m.text, m.html).catch((e) => (console.error('[mail]', e instanceof Error ? e.message : e), false));
+  if (!sent) console.log(`Code for ${to} (${what === 'signup' ? 'finish signing up' : 'set a new password'}): ${code}`);
   return sent;
+}
+
+/** A notice for a guest, by email (guests don't live in the app): in the guest's language (theirs, else the company's). */
+export function guestNoticeMail(n: { text: string; tr?: any; workspaceId: string }, to: string, brandName: string, origin: string) {
+  return lang.inLang(lang.langOfEmail(to, n.workspaceId), () => {
+    const said = textOf(n);
+    const open = t('Open your shared space');
+    return { subject: `${brandName}: ${said.slice(0, 80)}`, text: `${said}\n\n${t('Open your shared space: {link}', { link: origin })}`, html: simpleHtml(brandName, [said], { text: open, url: origin }) };
+  });
+}
+
+/** The receipt for a ticket that came by email: in the language of the person who wrote (their account's, else English). */
+function ticketReceipt(email: string, number: number) {
+  return lang.inLang(lang.langOfEmail(email), () => t('Thanks, we have your message (ticket #{number}) and will reply here. Reply to this email to add anything.', { number }));
 }
 /** A JSON answer; its error (and any msg() at its top level) in the asker's language (server/lang.ts). */
 const json = (res: ServerResponse, status: number, data: unknown) => {
@@ -1603,7 +1625,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       const w = db.getDoc('workspaces', n.workspaceId) as any;
       const brandName = w?.whiteLabel?.enabled ? w.whiteLabel.name : w?.name ?? 'sprint2go';
       const origin = customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL;
-      void mailer.sendNote(to, `${brandName}: ${String(n.text).slice(0, 80)}`, `${n.text}\n\nOpen your shared space: ${origin}`, simpleHtml(brandName, [String(n.text)], { text: 'Open your shared space', url: origin }), brandName).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
+      const m = guestNoticeMail(n, to, brandName, origin);
+      void mailer.sendNote(to, m.subject, m.text, m.html, brandName).catch((e) => console.error('[mail]', e instanceof Error ? e.message : e));
     }
   const conn = from.conn ?? '';
   const sender = clients.get(conn)?.userId === me ? conn : undefined;
@@ -1756,7 +1779,7 @@ createServer(async (req, res) => {
       if (tooMany(`signup:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: mark('Too many sign-ups from here. Try again later.') });
       const code = newCode();
       signups.set(mail, { name: String(name).trim().slice(0, 80), hash: await db.hashPassword(password), code, tries: 0, until: Date.now() + 15 * 60_000 });
-      const sent = await sendCode(mail, 'finish signing up', code);
+      const sent = await sendCode(mail, 'signup', code, lang.requestLang(req));
       platform.event('signup.started', null, null, cookie(req, 's2g_src') || 'direct');
       return json(res, 200, { ok: true, sent, ...(process.env.NODE_ENV === 'production' || sent ? {} : { devCode: code }) });
     }
@@ -1819,7 +1842,7 @@ createServer(async (req, res) => {
       if (login) {
         const code = newCode();
         codes.set(`reset:${mail}`, { code, tries: 0, until: Date.now() + 15 * 60_000 });
-        const sent = await sendCode(mail, 'set a new password', code);
+        const sent = await sendCode(mail, 'reset', code, lang.requestLang(req));
         return json(res, 200, { ok: true, ...(process.env.NODE_ENV === 'production' || sent ? {} : { devCode: code }) });
       }
       await db.burnPasswordTime('x');
@@ -2124,7 +2147,7 @@ createServer(async (req, res) => {
       const ws = inv && (memberOf(me).find((w: any) => w.id === inv.workspaceId) as any);
       if (!inv || inv.status === 'draft' || !ws || !(isAdminOf(me, ws.id) || ws.permissions?.seeBilling)) return json(res, 404, { error: mark('No such invoice.') });
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" });
-      return res.end(admin.invoiceHtml(inv, ws.name));
+      return res.end(admin.invoiceHtml(inv, ws.name, lang.requestLang(req)));
     }
     if (p === '/api/billing/coupon' && req.method === 'POST') {
       const b = await body(req);
@@ -2277,7 +2300,11 @@ createServer(async (req, res) => {
       const billTo = r.invoice.billTo?.emails?.length ? r.invoice.billTo.emails : [String((db.getDoc('users', me) as any)?.email ?? '')].filter((e) => e.includes('@'));
       const payee = platform.settings().billing.name || 'sprint2go';
       if (billTo.length && mailer.systemMailPath() !== 'log')
-        void mailer.sendSystemMail({ fromName: payee, to: billTo, subject: `Invoice ${r.invoice.number} from ${payee}: Rp ${r.invoice.total.toLocaleString('id-ID')}`, text: `Hello,\n\nYour invoice ${r.invoice.number} for ${r.credits.toLocaleString('id-ID')} Boosted sending emails is attached: Rp ${r.invoice.total.toLocaleString('id-ID')}, due ${r.invoice.dueAt.slice(0, 10)}. The emails are added as soon as it's paid.\n\nThank you.`, attachments: [{ filename: `${r.invoice.number}.html`, content: Buffer.from(admin.invoiceHtml(r.invoice, ws.name)), contentType: 'text/html' }] }).catch(() => null);
+      {
+        // In the company's language (Settings, General), else the billing contact's, else English.
+        const l = lang.companyLang(ws.id) ?? lang.langOfEmail(billTo[0] ?? '', ws.id);
+        if (billTo.length && mailer.systemMailPath() !== 'log') void mailer.sendSystemMail({ fromName: payee, to: billTo, ...admin.invoiceMail(r.invoice, payee, l, r.credits), attachments: [{ filename: `${r.invoice.number}.html`, content: Buffer.from(admin.invoiceHtml(r.invoice, ws.name, l)), contentType: 'text/html' }] }).catch(() => null);
+      }
       // The operators who look after billing hear about it, so they watch for the transfer.
       const ops = platform.operators().filter((o) => !o.disabled && platform.permsOf(o.role).includes('billing')).map((o) => o.email);
       const opIds = (db.allDocs('users') as any[]).filter((u) => ops.includes(String(u.email ?? '').toLowerCase())).map((u) => u.id);
@@ -3075,7 +3102,7 @@ createServer(async (req, res) => {
       if (tooMany(`push-test:${me}`, 10, 10 * 60_000)) return json(res, 429, { error: mark('That’s a lot of tests. Try again in a few minutes.') });
       const b = await body(req);
       const ws = memberOf(me)[0] as any;
-      const sent = await push.sendToDevice(me, String(b.endpoint ?? ''), { title: ws?.whiteLabel?.enabled ? ws.whiteLabel.name : 'sprint2go', body: 'Notifications work on this device. You’ll get them when you’re away from the app.', url: '/settings?id=notifications', tag: 'test', urgent: true, ttl: 300 });
+      const sent = await push.sendToDevice(me, String(b.endpoint ?? ''), { title: ws?.whiteLabel?.enabled ? ws.whiteLabel.name : 'sprint2go', body: lang.sayIn(lang.requestLang(req), mark('Notifications work on this device. You’ll get them when you’re away from the app.')), url: '/settings?id=notifications', tag: 'test', urgent: true, ttl: 300 });
       return sent ? json(res, 200, { ok: true }) : json(res, 502, { error: mark('The notification service didn’t take it. Turn notifications off and on again on this device.') });
     }
 
@@ -3515,7 +3542,7 @@ mailer.onSupportMail(async ({ to, parsed, mid, refs, spam, attachments }) => {
   supportNotify(t, msg('New ticket #{number} by email from {name}: {subject}', { number: t.number, name: from?.name || email, subject: t.subject.slice(0, 70) }));
   // A short receipt so they know it arrived (not for auto-replies).
   if (!parsed.headers.get('auto-submitted') && !/no-?reply|mailer-daemon/i.test(email))
-    void mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [email], subject: `Re: ${t.subject} [#${t.number}]`, text: `Thanks, we have your message (ticket #${t.number}) and will reply here. Reply to this email to add anything.`, inReplyTo: mid, references: [mid] }).catch(() => {});
+    void mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [email], subject: `Re: ${t.subject} [#${t.number}]`, text: ticketReceipt(email, t.number), inReplyTo: mid, references: [mid] }).catch(() => {});
 });
 
 /** A notice in these people's bell, of a kind (the push rules and Settings, Notifications go by it), opening `link`. */

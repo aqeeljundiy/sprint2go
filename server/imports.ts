@@ -23,7 +23,8 @@ import { SOURCE_NAME, UNDO_HOURS, type ImportChoices, type ImportJob, type Impor
 import * as slack from './importSlack.ts';
 import * as trello from './importTrello.ts';
 import * as drive from './importDrive.ts';
-import { mark } from '../src/i18n/index.ts';
+import { mark, msg, phrase, type Msg } from '../src/i18n/index.ts';
+import { part, type Said } from './lang.ts';
 
 const MB = 1024 * 1024;
 const HOUR = 3_600_000;
@@ -46,7 +47,7 @@ const uploadPath = (id: string) => join(dir(), id);
 
 export interface ImportDeps {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) => void;
-  tell: (userIds: string[], workspaceId: string, kind: string, text: string, link: { app: string; id?: string }) => void;
+  tell: (userIds: string[], workspaceId: string, kind: string, text: Said, link: { app: string; id?: string }) => void;
   maxUpload: number; // the largest single file (S2G_MAX_UPLOAD_MB)
 }
 let deps: ImportDeps;
@@ -206,15 +207,19 @@ async function run(id: string) {
     else if (r.source === 'trello') await trello.run(ctx);
     else await drive.run(ctx);
     setRow(id, { status: 'done', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), progress: null });
-    const what = summary.made.filter((m) => m.what !== 'people invited' && m.n > 0).map((m) => `${m.n.toLocaleString('en')} ${inWords(m.n === 1 ? singular(m.what) : m.what, ws)}`);
-    deps.tell([r.created_by], ws.id, 'team', `Your ${SOURCE_NAME[r.source]} import is done${what.length ? `: ${listWords(what)}` : ''}.`, { app: 'settings', id: 'import' });
+    const made = summary.made.filter((m) => m.what !== 'people invited' && m.n > 0);
+    const what = made.map((m) => `${m.n.toLocaleString('en')} ${inWords(m.n === 1 ? singular(m.what) : m.what, ws)}`);
+    // Each reader sees the counts in their language ("3 channels", "3 channel"): phrases translated when read.
+    const counted = made.map((m) => countPhrase(m.n, inWords(m.what, ws)));
+    deps.tell([r.created_by], ws.id, 'team', counted.length ? msg('Your {source} import is done: {what}.', { source: SOURCE_NAME[r.source], what: listPhrase(counted) }) : msg('Your {source} import is done.', { source: SOURCE_NAME[r.source] }), { app: 'settings', id: 'import' });
     platform.event('import.done', ws.id, r.created_by, `${r.source}: ${what.join(', ')}`);
   } catch (e) {
-    const msg = e instanceof ImportError || e instanceof ZipError ? e.message : 'Something went wrong on our side.';
+    const failure = e instanceof ImportError || e instanceof ZipError ? e.message : mark('Something went wrong on our side.');
     if (!(e instanceof ImportError || e instanceof ZipError)) console.error('[import]', e);
-    setRow(id, { status: 'failed', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), error: msg, progress: null });
+    setRow(id, { status: 'failed', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), error: failure, progress: null });
     const partial = itemCount(id) > 0;
-    deps.tell([r.created_by], ws.id, 'team', `Your ${SOURCE_NAME[r.source]} import stopped: ${msg}${partial ? ' Undo removes what it made so far.' : ''}`, { app: 'settings', id: 'import' });
+    const why = e instanceof ImportError || e instanceof ZipError ? e.message : phrase('Something went wrong on our side.');
+    deps.tell([r.created_by], ws.id, 'team', partial ? msg('Your {source} import stopped: {why} Undo removes what it made so far.', { source: SOURCE_NAME[r.source], why }) : msg('Your {source} import stopped: {why}', { source: SOURCE_NAME[r.source], why }), { app: 'settings', id: 'import' });
   } finally {
     rmSync(uploadPath(id), { force: true });
   }
@@ -223,7 +228,24 @@ async function run(id: string) {
 const singular = (w: string) => ({ channels: 'channel', messages: 'message', files: 'file', tasks: 'task', folders: 'folder', projects: 'project', 'direct messages': 'direct message' })[w] ?? w;
 /** "project" in the company's own word (Clients, for agencies that say so). */
 const inWords = (w: string, ws: any) => (ws?.terms?.word === 'client' ? w.replace(/^project/, 'client') : w);
-const listWords = (l: string[]) => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}`);
+/** "3 channels" as a phrase translated when read; a word we don't know stays as it is. */
+const COUNTED: Record<string, [string, string]> = {
+  channels: [mark('1 channel'), mark('{n} channels')],
+  messages: [mark('1 message'), mark('{n} messages')],
+  files: [mark('1 file'), mark('{n} files')],
+  folders: [mark('1 folder'), mark('{n} folders')],
+  tasks: [mark('1 task'), mark('{n} tasks')],
+  projects: [mark('1 project'), mark('{n} projects')],
+  clients: [mark('1 client'), mark('{n} clients')],
+  'direct messages': [mark('1 direct message'), mark('{n} direct messages')],
+};
+const countPhrase = (n: number, words: string): Msg | string => (COUNTED[words] ? phrase(COUNTED[words][n === 1 ? 0 : 1], { n: n.toLocaleString('en') }) : `${n.toLocaleString('en')} ${words}`);
+/** "a, b and c" as a phrase: each language joins a list its own way. */
+function listPhrase(items: (Msg | string)[]): Msg | string {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length === 2) return phrase('{a} and {b}', { a: items[0], b: items[1] });
+  return phrase('{a}, {b}', { a: items[0], b: listPhrase(items.slice(1)) });
+}
 
 /**
  * The people choices made real. Matched people are members already. "Invite": a new person joins as a member and

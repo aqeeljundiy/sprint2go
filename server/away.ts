@@ -3,6 +3,8 @@
 import type { ParsedMail } from 'mailparser';
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
+import { t } from '../src/i18n/index.ts';
+import { forUser } from './lang.ts';
 
 db.db.exec(`CREATE TABLE IF NOT EXISTS mail_away_log (account_id TEXT NOT NULL, sender TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (account_id, sender));`);
 
@@ -15,7 +17,7 @@ export interface Away {
   message: string;
   since?: string;
 }
-type Account = { id: string; email: string; name: string; provider?: string; away?: Away };
+type Account = { id: string; email: string; name: string; provider?: string; away?: Away; users?: string[] };
 type Send = (o: {
   workspaceId: string;
   accountId: string;
@@ -69,7 +71,9 @@ export async function maybeAnswer(o: { workspaceId: string; account: Account; ca
   const last = db.db.prepare('SELECT at FROM mail_away_log WHERE account_id = ? AND sender = ?').get(o.account.id, sender) as { at: string } | undefined;
   if (last && Date.parse(last.at) > Date.now() - AWAY_EVERY_MS && (!away!.since || last.at >= away!.since)) return;
   db.db.prepare('INSERT OR REPLACE INTO mail_away_log (account_id, sender, at) VALUES (?, ?, ?)').run(o.account.id, sender, new Date().toISOString());
-  const subject = away!.subject.trim() || `Out of office: ${(o.parsed.subject ?? '').replace(/^\s*((re|fwd?|aw|wg)\s*:\s*)+/i, '').trim() || 'your email'}`;
+  // Their own subject as they wrote it; else ours, in the mailbox owner's language (theirs, else the company's).
+  const about = (o.parsed.subject ?? '').replace(/^\s*((re|fwd?|aw|wg)\s*:\s*)+/i, '').trim();
+  const subject = away!.subject.trim() || forUser(o.account.users?.[0], o.workspaceId, () => (about ? t('Out of office: {subject}', { subject: about }) : t('Out of office: your email')));
   try {
     await o.send({
       workspaceId: o.workspaceId,
