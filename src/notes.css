@@ -1,0 +1,668 @@
+/* ==========================================================================
+   Notes (Phase 7): the list, Recently deleted, the open note and its text, the tools, quick capture.
+   Phone layout: src/mobile/notes.css.
+   ========================================================================== */
+
+/* ---------- The list (desktop side panel) ---------- */
+
+.notes-nav .note-item {
+  position: relative;
+  padding-right: 34px;
+  transition: background 0.15s;
+}
+.note-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ni-snip mark,
+.note-item mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: rgba(250, 204, 21, 0.38);
+  color: inherit;
+}
+.ni-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.note-item:hover .ni-more,
+.note-item:focus-within .ni-more,
+.ni-more:focus-visible {
+  opacity: 1;
+}
+.ni-more:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.sidebar.collapsed .ni-more,
+.sidebar.collapsed .nl-head,
+.sidebar.collapsed .nl-trash span,
+.sidebar.collapsed .nl-trash svg:last-child {
+  display: none;
+}
+.nl-head {
+  padding: 12px 18px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+.nl-none {
+  margin: 8px 18px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.nl-trash,
+.nl-back {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 16px);
+  min-height: 40px;
+  margin: 8px 8px 0;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+.nl-trash span {
+  flex: 1;
+}
+.nl-trash:hover,
+.nl-back:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.nl-back {
+  margin-top: 4px;
+  font-weight: 600;
+}
+.flip {
+  transform: rotate(180deg);
+}
+.nl-deleted {
+  display: grid;
+  gap: 2px;
+}
+.nl-deleted-note {
+  margin: 6px 18px 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+.note-item.deleted .ni-title strong {
+  color: var(--text-2);
+}
+.nl-deleted-acts {
+  margin-top: 4px;
+}
+
+/* ---------- The open note ---------- */
+
+.notes-pane {
+  min-width: 0;
+}
+.note-head {
+  min-height: 52px;
+}
+.note-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--hover);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.note-who span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-who svg {
+  flex: none;
+}
+.note-who:not(:disabled):hover {
+  background: var(--border);
+  color: var(--text);
+}
+.note-who:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.note-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line, var(--border));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.note-tools .tb {
+  flex: none;
+}
+.note-make-task {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The text, and "Linked from" at the side when the pane is wide enough. */
+.note-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+}
+.note-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.note-doc {
+  position: relative;
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 22px 32px 64px;
+}
+.note-side {
+  padding: 0 24px 32px;
+}
+@container (min-width: 1040px) {
+  .note-scroll {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    align-items: start;
+  }
+  .note-side {
+    position: sticky;
+    top: 0;
+    padding: 24px 20px 24px 0;
+  }
+  .note-side .note-linked {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+.note-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--text);
+  font-size: 13.5px;
+  animation: fade 0.2s ease-out backwards;
+}
+.note-banner > span {
+  flex: 1;
+  min-width: 0;
+}
+.note-banner > svg {
+  flex: none;
+  color: var(--danger);
+}
+.note-banner.quiet {
+  background: var(--hover);
+}
+.note-banner.quiet > svg {
+  color: var(--text-3);
+}
+.note-title {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  resize: none;
+  overflow: hidden;
+  font: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  outline: none;
+}
+.note-title::placeholder {
+  color: var(--text-3);
+}
+.note-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  margin: 6px 0 16px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.note-meta svg {
+  flex: none;
+}
+
+/* The text itself */
+.note-text {
+  position: relative;
+  min-height: 40vh;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  outline: none;
+  overflow-wrap: anywhere;
+  caret-color: var(--accent);
+}
+.note-text.is-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.note-text p,
+.note-text div {
+  margin: 0 0 0.45em;
+}
+.note-text h1 {
+  margin: 0.8em 0 0.3em;
+  font-size: 24px;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+.note-text h2 {
+  margin: 0.8em 0 0.3em;
+  font-size: 20px;
+  line-height: 1.35;
+}
+.note-text h3 {
+  margin: 0.7em 0 0.25em;
+  font-size: 17px;
+  line-height: 1.4;
+}
+.note-text ul,
+.note-text ol {
+  margin: 0 0 0.45em;
+  padding-left: 24px;
+}
+.note-text li {
+  position: relative;
+  margin: 0.15em 0;
+}
+.note-text blockquote {
+  margin: 0.4em 0 0.6em;
+  padding-left: 14px;
+  border-left: 3px solid var(--border);
+  color: var(--text-2);
+}
+.note-text hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+.note-text a {
+  color: var(--accent-text, var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.note-text a[href^='/notes/'],
+.note-text a[href^='mailto:'] {
+  text-decoration: none;
+  padding: 0 3px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+}
+/* A checklist: a box at the start of each line, ticked lines struck through. */
+.note-text ul.checklist {
+  list-style: none;
+  padding-left: 30px;
+}
+.note-text ul.checklist > li::before {
+  content: '';
+  position: absolute;
+  left: -28px;
+  top: 0.22em;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.5px solid var(--text-3);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.note-text ul.checklist > li.done::before {
+  border-color: var(--accent);
+  background: var(--accent)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E")
+    center / 12px no-repeat;
+}
+.note-text ul.checklist > li.done {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+/* A task made from a line: a small pill at its end (open, done, or deleted). */
+.note-text .note-task {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 0 8px 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  vertical-align: 1px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  animation: pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.note-text .note-task::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+.note-text .note-task::after {
+  content: 'Task';
+}
+.note-text .note-task[data-state='done'] {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.note-text .note-task[data-state='done']::before {
+  background: currentColor;
+}
+.note-text .note-task[data-state='done']::after {
+  content: 'Done';
+}
+.note-text .note-task[data-state='gone'] {
+  background: var(--hover);
+  color: var(--text-3);
+}
+.note-text .note-task[data-state='gone']::after {
+  content: 'Task deleted';
+}
+.note-text .line-held {
+  border-radius: 6px;
+  background: var(--hover);
+  transition: background 0.2s;
+}
+::highlight(note-match) {
+  background: rgba(250, 204, 21, 0.55);
+}
+/* A checklist line's own "…" */
+/* In the margin to the left of the line's box (desktop); at the line's right end on phones. */
+.note-line-dots {
+  position: absolute;
+  left: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-top: -2px;
+  border-radius: 8px;
+  color: var(--text-3);
+  background: var(--surface);
+  animation: fade 0.15s ease-out backwards;
+  transition: top 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s, color 0.15s;
+}
+.note-line-dots:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* Linked from */
+.note-linked {
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line, var(--border));
+}
+.note-linked h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.nl-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.15s;
+}
+.nl-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nl-link svg {
+  flex: none;
+  color: var(--text-3);
+}
+.nl-link.done span {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.nl-link:hover {
+  background: var(--hover);
+}
+
+/* ---------- The keyboard bar (phones) ---------- */
+
+.note-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: -4px -6px;
+}
+.nb-tools {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  animation: fade 0.16s ease-out;
+}
+.nb-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap, 44px);
+  height: var(--tap, 44px);
+  border-radius: 12px;
+  color: var(--text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.nb-btn:active {
+  background: var(--hover);
+}
+.nb-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+.nb-hide {
+  border-left: 1px solid var(--line, var(--border));
+  border-radius: 0 12px 12px 0;
+  padding-left: 2px;
+}
+
+/* ---------- Aa, link, mention ---------- */
+
+.np-pop {
+  padding: 8px;
+}
+.fmt {
+  display: grid;
+  gap: 12px;
+  padding: 0 8px 8px;
+}
+.np-pop .fmt {
+  padding: 0;
+}
+.np-pop .fmt-styles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.fmt-styles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.fmt-style {
+  min-height: 52px;
+  padding: 0 4px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.fmt-style.fs-h1 {
+  font-size: 19px;
+  font-weight: 800;
+}
+.fmt-style.fs-h2 {
+  font-size: 16px;
+  font-weight: 700;
+}
+.fmt-style.fs-h3 {
+  font-size: 14px;
+  font-weight: 700;
+}
+.fmt-style.fs-p {
+  font-size: 14px;
+}
+.fmt-style.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text, var(--accent));
+}
+.fmt-row {
+  display: flex;
+  gap: 6px;
+}
+.fmt-btn {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border-radius: 12px;
+  background: var(--hover);
+  color: var(--text);
+  transition: background 0.15s, color 0.15s;
+}
+.fmt-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+.fmt-colors {
+  justify-content: space-between;
+  padding: 0 4px;
+}
+.fmt-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--hl);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s;
+}
+.fmt-swatch:active {
+  transform: scale(0.92);
+}
+.fmt-swatch.none {
+  background: none;
+  border: 1.5px dashed var(--border);
+}
+.np-link {
+  display: grid;
+  gap: 10px;
+  padding: 0 8px 8px;
+}
+.np-pop .np-link {
+  padding: 0;
+}
+
+/* ---------- Quick capture ---------- */
+
+.qn {
+  padding: 0 8px;
+}
+.qn textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  resize: none;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--text);
+  outline: none;
+}
+.qn-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 8px 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  overflow: hidden;
+}
+.qn-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-note .sheet-foot {
+  align-items: center;
+}
+.qn-to {
+  max-width: 60%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-banner,
+  .note-text .note-task,
+  .note-line-dots,
+  .nb-tools {
+    animation: none;
+  }
+}

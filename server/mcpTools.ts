@@ -191,6 +191,8 @@ class View {
       }
       list = (db.allDocs(coll) as Doc[]).map((d) => see(coll, d)).filter((d): d is Doc => !!d && keep(d));
     }
+    // Notes in Recently deleted are only for the app (restore or delete for good).
+    if (coll === 'notes') list = list.filter((d) => !d.deletedAt);
     this.cache.set(coll, list);
     return list;
   }

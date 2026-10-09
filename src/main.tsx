@@ -23,6 +23,7 @@ import './admin.css';
 import './notify.css';
 import './security.css';
 import './jobs.css';
+import './notes.css';
 import './system.css';
 import './mobile/index.css'; // the phone layer: always last
 

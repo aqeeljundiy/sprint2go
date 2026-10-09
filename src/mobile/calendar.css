@@ -4,3 +4,169 @@
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
+
+@media (max-width: 767px) {
+  /* The calendar fills the screen under the top bar: no card around it. */
+  .cal-pane {
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+  }
+  /* One header row: the month (it opens the mini month) and today's date (back to today). */
+  .cal-header {
+    flex-wrap: nowrap;
+    gap: 4px;
+    min-height: 52px;
+    padding: 4px 6px 4px 16px;
+  }
+  .cal-title h1 {
+    font-size: 20px;
+  }
+  .cal-today {
+    margin-left: auto;
+  }
+  .md-day {
+    width: var(--tap);
+    height: var(--tap);
+    font-size: 15px;
+  }
+
+  /* Day and 3 Day */
+  .tg {
+    --gutter: 52px;
+  }
+  .tg-day {
+    gap: 6px;
+    padding: 6px 2px;
+    min-height: var(--tap);
+  }
+  .tg-dow {
+    font-size: 12px;
+  }
+  .tg-num {
+    min-width: 28px;
+    height: 28px;
+    font-size: 15px;
+  }
+  .tg-gutter,
+  .tg-hours span {
+    font-size: 12px;
+  }
+  .tg-allday > .tg-gutter {
+    padding: 6px 6px 0 0;
+  }
+  .block-event {
+    padding: 3px 6px;
+    font-size: 12px;
+  }
+  .block-event.is-task {
+    padding-left: 25px;
+  }
+  .pill-event,
+  .tg-allday-more {
+    min-height: 26px;
+    font-size: 12px;
+  }
+  .pill-event {
+    display: flex;
+    align-items: center;
+  }
+  .now-label {
+    font-size: 12px;
+  }
+
+  /* Lists keep room under the floating create button on tiny phones. */
+  .sch,
+  .mg-list {
+    padding-bottom: calc(24px + var(--fab-space, 0px));
+  }
+  .sch-month {
+    padding-left: 18px;
+  }
+
+  /* Event details as a sheet: Yes / Maybe / No pinned at the bottom. */
+  .ev-sheet .sheet-foot {
+    padding: 10px 12px 12px;
+  }
+  .ev-rsvp-btn {
+    min-height: var(--tap);
+    font-size: 15px;
+  }
+  .ev-sheet .ev-row {
+    min-height: 40px;
+  }
+  .ev-task-btns .ghost-btn,
+  .ev-task-btns .primary-btn,
+  .ev-thread {
+    min-height: var(--tap);
+  }
+
+  /* The editor and quick create: fields the size of a thumb. */
+  .field-row > .date-sel,
+  .ev-times {
+    flex: 1 1 100%;
+  }
+  .ev-times > .time-sel {
+    flex: 1;
+    min-height: var(--tap);
+  }
+  .ev-form input.ev-form-title {
+    font-size: 18px;
+  }
+  .ev-kind > button,
+  .ev-token,
+  .guest-add {
+    min-height: 40px;
+  }
+  .guest-chip {
+    min-height: 36px;
+  }
+  .guest-chip button {
+    width: 32px;
+    height: 32px;
+  }
+  .guest-chip button::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+  .quick-sheet .sheet-foot .primary-btn,
+  .quick-sheet .sheet-foot .ghost-btn {
+    min-height: var(--tap);
+    min-width: 96px;
+    justify-content: center;
+  }
+  .cal-chip {
+    min-height: var(--tap);
+    padding: 0 16px;
+    font-size: 15px;
+  }
+
+  /* The calendars' panel in its sheet: rows like the rest of the phone's lists. */
+  .cal-sheet .nav-item,
+  .cal-sheet .plan-task {
+    min-height: 48px;
+    font-size: 15px;
+  }
+  .cal-sheet .nav-more,
+  .cal-sheet .pt-add {
+    min-width: var(--tap);
+    min-height: var(--tap);
+    opacity: 1;
+  }
+  .cal-sheet .nav-heading {
+    padding-left: 12px;
+    font-size: 12px;
+  }
+
+}
+
+/* Narrow phones: the 3-day columns give the gutter a little less room. */
+@media (max-width: 359px) {
+  .tg {
+    --gutter: 44px;
+  }
+  .cal-header {
+    padding-left: 12px;
+  }
+}
