@@ -3787,3 +3787,25 @@
 .tb-tpl-actions > .link-btn {
   margin: 0;
 }
+
+/* One toolbar row on a computer too: the view tabs take what's left (the rest go under "N more"). */
+.tb-bar {
+  flex-wrap: nowrap;
+}
+.tb-bar > :not(.tb-viewtabs) {
+  flex: none;
+}
+.tb-bar > .tb-viewtabs {
+  flex: 1 1 0;
+  min-width: 120px;
+}
+/* A narrower pane still: every tool down to its icon, so the view tabs keep their room. */
+@container (max-width: 900px) {
+  .tb-bar .ghost-btn .lbl,
+  .tb-bar .tb-add-row .lbl {
+    display: none;
+  }
+  .tb-bar .tb-search input {
+    width: 84px;
+  }
+}

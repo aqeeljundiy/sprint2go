@@ -782,7 +782,7 @@ export function TableScreen(p: ScreenProps) {
           </label>
           {view && (
             <>
-              <button ref={refs.filter} className={`ghost-btn sm${nFilters ? ' on' : ''}`} onClick={() => setPop('filter')}>
+              <button ref={refs.filter} className={`ghost-btn sm${nFilters ? ' on' : ''}`} onClick={() => setPop('filter')} aria-label={nFilters ? `Filter, ${nFilters} on` : 'Filter'}>
                 <Filter size={13} /> <span className="lbl">{nFilters ? `${nFilters} filter${nFilters === 1 ? '' : 's'}` : 'Filter'}</span>
               </button>
               {view.kind !== 'calendar' && (
