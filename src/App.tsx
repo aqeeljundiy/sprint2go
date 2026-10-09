@@ -79,6 +79,7 @@ import { htmlToText, textToHtml } from './sanitize';
 import { rowName } from './components/tables/core';
 import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
+import { routeBase } from './tryOut';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -103,7 +104,7 @@ const APP_IDS = APPS.map((a) => a.id) as string[];
 // app.sprint2go.com/mail, /chat… on a real server; #/mail when opened as a local file.
 const hashRouting = !location.protocol.startsWith('http');
 function readRoute(): Mode {
-  const raw = hashRouting ? location.hash.replace(/^#\/?/, '') : location.pathname.replace(/^\//, '');
+  const raw = hashRouting ? location.hash.replace(/^#\/?/, '') : location.pathname.slice(routeBase.length).replace(/^\//, '');
   const first = raw.split('/')[0];
   return APP_IDS.includes(first) ? (first as AppId) : first === 'settings' ? 'settings' : 'home';
 }
@@ -111,7 +112,7 @@ function writeRoute(m: Mode) {
   try {
     if (hashRouting) {
       if (location.hash !== `#/${m}`) history.replaceState(null, '', `#/${m}`);
-    } else if (location.pathname !== `/${m}`) history.pushState(null, '', `/${m}`);
+    } else if (location.pathname !== `${routeBase}/${m}`) history.pushState(null, '', `${routeBase}/${m}`);
   } catch {
     /* some previews forbid history changes */
   }
@@ -174,9 +175,11 @@ interface AppProps {
   onInvite: (u: User) => Promise<string | null>; // the invite link, when the local server makes one
   onWorkspace?: (id: string) => void;
   onUpdateUser: (patch: Partial<User>) => void;
+  /** A bar on top of everything (the try-out's "You're trying sprint2go"). */
+  topBar?: React.ReactNode;
 }
 
-export default function App({ user, signedInUsers, allUsers, workspaces: allWorkspaces, setWorkspaces, onSwitchUser, onAddUser, onSignOut, onInvite: inviteUser, onWorkspace, onUpdateUser }: AppProps) {
+export default function App({ user, signedInUsers, allUsers, workspaces: allWorkspaces, setWorkspaces, onSwitchUser, onAddUser, onSignOut, onInvite: inviteUser, onWorkspace, onUpdateUser, topBar }: AppProps) {
   const [settings, updateSettings] = useSettings(user);
   const [previewOnboarding, setPreviewOnboarding] = useState(() => new URLSearchParams(location.search).get('preview') === 'onboarding');
   setPhotos(allUsers); // every Avatar finds people's photos by email
@@ -3163,8 +3166,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   return (
     <TabDefaultsCtx.Provider value={tabDefaults}>
     <ProjectsCtx.Provider value={projectsCtx}>
-    {inSandbox && <DemoCompanyBar busy={demoBusy} onReset={() => setResettingDemo(true)} onHide={() => void hideDemo()} />}
-    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''} ${inSandbox ? 'with-demo-bar' : ''}`}>
+    {inSandbox ? <DemoCompanyBar busy={demoBusy} onReset={() => setResettingDemo(true)} onHide={() => void hideDemo()} /> : topBar}
+    <div className={`app mode-${mode} ${readerOpen ? 'reading' : ''} ${collapsed ? 'sb-collapsed' : ''} ${['home', 'settings'].includes(mode) ? 'no-sidebar' : ''} ${inSandbox || topBar ? 'with-demo-bar' : ''}`}>
       <AppRail
         current={mode}
         enabled={enabledApps}

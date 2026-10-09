@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { term } from '../terms';
 import { Brain, Building2, CalendarPlus, FileText, Hash, ListChecks, Mail, PenLine, Search, User, type LucideIcon } from 'lucide-react';
+import { lsKey } from '../settings';
 
 export interface PaletteItem {
   id: string;
@@ -26,7 +27,7 @@ const recentMem = new Map<string, string[]>();
 function loadRecent(key: string): string[] {
   if (recentMem.has(key)) return recentMem.get(key)!;
   try {
-    return JSON.parse(localStorage.getItem(key) ?? '[]') as string[];
+    return JSON.parse(localStorage.getItem(lsKey(key)) ?? '[]') as string[];
   } catch {
     return [];
   }
@@ -34,7 +35,7 @@ function loadRecent(key: string): string[] {
 function saveRecent(key: string, ids: string[]) {
   recentMem.set(key, ids);
   try {
-    localStorage.setItem(key, JSON.stringify(ids));
+    localStorage.setItem(lsKey(key), JSON.stringify(ids));
   } catch {}
 }
 
