@@ -461,6 +461,7 @@ export interface TaskEvent {
   id: string;
   at: string;
   by: string; // user id, or a guest email
+  byName?: string; // brought in by an import from someone who isn't a member here: their name (by is "former:…")
   kind: 'created' | 'assigned' | 'status' | 'due' | 'edit' | 'comment' | 'review' | 'supervisor';
   text: string;
   toClient?: boolean; // a comment the client can read (team comments are internal unless marked)
@@ -627,6 +628,7 @@ export interface ChatFile {
   type: string; // mime
   driveId?: string; // saved to Drive under the client's folder
   url?: string; // object URL in the prototype
+  missing?: string; // brought in by an import without the file itself: why (e.g. "not in the export")
 }
 
 export interface ChatMessage {
@@ -646,6 +648,7 @@ export interface ChatMessage {
   kudosFor?: string; // user id
   summaryOf?: string; // kind 'summary': the period it covers
   guestEmail?: string; // written by a guest
+  authorName?: string; // brought in by an import from someone who isn't a member here: their name (userId is "former:…")
   via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
   pinned?: boolean;

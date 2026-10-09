@@ -1,0 +1,4 @@
+[
+  { "type": "message", "user": "U03DANA", "text": "Hey Bob, got a minute?", "ts": "1767607000.000100" },
+  { "type": "message", "user": "U02BOB", "text": "Sure", "ts": "1767607100.000100" }
+]

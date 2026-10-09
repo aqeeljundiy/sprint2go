@@ -50,6 +50,7 @@ import * as summaries from './summaries.ts';
 import * as digest from './digest.ts';
 import * as retention from './retention.ts';
 import * as sandbox from './sandbox.ts';
+import * as imports from './imports.ts';
 import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
 
@@ -2293,6 +2294,12 @@ createServer(async (req, res) => {
       }
     }
 
+    // Imports from Slack, Trello and Google Drive (Settings, Import; admins only): server/imports.ts.
+    if (p === '/api/import' || p.startsWith('/api/import/')) {
+      if (pset.maintenance.on && req.method !== 'GET' && !opRecord) return json(res, 503, { error: pset.maintenance.message || 'Changes are paused for a few minutes while sprint2go is updated.' });
+      if (await imports.handle(p, { req, res, url, me, operator: session?.operator ?? null, json, body })) return;
+    }
+
     // Files: uploads land on disk under data/files, served back to people in the same company (or guests of it).
     // Streamed to disk (big videos never sit in memory), up to the per-file limit and the company's storage left.
     if (p === '/api/upload' && req.method === 'POST') {
@@ -3493,6 +3500,9 @@ const retentionTick = () => {
 };
 setTimeout(retentionTick, 2 * 60_000);
 setInterval(retentionTick, 60 * 60_000);
+
+// Imports (Slack, Trello, Google Drive): the ones a restart stopped are closed (Undo still works), old uploads go.
+imports.init({ broadcast, tell, maxUpload: MAX_UPLOAD });
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {

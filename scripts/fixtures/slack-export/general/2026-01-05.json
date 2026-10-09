@@ -1,0 +1,27 @@
+[
+  { "type": "message", "subtype": "channel_join", "user": "U03DANA", "text": "<@U03DANA> has joined the channel", "ts": "1767603500.000100" },
+  {
+    "type": "message",
+    "user": "U01ALICE",
+    "text": "Welcome <@U03DANA>! Read <https://acme.test/handbook|the handbook> &amp; say hi in <#C02DESIGN|design>",
+    "ts": "1767603600.000100",
+    "reply_count": 2,
+    "reactions": [
+      { "name": "+1", "users": ["U02BOB", "U03DANA"], "count": 2 },
+      { "name": "tada::skin-tone-2", "users": ["U04EVAN"], "count": 1 },
+      { "name": "partyparrot", "users": ["U01ALICE"], "count": 1 }
+    ]
+  },
+  { "type": "message", "user": "U03DANA", "text": "Thanks, glad to be here", "ts": "1767603700.000100", "thread_ts": "1767603600.000100", "parent_user_id": "U01ALICE" },
+  { "type": "message", "subtype": "thread_broadcast", "user": "U04EVAN", "text": "Welcome aboard from me too", "ts": "1767603800.000100", "thread_ts": "1767603600.000100" },
+  {
+    "type": "message",
+    "user": "U02BOB",
+    "text": "Here is the Q1 plan",
+    "ts": "1767604000.000100",
+    "files": [{ "id": "F01PLAN", "name": "q1-plan.pdf", "title": "Q1 plan", "mimetype": "application/pdf", "size": 2048, "url_private": "{FILES}/files/q1-plan.pdf", "url_private_download": "{FILES}/files/q1-plan.pdf?download=1" }]
+  },
+  { "type": "message", "user": "U05FAY", "text": "Old screenshot", "ts": "1767604100.000100", "files": [{ "id": "F02OLD", "name": "screenshot.png", "mode": "hidden_by_limit", "size": 4096, "mimetype": "image/png" }] },
+  { "type": "message", "subtype": "bot_message", "bot_id": "B01", "username": "Deploy Bot", "text": "Deployed v2.1 to production", "ts": "1767604200.000100" },
+  { "type": "message", "user": "U05FAY", "text": "Ping <!here> about the <mailto:ops@acme.test|ops@acme.test> list", "ts": "1767604300.000100", "edited": { "user": "U05FAY", "ts": "1767604350.000000" } }
+]

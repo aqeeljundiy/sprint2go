@@ -1001,6 +1001,8 @@ export function ChatView(p: ViewProps) {
       return { name: `${g?.name ?? m.guestEmail}${m.via === 'whatsapp' ? ' · WhatsApp' : ''}`, guest: true, person: { name: g?.name ?? m.guestEmail, email: m.guestEmail } };
     }
     const u = person(m.userId);
+    // Brought in by an import from someone who isn't a member here: their name from the other app.
+    if (!u && m.authorName) return { name: m.authorName, guest: false, former: true, person: { name: m.authorName, email: m.authorName } };
     return { name: m.userId === me ? 'You' : (u?.name ?? 'Someone'), guest: false, person: u };
   };
 
@@ -1042,6 +1044,7 @@ export function ChatView(p: ViewProps) {
           {!grouped && (
             <div className="cm-head">
               <strong>{a.name}</strong>
+              {'former' in a && a.former && <Badge small>Former member</Badge>}
               {a.guest && <Badge small tone="warn">Guest{(() => { const co = companyOf(a.person?.email ?? '', client?.people?.find((x) => x.email === a.person?.email)?.company, client); return co ? ` · ${co}` : ''; })()}</Badge>}
               {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
               <time>{relative(m.at)}</time>
@@ -1092,7 +1095,7 @@ export function ChatView(p: ViewProps) {
                 <strong>{f.name}</strong>
                 <small>
                   {fmtSize(f.size)}
-                  {client ? ` · saved to Drive › ${client.name}` : ' · saved to Drive'}
+                  {f.missing ? ` · ${f.missing}` : client ? ` · saved to Drive › ${client.name}` : ' · saved to Drive'}
                 </small>
               </span>
             </a>

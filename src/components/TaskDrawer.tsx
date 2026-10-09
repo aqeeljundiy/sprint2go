@@ -448,10 +448,10 @@ export function TaskDrawer(p: Props) {
             {(t.history ?? []).map((h) => {
               const who = p.users.find((u) => u.id === h.by);
               const fromClient = h.by.includes('@');
-              const name = fromClient ? (p.clientNames?.[h.by.toLowerCase()] ?? h.by) : who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : 'Someone';
+              const name = fromClient ? (p.clientNames?.[h.by.toLowerCase()] ?? h.by) : who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : (h.byName ?? 'Someone');
               return (
                 <li key={h.id} className={`h-${h.kind} ${fromClient ? 'h-client' : ''}`}>
-                  {who ? <Avatar person={who} size={22} /> : fromClient ? <span className="avatar-empty sm client">{name.charAt(0)}</span> : <span className="avatar-empty sm">?</span>}
+                  {who ? <Avatar person={who} size={22} /> : fromClient ? <span className="avatar-empty sm client">{name.charAt(0)}</span> : h.byName ? <Avatar person={{ name: h.byName, email: h.byName }} size={22} /> : <span className="avatar-empty sm">?</span>}
                   <span className="h-body">
                     {h.kind === 'comment' ? (
                       <>
