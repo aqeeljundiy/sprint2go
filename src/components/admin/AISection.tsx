@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import { term, brand as product } from '../../terms';
 import { server } from '../../sync';
 import { AISpend } from './AISpend';
-import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Play, Plus, ShieldOff, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Play, Plus, ShieldOff, Sparkles, Trash2, X } from 'lucide-react';
 import type { AIJobId, AISettings, ProviderConn, ProviderId, User, Workspace } from '../../types';
 import { CRED_FIELDS, JOBS, PROVIDERS, costPer100, presetJobs, providerOf } from '../../data/aiCatalog';
+import { MODEL_ID, catalogList, defaultModelOf, modelLabel, type ModelList } from '../../data/aiModels';
 import { ALLOWANCE, TOP_UP, planName, rp, seatsFor } from '../../data/pricing';
 import { defaultAI } from '../../data/workspaces';
 import { Select, type Option } from '../ui/Select';
+import { SmoothHeight, TabPane, useLeaving } from '../ui/Smooth';
+import { ModelPicker, keepModels, textModels, useModelLists } from './AIModels';
 
 interface Props {
   ws: Workspace;
@@ -21,6 +24,33 @@ interface Props {
 }
 
 const KIND_NAME = { direct: 'Direct', gateway: 'One key, many models', cloud: 'Company cloud account', private: 'Private', speech: 'Speech to text' } as const;
+/** The provider's name in sentences: "Claude (Anthropic)" is Anthropic. */
+const shortName = (id: string) => {
+  const n = providerOf(id as ProviderId)?.name ?? id;
+  return n.match(/\(([^)]+)\)/)?.[1] ?? n;
+};
+/** Keys whose model is picked (speech services and Azure's deployment pick their own). */
+const picksModel = (id: ProviderId) => providerOf(id)?.kind !== 'speech' && id !== 'azure';
+/** "provider|model" back to its parts (model ids never hold a "|"). */
+const split = (v: string) => {
+  const i = v.indexOf('|');
+  return [v.slice(0, i), v.slice(i + 1)] as [ProviderId | 'included', string];
+};
+
+type Adding = {
+  id: ProviderId | null;
+  key: string;
+  url: string;
+  fields?: Record<string, string>;
+  state: 'idle' | 'testing' | 'error';
+  message?: string;
+  // After "Test and save": which model the new key uses, and for which jobs.
+  step?: 'model';
+  list?: ModelList;
+  model?: string | null;
+  typed?: boolean;
+  scope?: 'all' | 'fit';
+};
 
 type RoutePick = { provider: string; providerName: string; model: string; modelName: string; warn: string | null };
 /** What the server says about this company and our AI (GET /api/ai/plan). */
@@ -98,15 +128,69 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   }, [ws.id, plan?.track, plan?.tier, plan?.trialEnds, plan?.topUps, ai.payer]);
   const included = view ? view.eligible : plan?.track === 'ai' && plan.tier !== 'free';
   const set = (p: Partial<AISettings>) => onAI({ ...ai, ...p });
-  const [adding, setAdding] = useState<{ id: ProviderId | null; key: string; url: string; fields?: Record<string, string>; state: 'idle' | 'testing' | 'error'; message?: string } | null>(null);
+  const [adding, setAdding] = useState<Adding | null>(null);
   const [testing, setTesting] = useState<AIJobId | null>(null);
-  const [tested, setTested] = useState<Partial<Record<AIJobId, string>>>({});
+  const [tested, setTested] = useState<Partial<Record<AIJobId, { ok: boolean; text: string }>>>({});
   const connected = ai.providers.filter((p) => p.status === 'ok').map((p) => p.id);
   const allowIncluded = included && ai.payer !== 'own';
+  // What each connected key can use: the provider's own list (the catalogue until it arrives, and in the demo).
+  const { lists } = useModelLists(ws.id, connected);
+  /** For the presets: what the providers really offer, and each key's own model. */
+  const known = (extra?: { id: ProviderId; list: ModelList; model?: string }) => ({
+    live: Object.fromEntries([...connected.map((p) => [p, lists[p]] as const), ...(extra ? [[extra.id, extra.list] as const] : [])].map(([p, l]) => [p, l?.source === 'live' ? l.models.map((m) => m.id) : undefined])),
+    defaults: Object.fromEntries([...ai.providers.map((p) => [p.id, p.model] as const), ...(extra ? [[extra.id, extra.model] as const] : [])]),
+  });
+  const notes = useLeaving(ai.notes ?? [], (n) => n.id);
 
   const pickPreset = (preset: 'best' | 'balanced' | 'cheap') => {
-    set({ preset, jobs: presetJobs(preset, connected, allowIncluded) });
+    set({ preset, jobs: presetJobs(preset, connected, allowIncluded, known()) });
     toast(`Every job now uses the ${preset === 'cheap' ? 'lowest cost' : preset} setup`);
+  };
+
+  /** One tiny call with a model on a saved key: an id typed in, before it's used. */
+  const checkModel = (provider: ProviderId) => async (id: string): Promise<string | null> => {
+    // DEMO ONLY: no provider to ask, so an id that looks right is taken
+    if (!server.on) return new Promise((r) => setTimeout(() => r(MODEL_ID.test(id) ? null : 'That doesn’t look like a model id: letters, numbers and . _ : / - only.'), 700));
+    const r = await fetch('/api/ai/models/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider, model: id }) }).catch(() => null);
+    if (!r) return 'Could not reach the server.';
+    const d = (await r.json().catch(() => ({}))) as { error?: string };
+    return r.ok ? null : d.error ?? 'That model didn’t answer.';
+  };
+
+  /** A key's default model changes: the jobs that used the old one move with it. */
+  const changeModel = (c: ProviderConn, id: string, typed: boolean) => {
+    const before = defaultModelOf(c.id, c.model, ai.jobs, lists[c.id]);
+    if (id === before && !!c.typed === typed) return;
+    const jobs = { ...ai.jobs };
+    let moved = 0;
+    for (const j of JOBS) {
+      const p = jobs[j.id];
+      if (j.id === 'speech' || p?.provider !== c.id || p.model !== before) continue;
+      jobs[j.id] = { provider: c.id, model: id, ...(p.fallback ? { fallback: p.fallback } : {}), ...(typed ? { typed: true } : {}) };
+      moved++;
+    }
+    set({ providers: ai.providers.map((x) => (x.id === c.id ? { ...x, model: id, typed: typed || undefined } : x)), jobs, ...(moved ? { preset: 'custom' as const } : {}) });
+    toast(`${shortName(c.id)} now uses ${modelLabel(id, lists[c.id])}${moved ? `. ${moved} job${moved === 1 ? '' : 's'} moved to it` : ''}`);
+  };
+
+  /** After "Test and save": the key's model, for every text job or only where the setup already picked this provider. */
+  const applyModel = () => {
+    const a = adding;
+    if (!a?.id || !a.model) return;
+    const id = a.id;
+    const model = a.model;
+    const jobs = { ...ai.jobs };
+    let n = 0;
+    for (const j of JOBS) {
+      if (j.id === 'speech' || (a.scope !== 'all' && jobs[j.id]?.provider !== id)) continue;
+      const fallback = jobs[j.id]?.fallback;
+      jobs[j.id] = { provider: id, model, ...(fallback && fallback !== id ? { fallback } : {}), ...(a.typed ? { typed: true } : {}) };
+      n++;
+    }
+    onAI({ ...ai, providers: ai.providers.map((p) => (p.id === id ? { ...p, model, typed: a.typed || undefined } : p)), jobs, ...(n ? { preset: 'custom' as const } : {}) });
+    setAdding(null);
+    const name = modelLabel(model, a.list);
+    toast(a.scope === 'all' ? `Every text job now uses ${name}` : n ? `${shortName(id)} now uses ${name} for ${n} job${n === 1 ? '' : 's'}` : `${shortName(id)} uses ${name}. No job picked it yet: choose it for a job below`);
   };
 
   const addProvider = () => {
@@ -122,32 +206,69 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
       return;
     }
     setAdding({ ...adding, state: 'testing' });
-    const save = (keyLast4: string) => {
-      const conn: ProviderConn = { id: adding.id!, keyLast4, addedAt: new Date().toISOString(), addedBy: me, status: 'ok', baseUrl: url || undefined, spentUsd: 0 };
-      const providers = [...ai.providers.filter((p) => p.id !== conn.id), conn];
-      const jobs = ai.preset === 'custom' ? ai.jobs : presetJobs(ai.preset === 'best' ? 'best' : ai.preset === 'cheap' ? 'cheap' : 'balanced', providers.map((p) => p.id), allowIncluded);
+    const id = adding.id;
+    const save = (keyLast4: string, sent?: ModelList) => {
+      const list = sent && Array.isArray(sent.models) ? sent : catalogList(id);
+      if (sent) keepModels(ws.id, id, list);
+      // The model to suggest: the setup's tier on the provider's list, else its first recommended model.
+      const text = textModels(list);
+      const tier = ai.preset === 'best' ? 'best' : ai.preset === 'cheap' ? 'fast' : 'balanced';
+      // A replaced key keeps the model it used, when the provider still offers it.
+      const before = ai.providers.find((p) => p.id === id);
+      const was = before ? defaultModelOf(id, before.model, ai.jobs) : null;
+      const kept = was && (before?.typed || list.models.some((m) => m.id === was)) ? was : null;
+      const suggest = kept ?? (text.find((m) => m.recommended && m.tier === tier) ?? text.find((m) => m.recommended) ?? text[0])?.id ?? null;
+      const conn: ProviderConn = { id, keyLast4, addedAt: new Date().toISOString(), addedBy: me, status: 'ok', baseUrl: url || undefined, spentUsd: 0, ...(before?.capUsd ? { capUsd: before.capUsd } : {}), ...(suggest ? { model: suggest } : {}), ...(kept && before?.typed ? { typed: true } : {}) };
+      // A replaced key stays where it was in the list.
+      const providers = before ? ai.providers.map((p) => (p.id === id ? conn : p)) : [...ai.providers, conn];
+      const jobs = ai.preset === 'custom' ? ai.jobs : presetJobs(ai.preset === 'best' ? 'best' : ai.preset === 'cheap' ? 'cheap' : 'balanced', providers.map((p) => p.id), allowIncluded, known({ id, list, model: suggest ?? undefined }));
       onAI({ ...ai, providers, jobs, payer: ai.payer === 'sprint2go' ? 'both' : ai.payer });
-      setAdding(null);
-      toast(`${info.name} connected. The key is encrypted and only the last 4 characters are kept`);
+      // A company's own server has nothing in our catalogue: its model is typed in when its list can't be read.
+      if (!picksModel(id) || (!text.length && id !== 'custom')) {
+        setAdding(null);
+        toast(`${info.name} connected. The key is encrypted and only the last 4 characters are kept`);
+        return;
+      }
+      // Next: which model it uses.
+      setAdding({ id, key: '', url: '', state: 'idle', step: 'model', list, model: suggest, typed: !!conn.typed, scope: 'fit' });
     };
     // With the local server the key is tested with a tiny real request, then stored encrypted there.
     if (!server.on) return void setTimeout(() => save((cred ? fields.accessKeyId || fields.apiKey || '····' : key).slice(-4)), 900);
-    void fetch('/api/ai/keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: adding.id, key, baseUrl: url || undefined }) })
+    void fetch('/api/ai/keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: id, key, baseUrl: url || undefined }) })
       .then(async (r) => {
-        const d = (await r.json().catch(() => ({}))) as { keyLast4?: string; error?: string };
-        if (r.ok && d.keyLast4) save(d.keyLast4);
+        const d = (await r.json().catch(() => ({}))) as { keyLast4?: string; error?: string; models?: ModelList };
+        if (r.ok && d.keyLast4) save(d.keyLast4, d.models);
         else setAdding((a) => a && { ...a, state: 'error', message: d.error });
       })
       .catch(() => setAdding((a) => a && { ...a, state: 'error', message: 'Could not reach the server.' }));
   };
 
-  const jobOptions = (): Option[] => [
-    ...(allowIncluded ? [{ value: 'included|included', label: `${product.name} (included in your plan)`, group: 'Included', icon: <Sparkles size={14} /> }] : []),
-    ...ai.providers
-      .filter((p) => p.status === 'ok' && !ai.blocked.includes(p.id))
-      .flatMap((p) => providerOf(p.id)!.models.map((m) => ({ value: `${p.id}|${m.id}`, label: m.name, hint: providerOf(p.id)!.name, group: providerOf(p.id)!.name }))),
-    { value: 'custom|browser', label: 'Browser speech (free)', hint: 'Chrome and Safari only', group: 'Free' },
-  ];
+  /**
+   * What a job can pick: our AI (when the plan has it), then each connected key's models as the provider lists them
+   * (recommended first), grouped by provider, with the cost of 100 uses of this job where the price is known.
+   */
+  const jobOptions = (job: (typeof JOBS)[number]): Option[] => {
+    const speech = job.id === 'speech';
+    const out: Option[] = allowIncluded && !speech ? [{ value: 'included|included', label: `${product.name} (included in your plan)`, group: 'Included', icon: <Sparkles size={14} /> }] : [];
+    for (const c of ai.providers) {
+      if (c.status !== 'ok' || ai.blocked.includes(c.id)) continue;
+      const info = providerOf(c.id)!;
+      const list = lists[c.id] ?? catalogList(c.id);
+      const ms = list.models.filter((m) => (speech ? m.kind === 'speech' || (info.kind === 'speech' && list.source === 'catalog') : m.kind === 'text' && !(info.kind === 'speech' && list.source === 'catalog')));
+      for (const m of ms) {
+        const cost = speech ? null : costPer100(job, c.id, m.id, m.price);
+        out.push({ value: `${c.id}|${m.id}`, label: m.name, hint: speech ? info.name : cost !== null ? `≈ ${rp(cost)} / 100 uses` : 'Price unknown', group: info.name, keywords: `${m.id} ${m.family}` });
+      }
+      // A model id typed in for this key, and whatever the job uses now, stay pickable.
+      if (!speech && c.typed && c.model && !ms.some((m) => m.id === c.model)) out.push({ value: `${c.id}|${c.model}`, label: c.model, hint: 'Your model id', group: info.name });
+    }
+    const cur = ai.jobs[job.id];
+    if (cur && cur.provider !== 'included' && cur.model && cur.model !== 'browser' && !out.some((o) => o.value === `${cur.provider}|${cur.model}`) && ai.providers.some((p) => p.id === cur.provider)) {
+      out.push({ value: `${cur.provider}|${cur.model}`, label: modelLabel(cur.model, lists[cur.provider]), hint: cur.typed ? 'Your model id' : 'Not on the provider’s list', group: providerOf(cur.provider)?.name ?? cur.provider });
+    }
+    if (speech) out.push({ value: 'custom|browser', label: 'Browser speech (free)', hint: 'Chrome and Safari only', group: 'Free' });
+    return out;
+  };
 
   const usage = [
     ['Brain dumps', 41, 'braindump'],
@@ -280,6 +401,19 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
 
         <div className="set-block">
           <h3>{ai.payer === 'sprint2go' ? 'Providers' : 'Your AI keys'}</h3>
+          {notes.length > 0 && (
+            <div className="ai-notes">
+              {notes.map(({ item: n, leaving }) => (
+                <p key={n.id} className={`warn-note ai-note ${leaving ? 'row-leaving' : ''}`}>
+                  <AlertTriangle size={14} />
+                  <span>{n.text}</span>
+                  <button type="button" className="icon-btn sm" title="Got it" aria-label="Dismiss" onClick={() => set({ notes: (ai.notes ?? []).filter((x) => x.id !== n.id) })}>
+                    <X size={14} />
+                  </button>
+                </p>
+              ))}
+            </div>
+          )}
           {ai.providers.length === 0 && <p className="muted small">No keys yet. {included && ai.payer !== 'own' ? `${product.name}’s AI is used for everything.` : 'Add a key to switch the AI on, then pick which model does each job below.'}</p>}
           <div className="prov-list">
             {ai.providers.map((c) => {
@@ -288,6 +422,9 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               const spent = server.on ? view?.spendUsd?.[c.id] ?? 0 : c.spentUsd;
               const resting = !!view?.capped?.includes(c.id);
               const pct = c.capUsd ? Math.min(100, (spent / c.capUsd) * 100) : 0;
+              const uses = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id).length;
+              const list = lists[c.id] ?? catalogList(c.id);
+              const current = defaultModelOf(c.id, c.model, ai.jobs, list);
               return (
                 <div key={c.id} className={`prov ${ai.blocked.includes(c.id) ? 'blocked' : ''}`}>
                   <span className="prov-mark">{info.name.charAt(0)}</span>
@@ -296,25 +433,16 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                       {info.name} {c.status === 'ok' ? <CheckCircle2 size={13} className="ok" /> : <AlertTriangle size={13} className="bad" />}
                     </strong>
                     <small>
-                      <KeyRound size={11} /> •••• {c.keyLast4} · added by {users.find((u) => u.id === c.addedBy)?.name.split(' ')[0] ?? 'someone'} · {info.models.length} model{info.models.length > 1 ? 's' : ''}
+                      <KeyRound size={11} /> •••• {c.keyLast4} · added by {users.find((u) => u.id === c.addedBy)?.name.split(' ')[0] ?? 'someone'}
                     </small>
-                    {(() => {
-                      const uses = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id);
-                      return (
-                        <span className="prov-uses">
-                          {uses.length ? (
-                            <>
-                              Used for{' '}
-                              {uses.map((j) => (
-                                <em key={j.id}>{j.name}</em>
-                              ))}
-                            </>
-                          ) : (
-                            <span className="muted">Not used for any job yet. Pick it below.</span>
-                          )}
-                        </span>
-                      );
-                    })()}
+                    {picksModel(c.id) && c.status === 'ok' ? (
+                      <span className="prov-model">
+                        <ModelPicker list={list} value={current || null} typed={c.typed} onPick={(id, typed) => changeModel(c, id, typed)} check={checkModel(c.id)} label={`${info.name}: model`} flat width={360} disabled={!canManage} />
+                        <span className="prov-uses muted">{uses ? `${uses} job${uses === 1 ? ' uses' : 's use'} it` : 'No job uses it yet'}</span>
+                      </span>
+                    ) : (
+                      <span className="prov-uses muted">{c.id === 'azure' ? 'Runs the model of your Azure deployment' : uses ? `${uses} job${uses === 1 ? ' uses' : 's use'} it` : 'No job uses it yet'}</span>
+                    )}
                     <span className="prov-spend">
                       <span className="bar wide">
                         <span style={{ width: `${pct}%` }} className={pct > 80 ? 'warn' : ''} />
@@ -340,7 +468,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                         const providers = ai.providers.filter((x) => x.id !== c.id);
                         // Jobs that used this key move to the best match among the keys that are left.
                         const moved = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id);
-                        const refill = presetJobs(ai.preset === 'custom' ? 'balanced' : ai.preset, providers.filter((x) => x.status === 'ok').map((x) => x.id), allowIncluded);
+                        const refill = presetJobs(ai.preset === 'custom' ? 'balanced' : ai.preset, providers.filter((x) => x.status === 'ok').map((x) => x.id), allowIncluded, known());
                         const jobs = { ...ai.jobs };
                         for (const j of moved) {
                           if (refill[j.id]) jobs[j.id] = refill[j.id];
@@ -357,89 +485,173 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               );
             })}
           </div>
-          {adding ? (
-            <div className="add-prov">
-              <Select<ProviderId>
-                value={adding.id}
-                onChange={(id) => setAdding({ ...adding, id, state: 'idle' })}
-                placeholder="Choose a provider"
-                label="Provider"
-                width={340}
-                searchable
-                options={PROVIDERS.map((p) => ({ value: p.id, label: p.name, hint: p.note, group: KIND_NAME[p.kind], icon: <span className="prov-mark sm">{p.name.charAt(0)}</span> }))}
-              />
-              {adding.id && providerOf(adding.id)?.warn && (
-                <p className="warn-note">
-                  <AlertTriangle size={14} /> {providerOf(adding.id)!.warn}
-                </p>
-              )}
-              {adding.id && CRED_FIELDS[adding.id] && (
-                <>
-                  {CRED_FIELDS[adding.id]!.fields.map((f) =>
-                    f.multiline ? (
-                      <textarea
-                        key={f.key}
-                        rows={4}
-                        spellCheck={false}
-                        autoComplete="off"
-                        aria-label={f.label}
-                        value={adding.fields?.[f.key] ?? ''}
-                        onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
-                        placeholder={`${f.label}: ${f.placeholder ?? ''}`}
-                      />
-                    ) : (
-                      <input
-                        key={f.key}
-                        type={f.secret ? 'password' : 'text'}
-                        autoComplete="off"
-                        spellCheck={false}
-                        aria-label={f.label}
-                        value={adding.fields?.[f.key] ?? ''}
-                        onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
-                        placeholder={`${f.label}${f.optional ? ' (optional)' : ''}${f.placeholder ? `: ${f.placeholder}` : ''}`}
-                      />
-                    ),
+          <SmoothHeight>
+            <TabPane key={adding ? adding.step ?? 'form' : 'closed'}>
+              {adding?.step === 'model' && adding.id && adding.list ? (
+                <div className="add-prov add-model">
+                  <p className="add-model-done">
+                    <CheckCircle2 size={14} className="ok" /> {providerOf(adding.id)!.name} is connected. The key is encrypted; only its last 4 characters are kept.
+                  </p>
+                  <p className="add-model-q" id="add-model-q">
+                    Which model should {shortName(adding.id)} use?
+                  </p>
+                  <ModelPicker list={adding.list} value={adding.model ?? null} typed={adding.typed} onPick={(model, typed) => setAdding((a) => a && { ...a, model, typed })} check={checkModel(adding.id)} label={`Which model should ${shortName(adding.id)} use?`} width={380} />
+                  <p className="muted small">
+                    {!textModels(adding.list).length
+                      ? 'Open the list and choose Other model id: type the id exactly as your server names it. We try it with one tiny call.'
+                      : adding.list.source === 'live'
+                      ? `From ${shortName(adding.id)}’s own list for this key. Recommended ones first; search by name or id.`
+                      : adding.list.note ?? (server.on ? `${shortName(adding.id)} doesn’t share a list, so these are the models we know.` : 'Demo: these are the models we know. With the server, the provider’s own list shows here.')}
+                  </p>
+                  <div className="model-scope" role="radiogroup" aria-label="Which jobs use this model">
+                    {(
+                      [
+                        ['all', 'Use it for every job', 'Every text job runs on this model. Voice notes keep their speech service.'],
+                        ['fit', 'Only where it fits', `Jobs keep the ${ai.preset === 'custom' ? 'models you picked' : `${ai.preset === 'cheap' ? 'lowest cost' : ai.preset} setup`}; where that uses ${shortName(adding.id)}, they use this model.`],
+                      ] as const
+                    ).map(([v, l, h]) => (
+                      <button key={v} type="button" role="radio" aria-checked={adding.scope === v} className={adding.scope === v ? 'on' : ''} onClick={() => setAdding((a) => a && { ...a, scope: v })}>
+                        <span className="model-scope-dot" aria-hidden />
+                        <span>
+                          <strong>{l}</strong>
+                          <small>{h}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="add-prov-foot">
+                    <button
+                      type="button"
+                      className="ghost-btn sm"
+                      onClick={() => {
+                        const id = adding.id!;
+                        setAdding(null);
+                        toast(`${providerOf(id)!.name} connected. Pick its model any time on its row`);
+                      }}
+                    >
+                      Later
+                    </button>
+                    <button type="button" className="primary-btn sm" disabled={!adding.model} onClick={applyModel}>
+                      <CheckCircle2 size={14} /> Use this model
+                    </button>
+                  </div>
+                </div>
+              ) : adding ? (
+                <div className="add-prov">
+                  <Select<ProviderId>
+                    value={adding.id}
+                    onChange={(id) => setAdding({ ...adding, id, state: 'idle' })}
+                    placeholder="Choose a provider"
+                    label="Provider"
+                    width={340}
+                    searchable
+                    options={PROVIDERS.map((p) => ({ value: p.id, label: p.name, hint: p.note, group: KIND_NAME[p.kind], icon: <span className="prov-mark sm">{p.name.charAt(0)}</span> }))}
+                  />
+                  {adding.id && providerOf(adding.id)?.warn && (
+                    <p className="warn-note">
+                      <AlertTriangle size={14} /> {providerOf(adding.id)!.warn}
+                    </p>
                   )}
-                  <p className="muted small">{CRED_FIELDS[adding.id]!.help}</p>
-                  {adding.state === 'error' && <p className="err">{adding.message ?? 'Fill in every field.'}</p>}
-                </>
-              )}
-              {adding.id && !CRED_FIELDS[adding.id] && (
-                <>
-                  {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : 'Endpoint'} />}
-                  <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} />
-                  {adding.state === 'error' && <p className="err">{adding.message ?? `That doesn’t look like a valid key${providerOf(adding.id)!.needsUrl ? ' and address' : ''}.`}</p>}
-                </>
-              )}
-              {adding.id && (
-                <>
-                  <p className="muted small">{server.on ? 'We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.' : 'Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.'}</p>
-                </>
-              )}
-              <div className="add-prov-foot">
-                <button type="button" className="ghost-btn sm" onClick={() => setAdding(null)}>
-                  Cancel
+                  {adding.id && CRED_FIELDS[adding.id] && (
+                    <>
+                      {CRED_FIELDS[adding.id]!.fields.map((f) =>
+                        f.multiline ? (
+                          <textarea
+                            key={f.key}
+                            rows={4}
+                            spellCheck={false}
+                            autoComplete="off"
+                            aria-label={f.label}
+                            value={adding.fields?.[f.key] ?? ''}
+                            onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
+                            placeholder={`${f.label}: ${f.placeholder ?? ''}`}
+                          />
+                        ) : (
+                          <input
+                            key={f.key}
+                            type={f.secret ? 'password' : 'text'}
+                            autoComplete="off"
+                            spellCheck={false}
+                            aria-label={f.label}
+                            value={adding.fields?.[f.key] ?? ''}
+                            onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
+                            placeholder={`${f.label}${f.optional ? ' (optional)' : ''}${f.placeholder ? `: ${f.placeholder}` : ''}`}
+                          />
+                        ),
+                      )}
+                      <p className="muted small">{CRED_FIELDS[adding.id]!.help}</p>
+                      {adding.state === 'error' && <p className="err">{adding.message ?? 'Fill in every field.'}</p>}
+                    </>
+                  )}
+                  {adding.id && !CRED_FIELDS[adding.id] && (
+                    <>
+                      {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : 'Endpoint'} aria-label="Address" />}
+                      <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} aria-label="Key" />
+                      {adding.state === 'error' && <p className="err">{adding.message ?? `That doesn’t look like a valid key${providerOf(adding.id)!.needsUrl ? ' and address' : ''}.`}</p>}
+                    </>
+                  )}
+                  {adding.id && (
+                    <p className="muted small">
+                      {server.on ? 'We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.' : 'Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.'}
+                      {picksModel(adding.id) ? ' Then you pick its model.' : ''}
+                    </p>
+                  )}
+                  <div className="add-prov-foot">
+                    <button type="button" className="ghost-btn sm" onClick={() => setAdding(null)}>
+                      Cancel
+                    </button>
+                    <button type="button" className="primary-btn sm" disabled={!adding.id || (!CRED_FIELDS[adding.id] && !adding.key) || adding.state === 'testing'} onClick={addProvider}>
+                      {adding.state === 'testing' ? <Loader2 size={14} className="spin" /> : <KeyRound size={14} />} {adding.state === 'testing' ? 'Testing…' : 'Test and save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="ghost-btn sm add-prov-open" onClick={() => setAdding({ id: null, key: '', url: '', state: 'idle' })}>
+                  <Plus size={14} /> Add a provider
                 </button>
-                <button type="button" className="primary-btn sm" disabled={!adding.id || !adding.key || adding.state === 'testing'} onClick={addProvider}>
-                  {adding.state === 'testing' ? <Loader2 size={14} className="spin" /> : <KeyRound size={14} />} {adding.state === 'testing' ? 'Testing…' : 'Test and save'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button type="button" className="ghost-btn sm" onClick={() => setAdding({ id: null, key: '', url: '', state: 'idle' })}>
-              <Plus size={14} /> Add a provider
-            </button>
-          )}
+              )}
+            </TabPane>
+          </SmoothHeight>
         </div>
 
         <AISpend ws={ws.id} ai={ai} plan={plan} people={people} typical={{ braindump: 41, ask: 118, meeting: 22, summary: 236, draft: 97, replies: 180, todos: 420, sorting: 300 }} />
 
         {(() => {
-          const own = ai.payer !== 'sprint2go';
+          // On its own keys the company picks a model per job, in plain sight; on ours alone the choice is folded away.
+          const own = ai.payer !== 'sprint2go' || connected.length > 0;
+          /** A pick from the list: a model id typed in for a key stays marked as typed, and the job keeps its fallback. */
+          const pickFor = (jobId: AIJobId, v: string) => {
+            const [provider, model] = split(v);
+            const was = ai.jobs[jobId];
+            const conn = ai.providers.find((p) => p.id === provider);
+            const typed = (!!conn?.typed && conn.model === model) || (!!was?.typed && was.provider === provider && was.model === model);
+            return { provider, model, ...(was?.fallback ? { fallback: was.fallback } : {}), ...(typed ? { typed: true } : {}) };
+          };
+          const sample = (job: (typeof JOBS)[number], cur: { provider: ProviderId | 'included'; model: string }) => {
+            setTesting(job.id);
+            // DEMO ONLY: no provider to ask, so the sample is pretend
+            if (!server.on)
+              return void setTimeout(() => {
+                setTesting(null);
+                setTested((t) => ({ ...t, [job.id]: { ok: true, text: `${(0.6 + Math.random() * 2.4).toFixed(1)}s · sample looked fine` } }));
+              }, 1100);
+            const name = modelLabel(cur.model, lists[cur.provider]);
+            void fetch('/api/ai/models/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: cur.provider, model: cur.model }) })
+              .then(async (r) => {
+                const d = (await r.json().catch(() => ({}))) as { ms?: number; error?: string };
+                setTested((t) => ({ ...t, [job.id]: r.ok ? { ok: true, text: `${name} answered in ${((d.ms ?? 0) / 1000).toFixed(1)}s` } : { ok: false, text: d.error ?? `${name} didn’t answer.` } }));
+              })
+              .catch(() => setTested((t) => ({ ...t, [job.id]: { ok: false, text: 'Could not reach the server.' } })))
+              .finally(() => setTesting(null));
+          };
           const row = (job: (typeof JOBS)[number]) => {
             const cur = ai.jobs[job.id] ?? (allowIncluded ? { provider: 'included' as const, model: 'included' } : undefined);
-            const cost = cur ? costPer100(job, cur.provider, cur.model) : null;
+            const entry = cur && cur.provider !== 'included' ? lists[cur.provider]?.models.find((m) => m.id === cur.model) : undefined;
+            const cost = cur ? costPer100(job, cur.provider, cur.model, entry?.price) : null;
             const recModel = (preset: 'best' | 'balanced' | 'cheap') => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === job.rec[preset] || m.id.endsWith(job.rec[preset]))?.name ?? (job.rec[preset] === 'browser' ? 'Browser' : job.rec[preset]);
+            // A real one-call try on the server (not on our AI, browser speech or speech services); a pretend one in the demo.
+            const canTry = !!cur && (!server.on || (cur.provider !== 'included' && job.id !== 'speech' && cur.model !== 'browser' && ai.providers.some((x) => x.id === cur.provider)));
+            const t = tested[job.id];
             return (
               <div key={job.id} className="job-row">
                 <div className="job-name">
@@ -451,14 +663,12 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                 <div className="job-pick">
                   <Select
                     value={cur ? `${cur.provider}|${cur.model}` : null}
-                    onChange={(v) => {
-                      const [provider, model] = v.split('|') as [ProviderId | 'included', string];
-                      set({ preset: 'custom', jobs: { ...ai.jobs, [job.id]: { provider, model } } });
-                    }}
-                    options={jobOptions().filter((o) => (job.id === 'speech' ? providerOf(String(o.value).split('|')[0] as ProviderId)?.kind === 'speech' || String(o.value).startsWith('custom|browser') : !String(o.value).startsWith('custom|browser') && providerOf(String(o.value).split('|')[0] as ProviderId)?.kind !== 'speech'))}
+                    onChange={(v) => set({ preset: 'custom', jobs: { ...ai.jobs, [job.id]: pickFor(job.id, v) } })}
+                    options={jobOptions(job)}
                     placeholder={connected.length || allowIncluded ? 'Choose a model' : 'Add a key first'}
                     label={job.name}
-                    width={320}
+                    title={job.name}
+                    width={360}
                     searchable
                   />
                   <small className="muted">
@@ -472,23 +682,11 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                     Suggested: {recModel('balanced')}, cheapest {recModel('cheap')}
                   </small>
                 </div>
-                <span className="job-cost">{cur?.provider === 'included' ? 'In your plan' : cost !== null && cost !== undefined ? `≈ ${rp(cost)} / 100 uses` : cur ? 'See provider prices' : ''}</span>
-                <button
-                  type="button"
-                  className="icon-btn sm"
-                  title="Run a sample"
-                  disabled={!cur || testing === job.id}
-                  onClick={() => {
-                    setTesting(job.id);
-                    setTimeout(() => {
-                      setTesting(null);
-                      setTested((t) => ({ ...t, [job.id]: `${(0.6 + Math.random() * 2.4).toFixed(1)}s · sample looked fine` }));
-                    }, 1100);
-                  }}
-                >
+                <span className="job-cost">{cur?.provider === 'included' ? 'In your plan' : cur?.model === 'browser' ? 'Free' : cost !== null && cost !== undefined ? `≈ ${rp(cost)} / 100 uses` : cur ? 'See provider prices' : ''}</span>
+                <button type="button" className="icon-btn sm" title={server.on ? 'Try it with one tiny call' : 'Run a sample'} aria-label={`Try ${job.name}`} disabled={!canTry || testing === job.id} onClick={() => cur && sample(job, cur)}>
                   {testing === job.id ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
                 </button>
-                {tested[job.id] && <small className="job-test">{tested[job.id]}</small>}
+                {t && <small className={`job-test ${t.ok ? '' : 'bad'}`}>{t.text}</small>}
               </div>
             );
           };
@@ -498,7 +696,8 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
             ['Email', ['draft', 'summary', 'replies', 'todos']],
             ['Behind the scenes', ['sorting', 'digest', 'translate']],
           ];
-          const textModels = jobOptions().filter((o) => !String(o.value).startsWith('custom|browser') && providerOf(String(o.value).split('|')[0] as ProviderId)?.kind !== 'speech');
+          // Every text model of every key (costs differ per job, so none are shown here).
+          const everything = jobOptions(JOBS.find((j) => j.id === 'ask')!).map((o) => ({ ...o, hint: o.hint === 'Your model id' ? o.hint : undefined }));
           const board = (
             <>
               <div className="job-tools">
@@ -516,21 +715,20 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                     </button>
                   ))}
                 </div>
-                {textModels.length > 0 && (
+                {everything.length > 0 && (
                   <Select<string>
                     value={null}
                     onChange={(v) => {
-                      const [provider, model] = v.split('|') as [ProviderId | 'included', string];
                       const jobs = { ...ai.jobs };
-                      for (const j of JOBS) if (j.id !== 'speech') jobs[j.id] = { provider, model };
+                      for (const j of JOBS) if (j.id !== 'speech') jobs[j.id] = pickFor(j.id, v);
                       set({ preset: 'custom', jobs });
-                      toast(`Every text job now uses ${textModels.find((o) => o.value === v)?.label ?? 'that model'}`);
+                      toast(`Every text job now uses ${everything.find((o) => o.value === v)?.label ?? 'that model'}`);
                     }}
-                    options={textModels}
+                    options={everything}
                     placeholder="One model for everything…"
                     label="One model for everything"
                     className="sel-flat"
-                    width={300}
+                    width={360}
                     searchable
                   />
                 )}
@@ -547,7 +745,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           return own ? (
             <div className="set-block">
               <h3>Which AI does each job</h3>
-              <p className="muted small">Spend on the jobs that assign people and talk to {term.whos}; save on the ones nobody reads twice. Each job only uses the key you pick for it.</p>
+              <p className="muted small">Spend on the jobs that assign people and talk to {term.whos}; save on the ones nobody reads twice. Each job only uses the key you pick for it, with the model exactly as the provider names it.</p>
               {board}
             </div>
           ) : (
