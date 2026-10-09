@@ -13,6 +13,8 @@ import { PeopleList } from '../ui/PeopleList';
 import { Popover } from '../ui/Popover';
 import { Select } from '../ui/Select';
 import { SmoothHeight, TabPane } from '../ui/Smooth';
+import { useCreateAction, useFocusedScreen, useTitleMenu } from '../../mobile/chrome';
+import { toastUndo } from '../../toast';
 
 export const TEAM_COLORS = ['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#d946ef', '#ef4444', '#f59e0b', '#64748b'];
 
@@ -116,6 +118,7 @@ function teamState(t: Team, tasks: Todo[]) {
 
 export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen, onNew, onMenu }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; canCreate: boolean; actions: TeamActions; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void }) {
   const sorted = [...teams].sort((a, b) => Number(b.members.includes(me)) - Number(a.members.includes(me)) || a.name.localeCompare(b.name));
+  useCreateAction('teams', canCreate && { label: 'New team', icon: Plus, run: onNew });
   return (
     <section className="tasks-pane view-enter">
       <header className="tracking-head tasks-head">
@@ -209,6 +212,7 @@ export function TeamPage({
   onHomeTemplate,
   onOpenTask,
   onBack,
+  onOpen,
   companyName,
   wordsKey,
   onMoveTasks,
@@ -225,12 +229,16 @@ export function TeamPage({
   onHomeTemplate: (v: HomeTemplateId) => void;
   onOpenTask: (id: string) => void;
   onBack: () => void;
+  onOpen?: (id: string) => void; // another team, from the phone's title switcher
   /** The company's name and word for the work (a team's own task stages start from the company's). */
   companyName?: string;
   wordsKey?: string;
   onMoveTasks?: (moves: Move[]) => void;
 }) {
   const manage = canManageTeam(t, me, isAdmin);
+  // Phones: the team takes the screen with Back to all teams, and its name is the title (a switcher to the others).
+  useFocusedScreen(true, onBack);
+  useTitleMenu('teams', !!onOpen && { label: 'Teams', value: t.id, options: teams.map((x) => ({ value: x.id, label: x.name, icon: <span className="team-square" style={{ background: x.color }} /> })), onChange: onOpen });
   const [tab, setTab] = useState<TeamTab>('members');
   const tabs: { id: TeamTab; label: string }[] = [
     { id: 'members', label: 'People' },
@@ -326,7 +334,16 @@ function MembersTab({ t, teams, users, me, manage, actions }: { t: Team; teams: 
                 </button>
               ) : (
                 manage && (
-                  <button className="icon-btn sm" aria-label={`Remove ${u.name}`} title="Remove from team" onClick={() => actions.patch(t.id, { members: t.members.filter((x) => x !== u.id), leadId: t.leadId === u.id ? undefined : t.leadId })}>
+                  <button
+                    className="icon-btn sm"
+                    aria-label={`Remove ${u.name}`}
+                    title="Remove from team"
+                    onClick={() => {
+                      const before = { members: t.members, leadId: t.leadId };
+                      actions.patch(t.id, { members: t.members.filter((x) => x !== u.id), leadId: t.leadId === u.id ? undefined : t.leadId });
+                      toastUndo(`Removed ${u.name.split(' ')[0]} from ${t.name}`, () => actions.patch(t.id, before));
+                    }}
+                  >
                     <X size={14} />
                   </button>
                 )

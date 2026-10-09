@@ -2982,12 +2982,6 @@ button.chat-members:hover {
   }
 }
 @media (max-width: 767px) {
-  .settings-nav-item {
-    display: contents;
-  }
-  .settings-group {
-    display: none;
-  }
   .payer-pick,
   .preset-pick,
   .cat-pick.three,
@@ -2997,12 +2991,6 @@ button.chat-members:hover {
   .tier-grid,
   .field-grid {
     grid-template-columns: 1fr;
-  }
-  .inv-row {
-    grid-template-columns: 1fr auto;
-  }
-  .inv-row .mono {
-    display: none;
   }
   .tc-fields {
     grid-template-columns: 1fr;

@@ -2319,3 +2319,35 @@ button {
   flex-wrap: wrap;
   margin-top: 18px;
 }
+
+/* ---------- phones (Phase 8) ---------- */
+
+/* The tour's panels share one cell; without a 0 minimum a wide mock pushed the cell (and the mock) past the edge. */
+.tour-stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tour-stage > * {
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  /* Once scrolled, the bar is solid: headings passing under it never mix with the logo (and phones skip the blur). */
+  .ln-nav.scrolled {
+    background: var(--bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  /* Language and the small links: big enough to tap. */
+  .ln-lang button {
+    width: 44px;
+    min-height: 36px;
+  }
+  .ln-fine-link {
+    position: relative;
+  }
+  .ln-fine-link::after {
+    content: '';
+    position: absolute;
+    inset: -12px -4px;
+  }
+}

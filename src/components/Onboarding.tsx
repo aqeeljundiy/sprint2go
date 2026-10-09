@@ -150,14 +150,14 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
             {(preview ? ['Account', ...steps] : steps).map((s, j) => {
               const i = preview ? j - 1 : j;
               return (
-                <span key={s} className={i === step ? 'on' : i < step ? 'done' : ''}>
-                  <b>{i < step ? <Check size={12} /> : j + 1}</b> {s}
+                <span key={s} className={i === step ? 'on' : i < step ? 'done' : ''} aria-current={i === step ? 'step' : undefined}>
+                  <b>{i < step ? <Check size={12} /> : j + 1}</b> <span className="ob-step-name">{s}</span>
                 </span>
               );
             })}
           </div>
           {preview && <span className="ob-preview-tag">Preview · nothing is saved</span>}
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm ob-close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
         </header>
