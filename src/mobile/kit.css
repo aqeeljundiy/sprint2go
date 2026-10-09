@@ -1,0 +1,361 @@
+/* ==========================================================================
+   The touch kit: Sheet, ActionSheet, SwipeRow, PushScreen and long-press.
+   Components: src/components/ui/{Sheet,ActionSheet,SwipeRow,PushScreen,useLongPress}.
+   Their closing animations (.is-leaving) live with the others in polish.css.
+   Guide for using them: docs/mobile-kit.md.
+   ========================================================================== */
+
+/* ---------- Long-press ---------- */
+
+/* Anything that can be long-pressed: no text selection or the phone's own callout while holding. */
+.lp {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.lp-lifted {
+  transform: scale(0.985);
+  box-shadow: 0 10px 30px -12px rgba(16, 18, 24, 0.35);
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.18s;
+}
+
+/* ---------- Sheet ---------- */
+
+.sheet-scrim {
+  --shade: 1;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-pop);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: var(--kb, 0px); /* rides above the phone's keyboard */
+  background: rgba(10, 12, 20, calc(0.38 * var(--shade)));
+  animation: fade-in 0.18s ease-out;
+  transition: padding-bottom 0.18s ease-out;
+}
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100dvh - var(--kb, 0px) - max(12px, env(safe-area-inset-top)) - 12px);
+  border-radius: 20px 20px 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  padding-bottom: env(safe-area-inset-bottom);
+  outline: 0;
+  animation: sheet-up 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.kb-open .sheet {
+  padding-bottom: 0; /* the keyboard already covers the home bar */
+}
+.sheet-tall {
+  min-height: min(66dvh, calc(100dvh - var(--kb, 0px) - 48px));
+}
+.sheet-full {
+  height: calc(100dvh - var(--kb, 0px) - max(12px, env(safe-area-inset-top)) - 8px);
+}
+.sheet-grab {
+  flex: none;
+  width: 38px;
+  height: 5px;
+  margin: 8px auto 4px;
+  border-radius: 5px;
+  background: var(--border);
+  touch-action: none;
+}
+.sheet-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 2px 16px 6px;
+  touch-action: none;
+}
+.sheet-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 12px;
+}
+.sheet-foot {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--line);
+}
+/* Rising from above the tab bar, which stays in view (More): the bar's room is kept free. */
+.sheet-scrim.above-bar {
+  bottom: var(--bar-space, 0px);
+  padding-bottom: 0;
+  overflow: hidden; /* it slides in and out from behind the bar */
+}
+.above-bar .sheet {
+  padding-bottom: 8px;
+  max-height: calc(100dvh - var(--bar-space, 0px) - max(12px, env(safe-area-inset-top)) - 12px);
+}
+/* Wider screens: a centred panel, not a sheet from the bottom. */
+@media (min-width: 768px) {
+  .sheet-scrim {
+    align-items: center;
+    padding: 24px;
+  }
+  .sheet {
+    width: min(480px, 100%);
+    max-height: min(680px, calc(100dvh - 48px));
+    border-radius: 16px;
+    padding-bottom: 0;
+    animation: pop-in 0.18s ease-out backwards;
+  }
+  .sheet-full,
+  .sheet-tall {
+    height: auto;
+    min-height: 0;
+  }
+  .sheet-grab {
+    display: none;
+  }
+  .sheet-head {
+    padding-top: 14px;
+  }
+}
+
+/* ---------- ActionSheet (and any list of rows in a sheet) ---------- */
+
+.as-list {
+  display: grid;
+  gap: 1px;
+}
+.as-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+.as-item:hover:not(:disabled),
+.as-item:focus-visible {
+  background: var(--hover);
+}
+.as-item:active:not(:disabled) {
+  background: var(--hover);
+}
+.as-item:disabled {
+  opacity: 0.45;
+}
+.as-item.danger {
+  color: var(--danger);
+}
+.as-icon {
+  flex: none;
+  color: var(--text-3);
+}
+.as-item.danger .as-icon {
+  color: inherit;
+}
+.as-label {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.as-label small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.as-check {
+  flex: none;
+  color: var(--accent);
+}
+.as-sep {
+  height: 1px;
+  margin: 4px 12px;
+  background: var(--line);
+}
+.as-group {
+  padding: 12px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+/* As a desktop menu: the denser size of the app's other menus. */
+.pop .as-item {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  gap: 10px;
+}
+.pop .as-item .as-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- SwipeRow ---------- */
+
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+}
+.swipe-row.can-swipe > .swipe-face {
+  touch-action: pan-y; /* up and down scroll; sideways is the swipe */
+}
+.swipe-face {
+  position: relative;
+  background: var(--surface);
+}
+.swipe-face:not(.moving) {
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.swipe-face.gone {
+  transition: transform 0.18s cubic-bezier(0.4, 0, 1, 1);
+}
+.swipe-under {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 22px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--surface-2);
+  transition: background 0.15s, color 0.15s;
+}
+.swipe-under.from-end {
+  flex-direction: row-reverse;
+}
+.swipe-under svg {
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.swipe-under.armed svg {
+  transform: scale(1.15);
+}
+.swipe-under.armed,
+.swipe-under.tone-neutral.armed {
+  color: #fff;
+  background: var(--text-3);
+}
+.swipe-under.tone-accent.armed {
+  background: var(--accent);
+}
+.swipe-under.tone-ok.armed {
+  background: var(--ok-solid);
+}
+.swipe-under.tone-warn.armed {
+  background: var(--warn-solid);
+}
+.swipe-under.tone-danger.armed {
+  background: var(--danger);
+}
+
+/* ---------- PushScreen ---------- */
+
+.push-screen {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-panel);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  animation: push-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  box-shadow: -12px 0 40px -20px rgba(0, 0, 0, 0.35);
+}
+@keyframes push-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+.push-head {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: max(4px, env(safe-area-inset-top)) 8px 4px 4px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.push-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px 0 6px;
+  border-radius: 12px;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.push-back:hover,
+.push-back:active {
+  background: var(--hover);
+}
+.push-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.push-actions {
+  display: flex;
+  gap: 2px;
+}
+.push-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--kb, 0px));
+}
+.push-foot {
+  flex: none;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  margin-bottom: var(--kb, 0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .sheet-scrim,
+  .push-screen {
+    animation: fade-in 0.15s ease-out backwards;
+  }
+  .swipe-face:not(.moving),
+  .swipe-face.gone,
+  .lp-lifted,
+  .sheet-scrim {
+    transition: none;
+  }
+}
