@@ -5,8 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CalEvent, CalendarDef } from './types';
 import { HOLIDAY_COUNTRIES, holidayCountry } from './data/holidays';
-import { mark, t } from './i18n';
-import { useLang } from './i18n/useLang';
+import { getLang, mark, t } from './i18n/index'; // the full path: the unit tests load this file
 
 /** The id of a person's own holiday calendar for a country (the company's is holidayCalendarId). */
 export const personalHolidayId = (code: string) => `hol-x-${code}`;
@@ -46,7 +45,7 @@ export function useHolidayRegions({ chosen, companyCountry, live }: { chosen: st
   const regions = useMemo(() => regionsOf(chosen, companyCountry), [chosen, companyCountry]);
   const extra = useMemo(() => regions.filter((c) => c !== companyCountry), [regions, companyCountry]);
   const [lists, setLists] = useState<Record<string, HolidayList>>({});
-  const lang = useLang(); // the names and notes below are words
+  const lang = getLang(); // the names and notes below are words (the app re-renders on a switch)
   const key = extra.join(',');
   useEffect(() => {
     if (!live) return;
