@@ -1059,6 +1059,30 @@ await test('Trials: one per person and per company domain; an operator can allow
   assert.equal(billingMod.trialOnCreate(P('free'), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr5', name: 'X' }).why, undefined);
 });
 
+await test('BIMI: a logo passes only with the SVG Tiny PS basics, and the record points at its stable address', async () => {
+  const bimi = await import('../server/bimi.ts');
+  const good = '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 100 100"><title>Pixel and Profits</title><rect width="100" height="100" fill="#5b5bf6"/><path d="M20 20h60v60H20z" fill="url(#g)"/></svg>';
+  assert.deepEqual(bimi.svgProblems(good), []);
+  const has = (svg, re) => bimi.svgProblems(svg).some((p) => re.test(p));
+  assert.ok(has(good.replace(' baseProfile="tiny-ps"', ''), /baseProfile="tiny-ps"/), 'the profile');
+  assert.ok(has(good.replace('version="1.2"', 'version="1.1"'), /version="1\.2"/), 'the version');
+  assert.ok(has(good.replace('0 0 100 100', '0 0 120 80'), /isn’t square: its viewBox is 120 by 80/), 'square');
+  assert.ok(has(good.replace('<title>Pixel and Profits</title>', ''), /<title>/), 'a title');
+  assert.ok(has(good.replace('<rect', '<script>alert(1)</script><rect'), /script/), 'no scripts');
+  assert.ok(has(good.replace('<rect', '<rect onclick="x()"'), /event handlers/), 'no handlers');
+  assert.ok(has(good.replace('<rect', '<image href="https://evil.example/x.png"/><rect'), /embedded picture/), 'no pictures');
+  assert.ok(has(good.replace('url(#g)', 'url(https://evil.example/f.svg#g)'), /outside the file/), 'no outside references');
+  assert.ok(has(good.replace('<rect', '<use xlink:href="other.svg#a"/><rect'), /outside the file/), 'no outside use');
+  assert.ok(has(good.replace('<rect', '<animate attributeName="x"/><rect'), /animated/), 'still');
+  assert.ok(has('<!DOCTYPE svg [<!ENTITY x "y">]>' + good.replace('<?xml version="1.0" encoding="UTF-8"?>', ''), /DOCTYPE/), 'no entities');
+  assert.ok(has(good.replace('<svg ', '<svg x="0" '), /x or y/), 'no x or y on the root');
+  assert.ok(has(good + ' '.repeat(33 * 1024), /32 KB/), 'small');
+  assert.deepEqual(bimi.svgProblems('<html></html>'), ['It isn’t an SVG file: it should start with an <svg> element.']);
+  const url = bimi.logoUrl('https://app.sprint2go.com', 'pnp');
+  assert.equal(url, 'https://app.sprint2go.com/bimi/pnp.svg');
+  assert.equal(bimi.bimiRecord(url), 'v=BIMI1; l=https://app.sprint2go.com/bimi/pnp.svg; a=;');
+});
+
 /* read tracking: reminders and Outlook.com's picture proxy (server/readTracking.ts) */
 
 const readTracking = await import('../server/readTracking.ts');

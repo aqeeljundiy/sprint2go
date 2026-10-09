@@ -296,6 +296,7 @@ export interface Workspace {
   timeZone?: string;
   createdAt?: string;
   suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
+  bimi?: { fileId: string; name: string; at: string; by: string }; // the server's: the BIMI logo (Settings, Email delivery)
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string; secured?: boolean }; // WhatsApp Business (Meta Cloud API); the token and app secret stay on the server. secured: Meta's signatures can be checked, so messages are read
   /** Read tracking on mail to people outside the company (Settings, Security & data). Off: nobody can track. */
   readTracking?: boolean;

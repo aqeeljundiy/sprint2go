@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, Cloud, Copy, Loader2, MailX, PenLine, Plus, RefreshCw, Server, Shuffle, Trash2, Zap, type LucideIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Check, Cloud, Copy, ImageOff, Loader2, MailX, PenLine, Plus, RefreshCw, Server, Shuffle, Trash2, Upload, Zap, type LucideIcon } from 'lucide-react';
 import type { Account, EmailSetup, MailAlias, MailProvider, Workspace } from '../../types';
 import { AliasDialog } from '../WorkspaceForms';
 import { server } from '../../sync';
@@ -397,6 +397,8 @@ export function EmailDeliverySection({
           )}
         </div>
 
+        {info?.ownDomain && server.on && <BimiBlock ws={ws} copy={copy} copied={copied} toast={toast} />}
+
         {ws.emailSetup !== 'none' && (
           <div className="set-block">
             <div className="ed-head">
@@ -592,5 +594,156 @@ export function EmailDeliverySection({
         />
       )}
     </>
+  );
+}
+
+type BimiState = {
+  domain: string;
+  url: string;
+  https: boolean;
+  logo: { name: string; at: string } | null;
+  record: { type: string; host: string; value: string };
+  dns: { found: string | null; matches: boolean };
+  dmarc: { found: string | null; policy: string | null; enforced: boolean };
+};
+
+/**
+ * Logo in inboxes (BIMI): the plumbing only. An SVG logo checked for the SVG Tiny PS basics, served at a stable https
+ * address, and the exact default._bimi record with what DNS says. Gmail also needs a VMC or CMC certificate, which
+ * this can't get, so it never says the logo shows.
+ */
+function BimiBlock({ ws, copy, copied, toast }: { ws: Workspace; copy: (v: string) => void; copied: string; toast: (t: string) => void }) {
+  const [st, setSt] = useState<BimiState | null>(null);
+  const [problems, setProblems] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const call = (method: 'GET' | 'POST' | 'DELETE', body?: unknown) =>
+    fetch(method === 'GET' ? `/api/mail/bimi?ws=${encodeURIComponent(ws.id)}` : '/api/mail/bimi', { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw Object.assign(new Error((d as { error?: string }).error ?? 'Something went wrong.'), { problems: (d as { problems?: string[] }).problems ?? [] });
+      return d as BimiState;
+    });
+  useEffect(() => {
+    void call('GET').then(setSt, () => setSt(null));
+  }, [ws.id, ws.bimi?.fileId, ws.domains.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const upload = async (f: File) => {
+    setBusy(true);
+    setProblems([]);
+    try {
+      setSt(await call('POST', { workspaceId: ws.id, name: f.name, svg: await f.text() }));
+      toast('Logo saved. Add the record below to publish it.');
+    } catch (e) {
+      const list = (e as { problems?: string[] }).problems ?? [];
+      if (list.length) setProblems(list);
+      else toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    setBusy(true);
+    try {
+      setSt(await call('DELETE', { workspaceId: ws.id }));
+      toast('Logo removed. Remove the default._bimi record too.');
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const rows: { key: string; ok: boolean; title: string; text: string }[] = st
+    ? [
+        { key: 'logo', ok: !!st.logo, title: 'The logo', text: st.logo ? `${st.logo.name}, checked ${relative(st.logo.at)}.` : 'None yet. Upload an SVG Tiny PS file: square, with a title, no scripts or links to other files.' },
+        { key: 'https', ok: st.https, title: 'Its address', text: st.https ? st.url : `${st.url}: inboxes only read logos over https, so this works once it’s on the live server.` },
+        { key: 'record', ok: st.dns.matches, title: 'The record', text: st.dns.matches ? `default._bimi.${st.domain} points at this logo.` : st.dns.found ? `default._bimi.${st.domain} has a different record: ${st.dns.found}` : `Not in DNS yet.` },
+        { key: 'dmarc', ok: st.dmarc.enforced, title: 'DMARC policy', text: st.dmarc.enforced ? `p=${st.dmarc.policy}, as BIMI needs.` : st.dmarc.found ? `BIMI needs p=quarantine or p=reject for all mail; ${st.domain} has p=${st.dmarc.policy ?? 'none'}.` : `BIMI needs a DMARC record with p=quarantine or p=reject; ${st.domain} has none.` },
+      ]
+    : [];
+  return (
+    <div className="set-block">
+      <div className="ed-head">
+        <h3>Logo in inboxes (BIMI)</h3>
+        <span className="ed-head-actions">
+          {st?.logo && (
+            <button type="button" className="ghost-btn sm" disabled={busy} onClick={() => void remove()}>
+              <Trash2 size={14} /> Remove
+            </button>
+          )}
+          <button type="button" className="ghost-btn sm outline" disabled={busy || !st} onClick={() => fileRef.current?.click()}>
+            {busy ? <Loader2 size={14} className="spin" /> : <Upload size={14} />} {st?.logo ? 'Replace' : 'Upload a logo'}
+          </button>
+        </span>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".svg,image/svg+xml"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void upload(f);
+          }}
+        />
+      </div>
+      <p className="small muted">Optional. Some inboxes show your logo next to mail from {st?.domain ?? 'your domain'}. Gmail also needs a VMC or CMC certificate for it: those need 12 months of the logo in use, or a registered trademark. Until you have one, the logo doesn’t show in Gmail.</p>
+      <div className={`fold ${problems.length ? 'open' : ''}`}>
+        <div>
+          {problems.length > 0 && (
+            <div className="ed-owner bad bimi-problems" role="alert">
+              <AlertTriangle size={15} />
+              <span>
+                <strong>This logo can’t be used yet:</strong>
+                <ul>
+                  {problems.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      {!st && <div className="lazy-wait" aria-hidden />}
+      {st && (
+        <>
+          <div className="bimi-main">
+            <span className="bimi-logo" aria-label={st.logo ? 'Your logo' : 'No logo yet'}>{st.logo ? <img src={`/bimi/${encodeURIComponent(ws.id)}.svg?v=${encodeURIComponent(st.logo.at)}`} alt="" /> : <ImageOff size={18} />}</span>
+            <div className="ed-records bimi-checks">
+              {rows.map((r) => (
+                <div key={r.key} className={`ed-record ${r.ok ? 'ok' : 'bad'}`}>
+                  <span className="ed-rec-main">
+                    <strong>{r.title}</strong>
+                    <small className="muted">{r.text}</small>
+                  </span>
+                  <span className="ed-rec-state">{r.ok ? <Check size={15} /> : <AlertTriangle size={15} />}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* The record, once there's a logo for it to point at: folds open and closed with the logo. */}
+          <div className={`fold ${st.logo ? 'open' : ''}`}>
+            <div>
+            <div className="ed-records">
+              <div className={`ed-record ${st.dns.matches ? 'ok' : ''}`}>
+                <span className="ed-rec-type mono">{st.record.type}</span>
+                <span className="ed-rec-main">
+                  <span className="ed-rec-host mono">{st.record.host}</span>
+                  <span className="ed-rec-value">
+                    <code className="mono">{st.record.value}</code>
+                    <button type="button" className="icon-btn sm" title="Copy" onClick={() => copy(st.record.value)}>
+                      {copied === st.record.value ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                  </span>
+                  <small className="muted">Points inboxes at your logo. The empty a= is where a VMC or CMC certificate goes once you have one.</small>
+                </span>
+                <span className="ed-rec-state">{st.dns.matches ? <Check size={15} /> : null}</span>
+              </div>
+            </div>
+            </div>
+          </div>
+          <p className="small muted">{st.logo && st.dns.matches && st.dmarc.enforced && st.https ? 'Ready for inboxes that show logos without a certificate. Not in Gmail: it needs the VMC or CMC certificate.' : 'Not showing anywhere yet.'}</p>
+        </>
+      )}
+    </div>
   );
 }

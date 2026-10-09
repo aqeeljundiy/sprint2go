@@ -16,6 +16,7 @@
 // 13. two-step sign-in: "Remember this device" for 30 days, signed and bound to the person, forgotten on Forget,
 //     "Sign out everywhere" and a password change
 // 14. free trials: one per person and per company domain, the reason on the plan, and one more when an operator allows it
+// 15. BIMI: the logo is checked for SVG Tiny PS basics, served from a stable address in a sandbox, admins only
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -494,6 +495,25 @@ try {
     check(granted.ok && !third?.trialRefused && !!doc('workspaces', 'ws-trial-2')?.plan?.trialEnds, 'after an operator allows another, the next company starts on its trial');
     const fourth = await aqeel.post('/api/workspace', trialWs('ws-trial-3', 'Fourth Co')).then((r) => r.json());
     check(!!fourth.trialRefused && doc('workspaces', 'ws-trial-3')?.plan?.tier === 'free', 'and only that one');
+  }
+
+  /* ---------- 15. BIMI: the logo is checked, served from a stable address, and only admins change it ---------- */
+  {
+    const good = '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64"><title>Pixel and Profits</title><rect width="64" height="64" fill="#5b5bf6"/></svg>';
+    const bad = good.replace('<rect', '<script>alert(document.cookie)</script><rect');
+    const refused = await aqeel.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: bad });
+    const refusedBody = await refused.json();
+    check(refused.status === 400 && refusedBody.problems?.some((p) => /script/.test(p)) && !doc('workspaces', 'pnp').bimi, 'a logo with a script is refused, with the reason, and nothing is kept');
+    const member = await (await signIn('nanda@pixelandprofits.com')).post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good });
+    check(member.status === 403, 'a member can’t set the company’s logo');
+    const saved = await aqeel.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good }).then((r) => r.json());
+    check(saved.record?.host === 'default._bimi' && saved.record.value === `v=BIMI1; l=${saved.url}; a=;` && saved.url.endsWith('/bimi/pnp.svg') && !!doc('workspaces', 'pnp').bimi?.fileId, 'an admin’s logo is kept, with the exact default._bimi record');
+    const served = await fetch(`${base}/bimi/pnp.svg`);
+    const servedBody = await served.text();
+    check(served.ok && served.headers.get('content-type') === 'image/svg+xml' && /sandbox/.test(served.headers.get('content-security-policy') ?? '') && servedBody === good, 'it’s served without signing in, as an SVG in a sandbox');
+    check((await fetch(`${base}/bimi/elk.svg`)).status === 404, 'a company without a logo has nothing there');
+    await aqeel.sync('workspaces', [{ ...doc('workspaces', 'pnp'), bimi: { fileId: secretFile.url.split('/').pop(), name: 'x', at: now(), by: 'u-aqeel' } }]);
+    check(!!doc('workspaces', 'pnp').bimi?.fileId && doc('workspaces', 'pnp').bimi.fileId !== secretFile.url.split('/').pop(), 'the app can’t point the logo at another file');
   }
 
   db.close();

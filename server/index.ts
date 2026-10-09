@@ -41,6 +41,7 @@ import { FetchError } from './safeFetch.ts';
 import * as twostep from './twostep.ts';
 import * as whatsapp from './whatsapp.ts';
 import * as billing from './billing.ts';
+import * as bimi from './bimi.ts';
 import * as aiLimits from './aiLimits.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
@@ -1212,6 +1213,16 @@ createServer(async (req, res) => {
   // Read tracking's picture and links in mail people sent (server/readTracking.ts): public, rate limited, and they
   // answer the same whatever happened.
   if (p.startsWith('/t/') && readTracking.serveTracking(req, res, url, ipOf(req), tooMany(`track:${ipOf(req)}`, 600, 60_000))) return;
+  // A company's BIMI logo (server/bimi.ts): public, at the same address for as long as it has one, never anything else.
+  const bimiLogo = p.match(/^\/bimi\/([\w-]{1,64})\.svg$/);
+  if (bimiLogo && (req.method === 'GET' || req.method === 'HEAD')) {
+    const w = db.getDoc('workspaces', bimiLogo[1]) as any;
+    const f = w?.bimi?.fileId ? db.fileInfo(w.bimi.fileId) : null;
+    const data = f && f.workspaceId === w.id ? db.fileData(f.id) : null;
+    if (!data) return (res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }), res.end('No logo here.'));
+    res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'access-control-allow-origin': '*' });
+    return res.end(req.method === 'HEAD' ? undefined : data);
+  }
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
   if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString(), build: BUILD });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
@@ -1987,6 +1998,31 @@ createServer(async (req, res) => {
       broadcast('workspaces', [nextWs], []);
       return json(res, 200, { away: saved });
     }
+    // BIMI (Settings, Email delivery): the logo, its record and what DNS says. Admins only; the logo is checked here.
+    if (p === '/api/mail/bimi') {
+      const b = req.method === 'GET' ? { workspaceId: url.searchParams.get('ws') } : await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === b.workspaceId);
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change the company’s logo in inboxes.' });
+      const domain = mailer.mailDomainOf(ws);
+      if (domain === mailer.MAIL_HOST) return json(res, 409, { error: 'A logo in inboxes needs your own mail domain. Add it under General first.' });
+      if (req.method === 'GET') return json(res, 200, await bimi.bimiState(ws, domain, PUBLIC_URL));
+      const ro = billing.readOnlyWhy(ws);
+      if (ro) return json(res, 403, { error: ro });
+      let next: any;
+      if (req.method === 'DELETE') next = { ...ws, bimi: undefined };
+      else if (req.method === 'POST') {
+        const svg = String(b.svg ?? '');
+        const problems = bimi.svgProblems(svg);
+        if (problems.length) return json(res, 400, { error: 'This logo can’t be used for BIMI yet.', problems });
+        const id = randomBytes(16).toString('hex');
+        db.saveFile({ id, workspaceId: ws.id, by: me, name: String(b.name ?? 'logo.svg').slice(0, 120), type: 'image/svg+xml', size: Buffer.byteLength(svg) }, Buffer.from(svg));
+        next = { ...ws, bimi: { fileId: id, name: String(b.name ?? 'logo.svg').slice(0, 120), at: new Date().toISOString(), by: me } };
+      } else return json(res, 405, {});
+      db.writeDocs('workspaces', [next], [], me);
+      broadcast('workspaces', [next], []);
+      platform.event(next.bimi ? 'mail.bimi-logo' : 'mail.bimi-removed', ws.id, me);
+      return json(res, 200, await bimi.bimiState(next, domain, PUBLIC_URL));
+    }
     if (p === '/api/mail/aliases' && req.method === 'POST') {
       // Extra addresses that deliver into mailboxes here. Checked here: at the company's own domain, not anyone's
       // mailbox already, and pointing at mailboxes hosted here.
@@ -2156,7 +2192,7 @@ createServer(async (req, res) => {
       const ids = new Set(people.map((u) => u.id));
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
-      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...wClean } = w as any;
+      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, bimi: _bimi, ...wClean } = w as any;
       if (!DEMO) wClean.mailRouting = serverRouting(wClean.mailRouting, undefined);
       if (wClean.mailRoute === 'boosted' && !mailer.boostedAvailable()) wClean.mailRoute = 'own';
       // One free trial per person and per company domain (server/billing.ts): otherwise the company starts on Free.
@@ -2645,7 +2681,7 @@ createServer(async (req, res) => {
             // the routing checks' results (the admins only switch the daily check on or off), the company's own address
             // with its state (changed through /api/white-label/domain only), the mail aliases (set through the server)
             // and WhatsApp (connected through the server: its number decides whose messages arrive here).
-            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+            const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, bimi: before.bimi, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
             // Boosted sending only where this server has it.
             if ((d as any).mailRoute === 'boosted' && before.mailRoute !== 'boosted' && !mailer.boostedAvailable()) (d as any).mailRoute = before.mailRoute;
             // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
@@ -2675,7 +2711,7 @@ createServer(async (req, res) => {
             const timeZone = isZone((d as any).timeZone) ? (d as any).timeZone : before.timeZone;
             return { ...d, ...own, timeZone, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
           }
-          const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...fresh } = d as any;
+          const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, bimi: _bimi, ...fresh } = d as any;
           if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
           // One free trial per person and per company domain, as for /api/workspace.
           const trial = billing.trialOnCreate(planFromApp(fresh.plan, undefined).plan, { id: me, email: String(person.email ?? '') }, { id: String(fresh.id), name: String(fresh.name ?? ''), domains: fresh.domains });
