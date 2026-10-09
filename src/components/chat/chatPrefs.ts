@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { usePersisted } from '../../settings';
-import type { Channel, ChatMessage } from '../../types';
+import type { Channel, ChatMessage, Status } from '../../types';
+import { mark, t } from '../../i18n';
+import { fmtDate, fmtDay, fmtTime, fmtWeekday } from '../../i18n/format';
 
 /*
  * Each person's own chat state. It lives in their settings (prefs), so it follows them to every device, and the
@@ -16,7 +18,33 @@ export type Draft = { text: string; at: string };
 export type SavedItem = { id: string; channelId: string; at: string; remindAt?: string; reminded?: boolean };
 export type TileId = 'catchup' | 'threads' | 'drafts' | 'saved' | 'live';
 export type Tiles = { order: TileId[]; hidden: TileId[] };
-export const TILE_NAMES: Record<TileId, string> = { catchup: 'Catch up', threads: 'Threads', drafts: 'Drafts and sent', saved: 'Saved', live: 'Live calls' };
+/** Each tile's name, in the reader's language (getters: read while rendering). */
+export const TILE_NAMES: Record<TileId, string> = {
+  get catchup() {
+    return t('Catch up');
+  },
+  get threads() {
+    return t('Threads');
+  },
+  get drafts() {
+    return t('Drafts and sent');
+  },
+  get saved() {
+    return t('Saved');
+  },
+  get live() {
+    return t('Live calls');
+  },
+};
+// "In a meeting" comes from the calendar on its own; people only set Focus, Away or their own words. A preset is saved
+// in English and read in each reader's language (statusText).
+export const STATUS_PRESETS: Status[] = [
+  { emoji: '🎯', text: mark('Focusing, slow to reply') },
+  { emoji: '🌴', text: mark('Away') },
+];
+/** A status's words: the presets in the reader's language, people's own words as they wrote them. */
+export const statusText = (s: Status) => (STATUS_PRESETS.some((x) => x.text === s.text) ? t(s.text) : s.text);
+
 const DEFAULT_TILES: Tiles = { order: ['catchup', 'threads', 'drafts', 'saved', 'live'], hidden: [] };
 
 /** A draft's key: the conversation, or the conversation and the thread. */
@@ -36,17 +64,20 @@ export function muteUntil(kind: 'hour' | 'tomorrow' | 'always'): string {
 }
 export const isMutedValue = (v: string | undefined, now = Date.now()) => v === 'always' || (!!v && Date.parse(v) > now);
 
-/** "14:30", "tomorrow 09:00" or "Tue 12 Oct, 09:00": when something happens, said briefly. */
+/**
+ * "today at 14:30", "tomorrow at 09:00" or "Tue 12 Oct, 09:00": when something happens, said briefly, in the reader's
+ * language. A value for a whole sentence: t('Goes {when}', { when: whenText(at) }).
+ */
 export function whenText(iso: string) {
   const d = new Date(iso);
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = fmtTime(d);
   const day = (x: Date) => x.toDateString();
   const now = new Date();
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
-  if (day(d) === day(now)) return `today at ${time}`;
-  if (day(d) === day(tomorrow)) return `tomorrow at ${time}`;
-  return `${d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}, ${time}`;
+  if (day(d) === day(now)) return t('today at {time}', { time });
+  if (day(d) === day(tomorrow)) return t('tomorrow at {time}', { time });
+  return t('{day}, {time}', { day: fmtWeekday(d), time });
 }
 
 /** A list's short time: 14:05 today, Yesterday, Tue this week, 12 Oct before that. */
@@ -54,10 +85,10 @@ export function shortTime(iso: string) {
   const d = new Date(iso);
   const now = new Date();
   const days = Math.floor((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
-  if (days <= 0) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return d.toLocaleDateString([], { weekday: 'short' });
-  return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  if (days <= 0) return fmtTime(d);
+  if (days === 1) return t('Yesterday');
+  if (days < 7) return fmtDate(d, { weekday: 'short' });
+  return fmtDay(d);
 }
 
 type Setters = {

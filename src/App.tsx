@@ -20,7 +20,7 @@ import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp, storageGB } from './data/pricing';
-import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
+import { MAIL_USAGE, QUOTA, kindOf, parseSize, sizeText } from './data/drive';
 import { fmtTime } from './calendarUtils';
 import { fullDate, lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { templatesFor, type TaskTemplate } from './data/templates';
@@ -61,7 +61,7 @@ import type { CalView } from './components/CalendarView';
 import { CalendarSidebar } from './components/CalendarSidebar';
 import { ScheduleTask } from './components/calendar/ScheduleTask';
 import { AccountMenu, type SettingsSection } from './components/AccountMenu';
-import { DriveSidebar } from './components/DriveSidebar';
+import { DriveSidebar, DRIVE_SECTIONS } from './components/DriveSidebar';
 import { DrivePreview } from './components/DrivePreview';
 import { AppRail, APPS, appWord } from './components/AppRail';
 import { AppSettingsButton, appSettingsLinks } from './components/AppSettings';
@@ -73,13 +73,13 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
 import { ChatPages } from './components/chat/Pages';
 import { useDockRef } from './components/chat/huddleDock';
 import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
 import { chanName } from './components/chat/Sheets';
 import { preview as msgPreview } from './components/chat/Message';
-import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
+import { ChannelDialog, CATEGORY_ONE, categoryText } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { openSettingsList } from './components/settingsList';
 import { PushScreen } from './components/ui/PushScreen';
@@ -109,7 +109,7 @@ import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
-import { msg, phrase, t, textOf, tn, type Msg } from './i18n';
+import { mark, msg, phrase, t, textOf, tn, tx, type Msg } from './i18n';
 import { fmtDay, fmtList, fmtWeekday } from './i18n/format';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
@@ -587,7 +587,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const openDump = (text: string) => (aiOn ? setDump(text) : aiOff(t('AI isn’t set up for this company yet, so the brain dump can’t turn notes into tasks. An admin can add an AI key in Settings, AI, or switch to the AI plan.')));
   const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : aiOff());
   const botOn = !server.on || caps.demo || inSandbox || recorderOn;
-  const openSendBot = () => (botOn ? (setSendBotSeed(null), setSendBotOpen(true)) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
+  const openSendBot = () => (botOn ? (setSendBotSeed(null), setSendBotOpen(true)) : explainOff(t('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.')));
   const calendarsOn = !server.on || caps.demo || inSandbox || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
   const go = (m: Mode) => {
     if (m !== 'settings') setLastMode(m);
@@ -975,7 +975,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         date: new Date().toISOString(),
         body: m.text,
         html: m.html,
-        attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: fmtSize(f.size) })) : undefined,
+        attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: sizeText(f.size) })) : undefined,
         trackOptions: m.track && (location !== 'drafts' || scheduled) ? m.trackOptions : undefined,
         tracking:
           m.track && (location !== 'drafts' || scheduled)
@@ -1586,10 +1586,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const summaryCost = (() => {
     const trial = !!ws.plan?.trialEnds && ws.plan.trialEnds > nowIso();
     const included = ((ws.plan?.track === 'ai' && ws.plan.tier !== 'free') || trial) && ws.ai?.payer !== 'own';
-    if (included) return 'about 1 summary from your AI allowance';
+    if (included) return t('about 1 summary from your AI allowance');
     const job = ws.ai?.jobs.digest ?? ws.ai?.jobs.summary;
     const c = job ? costPer100(JOBS.find((j) => j.id === 'digest')!, job.provider, job.model) : null;
-    return c !== null && c !== undefined ? `about ${rp(c / 100)} on your own AI key` : 'a small amount on your own AI key';
+    return c !== null && c !== undefined ? t('about {cost} on your own AI key', { cost: rp(c / 100) }) : t('a small amount on your own AI key');
   })();
 
   /** A notice for someone else. Its words come from msg(), so each reader sees them in their own language (docs/i18n.md). */
@@ -1648,8 +1648,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return id;
   };
 
-  const postChat = (channelId: string, text: string, taskId?: string, fromId = user.id) =>
-    setMessages((ms) => [...ms, { id: uid(), channelId, userId: fromId, text, at: nowIso(), taskId }]);
+  const postChat = (channelId: string, text: string, taskId?: string, fromId = user.id, tr?: Msg) =>
+    setMessages((ms) => [...ms, { id: uid(), channelId, userId: fromId, text, at: nowIso(), taskId, ...(tr ? { tr } : {}) }]);
 
   /** A short email from me to a teammate (used for task notifications). */
   const emailTeammate = (toId: string, subject: string, text: string) => {
@@ -1738,7 +1738,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     for (const who of (task.assignees ?? []).filter((x) => x !== user.id)) {
       notify(who, 'task', msg('{name} assigned you {task}', { name: myFirst, task: describeP(task) }), { app: 'tasks', id: task.id });
-      if (tell.chat) postChat(dmWith(who), `📌 New task for you: ${describe(task)}`, task.id);
+      if (tell.chat) {
+        const line = msg('📌 New task for you: {task}', { task: describeP(task) });
+        postChat(dmWith(who), line.text, task.id, undefined, line.tr);
+      }
       if (tell.email)
         emailTeammate(who, `New task: ${task.title}`, `Hi ${firstOf(who)},\n\nI've assigned you a task: ${describe(task)}.\n\nYou'll find it in ${product.name} under Tasks.`);
     }
@@ -1822,7 +1825,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       // Celebrate in the client's (or team's) channel, and with a little confetti for the person who finished it.
       if (ws.chat?.celebrations !== false && !isBrief(t)) {
         const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && c.category !== 'shared' && ((t.clientId && c.clientId === t.clientId) || (!t.clientId && t.teamId && c.teamId === t.teamId)));
-        if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `${myFirst} finished “${t.title}”`, at: nowIso(), kind: 'celebration', taskId: t.id }]);
+        if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, ...msg('{name} finished “{task}”', { name: myFirst, task: t.title }), at: nowIso(), kind: 'celebration', taskId: t.id }]);
         if (!quiet) celebrate();
       }
       if (!quiet) offerInstall(); // finishing something is a good moment to offer the app
@@ -1963,8 +1966,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout: { ...layout, sections: layout.sections.map((x) => (x.id === sectionId ? next : x)) } } });
     const inSection = channels.filter((c) => c.workspaceId === ws.id && c.kind === 'channel' && !c.archived && sectionIdOf(layout, c) === sectionId);
     setChannels((cs) => cs.map((c) => (inSection.some((x) => x.id === c.id) ? { ...c, members: [...new Set([...c.members.filter((m) => !removed.includes(m) || m === c.ownerId), ...after])] } : c)));
-    after.filter((x) => !before.includes(x) && x !== user.id).forEach((x) => notify(x, 'mention', msg('{name} gave you access to the {section} channels', { name: myFirst, section: sec.name }), { app: 'chat' }));
-    showToast({ text: `${after.length} ${after.length === 1 ? 'person has' : 'people have'} access to ${sec.name} (${inSection.length} channel${inSection.length === 1 ? '' : 's'})` });
+    after.filter((x) => !before.includes(x) && x !== user.id).forEach((x) => notify(x, 'mention', msg('{name} gave you access to the {section} channels', { name: myFirst, section: sec.category ? phrase(sec.name) : sec.name }), { app: 'chat' }));
+    const inChannels = tn(inSection.length, '{n} channel', '{n} channels');
+    showToast({ text: after.length === 1 ? t('1 person has access to {section} ({channels})', { section: sectionTitle(sec), channels: inChannels }) : tn(after.length, '{n} people have access to {section} ({channels})', '{n} people have access to {section} ({channels})', { section: sectionTitle(sec), channels: inChannels }) });
   };
   // Section access stays up to date: channels moved or created in a section, and new team members, get the right people.
   useEffect(() => {
@@ -1997,17 +2001,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // A client channel needs to know which client: ask in the settings.
     if ((category === 'client' || category === 'shared') && !c.clientId) {
       setChanDialog({ id });
-      showToast({ text: `Pick the ${term.one}, then choose the category` });
+      showToast({ text: t('Pick the {project}, then choose the category', { project: term.one }) });
       return;
     }
     const apply = () => {
       const before = c;
       setChannels((cs) => cs.map((x) => (x.id === id ? { ...x, category, guests: category === 'shared' ? x.guests : [] } : x)));
-      showToast({ text: `#${c.name} moved to ${label}`, action: { label: 'Undo', run: () => setChannels((cs) => cs.map((x) => (x.id === id ? before : x))) } });
+      showToast({ text: t('#{channel} moved to {category}', { channel: c.name, category: categoryText(label) }), action: { label: t('Undo'), run: () => setChannels((cs) => cs.map((x) => (x.id === id ? before : x))) } });
     };
     // Leaving "With client" removes the client's guests, so ask first.
     if (c.category === 'shared' && category !== 'shared' && c.guests?.length) {
-      showToast({ text: `Moving #${c.name} out of Shared removes ${c.guests.length} guest${c.guests.length > 1 ? 's' : ''}`, action: { label: 'Move anyway', run: apply }, ms: 8000 });
+      showToast({ text: tn(c.guests.length, 'Moving #{channel} out of Shared removes {n} guest', 'Moving #{channel} out of Shared removes {n} guests', { channel: c.name }), action: { label: t('Move anyway'), run: apply }, ms: 8000 });
       return;
     }
     apply();
@@ -2382,7 +2386,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const files = pl.files ? [...saveChatFiles(pl.files.filter((f) => !f.driveId), ch), ...pl.files.filter((f) => f.driveId)] : undefined;
     const msgId = uid();
     if (pl.voice) tried('voice');
-    const msg: ChatMessage = { id: msgId, channelId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor, taskId: pl.taskId, ref: pl.ref, forwarded: pl.forwarded, sendAt: pl.sendAt };
+    const msg: ChatMessage = { id: msgId, channelId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor, taskId: pl.taskId, ref: pl.ref, forwarded: pl.forwarded, sendAt: pl.sendAt, ...(pl.tr ? { tr: pl.tr } : {}) };
     setMessages((ms) => [...ms, msg]);
     if (pl.sendAt) return;
     chatNotices(msg, ch);
@@ -2421,12 +2425,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const target = to.channelId ?? (to.userId ? dmWith(to.userId) : null);
     const from = channels.find((c) => c.id === m.channelId);
     if (!target || !from) return;
-    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'A guest') : (allUsers.find((u) => u.id === m.userId)?.name ?? m.authorName ?? 'Someone');
+    // Saved with the message: English, shown in each reader's language (Message.tsx).
+    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? mark('A guest')) : (allUsers.find((u) => u.id === m.userId)?.name ?? m.authorName ?? mark('Someone'));
     // Next tick: a brand-new DM has to exist before its first message.
     setTimeout(() => {
       sendChatTo(target, { text: note, forwarded: { channelId: m.channelId, messageId: m.id, userId: m.userId, who, where: chanName(from, allUsers, user.id), text: m.text || msgPreview(m), at: m.at } });
       const toCh = channels.find((c) => c.id === target);
-      showToast({ text: `Forwarded to ${toCh ? chanName(toCh, allUsers, user.id) : firstOf(to.userId)}`, action: { label: 'Open', run: () => openChannel(target) } });
+      showToast({ text: t('Forwarded to {name}', { name: toCh ? chanName(toCh, allUsers, user.id) : firstOf(to.userId) }), action: { label: t('Open'), run: () => openChannel(target) } });
     }, 0);
   };
   const leaveChannel = (id: string) => {
@@ -2434,14 +2439,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!ch) return;
     setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: c.members.filter((x) => x !== user.id) } : c)));
     if (chatId === id) setChatId(null);
-    showToast({ text: `You left ${chanName(ch, allUsers, user.id)}`, action: ch.private ? undefined : { label: 'Undo', run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...new Set([...c.members, user.id])] } : c))) } });
+    showToast({ text: t('You left {name}', { name: chanName(ch, allUsers, user.id) }), action: ch.private ? undefined : { label: t('Undo'), run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...new Set([...c.members, user.id])] } : c))) } });
   };
   const openChatRef = (r: NonNullable<ChatMessage['ref']>) => {
-    if (r.kind === 'note') return wsNotes.some((n) => n.id === r.id) ? openNote(r.id) : showToast({ text: 'That note is private, or isn’t here any more.' });
-    if (r.kind === 'row') return r.tableId && wsTables.some((t) => t.id === r.tableId) ? openTable(r.tableId, r.id) : showToast({ text: t('You can’t open that table.') });
+    if (r.kind === 'note') return wsNotes.some((n) => n.id === r.id) ? openNote(r.id) : showToast({ text: t('That note is private, or isn’t here any more.') });
+    if (r.kind === 'row') return r.tableId && wsTables.some((tb) => tb.id === r.tableId) ? openTable(r.tableId, r.id) : showToast({ text: t('You can’t open that table.') });
     const it = wsDrive.find((d) => d.id === r.id && !d.trashed);
     if (it) setPreview({ item: it, list: [it] });
-    else showToast({ text: 'That file isn’t in Drive any more.' });
+    else showToast({ text: t('That file isn’t in Drive any more.') });
   };
 
   const reactTo = (id: string, emoji: string) =>
@@ -2465,7 +2470,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const deleteMessage = (id: string) => {
     const snapshot = messages;
     setMessages((ms) => ms.filter((m) => m.id !== id && m.parentId !== id));
-    showToast({ text: 'Message deleted', action: { label: 'Undo', run: () => setMessages(snapshot) } });
+    showToast({ text: t('Message deleted'), action: { label: t('Undo'), run: () => setMessages(snapshot) } });
   };
 
   const makeTaskFromMessage = (m: ChatMessage) => {
@@ -2476,7 +2481,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     title = (title.charAt(0).toUpperCase() + title.slice(1)).slice(0, 90);
     const task = createTask({ title, userId: assignee, clientId: ch?.clientId, source: 'chat' });
     setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, taskId: task.id } : x)));
-    showToast({ text: `Task created for ${assignee === user.id ? 'you' : firstOf(assignee)}`, action: { label: 'View', run: () => openTask(task.id) } });
+    showToast({ text: assignee === user.id ? t('Task created for you') : t('Task created for {name}', { name: firstOf(assignee) }), action: { label: t('View'), run: () => openTask(task.id) } });
   };
 
   const DAY_WORDS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -2567,7 +2572,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) later(id, 60, () => next.actions.forEach((_, i) => meetingActionToTask(next, i, true)));
       notify(current.createdBy ?? user.id, 'meeting', actions.length === 1 ? msg('Notes are ready for “{title}” · 1 action item', { title: next.title }) : msg('Notes are ready for “{title}” · {n} action items', { title: next.title, n: actions.length }), { app: 'meet', id });
       if (current.createdBy !== user.id) return;
-      showToast({ text: `Notes ready for “${next.title}”`, action: { label: 'Open', run: () => openMeeting(id) } });
+      showToast({ text: t('Notes ready for “{title}”', { title: next.title }), action: { label: t('Open'), run: () => openMeeting(id) } });
     });
   };
 
@@ -2581,7 +2586,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         setTodos((ts) => ts.filter((t) => !(t.meetingId === m.id && t.source === 'meeting' && !t.done && !t.notes && t.createdBy === user.id)));
         if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) m.actions.forEach((_, i) => meetingActionToTask(m, i, true));
         notify(user.id, 'meeting', m.actions.length === 1 ? msg('Notes are ready for “{title}” · 1 action item', { title: m.title }) : msg('Notes are ready for “{title}” · {n} action items', { title: m.title, n: m.actions.length }), { app: 'meet', id: m.id });
-        showToast({ text: `Notes ready for “${m.title}”`, action: { label: 'Open', run: () => openMeeting(m.id) } });
+        showToast({ text: t('Notes ready for “{title}”', { title: m.title }), action: { label: t('Open'), run: () => openMeeting(m.id) } });
       });
   }, [meetings]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2648,7 +2653,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setMeetings((ms) => ms.filter((m) => m.id !== id));
     setTodos((ts) => ts.filter((t) => t.meetingId !== id || t.done));
     setMeetPage({ kind: 'list' });
-    showToast({ text: 'Meeting deleted', action: { label: 'Undo', run: () => (setMeetings(snapshot.meetings), setTodos(snapshot.todos)) } });
+    showToast({ text: t('Meeting deleted'), action: { label: t('Undo'), run: () => (setMeetings(snapshot.meetings), setTodos(snapshot.todos)) } });
   };
 
   const setMeetingFolder = (id: string, clientId: string | null, remember: boolean) => {
@@ -2658,7 +2663,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const outsiders = [...new Set((m.transcript ?? []).map((l) => l.speaker))].filter((sp) => !members.some((u) => u.name.split(' ')[0] === sp.split(' ')[0]) && sp !== 'Guest');
       const rules = outsiders.map((v) => ({ id: uid(), kind: 'participant' as const, value: v, clientId }));
       patchWorkspace(ws.id, { meetingRules: [...(ws.meetingRules ?? []), ...rules] });
-      showToast({ text: `Meetings with ${outsiders.join(', ')} will be filed here` });
+      showToast({ text: t('Meetings with {names} will be filed here', { names: fmtList(outsiders) }) });
     }
   };
 
@@ -2666,10 +2671,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const c = wsClients.find((x) => x.id === clientId);
     const list = wsMeetings.filter((m) => m.clientId === clientId && m.summary);
     if (!c) return;
-    const t = wsTasks.filter((x) => x.meetingId && list.some((m) => m.id === x.meetingId));
-    const o = await ai.folderOverview(c.name, list.map((m) => ({ title: m.title, summary: m.summary, decisions: m.decisions ?? [], openQuestions: m.openQuestions ?? [] })), t.filter((x) => !x.done).map((x) => x.title), t.filter((x) => x.done).length);
+    const found = wsTasks.filter((x) => x.meetingId && list.some((m) => m.id === x.meetingId));
+    const o = await ai.folderOverview(c.name, list.map((m) => ({ title: m.title, summary: m.summary, decisions: m.decisions ?? [], openQuestions: m.openQuestions ?? [] })), found.filter((x) => !x.done).map((x) => x.title), found.filter((x) => x.done).length);
     setClients((cs) => cs.map((x) => (x.id === clientId ? { ...x, overview: { ...o, at: nowIso(), from: list.length } } : x)));
-    showToast({ text: 'Overview updated' });
+    showToast({ text: t('Overview updated') });
   };
 
   const openNotice = (n: Notice) => {
@@ -2935,12 +2940,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
    * event filled in and asks for the link (the demo makes one up when the event has none).
    */
   const sendNotetakerTo = (e: CalEvent) => {
-    if (!botOn) return explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.');
+    if (!botOn) return explainOff(t('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
     const link = meetingLinkOf(e);
     const attendees = (e.guests ?? []).map((g) => g.name);
     const url = link && notetakerJoins(link.kind) ? link.url : !link && demoOk ? (/zoom/i.test(e.location ?? '') ? 'https://zoom.us/j/1234567890' : 'https://meet.google.com/abc-defg-hij') : null;
     if (!url) {
-      setSendBotSeed({ title: e.title, fromEvent: e.id, attendees, note: link ? `This is a ${MEETING_NAME[link.kind]} call, and the notetaker joins Google Meet and Zoom only.` : undefined });
+      setSendBotSeed({ title: e.title, fromEvent: e.id, attendees, note: link ? t('This is a {call} call, and the notetaker joins Google Meet and Zoom only.', { call: MEETING_NAME[link.kind] }) : undefined });
       setSendBotOpen(true);
       return;
     }
@@ -3281,12 +3286,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!added.length) return;
     setDrive((d) => [...d, ...added]);
     if (!['my', 'recent', 'media'].includes(driveSection)) setDriveSection('my');
-    showToast({ text: `Uploaded ${added.length} file${added.length > 1 ? 's' : ''}` });
+    showToast({ text: tn(added.length, 'Uploaded {n} file', 'Uploaded {n} files') });
   };
 
   const newFolder = () => {
     const parentId = driveSection === 'my' ? driveFolder : null;
-    const f: DriveItem = { id: uid(), name: 'Untitled folder', kind: 'folder', parentId, size: 0, modified: new Date().toISOString(), workspaceId: ws.id };
+    const f: DriveItem = { id: uid(), name: t('Untitled folder'), kind: 'folder', parentId, size: 0, modified: new Date().toISOString(), workspaceId: ws.id };
     setDrive((d) => [...d, f]);
     setDriveSection('my');
     setDriveFolder(parentId);
@@ -3296,13 +3301,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const trashDrive = (id: string) => {
     patchDrive(id, { trashed: true });
-    showToast({ text: 'Moved to trash', action: { label: 'Undo', run: () => patchDrive(id, { trashed: false }) } });
+    showToast({ text: t('Moved to trash'), action: { label: t('Undo'), run: () => patchDrive(id, { trashed: false }) } });
   };
 
   const deleteForever = (id: string) => {
     const snapshot = drive;
     setDrive((d) => d.filter((i) => i.id !== id && i.parentId !== id));
-    showToast({ text: 'Deleted forever', action: { label: 'Undo', run: () => setDrive(snapshot) } });
+    showToast({ text: t('Deleted forever'), action: { label: t('Undo'), run: () => setDrive(snapshot) } });
   };
 
   const savedToDrive = (name: string) => wsDrive.some((i) => i.name === name && i.threadId === selectedId && !i.trashed);
@@ -3313,9 +3318,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       { id: uid(), name: a.name, kind: kindOf({ name: a.name }), parentId: null, size: parseSize(a.size), modified: msg?.date ?? new Date().toISOString(), threadId, workspaceId: ws.id },
     ]);
     showToast({
-      text: 'Saved to My Drive',
+      text: t('Saved to My Drive'),
       action: {
-        label: 'View',
+        label: t('View'),
         run: () => {
           setDriveSection('my');
           setDriveFolder(null);
@@ -3577,13 +3582,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // Tasks registers its own switcher (TasksView, useTitleMenu).
     if (mode === 'meet')
       return {
-        label: 'Meet',
+        label: t('Meet'),
         value: meetPage.kind === 'folder' ? `folder:${meetPage.clientId}` : meetPage.kind === 'meeting' ? 'list' : meetPage.kind,
         options: [
-          { value: 'list', label: 'Meetings', group: 'Meet' },
-          { value: 'upcoming', label: 'Upcoming', group: 'Meet' },
-          { value: 'tasks', label: 'Tasks from meetings', group: 'Meet' },
-          { value: 'unfiled', label: 'Unfiled', group: 'Meet' },
+          { value: 'list', label: tx('meet', 'Meetings'), group: t('Meet') },
+          { value: 'upcoming', label: t('Upcoming'), group: t('Meet') },
+          { value: 'tasks', label: t('Tasks from meetings'), group: t('Meet') },
+          { value: 'unfiled', label: t('Unfiled'), group: t('Meet') },
           ...wsClients.map((c) => ({ value: `folder:${c.id}`, label: c.name, group: `${term.Many}` })),
         ],
         onChange: (v: string) => setMeetPage(v.startsWith('folder:') ? { kind: 'folder', clientId: v.slice(7) } : ({ kind: v } as MeetPage)),
@@ -3602,18 +3607,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       };
     if (mode === 'drive')
       return {
-        label: 'Drive',
+        label: t('Drive'),
         value: driveSection,
-        options: (
-          [
-            ['my', 'My Drive'],
-            ['recent', 'Recent'],
-            ['media', 'Photos & videos'],
-            ['email', 'From email'],
-            ['starred', 'Starred'],
-            ['trash', 'Trash'],
-          ] as const
-        ).map(([v, l]) => ({ value: v, label: l })),
+        options: DRIVE_SECTIONS.map((s) => ({ value: s.id, label: t(s.name) })),
         onChange: (v: string) => (setDriveSection(v as DriveSection), setDriveFolder(null)),
       };
     return undefined;
@@ -4280,7 +4276,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? (e, join) => {
                     const byRule = botJoins(e, meetSettings.joinMode, {}, isMine);
                     setBotJoin(e.id, join === byRule ? null : join);
-                    showToast({ text: join ? `The notetaker will join “${e.title}”` : `The notetaker won’t join “${e.title}”`, action: { label: 'Undo', run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
+                    showToast({ text: join ? t('The notetaker will join “{title}”', { title: e.title }) : t('The notetaker won’t join “{title}”', { title: e.title }), action: { label: t('Undo'), run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
                   }
                 : undefined
             }
@@ -4499,8 +4495,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             summaryOff={
               server.on && !aiOn
                 ? {
-                    text: aiWhy === 'used-up' ? 'the company’s AI allowance for this month is used up.' : aiWhy === 'down' ? 'AI isn’t available right now. They start again by themselves when it’s back.' : 'AI isn’t set up for this company yet.',
-                    fix: isAdmin && aiWhy !== 'down' ? { label: aiWhy === 'used-up' ? 'Add a top-up' : 'Set up AI', run: () => (setSettingsSection(aiWhy === 'used-up' ? 'billing' : 'ai'), go('settings')) } : undefined,
+                    text: aiWhy === 'used-up' ? t('the company’s AI allowance for this month is used up.') : aiWhy === 'down' ? t('AI isn’t available right now. They start again by themselves when it’s back.') : t('AI isn’t set up for this company yet.'),
+                    fix: isAdmin && aiWhy !== 'down' ? { label: aiWhy === 'used-up' ? t('Add a top-up') : t('Set up AI'), run: () => (setSettingsSection(aiWhy === 'used-up' ? 'billing' : 'ai'), go('settings')) } : undefined,
                   }
                 : undefined
             }
@@ -4511,7 +4507,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onCreateTask={(t) => {
               const ch = channels.find((c) => c.id === chatId);
               const task = createTask({ ...t, clientId: ch?.clientId, teamId: ch?.teamId, channelId: chatId ?? undefined, source: 'chat' }, { chat: false });
-              if (chatId) setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, text: `📌 New task${t.userId !== user.id ? ` for @${firstOf(t.userId)}` : ''}`, at: nowIso(), taskId: task.id }]);
+              if (chatId) setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, ...(t.userId !== user.id ? msg('📌 New task for @{name}', { name: firstOf(t.userId) }) : msg('📌 New task')), at: nowIso(), taskId: task.id }]);
             }}
             onOpenTask={openTask}
             onOpenClient={openClient}
@@ -4798,7 +4794,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? (e, join) => {
                     const byRule = botJoins(e, meetSettings.joinMode, {}, isMine);
                     setBotJoin(e.id, join === byRule ? null : join);
-                    showToast({ text: join ? `The notetaker will join “${e.title}”` : `The notetaker won’t join “${e.title}”`, action: { label: 'Undo', run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
+                    showToast({ text: join ? t('The notetaker will join “{title}”', { title: e.title }) : t('The notetaker won’t join “{title}”', { title: e.title }), action: { label: t('Undo'), run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
                   }
                 : undefined
             }
@@ -5403,11 +5399,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           toast={(text) => showToast({ text })}
           onClose={() => setShareFor(null)}
           onPreview={() => setSharedPreview(shareFor)}
-          onOff={() => (patchMeeting(shareFor, { share: undefined }), showToast({ text: 'Link turned off' }))}
+          onOff={() => (patchMeeting(shareFor, { share: undefined }), showToast({ text: t('Link turned off') }))}
           onSave={(opts) => {
             const m = meetings.find((x) => x.id === shareFor)!;
             patchMeeting(shareFor, { share: { token: m.share?.token ?? Math.random().toString(36).slice(2, 10), ...opts } });
-            showToast({ text: 'Link ready' });
+            showToast({ text: t('Link ready') });
           }}
         />
       )}
@@ -5456,7 +5452,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: true } : c)));
             setChanDialog(null);
             setChatId(null);
-            showToast({ text: 'Channel archived', action: { label: 'Undo', run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: false } : c))) } });
+            showToast({ text: t('Channel archived'), action: { label: t('Undo'), run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: false } : c))) } });
           }}
           onSave={(d) => {
             if (chanDialog.id) {
@@ -5465,15 +5461,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               const added = d.members.filter((m) => !before?.members.includes(m));
               added.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: d.name }), { app: 'chat', id: chanDialog.id }));
               const newGuests = (d.guests ?? []).filter((g) => !before?.guests?.some((x) => x.email === g.email));
-              showToast({ text: newGuests.length ? `Saved. Invite sent to ${newGuests.map((g) => g.name).join(', ')}` : 'Channel saved' });
+              showToast({ text: newGuests.length ? t('Saved. Invite sent to {names}', { names: fmtList(newGuests.map((g) => g.name)) }) : t('Channel saved') });
             } else {
               const id = uid();
               setChannels((cs) => [...cs, { ...d, id, workspaceId: ws.id, kind: 'channel' }]);
               d.members.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: d.name }), { app: 'chat', id }));
-              setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `created #${d.name}${d.topic ? `: ${d.topic}` : ''}`, at: nowIso(), kind: 'system' }]);
+              // A system line: Message.tsx puts the author's name in front ({name}); `text` stays as older versions show it.
+              const made = d.topic ? phrase('{name} created #{channel}: {topic}', { name: myFirst, channel: d.name, topic: d.topic }) : phrase('{name} created #{channel}', { name: myFirst, channel: d.name });
+              setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `created #${d.name}${d.topic ? `: ${d.topic}` : ''}`, tr: made, at: nowIso(), kind: 'system' }]);
               setChatId(id);
               go('chat');
-              showToast({ text: `#${d.name} created${d.guests?.length ? `, invite sent to ${d.guests.length} guest${d.guests.length > 1 ? 's' : ''}` : ''}` });
+              showToast({ text: d.guests?.length ? tn(d.guests.length, '#{channel} created, invite sent to {n} guest', '#{channel} created, invite sent to {n} guests', { channel: d.name }) : t('#{channel} created', { channel: d.name }) });
             }
             setChanDialog(null);
           }}

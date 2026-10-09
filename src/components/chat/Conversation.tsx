@@ -24,10 +24,13 @@ import { ChannelMaterials } from '../ChannelMaterials';
 import { DraftNote, useChatDraft } from '../ChatDraft';
 import type { Presence } from '../ChatApp';
 import { Composer, ScheduledLine, type Library, type Outgoing } from './Composer';
-import { authorOf, DayLine, fmtSize, Msg, NewLine, preview, type MsgCtx } from './Message';
+import { authorOf, DayLine, fmtSize, MONTHS, Msg, NewLine, preview, type MsgCtx } from './Message';
 import { ConfirmSheet, EmojiGrid, EmojiSheet, ForwardSheet, ReactionRow, WhenSheet, WhoReactedSheet, chanName } from './Sheets';
 import { ChannelAbout, PinnedPane, SummaryPane, TasksPane } from './Details';
-import { draftKey, dmOther, useChatState, whenText } from './chatPrefs';
+import { draftKey, dmOther, statusText, useChatState, whenText } from './chatPrefs';
+import { msg, phrase, t, tn, type Msg as Words } from '../../i18n';
+import { tj } from '../../i18n/tj';
+import { fmtList, fmtNumber } from '../../i18n/format';
 import { useConnection, useUnsent } from './net';
 import { useDockRef } from './huddleDock';
 import './chat.css';
@@ -44,6 +47,7 @@ export interface SendPayload {
   sendAt?: string;
   taskId?: string;
   ref?: ChatMessage['ref'];
+  tr?: Words; // a line sprint2go writes (a summary, a call link): each reader sees it in their own language
 }
 
 export interface ViewProps {
@@ -98,29 +102,39 @@ export interface ViewProps {
   timeZone?: string;
 }
 
-const COMMANDS = [
-  { cmd: '/task', hint: 'Make a task: /task Send the deck @Rizky friday' },
-  { cmd: '/remind', hint: 'Remind yourself: /remind call Nadia tomorrow' },
+const commands = () => [
+  { cmd: '/task', hint: t('Make a task: /task Send the deck @Rizky friday') },
+  { cmd: '/remind', hint: t('Remind yourself: /remind call Nadia tomorrow') },
 ];
 
+// The day words /task and /remind understand, in English and Indonesian ("minggu depan" before "minggu", Sunday).
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const HARI = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
 function dueIn(text: string): { due?: string; rest: string } {
-  const t = text.toLowerCase();
+  const s = text.toLowerCase();
   const d = new Date();
   let hit = '';
-  if (/\btomorrow\b/.test(t)) (d.setDate(d.getDate() + 1), (hit = 'tomorrow'));
-  else if (/\bnext week\b/.test(t)) (d.setDate(d.getDate() + 7), (hit = 'next week'));
-  else if (/\btoday\b/.test(t)) hit = 'today';
+  if (/\btomorrow\b/.test(s)) (d.setDate(d.getDate() + 1), (hit = 'tomorrow'));
+  else if (/\bbesok\b/.test(s)) (d.setDate(d.getDate() + 1), (hit = 'besok'));
+  else if (/\bnext week\b/.test(s)) (d.setDate(d.getDate() + 7), (hit = 'next week'));
+  else if (/\bminggu depan\b/.test(s)) (d.setDate(d.getDate() + 7), (hit = 'minggu depan'));
+  else if (/\btoday\b/.test(s)) hit = 'today';
+  else if (/\bhari ini\b/.test(s)) hit = 'hari ini';
   else {
-    const i = DAYS.findIndex((x) => new RegExp(`\\b${x}\\b`).test(t));
+    let i = DAYS.findIndex((x) => new RegExp(`\\b${x}\\b`).test(s));
+    let word = DAYS[i];
+    if (i < 0) {
+      i = HARI.findIndex((x) => new RegExp(`\\b${x}\\b`).test(s));
+      word = HARI[i];
+    }
     if (i >= 0) {
       d.setDate(d.getDate() + (((i - d.getDay() + 7) % 7) || 7));
-      hit = DAYS[i];
+      hit = word;
     }
   }
   if (!hit) return { rest: text };
   const due = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return { due, rest: text.replace(new RegExp(`\\s*(by|on|due)?\\s*${hit}\\b`, 'i'), '').trim() };
+  return { due, rest: text.replace(new RegExp(`\\s*(by|on|due|pada|hari)?\\s*${hit}\\b`, 'i'), '').trim() };
 }
 
 type Tab = 'messages' | 'materials' | 'tasks' | 'pinned' | 'summary' | 'about';
@@ -137,7 +151,7 @@ export function ConnectionLine() {
       <div>
         <div className={`conn-line is-${shown}`} role="status">
           {shown === 'offline' ? <WifiOff size={14} aria-hidden /> : <span className="conn-dot" aria-hidden />}
-          {shown === 'offline' ? 'Offline. What you write is sent when you’re back.' : 'Connecting…'}
+          {shown === 'offline' ? t('Offline. What you write is sent when you’re back.') : t('Connecting…')}
         </div>
       </div>
     </div>
@@ -197,7 +211,7 @@ export function ChatView(p: ViewProps) {
     if (!target) return;
     setTab('messages');
     if (target.parentId) setThreadId(target.parentId);
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       const el = document.querySelector(`[data-msg="${p.focusId}"]`);
       if (el) {
         el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -206,7 +220,7 @@ export function ChatView(p: ViewProps) {
       }
       p.onFocused?.();
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [p.focusId, p.messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const canPost = guest ? guest.canPost : !channel || channel.postPolicy !== 'admins' || p.myRole !== 'member' || channel.ownerId === me;
   const thread = threadId ? p.messages.find((m) => m.id === threadId) : undefined;
@@ -263,7 +277,7 @@ export function ChatView(p: ViewProps) {
   if (!channel)
     return (
       <section className="chat-pane chat-empty view-enter">
-        <EmptyState icon={<Hash size={22} />} title="Pick a channel or person" text={`${term.One} channels keep every conversation about a ${term.one} in one place.`} />
+        <EmptyState icon={<Hash size={22} />} title={t('Pick a channel or person')} text={t('{Project} channels keep every conversation about a {project} in one place.', { project: term.one })} />
       </section>
     );
 
@@ -279,7 +293,7 @@ export function ChatView(p: ViewProps) {
         key: m.id + i,
         url,
         at: m.at,
-        who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
+        who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? t('Guest')) : (person(m.userId)?.name.split(' ')[0] ?? t('Someone')),
       })),
     )
     .reverse();
@@ -298,19 +312,24 @@ export function ChatView(p: ViewProps) {
         who: authorOf(m, { me, users, channel }).first,
         text: m.voice?.transcript ?? m.text,
         at: m.at,
-        task: m.taskId ? p.tasks.find((t) => t.id === m.taskId)?.title : undefined,
+        task: m.taskId ? p.tasks.find((x) => x.id === m.taskId)?.title : undefined,
         files: m.files?.map((f) => f.name),
       }));
     const text = await ai.catchUp(title, msgs, person(me)?.name.split(' ')[0] ?? 'me');
     if (kind === 'since') setSinceText(text);
     else {
-      const period = sch === 'daily' ? 'Today' : sch === 'weekly' ? 'This week' : new Date().toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' so far';
+      // Saved in English (Details shows it in each reader's language with periodWords).
+      const now = new Date();
+      const period = sch === 'daily' ? 'Today' : sch === 'weekly' ? 'This week' : `${MONTHS[now.getMonth()]} ${now.getFullYear()} so far`;
       p.onChannel({ summary: { schedule, post: channel.summary?.post ?? false, history: [{ id: Math.random().toString(36).slice(2), text, period, at: new Date().toISOString(), auto: false, by: me }, ...(channel.summary?.history ?? [])] } });
-      if (channel.summary?.post) p.onSend({ text: `📝 Summary (${period}): ${text}` });
+      if (channel.summary?.post) {
+        const words = msg('📝 Summary ({period}): {text}', { period: sch === 'daily' ? phrase('Today') : sch === 'weekly' ? phrase('This week') : phrase('This month so far'), text });
+        p.onSend({ text: words.text, tr: words.tr });
+      }
     }
     setSummarizing(null);
   };
-  const mentioned = (t: string) => users.find((u) => u.id !== me && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(t));
+  const mentioned = (s: string) => users.find((u) => u.id !== me && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(s));
 
   /** Slash commands run here; everything else is a message. */
   const runCommand = (raw: string): boolean => {
@@ -321,14 +340,14 @@ export function ChatView(p: ViewProps) {
       case '/task': {
         if (!arg) return true;
         const who = mentioned(arg);
-        const { due, rest: t } = dueIn(arg.replace(/@\w+\s*/g, ''));
-        p.onCreateTask({ title: t.charAt(0).toUpperCase() + t.slice(1), userId: who?.id ?? me, due });
+        const { due, rest } = dueIn(arg.replace(/@\w+\s*/g, ''));
+        p.onCreateTask({ title: rest.charAt(0).toUpperCase() + rest.slice(1), userId: who?.id ?? me, due });
         return true;
       }
       case '/remind': {
         if (!arg) return true;
-        const { due, rest: t } = dueIn(arg);
-        p.onCreateTask({ title: t.charAt(0).toUpperCase() + t.slice(1), userId: me, due: due ?? undefined });
+        const { due, rest } = dueIn(arg);
+        p.onCreateTask({ title: rest.charAt(0).toUpperCase() + rest.slice(1), userId: me, due: due ?? undefined });
         return true;
       }
       case '/kudos': {
@@ -337,9 +356,11 @@ export function ChatView(p: ViewProps) {
         else setKudos({ who: '', text: arg });
         return true;
       }
-      case '/meet':
-        p.onSend({ text: `📹 Join the call: ${p.meetUrl ?? 'https://meet.sprint2go.com/' + channel.name}` });
+      case '/meet': {
+        const words = msg('📹 Join the call: {url}', { url: p.meetUrl ?? 'https://meet.sprint2go.com/' + channel.name });
+        p.onSend({ text: words.text, tr: words.tr });
         return true;
+      }
     }
     return false;
   };
@@ -363,23 +384,23 @@ export function ChatView(p: ViewProps) {
   const copy = (s: string, said: string) =>
     navigator.clipboard?.writeText(s).then(
       () => toast({ text: said }),
-      () => toast({ text: 'Couldn’t copy here' }),
+      () => toast({ text: t('Couldn’t copy here') }),
     );
   const toggleSave = (m: ChatMessage) => {
     const was = chat.savedItem(m.id);
     if (was) {
       chat.unsave(m.id);
-      toastUndo('Removed from saved', () => chat.restoreSaved(was));
+      toastUndo(t('Removed from saved'), () => chat.restoreSaved(was));
     } else {
       chat.save(m);
-      toast({ text: 'Saved. Find it under Saved in Chat.', action: { label: 'Remind me', run: () => setSub({ kind: 'remind', m }) } });
+      toast({ text: t('Saved. Find it under Saved in Chat.'), action: { label: t('Remind me'), run: () => setSub({ kind: 'remind', m }) } });
     }
   };
   const markUnread = (m: ChatMessage) => {
     chat.markUnread(m);
-    if (m.parentId && !m.alsoInChannel) return toast({ text: 'Thread marked unread' });
+    if (m.parentId && !m.alsoInChannel) return toast({ text: t('Thread marked unread') });
     setHoldRead(true);
-    toast({ text: 'Marked unread from here' });
+    toast({ text: t('Marked unread from here') });
     if (phone) p.onBack?.();
   };
   const openThread = (rootId: string) => {
@@ -392,19 +413,19 @@ export function ChatView(p: ViewProps) {
     const saved = chat.savedItem(m.id);
     const root = m.parentId && !m.alsoInChannel ? m.parentId : m.id;
     const list: SheetAction[] = [];
-    if (threadId !== root) list.push({ label: m.parentId ? 'Open thread' : 'Reply in thread', icon: MessageSquareReply, run: () => openThread(root) });
-    if (!guest && !m.taskId && m.text && m.kind !== 'kudos') list.push({ label: 'Make a task', icon: ListChecks, run: () => p.onMakeTask(m) });
+    if (threadId !== root) list.push({ label: m.parentId ? t('Open thread') : t('Reply in thread'), icon: MessageSquareReply, run: () => openThread(root) });
+    if (!guest && !m.taskId && m.text && m.kind !== 'kudos') list.push({ label: t('Make a task'), icon: ListChecks, run: () => p.onMakeTask(m) });
     if (!guest) {
-      list.push(saved ? { label: 'Remove from saved', icon: BookmarkMinus, run: () => toggleSave(m) } : { label: 'Save', icon: Bookmark, run: () => toggleSave(m) });
-      list.push({ label: 'Remind me', icon: Clock, hint: saved?.remindAt && !saved.reminded ? `Set for ${whenText(saved.remindAt)}` : undefined, run: () => setSub({ kind: 'remind', m }) });
+      list.push(saved ? { label: t('Remove from saved'), icon: BookmarkMinus, run: () => toggleSave(m) } : { label: t('Save'), icon: Bookmark, run: () => toggleSave(m) });
+      list.push({ label: t('Remind me'), icon: Clock, hint: saved?.remindAt && !saved.reminded ? t('Set for {when}', { when: whenText(saved.remindAt) }) : undefined, run: () => setSub({ kind: 'remind', m }) });
     }
-    if (!mine) list.push({ label: 'Mark unread', icon: MailOpen, run: () => markUnread(m) });
-    if (!guest) list.push({ label: 'Copy link', icon: Link2, run: () => copy(linkTo(m), 'Link copied') });
-    if (m.text) list.push({ label: 'Copy text', icon: Copy, run: () => copy(m.text, 'Text copied') });
-    if (!guest && p.onForward && p.channels) list.push({ label: 'Forward', icon: Forward, run: () => setSub({ kind: 'forward', m }) });
-    if (!guest && channel.kind === 'channel' && !m.parentId) list.push({ label: m.pinned ? 'Unpin' : 'Pin to the channel', icon: Pin, group: 'end', run: () => p.onPin(m.id) });
-    if (mine && p.onEdit && m.text && !m.voice && !m.poll && m.kind !== 'kudos') list.push({ label: 'Edit', icon: Pencil, group: 'end', run: () => setEditing(m) });
-    if (mine && !guest) list.push({ label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => setSub({ kind: 'delete', m }) });
+    if (!mine) list.push({ label: t('Mark unread'), icon: MailOpen, run: () => markUnread(m) });
+    if (!guest) list.push({ label: t('Copy link'), icon: Link2, run: () => copy(linkTo(m), t('Link copied')) });
+    if (m.text) list.push({ label: t('Copy text'), icon: Copy, run: () => copy(m.text, t('Text copied')) });
+    if (!guest && p.onForward && p.channels) list.push({ label: t('Forward'), icon: Forward, run: () => setSub({ kind: 'forward', m }) });
+    if (!guest && channel.kind === 'channel' && !m.parentId) list.push({ label: m.pinned ? t('Unpin') : t('Pin to the channel'), icon: Pin, group: 'end', run: () => p.onPin(m.id) });
+    if (mine && p.onEdit && m.text && !m.voice && !m.poll && m.kind !== 'kudos') list.push({ label: t('Edit'), icon: Pencil, group: 'end', run: () => setEditing(m) });
+    if (mine && !guest) list.push({ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => setSub({ kind: 'delete', m }) });
     return list;
   };
 
@@ -464,7 +485,7 @@ export function ChatView(p: ViewProps) {
           );
         });
       })()}
-      {top.length === 0 && <p className="chat-start">This is the start of {title}. Say hello 👋</p>}
+      {top.length === 0 && <p className="chat-start">{t('This is the start of {name}. Say hello 👋', { name: title })}</p>}
     </div>
   );
 
@@ -474,22 +495,22 @@ export function ChatView(p: ViewProps) {
       draftKey={draftKey(channel.id)}
       text={text}
       setText={setText}
-      placeholder={`Message ${title}`}
+      placeholder={t('Message {name}', { name: title })}
       users={users}
       me={me}
       phone={phone}
       guest={!!guest}
       autoFocus
-      commands={guest ? undefined : COMMANDS}
+      commands={guest ? undefined : commands()}
       onCommand={runCommand}
       onSend={(o: Outgoing) => {
         p.onSend(o);
         chatDraft.sent();
-        if (o.sendAt) toast({ text: `Goes ${whenText(o.sendAt)}`, action: p.onOpenScheduled ? { label: 'See', run: p.onOpenScheduled } : undefined });
+        if (o.sendAt) toast({ text: t('Goes {when}', { when: whenText(o.sendAt) }), action: p.onOpenScheduled ? { label: t('See'), run: p.onOpenScheduled } : undefined });
       }}
       upload={upload}
       editing={editing}
-      onEdit={(id, t) => (p.onEdit?.(id, t), setEditing(null))}
+      onEdit={(id, words) => (p.onEdit?.(id, words), setEditing(null))}
       onCancelEdit={() => setEditing(null)}
       canSchedule={!guest}
       library={guest ? undefined : p.library}
@@ -498,7 +519,7 @@ export function ChatView(p: ViewProps) {
     />
   ) : (
     <div className="chat-locked">
-      <Lock size={14} /> Only admins post in #{channel.name}. You can still react and reply in threads.
+      <Lock size={14} /> {t('Only admins post in #{channel}. You can still react and reply in threads.', { channel: channel.name })}
     </div>
   );
 
@@ -508,7 +529,11 @@ export function ChatView(p: ViewProps) {
         <div className="shared-note">
           <Handshake size={14} />
           <span>
-            {channel.guests?.length ? `${channel.guests.map((g) => g.name.split(' ')[0]).join(', ')} can read this channel.` : `Shared with ${client?.name ?? 'guests'}. Invite people in channel settings.`} Keep internal talk in your team’s own channel.
+            {channel.guests?.length
+              ? t('{names} can read this channel. Keep internal talk in your team’s own channel.', { names: fmtList(channel.guests.map((g) => g.name.split(' ')[0])) })
+              : client
+                ? t('Shared with {name}. Invite people in channel settings. Keep internal talk in your team’s own channel.', { name: client.name })
+                : t('Shared with guests. Invite people in channel settings. Keep internal talk in your team’s own channel.')}
           </span>
         </div>
       )}
@@ -525,21 +550,19 @@ export function ChatView(p: ViewProps) {
           <>
             <p className="space-used chan-space">
               {chanFiles.length ? (
-                <>
-                  Files shared here use <b>{fmtSize(chanFiles.reduce((s2, x) => s2 + x.f.size, 0))}</b> of team storage
-                </>
+                tj('Files shared here use {size} of team storage', { size: <b>{fmtSize(chanFiles.reduce((s2, x) => s2 + x.f.size, 0))}</b> })
               ) : (
-                'Files, links and docs for this channel, in folders if you like'
+                t('Files, links and docs for this channel, in folders if you like')
               )}
-              {p.drive.length ? <span className="muted"> · {fmtSize(p.drive.reduce((s2, d) => s2 + d.size, 0))} in {client?.name}’s Drive folder</span> : null}
+              {p.drive.length ? <span className="muted"> · {t('{size} in {name}’s Drive folder', { size: fmtSize(p.drive.reduce((s2, d) => s2 + d.size, 0)), name: client?.name ?? '' })}</span> : null}
             </p>
             <ChannelMaterials
               channel={channel}
               users={users}
               me={me}
               chatFiles={[
-                ...chanFiles.map(({ f, m }) => ({ key: `file:${m.id}:${f.name}`, name: f.name, type: f.type, size: f.size, url: f.url, who: authorOf(m, { me, users, channel }).first, at: m.at, where: 'in chat' })),
-                ...p.drive.map((d) => ({ key: `drive:${d.id}`, name: d.name, type: d.kind === 'image' ? 'image/' : d.kind === 'video' ? 'video/' : 'application/', size: d.size, url: undefined, who: '', at: d.modified, where: client ? `in ${client.name}’s Drive folder` : 'in Drive' })),
+                ...chanFiles.map(({ f, m }) => ({ key: `file:${m.id}:${f.name}`, name: f.name, type: f.type, size: f.size, url: f.url, who: authorOf(m, { me, users, channel }).first, at: m.at, where: t('in chat') })),
+                ...p.drive.map((d) => ({ key: `drive:${d.id}`, name: d.name, type: d.kind === 'image' ? 'image/' : d.kind === 'video' ? 'video/' : 'application/', size: d.size, url: undefined, who: '', at: d.modified, where: client ? t('in {name}’s Drive folder', { name: client.name }) : t('in Drive') })),
               ]}
               chatLinks={links}
               onChannel={p.onChannel}
@@ -609,70 +632,70 @@ export function ChatView(p: ViewProps) {
       )}
       {sub?.kind === 'react' &&
         (phone || !sub.anchor ? (
-          <EmojiSheet title="React" onPick={(e) => p.onReact(sub.m.id, e)} onClose={() => setSub(null)} />
+          <EmojiSheet title={t('React')} onPick={(e) => p.onReact(sub.m.id, e)} onClose={() => setSub(null)} />
         ) : (
-          <Popover anchor={anchorRef} open onClose={() => setSub(null)} width={320} title="React">
+          <Popover anchor={anchorRef} open onClose={() => setSub(null)} width={320} title={t('React')}>
             <EmojiGrid onPick={(e) => (setSub(null), p.onReact(sub.m.id, e))} />
           </Popover>
         ))}
       {sub?.kind === 'remind' && (
         <WhenSheet
-          title="Remind me"
+          title={t('Remind me')}
           kind="remind"
-          note={<p className="when-note">It’s saved, and you get a notification then: “{preview(sub.m).slice(0, 70)}”</p>}
+          note={<p className="when-note">{t('It’s saved, and you get a notification then: “{text}”', { text: preview(sub.m).slice(0, 70) })}</p>}
           onPick={(at) => {
             chat.save(sub.m, at);
-            toast({ text: `Saved. You’ll be reminded ${whenText(at)}.` });
+            toast({ text: t('Saved. You’ll be reminded {when}.', { when: whenText(at) }) });
           }}
           onClose={() => setSub(null)}
         />
       )}
       {sub?.kind === 'forward' && p.onForward && p.channels && <ForwardSheet m={sub.m} channels={p.channels} users={users} me={me} onForward={(to, note) => p.onForward?.(sub.m, to, note)} onClose={() => setSub(null)} />}
       {sub?.kind === 'who' && <WhoReactedSheet m={sub.m} first={sub.emoji ?? ''} users={users} me={me} channel={channel} onClose={() => setSub(null)} />}
-      {sub?.kind === 'delete' && <ConfirmSheet title="Delete this message?" text={channel.kind === 'dm' ? 'It’s gone for both of you, with any replies in its thread.' : `Everyone in ${title} stops seeing it, with any replies in its thread.`} yes="Delete" onYes={() => p.onDelete(sub.m.id)} onClose={() => setSub(null)} />}
+      {sub?.kind === 'delete' && <ConfirmSheet title={t('Delete this message?')} text={channel.kind === 'dm' ? t('It’s gone for both of you, with any replies in its thread.') : t('Everyone in {name} stops seeing it, with any replies in its thread.', { name: title })} yes={t('Delete')} onYes={() => p.onDelete(sub.m.id)} onClose={() => setSub(null)} />}
       {kudos && (
         <Sheet
-          title="🙌 Give kudos"
+          title={t('🙌 Give kudos')}
           onClose={() => setKudos(null)}
           footer={
             <>
-              <span className="muted small sheet-foot-note">Shows on everyone’s Home under Wins this week.</span>
+              <span className="muted small sheet-foot-note">{t('Shows on everyone’s Home under Wins this week.')}</span>
               <button className="primary-btn" disabled={!kudos.who} onClick={() => (p.onSend({ text: kudos.text.trim(), kind: 'kudos', kudosFor: kudos.who }), setKudos(null))}>
-                Send kudos
+                {t('Send kudos')}
               </button>
             </>
           }
         >
           <div className="kudos-form">
-            <Select value={kudos.who || null} onChange={(v) => setKudos({ ...kudos, who: v })} placeholder="Who?" label="Who gets kudos" options={users.filter((u) => u.id !== me).map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={22} /> }))} />
-            <input className="is-input" value={kudos.text} onChange={(e) => setKudos({ ...kudos, text: e.target.value })} placeholder="For what? e.g. saving the KopiKita invoice" aria-label="For what" />
+            <Select value={kudos.who || null} onChange={(v) => setKudos({ ...kudos, who: v })} placeholder={t('Who?')} label={t('Who gets kudos')} options={users.filter((u) => u.id !== me).map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={22} /> }))} />
+            <input className="is-input" value={kudos.text} onChange={(e) => setKudos({ ...kudos, text: e.target.value })} placeholder={t('For what? e.g. saving the KopiKita invoice')} aria-label={t('For what')} />
           </div>
         </Sheet>
       )}
       {leaving && (
-        <ConfirmSheet title={`Leave ${title}?`} text={channel.private ? 'It’s private: someone in it has to add you back.' : 'You can join again from Browse channels.'} yes="Leave" onYes={() => p.onLeave?.()} onClose={() => setLeaving(false)} />
+        <ConfirmSheet title={t('Leave {name}?', { name: title })} text={channel.private ? t('It’s private: someone in it has to add you back.') : t('You can join again from Browse channels.')} yes={t('Leave')} onYes={() => p.onLeave?.()} onClose={() => setLeaving(false)} />
       )}
     </>
   );
 
   /* ---------- Phones: one header row, the messages, the box; details and threads push over it ---------- */
   if (phone && p.onBack) {
-    const subtitle = other ? (p.statuses[other.id] ? `${p.statuses[other.id].emoji} ${p.statuses[other.id].text}` : (other.title ?? '')) : guest ? (channel.topic ?? '') : `${members} ${members === 1 ? 'member' : 'members'}`;
+    const subtitle = other ? (p.statuses[other.id] ? `${p.statuses[other.id].emoji} ${statusText(p.statuses[other.id])}` : (other.title ?? '')) : guest ? (channel.topic ?? '') : tn(members, '{n} member', '{n} members');
     const detailRows: { id: Exclude<Tab, 'messages'> | 'people'; label: string; hint?: string }[] = [
-      ...(other ? [] : [{ id: 'people' as const, label: 'People', hint: channel.guests?.length ? `${channel.members.length} on the team, ${channel.guests.length} ${channel.guests.length === 1 ? 'guest' : 'guests'}` : undefined }]),
-      { id: 'materials', label: 'Files and links' },
-      ...(guest ? [] : [{ id: 'pinned' as const, label: 'Pinned', hint: pinned.length ? undefined : 'Nothing yet' }]),
-      ...(guest ? [] : [{ id: 'tasks' as const, label: 'Tasks', hint: lateTasks ? `${lateTasks} late` : undefined }]),
-      ...(guest ? [] : [{ id: 'summary' as const, label: 'Summaries' }]),
-      ...(guest ? [] : [{ id: 'about' as const, label: other ? 'Profile' : 'About' }]),
+      ...(other ? [] : [{ id: 'people' as const, label: t('People'), hint: channel.guests?.length ? t('{team} on the team, {guests}', { team: fmtNumber(channel.members.length), guests: tn(channel.guests.length, '{n} guest', '{n} guests') }) : undefined }]),
+      { id: 'materials', label: t('Files and links') },
+      ...(guest ? [] : [{ id: 'pinned' as const, label: t('Pinned'), hint: pinned.length ? undefined : t('Nothing yet') }]),
+      ...(guest ? [] : [{ id: 'tasks' as const, label: t('Tasks'), hint: lateTasks ? tn(lateTasks, '{n} late', '{n} late') : undefined }]),
+      ...(guest ? [] : [{ id: 'summary' as const, label: t('Summaries') }]),
+      ...(guest ? [] : [{ id: 'about' as const, label: other ? t('Profile') : t('About') }]),
     ];
-    const paneTitle: Record<string, string> = { people: 'People', materials: 'Files and links', pinned: 'Pinned', tasks: 'Tasks', summary: 'Summaries', about: other ? 'Profile' : 'About' };
+    const paneTitle: Record<string, string> = { people: t('People'), materials: t('Files and links'), pinned: t('Pinned'), tasks: t('Tasks'), summary: t('Summaries'), about: other ? t('Profile') : t('About') };
     return (
       <PushScreen
         className="chat-push"
         onBack={p.onBack}
         title={
-          <button type="button" className="chan-title-btn" onClick={() => !guest && setDetails('menu')} aria-label={guest ? title : `${title}: details`} disabled={!!guest}>
+          <button type="button" className="chan-title-btn" onClick={() => !guest && setDetails('menu')} aria-label={guest ? title : t('{name}: details', { name: title })} disabled={!!guest}>
             {other ? (
               <span className="dm-av">
                 <Avatar person={other} size={28} />
@@ -683,7 +706,7 @@ export function ChatView(p: ViewProps) {
               <span className="ctb-name">
                 {channel.category === 'shared' && !other ? <Handshake size={15} /> : channel.private && !other ? <Lock size={14} /> : null}
                 <span className="ctb-label">{title}</span>
-                {muted && <BellOff size={13} className="ctb-muted" aria-label="Muted" />}
+                {muted && <BellOff size={13} className="ctb-muted" aria-label={t('Muted')} />}
               </span>
               <span className="ctb-sub">
                 {subtitle}
@@ -695,12 +718,12 @@ export function ChatView(p: ViewProps) {
         actions={
           <>
             {p.huddle && !guest && (
-              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.joined ? p.huddle.onOpen : p.huddle.onJoin} aria-label={p.huddle.joined ? 'Open the huddle' : channel.huddle?.members.length ? 'Join the huddle' : 'Start a huddle'}>
+              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.joined ? p.huddle.onOpen : p.huddle.onJoin} aria-label={p.huddle.joined ? t('Open the huddle') : channel.huddle?.members.length ? t('Join the huddle') : t('Start a huddle')}>
                 <Headphones size={20} />
               </button>
             )}
             {!guest && (
-              <button type="button" className="icon-btn" onClick={() => (setCatchUp(true), !sinceText && !summarizing && !p.summaryOff && void summarize('since'))} aria-label="Catch me up: what I missed here">
+              <button type="button" className="icon-btn" onClick={() => (setCatchUp(true), !sinceText && !summarizing && !p.summaryOff && void summarize('since'))} aria-label={t('Catch me up: what I missed here')}>
                 <Sparkles size={19} />
               </button>
             )}
@@ -717,39 +740,39 @@ export function ChatView(p: ViewProps) {
         <div className="huddle-dock" ref={dockRef} />
         {list}
         {details && !guest && (
-          <PushScreen title="Details" backLabel={title.length > 14 ? 'Back' : title} onBack={() => setDetails(null)} className="chat-details">
+          <PushScreen title={t('Details')} backLabel={title.length > 14 ? t('Back') : title} onBack={() => setDetails(null)} className="chat-details">
             <div className="cd-hero">
               {other ? <Avatar person={other} size={56} /> : <span className="cd-icon">{channel.private ? <Lock size={24} /> : channel.category === 'shared' ? <Handshake size={24} /> : <Hash size={24} />}</span>}
               <strong>{other ? other.name : title}</strong>
-              <span className="muted">{other ? other.title : (channel.topic ?? (client ? `${client.name} ${term.one} channel` : ''))}</span>
+              <span className="muted">{other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}</span>
             </div>
             <div className="cdt-actions">
-              <button type="button" onClick={() => (muted ? (chat.unmute(channel.id), toast({ text: 'Notifications back on' })) : setMuteOpen((o) => !o))} className={muted || muteOpen ? 'on' : ''} aria-expanded={!muted ? muteOpen : undefined}>
+              <button type="button" onClick={() => (muted ? (chat.unmute(channel.id), toast({ text: t('Notifications back on') })) : setMuteOpen((o) => !o))} className={muted || muteOpen ? 'on' : ''} aria-expanded={!muted ? muteOpen : undefined}>
                 {muted ? <BellOff size={20} /> : <Bell size={20} />}
-                <span>{muted ? 'Unmute' : 'Mute'}</span>
+                <span>{muted ? t('Unmute') : t('Mute')}</span>
               </button>
-              <button type="button" onClick={() => copy(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(channel.workspaceId)}&id=${encodeURIComponent(channel.id)}`, 'Link copied')}>
+              <button type="button" onClick={() => copy(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(channel.workspaceId)}&id=${encodeURIComponent(channel.id)}`, t('Link copied'))}>
                 <Link2 size={20} />
-                <span>Copy link</span>
+                <span>{t('Copy link')}</span>
               </button>
               {channel.kind === 'channel' && (
                 <button type="button" onClick={p.onSettings}>
                   <Settings size={20} />
-                  <span>Settings</span>
+                  <span>{t('Settings')}</span>
                 </button>
               )}
             </div>
             <div className={`fold cd-mute-fold${muteOpen && !muted ? ' open' : ''}`} aria-hidden={!muteOpen || !!muted}>
               <div>
-                <div className="cd-mute" role="group" aria-label="Mute for how long">
+                <div className="cd-mute" role="group" aria-label={t('Mute for how long')}>
                   {(
                     [
-                      ['hour', 'For an hour'],
-                      ['tomorrow', 'Until tomorrow morning'],
-                      ['always', 'Until I turn it back on'],
+                      ['hour', t('For an hour'), t('Muted for an hour. Mentions of you still come through.')],
+                      ['tomorrow', t('Until tomorrow morning'), t('Muted until tomorrow morning. Mentions of you still come through.')],
+                      ['always', t('Until I turn it back on'), t('Muted until you turn it back on. Mentions of you still come through.')],
                     ] as const
-                  ).map(([k, l]) => (
-                    <button key={k} type="button" className="chip" tabIndex={muteOpen ? 0 : -1} onClick={() => (chat.mute(channel.id, k), setMuteOpen(false), toast({ text: `Muted ${k === 'always' ? 'until you turn it back on' : l.toLowerCase()}. Mentions of you still come through.` }))}>
+                  ).map(([k, l, done]) => (
+                    <button key={k} type="button" className="chip" tabIndex={muteOpen ? 0 : -1} onClick={() => (chat.mute(channel.id, k), setMuteOpen(false), toast({ text: done }))}>
                       {l}
                     </button>
                   ))}
@@ -768,18 +791,18 @@ export function ChatView(p: ViewProps) {
             {channel.kind === 'channel' && p.onLeave && !channel.teamId && (
               <button type="button" className="cd-row danger" onClick={() => setLeaving(true)}>
                 <LogOut size={17} />
-                <span className="cd-label">Leave {title}</span>
+                <span className="cd-label">{t('Leave {name}', { name: title })}</span>
               </button>
             )}
             {details !== 'menu' && (
-              <PushScreen title={paneTitle[details]} backLabel="Details" onBack={() => setDetails('menu')} className="chat-pane-screen">
+              <PushScreen title={paneTitle[details]} backLabel={t('Details')} onBack={() => setDetails('menu')} className="chat-pane-screen">
                 {pane(details)}
               </PushScreen>
             )}
           </PushScreen>
         )}
         {catchUp && (
-          <Sheet title="What you missed" onClose={() => setCatchUp(false)} className="catchme-sheet">
+          <Sheet title={t('What you missed')} onClose={() => setCatchUp(false)} className="catchme-sheet">
             {p.summaryOff ? (
               <p className="sum-off-text">
                 <AlertTriangle size={15} aria-hidden /> {p.summaryOff.text}{' '}
@@ -790,12 +813,12 @@ export function ChatView(p: ViewProps) {
                 )}
               </p>
             ) : summarizing === 'since' ? (
-              <p className="muted catchme-wait">Reading what came in since {whenText(p.since)}…</p>
+              <p className="muted catchme-wait">{t('Reading what came in since {when}…', { when: whenText(p.since) })}</p>
             ) : (
-              <p className="catchme-text">{sinceText ?? 'Nothing to catch up on.'}</p>
+              <p className="catchme-text">{sinceText ?? t('Nothing to catch up on.')}</p>
             )}
             <button type="button" className="link-btn" onClick={() => (setCatchUp(false), setDetails('summary'))}>
-              All summaries of {title}
+              {t('All summaries of {name}', { name: title })}
             </button>
           </Sheet>
         )}
@@ -809,11 +832,11 @@ export function ChatView(p: ViewProps) {
     <section className={`chat-pane view-enter ${thread ? 'with-panel' : ''}`}>
       <div className="chat-main">
         <header className="chat-head">
-          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
+          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label={t('Open menu')}>
             <Menu size={18} />
           </button>
           {p.onBack && (
-            <button className="icon-btn back-btn" onClick={p.onBack} aria-label="Back to channels">
+            <button className="icon-btn back-btn" onClick={p.onBack} aria-label={t('Back to channels')}>
               <ArrowLeft size={20} />
             </button>
           )}
@@ -827,28 +850,28 @@ export function ChatView(p: ViewProps) {
             <h1>
               {channel.category === 'shared' && !other ? <Handshake size={16} /> : channel.private && !other && <Lock size={15} />} {title}
               {other && p.statuses[other.id] && <span className="st-emoji">{p.statuses[other.id].emoji}</span>}
-              {muted && <BellOff size={14} className="ctb-muted" aria-label={`Muted${muted === 'always' ? '' : ` until ${whenText(muted)}`}`} />}
+              {muted && <BellOff size={14} className="ctb-muted" aria-label={muted === 'always' ? t('Muted') : t('Muted until {when}', { when: whenText(muted) })} />}
             </h1>
             <p>
-              {other ? (p.statuses[other.id]?.text ?? other.title) : (channel.topic ?? (client ? `${client.name} ${term.one} channel` : ''))}
-              {channel.guests?.length ? ` · ${channel.guests.length} guest${channel.guests.length > 1 ? 's' : ''}` : ''}
-              {channel.sharedWith ? ` · shared with ${channel.sharedWith.workspaceName}${channel.sharedWith.status === 'pending' ? ' (waiting)' : ''}` : ''}
+              {other ? (p.statuses[other.id] ? statusText(p.statuses[other.id]) : other.title) : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}
+              {channel.guests?.length ? ` · ${tn(channel.guests.length, '{n} guest', '{n} guests')}` : ''}
+              {channel.sharedWith ? ` · ${channel.sharedWith.status === 'pending' ? t('shared with {name} (waiting)', { name: channel.sharedWith.workspaceName }) : t('shared with {name}', { name: channel.sharedWith.workspaceName })}` : ''}
             </p>
           </div>
           {p.huddle && !guest && (
-            <button className={`ghost-btn sm huddle-btn${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.onJoin} title={p.huddle.joined ? 'You’re in this huddle' : 'Talk, right here'} disabled={p.huddle.joined}>
+            <button className={`ghost-btn sm huddle-btn${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.onJoin} title={p.huddle.joined ? t('You’re in this huddle') : t('Talk, right here')} disabled={p.huddle.joined}>
               <Headphones size={14} />
-              <span className="lbl">{p.huddle.joined ? 'In the huddle' : channel.huddle?.members.length ? `Join huddle · ${channel.huddle.members.length}` : 'Huddle'}</span>
+              <span className="lbl">{p.huddle.joined ? t('In the huddle') : channel.huddle?.members.length ? t('Join huddle · {n}', { n: fmtNumber(channel.huddle.members.length) }) : t('Huddle')}</span>
             </button>
           )}
           {channel.kind === 'channel' && !guest && (
-            <button className="chat-members" onClick={p.onSettings} title="People and settings">
+            <button className="chat-members" onClick={p.onSettings} title={t('People and settings')}>
               {channel.members.slice(0, 4).map((id) => person(id) && <Avatar key={id} person={person(id)!} size={24} />)}
               <span>{members}</span>
             </button>
           )}
           {channel.kind === 'channel' && !guest && (
-            <button className="icon-btn sm" onClick={p.onSettings} title="Channel settings" aria-label="Channel settings">
+            <button className="icon-btn sm" onClick={p.onSettings} title={t('Channel settings')} aria-label={t('Channel settings')}>
               <Settings size={16} />
             </button>
           )}
@@ -863,12 +886,12 @@ export function ChatView(p: ViewProps) {
           fixed={['messages']}
           items={(
             [
-              ['messages', 'Messages', null],
-              ['materials', 'Materials', null],
-              ['tasks', 'Tasks', lateTasks], // late only
-              ['pinned', 'Pinned', null],
-              ['summary', 'Summary', null],
-              ['about', other ? 'Profile' : 'About', null],
+              ['messages', t('Messages'), null],
+              ['materials', t('Materials'), null],
+              ['tasks', t('Tasks'), lateTasks], // late only
+              ['pinned', t('Pinned'), null],
+              ['summary', t('Summary'), null],
+              ['about', other ? t('Profile') : t('About'), null],
             ] as const
           )
             .filter(([id]) => !guest || id === 'messages' || id === 'materials')
@@ -933,7 +956,7 @@ function ThreadView(p: {
   const body = (
     <div className="cs-body">
       <Msg m={root} grouped={false} inThread ctx={ctx} />
-      <div className="thread-count">{p.replies.length ? `${p.replies.length} repl${p.replies.length === 1 ? 'y' : 'ies'}` : 'No replies yet'}</div>
+      <div className="thread-count">{p.replies.length ? tn(p.replies.length, '{n} reply', '{n} replies') : t('No replies yet')}</div>
       {p.replies.map((m) => (
         <Msg key={m.id} m={m} grouped={false} inThread ctx={ctx} />
       ))}
@@ -946,14 +969,14 @@ function ThreadView(p: {
       draftKey={draftKey(p.channel.id, root.id)}
       text={text}
       setText={setText}
-      placeholder="Reply…"
+      placeholder={t('Reply…')}
       users={p.users}
       me={p.me}
       phone={p.phone}
       autoFocus
       onSend={(o) => (p.onSend(o, also), setAlso(false))}
       upload={p.upload}
-      also={{ label: `Also send to ${p.title}`, on: also, set: setAlso }}
+      also={{ label: t('Also send to {name}', { name: p.title }), on: also, set: setAlso }}
       editing={p.editing}
       onEdit={p.onEdit}
       onCancelEdit={p.onCancelEdit}
@@ -967,10 +990,11 @@ function ThreadView(p: {
       <PushScreen
         title={
           <span className="push-title-2">
-            Thread<small>{p.title}</small>
+            {t('Thread')}
+            <small>{p.title}</small>
           </span>
         }
-        backLabel="Back"
+        backLabel={t('Back')}
         onBack={p.onClose}
         className="thread-push"
         footer={composer}
@@ -981,10 +1005,10 @@ function ThreadView(p: {
   return (
     <aside className="chat-side">
       <header className="cs-head">
-        <strong>Thread</strong>
+        <strong>{t('Thread')}</strong>
         <span className="muted small">{p.title}</span>
         <span className="spacer" />
-        <button className="icon-btn sm" onClick={p.onClose} aria-label="Close thread">
+        <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close thread')}>
           <X size={16} />
         </button>
       </header>
