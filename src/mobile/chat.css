@@ -3,4 +3,787 @@
    Loaded after src/system.css and src/mobile/shell.css, so a rule here wins over the old ones without
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
+
+   On phones Chat is a stack: the list (tiles, unread on top, two-line rows), then a conversation pushed full
+   screen with one header row and the message box at the bottom, then its details and threads pushed over it.
+   The huddle is a slim bar in its own row, never over the message box. Wider screens: src/components/chat/chat.css.
    ========================================================================== */
+
+/* The huddle's row under the top bar: empty (no height) unless a huddle bar sits in it. */
+.huddle-dock {
+  flex: none;
+}
+
+@media (max-width: 767px) {
+  .main > .huddle-dock {
+    flex: none;
+    min-height: 0;
+  }
+
+  /* ---------- The list ---------- */
+
+  .chat-list {
+    padding: 0 0 calc(24px + var(--fab-space));
+  }
+  .chat-tiles {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px 16px 6px;
+    scroll-snap-type: x proximity;
+    scroll-padding: 0 16px;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .chat-tiles::-webkit-scrollbar {
+    display: none;
+  }
+  .chat-tile {
+    flex: none;
+    display: grid;
+    align-content: start;
+    gap: 2px;
+    min-width: 112px;
+    max-width: 176px;
+    min-height: 84px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--line, var(--border));
+    text-align: left;
+    scroll-snap-align: start;
+    transition:
+      background 0.15s,
+      transform 0.15s;
+    animation: fade-in 0.2s ease-out backwards;
+  }
+  .chat-tile:active {
+    background: var(--hover);
+    transform: scale(0.98);
+  }
+  .ct-icon {
+    color: var(--text-2);
+    margin-bottom: 4px;
+  }
+  .ct-label {
+    font-size: 14px;
+    font-weight: 650;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .ct-line {
+    font-size: 12.5px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-tile.hot .ct-icon,
+  .chat-tile.hot .ct-line {
+    color: var(--accent-text, var(--accent));
+    font-weight: 600;
+  }
+  .chat-tile.tile-live {
+    background: var(--ok-soft, rgba(15, 157, 107, 0.12));
+  }
+  .chat-tile.tile-live .ct-icon,
+  .chat-tile.tile-live .ct-line {
+    color: var(--ok, #0f9d6b);
+  }
+
+  .chat-list .chat-section {
+    margin: 0;
+  }
+  .chat-list .sec-head-row {
+    padding: 0 8px;
+  }
+  .chat-list .nav-heading.sec-head {
+    min-height: 40px;
+    padding: 14px 8px 6px;
+  }
+  .chat-list .nav {
+    gap: 0;
+  }
+  .cl-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 64px;
+    padding: 8px 16px;
+    text-align: left;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .cl-row:active,
+  .cl-row.active {
+    background: var(--hover);
+  }
+  .cl-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: var(--text-2);
+  }
+  .cl-icon.is-dm {
+    background: none;
+  }
+  .cl-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .cl-top,
+  .cl-bottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .cl-name {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 15.5px;
+    font-weight: 500;
+  }
+  .cl-name > :first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cl-row.unread .cl-name {
+    font-weight: 700;
+  }
+  .cl-top time {
+    flex: none;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .cl-row.unread .cl-top time {
+    color: var(--accent-text, var(--accent));
+    font-weight: 600;
+  }
+  .cl-preview {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13.5px;
+    color: var(--text-3);
+  }
+  .cl-row.unread .cl-preview {
+    color: var(--text-2);
+  }
+  .cl-draft,
+  .cl-draft-icon {
+    color: var(--accent-text, var(--accent));
+    font-style: normal;
+    font-weight: 600;
+  }
+  .cl-draft-icon {
+    vertical-align: -1px;
+    margin-right: 3px;
+  }
+  .cl-star {
+    flex: none;
+    color: var(--text-3);
+  }
+  .cl-live {
+    flex: none;
+    color: var(--ok, #0f9d6b);
+  }
+  .cl-muted {
+    flex: none;
+    color: var(--text-3);
+  }
+  .cl-row.muted .cl-name {
+    color: var(--text-2);
+  }
+  .cl-row .count {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--badge);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .cl-dot {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .cl-browse {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 52px;
+    margin-top: 8px;
+    padding: 0 16px 0 26px;
+    color: var(--accent-text, var(--accent));
+    font-weight: 600;
+    transition: background 0.15s;
+  }
+  .cl-browse:active {
+    background: var(--hover);
+  }
+  .sheet-field {
+    margin: 0 8px 8px;
+  }
+
+  /* ---------- A conversation: one header row, the messages, the box ---------- */
+
+  .chat-push .push-head {
+    gap: 2px;
+  }
+  .chan-title-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: var(--tap);
+    padding: 2px 8px 2px 4px;
+    border-radius: 12px;
+    text-align: left;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .chan-title-btn:active:not(:disabled) {
+    background: var(--hover);
+  }
+  .chan-title-btn:disabled {
+    opacity: 1;
+    cursor: default;
+  }
+  .ctb-text {
+    display: grid;
+    min-width: 0;
+  }
+  .ctb-name {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: 16.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ctb-sub {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chat-push .push-actions .icon-btn {
+    color: var(--text-2);
+  }
+  .huddle-icon.live {
+    color: var(--ok, #0f9d6b);
+    position: relative;
+  }
+  .huddle-icon.live::after {
+    content: '';
+    position: absolute;
+    top: 10px;
+    right: 9px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok, #0f9d6b);
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+  .huddle-icon.on {
+    background: var(--ok-soft, rgba(15, 157, 107, 0.12));
+    color: var(--ok, #0f9d6b);
+  }
+  .chat-push .push-body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  .chat-push .chat-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0 12px;
+  }
+  .chat-push .push-foot {
+    padding: 0 0 env(safe-area-inset-bottom);
+    border-top: 0;
+    background: var(--surface);
+  }
+  .kb-open .chat-push .push-foot {
+    padding-bottom: 0;
+  }
+  .chat-foot {
+    display: grid;
+    padding: 6px 8px 8px;
+  }
+  .chat-foot .shared-note,
+  .chat-foot .sched-line {
+    margin: 0 0 6px;
+  }
+  .chat-foot .chat-locked {
+    margin: 0;
+  }
+  .chat-push .chat-msg {
+    padding: 6px 14px;
+    border-radius: 0;
+  }
+  /* No hover look left behind by a tap. */
+  .chat-push .chat-msg:hover:not(.is-saved) {
+    background: none;
+  }
+  .chat-push .chat-msg:active:not(.lp-lifted) {
+    background: var(--hover);
+  }
+  .chat-push .chat-msg.lp-lifted {
+    background: var(--surface);
+    border-radius: 14px;
+  }
+  .chat-push .chat-day {
+    margin: 12px 0 4px;
+  }
+  .chat-push .reaction {
+    min-height: 32px;
+    padding: 0 10px;
+  }
+  .chat-push .thread-link {
+    min-height: 36px;
+  }
+
+  /* In a conversation the bottom belongs to the message box: toasts sit just above it. */
+  :root:has(.chat-push) .toast {
+    bottom: calc(var(--chat-foot, 104px) + var(--kb, 0px) + env(safe-area-inset-bottom) + 8px);
+  }
+
+  /* The message box on phones: field on top, a row of tools, Send on the right; rides above the keyboard. */
+  .composer.is-phone {
+    margin: 0;
+    border-radius: 20px;
+  }
+  .composer.is-phone .cmp-field {
+    min-height: 44px;
+    padding: 11px 14px 2px;
+  }
+  .composer.is-phone .cmp-tools {
+    padding: 0 4px 2px;
+    gap: 0;
+  }
+  .composer.is-phone .cmp-tools .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: 14px;
+  }
+  .composer.is-phone .chat-send {
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: 14px;
+  }
+  .composer.is-phone .cmp-fmt {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .composer.is-phone .cmp-fmt .icon-btn {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .composer.is-phone .mention-pop {
+    left: 0;
+    right: 0;
+  }
+  .composer.is-phone .mention-pop button {
+    min-height: var(--tap);
+  }
+  .composer.is-phone .cmp-also {
+    min-height: var(--tap);
+  }
+  .composer.is-phone .rec-bar {
+    min-height: 60px;
+  }
+  .plus-tiles button {
+    min-height: 76px;
+  }
+  .emoji-grid button {
+    height: var(--tap);
+  }
+
+  /* A thread, pushed over the conversation. */
+  .push-title-2 {
+    display: grid;
+    line-height: 1.2;
+  }
+  .push-title-2 small {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .thread-push .cs-body {
+    padding: 8px 0 16px;
+  }
+  .thread-push .push-foot {
+    padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+    border-top: 0;
+  }
+  .kb-open .thread-push .push-foot {
+    padding-bottom: 8px;
+  }
+  .thread-push .push-body {
+    padding-bottom: 0;
+  }
+  .thread-push .thread-count {
+    margin: 6px 16px;
+  }
+
+  /* Details: who's in it, files, pins, tasks, summaries, about; each its own screen. */
+  .cd-hero {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    padding: 24px 16px 12px;
+    text-align: center;
+  }
+  .cd-hero strong {
+    font-size: 19px;
+  }
+  .cd-hero .muted {
+    font-size: 14px;
+  }
+  .cd-icon {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    background: var(--surface-2);
+    color: var(--text-2);
+  }
+  .cdt-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 16px 12px;
+  }
+  .cdt-actions button {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 4px;
+    min-width: 88px;
+    min-height: 64px;
+    padding: 8px;
+    border-radius: 16px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+  .cdt-actions button.on {
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+  }
+  .cd-mute {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 16px 14px;
+  }
+  .cd-mute .chip {
+    min-height: 40px;
+    padding: 0 14px;
+  }
+  .cd-rows {
+    border-top: 1px solid var(--line, var(--border));
+  }
+  .cd-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 52px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line, var(--border));
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .cd-row:active {
+    background: var(--hover);
+  }
+  .cd-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 15.5px;
+  }
+  .cd-hint {
+    font-size: 13.5px;
+    color: var(--text-3);
+  }
+  .cd-chev {
+    color: var(--text-3);
+  }
+  .cd-row.danger {
+    margin-top: 20px;
+    border-top: 1px solid var(--line, var(--border));
+    color: var(--danger);
+  }
+  .chat-pane-screen .chan-pane {
+    padding: 12px 16px 24px;
+  }
+  .chat-pane-screen .about-pane .profile {
+    padding-top: 8px;
+  }
+  .chat-pane-screen .task-add {
+    flex-wrap: wrap;
+  }
+  .chat-pane-screen .task-add input:first-of-type {
+    flex-basis: calc(100% - 40px);
+  }
+  .catchme-sheet .sheet-body {
+    padding-bottom: 16px;
+  }
+
+  /* ---------- The huddle: a slim bar in its own row, and the call screen ---------- */
+
+  .huddle-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 56px;
+    padding: 4px 8px 4px 12px;
+    background: var(--ok-soft, rgba(15, 157, 107, 0.12));
+    border-bottom: 1px solid var(--line, var(--border));
+    animation: hb-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  @keyframes hb-in {
+    from {
+      opacity: 0;
+      margin-bottom: -56px;
+    }
+  }
+  /* Leaving the huddle: the bar folds up out of its row (the copy comes from src/exitAnimations.ts). */
+  .is-leaving.huddle-bar {
+    animation: hb-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+  @keyframes hb-out {
+    to {
+      opacity: 0;
+      margin-bottom: -56px;
+    }
+  }
+  .hb-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--tap);
+    text-align: left;
+    border-radius: 12px;
+  }
+  .hb-icon {
+    flex: none;
+    color: var(--ok, #0f9d6b);
+  }
+  .hb-text {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    line-height: 1.25;
+  }
+  .hb-text strong,
+  .hb-text small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hb-text strong {
+    font-size: 14px;
+  }
+  .hb-text small {
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .hb-avs {
+    display: flex;
+    flex: none;
+  }
+  .hb-avs .huddle-av + .huddle-av {
+    margin-left: -6px;
+  }
+  .hb-mic.on {
+    background: var(--danger-soft, rgba(209, 67, 67, 0.12));
+    color: var(--danger);
+  }
+  .hb-leave {
+    background: var(--danger);
+    color: #fff;
+    border-radius: 14px;
+  }
+  .huddle-sheet .sheet-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .hs-status {
+    margin: 0 16px 4px;
+    text-align: center;
+    color: var(--text-2);
+  }
+  .huddle-sheet .huddle-fold {
+    margin: 0 8px;
+  }
+  .huddle-note .ghost-btn.sm {
+    min-height: 40px;
+  }
+  .hs-people {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    align-content: center;
+    gap: 20px 8px;
+    padding: 20px 8px;
+  }
+  .hs-person {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .hs-person .huddle-av.speaking :is(.avatar, img, span:first-child) {
+    box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--ok, #0f9d6b);
+  }
+  .hs-react button {
+    width: 48px;
+    height: 48px;
+    font-size: 26px;
+  }
+  .hs-controls {
+    display: flex;
+    justify-content: space-around;
+    gap: 8px;
+    padding: 12px 8px 8px;
+  }
+  .hs-ctl {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    min-width: 64px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .hs-ctl > span {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .hs-ctl.on > span {
+    background: var(--text);
+    color: var(--surface);
+  }
+  .hs-ctl.leave > span {
+    background: var(--danger);
+    color: #fff;
+  }
+  .hs-ctl:disabled {
+    opacity: 0.5;
+  }
+
+  /* ---------- Pages: Catch up, Threads, Drafts and sent, Saved ---------- */
+
+  .chat-page-push .push-body {
+    padding: 8px 8px calc(24px + env(safe-area-inset-bottom));
+  }
+  .chat-page-push .page-list {
+    max-width: none;
+  }
+  .chat-page-push .page-row {
+    border-radius: 0;
+    padding: 10px 8px;
+  }
+  .chat-page-push .page-row:active {
+    background: var(--hover);
+  }
+  .chat-page-push .pr-actions {
+    padding: 0 8px 10px;
+  }
+  .chat-page-push .drafts-page .page-tabs {
+    display: flex;
+    margin: 4px 8px 12px;
+  }
+  .chat-page-push .drafts-page .page-tabs button {
+    flex: 1;
+    min-height: 40px;
+  }
+  .page-catchup .push-body {
+    padding: 8px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+  .cu-page {
+    min-height: 100%;
+    align-content: start;
+  }
+  .cu-actions button {
+    min-height: 48px;
+  }
+  .cu-top .link-btn {
+    min-height: var(--tap);
+  }
+  .draft-pill {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 359px) {
+  .chat-tile {
+    min-width: 104px;
+  }
+  .cdt-actions button {
+    min-width: 76px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-tile,
+  .huddle-bar {
+    animation: none;
+  }
+}

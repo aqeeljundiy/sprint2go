@@ -664,8 +664,7 @@ details.advanced[open] summary h3::after {
   .home-head .home-date {
     display: none;
   }
-  .tracking-head,
-  .chat-head {
+  .tracking-head {
     padding: 10px 14px;
   }
   .tracking-head h1 {

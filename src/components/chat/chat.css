@@ -1,0 +1,1047 @@
+/* ==========================================================================
+   Chat's own pieces, every width: the message box, message details (saved, forwarded, sending), the sheets chat
+   uses, the pages (Catch up, Threads, Drafts and sent, Saved) and the sidebar's extra rows.
+   Phone layout: src/mobile/chat.css (loaded last).
+   ========================================================================== */
+
+/* ---------- The message box ---------- */
+
+.composer {
+  position: relative;
+  margin: 8px 12px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.composer:focus-within,
+.composer.is-editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.cmp-box {
+  display: grid;
+}
+.cmp-field {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  padding: 11px 14px 4px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+.cmp-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px 6px;
+  min-width: 0;
+}
+.cmp-tools .icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--text-2);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.cmp-tools .icon-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+.cmp-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.composer .chat-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+.composer .chat-send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.cmp-later {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 34px;
+  border-radius: 8px;
+  color: var(--text-2);
+  transition: background 0.15s;
+}
+.cmp-later:disabled {
+  opacity: 0.35;
+}
+.cmp-busy {
+  margin-right: 6px;
+}
+.cmp-also {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 14px 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.cmp-also span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmp-fmt {
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 0;
+}
+.cmp-fmt .icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--text-2);
+}
+.cmp-editing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-text, var(--accent));
+}
+.composer .rec-bar {
+  min-height: 52px;
+  padding: 6px 10px 6px 14px;
+}
+.composer .mention-pop {
+  left: 8px;
+}
+.thread-compose .composer,
+.chat-side .composer {
+  margin: 0;
+}
+.chat-side .thread-compose {
+  margin: 8px 12px 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* The lines above the box: messages waiting to be sent, and what's typed elsewhere. */
+.sched-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 6px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.sched-line span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The connection: offline, or connecting again. */
+.conn-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line, var(--border));
+}
+.conn-line.is-offline {
+  background: var(--warn-soft, rgba(227, 154, 38, 0.14));
+  color: var(--text);
+}
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn-solid, #e39a26);
+  animation: conn-pulse 1.2s ease-in-out infinite; /* live status: still trying */
+}
+@keyframes conn-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ---------- A message ---------- */
+
+.chat-msg {
+  transition: background 0.15s;
+}
+.chat-msg.is-saved {
+  background: color-mix(in oklab, var(--accent-soft) 55%, transparent);
+}
+.cm-saved {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-text, var(--accent));
+}
+.cm-edited {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.chat-msg.is-pending .cm-text,
+.chat-msg.is-pending .chat-file {
+  opacity: 0.7;
+}
+.cm-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-3);
+  animation: fade-in 0.2s ease-out 0.8s backwards; /* a quick send never flashes "Sending" */
+}
+.cm-state.failed {
+  color: var(--warn, #a8640c);
+  animation-delay: 0s;
+}
+.cm-state .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.cm-fwd {
+  margin: 4px 0 2px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--border);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cm-fwd-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: normal;
+}
+.cm-quote {
+  margin: 2px 0;
+  padding: 0 0 0 10px;
+  border-left: 3px solid var(--border);
+  color: var(--text-2);
+  white-space: pre-wrap;
+}
+.cm-list {
+  margin: 2px 0;
+  padding-left: 20px;
+  white-space: normal;
+}
+.cm-text code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+.cm-ref svg {
+  flex: none;
+}
+.cm-tools button.on {
+  color: var(--accent);
+}
+.draft-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warn-soft, rgba(227, 154, 38, 0.14));
+  color: var(--warn, #a8640c);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+/* Where the unread part starts. */
+.chat-new {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 16px 4px;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 700;
+}
+.chat-new::before {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: color-mix(in oklab, var(--danger) 45%, transparent);
+}
+.ctb-muted {
+  color: var(--text-3);
+  flex: none;
+}
+
+/* ---------- Sheets chat uses ---------- */
+
+.react-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2px 8px 10px;
+}
+.react-row button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 22px;
+  transition:
+    transform 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.react-row button:hover,
+.react-row button:active {
+  transform: scale(1.1);
+}
+.react-row button.on {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.react-row .react-more {
+  color: var(--text-2);
+}
+.pop .react-row {
+  padding: 4px 4px 8px;
+}
+.emoji-grid {
+  display: grid;
+  gap: 8px;
+  padding: 0 4px 8px;
+}
+.emoji-grid h3 {
+  margin: 4px 6px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.emoji-grid section > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+}
+.emoji-grid button {
+  height: 42px;
+  border-radius: 10px;
+  font-size: 22px;
+  transition:
+    background 0.12s,
+    transform 0.12s;
+}
+.when-note,
+.confirm-text {
+  margin: 0 16px 10px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.when-own {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 8px 12px;
+}
+.fwd-preview {
+  margin: 0 8px 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--border);
+  color: var(--text-2);
+  font-size: 13.5px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fwd-note {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-control, 10px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: 0;
+  transition: border-color 0.15s;
+}
+.fwd-note:focus {
+  border-color: var(--accent);
+}
+.as-item.picked {
+  background: var(--accent-soft);
+}
+.as-side {
+  margin-left: auto;
+  color: var(--accent-text, var(--accent));
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.emoji-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+.who-reacted h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 8px 2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.who-emoji {
+  font-size: 18px;
+}
+.who-reacted .pl-row {
+  padding: 6px 8px;
+}
+.plus-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px 8px 12px;
+}
+.plus-tiles button {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 12px 4px 10px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+.plus-tiles button:active {
+  transform: scale(0.97);
+}
+.plus-tiles svg {
+  color: var(--accent);
+}
+.kudos-form {
+  display: grid;
+  gap: 10px;
+  padding: 4px 8px 8px;
+}
+.sheet-foot-note {
+  margin-right: auto;
+  align-self: center;
+}
+.primary-btn.danger {
+  background: var(--danger);
+}
+.catchme-text,
+.catchme-wait,
+.sum-off-text {
+  margin: 0 16px 12px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.catchme-sheet .link-btn {
+  margin: 0 16px 12px;
+}
+.sum-off-text svg {
+  vertical-align: -2px;
+  color: var(--warn, #a8640c);
+}
+
+/* ---------- The sidebar's extra rows (wider screens) ---------- */
+
+.chat-pages {
+  margin: 4px 0 2px;
+}
+.chat-pages .nav-item .sb-label,
+.chat-section .nav-item .sb-label {
+  flex: 1;
+  min-width: 0;
+}
+.nav-item .count.soft {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+.nav-draft,
+.nav-live,
+.nav-muted {
+  flex: none;
+  color: var(--text-3);
+}
+.nav-live {
+  color: var(--ok, #0f9d6b);
+}
+.nav-row.muted .nav-item {
+  color: var(--text-3);
+}
+.live-row {
+  color: var(--ok, #0f9d6b);
+}
+.chat-live-dot {
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--ok, #0f9d6b);
+  animation: conn-pulse 1.4s ease-in-out infinite; /* live: a huddle is on */
+}
+.status-pop .sel-opt.on {
+  font-weight: 600;
+}
+.peek {
+  display: grid;
+  gap: 4px;
+  width: calc(100% - 16px);
+  margin: 0 8px 8px;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  text-align: left;
+  transition: background 0.15s;
+}
+.peek:active {
+  background: var(--hover);
+}
+.peek-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.peek-line {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+.peek-line.new {
+  color: var(--text);
+}
+.peek-line b {
+  color: var(--text);
+}
+.tiles-editor {
+  display: grid;
+  gap: 2px;
+  padding: 12px 16px;
+}
+.tiles-editor > p {
+  margin: 0 0 8px;
+}
+.te-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--line, var(--border));
+}
+.te-name {
+  flex: 1;
+  display: grid;
+  font-weight: 500;
+}
+.te-name small {
+  color: var(--text-3);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* ---------- Huddle card (wider screens): who's talking, reactions ---------- */
+
+.huddle-av.speaking :is(.avatar, img, span:first-child) {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ok, #0f9d6b);
+}
+.huddle-av .avatar,
+.huddle-av > :first-child {
+  transition: box-shadow 0.15s;
+  border-radius: 50%;
+}
+.huddle-float {
+  position: absolute;
+  left: 50%;
+  bottom: 60%;
+  font-size: 22px;
+  font-style: normal;
+  pointer-events: none;
+  animation: huddle-float 1.8s ease-out forwards;
+}
+@keyframes huddle-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -48px) scale(1.05);
+  }
+}
+.huddle-name {
+  justify-self: start;
+  font-weight: 700;
+  color: var(--text);
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+.huddle .huddle-react {
+  margin-right: auto;
+}
+.hs-react {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+.hs-react button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 22px;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+
+/* ---------- Pages: Catch up, Threads, Drafts and sent, Saved ---------- */
+
+.chat-pane.chat-page {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chat-page .chat-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.chat-page .chat-head .th-text {
+  flex: 1;
+  min-width: 0;
+}
+.chat-page-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 20px 24px;
+}
+.page-list {
+  display: grid;
+  max-width: 760px;
+}
+.page-item {
+  border-bottom: 1px solid var(--line, var(--border));
+}
+.page-list > .page-row {
+  border-bottom: 1px solid var(--line, var(--border));
+}
+.page-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.page-row:disabled {
+  cursor: default;
+}
+.pr-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pr-where time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: none;
+  font-weight: 500;
+  color: var(--text-3);
+}
+.pr-text,
+.pr-reply {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.pr-reply {
+  -webkit-line-clamp: 1;
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.page-row.unread .pr-text {
+  font-weight: 600;
+}
+.pr-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.pr-meta .count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.pr-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+.pi-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.pi-main .page-row {
+  flex: 1;
+  min-width: 0;
+}
+.pi-more {
+  flex: none;
+  margin-top: 8px;
+}
+.page-item.muted .pr-text {
+  color: var(--text-3);
+  font-style: italic;
+}
+.drafts-page .page-tabs {
+  margin: 0 0 12px;
+}
+.page-push-body {
+  padding: 8px 8px 24px;
+}
+
+/* Catch up: one card at a time. */
+.cu-page {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 4px 0 16px;
+}
+.cu-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.cu-top .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.15s;
+}
+.cu-top .link-btn:disabled {
+  opacity: 0.4;
+}
+.cu-stack {
+  position: relative;
+  display: grid;
+}
+.cu-card {
+  position: relative;
+  grid-area: 1 / 1;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 14px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  touch-action: pan-y;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: cu-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes cu-in {
+  from {
+    transform: translateY(10px) scale(0.96);
+  }
+}
+.cu-card.moving {
+  transition: none;
+}
+.cu-card.flying {
+  opacity: 0;
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 1, 1),
+    opacity 0.2s ease-in;
+}
+.cu-card.under {
+  transform: translateY(10px) scale(0.95);
+  opacity: 0.6;
+  box-shadow: none;
+  pointer-events: none;
+  animation: none;
+  align-self: start;
+}
+.cu-stamp {
+  position: absolute;
+  top: 16px;
+  z-index: 1;
+  padding: 3px 10px;
+  border-radius: 8px;
+  border: 2px solid currentColor;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+.cu-stamp.read {
+  left: 16px;
+  color: var(--ok, #0f9d6b);
+  transform: rotate(-8deg);
+}
+.cu-stamp.skip {
+  right: 16px;
+  color: var(--text-3);
+  transform: rotate(8deg);
+}
+.cu-stamp.on {
+  opacity: 1;
+}
+.cu-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: 12px;
+}
+.cu-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 40px;
+}
+.cu-head strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cu-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.cu-count {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.cu-msgs {
+  touch-action: pan-y; /* its own scroll stops the card's sideways swipe otherwise */
+  display: grid;
+  gap: 10px;
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cu-more {
+  margin: 0;
+}
+.cu-msg {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+}
+.cu-msg-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.cu-msg-head time {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.cu-msg .cm-text {
+  font-size: 14.5px;
+}
+.cu-reply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cu-reply input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: 0;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.cu-reply input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.cu-reply .chat-send {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+}
+.cu-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+.cu-actions button {
+  flex: 1 1 0;
+  max-width: 200px;
+  justify-content: center;
+  white-space: nowrap;
+}
+.cu-hint {
+  margin: 0;
+  text-align: center;
+}
+.cu-done {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.cu-undo-last {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Hover looks only where there is a pointer that hovers (a tap on a phone leaves none behind). */
+@media (hover: hover) {
+  .cmp-later:hover:not(:disabled) {
+    background: var(--hover);
+  }
+  .emoji-grid button:hover {
+    background: var(--hover);
+    transform: scale(1.12);
+  }
+  .plus-tiles button:hover {
+    background: var(--hover);
+  }
+  .huddle-name:hover {
+    color: var(--accent);
+  }
+  .hs-react button:hover {
+    background: var(--hover);
+    transform: scale(1.12);
+  }
+  .page-row:hover:not(:disabled) {
+    background: var(--hover);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conn-dot,
+  .chat-live-dot,
+  .huddle-float {
+    animation: none;
+  }
+  .cu-card,
+  .cu-card.flying {
+    animation: none;
+    transition: opacity 0.15s;
+  }
+  .cm-state {
+    animation: none;
+  }
+  .react-row button,
+  .emoji-grid button,
+  .plus-tiles button,
+  .hs-react button {
+    transition: background 0.15s;
+  }
+}

@@ -655,6 +655,12 @@ export interface ChatMessage {
   via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
   pinned?: boolean;
+  /** Send later: it waits, seen only by its author, until this time; the server then sends it (server/chatLater.ts). */
+  sendAt?: string;
+  /** Forwarded from another conversation: what it said there, and who said it. */
+  forwarded?: { channelId: string; messageId: string; userId: string; who: string; where: string; text: string; at: string };
+  /** Something from sprint2go shared in the message (from the composer's +): opens it. Tasks use taskId. */
+  ref?: { kind: 'note' | 'row' | 'file'; id: string; title: string; tableId?: string };
 }
 
 export interface Status {

@@ -23,6 +23,7 @@ const LEAVING = [
   '.ask-drawer',
   '.ask-pill',
   '.huddle',
+  '.huddle-bar',
   '.later-menu',
   '.track-menu',
   '.tb-popup',
