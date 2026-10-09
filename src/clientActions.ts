@@ -8,7 +8,7 @@ import { channelsFor, clientInbox, clientPeople, companyOf, filesFor, isFreemail
 import { ai } from './ai';
 import type { MeetSource } from './ai/demo';
 import { uploadFile } from './sync';
-import { msg, phrase, type Msg } from './i18n';
+import { msg, phrase, t, tn, type Msg } from './i18n';
 
 type Set<T> = Dispatch<SetStateAction<T>>;
 
@@ -46,13 +46,13 @@ export function clientActions(c: ClientCtx) {
     const ids = [...new Set(userIds.filter((x): x is string => !!x))];
     if (ids.length) c.setNotices((ns) => [...ids.map((id) => notice(id, words, link)), ...ns]);
   };
-  const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
+  const doers = (task: Todo) => (task.assignees?.length ? task.assignees : task.userId ? [task.userId] : []);
   const sharedChannel = () => channelsFor(c.person.email, c.client.id, c.channels)[0];
 
   /** The folder in the project's Drive where a guest's uploads go ("From KopiKita", "From Pixel & Profits"). */
   const uploadFolder = (): { id: string; create?: DriveItem } => {
     const base = c.drive.find((d) => d.kind === 'folder' && d.clientId === c.client.id && !c.drive.some((x) => x.id === d.parentId && x.clientId === c.client.id));
-    const name = `From ${who}`;
+    const name = `From ${who}`; // a folder name: data the team sees in Drive, and how it's found again, so always English
     const found = c.drive.find((d) => d.kind === 'folder' && d.name === name && d.clientId === c.client.id);
     if (found) return { id: found.id };
     const id = uid();
@@ -75,42 +75,44 @@ export function clientActions(c: ClientCtx) {
 
     /** Approve work, or ask for changes. */
     decide(taskId: string, status: 'approved' | 'changes', note: string) {
-      const t = c.todos.find((x) => x.id === taskId);
-      if (!t) return;
+      const task = c.todos.find((x) => x.id === taskId);
+      if (!task) return;
       c.setTodos((ts) =>
         ts.map((x) =>
           x.id === taskId
             ? {
                 ...x,
                 approval: { ...(x.approval ?? { askedBy: c.client.ownerId, askedAt: now() }), status, by: c.person.email, at: now(), note: note || undefined },
-                history: [...(x.history ?? []), { id: uid(), at: now(), by: c.person.email, kind: 'review', text: status === 'approved' ? `approved it${note ? `: “${note}”` : ''}` : `asked for changes: “${note}”`, toClient: true }],
+                // Saved with msg(): the English text, and a key each reader sees in their own language (docs/i18n.md).
+                history: [...(x.history ?? []), { id: uid(), at: now(), by: c.person.email, kind: 'review', ...(status === 'approved' ? (note ? msg('approved it: “{note}”', { note }) : msg('approved it')) : msg('asked for changes: “{note}”', { note })), toClient: true }],
                 ...(status === 'changes' && x.done ? { done: false, status: stageIdFor(x, 'active'), doneAt: undefined, doneBy: undefined } : {}),
               }
             : x,
         ),
       );
       const ch = sharedChannel();
-      if (ch) c.setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: 'guest', guestEmail: c.person.email, text: status === 'approved' ? `✅ Approved “${t.title}”${note ? `: ${note}` : ''}` : `✏️ Asked for changes on “${t.title}”: ${note}`, at: now(), taskId }]);
-      tell([t.approval?.askedBy, ...doers(t), t.supervisorId, c.client.ownerId], status === 'approved' ? msg('{name} ({company}) approved “{title}”', { name: first, company: who, title: t.title }) : msg('{name} ({company}) asked for changes on “{title}”', { name: first, company: who, title: t.title }), { app: 'tasks', id: taskId });
+      // A line in the shared channel, in English like chat's other system lines (chat's to-do in docs/i18n.md).
+      if (ch) c.setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: 'guest', guestEmail: c.person.email, text: status === 'approved' ? `✅ Approved “${task.title}”${note ? `: ${note}` : ''}` : `✏️ Asked for changes on “${task.title}”: ${note}`, at: now(), taskId }]);
+      tell([task.approval?.askedBy, ...doers(task), task.supervisorId, c.client.ownerId], status === 'approved' ? msg('{name} ({company}) approved “{title}”', { name: first, company: who, title: task.title }) : msg('{name} ({company}) asked for changes on “{title}”', { name: first, company: who, title: task.title }), { app: 'tasks', id: taskId });
     },
 
     /** A comment the team sees, on a shared task or a request. */
     comment(taskId: string, text: string) {
-      const t = c.todos.find((x) => x.id === taskId);
-      if (!t || !text.trim()) return;
+      const task = c.todos.find((x) => x.id === taskId);
+      if (!task || !text.trim()) return;
       c.setTodos((ts) => ts.map((x) => (x.id === taskId ? { ...x, history: [...(x.history ?? []), { id: uid(), at: now(), by: c.person.email, kind: 'comment', text: text.trim(), toClient: true }] } : x)));
-      tell([...doers(t), t.supervisorId, c.client.ownerId], msg('{name} ({company}) commented on “{title}”: “{text}”', { name: first, company: who, title: t.title, text: text.trim().slice(0, 80) }), { app: 'tasks', id: taskId });
+      tell([...doers(task), task.supervisorId, c.client.ownerId], msg('{name} ({company}) commented on “{title}”: “{text}”', { name: first, company: who, title: task.title, text: text.trim().slice(0, 80) }), { app: 'tasks', id: taskId });
     },
 
     /** A request (ticket): lands in the team's queue as a task. */
     async request(r: { title: string; details: string; due?: string; files: File[] }) {
-      const queue = c.access.requestsTo !== 'owner' ? c.teams.find((t) => t.id === c.access.requestsTo) : undefined;
+      const queue = c.access.requestsTo !== 'owner' ? c.teams.find((tm) => tm.id === c.access.requestsTo) : undefined;
       const id = uid();
       const at = now();
       let attached = '';
       if (r.files.length) {
         const up = await this.upload(r.files, true);
-        attached = `\n\nAttached: ${up.join(', ')}`;
+        attached = `\n\n${t('Attached: {files}', { files: up.join(', ') })}`; // part of the guest's own comment, in their words
       }
       const task: Todo = {
         id,
@@ -131,7 +133,7 @@ export function clientActions(c: ClientCtx) {
         workspaceId: c.ws.id,
         createdAt: at,
         history: [
-          { id: uid(), at, by: c.person.email, kind: 'created', text: 'sent this request' },
+          { id: uid(), at, by: c.person.email, kind: 'created', ...msg('sent this request') },
           ...(r.details.trim() || attached ? [{ id: uid(), at, by: c.person.email, kind: 'comment' as const, text: (r.details.trim() + attached).trim(), toClient: true }] : []),
         ],
       };
@@ -145,7 +147,7 @@ export function clientActions(c: ClientCtx) {
       const read = await readFiles(files.filter((f) => f.size <= 8_000_000));
       if (!read.length) return [];
       const folder = uploadFolder();
-      const kindOf = (t: string): DriveItem['kind'] => (t.startsWith('image') ? 'image' : t.startsWith('video') ? 'video' : t.includes('pdf') ? 'pdf' : 'doc');
+      const kindOf = (type: string): DriveItem['kind'] => (type.startsWith('image') ? 'image' : type.startsWith('video') ? 'video' : type.includes('pdf') ? 'pdf' : 'doc');
       const items: DriveItem[] = read.map((f) => ({ id: uid(), name: f.name, kind: kindOf(f.type), parentId: folder.id, size: f.size, modified: now(), workspaceId: c.ws.id, clientId: c.client.id, url: f.url, uploadedBy: c.person.email }));
       c.setDrive((d) => [...(folder.create ? [folder.create] : []), ...items, ...d]);
       if (!quiet) tell([c.client.ownerId], items.length === 1 ? msg('{name} ({company}) uploaded {file}', { name: first, company: who, file: items[0].name }) : msg('{name} ({company}) uploaded {n} files', { name: first, company: who, n: items.length }), { app: 'drive' });
@@ -155,8 +157,8 @@ export function clientActions(c: ClientCtx) {
     /** Invite a colleague, as the company's settings allow. Returns what happened. */
     async invite(p: { name: string; email: string }): Promise<{ ok: boolean; message: string; link?: string | null }> {
       const email = p.email.trim().toLowerCase();
-      if (c.access.invites === 'off') return { ok: false, message: `${c.ws.name} adds new people for you. Ask your contact there.` };
-      if (clientPeople(c.client, c.channels).some((x) => x.email.toLowerCase() === email)) return { ok: false, message: 'They already have access.' };
+      if (c.access.invites === 'off') return { ok: false, message: t('{company} adds new people for you. Ask your contact there.', { company: c.ws.name }) };
+      if (clientPeople(c.client, c.channels).some((x) => x.email.toLowerCase() === email)) return { ok: false, message: t('They already have access.') };
       // Same company: the inviter's own email domain (a partner's people can add their colleagues), or the project's.
       const domainOf = (e: string) => e.split('@')[1]?.toLowerCase() ?? '';
       const mine = domainOf(c.person.email);
@@ -167,7 +169,7 @@ export function clientActions(c: ClientCtx) {
       if (pending) {
         c.setClients((cs) => cs.map((x) => (x.id === c.client.id ? { ...x, people: [...(x.people ?? []), person] } : x)));
         tell([c.client.ownerId], msg('{name} ({company}) asked to give {person} ({email}) access. Approve it on the {project} page', { name: first, company: who, person: person.name, email, project: phrase(term.word === 'client' ? 'client' : 'project') }), { app: 'tasks' });
-        return { ok: true, message: sameCompany ? `Sent to ${c.ws.name} to approve.` : `${email} isn’t at @${mine || 'your company'}, so ${c.ws.name} needs to approve it.` };
+        return { ok: true, message: sameCompany ? t('Sent to {company} to approve.', { company: c.ws.name }) : mine ? t('{email} isn’t at @{domain}, so {company} needs to approve it.', { email, domain: mine, company: c.ws.name }) : t('{email} isn’t at your company, so {company} needs to approve it.', { email, company: c.ws.name }) };
       }
       // Straight in: the server adds them to the people list and the shared channels (it knows if they already sign in).
       // Without a server (the demo), do it here.
@@ -177,15 +179,17 @@ export function clientActions(c: ClientCtx) {
       }
       const link = (await c.makeInvite?.({ name: person.name, email })) ?? null;
       tell([c.client.ownerId], msg('{name} ({company}) invited {person}', { name: first, company: who, person: person.name }), { app: 'tasks' });
-      return { ok: true, message: link ? `${person.name.split(' ')[0]} can join with the invite link.` : `${person.name.split(' ')[0]} has access now. They’ll find it under “Shared with you”.`, link };
+      const them = person.name.split(' ')[0];
+      return { ok: true, message: link ? t('{name} can join with the invite link.', { name: them }) : t('{name} has access now. They’ll find it under “Shared with you”.', { name: them }), link };
     },
 
     /** Ask AI about what the client can see. Counts against the monthly limit. */
     async ask(question: string): Promise<string> {
       const month = thisMonth();
       const used = c.client.aiUsage?.month === month ? c.client.aiUsage.count : 0;
-      if (!c.access.ai) return `AI isn’t switched on for your shared space.`;
-      if (used >= c.access.aiQuestions) return `You’ve used all ${c.access.aiQuestions} questions for this month. They reset on the 1st.`;
+      if (!c.access.ai) return t('AI isn’t switched on for your shared space.');
+      if (used >= c.access.aiQuestions) return tn(c.access.aiQuestions, 'You’ve used your {n} question for this month. It resets on the 1st.', 'You’ve used all {n} questions for this month. They reset on the 1st.');
+      // What the AI reads (titles, states, dates) stays English: it's the model's input, not text on screen.
       const people = clientPeople(c.client, c.channels);
       const sources: MeetSource[] = [
         ...meetingsFor(c.client, people, c.meetings, c.access)
@@ -196,10 +200,10 @@ export function clientActions(c: ClientCtx) {
           id: c.client.id,
           title: `${c.client.name} work`,
           summary: tasksFor(c.client, c.todos)
-            .map((t) => `${t.title}: ${{ done: 'done', active: 'in progress', review: 'in progress', waiting: 'waiting on you', open: 'planned' }[kindOf(t)]}${t.due ? `, due ${t.due}` : ''}${t.approval ? `, ${t.approval.status === 'waiting' ? 'waiting for your approval' : t.approval.status === 'approved' ? 'approved' : 'changes asked'}` : ''}.`)
+            .map((tk) => `${tk.title}: ${{ done: 'done', active: 'in progress', review: 'in progress', waiting: 'waiting on you', open: 'planned' }[kindOf(tk)]}${tk.due ? `, due ${tk.due}` : ''}${tk.approval ? `, ${tk.approval.status === 'waiting' ? 'waiting for your approval' : tk.approval.status === 'approved' ? 'approved' : 'changes asked'}` : ''}.`)
             .join(' '),
           transcript: [],
-          actions: tasksFor(c.client, c.todos).map((t) => ({ title: `${t.title}${t.due ? ` (due ${t.due})` : ''}`, done: t.done })),
+          actions: tasksFor(c.client, c.todos).map((tk) => ({ title: `${tk.title}${tk.due ? ` (due ${tk.due})` : ''}`, done: tk.done })),
         },
         ...channelsFor(c.person.email, c.client.id, c.channels).map((ch) => ({
           kind: 'C' as const,
