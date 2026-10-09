@@ -566,7 +566,7 @@ function EventDetail({
       {event.feed && (
         <div className="ev-row muted small">
           <Lock size={14} />
-          <span>{event.feed === 'holidays' ? 'Public holiday, shown to everyone in the company.' : 'Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.'}</span>
+          <span>{event.feed === 'holidays' ? (event.workspaceId ? 'Public holiday, shown to everyone in the company.' : 'Public holiday in a country you chose to see. Just on your calendar.') : 'Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.'}</span>
         </div>
       )}
       {task && (

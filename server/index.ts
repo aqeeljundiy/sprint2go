@@ -2818,6 +2818,18 @@ createServer(async (req, res) => {
         throw e;
       }
     }
+    // A country's public holidays for someone who chose to see them (Calendar, Public holidays, "Countries you see").
+    const holidayReq = p.match(/^\/api\/holidays\/([A-Z]{2})$/);
+    if (holidayReq && req.method === 'GET') {
+      if (!memberOf(me).length) return json(res, 403, { error: 'Calendars are for people in a company.' });
+      try {
+        res.setHeader('cache-control', 'private, max-age=3600');
+        return json(res, 200, await feeds.holidaysForPerson(holidayReq[1]));
+      } catch (e) {
+        if (e instanceof FetchError) return json(res, 400, { error: e.message });
+        throw e;
+      }
+    }
     const calRefresh = p.match(/^\/api\/calendars\/([\w-]+)\/refresh$/);
     if (calRefresh && req.method === 'POST') {
       const cal = db.getDoc('calendars', calRefresh[1]) as any;

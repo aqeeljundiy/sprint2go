@@ -24,6 +24,7 @@ export interface Settings {
   // One email about what's waiting, when they haven't used the app for a while (the server sends it: server/digest.ts).
   emailDigest: 'off' | 'hourly' | 'daily';
   timeZone?: string; // where they are (from their browser), for "daily at 9:00"
+  holidayRegions?: string[]; // whose public holidays they see (country codes); missing: the company's country
   showSnippets: boolean;
   trackByDefault: boolean;
   notifyOpens: boolean;

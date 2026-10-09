@@ -39,6 +39,7 @@ import { isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
 import { inviteCalendarTimes } from './inviteTimes';
+import { isPersonalHoliday, personalHolidayId, regionsToSave, useHolidayRegions } from './holidayRegions';
 import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
 import { EmailDeliverySection } from './components/admin/EmailDelivery';
@@ -2438,27 +2439,30 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // My outside calendars (personal: they show in every workspace), this company's public holidays, and teammates'
   // availability on top.
-  const myExtCals = useMemo(() => extCals.filter((c) => c.ownerId === user.id || (c.source === 'holidays' && c.workspaceId === ws.id)), [extCals, user.id, ws.id]);
+  // Public holidays: the countries this person chose (the company's until they choose), src/holidayRegions.ts.
+  const holidays = useHolidayRegions({ chosen: settings.holidayRegions, companyCountry: ws.holidays?.country, live: server.on });
+  const setHolidayRegions = (codes: string[]) => updateSettings({ holidayRegions: regionsToSave(codes, ws.holidays?.country) });
+  const myExtCals = useMemo(() => [...extCals.filter((c) => c.ownerId === user.id || (c.source === 'holidays' && c.workspaceId === ws.id && holidays.showCompany)), ...holidays.calendars], [extCals, user.id, ws.id, holidays.showCompany, holidays.calendars]);
   const extIds = useMemo(() => new Set(extCals.map((c) => c.id)), [extCals]);
-  // Public holidays by day, for the date picker and tasks due on a holiday.
+  // Public holidays by day, for the date picker and tasks due on a holiday (the countries this person sees).
   const holidayDays = useMemo(() => {
     const days = new Map<string, string>();
-    for (const e of events) {
-      if (e.feed !== 'holidays' || e.workspaceId !== ws.id) continue;
+    for (const e of [...events, ...holidays.events]) {
+      if (e.feed !== 'holidays' || (e.workspaceId ? e.workspaceId !== ws.id || !holidays.showCompany : false)) continue;
       for (let d = new Date(e.start); d < new Date(e.end); d.setDate(d.getDate() + 1)) {
         const day = localDay(d);
         days.set(day, days.has(day) ? `${days.get(day)}, ${e.title}` : e.title);
       }
     }
     return days;
-  }, [events, ws.id]);
+  }, [events, ws.id, holidays.events, holidays.showCompany]);
   setHolidayDays(holidayDays);
   const mateCals = useMemo(() => members.filter((u) => shownMates.has(u.id)).map((u) => ({ id: `mate-${u.id}`, name: u.name, color: u.color })), [members, shownMates]);
   const allCals = useMemo(() => [...CALENDARS, ...myExtCals, ...mateCals], [myExtCals, mateCals]);
   const visibleEvents = useMemo(() => {
     const mine = events.filter((e) => {
       if (hiddenCals.has(e.calendarId)) return false;
-      if (e.feed === 'holidays') return e.workspaceId === ws.id; // the company's: everyone's
+      if (e.feed === 'holidays') return e.workspaceId === ws.id && holidays.showCompany; // the company's, unless they chose other countries
       return (e.userId ?? 'u-aqeel') === user.id && (extIds.has(e.calendarId) ? myExtCals.some((c) => c.id === e.calendarId) : (e.workspaceId ?? 'pnp') === ws.id);
     });
     const mates = events.flatMap((e) => {
@@ -2472,8 +2476,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const first = (allUsers.find((u) => u.id === owner)?.name ?? 'Someone').split(' ')[0];
       return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${share === 'busy' || e.busy ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined, meetUrl: undefined }];
     });
-    return [...mine, ...mates];
-  }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers]);
+    return [...mine, ...holidays.events.filter((e) => !hiddenCals.has(e.calendarId)), ...mates];
+  }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers, holidays.events, holidays.showCompany]);
   const myEvents = useMemo(() => visibleEvents.filter((e) => !e.calendarId.startsWith('mate-')), [visibleEvents]);
   // The notetaker joining by itself: the server does it when the real recorder answers; the demo keeps its switches.
   const autoJoin: 'live' | 'demo' | 'off' = recorderOn && real ? 'live' : demoOk ? 'demo' : 'off';
@@ -2501,7 +2505,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return out;
   }, [sentEvents, wsMeetings, myEvents]);
   const busyDays = useMemo(() => new Set(myEvents.map((e) => new Date(e.start).toDateString())), [myEvents]);
-  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
+  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? holidays.events.find((e) => e.id === selectedEventId) ?? null;
 
   function openNewEvent(at?: Date) {
     const d = at ?? new Date(calCursor);
@@ -3293,6 +3297,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               showToast({ text: 'Synced' });
             }}
             onRemove={(id) => {
+              // Another country's holidays: off this person's list (Undo puts it back).
+              if (isPersonalHoliday(id)) {
+                const before = holidays.regions;
+                setHolidayRegions(before.filter((c) => personalHolidayId(c) !== id));
+                return showToast({ text: `${myExtCals.find((c) => c.id === id)?.name ?? 'Holidays'} removed from your calendar`, action: { label: 'Undo', run: () => setHolidayRegions(before) } });
+              }
               const cal = extCals.find((c) => c.id === id);
               if (!cal) return;
               const snapshot = { extCals, events };
@@ -3305,6 +3315,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             companyName={ws.name}
             isAdmin={isAdmin}
             onHolidays={() => setConnectCal('holidays')}
+            holidayRegions={holidays.regions}
+            companyHolidayCountry={ws.holidays?.country}
+            onHolidayRegions={setHolidayRegions}
             onHolidaysOff={() => {
               const before = ws.holidays;
               patchWorkspace(ws.id, { holidays: undefined });
@@ -4539,6 +4552,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           google={caps.googleCalendar}
           microsoft={caps.microsoftCalendar}
           start={connectCal === 'holidays' ? 'holidays' : undefined}
+          holidayRegions={holidays.regions}
+          onHolidayRegions={setHolidayRegions}
           onClose={() => setConnectCal(false)}
           onConnect={(cals) => {
             setExtCals((cs) => [...cs, ...cals]);

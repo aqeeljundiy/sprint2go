@@ -764,6 +764,19 @@ await test('Calendar links: the same link written another way is the same calend
   db.writeDocs('calendars', [], ['link-dup'], null);
 });
 
+await test('Holidays: each person sees the countries they chose, the company’s until they choose', async () => {
+  const { regionsOf, regionsToSave } = await import('../src/holidayRegions.ts');
+  assert.deepEqual(regionsOf(undefined, 'ID'), ['ID'], 'nothing chosen: the company’s country');
+  assert.deepEqual(regionsOf(undefined, undefined), [], 'a company without holidays: none');
+  assert.deepEqual(regionsOf(['SG', 'XX', 'NL'], 'ID'), ['SG', 'NL'], 'their own choice, without the company’s, and only countries we have');
+  assert.deepEqual(regionsOf([], 'ID'), [], 'none at all is a choice too');
+  assert.equal(regionsToSave(['ID'], 'ID'), undefined, 'just the company’s country: no choice of their own, so a new company country follows');
+  assert.deepEqual(regionsToSave(['NL', 'ID', 'SG'], 'ID'), ['ID', 'SG', 'NL'], 'kept in the list’s order');
+  assert.deepEqual(regionsToSave([], 'ID'), [], 'none');
+  const feeds = await import('../server/calendarFeeds.ts');
+  await assert.rejects(feeds.holidaysForPerson('XX'), /aren’t available/);
+});
+
 /* email for teammates who are away (server/digest.ts) */
 
 const digest = await import('../server/digest.ts');

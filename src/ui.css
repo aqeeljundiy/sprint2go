@@ -201,6 +201,50 @@
   font-size: 15px;
 }
 
+/* multi-select (MultiSelect): a box per choice that ticks in place; the list stays open */
+.ms-opt[aria-selected='true'] {
+  font-weight: inherit; /* no width jump when ticked */
+}
+.ms-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border-strong, var(--text-3));
+  color: #fff;
+  transition: background 0.16s ease-out, border-color 0.16s ease-out;
+}
+.ms-box svg {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.16s ease-out, transform 0.16s ease-out;
+}
+.ms-box.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ms-box.on svg {
+  opacity: 1;
+  transform: none;
+}
+.ms-foot {
+  margin: 4px 0 0;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ms-box,
+  .ms-box svg {
+    transition: none;
+  }
+}
+
 /* date picker */
 .dp {
   padding: 4px;

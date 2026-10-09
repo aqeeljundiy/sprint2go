@@ -6,6 +6,7 @@ import type { CalendarDef, CalendarSource } from '../types';
 import { Select } from './ui/Select';
 import { HOLIDAY_COUNTRIES, holidayCountry } from '../data/holidays';
 import { calendarLinkKey } from '../calendarLink';
+import { HolidayCountries } from './HolidayCountries';
 
 export const SOURCE_NAME: Record<CalendarSource, string> = {
   get sprint2go() {
@@ -84,11 +85,14 @@ interface Props {
   onConnect: (cals: CalendarDef[]) => void; // demo: pretend connections, with sample events
   onLinked: (cal: CalendarDef, upcoming: number) => void; // a real calendar link was added; its events arrive from the server
   onHolidays: (country: string | null) => void;
+  /** Whose public holidays this person sees (any of our countries; the company's until they choose). */
+  holidayRegions?: string[];
+  onHolidayRegions?: (codes: string[]) => void;
   onClose: () => void;
 }
 
 /** Add an outside calendar: a calendar link (works now), public holidays for the company, or Google, Outlook and iCloud. */
-export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, demo, google, microsoft, start, onConnect, onLinked, onHolidays, onClose }: Props) {
+export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, demo, google, microsoft, start, onConnect, onLinked, onHolidays, holidayRegions, onHolidayRegions, onClose }: Props) {
   const [source, setSource] = useState<CalendarSource | null>(start ?? null);
   const [step, setStep] = useState<'pick' | 'details' | 'connecting'>(start ? 'details' : 'pick');
   const [account, setAccount] = useState('');
@@ -126,6 +130,7 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
   const holidaysOn = holidayCountry(ws.holidays?.country);
 
   const connect = async () => {
+    if (source === 'holidays' && isAdmin && (country || '') === (ws.holidays?.country ?? '')) return onClose(); // only their own countries changed
     if (!source || !valid) return;
     if (source === 'holidays') return onHolidays(country || null);
     setError('');
@@ -318,7 +323,7 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                       <>
                         <p className="modal-intro">Public holidays show as all-day items in everyone’s calendar at {ws.name}, and tasks due on a holiday get a note.</p>
                         <div className="field">
-                          <span>Country</span>
+                          <span>Country for everyone</span>
                           <Select
                             value={country}
                             onChange={setCountry}
@@ -330,9 +335,15 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                       </>
                     ) : (
                       <p className="modal-intro">
-                        {holidaysOn ? `${ws.name} shows public holidays in ${holidaysOn.name} to everyone. Only owners and admins can change the country, in Settings, General.` : `${ws.name} doesn’t show public holidays yet. Ask an owner or admin to pick the country, in Settings, General.`}
+                        {holidaysOn ? `${ws.name} shows public holidays in ${holidaysOn.name} to everyone. Only owners and admins can change the company’s country, in Settings, General.` : `${ws.name} doesn’t show public holidays yet. Ask an owner or admin to pick the country, in Settings, General.`}
                       </p>
                     ))}
+                  {source === 'holidays' && holidayRegions && onHolidayRegions && (
+                    <div className="field">
+                      <span>Countries you see (just you)</span>
+                      <HolidayCountries field regions={holidayRegions} company={ws.holidays?.country} companyName={ws.name} onChange={onHolidayRegions} />
+                    </div>
+                  )}
 
                   {source !== 'holidays' && shareField}
                   {source === 'ics' && <p className="muted small">The link stays private to you: teammates never see it. These events are read only here; change them in the calendar they come from.</p>}
@@ -374,7 +385,7 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                 Got it
               </button>
             ) : (
-              <button className="primary-btn" onClick={() => void connect()} disabled={!valid}>
+              <button className="primary-btn" onClick={() => void connect()} disabled={!valid && !(source === 'holidays' && isAdmin)}>
                 <Check size={15} />{' '}
                 {source === 'google'
                   ? 'Continue with Google'
@@ -383,11 +394,13 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                     : source === 'icloud'
                       ? 'Connect iCloud'
                       : source === 'holidays'
-                        ? !country
-                          ? 'Remove holidays'
-                          : ws.holidays
-                            ? 'Change country'
-                            : 'Show holidays'
+                        ? (country || '') === (ws.holidays?.country ?? '')
+                          ? 'Done'
+                          : !country
+                            ? 'Remove holidays'
+                            : ws.holidays
+                              ? 'Change country'
+                              : 'Show holidays'
                         : 'Add calendar'}
               </button>
             )}

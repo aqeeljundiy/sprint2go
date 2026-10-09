@@ -232,6 +232,18 @@ async function holidaysOf(code: string): Promise<{ list: Holiday[]; at: string; 
   }
 }
 
+/**
+ * One country's public holidays for a person's own calendar (Calendar, Public holidays, "Countries you see"): this year
+ * and next, from the same daily cache as the company's.
+ */
+export async function holidaysForPerson(code: string): Promise<{ country: string; name: string; holidays: Holiday[]; at: string; error?: string }> {
+  const country = holidayCountry(code);
+  if (!country) throw new FetchError('Public holidays for that country aren’t available.');
+  const { list, at, error } = await holidaysOf(country.code);
+  const year = new Date().getFullYear();
+  return { country: country.code, name: country.name, holidays: list.filter((h) => h.date >= `${year}-01-01` && h.date <= `${year + 1}-12-31`), at, ...(error ? { error } : {}) };
+}
+
 const syncingHolidays = new Map<string, Promise<void>>();
 /** A company's holiday calendar follows its setting: made, refreshed, switched to another country, or removed. */
 export function syncHolidays(wsId: string): Promise<void> {
