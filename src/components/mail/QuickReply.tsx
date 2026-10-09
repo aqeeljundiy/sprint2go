@@ -6,6 +6,7 @@ import { RichEditor, type RichEditorHandle } from '../RichEditor';
 import { TemplatesPicker } from './Templates';
 import { startAtTop } from './caret';
 import { hasOwnText, htmlToText, textToHtml } from '../../sanitize';
+import { t } from '../../i18n';
 
 /**
  * Reply on a phone: a sheet over half the screen with the thread still showing above it. Swipe it up (or tap the
@@ -79,40 +80,40 @@ export function QuickReply({
   return (
     <Sheet
       onClose={close}
-      title={`Reply to ${to.name || to.email}`}
+      title={t('Reply to {name}', { name: to.name || to.email })}
       className={`quick-reply${grown ? ' grown' : ''}${format ? ' fmt-on' : ''}`}
       head={
         <>
-          <button type="button" className="icon-btn" onClick={() => setGrown((g) => !g)} aria-label={grown ? 'Make it smaller' : 'Full screen'} title={grown ? 'Make it smaller' : 'Full screen'}>
+          <button type="button" className="icon-btn" onClick={() => setGrown((g) => !g)} aria-label={grown ? t('Make it smaller') : t('Full screen')} title={grown ? t('Make it smaller') : t('Full screen')}>
             {grown ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
-          <button type="button" className="primary-btn qr-send" onClick={send} disabled={!typed} aria-label="Send the reply">
-            <Send size={16} /> Send
+          <button type="button" className="primary-btn qr-send" onClick={send} disabled={!typed} aria-label={t('Send the reply')}>
+            <Send size={16} /> {t('Send')}
           </button>
         </>
       }
       footer={
         <div className="kb-bar" onMouseDown={(e) => e.preventDefault()}>
-          <button type="button" className={`icon-btn${format ? ' on' : ''}`} onClick={() => setFormat((f) => !f)} aria-pressed={format} aria-label="Formatting" title="Formatting">
+          <button type="button" className={`icon-btn${format ? ' on' : ''}`} onClick={() => setFormat((f) => !f)} aria-pressed={format} aria-label={t('Formatting')} title={t('Formatting')}>
             <Type size={19} />
           </button>
-          <button type="button" ref={tplBtn} className="icon-btn" onClick={() => setTpl(true)} aria-label="Templates" title="Templates">
+          <button type="button" ref={tplBtn} className="icon-btn" onClick={() => setTpl(true)} aria-label={t('Templates')} title={t('Templates')}>
             <FileText size={19} />
           </button>
           {track && (
-            <button type="button" className={`icon-btn track-icon${track.on ? ' on' : ''}`} onClick={() => track.set(!track.on)} aria-pressed={track.on} aria-label={track.on ? 'Read tracking is on' : 'Read tracking is off'} title={track.on ? 'Tracking opens and clicks' : 'Not tracked'}>
+            <button type="button" className={`icon-btn track-icon${track.on ? ' on' : ''}`} onClick={() => track.set(!track.on)} aria-pressed={track.on} aria-label={track.on ? t('Read tracking is on') : t('Read tracking is off')} title={track.on ? t('Tracking opens and clicks') : t('Not tracked')}>
               {track.on ? <Eye size={19} /> : <EyeOff size={19} />}
             </button>
           )}
           <span className="spacer" />
-          <button type="button" className="icon-btn" onClick={() => (onKeep(null), onClose())} aria-label="Discard the reply" title="Discard">
+          <button type="button" className="icon-btn" onClick={() => (onKeep(null), onClose())} aria-label={t('Discard the reply')} title={t('Discard')}>
             <Trash2 size={18} />
           </button>
         </div>
       }
     >
       <div className="qr-editor" onClick={(e) => startAtTop(e, typed)}>
-        <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder="Write your reply…" onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
+        <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Write your reply…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
       </div>
       <TemplatesPicker
         open={tpl}

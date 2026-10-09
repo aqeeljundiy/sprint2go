@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Person } from '../types';
 import { Avatar } from './Avatar';
+import { t } from '../i18n';
 
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
@@ -38,9 +39,9 @@ export function RecipientInput({ label, value, contacts, autoFocus, onChange, tr
   };
 
   const commit = () => {
-    const t = text.trim().replace(/[,;]$/, '');
-    if (suggestions[hi] && !isEmail(t)) return add(suggestions[hi]);
-    if (isEmail(t)) add(contacts.find((c) => c.email === t) ?? { name: t.split('@')[0], email: t });
+    const typed = text.trim().replace(/[,;]$/, '');
+    if (suggestions[hi] && !isEmail(typed)) return add(suggestions[hi]);
+    if (isEmail(typed)) add(contacts.find((c) => c.email === typed) ?? { name: typed.split('@')[0], email: typed });
   };
 
   return (
@@ -51,7 +52,7 @@ export function RecipientInput({ label, value, contacts, autoFocus, onChange, tr
           <span key={p.email} className="recip-chip" title={p.email}>
             <Avatar person={p} size={18} />
             {p.name}
-            <button onClick={() => onChange(value.filter((v) => v.email !== p.email))} aria-label={`Remove ${p.name}`}>
+            <button onClick={() => onChange(value.filter((v) => v.email !== p.email))} aria-label={t('Remove {name}', { name: p.name })}>
               <X size={12} />
             </button>
           </span>
@@ -78,7 +79,7 @@ export function RecipientInput({ label, value, contacts, autoFocus, onChange, tr
             }
           }}
           onBlur={() => isEmail(text.trim()) && commit()}
-          placeholder={value.length ? '' : 'Name or email'}
+          placeholder={value.length ? '' : t('Name or email')}
         />
       </div>
       {trailing}

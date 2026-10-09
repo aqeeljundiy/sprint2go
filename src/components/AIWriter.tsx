@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Sparkles, Wand2, X } from 'lucide-react';
 import { ai, aiLive, type RewriteStyle } from '../ai';
+import { mark, t } from '../i18n';
 
 interface Props {
   hasText: boolean;
@@ -12,12 +13,13 @@ interface Props {
   onClose: () => void;
 }
 
-const TONES = ['Friendly', 'Professional', 'Short'];
+// The tone goes to the AI in English; people see it in their language (t(tone)).
+const TONES = [mark('Friendly'), mark('Professional'), mark('Short')];
 const REWRITES: [RewriteStyle, string][] = [
-  ['shorter', 'Shorter'],
-  ['formal', 'More formal'],
-  ['friendly', 'Friendlier'],
-  ['fix', 'Fix grammar'],
+  ['shorter', mark('Shorter')],
+  ['formal', mark('More formal')],
+  ['friendly', mark('Friendlier')],
+  ['fix', mark('Fix grammar')],
 ];
 
 /** "Write with AI" panel in Compose: draft from a prompt, or rewrite what's there. */
@@ -43,9 +45,9 @@ export function AIWriter({ hasText, currentText, me, to, subject, onResult, onCl
     <div className="ai-writer" onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), onClose())}>
       <div className="aw-head">
         <Sparkles size={15} />
-        <strong>Write with AI</strong>
-        {!aiLive() && <span className="demo-tag">Demo</span>}
-        <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+        <strong>{t('Write with AI')}</strong>
+        {!aiLive() && <span className="demo-tag">{t('Demo')}</span>}
+        <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
           <X size={14} />
         </button>
       </div>
@@ -60,28 +62,28 @@ export function AIWriter({ hasText, currentText, me, to, subject, onResult, onCl
             run('draft', () => ai.draft({ instruction: prompt, tone, me, to, subject }));
           }
         }}
-        placeholder={to ? `What should the email to ${to.split(' ')[0]} say?` : 'What should this email say?'}
+        placeholder={to ? t('What should the email to {name} say?', { name: to.split(' ')[0] }) : t('What should this email say?')}
       />
       <div className="aw-row">
         <div className="aw-tones">
-          {TONES.map((t) => (
-            <button key={t} className={tone === t ? 'on' : ''} onClick={() => setTone(t)}>
-              {t}
+          {TONES.map((tn) => (
+            <button key={tn} className={tone === tn ? 'on' : ''} onClick={() => setTone(tn)}>
+              {t(tn)}
             </button>
           ))}
         </div>
         <button className="primary-btn sm" disabled={!prompt.trim() || !!busy} onClick={() => run('draft', () => ai.draft({ instruction: prompt, tone, me, to, subject }))}>
-          {busy === 'draft' ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} {hasText ? 'Rewrite from prompt' : 'Generate'}
+          {busy === 'draft' ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} {hasText ? t('Rewrite from prompt') : t('Generate')}
         </button>
       </div>
       {hasText && (
         <div className="aw-rewrite">
           <Wand2 size={13} />
-          <span>Improve what you wrote:</span>
+          <span>{t('Improve what you wrote:')}</span>
           {REWRITES.map(([style, label]) => (
             <button key={style} disabled={!!busy} onClick={() => run(style, () => ai.rewrite(currentText, style))}>
               {busy === style ? <Loader2 size={12} className="spin" /> : null}
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>

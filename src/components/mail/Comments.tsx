@@ -3,6 +3,8 @@ import { MessageSquare, Send } from 'lucide-react';
 import type { User } from '../../types';
 import { Avatar } from '../Avatar';
 import { fullDate } from '../../utils';
+import { t } from '../../i18n';
+import { fmtDate } from '../../i18n/format';
 
 type Note = { id: string; by: string; text: string; at: string };
 
@@ -19,16 +21,16 @@ function withMentions(text: string, people: User[]): ReactNode {
 /** A comment inside the thread: tinted, with who and when, never sent to anyone outside. */
 export function MailComment({ note, people, meId }: { note: Note; people: User[]; meId: string }) {
   const u = people.find((x) => x.id === note.by);
-  const time = new Date(note.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const time = fmtDate(note.at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   return (
     <div className="mail-comment">
-      <Avatar person={u ?? { name: 'Someone', email: note.by }} size={28} />
+      <Avatar person={u ?? { name: t('Someone'), email: note.by }} size={28} />
       <div className="mc-main">
         <div className="mc-head">
-          <strong>{note.by === meId ? 'You' : (u?.name ?? 'Someone')}</strong>
+          <strong>{note.by === meId ? t('You') : (u?.name ?? t('Someone'))}</strong>
           <time title={fullDate(note.at)}>{time}</time>
           <span className="mc-tag">
-            <MessageSquare size={12} /> Comment
+            <MessageSquare size={12} /> {t('Comment')}
           </span>
         </div>
         <p className="mc-text">{withMentions(note.text, people)}</p>
@@ -73,9 +75,9 @@ export function CommentBox({ people, onPost, bar, onFocusChange, autoFocus }: { 
     });
   };
   const post = () => {
-    const t = text.trim();
-    if (!t) return;
-    onPost(t);
+    const said = text.trim();
+    if (!said) return;
+    onPost(said);
     setText('');
     setCaret(0);
     requestAnimationFrame(grow);
@@ -84,7 +86,7 @@ export function CommentBox({ people, onPost, bar, onFocusChange, autoFocus }: { 
   return (
     <div className={`mc-box${bar ? ' docked' : ''}`}>
       {matches.length > 0 && (
-        <div className="cb-mentions" role="listbox" aria-label="Mention someone">
+        <div className="cb-mentions" role="listbox" aria-label={t('Mention someone')}>
           {matches.map((u, i) => (
             <button key={u.id} type="button" role="option" aria-selected={i === hi} className={i === hi ? 'hi' : ''} onMouseDown={(e) => (e.preventDefault(), mention(u))}>
               <Avatar person={u} size={24} />
@@ -99,9 +101,9 @@ export function CommentBox({ people, onPost, bar, onFocusChange, autoFocus }: { 
         rows={1}
         value={text}
         autoFocus={autoFocus}
-        placeholder={bar ? 'Comment for the team' : 'Comment for the team, @ to mention someone'}
-        title="Only people with this inbox see comments, never the sender"
-        aria-label="Comment for the team"
+        placeholder={bar ? t('Comment for the team') : t('Comment for the team, @ to mention someone')}
+        title={t('Only people with this inbox see comments, never the sender')}
+        aria-label={t('Comment for the team')}
         onFocus={() => onFocusChange?.(true)}
         onBlur={() => setTimeout(() => onFocusChange?.(document.activeElement === ref.current), 120)}
         onChange={(e) => {
@@ -127,8 +129,8 @@ export function CommentBox({ people, onPost, bar, onFocusChange, autoFocus }: { 
           }
         }}
       />
-      <button type="button" className={bar ? 'icon-btn cb-send' : 'primary-btn sm cb-send'} disabled={!text.trim()} onMouseDown={(e) => e.preventDefault()} onClick={post} aria-label="Post the comment">
-        {bar ? <Send size={18} /> : 'Comment'}
+      <button type="button" className={bar ? 'icon-btn cb-send' : 'primary-btn sm cb-send'} disabled={!text.trim()} onMouseDown={(e) => e.preventDefault()} onClick={post} aria-label={t('Post the comment')}>
+        {bar ? <Send size={18} /> : t('Comment')}
       </button>
     </div>
   );

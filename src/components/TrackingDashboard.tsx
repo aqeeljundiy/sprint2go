@@ -6,6 +6,9 @@ import { fullDate, relative } from '../utils';
 import { Avatar } from './Avatar';
 import { isMine } from '../identity';
 import { EmptyState } from './ui/EmptyState';
+import { t } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtNumber, fmtPercent } from '../i18n/format';
 
 interface Props {
   threads: Thread[];
@@ -36,16 +39,17 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
 
   const { entries, feed, kpis } = useMemo(() => {
     const entries: Entry[] = [];
-    const feed: { at: string; who: Person; kind: 'open' | 'click' | 'doc' | 'reply'; text: string; threadId: string }[] = [];
+    // What happened, in words at render time (so a language switch rewrites them).
+    const feed: { at: string; who: Person; kind: 'open' | 'click' | 'doc' | 'reply'; threadId: string; link?: string; file?: string; secs?: number }[] = [];
     let recipients = 0;
     let opened = 0;
     let clicked = 0;
     let repliedN = 0;
     const firstOpenDelays: number[] = [];
 
-    for (const t of threads) {
-      if (t.location === 'trash' || t.location === 'drafts') continue;
-      for (const m of t.messages) {
+    for (const th of threads) {
+      if (th.location === 'trash' || th.location === 'drafts') continue;
+      for (const m of th.messages) {
         if (!isMine(m.from.email) || !m.tracking) continue;
         const sum = summarize(m.tracking);
         const opts = m.trackOptions ?? DEFAULT_TRACK_OPTIONS;
@@ -58,30 +62,30 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
         for (const p of people) {
           const r = m.tracking[p.email];
           const real = realOpens(r);
-          const rep = replyAfter(t, m, p.email);
+          const rep = replyAfter(th, m, p.email);
           recipients++;
           if (real.length) opened++;
           if (realClicks(r).length) clicked++;
           if (rep) {
             repliedN++;
             replied.push(p);
-            feed.push({ at: rep, who: p, kind: 'reply', text: 'replied to', threadId: t.id });
+            feed.push({ at: rep, who: p, kind: 'reply', threadId: th.id });
             if (!last || rep > last) last = rep;
           } else waiting.push(p);
           if (real[0]) firstOpenDelays.push(new Date(real[0].at).getTime() - new Date(m.date).getTime());
-          for (const o of real) feed.push({ at: o.at, who: p, kind: 'open', text: 'opened', threadId: t.id });
+          for (const o of real) feed.push({ at: o.at, who: p, kind: 'open', threadId: th.id });
           for (const c of realClicks(r)) {
-            feed.push({ at: c.at, who: p, kind: 'click', text: `clicked “${c.label}” in`, threadId: t.id });
+            feed.push({ at: c.at, who: p, kind: 'click', threadId: th.id, link: c.label });
             if (!last || c.at > last) last = c.at;
           }
           for (const d of r.docs ?? []) {
             docs++;
-            feed.push({ at: d.at, who: p, kind: 'doc', text: `viewed ${d.file} (${fmtDuration(d.seconds)}) from`, threadId: t.id });
+            feed.push({ at: d.at, who: p, kind: 'doc', threadId: th.id, file: d.file, secs: d.seconds });
             if (!last || d.at > last) last = d.at;
           }
         }
         const remindDue = !!opts.remindDays && waiting.length > 0 && Date.now() - new Date(m.date).getTime() > opts.remindDays * 86_400_000;
-        entries.push({ thread: t, message: m, people, opens: sum.opens, clicks: sum.clicks, docs, autoOnly: sum.autoOnly > 0 && !sum.opens, replied, waiting, last, remindDue });
+        entries.push({ thread: th, message: m, people, opens: sum.opens, clicks: sum.clicks, docs, autoOnly: sum.autoOnly > 0 && !sum.opens, replied, waiting, last, remindDue });
       }
     }
     entries.sort((a, b) => (b.last ?? b.message.date).localeCompare(a.last ?? a.message.date));
@@ -100,17 +104,17 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
   );
   const waiting = entries.filter((e) => e.waiting.length).sort((a, b) => Number(b.remindDue) - Number(a.remindDue) || a.message.date.localeCompare(b.message.date));
 
-  const avgLabel = !kpis.avgOpen ? 'n/a' : kpis.avgOpen < 3_600_000 ? `${Math.max(1, Math.round(kpis.avgOpen / 60_000))} min` : `${(kpis.avgOpen / 3_600_000).toFixed(1)} h`;
+  const avgLabel = !kpis.avgOpen ? t('n/a') : kpis.avgOpen < 3_600_000 ? t('{n} min', { n: Math.max(1, Math.round(kpis.avgOpen / 60_000)) }) : t('{n} h', { n: fmtNumber(kpis.avgOpen / 3_600_000, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
 
   return (
     <section className="tracking-pane view-enter">
       <header className="tracking-head">
-        <button className="icon-btn menu-btn" onClick={onMenu} aria-label="Open menu">
+        <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
         </button>
         <div>
-          <h1>Waiting for reply</h1>
-          <p>Who opened, clicked and replied to the emails you tracked</p>
+          <h1>{t('Waiting for reply')}</h1>
+          <p>{t('Who opened, clicked and replied to the emails you tracked')}</p>
         </div>
       </header>
 
@@ -118,11 +122,11 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
         <div className="kpis">
           {(
             [
-              [Send, 'Tracked emails', String(kpis.tracked)],
-              [Eye, 'Open rate', `${kpis.open}%`],
-              [MousePointerClick, 'Click rate', `${kpis.click}%`],
-              [Reply, 'Reply rate', `${kpis.reply}%`],
-              [Timer, 'Avg. time to open', avgLabel],
+              [Send, t('Tracked emails'), fmtNumber(kpis.tracked)],
+              [Eye, t('Open rate'), fmtPercent(kpis.open / 100)],
+              [MousePointerClick, t('Click rate'), fmtPercent(kpis.click / 100)],
+              [Reply, t('Reply rate'), fmtPercent(kpis.reply / 100)],
+              [Timer, t('Avg. time to open'), avgLabel],
             ] as const
           ).map(([Icon, label, value], i) => (
             <div key={label} className="kpi" style={{ ['--i' as string]: i }}>
@@ -138,15 +142,15 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
         <div className="tracking-grid">
           <div className="tg-main">
             <div className="tg-bar">
-              <h2>Tracked emails</h2>
+              <h2>{t('Tracked emails')}</h2>
               <div className="segmented">
                 {(
                   [
-                    ['all', 'All'],
-                    ['opened', 'Opened'],
-                    ['unopened', 'Not opened'],
-                    ['clicked', 'Clicked'],
-                    ['waiting', 'No reply'],
+                    ['all', t('All')],
+                    ['opened', t('Opened')],
+                    ['unopened', t('Not opened')],
+                    ['clicked', t('Clicked')],
+                    ['waiting', t('No reply')],
                   ] as const
                 ).map(([id, label]) => (
                   <button key={id} className={filter === id ? 'on' : ''} onClick={() => setFilter(id)}>
@@ -157,17 +161,17 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
             </div>
 
             <div className="te-list">
-              {shown.length === 0 && <EmptyState compact text="Nothing here. Turn on tracking when you send an email to see opens and clicks." />}
+              {shown.length === 0 && <EmptyState compact text={t('Nothing here. Turn on tracking when you send an email to see opens and clicks.')} />}
               {shown.map((e, n) => {
                 const status = e.replied.length === e.people.length
-                  ? { cls: 'replied', icon: Reply, text: 'Replied' }
+                  ? { cls: 'replied', icon: Reply, text: t('Replied') }
                   : e.clicks + e.docs > 0
-                    ? { cls: 'clicked', icon: MousePointerClick, text: `Clicked · seen ${e.opens}×` }
+                    ? { cls: 'clicked', icon: MousePointerClick, text: t('Clicked · seen {n}×', { n: e.opens }) }
                     : e.opens
-                      ? { cls: 'seen', icon: Eye, text: `Seen ${e.opens}×` }
+                      ? { cls: 'seen', icon: Eye, text: t('Seen {n}×', { n: e.opens }) }
                       : e.autoOnly
-                        ? { cls: 'auto', icon: Eye, text: 'Opened (maybe automatic)' }
-                        : { cls: 'none', icon: Eye, text: 'Not opened' };
+                        ? { cls: 'auto', icon: Eye, text: t('Opened (maybe automatic)') }
+                        : { cls: 'none', icon: Eye, text: t('Not opened') };
                 return (
                   <button key={e.message.id} className="te-row" style={{ ['--i' as string]: Math.min(n, 12) }} onClick={() => onOpenThread(e.thread.id)}>
                     <div className="te-people">
@@ -177,18 +181,16 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
                     </div>
                     <div className="te-main">
                       <strong>{e.thread.subject}</strong>
-                      <small>
-                        To {e.people.map((p) => p.name).join(', ')} · sent {relative(e.message.date)}
-                      </small>
+                      <small>{t('To {names} · sent {when}', { names: e.people.map((p) => p.name).join(', '), when: relative(e.message.date) })}</small>
                     </div>
                     <div className="te-stats">
-                      <span title="Opens">
+                      <span title={t('Opens')}>
                         <Eye size={13} /> {e.opens}
                       </span>
-                      <span title="Link clicks">
+                      <span title={t('Link clicks')}>
                         <MousePointerClick size={13} /> {e.clicks}
                       </span>
-                      <span title="Attachment views">
+                      <span title={t('Attachment views')}>
                         <FileSearch size={13} /> {e.docs}
                       </span>
                     </div>
@@ -196,7 +198,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
                       <status.icon size={12} /> {status.text}
                     </span>
                     <span className="te-last" title={e.last ? fullDate(e.last) : ''}>
-                      {e.last ? relative(e.last) : 'No activity'}
+                      {e.last ? relative(e.last) : t('No activity')}
                     </span>
                   </button>
                 );
@@ -207,21 +209,20 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
           <aside className="tg-side">
             <div className="side-card">
               <h3>
-                <BellRing size={14} /> Waiting for a reply
+                <BellRing size={14} /> {t('Waiting for a reply')}
               </h3>
-              {waiting.length === 0 && <EmptyState compact text="Everyone has replied. 🎉" />}
+              {waiting.length === 0 && <EmptyState compact text={t('Everyone has replied. 🎉')} />}
               {waiting.map((e) => (
                 <div key={e.message.id} className={`wait-row ${e.remindDue ? 'due' : ''}`}>
                   <Avatar person={e.waiting[0]} size={28} />
                   <div className="wait-main" onClick={() => onOpenThread(e.thread.id)} role="button" tabIndex={0} onKeyDown={(ev) => (ev.key === 'Enter' || ev.key === ' ') && ev.target === ev.currentTarget && (ev.preventDefault(), onOpenThread(e.thread.id))}>
                     <strong>{e.waiting.map((p) => p.name.split(' ')[0]).join(', ')}</strong>
                     <small>
-                      {e.thread.subject} · {relative(e.message.date)}
-                      {e.opens ? ` · seen ${e.opens}×` : ' · not opened'}
+                      {e.thread.subject} · {relative(e.message.date)} · {e.opens ? t('seen {n}×', { n: e.opens }) : t('not opened')}
                     </small>
                   </div>
                   <button className={e.remindDue ? 'primary-btn sm' : 'ghost-btn outline sm'} onClick={() => onNudge(e.thread, e.waiting[0])}>
-                    Nudge
+                    {t('Nudge')}
                   </button>
                 </div>
               ))}
@@ -229,9 +230,9 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
 
             <div className="side-card">
               <h3>
-                <span className="live-dot" /> Activity
+                <span className="live-dot" /> {t('Activity')}
               </h3>
-              {feed.length === 0 && <EmptyState compact text="No activity yet." />}
+              {feed.length === 0 && <EmptyState compact text={t('No activity yet.')} />}
               <ol className="feed">
                 {feed.map((f, i) => (
                   <li key={i} onClick={() => onOpenThread(f.threadId)} className={`feed-${f.kind}`}>
@@ -239,7 +240,17 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
                       {f.kind === 'click' ? <MousePointerClick size={12} /> : f.kind === 'doc' ? <FileSearch size={12} /> : f.kind === 'reply' ? <Reply size={12} /> : <Eye size={12} />}
                     </span>
                     <span className="feed-text">
-                      <b>{f.who.name.split(' ')[0]}</b> {f.text} <i>{threads.find((t) => t.id === f.threadId)?.subject}</i>
+                      {(() => {
+                        const name = <b>{f.who.name.split(' ')[0]}</b>;
+                        const subject = <i>{threads.find((th) => th.id === f.threadId)?.subject}</i>;
+                        return f.kind === 'reply'
+                          ? tj('{name} replied to {subject}', { name, subject })
+                          : f.kind === 'click'
+                            ? tj('{name} clicked “{link}” in {subject}', { name, link: f.link ?? '', subject })
+                            : f.kind === 'doc'
+                              ? tj('{name} viewed {file} ({time}) from {subject}', { name, file: f.file ?? '', time: fmtDuration(f.secs ?? 0), subject })
+                              : tj('{name} opened {subject}', { name, subject });
+                      })()}
                     </span>
                     <time title={fullDate(f.at)}>{relative(f.at)}</time>
                   </li>

@@ -37,7 +37,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import type { CalEvent, Message, Person, Thread, User, Client } from '../types';
-import { fmtTime } from '../calendarUtils';
+import { fmtTimeRange } from '../calendarUtils';
 import { fullDate, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
 import { Wordmark } from './Logo';
@@ -55,8 +55,11 @@ import { usePhone } from '../mobile/media';
 import { AssignPicker, SnoozePicker, type PresenceOf } from './mail/MailPickers';
 import { CommentBox, MailComment } from './mail/Comments';
 import { QuickReply } from './mail/QuickReply';
-import { QUICK_REPLIES } from './mail/Templates';
+import { quickReplies } from './mail/Templates';
 import { participantsOf, whenWords } from '../mailRules';
+import { t, tn } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtDate } from '../i18n/format';
 
 interface Props {
   thread: Thread | null;
@@ -256,10 +259,8 @@ export function Reader(props: Props) {
     return (
       <section className="reader reader-empty">
         <Wordmark height={30} />
-        <p className="empty-title">Select a conversation</p>
-        <p className="empty-sub">
-          Use <kbd>J</kbd> <kbd>K</kbd> to move, <kbd>E</kbd> for done, <kbd>C</kbd> to compose.
-        </p>
+        <p className="empty-title">{t('Select a conversation')}</p>
+        <p className="empty-sub">{tj('Use {j} {k} to move, {e} for done, {c} to compose.', { j: <kbd>J</kbd>, k: <kbd>K</kbd>, e: <kbd>E</kbd>, c: <kbd>C</kbd> })}</p>
       </section>
     );
   }
@@ -292,21 +293,21 @@ export function Reader(props: Props) {
   /** Done, or the way back for an email that isn't in the inbox. */
   const primary =
     thread.location === 'inbox'
-      ? { label: 'Done', icon: Check, run: () => props.onArchive(thread.id), title: 'Done (E): out of the inbox, into Archive' }
+      ? { label: t('Done'), icon: Check, run: () => props.onArchive(thread.id), title: t('Done (E): out of the inbox, into Archive') }
       : thread.location === 'drafts'
         ? null
-        : { label: thread.location === 'spam' ? 'Not spam' : thread.location === 'trash' ? 'Restore' : 'Inbox', icon: thread.location === 'trash' ? RotateCcw : Inbox, run: () => props.onMoveToInbox(thread.id), title: 'Move to Inbox' };
+        : { label: thread.location === 'spam' ? t('Not spam') : thread.location === 'trash' ? t('Restore') : t('Inbox'), icon: thread.location === 'trash' ? RotateCcw : Inbox, run: () => props.onMoveToInbox(thread.id), title: t('Move to Inbox') };
 
   const moreActions = (): SheetAction[] => [
-    ...(phone ? [] : [{ label: 'Reply', icon: Reply, run: () => startReply() }]),
-    { label: 'Forward', icon: Forward, disabled: !!props.replyOff, run: () => props.onForward(thread) },
-    ...(props.onMakeTask ? [{ label: 'Make a task', icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
-    { label: 'Mark as unread', icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
-    { label: thread.starred ? 'Unstar' : 'Star', icon: Star, group: 'mark', checked: thread.starred, run: () => props.onStar(thread.id) },
-    ...(phone && props.shared ? [] : props.shared ? [{ label: 'Who handles this…', icon: UserPlus, group: 'mark', run: () => setAssignOpen(true) }] : []),
-    ...(thread.location !== 'spam' ? [{ label: 'Report spam', icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
-    ...(incoming ? [{ label: `Block ${incoming.from.name || incoming.from.email}`, icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
-    ...(thread.location !== 'trash' ? [{ label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(thread.id) }] : []),
+    ...(phone ? [] : [{ label: t('Reply'), icon: Reply, run: () => startReply() }]),
+    { label: t('Forward'), icon: Forward, disabled: !!props.replyOff, run: () => props.onForward(thread) },
+    ...(props.onMakeTask ? [{ label: t('Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
+    { label: t('Mark as unread'), icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
+    { label: thread.starred ? t('Unstar') : t('Star'), icon: Star, group: 'mark', checked: thread.starred, run: () => props.onStar(thread.id) },
+    ...(phone && props.shared ? [] : props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, group: 'mark', run: () => setAssignOpen(true) }] : []),
+    ...(thread.location !== 'spam' ? [{ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
+    ...(incoming ? [{ label: t('Block {name}', { name: incoming.from.name || incoming.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
+    ...(thread.location !== 'trash' ? [{ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(thread.id) }] : []),
   ];
 
   // The conversation: messages and the team's comments in time order. With four or more messages, the ones between
@@ -327,7 +328,7 @@ export function Reader(props: Props) {
 
   const people = props.teammates;
   const avatars = onThread.length > 0 && (
-    <span className="reader-people" title={onThread.map((u) => u.name).join(', ')} aria-label={`On this conversation: ${onThread.map((u) => u.name).join(', ')}`}>
+    <span className="reader-people" title={onThread.map((u) => u.name).join(', ')} aria-label={t('On this conversation: {names}', { names: onThread.map((u) => u.name).join(', ') })}>
       {onThread.slice(0, 3).map((u) => (
         <Avatar key={u.id} person={u} size={24} />
       ))}
@@ -336,10 +337,10 @@ export function Reader(props: Props) {
   );
   const nav = (
     <span className="reader-nav">
-      <button type="button" className="icon-btn" disabled={!props.prevId} onClick={() => props.prevId && props.onGo(props.prevId)} aria-label="Previous email" title="Previous (K)">
+      <button type="button" className="icon-btn" disabled={!props.prevId} onClick={() => props.prevId && props.onGo(props.prevId)} aria-label={t('Previous email')} title={t('Previous (K)')}>
         <ChevronUp size={20} />
       </button>
-      <button type="button" className="icon-btn" disabled={!props.nextId} onClick={() => props.nextId && props.onGo(props.nextId)} aria-label="Next email" title="Next (J)">
+      <button type="button" className="icon-btn" disabled={!props.nextId} onClick={() => props.nextId && props.onGo(props.nextId)} aria-label={t('Next email')} title={t('Next (J)')}>
         <ChevronDown size={20} />
       </button>
     </span>
@@ -353,10 +354,16 @@ export function Reader(props: Props) {
           <Avatar person={m.from} size={phone ? 34 : 38} />
           <div className="message-who">
             <div className="message-from">
-              <strong>{isMine(m.from.email) ? 'You' : m.from.name}</strong>
+              <strong>{isMine(m.from.email) ? t('You') : m.from.name}</strong>
               {open && <span className="email">&lt;{m.from.email}&gt;</span>}
             </div>
-            <div className="message-to">{open ? `to ${m.to.map((p) => (isMine(p.email) ? 'me' : p.name)).join(', ')}${m.bcc?.length ? `, Bcc ${m.bcc.map((p) => p.name || p.email).join(', ')}` : ''}` : snippet(m.body)}</div>
+            <div className="message-to">
+              {open
+                ? m.bcc?.length
+                  ? t('to {names}, Bcc {bcc}', { names: m.to.map((p) => (isMine(p.email) ? t('me') : p.name)).join(', '), bcc: m.bcc.map((p) => p.name || p.email).join(', ') })
+                  : t('to {names}', { names: m.to.map((p) => (isMine(p.email) ? t('me') : p.name)).join(', ') })
+                : snippet(m.body)}
+            </div>
           </div>
           <time title={fullDate(m.date)}>
             {phone ? relative(m.date) : fullDate(m.date)} <span className="rel">({relative(m.date)})</span>
@@ -368,20 +375,22 @@ export function Reader(props: Props) {
             {m.delivery.state === 'held' ? <Clock size={14} /> : m.delivery.state === 'sending' ? <Loader2 size={14} className="spin" /> : m.delivery.state === 'sent' ? <Check size={14} /> : m.delivery.state === 'local' ? <Laptop size={14} /> : <AlertTriangle size={14} />}{' '}
             <span>
               {m.delivery.state === 'held'
-                ? 'Goes out in a few seconds (Undo is still possible)'
+                ? t('Goes out in a few seconds (Undo is still possible)')
                 : m.delivery.state === 'sending'
-                  ? 'Sending…'
+                  ? t('Sending…')
                   : m.delivery.state === 'sent'
-                    ? `Delivered ${relative(m.delivery.at)}`
+                    ? t('Delivered {when}', { when: relative(m.delivery.at) })
                     : m.delivery.state === 'local'
-                      ? `Held on this computer: a local sprint2go doesn’t send mail to outside addresses${m.delivery.kept?.length ? ` (${m.delivery.kept.join(', ')})` : ''}.`
-                      : `Could not be delivered: ${m.delivery.error ?? 'the receiving server refused it'}`}
+                      ? m.delivery.kept?.length
+                        ? t('Held on this computer: a local sprint2go doesn’t send mail to outside addresses ({who}).', { who: m.delivery.kept.join(', ') })
+                        : t('Held on this computer: a local sprint2go doesn’t send mail to outside addresses.')
+                      : t('Could not be delivered: {why}', { why: m.delivery.error ?? t('the receiving server refused it') })}
             </span>
           </div>
         )}
         {open && props.blockTrackers && m.trackersBlocked ? (
           <div className="blocked-note">
-            <ShieldCheck size={14} /> Blocked {m.trackersBlocked} tracker{m.trackersBlocked > 1 ? 's' : ''}, so the sender can’t see when you read this
+            <ShieldCheck size={14} /> {tn(m.trackersBlocked, 'Blocked {n} tracker, so the sender can’t see when you read this', 'Blocked {n} trackers, so the sender can’t see when you read this')}
           </div>
         ) : null}
         {open && (
@@ -410,7 +419,7 @@ export function Reader(props: Props) {
                         </div>
                         <div className="file-size">{a.size}</div>
                       </div>
-                      <button className={`att-save ${saved ? 'saved' : ''}`} disabled={saved} onClick={() => props.onSaveToDrive(thread.id, a)} title={saved ? 'Saved to Drive' : 'Save to Drive'} aria-label={saved ? 'Saved to Drive' : `Save ${a.name} to Drive`}>
+                      <button className={`att-save ${saved ? 'saved' : ''}`} disabled={saved} onClick={() => props.onSaveToDrive(thread.id, a)} title={saved ? t('Saved to Drive') : t('Save to Drive')} aria-label={saved ? t('Saved to Drive') : t('Save {name} to Drive', { name: a.name })}>
                         {saved ? <Check size={14} /> : <HardDriveUpload size={14} />}
                       </button>
                     </div>
@@ -428,17 +437,17 @@ export function Reader(props: Props) {
   const quick = canReply && (
     <div className="smart-replies">
       <span>
-        <Sparkles size={13} /> Quick replies
+        <Sparkles size={13} /> {t('Quick replies')}
       </span>
       {!suggestions &&
-        QUICK_REPLIES.map((sug, i) => (
+        quickReplies().map((sug, i) => (
           <button key={sug} className="tpl" style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''))}>
             {sug}
           </button>
         ))}
       {!suggestions && props.aiOn && (
-        <button className="ai-suggest" onClick={suggest} disabled={suggesting} title="Uses AI only when you click. Saved, so it’s free next time">
-          <Sparkles size={13} /> {suggesting ? 'Thinking…' : 'Suggest replies'}
+        <button className="ai-suggest" onClick={suggest} disabled={suggesting} title={t('Uses AI only when you click. Saved, so it’s free next time')}>
+          <Sparkles size={13} /> {suggesting ? t('Thinking…') : t('Suggest replies')}
         </button>
       )}
       {suggestions?.map((sug, i) => (
@@ -456,25 +465,22 @@ export function Reader(props: Props) {
           <h2>{thread.subject}</h2>
           <div className="thread-labels">
             {props.client && (
-              <button className="chip client-chip" style={{ ['--c' as string]: props.client.color }} onClick={() => props.onClient?.(props.client!.id)} title={`Open the ${term.one} page`}>
+              <button className="chip client-chip" style={{ ['--c' as string]: props.client.color }} onClick={() => props.onClient?.(props.client!.id)} title={t('Open the {project} page', { project: term.one })}>
                 {props.client.name}
               </button>
             )}
             {props.shared && (
               <button type="button" className={`th-who${assignee ? ' on' : ''}`} onClick={() => setAssignOpen(true)}>
                 {assignee ? <Avatar person={assignee} size={18} /> : <UserPlus size={14} />}
-                {assignee ? (assignee.id === props.meUser.id ? 'You handle this' : `${assignee.name.split(' ')[0]} handles this`) : 'Nobody handles this yet'}
+                {assignee ? (assignee.id === props.meUser.id ? t('You handle this') : t('{name} handles this', { name: assignee.name.split(' ')[0] })) : t('Nobody handles this yet')}
               </button>
             )}
             {snoozed && (
               <span className="th-when">
-                <Clock size={13} /> Back {whenWords(new Date(thread.snoozedUntil!))}
-                {thread.snoozeIfNoReply ? ' if nobody replies' : ''}
+                <Clock size={13} /> {thread.snoozeIfNoReply ? t('Back {when} if nobody replies', { when: whenWords(new Date(thread.snoozedUntil!)) }) : t('Back {when}', { when: whenWords(new Date(thread.snoozedUntil!)) })}
               </span>
             )}
-            <span className="thread-count">
-              {n} message{n > 1 ? 's' : ''}
-            </span>
+            <span className="thread-count">{tn(n, '{n} message', '{n} messages')}</span>
           </div>
         </div>
 
@@ -483,18 +489,21 @@ export function Reader(props: Props) {
             {props.aiOn && (
               <button className={`ai-sum${summary && summary !== 'loading' ? ' has' : ''}${summaryOpen ? ' open' : ''}`} onClick={summarize} aria-expanded={summary && summary !== 'loading' ? summaryOpen : undefined}>
                 {summary === 'loading' ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-                <span>{summary === 'loading' ? 'Reading the conversation…' : summary ? firstLine(summary.summary) : 'Summarize in one line'}</span>
+                <span>{summary === 'loading' ? t('Reading the conversation…') : summary ? firstLine(summary.summary) : t('Summarize in one line')}</span>
                 {summary && summary !== 'loading' && <ChevronDown size={15} className={`rot-chev${summaryOpen ? ' open' : ''}`} />}
               </button>
             )}
             {props.onMakeTask && (
               <button className="ai-chip" onClick={() => props.onMakeTask!(thread.id)}>
-                <ListPlus size={13} /> Make a task
+                <ListPlus size={13} /> {t('Make a task')}
               </button>
             )}
             {props.todos.length > 0 && (
               <button className="ai-chip todo" onClick={props.onOpenTodos}>
-                <ListChecks size={13} /> {props.todos.filter((t) => !t.done).length || '✓'} to-do{props.todos.length > 1 ? 's' : ''} from this email
+                <ListChecks size={13} />{' '}
+                {props.todos.some((td) => !td.done)
+                  ? tn(props.todos.filter((td) => !td.done).length, '{n} to-do from this email', '{n} to-dos from this email')
+                  : tn(props.todos.length, '✓ To-do from this email', '✓ To-dos from this email')}
               </button>
             )}
           </div>
@@ -504,12 +513,12 @@ export function Reader(props: Props) {
           {summary && summary !== 'loading' && summaryOpen && (
             <div className="ai-summary">
               <div className="ais-label">
-                <Sparkles size={13} /> Summary
+                <Sparkles size={13} /> {t('Summary')}
               </div>
               <p>{summary.summary}</p>
               {summary.asks.length > 0 && (
                 <>
-                  <div className="ais-label">They’re asking you to</div>
+                  <div className="ais-label">{t('They’re asking you to')}</div>
                   <ul>
                     {summary.asks.map((a) => (
                       <li key={a}>{a}</li>
@@ -519,11 +528,11 @@ export function Reader(props: Props) {
               )}
               {props.todos.length > 0 && (
                 <>
-                  <div className="ais-label">Your to-dos</div>
-                  {props.todos.map((t) => (
-                    <label key={t.id} className={`ais-todo ${t.done ? 'done' : ''}`}>
-                      <input type="checkbox" checked={t.done} onChange={() => props.onToggleTodo(t.id)} />
-                      {t.title}
+                  <div className="ais-label">{t('Your to-dos')}</div>
+                  {props.todos.map((td) => (
+                    <label key={td.id} className={`ais-todo ${td.done ? 'done' : ''}`}>
+                      <input type="checkbox" checked={td.done} onChange={() => props.onToggleTodo(td.id)} />
+                      {td.title}
                     </label>
                   ))}
                 </>
@@ -539,14 +548,20 @@ export function Reader(props: Props) {
             return (
               <div className={`list-banner ${stillSending ? 'warn' : ''}`}>
                 <MailMinus size={16} />
-                <span>{stillSending ? `${incoming.from.name} is still emailing you after you unsubscribed.` : props.unsubscribedAt ? `You unsubscribed from ${incoming.from.name} ${relative(props.unsubscribedAt)}.` : `Mailing list from ${incoming.from.name}`}</span>
+                <span>
+                  {stillSending
+                    ? t('{name} is still emailing you after you unsubscribed.', { name: incoming.from.name })
+                    : props.unsubscribedAt
+                      ? t('You unsubscribed from {name} {when}.', { name: incoming.from.name, when: relative(props.unsubscribedAt) })
+                      : t('Mailing list from {name}', { name: incoming.from.name })}
+                </span>
                 {!props.unsubscribedAt && (
                   <button className="ghost-btn outline sm" onClick={() => props.onUnsubscribe(thread)}>
-                    Unsubscribe
+                    {t('Unsubscribe')}
                   </button>
                 )}
                 <button className={stillSending ? 'primary-btn sm' : 'ghost-btn sm'} onClick={() => props.onBlock(thread)}>
-                  <Ban size={13} /> Block
+                  <Ban size={13} /> {t('Block')}
                 </button>
               </div>
             );
@@ -555,27 +570,27 @@ export function Reader(props: Props) {
         {thread.invite && (
           <div className={`invite ${props.inviteAdded ? 'added' : ''}`}>
             <div className="invite-date">
-              <span>{new Date(thread.invite.start).toLocaleDateString([], { month: 'short' })}</span>
+              <span>{fmtDate(thread.invite.start, { month: 'short' })}</span>
               <strong>{new Date(thread.invite.start).getDate()}</strong>
             </div>
             <div className="invite-info">
-              <div className="invite-kicker">Meeting proposed in this email</div>
+              <div className="invite-kicker">{t('Meeting proposed in this email')}</div>
               <div className="invite-title">{thread.invite.title}</div>
               <div className="invite-when">
-                {new Date(thread.invite.start).toLocaleDateString([], { weekday: 'long' })} · {fmtTime(thread.invite.start)} to {fmtTime(thread.invite.end)}
+                {fmtDate(thread.invite.start, { weekday: 'long' })} · {fmtTimeRange(thread.invite.start, thread.invite.end)}
                 {thread.invite.location && ` · ${thread.invite.location}`}
               </div>
               <div className={`invite-status ${props.inviteConflicts.length && !props.inviteAdded ? 'warn' : ''}`}>
-                {props.inviteAdded ? 'On your calendar' : props.inviteConflicts.length ? `Overlaps with “${props.inviteConflicts[0].title}”` : 'You’re free at this time'}
+                {props.inviteAdded ? t('On your calendar') : props.inviteConflicts.length ? t('Overlaps with “{title}”', { title: props.inviteConflicts[0].title }) : t('You’re free at this time')}
               </div>
             </div>
             {props.inviteAdded ? (
               <span className="invite-done">
-                <CalendarCheck size={16} /> Added
+                <CalendarCheck size={16} /> {t('Added')}
               </span>
             ) : (
               <button className="primary-btn" onClick={() => props.onAddInvite(thread.id)}>
-                <CalendarPlus size={15} /> Add to calendar
+                <CalendarPlus size={15} /> {t('Add to calendar')}
               </button>
             )}
           </div>
@@ -588,7 +603,7 @@ export function Reader(props: Props) {
               // The fold sits where the first hidden item was.
               return hidden[0] === x ? (
                 <button key="fold" type="button" className="msg-fold" onClick={() => setShowAll(true)}>
-                  <span>{hiddenMsgs} earlier message{hiddenMsgs === 1 ? '' : 's'}</span>
+                  <span>{tn(hiddenMsgs, '{n} earlier message', '{n} earlier messages')}</span>
                 </button>
               ) : null;
             }
@@ -604,10 +619,10 @@ export function Reader(props: Props) {
               {replyOpen ? (
                 <div className="reply-box">
                   <div className="reply-to">
-                    <Reply size={14} /> Replying to <strong>{replyTo.name}</strong>
+                    <Reply size={14} /> {tj('Replying to {name}', { name: <strong>{replyTo.name}</strong> })}
                   </div>
                   <div onKeyDown={(e) => e.key === 'Escape' && !(e.target as HTMLElement).closest('.tb-popup') && setReplyOpen(false)}>
-                    <RichEditor autoFocus initialHtml={replyInitial ?? draft?.html ?? (props.signature ? `<p><br></p>${props.signature}` : '')} placeholder="Write your reply…" onChange={(html, text) => (setReply({ html, text }), REPLY_DRAFTS.set(thread.id, { html, text }))} onSubmit={send} />
+                    <RichEditor autoFocus initialHtml={replyInitial ?? draft?.html ?? (props.signature ? `<p><br></p>${props.signature}` : '')} placeholder={t('Write your reply…')} onChange={(html, text) => (setReply({ html, text }), REPLY_DRAFTS.set(thread.id, { html, text }))} onSubmit={send} />
                   </div>
                   <div className="reply-actions">
                     {props.canTrack && replyOutside.length > 0 && (
@@ -615,16 +630,18 @@ export function Reader(props: Props) {
                         type="button"
                         className={`track-toggle ${replyTracked ? 'on' : ''}`}
                         aria-pressed={replyTracked}
-                        aria-label="Read tracking"
+                        aria-label={t('Read tracking')}
                         onClick={() => setReplyTrack(!replyTracked)}
                         title={
                           replyTracked
-                            ? `${replyOutside.length === 1 ? `${replyOutside[0].name || replyOutside[0].email}’s copy gets` : 'Each person outside the team gets a copy with'} an invisible picture and links that pass through ${product.name}, so you see when it’s opened and which links are clicked. Apple Mail can load pictures by itself, so treat opens as a hint.`
-                            : 'Not tracked. Turn on to see when they open your reply and which links they click.'
+                            ? replyOutside.length === 1
+                              ? t('{name}’s copy gets an invisible picture and links that pass through {product}, so you see when it’s opened and which links are clicked. Apple Mail can load pictures by itself, so treat opens as a hint.', { name: replyOutside[0].name || replyOutside[0].email, product: product.name })
+                              : t('Each person outside the team gets a copy with an invisible picture and links that pass through {product}, so you see when it’s opened and which links are clicked. Apple Mail can load pictures by itself, so treat opens as a hint.', { product: product.name })
+                            : t('Not tracked. Turn on to see when they open your reply and which links they click.')
                         }
                       >
                         {replyTracked ? <Eye size={15} /> : <EyeOff size={15} />}
-                        <span>{replyTracked ? 'Tracking' : 'Not tracked'}</span>
+                        <span>{replyTracked ? t('Tracking') : t('Not tracked')}</span>
                       </button>
                     )}
                     <button
@@ -635,7 +652,7 @@ export function Reader(props: Props) {
                         REPLY_DRAFTS.delete(thread.id);
                       }}
                     >
-                      Discard
+                      {t('Discard')}
                     </button>
                     <button
                       className="primary-btn"
@@ -645,7 +662,7 @@ export function Reader(props: Props) {
                       }}
                       disabled={!hasOwnText(reply.text, props.signature)}
                     >
-                      <Send size={15} /> Send <kbd>⌘↵</kbd>
+                      <Send size={15} /> {t('Send')} <kbd>⌘↵</kbd>
                     </button>
                   </div>
                 </div>
@@ -654,10 +671,10 @@ export function Reader(props: Props) {
                   {quick}
                   <div className="reply-buttons">
                     <button className={`ghost-btn outline ${props.replyOff ? 'off' : ''}`} aria-disabled={props.replyOff ? true : undefined} title={props.replyOff} onClick={() => startReply()}>
-                      <Reply size={15} /> {draft ? 'Reply (draft)' : 'Reply'} <kbd>R</kbd>
+                      <Reply size={15} /> {draft ? t('Reply (draft)') : t('Reply')} <kbd>R</kbd>
                     </button>
                     <button className={`ghost-btn outline ${props.replyOff ? 'off' : ''}`} aria-disabled={props.replyOff ? true : undefined} title={props.replyOff} onClick={() => (props.replyOff ? props.onReplyOff?.() : props.onForward(thread))}>
-                      <Forward size={15} /> Forward
+                      <Forward size={15} /> {t('Forward')}
                     </button>
                   </div>
                 </>
@@ -689,14 +706,14 @@ export function Reader(props: Props) {
         className="mail-reader"
         actions={
           <>
-            {avatars && (props.shared ? <button type="button" className="rp-btn" onClick={() => setAssignOpen(true)} aria-label="Who handles this">{avatars}</button> : avatars)}
+            {avatars && (props.shared ? <button type="button" className="rp-btn" onClick={() => setAssignOpen(true)} aria-label={t('Who handles this')}>{avatars}</button> : avatars)}
             {nav}
           </>
         }
         footer={
           <div className={`reader-foot${commenting ? ' commenting' : ''}`}>
             {props.team && <CommentBox bar people={people.filter((u) => u.id !== props.meUser.id)} onPost={(text) => props.onComment(thread.id, text)} onFocusChange={setCommenting} />}
-            <nav className="reader-actions" aria-label="Actions for this email">
+            <nav className="reader-actions" aria-label={t('Actions for this email')}>
               {primary && PrimaryIcon && (
                 <button type="button" onClick={primary.run}>
                   <PrimaryIcon size={21} />
@@ -706,25 +723,25 @@ export function Reader(props: Props) {
               <button type="button" className={props.replyOff ? 'off' : ''} aria-disabled={props.replyOff ? true : undefined} onClick={() => startReply()}>
                 <span className="ra-icon">
                   <Reply size={21} />
-                  {draft && <i className="ra-dot" aria-label="Draft" />}
+                  {draft && <i className="ra-dot" aria-label={t('Draft')} />}
                 </span>
-                <span>{draft ? 'Draft' : 'Reply'}</span>
+                <span>{draft ? t('Draft') : t('Reply')}</span>
               </button>
               {thread.location !== 'drafts' && thread.location !== 'trash' && (
                 <button type="button" onClick={() => setSnoozeOpen(true)}>
                   <Clock size={21} />
-                  <span>Snooze</span>
+                  <span>{t('Snooze')}</span>
                 </button>
               )}
               {props.shared && (
                 <button type="button" onClick={() => setAssignOpen(true)}>
                   {assignee ? <Avatar person={assignee} size={22} /> : <UserPlus size={21} />}
-                  <span>Assign</span>
+                  <span>{t('Assign')}</span>
                 </button>
               )}
               <button type="button" onClick={() => setMoreOpen(true)}>
                 <MoreHorizontal size={21} />
-                <span>More</span>
+                <span>{t('More')}</span>
               </button>
             </nav>
           </div>
@@ -756,7 +773,7 @@ export function Reader(props: Props) {
   return (
     <section className="reader">
       <header className="reader-bar">
-        <button className="icon-btn back-btn" onClick={props.onBack} aria-label="Back">
+        <button className="icon-btn back-btn" onClick={props.onBack} aria-label={t('Back')}>
           <ArrowLeft size={18} />
         </button>
         <div className="toolbar">
@@ -767,33 +784,33 @@ export function Reader(props: Props) {
             </button>
           )}
           {thread.location !== 'drafts' && thread.location !== 'trash' && (
-            <button ref={snoozeBtn} className="icon-btn rb-labelled" onClick={() => setSnoozeOpen(true)} title="Snooze">
+            <button ref={snoozeBtn} className="icon-btn rb-labelled" onClick={() => setSnoozeOpen(true)} title={t('Snooze')}>
               <Clock size={17} />
-              <span>Snooze</span>
+              <span>{t('Snooze')}</span>
             </button>
           )}
           {props.shared && (
-            <button ref={assignBtn} className="icon-btn rb-labelled" onClick={() => setAssignOpen(true)} title="Who handles this">
+            <button ref={assignBtn} className="icon-btn rb-labelled" onClick={() => setAssignOpen(true)} title={t('Who handles this')}>
               {assignee ? <Avatar person={assignee} size={20} /> : <UserPlus size={17} />}
-              <span>{assignee ? (assignee.id === props.meUser.id ? 'You' : assignee.name.split(' ')[0]) : 'Assign'}</span>
+              <span>{assignee ? (assignee.id === props.meUser.id ? t('You') : assignee.name.split(' ')[0]) : t('Assign')}</span>
             </button>
           )}
           <span className="divider" />
-          <button className="icon-btn" onClick={() => props.onTrash(thread.id)} title="Delete (#)" aria-label="Delete">
+          <button className="icon-btn" onClick={() => props.onTrash(thread.id)} title={t('Delete (#)')} aria-label={t('Delete')}>
             <Trash2 size={17} />
           </button>
-          <button className="icon-btn" onClick={() => props.onMarkUnread(thread.id)} title="Mark unread (U)" aria-label="Mark unread">
+          <button className="icon-btn" onClick={() => props.onMarkUnread(thread.id)} title={t('Mark unread (U)')} aria-label={t('Mark unread')}>
             <Mail size={17} />
           </button>
-          <button className={`icon-btn ${thread.starred ? 'starred' : ''}`} onClick={() => props.onStar(thread.id)} title="Star (S)" aria-label={thread.starred ? 'Unstar' : 'Star'}>
+          <button className={`icon-btn ${thread.starred ? 'starred' : ''}`} onClick={() => props.onStar(thread.id)} title={t('Star (S)')} aria-label={thread.starred ? t('Unstar') : t('Star')}>
             <Star size={17} />
           </button>
-          <button ref={moreBtn} className="icon-btn" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions">
+          <button ref={moreBtn} className="icon-btn" onClick={() => setMoreOpen(true)} title={t('More')} aria-label={t('More actions')}>
             <MoreHorizontal size={17} />
           </button>
         </div>
         <span className="reader-bar-end">
-          {avatars && (props.shared ? <button type="button" className="rp-btn" onClick={() => setAssignOpen(true)} aria-label="Who handles this">{avatars}</button> : avatars)}
+          {avatars && (props.shared ? <button type="button" className="rp-btn" onClick={() => setAssignOpen(true)} aria-label={t('Who handles this')}>{avatars}</button> : avatars)}
           {nav}
         </span>
       </header>
@@ -812,11 +829,11 @@ function CodeCard({ text }: { text: string }) {
   return (
     <div className="code-card">
       <span>
-        <small>Code in this email</small>
+        <small>{t('Code in this email')}</small>
         <b>{code}</b>
       </span>
       <button className="ghost-btn sm outline" onClick={() => void navigator.clipboard?.writeText(code).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1500)))}>
-        {copied ? 'Copied' : 'Copy code'}
+        {copied ? t('Copied') : t('Copy code')}
       </button>
     </div>
   );
