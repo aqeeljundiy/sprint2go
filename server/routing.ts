@@ -110,6 +110,10 @@ function alertIfStreak(ws: Ws, p: Probe) {
 function judge(p: Probe): boolean {
   const ob = p.outbox_id ? mailer.outboxState(p.outbox_id) : undefined;
   const age = Date.now() - Date.parse(p.sent_at);
+  if (ob?.state === 'local') {
+    settle(p, 'unsent', 'A local sprint2go keeps mail on this computer, so the test never left. Set MAIL_RELAY_URL to try it.');
+    return true;
+  }
   if (ob?.state === 'failed') {
     settle(p, 'failed', `${p.domain}’s mail server refused the test: ${(ob.error ?? 'no reason given').slice(0, 200)}`);
     return true;

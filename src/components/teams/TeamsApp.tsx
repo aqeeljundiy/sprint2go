@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronRight, LogOut, Menu, Plus, Trash2, UserPlus, Users, X } from 'lucide-react';
 import type { Client, HomeTemplateId, Team, Todo, User } from '../../types';
 import { localDay, relative } from '../../utils';
-import { kindOf, stageBadge, stageOf } from '../../stages';
+import { kindOf, projectStages, stageBadge, stageOf, stagesFor } from '../../stages';
+import { OwnStages, type Move } from '../admin/TaskStages';
 import { Avatar } from '../Avatar';
 import { Badge, PersonCell } from '../ui/Person';
 import { EmptyState } from '../ui/EmptyState';
@@ -32,6 +33,7 @@ const shortDate = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateStrin
 
 export interface TeamActions {
   patch: (id: string, p: Partial<Team>) => void;
+  patchTask?: (id: string, p: Partial<Todo>) => void; // tasks moved when the team's own stages change
   join: (t: Team) => void; // joins an open team, or asks the lead
   direct: (t: Team) => boolean; // this person can join without asking (an open team, or they're an admin)
   leave: (t: Team) => void;
@@ -211,6 +213,9 @@ export function TeamPage({
   onOpenTask,
   onBack,
   onOpen,
+  companyName,
+  wordsKey,
+  onMoveTasks,
 }: {
   team: Team;
   teams: Team[];
@@ -225,6 +230,10 @@ export function TeamPage({
   onOpenTask: (id: string) => void;
   onBack: () => void;
   onOpen?: (id: string) => void; // another team, from the phone's title switcher
+  /** The company's name and word for the work (a team's own task stages start from the company's). */
+  companyName?: string;
+  wordsKey?: string;
+  onMoveTasks?: (moves: Move[]) => void;
 }) {
   const manage = canManageTeam(t, me, isAdmin);
   // Phones: the team takes the screen with Back to all teams, and its name is the title (a switcher to the others).
@@ -264,7 +273,7 @@ export function TeamPage({
           {tab === 'members' && <MembersTab t={t} teams={teams} users={users} me={me} manage={manage} actions={actions} />}
           {tab === 'work' && <WorkTab t={t} tasks={tasks} users={users} clients={clients} onOpenTask={onOpenTask} />}
           {tab === 'workload' && <WorkloadTab t={t} tasks={tasks} users={users} onOpenTask={onOpenTask} />}
-          {tab === 'settings' && manage && <SettingsTab t={t} users={users} isAdmin={isAdmin} actions={actions} homeTemplate={homeTemplate} onHomeTemplate={onHomeTemplate} />}
+          {tab === 'settings' && manage && <SettingsTab t={t} users={users} isAdmin={isAdmin} actions={actions} homeTemplate={homeTemplate} onHomeTemplate={onHomeTemplate} tasks={tasks} teams={teams} me={me} companyName={companyName ?? 'the company'} wordsKey={wordsKey ?? ''} onMoveTasks={onMoveTasks ?? ((moves) => moves.forEach((m) => actions.patchTask?.(m.id, m.patch)))} />}
         </TabPane>
       </div>
     </section>
@@ -470,7 +479,7 @@ function WorkloadTab({ t, tasks, users, onOpenTask }: { t: Team; tasks: Todo[]; 
   );
 }
 
-function SettingsTab({ t, users, isAdmin, actions, homeTemplate, onHomeTemplate }: { t: Team; users: User[]; isAdmin: boolean; actions: TeamActions; homeTemplate?: HomeTemplateId; onHomeTemplate: (v: HomeTemplateId) => void }) {
+function SettingsTab({ t, users, isAdmin, actions, homeTemplate, onHomeTemplate, tasks, teams, me, companyName, wordsKey, onMoveTasks }: { t: Team; users: User[]; isAdmin: boolean; actions: TeamActions; homeTemplate?: HomeTemplateId; onHomeTemplate: (v: HomeTemplateId) => void; tasks: Todo[]; teams: Team[]; me: string; companyName: string; wordsKey: string; onMoveTasks: (moves: Move[]) => void }) {
   const patch = (p: Partial<Team>) => actions.patch(t.id, p);
   return (
     <div className="team-sec team-settings">
@@ -511,6 +520,23 @@ function SettingsTab({ t, users, isAdmin, actions, homeTemplate, onHomeTemplate 
         <label className="check-row small">
           <input type="checkbox" checked={!!t.review} onChange={(e) => patch({ review: e.target.checked })} /> Finished tasks wait for the lead before they count as done
         </label>
+      </div>
+      <div className="team-field team-stages">
+        <span>Task stages</span>
+        <OwnStages
+          what="team"
+          name={t.name}
+          own={t.taskStages}
+          inherited={stagesFor(t.workspaceId)}
+          inheritedFrom={companyName}
+          canManage
+          tasks={tasks.filter((x) => x.teamId === t.id && !projectStages(x.clientId))}
+          teams={teams}
+          me={me}
+          wordsKey={wordsKey}
+          onStages={(taskStages) => patch({ taskStages })}
+          onMoveTasks={onMoveTasks}
+        />
       </div>
       <label className="team-field">
         <span>Keywords</span>

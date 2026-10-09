@@ -4,12 +4,14 @@
 // Sessions are marked when they passed the second step. A session that hasn't (a password sign-in waiting for its
 // code, or someone who must set it up first) can only finish that and sign out; everything else answers 401/403.
 // The TOTP itself is shared with the operators' console (db.ts: newTotpSecret, totpStep; the QR here: totpSetup).
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import QRCode from 'qrcode';
 import * as db from './db.ts';
 
 db.db.exec(`CREATE TABLE IF NOT EXISTS two_step (user_id TEXT PRIMARY KEY, secret TEXT, pending TEXT, on_at TEXT, last_step INTEGER NOT NULL DEFAULT 0, backup TEXT NOT NULL DEFAULT '[]')`);
+db.db.exec('CREATE TABLE IF NOT EXISTS trusted_devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL, used_at TEXT NOT NULL, expires_at TEXT NOT NULL)');
+db.db.exec('CREATE INDEX IF NOT EXISTS trusted_devices_user ON trusted_devices (user_id)');
 try {
   db.db.exec('ALTER TABLE sessions ADD COLUMN two_step TEXT');
 } catch {
@@ -98,8 +100,64 @@ export function newBackups(userId: string) {
   db.db.prepare('UPDATE two_step SET backup = ? WHERE user_id = ? AND on_at IS NOT NULL').run(JSON.stringify(hashes), userId);
   return codes;
 }
-/** Off (turned off by the person, reset by an admin or an operator, or the account deleted). */
-export const forget = (userId: string) => db.db.prepare('DELETE FROM two_step WHERE user_id = ?').run(userId);
+/** Off (turned off by the person, reset by an admin or an operator, or the account deleted): remembered devices go too. */
+export const forget = (userId: string) => {
+  db.db.prepare('DELETE FROM two_step WHERE user_id = ?').run(userId);
+  forgetDevices(userId);
+};
+
+/* ---------- "Remember this device": 30 days without the code, on one browser ---------- */
+
+export const DEVICE_DAYS = 30;
+/** The cookie that holds a browser's device tokens (one per person who asked it to remember them, at most 5). */
+export const DEVICE_COOKIE = 's2g_dev';
+type DeviceRow = { id: string; user_id: string; name: string; created_at: string; used_at: string; expires_at: string };
+/** The token's signature: only this server can make it, and it's bound to the person, the device and its end. */
+const deviceSig = (id: string, userId: string, exp: string) => db.keyedHash(`trusted-device:${id}:${userId}:${exp}`).slice(0, 40);
+/** "Chrome on Mac", "Safari on iPhone": enough to tell devices apart in the list, from the browser's own words. */
+export function deviceName(ua: string | undefined) {
+  const u = String(ua ?? '');
+  const os = /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Mac OS X|Macintosh/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : /CrOS/.test(u) ? 'Chromebook' : /Linux/.test(u) ? 'Linux' : '';
+  const app = /sprint2go/i.test(u) && /Electron/.test(u) ? 'sprint2go app' : /Edg\//.test(u) ? 'Edge' : /OPR\//.test(u) ? 'Opera' : /Firefox\/|FxiOS/.test(u) ? 'Firefox' : /Chrome\/|CriOS/.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : '';
+  return app && os ? `${app} on ${os}` : app || os || 'A browser';
+}
+/** Remembers this browser for this person: a new device row, and the signed token for its cookie. */
+export function rememberDevice(userId: string, ua: string | undefined) {
+  const id = randomBytes(9).toString('hex');
+  const expires = new Date(Date.now() + DEVICE_DAYS * DAY).toISOString();
+  const exp = String(Math.floor(Date.parse(expires) / 1000));
+  db.db.prepare('INSERT INTO trusted_devices (id, user_id, name, created_at, used_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, userId, deviceName(ua).slice(0, 60), now(), now(), expires);
+  return { id, token: `${id}.${exp}.${deviceSig(id, userId, exp)}`, expires };
+}
+/** The tokens in a browser's device cookie. */
+export const deviceTokens = (cookieValue: string | undefined) => String(cookieValue ?? '').split('~').filter((t) => /^[a-f0-9]{18}\.\d{9,11}\.[a-f0-9]{40}$/.test(t)).slice(0, 5);
+/** The device this browser's cookie proves for this person (signed, not expired, not forgotten), or null. */
+export function trustedDevice(cookieValue: string | undefined, userId: string): DeviceRow | null {
+  for (const t of deviceTokens(cookieValue)) {
+    const [id, exp, sig] = t.split('.');
+    const want = Buffer.from(deviceSig(id, userId, exp));
+    if (!timingSafeEqual(want, Buffer.from(sig))) continue; // another person's token on the same browser, or forged
+    if (Number(exp) * 1000 < Date.now()) continue;
+    const row = db.db.prepare('SELECT * FROM trusted_devices WHERE id = ? AND user_id = ?').get(id, userId) as DeviceRow | undefined;
+    if (!row || row.expires_at < now()) continue;
+    return row;
+  }
+  return null;
+}
+/** A remembered device signed in without the code: noted for the list. */
+export const deviceUsed = (id: string) => db.db.prepare('UPDATE trusted_devices SET used_at = ? WHERE id = ?').run(now(), id);
+/** This person's remembered devices, newest first (`current`: the ones this browser's cookie holds). */
+export function devices(userId: string, cookieValue?: string) {
+  db.db.prepare('DELETE FROM trusted_devices WHERE expires_at < ?').run(now());
+  const mine = new Set(deviceTokens(cookieValue).map((t) => t.split('.')[0]));
+  return (db.db.prepare('SELECT * FROM trusted_devices WHERE user_id = ? ORDER BY created_at DESC').all(userId) as DeviceRow[]).map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at, usedAt: r.used_at, expiresAt: r.expires_at, current: mine.has(r.id) }));
+}
+/** Forget one remembered device (its next sign-in asks for the code again). */
+export const forgetDevice = (userId: string, id: string) => db.db.prepare('DELETE FROM trusted_devices WHERE user_id = ? AND id = ?').run(userId, id).changes > 0;
+/** Forget them all: a password change or reset, "Sign out everywhere", or two-step sign-in turned off, reset or moved. */
+export const forgetDevices = (userId: string) => db.db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(userId).changes;
+/** The device cookie with this token added (another person's on the same browser stay), at most 5 kept. */
+export const withDeviceToken = (cookieValue: string | undefined, token: string) => [token, ...deviceTokens(cookieValue)].slice(0, 5).join('~');
 
 // Wrong codes: at most 5 in a row for one sign-in, and 10 an hour for one person, so codes can't be guessed.
 const misses = new Map<string, number[]>();
@@ -187,6 +245,9 @@ export interface Ctx {
   body: (req: IncomingMessage) => Promise<any>;
   workspaces: () => Ws[];
   issuer: string; // the name in the authenticator app (ours, or an agency's on its own address)
+  /** This browser's device cookie (remembered devices), and a way to set it (null: clear it). */
+  deviceCookie: string | undefined;
+  setDeviceCookie: (value: string | null) => void;
   /** Signs this person out everywhere (or everywhere but this session) and closes their live connections. */
   kick: (userId: string, keepToken?: string) => void;
   operator: string | null; // an operator signed in as this person
@@ -220,7 +281,29 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
   if (ctx.operator && p.startsWith('/api/2fa/') && POST) return send(403, { error: 'Two-step sign-in is theirs to change: you’re signed in as them.' });
   if (p === '/api/2fa' && req.method === 'GET') {
     const r = requirement(me, ctx.workspaces());
-    return send(200, { ...status(me), required: r });
+    return send(200, { ...status(me), required: r, devices: isOn(me) ? devices(me, ctx.deviceCookie) : [] });
+  }
+  // Remembered devices: forget one, or all of them.
+  if (p === '/api/2fa/devices/forget' && POST) {
+    const b = await ctx.body(req);
+    if (b.all === true) {
+      const n = forgetDevices(me);
+      if (n) logAll('security.2fa-devices', `forgot ${n} remembered device${n === 1 ? '' : 's'}`);
+      return send(200, { ok: true, forgotten: n });
+    }
+    const id = String(b.id ?? '');
+    const name = devices(me).find((d) => d.id === id)?.name;
+    if (!forgetDevice(me, id)) return send(404, { error: 'That device was already forgotten.' });
+    logAll('security.2fa-devices', `forgot a remembered device (${name ?? 'a browser'})`);
+    return send(200, { ok: true });
+  }
+  // Sign out everywhere: every other session ends and every remembered device is forgotten; this one stays signed in.
+  if (p === '/api/2fa/signout-everywhere' && POST) {
+    ctx.kick(me, ctx.token);
+    const n = forgetDevices(me);
+    ctx.setDeviceCookie(null);
+    logAll('security.signout-everywhere', `signed out everywhere else${n ? ` and forgot ${n} remembered device${n === 1 ? '' : 's'}` : ''}`);
+    return send(200, { ok: true });
   }
   if (p === '/api/2fa/setup' && POST) {
     // Already on: setting it up again (a new phone) needs a code from the current one, or a backup code.
@@ -237,8 +320,10 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     const codes = enable(me, String(b.code ?? ''));
     if (!codes) return send(400, { error: 'That code isn’t right. Check that the time on your phone is set automatically, then try the next code.' });
     markPassed(ctx.token);
-    // Anyone else signed in as this person (with only the password) is signed out.
+    // Anyone else signed in as this person (with only the password) is signed out; a new phone also means devices
+    // remembered with the old one ask for a code again.
     ctx.kick(me, ctx.token);
+    if (again) forgetDevices(me);
     logAll(again ? 'security.2fa-moved' : 'security.2fa-on', again ? 'moved two-step sign-in to a new app' : 'turned on two-step sign-in');
     return send(200, { backupCodes: codes });
   }
@@ -261,7 +346,15 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     sessionMisses.delete(ctx.token);
     markPassed(ctx.token);
     if (ok.used === 'backup') logAll('security.2fa-backup', `signed in with a backup code (${status(me).backupLeft} left)`);
-    return send(200, { ok: true, used: ok.used, backupLeft: status(me).backupLeft });
+    // "Remember this device for 30 days": the next sign-ins here need only the password, until it's forgotten.
+    let remembered: string | undefined;
+    if (b.remember === true && !ctx.operator) {
+      const d = rememberDevice(me, req.headers['user-agent']);
+      ctx.setDeviceCookie(withDeviceToken(ctx.deviceCookie, d.token));
+      remembered = d.expires;
+      logAll('security.2fa-device', `asked ${deviceName(req.headers['user-agent'])} to remember them for ${DEVICE_DAYS} days`);
+    }
+    return send(200, { ok: true, used: ok.used, backupLeft: status(me).backupLeft, ...(remembered ? { rememberedUntil: remembered } : {}) });
   }
   if (p === '/api/2fa/backup' && POST) {
     const b = await ctx.body(req);

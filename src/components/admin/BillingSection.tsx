@@ -1,9 +1,9 @@
 import { server } from '../../sync';
 import { TabPane } from '../ui/Smooth';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, CreditCard, Download, Minus, PauseCircle, Plus, Sparkles, Users, XCircle } from 'lucide-react';
-import type { Plan, Tier, Track, Workspace } from '../../types';
-import { ADDONS, ALLOWANCE, PAUSE_DAYS_A_YEAR, PLAN_FEATURES, PRICES, TIER_NAME, TOP_UP, TRACK_NAME, countedMailboxes, mailboxRoom, meetHours, monthlyTotal, options, pauseDaysLeft, planName, priceFor, rp, seatsFor, storageGB } from '../../data/pricing';
+import type { Plan, PlanAdjustment, Tier, Track, Workspace } from '../../types';
+import { ADDONS, ALLOWANCE, PAUSE_DAYS_A_YEAR, PLAN_FEATURES, PRICES, TIER_NAME, TOP_UP, TRACK_NAME, addAdjustment, billingPeriod, countedMailboxes, mailboxRoom, meetHours, monthlyTotal, options, pauseDaysLeft, planName, priceFor, prorate, rp, seatsFor, storageGB } from '../../data/pricing';
 import { trialPlan } from '../../data/workspaces';
 import { Select } from '../ui/Select';
 import { brand as product } from '../../terms';
@@ -61,6 +61,10 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { minutes?: { used: number; total: number | null } } | null) => setBotMinutes(d?.minutes ?? null), () => {});
   }, [ws.id]);
+  // The last switches shown stay while their block folds away.
+  const lastAdjustments = useRef<PlanAdjustment[]>([]);
+  if (plan.adjustments?.length) lastAdjustments.current = plan.adjustments;
+  const shownAdjustments = plan.adjustments?.length ? plan.adjustments : lastAdjustments.current;
   const pauseLeft = Math.ceil(pauseDaysLeft(plan.pauses));
   const trialOn = !!plan.trialEnds && plan.trialEnds > new Date().toISOString();
   const applyCode = async () => {
@@ -82,7 +86,23 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
 
   const choose = (tier: Tier) => {
     onPlan({ ...plan, track, tier, cycle, trialEnds: undefined, paused: false });
-    toast(`Switched to ${planName({ track, tier })}${cycle === 'yearly' ? ', billed yearly' : ''}. The new price is on the next invoice`);
+    toast(switchToast(tier));
+  };
+  /**
+   * What the toast says about money after a switch: the same proration the server records (src/data/pricing.ts), with
+   * any earlier switch this period folded in, so switching back says nothing changes.
+   */
+  const switchToast = (tier: Tier) => {
+    const name = planName({ track, tier });
+    const period = billingPeriod(plan);
+    const invoiced = !!real?.some((i) => i.period === period.key && !i.credits && i.status !== 'void');
+    const a = prorate(plan, { track, tier, cycle }, billed, new Date(), invoiced);
+    if (!a) return `Switched to ${name}${cycle === 'yearly' ? ', billed yearly' : ''}. ${cycle !== plan.cycle ? 'The new price starts with the next invoice.' : 'The new price is on the next invoice.'}`;
+    const net = addAdjustment(plan.adjustments, a, 'preview')?.find((x) => x.period === a.period && x.invoiced === a.invoiced);
+    const month = new Date(period.start).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+    if (!net || !net.amount) return `Switched back to ${name}. Nothing changes on your next invoice.`;
+    if (!invoiced) return `Switched to ${name}. ${month}’s invoice bills ${name}, ${net.amount < 0 ? 'less' : 'plus'} ${rp(Math.abs(net.amount))} for the days before the switch.`;
+    return net.amount > 0 ? `Switched to ${name}. ${rp(net.amount)} for the rest of ${month} goes on your next invoice.` : `Switched to ${name}. A credit of ${rp(-net.amount)} for the rest of ${month} goes on your next invoice.`;
   };
   const stepper = (key: 'mailboxes' | 'storage50' | 'meetHours10') => (
     <span className="stepper">
@@ -132,6 +152,28 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
           )}
         </div>
       </div>
+      {/* Prorated switches waiting for the next invoice: folds open and closed (a switch back leaves nothing). */}
+      <div className={`fold ${plan.adjustments?.length ? 'open' : ''}`}>
+        <div>
+          {!!shownAdjustments.length && (
+            <div className="next-invoice">
+              <span className="ni-head">On your next invoice</span>
+              {shownAdjustments.map((a) => (
+                <div key={a.id} className="ni-row">
+                  <span>{a.text}</span>
+                  <b className={a.amount < 0 ? 'credit' : ''}>{a.amount < 0 ? `−${rp(-a.amount)} credit` : rp(a.amount)}</b>
+                </div>
+              ))}
+              <small>Plan switches are prorated: you pay each plan only for the days you had it.</small>
+            </div>
+          )}
+        </div>
+      </div>
+      {plan.tier === 'free' && plan.trialRefused && (
+        <p className="trial-note">
+          <Sparkles size={14} /> {ws.name} started on Free instead of a trial. {plan.trialRefused}
+        </p>
+      )}
       {plan.trialEnds && (
         <p className="trial-note">
           <Sparkles size={14} /> You’re trying Studio AI: every feature and the full AI allowance. When the trial ends nothing is deleted. You move to Free, and anything beyond Free waits for an upgrade.

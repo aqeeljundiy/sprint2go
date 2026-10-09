@@ -418,6 +418,53 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+/* Logo in inboxes (BIMI): the logo's tile next to its checks */
+.bimi-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 10px;
+}
+.bimi-main .bimi-checks {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.bimi-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%; /* inboxes show the logo in a circle */
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-3);
+}
+.bimi-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.bimi-problems ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.bimi-problems li + li {
+  margin-top: 2px;
+}
+@media (max-width: 600px) {
+  .bimi-main {
+    flex-direction: column;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bimi-logo img {
+    animation: none;
+  }
+}
 .ed-record .ed-rec-del,
 .ed-rec-tools {
   flex: none;
