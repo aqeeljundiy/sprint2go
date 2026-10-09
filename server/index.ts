@@ -2037,8 +2037,8 @@ createServer(async (req, res) => {
         url,
         me,
         token: token!,
-        // The console's answers: every msg() in them (labels deep in lists too) in the operator's language.
-        json: (r, status, data) => json(r, status, lang.localizeAll(lang.requestLang(req), data)),
+        // The console's answers: every msg() in them (labels deep in lists too) in the operator's console language.
+        json: (r, status, data) => json(r, status, lang.localizeAll(opRecord.lang ?? lang.requestLang(req), data)),
         body,
         broadcast,
         signups,

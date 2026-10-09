@@ -147,6 +147,11 @@ export function AdminApp() {
   useEffect(() => {
     document.title = t('sprint2go · Operator');
   }, [lang]);
+  // The server writes some of what the pages show (labels, warnings) in the console's language: load them again.
+  const firstLang = useRef(lang);
+  useEffect(() => {
+    if (lang !== firstLang.current) setTick((n) => n + 1);
+  }, [lang]);
 
   const go = useCallback((to: string) => {
     if (to.startsWith('/admin')) {
