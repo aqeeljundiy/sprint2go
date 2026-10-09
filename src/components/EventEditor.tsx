@@ -80,7 +80,8 @@ export function EventEditor({ start, calendars, onSave, onClose }: Props) {
             autoFocus
             value={title}
             onChange={(ev) => setTitle(ev.target.value)}
-            onKeyDown={(ev) => ev.key === 'Enter' && save()}
+            // Enter saves once (⌘ Enter here would reach the dialog's own shortcut too, and save it twice).
+            onKeyDown={(ev) => ev.key === 'Enter' && (ev.stopPropagation(), save())}
             placeholder="Add title"
           />
           <div className="field-row">
