@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { AlertTriangle, Check, Download, FileText, KeyRound, LogIn, Mail, Pin, Plus, Trash2, UserPlus } from 'lucide-react';
 import { Select } from '../../components/ui/Select';
 import { DatePicker } from '../../components/ui/DatePicker';
+import { zoneOptions } from '../../components/ui/zones';
+import { deviceTz } from '../../jobTimes';
 
 import { rel, bytes, CompanyRow, copy, dateTime, day, planLabel, post, rp, rpShort, STATE_LABEL, type Health, type State } from '../api';
 import { Badge, Confirm, CopyBtn, Dialog, Dot, Empty, Failed, Field, HealthPill, KV, Loading, Menu, Page, Section, Stat, Stats, Switch, Table, Tabs, useAct, useAdmin, useApi, Who } from '../ui';
@@ -141,6 +143,8 @@ function NewCompany({ onClose, onDone }: { onClose: () => void; onDone: (id: str
   const [tier, setTier] = useState('studio');
   const [track, setTrack] = useState('ai');
   const [trial, setTrial] = useState('14');
+  // The company's clock (summaries, digests, reminders, the demo's dates): the operator's own zone unless they pick one.
+  const [tz, setTz] = useState(deviceTz);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ id: string; link: string | null } | null>(null);
   const { toast } = useAdmin();
@@ -163,7 +167,7 @@ function NewCompany({ onClose, onDone }: { onClose: () => void; onDone: (id: str
               disabled={busy || name.trim().length < 2 || !email.includes('@')}
               onClick={() => {
                 setBusy(true);
-                post<{ id: string; link: string | null }>('company/create', { name, ownerEmail: email, ownerName: owner, tier, track, trialDays: Number(trial) })
+                post<{ id: string; link: string | null }>('company/create', { name, ownerEmail: email, ownerName: owner, tier, track, trialDays: Number(trial), timeZone: tz })
                   .then(setResult)
                   .catch((e: Error) => toast(e.message))
                   .finally(() => setBusy(false));
@@ -210,6 +214,12 @@ function NewCompany({ onClose, onDone }: { onClose: () => void; onDone: (id: str
             <Field label="Trial">
               <Select value={trial} onChange={setTrial} label="Trial" options={[{ value: '0', label: 'None, billed now' }, { value: '14', label: '14 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]} />
             </Field>
+          </div>
+          {/* Not a <label>: a click on its edge would pull focus away from the picker's search. */}
+          <div className="adm-field">
+            <span>Time zone</span>
+            <Select value={tz} onChange={setTz} label="Time zone" searchable options={zoneOptions(tz)} />
+            <small>Their day: summaries, digests and reminders run on this clock. They can change it in Settings, General.</small>
           </div>
         </div>
       )}

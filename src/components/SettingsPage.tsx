@@ -19,8 +19,9 @@ import { RichEditor } from './RichEditor';
 import { PhotoPicker } from './PhotoPicker';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { accessFor } from '../clientView';
-import { Select, type Option } from './ui/Select';
-import { COMPANY_TZ, SUMMARY_HOUR, companyTz, deviceTz } from '../jobTimes';
+import { Select } from './ui/Select';
+import { zoneOptions } from './ui/zones';
+import { SUMMARY_HOUR, companyTz } from '../jobTimes';
 import { changePassword, server } from '../sync';
 import { EmailSetupGuide, providerLabel } from './EmailSetupGuide';
 import { caps } from '../caps';
@@ -58,25 +59,6 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'developer', name: 'Developer', icon: FlaskConical, group: 'You' },
 ];
 
-/** One time zone as a choice: "Jakarta, GMT+7", under its region, found by any part of its name. */
-function zoneOption(tz: string, at = new Date()): Option {
-  let offset = '';
-  try {
-    offset = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(at).find((x) => x.type === 'timeZoneName')?.value ?? '';
-  } catch {
-    /* an old browser: the name alone */
-  }
-  const parts = tz.split('/');
-  const city = parts[parts.length - 1].replace(/_/g, ' ');
-  return { value: tz, label: offset ? `${city}, ${offset}` : city, hint: parts.slice(1, -1).join(', ').replace(/_/g, ' ') || undefined, group: parts.length > 1 ? parts[0] : 'Other', keywords: tz.replace(/[/_]/g, ' ') };
-}
-/** Every time zone the browser knows, by region, for Settings, General. The company's and this device's come first. */
-let ZONES: Option[] | null = null;
-function zoneOptions(current: string): Option[] {
-  ZONES ??= (typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [COMPANY_TZ]).map((tz) => zoneOption(tz));
-  const top = [...new Set([current, deviceTz()])].map((tz) => ({ ...(ZONES!.find((z) => z.value === tz) ?? zoneOption(tz)), group: 'Suggested' }));
-  return [...top, ...ZONES.filter((z) => !top.some((t) => t.value === z.value))];
-}
 
 /** Settings the demo company leaves out: they reach the real world (billing, AI keys, mail delivery, brand, security). */
 const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security'];

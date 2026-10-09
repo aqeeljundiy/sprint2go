@@ -18,6 +18,7 @@ import * as twostep from './twostep.ts';
 import * as sandbox from './sandbox.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, Tier, Track } from '../src/types.ts';
+import { isZone } from '../src/jobTimes.ts';
 
 export interface AdminCtx {
   req: IncomingMessage;
@@ -506,11 +507,13 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const track: Track = b.track === 'own' ? 'own' : 'ai';
     const trialDays = Number(b.trialDays ?? 14);
     const plan: Plan = { track, tier, cycle: 'monthly', trialEnds: tier !== 'free' && trialDays > 0 ? new Date(Date.now() + trialDays * DAY).toISOString() : undefined, addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: name, emails: [mail] }, since: now() };
-    const ws = { id: 'ws-' + randomBytes(5).toString('hex'), name, color: colors[Math.floor(Math.random() * colors.length)], domains: [], accounts: [], members: [{ userId: owner.id, role: 'owner' }], plan, createdAt: now(), createdBy: 'operator' };
+    // The company's clock: the zone the operator picked (their own browser's by default), else Jakarta as before.
+    const timeZone = isZone(b.timeZone) ? String(b.timeZone) : undefined;
+    const ws = { id: 'ws-' + randomBytes(5).toString('hex'), name, color: colors[Math.floor(Math.random() * colors.length)], domains: [], accounts: [], members: [{ userId: owner.id, role: 'owner' }], plan, timeZone, createdAt: now(), createdBy: 'operator' };
     saveWs(ws);
     platform.event('company.created', ws.id, owner.id, `by ${email}`);
     const link = db.hasLogin(owner.id) ? null : `${ctx.publicUrl}/?invite=${db.newInvite(owner.id, mail)}`;
-    log('company.create', ws.id, `${name} for ${mail}, ${tier} ${track}${plan.trialEnds ? `, trial ${trialDays} days` : ''}`);
+    log('company.create', ws.id, `${name} for ${mail}, ${tier} ${track}${plan.trialEnds ? `, trial ${trialDays} days` : ''}${timeZone ? `, ${timeZone}` : ''}`);
     return (json(res, 200, { id: ws.id, link, existing: !link }), true);
   }
 
