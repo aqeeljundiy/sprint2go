@@ -51,14 +51,14 @@ export function QuickNote({ shared, clients, onSave, onClose }: { shared?: { tit
   const dest = open.find((c) => c.id === to);
   return (
     <Sheet
-      title={shared ? 'Save to a note' : 'New note'}
+      title={shared ? t('Save to a note') : t('New note')}
       onClose={onClose}
       className="quick-note"
       footer={
         <>
           <span className="spacer" />
           <button type="button" className="primary-btn" onClick={save} disabled={!text.trim() && !url}>
-            Save
+            {t('Save')}
           </button>
         </>
       }
@@ -88,8 +88,8 @@ export function QuickNote({ shared, clients, onSave, onClose }: { shared?: { tit
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && (e.preventDefault(), save())}
-          placeholder="What’s on your mind? The first line is the title."
-          aria-label="Note"
+          placeholder={t('What’s on your mind? The first line is the title.')}
+          aria-label={t('Note')}
           rows={4}
         />
         {url && (

@@ -4,6 +4,7 @@ import { toast } from '../../toast';
 import { MoveSheet, ShareSheet } from './NoteSheets';
 import { noteUrl } from './noteHtml';
 import type { NoteMenuCtx } from './noteMenu';
+import { t } from '../../i18n';
 
 /** What the notes screens need from the app: the notes' changes and who may make them. */
 export interface NotesApi {
@@ -31,14 +32,14 @@ export function useNoteMenu(api: NotesApi) {
     canDelete: (n) => n.ownerId === api.me || api.canDeleteOthers,
     pin: (n) => {
       api.patch(n.id, { pinned: !n.pinned });
-      toast({ text: n.pinned ? 'Unpinned' : 'Pinned to the top', action: { label: 'Undo', run: () => api.patch(n.id, { pinned: !!n.pinned }) } });
+      toast({ text: n.pinned ? t('Unpinned') : t('Pinned to the top'), action: { label: t('Undo'), run: () => api.patch(n.id, { pinned: !!n.pinned }) } });
     },
     move: (n) => setSheet({ kind: 'move', id: n.id }),
     share: (n) => setSheet({ kind: 'share', id: n.id }),
     copyLink: (n) =>
       navigator.clipboard?.writeText(noteUrl(n.id)).then(
-        () => toast({ text: n.visibility === 'team' ? 'Link copied' : 'Link copied. Only you can open it until you share the note' }),
-        () => toast({ text: 'Couldn’t copy the link here.' }),
+        () => toast({ text: n.visibility === 'team' ? t('Link copied') : t('Link copied. Only you can open it until you share the note') }),
+        () => toast({ text: t('Couldn’t copy the link here.') }),
       ),
     duplicate: (n) => api.duplicate(n.id),
     remove: (n) => api.remove(n.id),
@@ -61,7 +62,7 @@ function NoteMenuSheets({ api, sheet, onClose }: { api: NotesApi; sheet: { kind:
           const before = n.clientId;
           api.patch(n.id, { clientId });
           const name = api.clients.find((c) => c.id === clientId)?.name;
-          toast({ text: name ? `Moved to ${name}` : 'Taken out of its project', action: { label: 'Undo', run: () => api.patch(n.id, { clientId: before }) } });
+          toast({ text: name ? t('Moved to {name}', { name }) : t('Taken out of its project'), action: { label: t('Undo'), run: () => api.patch(n.id, { clientId: before }) } });
         }}
       />
     );
