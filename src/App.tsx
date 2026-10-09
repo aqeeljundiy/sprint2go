@@ -769,9 +769,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     );
   /** After the mail engine took an email: "sent", with Undo for as long as it's still waiting there. */
   const sentToast = async (r: Response, text: string, undo: () => void) => {
-    const d = (await r.json().catch(() => ({}))) as { held?: boolean; until?: string };
+    const d = (await r.json().catch(() => ({}))) as { held?: boolean; until?: string; note?: string };
     const left = d.held && d.until ? Date.parse(d.until) - Date.now() - 300 : 0;
-    showToast(left > 1000 ? { text, ms: left, action: { label: 'Undo', run: undo } } : { text });
+    // `note`: a local server kept it on this computer instead of sending it out.
+    if (d.note) text = d.note;
+    showToast(left > 1000 ? { text, ms: Math.max(left, d.note ? 6000 : 0), action: { label: 'Undo', run: undo } } : { text, ms: d.note ? 6000 : undefined });
   };
   const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number } | null>(null);
 

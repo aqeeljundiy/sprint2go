@@ -36,7 +36,7 @@ export interface Message {
   /** The sender's official unsubscribe link (List-Unsubscribe header). */
   listUnsubscribe?: { url: string; oneClick: boolean };
   mid?: string; // the Message-ID on the wire, so replies land in the same thread
-  delivery?: { state: 'held' | 'sending' | 'sent' | 'failed'; at: string; error?: string; until?: string }; // set by the mail engine for mail you sent (held: waiting out the Undo window until `until`)
+  delivery?: { state: 'held' | 'sending' | 'sent' | 'failed' | 'local'; at: string; error?: string; until?: string; kept?: string[] }; // set by the mail engine for mail you sent (held: waiting out the Undo window until `until`; local: a local server kept it on this computer, `kept` are the outside addresses)
   auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
   invite?: MailInvite; // a calendar invite in this email (Google Calendar, Outlook...), read by the mail engine
 }

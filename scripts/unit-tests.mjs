@@ -652,6 +652,44 @@ await test('Undo send: a refused email is marked failed on the message', async (
   db.writeDocs('workspaces', [w], [], null);
 });
 
+await test('Local mail: outside addresses are held on this computer (marked, never retried); teammates still get it', async () => {
+  const relay = process.env.MAIL_RELAY_URL;
+  delete process.env.MAIL_RELAY_URL;
+  assert.equal(mailer.keepsMailLocal(), true, 'not production, no relay');
+  db.writeDocs('threads', [{ ...db.getDoc('threads', 't-undo'), messages: [...db.getDoc('threads', 't-undo').messages, { id: 'msg-4', from: {}, to: [], date: '', body: 'x' }] }], [], null);
+  const before = inMoBox();
+  const email = { ...outgoing('msg-4'), to: [{ name: 'Mo', email: `mo.undo@${mailer.MAIL_HOST}` }, { name: 'Budi', email: 'budi@client.example' }] };
+  assert.deepEqual(mailer.heldLocally(email), ['budi@client.example']);
+  const r = await mailer.queueSend(email);
+  assert.deepEqual(r.held, ['budi@client.example']);
+  assert.equal(r.queued, 0, 'nothing waits to go out');
+  assert.equal(inMoBox(), before + 1, 'the colleague on this server got it');
+  const rows = db.db.prepare('SELECT state, error, attempts FROM outbox WHERE thread_id = ? AND message_id = ?').all('t-undo', 'msg-4');
+  assert.deepEqual(rows.map((x) => x.state), ['local']);
+  assert.match(rows[0].error, /Held on this computer/);
+  const m = db.getDoc('threads', 't-undo').messages.find((x) => x.id === 'msg-4');
+  assert.equal(m.delivery.state, 'local');
+  assert.deepEqual(m.delivery.kept, ['budi@client.example']);
+  // An older row still queued for the world (from before) is held by the pump, once, without a try.
+  db.db.prepare("INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES ('old-q', 'w-undo', 'ub-ana', 't-undo', 'msg-4', 'own', 'a@x', 'old@client.example', x'00', 0, ?, 'queued', NULL, ?)").run(new Date(0).toISOString(), new Date().toISOString());
+  await mailer.pump();
+  assert.deepEqual({ ...db.db.prepare("SELECT state, attempts FROM outbox WHERE id = 'old-q'").get() }, { state: 'local', attempts: 0 });
+  assert.deepEqual(db.getDoc('threads', 't-undo').messages.find((x) => x.id === 'msg-4').delivery.kept.sort(), ['budi@client.example', 'old@client.example']);
+  // A relay, MAIL_ENABLED=1 or production lets it out.
+  process.env.MAIL_RELAY_URL = 'smtp://127.0.0.1:1';
+  assert.equal(mailer.keepsMailLocal(), false);
+  assert.deepEqual(mailer.heldLocally(email), []);
+  delete process.env.MAIL_RELAY_URL;
+  process.env.MAIL_ENABLED = '1';
+  assert.equal(mailer.keepsMailLocal(), false);
+  process.env.MAIL_ENABLED = '0';
+  const env = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  assert.equal(mailer.keepsMailLocal(), false);
+  if (env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = env;
+  process.env.MAIL_RELAY_URL = relay;
+});
+
 /* email for teammates who are away (server/digest.ts) */
 
 const digest = await import('../server/digest.ts');

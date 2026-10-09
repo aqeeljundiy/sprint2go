@@ -1838,11 +1838,14 @@ createServer(async (req, res) => {
         };
         // Undo send (Settings, Mail): the email waits here for the sender's window before anything leaves.
         const undo = Math.min(mailer.MAX_UNDO_SECONDS, Math.max(0, Math.round(Number(b.undoSeconds) || 0)));
+        // A local server keeps mail for outside addresses on this computer; the toast says so instead of "sent".
+        const kept = mailer.heldLocally(email);
+        const note = kept.length ? `Held on this computer: a local sprint2go doesn’t send to ${kept.length === 1 ? kept[0] : 'outside addresses'}` : undefined;
         if (undo) {
           const held = mailer.holdSend(email, { userId: me, releaseAt: Date.now() + undo * 1000 });
-          return json(res, 200, { held: true, until: held.until, undoMs: undo * 1000 });
+          return json(res, 200, { held: true, until: held.until, undoMs: undo * 1000, note });
         }
-        return json(res, 200, await mailer.queueSend(email));
+        return json(res, 200, { ...(await mailer.queueSend(email)), note });
       } catch (e) {
         return json(res, 400, { error: e instanceof Error ? e.message : 'Could not send.' });
       }
