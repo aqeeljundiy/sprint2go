@@ -23,6 +23,7 @@ import * as submission from './submission.ts';
 import * as store from './imapStore.ts';
 import * as raws from './mailRaw.ts';
 import { companyTz } from '../src/jobTimes.ts';
+import { mark } from '../src/i18n/index.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS app_passwords (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, last_used_at TEXT, last_used_by TEXT);
@@ -427,33 +428,33 @@ export async function handleApi(
     );
   }
   if (p === '/api/mailapps/passwords' && req.method === 'POST') {
-    if (c.operator) return (json(res, 403, { error: 'That’s theirs to do: you’re signed in as them.' }), true);
-    if (c.tooMany(`mailapps:${me}`, 10, 15 * 60_000)) return (json(res, 429, { error: 'Too many attempts. Wait a few minutes and try again.' }), true);
+    if (c.operator) return (json(res, 403, { error: mark('That’s theirs to do: you’re signed in as them.') }), true);
+    if (c.tooMany(`mailapps:${me}`, 10, 15 * 60_000)) return (json(res, 429, { error: mark('Too many attempts. Wait a few minutes and try again.') }), true);
     const b = await c.body(req);
     const name = String(b?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
-    if (!name) return (json(res, 400, { error: 'Give it a name, like “iPhone” or “Work laptop”.' }), true);
+    if (!name) return (json(res, 400, { error: mark('Give it a name, like “iPhone” or “Work laptop”.') }), true);
     // Your sprint2go password first: someone at an unlocked computer can't quietly add a way into your mail.
     const login = db.findLogin(username);
     const good = login && typeof b?.password === 'string' ? await db.checkPassword(b.password, login.pw_hash) : (await db.burnPasswordTime(String(b?.password ?? '')), false);
-    if (!good) return (json(res, 401, { error: 'That isn’t your sprint2go password.' }), true);
+    if (!good) return (json(res, 401, { error: mark('That isn’t your sprint2go password.') }), true);
     if (passwordsOf(me).length >= MAX_PASSWORDS) return (json(res, 409, { error: `You have ${MAX_PASSWORDS} app passwords. Remove one you don’t use first.` }), true);
     return (json(res, 200, createPassword(me, name)), true);
   }
   if (p === '/api/mailapps/passwords/remove' && req.method === 'POST') {
-    if (c.operator) return (json(res, 403, { error: 'That’s theirs to do: you’re signed in as them.' }), true);
+    if (c.operator) return (json(res, 403, { error: mark('That’s theirs to do: you’re signed in as them.') }), true);
     const b = await c.body(req);
-    return (removePassword(me, String(b?.id ?? '')) ? json(res, 200, {}) : json(res, 404, { error: 'That app password is already gone.' }), true);
+    return (removePassword(me, String(b?.id ?? '')) ? json(res, 200, {}) : json(res, 404, { error: mark('That app password is already gone.') }), true);
   }
   if (p === '/api/mailapps/profile' && req.method === 'GET') {
     const boxes = mailboxesFor(me, username);
     const want = lower(url.searchParams.get('mailbox'));
     const mb = boxes.find((m) => m.email === want) ?? boxes.find((m) => m.primary);
-    if (!mb) return (json(res, 404, { error: 'There’s no mailbox here you can open in a mail app.' }), true);
+    if (!mb) return (json(res, 404, { error: mark('There’s no mailbox here you can open in a mail app.') }), true);
     // The mailbox's address is the username, so it opens at the top of that account (the others show as folders).
     const body = mobileconfig(me, mb, mb.email, mb.kind === 'shared' ? mb.name : String(person?.name ?? mb.name));
     res.writeHead(200, { 'content-type': 'application/x-apple-aspen-config', 'content-disposition': `attachment; filename="sprint2go-mail-${mb.email.replace(/[^a-z0-9.@_-]/g, '')}.mobileconfig"`, 'cache-control': 'no-store' });
     res.end(body);
     return true;
   }
-  return (json(res, 404, { error: 'Not found' }), true);
+  return (json(res, 404, { error: mark('Not found') }), true);
 }

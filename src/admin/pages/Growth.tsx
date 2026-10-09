@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { day } from '../api';
 import { Empty, Failed, Loading, Page, Section, Stat, Stats, useApi } from '../ui';
+import { t, tn } from '../../i18n';
+import { fmtPercent } from '../../i18n/format';
 
 interface GrowthData {
   days: number;
@@ -16,13 +18,13 @@ export function Growth() {
   const { data, error, reload } = useApi<GrowthData>(`growth?days=${days}`, [days]);
   return (
     <Page
-      title="Growth"
-      sub="Our own company and test companies are left out."
+      title={t('Growth')}
+      sub={t('Our own company and test companies are left out.')}
       actions={
         <div className="segmented sm">
           {[30, 90, 365].map((d) => (
             <button key={d} type="button" className={days === d ? 'on' : ''} onClick={() => setDays(d)}>
-              {d === 365 ? '12 months' : `${d} days`}
+              {d === 365 ? t('12 months') : tn(d, '{n} day', '{n} days')}
             </button>
           ))}
         </div>
@@ -42,12 +44,12 @@ function Body({ d }: { d: GrowthData }) {
   return (
     <>
       <Stats>
-        <Stat label="Visits" value={visits} hint="landing page" />
-        <Stat label="Sign-ups" value={signups} hint={visits ? `${((signups / visits) * 100).toFixed(1)}% of visits` : undefined} />
-        <Stat label="New companies" value={companies} hint={`${paid} paying already`} />
-        <Stat label="Trials that converted" value={d.trials.ended ? `${Math.round((d.trials.converted / d.trials.ended) * 100)}%` : 'none yet'} hint={`${d.trials.converted} of ${d.trials.ended} trials that ended`} />
+        <Stat label={t('Visits')} value={visits} hint={t('landing page')} />
+        <Stat label={t('Sign-ups')} value={signups} hint={visits ? t('{share} of visits', { share: fmtPercent(signups / visits, 1) }) : undefined} />
+        <Stat label={t('New companies')} value={companies} hint={t('{n} paying already', { n: paid })} />
+        <Stat label={t('Trials that converted')} value={d.trials.ended ? fmtPercent(d.trials.converted / d.trials.ended) : t('none yet')} hint={t('{n} of {total} trials that ended', { n: d.trials.converted, total: d.trials.ended })} />
       </Stats>
-      <Section title="From visit to paying" hint={`Last ${d.days} days`}>
+      <Section title={t('From visit to paying')} hint={tn(d.days, 'Last {n} day', 'Last {n} days')}>
         <div className="adm-funnel">
           {d.funnel.map((f, i) => {
             const prev = i ? d.funnel[i - 1].n : null;
@@ -65,15 +67,15 @@ function Body({ d }: { d: GrowthData }) {
         </div>
       </Section>
       <div className="adm-split">
-        <Section title="Where they came from" hint="utm_source, ?ref= or the site that linked">
+        <Section title={t('Where they came from')} hint={t('utm_source, ?ref= or the site that linked')}>
           {d.sources.length === 0 ? (
-            <Empty title="No visits yet" text="Share links with ?ref=name (e.g. sprint2go.com/?ref=instagram) to see what works." />
+            <Empty title={t('No visits yet')} text={t('Share links with ?ref=name (e.g. sprint2go.com/?ref=instagram) to see what works.')} />
           ) : (
             <div className="adm-mini-list">
               <div className="adm-mini-row head">
-                <span className="grow">Source</span>
-                <span>Visits</span>
-                <span>Sign-ups</span>
+                <span className="grow">{t('Source')}</span>
+                <span>{t('Visits')}</span>
+                <span>{t('Sign-ups')}</span>
               </div>
               {d.sources.map((s) => (
                 <div key={s.source} className="adm-mini-row">
@@ -85,9 +87,9 @@ function Body({ d }: { d: GrowthData }) {
             </div>
           )}
         </Section>
-        <Section title="What companies use" hint={`of ${d.apps.total}, last 30 days`}>
+        <Section title={t('What companies use')} hint={t('of {n}, last 30 days', { n: d.apps.total })}>
           {d.apps.total === 0 ? (
-            <Empty title="No companies yet" />
+            <Empty title={t('No companies yet')} />
           ) : (
             <div className="adm-parts">
               {d.apps.rows.map((a) => (
@@ -103,16 +105,16 @@ function Body({ d }: { d: GrowthData }) {
           )}
         </Section>
       </div>
-      <Section title="Do they come back?" hint="Companies by the week they started, and the share with anyone active in each week after">
+      <Section title={t('Do they come back?')} hint={t('Companies by the week they started, and the share with anyone active in each week after')}>
         {d.cohorts.every((c) => !c.companies) ? (
-          <Empty title="Not enough history yet" text="This fills in week by week as companies sign up and use the app." />
+          <Empty title={t('Not enough history yet')} text={t('This fills in week by week as companies sign up and use the app.')} />
         ) : (
           <div className="adm-cohorts" role="table">
             <div className="adm-cohort head" role="row">
-              <span>Started</span>
-              <span>Companies</span>
+              <span>{t('Started')}</span>
+              <span>{t('Companies')}</span>
               {Array.from({ length: 8 }, (_, k) => (
-                <span key={k}>W{k}</span>
+                <span key={k}>{t('W{n}', { n: k })}</span>
               ))}
             </div>
             {d.cohorts.map((c) => (

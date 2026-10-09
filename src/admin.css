@@ -914,6 +914,15 @@ body.resizing-x .adm-nav-resize::after {
 .adm-menu button.danger {
   color: var(--ad-red, #c02626);
 }
+/* The console's language: one row per language, a tick on the one in use. */
+.adm-menu button.adm-lang {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.adm-menu button.adm-lang svg {
+  color: var(--accent);
+}
 
 /* ---------- the table ---------- */
 

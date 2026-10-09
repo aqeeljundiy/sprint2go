@@ -58,9 +58,12 @@ import * as imports from './imports.ts';
 import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
 import * as connector from './connector.ts';
-import { eventReminders, reminderText } from './eventReminders.ts';
+import { eventReminders, reminderWords } from './eventReminders.ts';
 import * as notesTrash from './notesTrash.ts';
 import * as mailApps from './mailApps.ts';
+import * as lang from './lang.ts';
+import { mark, msg, phrase, t } from '../src/i18n/index.ts';
+import { fmtDayLong, fmtMonth } from '../src/i18n/format.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -639,7 +642,15 @@ function tellTwoStepRequired(wsId: string, by: string | null) {
   const on = twostep.onAmong(ids);
   const missing = ids.filter((id: string) => !on.has(id));
   const due = new Date(twostep.deadline(w.security));
-  if (missing.length) notifyUsers(missing, `${w.name} now requires two-step sign-in. ${due.getTime() > Date.now() + 60_000 ? `Turn it on by ${due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : 'Turn it on now'} in Settings, Account.`, '/settings/account', w.id);
+  if (missing.length)
+    notifyUsers(
+      missing,
+      due.getTime() > Date.now() + 60_000
+        ? msg('{company} now requires two-step sign-in. Turn it on by {date} in Settings, Account.', { company: w.name, date: lang.datePhrase(due, { tz: companyTz(w) }) })
+        : msg('{company} now requires two-step sign-in. Turn it on now in Settings, Account.', { company: w.name }),
+      '/settings/account',
+      w.id,
+    );
 }
 /** Signs someone out everywhere (or everywhere but one session) and closes their live connections. */
 function kick(userId: string, keepToken?: string) {
@@ -659,10 +670,11 @@ async function sendCode(to: string, what: string, code: string) {
   if (!sent) console.log(`Code for ${to} (${what}): ${code}`);
   return sent;
 }
+/** A JSON answer; its error (and any msg() at its top level) in the asker's language (server/lang.ts). */
 const json = (res: ServerResponse, status: number, data: unknown) => {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify(data));
+  res.end(JSON.stringify(lang.localize(res, data)));
 };
 
 /* ---------- live updates (server-sent events) ---------- */
@@ -713,7 +725,7 @@ function endGuestAccess(leavers: { email: string; company: string }[]) {
     clients.push({ ...c, people: c.people.filter((p: any) => !gone.has(String(p.email).toLowerCase())) });
     for (const p of out)
       if (c.ownerId)
-        notices.push({ id: randomBytes(8).toString('hex'), userId: c.ownerId, workspaceId: c.workspaceId, kind: 'team', text: `${p.name ?? p.email} left ${gone.get(String(p.email).toLowerCase())}, so their guest access to ${c.name} ended`, at: new Date().toISOString(), read: false, link: { app: 'projects', id: c.id } } as db.Doc);
+        notices.push({ id: randomBytes(8).toString('hex'), userId: c.ownerId, workspaceId: c.workspaceId, kind: 'team', ...msg('{name} left {company}, so their guest access to {project} ended', { name: p.name ?? p.email, company: gone.get(String(p.email).toLowerCase()) ?? '', project: c.name }), at: new Date().toISOString(), read: false, link: { app: 'projects', id: c.id } } as db.Doc);
   }
   for (const ch of db.allDocs('channels') as any[]) {
     if (!(ch.guests ?? []).some((g: any) => gone.has(String(g.email).toLowerCase()))) continue;
@@ -861,13 +873,13 @@ function withinAllowance(ws: any, chain: AIConfig[]): { chain: AIConfig[]; messa
     broadcast('workspaces', [next], []);
     platform.event('ai.topup', ws.id, null, `automatic, ${next.plan.topUps} this month`);
     const admins = (fresh.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId);
-    notifyUsers(admins, `The AI allowance for this month ran out, so a top-up was added automatically: Rp ${TOP_UP.price.toLocaleString('id-ID')} on the next invoice.`, '/settings/billing', ws.id);
+    notifyUsers(admins, msg('The AI allowance for this month ran out, so a top-up was added automatically: {price} on the next invoice.', { price: `Rp ${TOP_UP.price.toLocaleString('id-ID')}` }), '/settings/billing', ws.id);
     return { chain };
   }
   const own = chain.filter((c) => !c.included);
   return own.length ? { chain: own } : { chain: [], message: g.message };
 }
-const NO_AI = 'AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.';
+const NO_AI = mark('AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.');
 /** After AI ran for a company: its admins hear at 50%, 80% and 100% of a limit (server/aiLimits.ts). */
 const aiAlerts = (wsId: string) => {
   try {
@@ -876,14 +888,14 @@ const aiAlerts = (wsId: string) => {
     console.error('[ai alerts]', e instanceof Error ? e.message : e);
   }
 };
-const OUR_AI_DOWN = 'AI isn’t available right now. We’ve been told; try again in a few minutes.';
+const OUR_AI_DOWN = mark('AI isn’t available right now. We’ve been told; try again in a few minutes.');
 
 /**
  * A company's plan as the app may save it. Free months, discounts and trials are ours: the app can end a trial (by
  * picking a plan) but never start or stretch one, since a trial runs on our AI. Top-ups: the app may add one at a
  * time, never lower the count or bring back a count the invoice run already reset (a page left open since then).
  */
-function planFromApp(next: any, prev: any): { plan: any; why?: string } {
+function planFromApp(next: any, prev: any): { plan: any; why?: string; whyWords?: lang.Said } {
   if (!next) return { plan: prev };
   // Cancelling keeps the plan until the end of the period that's paid for; "Keep the plan" undoes it.
   if (next.cancel === true && prev && prev.tier !== 'free') next = { ...next, tier: prev.tier, track: prev.track, cycle: prev.cycle };
@@ -903,7 +915,7 @@ function planFromApp(next: any, prev: any): { plan: any; why?: string } {
   // How the company pays is ours to record (bank transfer until a card processor exists); the app can't invent a card.
   const { cancel: _c, ...rest } = next;
   // Prorated switches are the server's (billing.adjustmentsOnSave adds a new one): the app can't add, change or drop them.
-  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt, adjustments: prev?.adjustments, trialRefused: next.tier === 'free' ? prev?.trialRefused : undefined }, why: pause.why };
+  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt, adjustments: prev?.adjustments, trialRefused: next.tier === 'free' ? prev?.trialRefused : undefined }, why: pause.why, whyWords: pause.whyWords };
 }
 
 const routes: Record<string, (b: any) => Promise<unknown>> = {
@@ -1121,7 +1133,7 @@ function strangerHost(req: IncomingMessage, res: ServerResponse, p: string) {
   res.statusCode = pending ? 503 : 404;
   res.setHeader('cache-control', 'no-store');
   if (pending) res.setHeader('retry-after', '120');
-  if (p.startsWith('/api/')) return (res.setHeader('content-type', 'application/json'), res.end(JSON.stringify({ error: 'This address isn’t set up.' })), true);
+  if (p.startsWith('/api/')) return (res.setHeader('content-type', 'application/json'), res.end(JSON.stringify(lang.localize(res, { error: mark('This address isn’t set up.') }))), true);
   res.setHeader('content-type', 'text/html; charset=utf-8');
   res.end(req.method === 'HEAD' ? undefined : customDomains.notSetUpPage(pending));
   return true;
@@ -1218,19 +1230,19 @@ function spendRp(rows: { provider: string; model: string; inTokens: number; outT
  * may do, and the demo company. `conn`: the window that sent it (it gets back what was stored differently);
  * `operator`: an operator signed in as `me` from the backend.
  */
-function applySync(me: string, incoming: any, from: { conn?: string; operator?: string | null } = {}): { status: number; body: { saved?: number; why?: string; error?: string } } {
+function applySync(me: string, incoming: any, from: { conn?: string; operator?: string | null } = {}): { status: number; body: { saved?: number; why?: string; error?: string }; whyWords?: lang.Said } {
   const pset = platform.settings();
   const session = from.operator ? { operator: from.operator } : null;
   const opRecord = session ? null : platform.operator((personOf(me) as any)?.email);
-  if (pset.maintenance.on && !opRecord) return { status: 503, body: { error: pset.maintenance.message || 'Changes are paused for a few minutes while sprint2go is updated.' } };
+  if (pset.maintenance.on && !opRecord) return { status: 503, body: { error: pset.maintenance.message || mark('Changes are paused for a few minutes while sprint2go is updated.') } };
   const coll = incoming?.coll;
-  if (!COLLS.includes(coll)) return { status: 400, body: { error: 'Unknown collection' } };
+  if (!COLLS.includes(coll)) return { status: 400, body: { error: mark('Unknown collection') } };
   // Their own demo company first (server/sandbox.ts): what belongs in it is saved there and goes to their other
   // windows only. The rest carries on as a real change. Nothing of the demo ever reaches the real documents.
   const conn0 = from.conn ?? '';
   const sbSender = clients.get(conn0)?.userId === me ? conn0 : undefined;
   let sbSaved = 0;
-  let sbWhy: string | undefined;
+  let sbWhy: lang.Words | undefined;
   const allUpserts = (Array.isArray(incoming.upserts) ? incoming.upserts : []) as db.Doc[];
   const allDeletes = (Array.isArray(incoming.deletes) ? incoming.deletes : []).filter((x: unknown) => typeof x === 'string') as string[];
   const inDemo = (d: db.Doc) => !!d && typeof d.id === 'string' && (isSandboxId(d.id) || !!sandbox.info(me)) && sandbox.belongs(me, coll, d, !!db.getDoc(coll, d.id));
@@ -1246,11 +1258,11 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       const back = r.refused.map((id) => sandbox.getDoc(me, coll, id)).filter(Boolean) as db.Doc[];
       const gone = r.refused.filter((id) => !sandbox.getDoc(me, coll, id));
       if (sbSender && (back.length || gone.length)) clients.get(sbSender)?.res.write(`event: change\ndata: ${JSON.stringify({ coll, upserts: back, deletes: gone })}\n\n`);
-    } else sbWhy = 'The demo company is closed, so that wasn’t kept.';
+    } else sbWhy = mark('The demo company is closed, so that wasn’t kept.');
   }
   const upserts = allUpserts.filter((d) => !demoUps.includes(d));
   const deletes = allDeletes.filter((id) => !demoDels.includes(id));
-  if (!upserts.length && !deletes.length) return { status: 200, body: { saved: sbSaved, ...(sbWhy ? { why: sbWhy } : {}) } };
+  if (!upserts.length && !deletes.length) return { status: 200, body: { saved: sbSaved, ...(sbWhy ? { why: lang.saved(sbWhy).text } : {}) }, whyWords: sbWhy ? lang.saved(sbWhy) : undefined };
   if (['todos', 'messages', 'events', 'rows', 'notes', 'drive'].includes(coll) && upserts.length) {
     const wsId = (upserts as any[]).find((d) => d?.workspaceId)?.workspaceId;
     if (wsId && memberOf(me).some((w) => w.id === wsId) && !db.getDoc(coll, upserts[0].id)) platform.firstEvent('first.use', wsId, me, coll);
@@ -1327,7 +1339,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       const leads = !!project && (project.ownerId === me || (project.members ?? []).some((m: any) => m.userId === me && m.role === 'lead'));
       const key = coll === 'clients' ? 'people' : 'guests';
       if (!leads && JSON.stringify((d as any)[key] ?? []) !== JSON.stringify(before[key] ?? [])) {
-        say('Only admins and the project’s Lead can change who its guests are here.');
+        say(mark('Only admins and the project’s Lead can change who its guests are here.'));
         return { ...d, [key]: before[key] } as db.Doc;
       }
     }
@@ -1377,8 +1389,9 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
   // Companies that just switched on deleting old chat messages (their admins get the week's notice).
   const retentionStarted: { wsId: string; from: string; period: retention.Period }[] = [];
   // Why something wasn't saved (or was saved differently), for the app to say.
-  const why: string[] = [];
-  const say = (text: string | undefined | null) => void (text && !why.includes(text) && why.push(text));
+  const why: lang.Words[] = [];
+  const said = (w: lang.Words) => (typeof w === 'string' ? w : w.text);
+  const say = (w: lang.Words | undefined | null) => void (w && said(w) && !why.some((x) => said(x) === said(w)) && why.push(w));
   /** The company of a document, as stored (or as sent, for a new one). */
   const wsOfDoc = (d: any, before: any) => (coll === 'workspaces' ? d.id : (d.workspaceId ?? before?.workspaceId ?? (coll === 'messages' ? (db.getDoc('channels', String(d.channelId ?? before?.channelId)) as any)?.workspaceId : undefined)));
   /** The rules every write passes: nothing moves between companies, settings are the admins', authors are real. */
@@ -1388,12 +1401,12 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     // resumed (or changed) by an owner: the plan is all that changes.
     const wsId = wsOfDoc(d, before);
     const wsDoc = wsId ? (db.getDoc('workspaces', wsId) as any) : null;
-    const ro = billing.readOnlyWhy(wsDoc);
+    const ro = billing.readOnlyWords(wsDoc);
     if (ro) {
       const owner = (wsDoc?.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
       if (coll === 'workspaces' && before && !wsDoc.suspended && owner && JSON.stringify((d as any).plan) !== JSON.stringify(before.plan)) {
         const p = planFromApp((d as any).plan, before.plan);
-        say(p.why);
+        say(p.whyWords ?? p.why);
         return { ...before, plan: p.plan } as db.Doc;
       }
       say(ro);
@@ -1419,10 +1432,10 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         // The plan and billing are the owners' (the billing page says so); admins' saves keep it as it was.
         const asked = planFromApp((d as any).plan, before.plan);
         const planChanged = JSON.stringify((d as any).plan ?? null) !== JSON.stringify(before.plan ?? null);
-        if (!owner && planChanged) say('Only owners can change the plan and billing.');
+        if (!owner && planChanged) say(mark('Only owners can change the plan and billing.'));
         // A switch of tier or track is prorated (server/billing.ts); a company without a plan keeps having none.
         const plan = owner ? (asked.plan ? { ...asked.plan, adjustments: billing.adjustmentsOnSave(before, before.plan, asked.plan) } : asked.plan) : before.plan;
-        if (owner) say(asked.why);
+        if (owner) say(asked.whyWords ?? asked.why);
         // An operator looking at the app as someone can't change the company's sign-in rules.
         const sec = session?.operator ? { security: before.security, changed: null } : twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
         if (sec.changed) securityChanges.push({ wsId: d.id, text: sec.changed, required: !!sec.security?.twoStep && !before.security?.twoStep });
@@ -1436,7 +1449,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
         // Hosted mailboxes only as many as the plan has room for.
         const boxes = billing.mailboxesOnSave({ ...(d as any), plan }, before);
-        say(boxes.why);
+        say(boxes.whyWords ?? boxes.why);
         // The company's time zone: one the clock knows, else it stays as it was.
         const timeZone = isZone((d as any).timeZone) ? (d as any).timeZone : before.timeZone;
         return { ...d, ...own, timeZone, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
@@ -1445,7 +1458,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
       // One free trial per person and per company domain, as for /api/workspace.
       const trial = billing.trialOnCreate(planFromApp(fresh.plan, undefined).plan, { id: me, email: String(person.email ?? '') }, { id: String(fresh.id), name: String(fresh.name ?? ''), domains: fresh.domains });
-      if (trial.why) say(`${fresh.name ?? 'The new company'} starts on Free. ${trial.why}`);
+      if (trial.why) say(fresh.name ? msg('{company} starts on Free. {why}', { company: fresh.name, why: lang.part(trial.whyWords ?? trial.why) }) : msg('The new company starts on Free. {why}', { why: lang.part(trial.whyWords ?? trial.why) }));
       const plan = trial.plan;
       if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
       const chat = retention.chatOnSave(fresh.chat, undefined);
@@ -1483,7 +1496,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       const asked = (d as any).taskStages;
       const clean = Array.isArray(asked) && asked.length ? cleanStages(asked) : null;
       const taskStages = !runs ? before?.taskStages : asked == null || (Array.isArray(asked) && !asked.length) ? undefined : clean && clean !== DEFAULT_STAGES ? clean : before?.taskStages;
-      if (!runs) say(coll === 'clients' ? 'Only admins and the project’s owner can change its stages.' : 'Only admins and the team’s lead can change its stages.');
+      if (!runs) say(coll === 'clients' ? mark('Only admins and the project’s owner can change its stages.') : mark('Only admins and the team’s lead can change its stages.'));
       d = { ...d, taskStages } as db.Doc;
     }
     // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts);
@@ -1528,7 +1541,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         if (!before) return true;
         if ((coll === 'prefs' || coll === 'statuses') && id === me) return true; // your own
         // Nothing in a read-only company is deleted either.
-        const ro = billing.readOnlyWhy(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
+        const ro = billing.readOnlyWords(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
         if (ro) return (say(ro), false);
         return see(coll, before) && mayDelete(before) && feeds.mayDelete(coll, before, me);
       })
@@ -1579,7 +1592,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
   for (const r of retentionStarted) {
     const w = db.getDoc('workspaces', r.wsId) as any;
     if (w) broadcast('workspaces', [w], []); // the admin who switched it on sees when it starts too
-    if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeText(w.name, r.period, r.from, companyTz(w)), { app: 'settings', id: 'apps' });
+    if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeWords(w.name, r.period, r.from, companyTz(w)), { app: 'settings', id: 'apps' });
     db.audit(String(person.email ?? me), 'chat.retention.on', r.wsId, `messages older than ${retention.periodWords(r.period)}, deleting from ${r.from.slice(0, 10)}`);
   }
   // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
@@ -1617,7 +1630,9 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
   // A deleted meeting takes its recording with it.
   if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
   if (sbWhy) say(sbWhy);
-  return { status: 200, body: { saved: ok.length + sbSaved, ...(why.length ? { why: why.join(' ') } : {}) } };
+  // `why` in English for AI apps and mail apps; the app gets `whyWords` in the language its screen speaks (/api/sync).
+  const whyWords = why.length ? lang.sentences(why) : undefined;
+  return { status: 200, body: { saved: ok.length + sbSaved, ...(whyWords ? { why: whyWords.text } : {}) }, whyWords };
 }
 
 // AI apps people connect (server/connector.ts): they see through the same lens and save through the same rules.
@@ -1636,6 +1651,7 @@ connector.init({
 /* ---------- routes ---------- */
 
 createServer(async (req, res) => {
+  lang.answering(req, res); // errors go back in the language the asker's screen speaks
   const url = new URL(req.url ?? '/', 'http://localhost');
   const p = url.pathname;
   // Headers on everything: no framing by other sites, no content sniffing, scripts and styles only from here.
@@ -1677,7 +1693,7 @@ createServer(async (req, res) => {
   if (req.method !== 'GET' && req.headers.origin && !/^\/api\/(hooks\/|whatsapp\/webhook|meet\/recorder)/.test(p)) {
     const o = String(req.headers.origin).replace(/^https?:\/\//, '').toLowerCase();
     const ok = o === String(req.headers.host ?? '').toLowerCase() || o === PUBLIC_URL.replace(/^https?:\/\//, '').toLowerCase() || o.endsWith('.localhost' + (PORT ? `:${PORT}` : ''));
-    if (!ok) return json(res, 403, { error: 'Requests must come from the app.' });
+    if (!ok) return json(res, 403, { error: mark('Requests must come from the app.') });
   }
   try {
     // Sign in / out
@@ -1708,11 +1724,11 @@ createServer(async (req, res) => {
     if (p === '/api/login' && req.method === 'POST') {
       const { email, password } = await body(req);
       const mail = String(email ?? '').trim().toLowerCase();
-      if (tooMany(`login:${ipOf(req)}`, 30, 15 * 60_000) || tooMany(`login:${mail}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Wait a few minutes and try again.' });
+      if (tooMany(`login:${ipOf(req)}`, 30, 15 * 60_000) || tooMany(`login:${mail}`, 10, 15 * 60_000)) return json(res, 429, { error: mark('Too many attempts. Wait a few minutes and try again.') });
       const login = mail && db.findLogin(mail);
       const good = login && typeof password === 'string' ? await db.checkPassword(password, login.pw_hash) : (await db.burnPasswordTime(String(password ?? '')), false);
-      if (!good || !login) return json(res, 401, { error: 'Wrong email or password.' });
-      if ((db.getDoc('users', login.user_id) as any)?.suspended) return json(res, 403, { error: 'This account is suspended. Contact support.' });
+      if (!good || !login) return json(res, 401, { error: mark('Wrong email or password.') });
+      if ((db.getDoc('users', login.user_id) as any)?.suspended) return json(res, 403, { error: mark('This account is suspended. Contact support.') });
       const t = db.newSession(login.user_id);
       setSession(res, t);
       // Two-step sign-in: the session waits for its code (15 minutes), or for setting it up when a company requires it.
@@ -1733,11 +1749,11 @@ createServer(async (req, res) => {
     if (p === '/api/signup' && req.method === 'POST') {
       const { name, email, password } = await body(req);
       const mail = String(email ?? '').trim().toLowerCase();
-      if (String(name ?? '').trim().length < 2) return json(res, 400, { error: 'Tell us your name.' });
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return json(res, 400, { error: 'That email doesn’t look right.' });
-      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters for the password.' });
-      if (db.findLogin(mail)) return json(res, 409, { error: 'There’s already an account with this email. Sign in instead.' });
-      if (tooMany(`signup:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try again later.' });
+      if (String(name ?? '').trim().length < 2) return json(res, 400, { error: mark('Tell us your name.') });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return json(res, 400, { error: mark('That email doesn’t look right.') });
+      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: mark('Use at least 8 characters for the password.') });
+      if (db.findLogin(mail)) return json(res, 409, { error: mark('There’s already an account with this email. Sign in instead.') });
+      if (tooMany(`signup:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: mark('Too many sign-ups from here. Try again later.') });
       const code = newCode();
       signups.set(mail, { name: String(name).trim().slice(0, 80), hash: await db.hashPassword(password), code, tries: 0, until: Date.now() + 15 * 60_000 });
       const sent = await sendCode(mail, 'finish signing up', code);
@@ -1748,10 +1764,10 @@ createServer(async (req, res) => {
       const { email, code } = await body(req);
       const mail = String(email ?? '').trim().toLowerCase();
       const s = signups.get(mail);
-      if (!s || s.until < Date.now()) return json(res, 410, { error: 'That code has expired. Start again.' });
-      if (++s.tries > 5) return (signups.delete(mail), json(res, 429, { error: 'Too many tries. Start again.' }));
-      if (String(code ?? '').replace(/\D/g, '') !== s.code) return json(res, 400, { error: 'That code isn’t right.' });
-      if (db.findLogin(mail)) return json(res, 409, { error: 'There’s already an account with this email. Sign in instead.' });
+      if (!s || s.until < Date.now()) return json(res, 410, { error: mark('That code has expired. Start again.') });
+      if (++s.tries > 5) return (signups.delete(mail), json(res, 429, { error: mark('Too many tries. Start again.') }));
+      if (String(code ?? '').replace(/\D/g, '') !== s.code) return json(res, 400, { error: mark('That code isn’t right.') });
+      if (db.findLogin(mail)) return json(res, 409, { error: mark('There’s already an account with this email. Sign in instead.') });
       signups.delete(mail);
       // Someone already invited somewhere (a guest without a password yet) keeps their person; otherwise a new one.
       const known = (db.allDocs('users') as any[]).find((u) => String(u.email).toLowerCase() === mail && !db.hasLogin(u.id));
@@ -1779,15 +1795,15 @@ createServer(async (req, res) => {
     // Accepting an invite: the new person sets a password and is signed in.
     if (p === '/api/invite/check' && req.method === 'POST') {
       const inv = db.peekInvite(String((await body(req)).token ?? ''));
-      return inv ? json(res, 200, { email: inv.email }) : json(res, 404, { error: 'This invite link has expired or was already used.' });
+      return inv ? json(res, 200, { email: inv.email }) : json(res, 404, { error: mark('This invite link has expired or was already used.') });
     }
     if (p === '/api/invite/accept' && req.method === 'POST') {
       const { token, password } = await body(req);
-      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
+      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: mark('Use at least 8 characters.') });
       const inv = db.claimInvite(String(token ?? ''));
-      if (!inv) return json(res, 404, { error: 'This invite link has expired or was already used.' });
+      if (!inv) return json(res, 404, { error: mark('This invite link has expired or was already used.') });
       // Never overwrite an existing sign-in (old links made before this check, or a colleague's invite to someone who already has an account).
-      if (db.hasLogin(inv.user_id)) return json(res, 409, { error: 'This account already has a password. Sign in instead.' });
+      if (db.hasLogin(inv.user_id)) return json(res, 409, { error: mark('This account already has a password. Sign in instead.') });
       await db.setLogin(inv.user_id, inv.email, password);
       platform.event('invite.accepted', null, inv.user_id);
       setSession(res, db.newSession(inv.user_id));
@@ -1797,7 +1813,7 @@ createServer(async (req, res) => {
     // Forgot the password: a code by email, then a new password. Every session of that account ends.
     if (p === '/api/reset' && req.method === 'POST') {
       const mail = String((await body(req)).email ?? '').trim().toLowerCase();
-      if (tooMany(`reset:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try again later.' });
+      if (tooMany(`reset:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: mark('Too many attempts. Try again later.') });
       const login = mail && db.findLogin(mail);
       // The answer is the same whether the email is known or not.
       if (login) {
@@ -1813,12 +1829,12 @@ createServer(async (req, res) => {
       const { email, code, password, twoStep } = await body(req);
       const mail = String(email ?? '').trim().toLowerCase();
       const c = codes.get(`reset:${mail}`);
-      if (!c || c.until < Date.now()) return json(res, 410, { error: 'That code has expired. Ask for a new one.' });
-      if (++c.tries > 5) return (codes.delete(`reset:${mail}`), json(res, 429, { error: 'Too many tries. Ask for a new code.' }));
-      if (String(code ?? '').replace(/\D/g, '') !== c.code) return json(res, 400, { error: 'That code isn’t right.' });
-      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
+      if (!c || c.until < Date.now()) return json(res, 410, { error: mark('That code has expired. Ask for a new one.') });
+      if (++c.tries > 5) return (codes.delete(`reset:${mail}`), json(res, 429, { error: mark('Too many tries. Ask for a new code.') }));
+      if (String(code ?? '').replace(/\D/g, '') !== c.code) return json(res, 400, { error: mark('That code isn’t right.') });
+      if (typeof password !== 'string' || password.length < 8) return json(res, 400, { error: mark('Use at least 8 characters.') });
       const login = db.findLogin(mail);
-      if (!login) return json(res, 404, { error: 'No account with this email.' });
+      if (!login) return json(res, 404, { error: mark('No account with this email.') });
       // An email code alone doesn't get past two-step sign-in: the code from the app (or a backup code) comes first.
       const second = twostep.resetNeedsCode(login.user_id, twoStep);
       if (second) return json(res, second.status, second.body);
@@ -1848,14 +1864,14 @@ createServer(async (req, res) => {
       let raw = '';
       for await (const chunk of req) {
         raw += chunk;
-        if (raw.length > 1_000_000) return json(res, 413, { error: 'Too large' });
+        if (raw.length > 1_000_000) return json(res, 413, { error: mark('Too large') });
       }
       const type = String(req.headers['content-type'] ?? '');
       let payload: unknown;
       try {
         payload = type.includes('application/x-www-form-urlencoded') ? Object.fromEntries(new URLSearchParams(raw)) : raw ? JSON.parse(raw) : {};
       } catch {
-        return json(res, 400, { error: 'Send JSON or form data' });
+        return json(res, 400, { error: mark('Send JSON or form data') });
       }
       const out = tablesEngine.intake(tablesEnv, hook[1], payload);
       return json(res, out.status, out.body);
@@ -1891,14 +1907,14 @@ createServer(async (req, res) => {
     const token = cookie(req, 's2g');
     const session = db.sessionInfo(token);
     const me = session?.userId ?? null;
-    if (!me) return json(res, 401, { error: 'Sign in first.' });
+    if (!me) return json(res, 401, { error: mark('Sign in first.') });
     if (db.touch(me)) {
       platform.activeDay(me);
       platform.noteSession(token!, String(req.headers['user-agent'] ?? ''), ipOf(req));
     }
     const meDoc = personOf(me) as any;
     // A suspended person can still see that they're suspended; nothing else.
-    if (meDoc?.suspended) return p === '/api/me' ? json(res, 200, { me, suspended: meDoc.suspended }) : json(res, 403, { error: 'This account is suspended.' });
+    if (meDoc?.suspended) return p === '/api/me' ? json(res, 200, { me, suspended: meDoc.suspended }) : json(res, 403, { error: mark('This account is suspended.') });
     // Two-step sign-in still to do (a code, or setting it up): only that, and signing out.
     const gate = twostep.gate(me, token, session?.operator ?? null, workspaces() as any);
     if (gate) {
@@ -1926,19 +1942,19 @@ createServer(async (req, res) => {
     /* ---------- their own demo company (server/sandbox.ts) ---------- */
     // Open: made from the demo data the first time (in their time zone), shown again when it was hidden.
     if ((p === '/api/sandbox' || p === '/api/sandbox/reset') && req.method === 'POST') {
-      if (!demoAllowed(me)) return json(res, 403, { error: 'Your company switched the demo company off.' });
-      if (session?.operator) return json(res, 403, { error: 'That’s theirs to open: you’re signed in as them.' });
-      if (tooMany(`sandbox:${me}`, 20, 60 * 60_000)) return json(res, 429, { error: 'That’s a lot of demo companies in an hour. Try again later.' });
+      if (!demoAllowed(me)) return json(res, 403, { error: mark('Your company switched the demo company off.') });
+      if (session?.operator) return json(res, 403, { error: mark('That’s theirs to open: you’re signed in as them.') });
+      if (tooMany(`sandbox:${me}`, 20, 60 * 60_000)) return json(res, 429, { error: mark('That’s a lot of demo companies in an hour. Try again later.') });
       const { tz } = await body(req);
       const row = sandbox.info(me);
-      if (p === '/api/sandbox/reset' && !row) return json(res, 404, { error: 'There’s no demo company to reset.' });
+      if (p === '/api/sandbox/reset' && !row) return json(res, 404, { error: mark('There’s no demo company to reset.') });
       if (!row || p === '/api/sandbox/reset') await sandbox.make(me, { name: String(meDoc?.name ?? '') }, typeof tz === 'string' ? tz : undefined);
       else if (row.hidden) sandbox.setHidden(me, false);
       reloadWindows(me, String(req.headers['x-conn'] ?? ''));
       return json(res, 200, { demo: sandbox.stateOf(me, true), workspaceId: sandboxWsId(me) });
     }
     if (p === '/api/sandbox/hide' && req.method === 'POST') {
-      if (!sandbox.info(me)) return json(res, 404, { error: 'There’s no demo company.' });
+      if (!sandbox.info(me)) return json(res, 404, { error: mark('There’s no demo company.') });
       sandbox.setHidden(me, true);
       reloadWindows(me, String(req.headers['x-conn'] ?? ''));
       return json(res, 200, { demo: sandbox.stateOf(me, demoAllowed(me)) });
@@ -1950,7 +1966,7 @@ createServer(async (req, res) => {
     }
     // Back from "sign in as": the operator's own session again (still past their 2FA).
     if (p === '/api/admin/signin-as/stop' && req.method === 'POST') {
-      if (!session?.operator) return json(res, 400, { error: 'Not signed in as someone.' });
+      if (!session?.operator) return json(res, 400, { error: mark('Not signed in as someone.') });
       const op = (db.allDocs('users') as any[]).find((u) => String(u.email ?? '').toLowerCase() === session.operator);
       db.endSession(token!);
       const t = op ? db.newSession(op.id) : null;
@@ -1983,14 +1999,15 @@ createServer(async (req, res) => {
       if (handled) return;
     }
     if (p.startsWith('/api/admin/')) {
-      if (!opRecord) return json(res, 403, { error: 'Operators only.' });
+      if (!opRecord) return json(res, 403, { error: mark('Operators only.') });
       const handled = await admin.handleAdmin(p, {
         req,
         res,
         url,
         me,
         token: token!,
-        json,
+        // The console's answers: every msg() in them (labels deep in lists too) in the operator's language.
+        json: (r, status, data) => json(r, status, lang.localizeAll(lang.requestLang(req), data)),
         body,
         broadcast,
         signups,
@@ -2005,7 +2022,7 @@ createServer(async (req, res) => {
         startedAt: STARTED,
         notifyUsers,
       });
-      return handled ? undefined : json(res, 404, { error: 'No such admin route.' });
+      return handled ? undefined : json(res, 404, { error: mark('No such admin route.') });
     }
     // Connecting an AI app (the consent screen at /oauth/authorize) and each person's connected apps (Settings, Account).
     if (p.startsWith('/api/oauth/') && (await connector.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body }))) return;
@@ -2018,11 +2035,11 @@ createServer(async (req, res) => {
       return json(res, 200, { tickets: list.map((t) => ({ id: t.id, number: t.number, subject: t.subject, status: t.status, updatedAt: t.updatedAt, createdAt: t.createdAt, unread: t.unreadForCustomer, rating: t.rating })), supportEmail: mailer.SUPPORT_EMAIL });
     }
     if (p === '/api/support' && req.method === 'POST') {
-      if (tooMany(`support:${me}`, 10, 60 * 60_000)) return json(res, 429, { error: 'That’s a lot of tickets in an hour. Reply on an open one, or write to ' + mailer.SUPPORT_EMAIL + '.' });
+      if (tooMany(`support:${me}`, 10, 60 * 60_000)) return json(res, 429, { error: mark('That’s a lot of tickets in an hour. Reply on an open one, or write to ') + mailer.SUPPORT_EMAIL + '.' });
       const b = await body(req);
       const subject = String(b.subject ?? '').trim();
       const text = String(b.body ?? '').trim();
-      if (!subject || !text) return json(res, 400, { error: 'Tell us what it’s about and what happened.' });
+      if (!subject || !text) return json(res, 400, { error: mark('Tell us what it’s about and what happened.') });
       const ws = (memberOf(me).find((w: any) => w.id === b.workspaceId) ?? memberOf(me)[0]) as any;
       const paying = ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false;
       const attachments = ticketFiles(b.attachments, me);
@@ -2040,14 +2057,14 @@ createServer(async (req, res) => {
         context: b.context && typeof b.context === 'object' ? { ...b.context, plan: ws?.plan ? `${ws.plan.tier} ${ws.plan.track}` : 'none', company: ws?.name ?? null } : undefined,
         attachments,
       });
-      supportNotify(t, `New ticket #${t.number} from ${meDoc?.name ?? meDoc?.email}: ${t.subject.slice(0, 70)}`);
+      supportNotify(t, msg('New ticket #{number} from {name}: {subject}', { number: t.number, name: meDoc?.name ?? meDoc?.email ?? '', subject: t.subject.slice(0, 70) }));
       return json(res, 200, { id: t.id, number: t.number });
     }
     const supportReq = p.match(/^\/api\/support\/([\w-]+)(?:\/(reply|rate|seen))?$/);
     if (supportReq) {
       const t = support.ticket(supportReq[1]);
       const mine = t && (t.requester.userId === me || t.requester.email === String(meDoc?.email ?? '').toLowerCase());
-      if (!t || !mine) return json(res, 404, { error: 'No such ticket.' });
+      if (!t || !mine) return json(res, 404, { error: mark('No such ticket.') });
       if (!supportReq[2] && req.method === 'GET') {
         support.markSeenByCustomer(t.id);
         return json(res, 200, { ticket: { id: t.id, number: t.number, subject: t.subject, status: t.status, createdAt: t.createdAt, rating: t.rating }, messages: support.messagesOf(t.id, false).map((m) => ({ ...m, author: m.kind === 'operator' ? undefined : m.author })) });
@@ -2055,18 +2072,18 @@ createServer(async (req, res) => {
       if (supportReq[2] === 'reply' && req.method === 'POST') {
         const b = await body(req);
         const text = String(b.body ?? '').trim();
-        if (!text) return json(res, 400, { error: 'Write something first.' });
+        if (!text) return json(res, 400, { error: mark('Write something first.') });
         const attachments = ticketFiles(b.attachments, me);
         support.addMessage(t.id, { kind: 'customer', author: String(meDoc?.email ?? '').toLowerCase(), authorName: meDoc?.name ?? null, body: text, internal: false, attachments });
         support.customerReplied(t.id);
-        supportNotify(t, `${meDoc?.name ?? 'A customer'} replied on #${t.number}: ${text.slice(0, 70)}`, true);
+        supportNotify(t, meDoc?.name ? msg('{name} replied on #{number}: {text}', { name: meDoc.name, number: t.number, text: text.slice(0, 70) }) : msg('A customer replied on #{number}: {text}', { number: t.number, text: text.slice(0, 70) }), true);
         return json(res, 200, { ok: true });
       }
       if (supportReq[2] === 'rate' && req.method === 'POST') {
         const b = await body(req);
-        if (!['good', 'okay', 'bad'].includes(b.rating)) return json(res, 400, { error: 'Pick one.' });
+        if (!['good', 'okay', 'bad'].includes(b.rating)) return json(res, 400, { error: mark('Pick one.') });
         support.rate(t.id, b.rating, b.note);
-        if (b.rating === 'bad') supportNotify(t, `#${t.number} was rated bad${b.note ? `: ${String(b.note).slice(0, 80)}` : ''}`, true);
+        if (b.rating === 'bad') supportNotify(t, b.note ? msg('#{number} was rated bad: {note}', { number: t.number, note: String(b.note).slice(0, 80) }) : msg('#{number} was rated bad', { number: t.number }), true);
         return json(res, 200, { ok: true });
       }
     }
@@ -2093,7 +2110,7 @@ createServer(async (req, res) => {
     // A company's invoices and discount codes (owners and admins, or members allowed to see billing).
     if (p === '/api/billing/invoices' && req.method === 'GET') {
       const ws = memberOf(me).find((w: any) => w.id === url.searchParams.get('ws')) as any;
-      if (!ws || !(isAdminOf(me, ws.id) || ws.permissions?.seeBilling)) return json(res, 403, { error: 'Not allowed.' });
+      if (!ws || !(isAdminOf(me, ws.id) || ws.permissions?.seeBilling)) return json(res, 403, { error: mark('Not allowed.') });
       // How to pay: only what's real. Bank transfer to the account in the operators' settings (none set: nothing to show),
       // and how many days after the due date an unpaid invoice makes the company read-only (0: never by itself).
       const s = platform.settings();
@@ -2105,7 +2122,7 @@ createServer(async (req, res) => {
     if (p === '/api/billing/invoice' && req.method === 'GET') {
       const inv = platform.invoice(url.searchParams.get('id') ?? '');
       const ws = inv && (memberOf(me).find((w: any) => w.id === inv.workspaceId) as any);
-      if (!inv || inv.status === 'draft' || !ws || !(isAdminOf(me, ws.id) || ws.permissions?.seeBilling)) return json(res, 404, { error: 'No such invoice.' });
+      if (!inv || inv.status === 'draft' || !ws || !(isAdminOf(me, ws.id) || ws.permissions?.seeBilling)) return json(res, 404, { error: mark('No such invoice.') });
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" });
       return res.end(admin.invoiceHtml(inv, ws.name));
     }
@@ -2113,10 +2130,10 @@ createServer(async (req, res) => {
       const b = await body(req);
       const ws = memberOf(me).find((w: any) => w.id === b.workspaceId) as any;
       // Billing is the owners' (the billing page says so).
-      if (!ws || !ws.members.some((m: any) => m.userId === me && m.role === 'owner')) return json(res, 403, { error: 'Only owners can add a code.' });
-      if (tooMany(`coupon:${ws.id}`, 10, 60 * 60_000)) return json(res, 429, { error: 'Too many tries. Try again later.' });
-      if (!ws.plan) return json(res, 400, { error: 'Pick a plan first.' });
-      if (ws.plan.discount || (ws.plan.comp?.note ?? '').startsWith('Code ')) return json(res, 409, { error: 'This company already has a code.' });
+      if (!ws || !ws.members.some((m: any) => m.userId === me && m.role === 'owner')) return json(res, 403, { error: mark('Only owners can add a code.') });
+      if (tooMany(`coupon:${ws.id}`, 10, 60 * 60_000)) return json(res, 429, { error: mark('Too many tries. Try again later.') });
+      if (!ws.plan) return json(res, 400, { error: mark('Pick a plan first.') });
+      if (ws.plan.discount || (ws.plan.comp?.note ?? '').startsWith('Code ')) return json(res, 409, { error: mark('This company already has a code.') });
       const ok = platform.couponUsable(String(b.code ?? ''));
       if (!ok.ok) return json(res, 400, { error: ok.error });
       const next = { ...ws, plan: admin.applyCoupon(ws.plan, ok.coupon) };
@@ -2142,7 +2159,7 @@ createServer(async (req, res) => {
     };
     if (p === '/api/mail/setup' && req.method === 'GET') {
       const saved = memberOf(me).find((w) => w.id === url.searchParams.get('ws')) as any;
-      if (!saved) return json(res, 403, { error: 'Not in this company.' });
+      if (!saved) return json(res, 403, { error: mark('Not in this company.') });
       // The records follow what the screen shows: a choice made a moment ago may not be saved yet.
       const setupQ = url.searchParams.get('setup') ?? '';
       const providerQ = url.searchParams.get('provider') ?? '';
@@ -2161,16 +2178,16 @@ createServer(async (req, res) => {
       const { threadId } = await body(req);
       const t = db.getDoc('threads', String(threadId ?? '')) as any;
       const acct = t && (memberOf(me) as any[]).flatMap((w) => w.accounts ?? []).find((a: any) => a.id === t.accountId);
-      if (!t || !acct || !(acct.users ?? []).includes(me)) return json(res, 403, { error: 'Not your mailbox.' });
+      if (!t || !acct || !(acct.users ?? []).includes(me)) return json(res, 403, { error: mark('Not your mailbox.') });
       const m = [...(t.messages ?? [])].reverse().find((x: any) => x.listUnsubscribe?.url);
-      if (!m) return json(res, 400, { error: 'This sender didn’t include an unsubscribe link.' });
+      if (!m) return json(res, 400, { error: mark('This sender didn’t include an unsubscribe link.') });
       if (!m.listUnsubscribe.oneClick) return json(res, 200, { open: m.listUnsubscribe.url });
       const r = await mailer.oneClickUnsubscribe(String(m.listUnsubscribe.url));
       return r.ok ? json(res, 200, { done: true }) : json(res, 502, { error: r.why, open: r.safe ? m.listUnsubscribe.url : undefined });
     }
     if (p === '/api/mail/ready' && req.method === 'POST') {
       const { workspaceId } = await body(req);
-      if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, { error: 'Not in this company.' });
+      if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, { error: mark('Not in this company.') });
       const ready = await mailer.refreshReadiness(String(workspaceId));
       const ws = db.getDoc('workspaces', String(workspaceId)) as any;
       // "Some of each": which hosted mailboxes at the company's domain really got mail, the proof that routing works.
@@ -2183,8 +2200,8 @@ createServer(async (req, res) => {
     if (p === '/api/mail/routing-test' && req.method === 'POST') {
       const { workspaceId } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can send a routing test.' });
-      if (tooMany(`routing-test:${ws.id}`, 10, 60 * 60_000)) return json(res, 429, { error: 'That’s a lot of tests in an hour. Wait a little and try again.' });
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can send a routing test.') });
+      if (tooMany(`routing-test:${ws.id}`, 10, 60 * 60_000)) return json(res, 429, { error: mark('That’s a lot of tests in an hour. Wait a little and try again.') });
       try {
         return json(res, 200, await routing.sendProbe(ws.id, 'manual'));
       } catch (e) {
@@ -2193,9 +2210,9 @@ createServer(async (req, res) => {
     }
     if (p === '/api/mail/routing-test' && req.method === 'GET') {
       const wsId = url.searchParams.get('ws') ?? '';
-      if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, { error: 'Not in this company.' });
+      if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, { error: mark('Not in this company.') });
       const st = routing.probeStatus(wsId, url.searchParams.get('token') ?? '');
-      return st ? json(res, 200, st) : json(res, 404, { error: 'No such test.' });
+      return st ? json(res, 200, st) : json(res, 404, { error: mark('No such test.') });
     }
     // White label: the company's own address for its guests. Setting it (or clearing it with an empty address) starts
     // the DNS check; "check" looks again now. The state lands on the workspace (whiteLabel.domainStatus/domainCheck).
@@ -2203,20 +2220,20 @@ createServer(async (req, res) => {
       const b = await body(req);
       const wsId = String(b.workspaceId ?? '');
       const ws = db.getDoc('workspaces', wsId) as any;
-      if (!ws || !isAdminOf(me, wsId)) return json(res, 403, { error: 'Only admins can change the address.' });
-      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
-      if (tooMany(`domain:${wsId}`, 30, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of checks. Wait a few minutes; we also check every hour by ourselves.' });
+      if (!ws || !isAdminOf(me, wsId)) return json(res, 403, { error: mark('Only admins can change the address.') });
+      if (billing.readOnlyWords(ws)) return json(res, 403, { error: billing.readOnlyWords(ws) });
+      if (tooMany(`domain:${wsId}`, 30, 10 * 60_000)) return json(res, 429, { error: mark('That’s a lot of checks. Wait a few minutes; we also check every hour by ourselves.') });
       if (p === '/api/white-label/check') {
-        if (!ws.whiteLabel?.domain) return json(res, 400, { error: 'Add an address first.' });
+        if (!ws.whiteLabel?.domain) return json(res, 400, { error: mark('Add an address first.') });
         await customDomains.check(wsId);
         return json(res, 200, { whiteLabel: (db.getDoc('workspaces', wsId) as any)?.whiteLabel ?? null });
       }
       const clear = b.domain === null || String(b.domain ?? '').trim() === '';
-      if (!clear && !ws.whiteLabel?.enabled) return json(res, 400, { error: 'Switch on your brand first.' });
+      if (!clear && !ws.whiteLabel?.enabled) return json(res, 400, { error: mark('Switch on your brand first.') });
       const c = clear ? { host: null } : customDomains.cleanHost(b.domain);
       if ('error' in c) return json(res, 400, { error: c.error });
       const owner = c.host ? customDomains.ownerOf(c.host) : undefined;
-      if (owner && owner !== wsId) return json(res, 409, { error: 'Another company already uses this address. If it’s yours, write to us and we’ll sort it out.' });
+      if (owner && owner !== wsId) return json(res, 409, { error: mark('Another company already uses this address. If it’s yours, write to us and we’ll sort it out.') });
       platform.event('company.address', wsId, me, c.host ?? 'removed');
       await customDomains.setAddress(wsId, c.host);
       return json(res, 200, { whiteLabel: (db.getDoc('workspaces', wsId) as any)?.whiteLabel ?? null });
@@ -2224,7 +2241,7 @@ createServer(async (req, res) => {
     if (p === '/api/mail/check' && req.method === 'POST') {
       const { workspaceId } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can check the records.' });
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can check the records.') });
       const result = await mailer.checkDomain(ws);
       soonReadiness(ws.id);
       const own = result.domain === mailer.MAIL_HOST;
@@ -2236,9 +2253,9 @@ createServer(async (req, res) => {
     if (p === '/api/mail/route' && req.method === 'POST') {
       const { workspaceId, route } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change how mail is sent.' });
-      if (!['own', 'boosted'].includes(route)) return json(res, 400, { error: 'Unknown route.' });
-      if (route === 'boosted' && !mailer.boostedAvailable()) return json(res, 409, { error: 'Boosted sending isn’t available on this server yet.' });
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can change how mail is sent.') });
+      if (!['own', 'boosted'].includes(route)) return json(res, 400, { error: mark('Unknown route.') });
+      if (route === 'boosted' && !mailer.boostedAvailable()) return json(res, 409, { error: mark('Boosted sending isn’t available on this server yet.') });
       const next = { ...ws, mailRoute: route, mailChecks: undefined };
       db.writeDocs('workspaces', [next], [], me);
       broadcast('workspaces', [next], []);
@@ -2250,10 +2267,10 @@ createServer(async (req, res) => {
     if (p === '/api/mail/credits' && req.method === 'POST') {
       const { workspaceId, pack } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can buy credits.' });
-      const blocked = billing.creditsBlocked(mailer.boostedAvailable()) ?? billing.readOnlyWhy(ws);
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can buy credits.') });
+      const blocked = billing.creditsBlocked(mailer.boostedAvailable()) ?? billing.readOnlyWords(ws);
       if (blocked) return json(res, 409, { error: blocked });
-      if (tooMany(`credits:${ws.id}`, 5, 60 * 60_000)) return json(res, 429, { error: 'That’s a lot of orders in an hour. Pay the invoices that are waiting first.' });
+      if (tooMany(`credits:${ws.id}`, 5, 60 * 60_000)) return json(res, 429, { error: mark('That’s a lot of orders in an hour. Pay the invoices that are waiting first.') });
       const r = billing.orderCredits(ws, Number(pack), me);
       if ('error' in r) return json(res, r.status, { error: r.error });
       // The invoice goes to the company's billing emails too (as the monthly ones do), with the bank details on it.
@@ -2264,34 +2281,34 @@ createServer(async (req, res) => {
       // The operators who look after billing hear about it, so they watch for the transfer.
       const ops = platform.operators().filter((o) => !o.disabled && platform.permsOf(o.role).includes('billing')).map((o) => o.email);
       const opIds = (db.allDocs('users') as any[]).filter((u) => ops.includes(String(u.email ?? '').toLowerCase())).map((u) => u.id);
-      notifyUsers(opIds, `${ws.name} ordered ${r.credits.toLocaleString('id-ID')} Boosted emails: invoice ${r.invoice.number}, Rp ${r.invoice.total.toLocaleString('id-ID')}. Mark it paid when the transfer arrives.`, `/admin/money/invoices/${r.invoice.id}`);
+      notifyUsers(opIds, msg('{company} ordered {n} Boosted emails: invoice {number}, {total}. Mark it paid when the transfer arrives.', { company: ws.name, n: r.credits.toLocaleString('id-ID'), number: r.invoice.number, total: `Rp ${r.invoice.total.toLocaleString('id-ID')}` }), `/admin/money/invoices/${r.invoice.id}`);
       return json(res, 200, { invoice: { id: r.invoice.id, number: r.invoice.number, total: r.invoice.total, dueAt: r.invoice.dueAt }, credits: r.credits, bank: platform.settings().billing.bank, orders: billing.openOrders(ws.id) });
     }
     if (p === '/api/mail/send' && req.method === 'POST') {
       const b = await body(req);
       const ws = memberOf(me).find((w) => w.id === b.workspaceId) as any;
       const account = ws?.accounts?.find((a: any) => a.id === b.accountId);
-      if (!ws || !account) return json(res, 403, { error: 'Not your mailbox.' });
-      if (account.provider && account.provider !== 'sprint2go') return json(res, 409, { error: 'This mailbox is not hosted here.' });
+      if (!ws || !account) return json(res, 403, { error: mark('Not your mailbox.') });
+      if (account.provider && account.provider !== 'sprint2go') return json(res, 409, { error: mark('This mailbox is not hosted here.') });
       // Only from a mailbox that can really send; a fresh check first, so a record added a minute ago counts.
       if (!ws.mailReady?.mailboxes?.[account.id]?.send) {
         const r = await mailer.refreshReadiness(ws.id);
         const m = r?.mailboxes[account.id];
-        if (!m?.send) return json(res, 409, { error: m?.sendWhy && !m.why ? m.sendWhy : `Sending isn’t set up for ${account.email} yet. ${m?.sendWhy ?? m?.why ?? ''}`.trim() });
+        if (!m?.send) return json(res, 409, { error: m?.sendWhy && !m.why ? m.sendWhy : m?.sendWhy || m?.why ? msg('Sending isn’t set up for {email} yet. {why}', { email: account.email, why: (m?.sendWhy ?? m?.why) as string }) : msg('Sending isn’t set up for {email} yet.', { email: account.email }) });
       }
       // A mailbox's own people send from it; a shared inbox also its company's admins. Never someone's personal mailbox.
       const users: string[] = Array.isArray(account.users) ? account.users : [];
-      if (users.length ? !users.includes(me) && !(account.kind === 'shared' && isAdminOf(me, ws.id)) : account.kind !== 'shared' && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Not your mailbox.' });
-      const ro = billing.readOnlyWhy(ws);
+      if (users.length ? !users.includes(me) && !(account.kind === 'shared' && isAdminOf(me, ws.id)) : account.kind !== 'shared' && !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Not your mailbox.') });
+      const ro = billing.readOnlyWords(ws);
       if (ro) return json(res, 403, { error: ro });
       // The message lives in a thread of this mailbox (or a new one, saved a moment later); attachments are this company's files.
       const thread = b.threadId ? (db.getDoc('threads', String(b.threadId)) as any) : null;
-      if (thread && thread.accountId !== account.id) return json(res, 403, { error: 'That conversation is in another mailbox.' });
+      if (thread && thread.accountId !== account.id) return json(res, 403, { error: mark('That conversation is in another mailbox.') });
       const fileOk = (u: string) => {
         const id = u.match(/^\/api\/files\/([a-f0-9]{32})$/)?.[1];
         return id ? db.fileInfo(id)?.workspaceId === ws.id : u.startsWith('data:');
       };
-      if ((Array.isArray(b.files) ? b.files : []).some((f: any) => f && typeof f.url === 'string' && !fileOk(f.url))) return json(res, 403, { error: 'One of the attachments isn’t a file of this company.' });
+      if ((Array.isArray(b.files) ? b.files : []).some((f: any) => f && typeof f.url === 'string' && !fileOk(f.url))) return json(res, 403, { error: mark('One of the attachments isn’t a file of this company.') });
       const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
       try {
         platform.firstEvent('mail.first', ws.id, me);
@@ -2361,21 +2378,21 @@ createServer(async (req, res) => {
       // Yes, Maybe or No to an emailed invite: tells the organiser (an iCalendar REPLY from the mailbox) and puts the
       // event in this person's calendar, or takes it off.
       const { threadId, messageId, answer } = await body(req);
-      if (!invites.isRsvp(answer)) return json(res, 400, { error: 'Answer yes, maybe or no.' });
+      if (!invites.isRsvp(answer)) return json(res, 400, { error: mark('Answer yes, maybe or no.') });
       const t = db.getDoc('threads', String(threadId ?? '')) as any;
       const ws = t && (memberOf(me) as any[]).find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId));
       const account = ws?.accounts.find((a: any) => a.id === t.accountId);
-      if (!t || !account || !(account.users ?? []).includes(me)) return json(res, 403, { error: 'Not your mailbox.' });
-      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
-      const msg = (t.messages ?? []).find((m: any) => m.id === messageId);
-      const inv = msg?.invite as invites.StoredInvite | undefined;
-      if (!inv || (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH')) return json(res, 400, { error: 'There’s no invite to answer in this email.' });
+      if (!t || !account || !(account.users ?? []).includes(me)) return json(res, 403, { error: mark('Not your mailbox.') });
+      if (billing.readOnlyWords(ws)) return json(res, 403, { error: billing.readOnlyWords(ws) });
+      const inMail = (t.messages ?? []).find((m: any) => m.id === messageId);
+      const inv = inMail?.invite as invites.StoredInvite | undefined;
+      if (!inv || (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH')) return json(res, 400, { error: mark('There’s no invite to answer in this email.') });
       const own = new Set<string>([String(account.email).toLowerCase(), ...(ws.accounts ?? []).map((a: any) => String(a.email).toLowerCase())]);
       const tell = inv.method === 'REQUEST' && !!inv.organizer?.email && !own.has(inv.organizer.email);
       const meName = String((db.getDoc('users', me) as any)?.name ?? account.name ?? '');
       if (tell) {
         const blocked = await sendBlock(ws, account);
-        if (blocked) return json(res, 409, { error: `Your answer can’t go out yet. ${blocked}` });
+        if (blocked) return json(res, 409, { error: msg('Your answer can’t go out yet. {why}', { why: lang.part(blocked) }) });
         const you = inv.you ?? String(account.email).toLowerCase();
         const name = account.kind === 'shared' ? String(account.name || ws.name) : meName || String(account.name);
         const said = answer === 'accepted' ? 'Accepted' : answer === 'tentative' ? 'Tentatively accepted' : 'Declined';
@@ -2391,8 +2408,8 @@ createServer(async (req, res) => {
             subject: `${said}: ${inv.title}`,
             text: `${name} ${answer === 'accepted' ? 'accepted' : answer === 'tentative' ? 'might come to' : 'declined'} “${inv.title}”.`,
             files: [],
-            inReplyTo: msg.mid,
-            references: msg.mid ? [msg.mid] : undefined,
+            inReplyTo: inMail.mid,
+            references: inMail.mid ? [inMail.mid] : undefined,
             ical: { method: 'REPLY', content: buildReply(inv, { name, email: you }, answer) },
           });
         } catch (e) {
@@ -2402,7 +2419,7 @@ createServer(async (req, res) => {
       // The answer, on the email (read fresh: the send may have touched the thread).
       const fresh = (db.getDoc('threads', t.id) as any) ?? t;
       const at = new Date().toISOString();
-      const nextThread = { ...fresh, messages: fresh.messages.map((m: any) => (m.id === msg.id ? { ...m, invite: { ...m.invite, answer: { status: answer, at, by: me, sent: tell } } } : m)) };
+      const nextThread = { ...fresh, messages: fresh.messages.map((m: any) => (m.id === inMail.id ? { ...m, invite: { ...m.invite, answer: { status: answer, at, by: me, sent: tell } } } : m)) };
       db.writeDocs('threads', [nextThread], [], me);
       broadcast('threads', [nextThread], []);
       // This person's calendar: the event (each date of a repeating one), or none after No.
@@ -2424,17 +2441,17 @@ createServer(async (req, res) => {
       const { workspaceId, accountId, away } = await body(req);
       const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
       const account = ws?.accounts?.find((a: any) => a.id === accountId);
-      if (!ws || !account || (!(account.users ?? []).includes(me) && !isAdminOf(me, ws.id))) return json(res, 403, { error: 'Not your mailbox.' });
-      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
+      if (!ws || !account || (!(account.users ?? []).includes(me) && !isAdminOf(me, ws.id))) return json(res, 403, { error: mark('Not your mailbox.') });
+      if (billing.readOnlyWords(ws)) return json(res, 403, { error: billing.readOnlyWords(ws) });
       const a = away && typeof away === 'object' ? away : {};
       const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
       const instant = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
       const next = { on: !!a.on, from: day(a.from), until: day(a.until), fromAt: instant(a.fromAt), untilAt: instant(a.untilAt), subject: String(a.subject ?? '').slice(0, 200), message: String(a.message ?? '').slice(0, 5000) };
-      if (next.on && !next.message.trim()) return json(res, 400, { error: 'Write the message people get back.' });
-      if (next.fromAt && next.untilAt && next.untilAt < next.fromAt) return json(res, 400, { error: 'The last day is before the first.' });
+      if (next.on && !next.message.trim()) return json(res, 400, { error: mark('Write the message people get back.') });
+      if (next.fromAt && next.untilAt && next.untilAt < next.fromAt) return json(res, 400, { error: mark('The last day is before the first.') });
       if (next.on) {
         const blocked = await sendBlock(ws, account);
-        if (blocked) return json(res, 409, { error: `Out of office can’t answer yet. ${blocked}` });
+        if (blocked) return json(res, 409, { error: msg('Out of office can’t answer yet. {why}', { why: lang.part(blocked) }) });
       }
       const prev = account.away ?? {};
       const same = prev.on && next.on && prev.subject === next.subject && prev.message === next.message && prev.fromAt === next.fromAt && prev.untilAt === next.untilAt;
@@ -2449,18 +2466,18 @@ createServer(async (req, res) => {
     if (p === '/api/mail/bimi') {
       const b = req.method === 'GET' ? { workspaceId: url.searchParams.get('ws') } : await body(req);
       const ws = (memberOf(me) as any[]).find((w) => w.id === b.workspaceId);
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change the company’s logo in inboxes.' });
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can change the company’s logo in inboxes.') });
       const domain = mailer.mailDomainOf(ws);
-      if (domain === mailer.MAIL_HOST) return json(res, 409, { error: 'A logo in inboxes needs your own mail domain. Add it under General first.' });
+      if (domain === mailer.MAIL_HOST) return json(res, 409, { error: mark('A logo in inboxes needs your own mail domain. Add it under General first.') });
       if (req.method === 'GET') return json(res, 200, await bimi.bimiState(ws, domain, PUBLIC_URL));
-      const ro = billing.readOnlyWhy(ws);
+      const ro = billing.readOnlyWords(ws);
       if (ro) return json(res, 403, { error: ro });
       let next: any;
       if (req.method === 'DELETE') next = { ...ws, bimi: undefined };
       else if (req.method === 'POST') {
         const svg = String(b.svg ?? '');
         const problems = bimi.svgProblems(svg);
-        if (problems.length) return json(res, 400, { error: 'This logo can’t be used for BIMI yet.', problems });
+        if (problems.length) return json(res, 400, { error: mark('This logo can’t be used for BIMI yet.'), problems });
         const id = randomBytes(16).toString('hex');
         db.saveFile({ id, workspaceId: ws.id, by: me, name: String(b.name ?? 'logo.svg').slice(0, 120), type: 'image/svg+xml', size: Buffer.byteLength(svg) }, Buffer.from(svg));
         next = { ...ws, bimi: { fileId: id, name: String(b.name ?? 'logo.svg').slice(0, 120), at: new Date().toISOString(), by: me } };
@@ -2475,8 +2492,8 @@ createServer(async (req, res) => {
       // mailbox already, and pointing at mailboxes hosted here.
       const { workspaceId, aliases } = await body(req);
       const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change addresses.' });
-      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can change addresses.') });
+      if (billing.readOnlyWords(ws)) return json(res, 403, { error: billing.readOnlyWords(ws) });
       if (ws.emailSetup !== 'hosted' && ws.emailSetup !== 'mix') return json(res, 409, { error: ws.emailSetup === 'keep' ? 'Your domain’s mail stays with your provider, so extra addresses are made there.' : 'Email is off for this company.' });
       const domains = (ws.domains ?? []).map((d: string) => d.toLowerCase());
       const hosted = new Set((ws.accounts ?? []).filter((a: any) => !a.temp && (!a.provider || a.provider === 'sprint2go')).map((a: any) => a.id));
@@ -2485,11 +2502,11 @@ createServer(async (req, res) => {
       for (const al of Array.isArray(aliases) ? aliases.slice(0, 200) : []) {
         const address = String(al?.address ?? '').trim().toLowerCase();
         const [local, domain] = address.split('@');
-        if (!/^[a-z0-9][a-z0-9._+-]{0,63}$/.test(local ?? '') || !domains.includes(domain ?? '')) return json(res, 400, { error: `${address || 'That address'} isn’t an address at ${domains.join(' or ') || 'your domain'}.` });
+        if (!/^[a-z0-9][a-z0-9._+-]{0,63}$/.test(local ?? '') || !domains.includes(domain ?? '')) return json(res, 400, { error: address ? (domains.length ? msg('{address} isn’t an address at {domains}.', { address, domains: domains.join(' / ') }) : msg('{address} isn’t an address at your domain.', { address })) : domains.length ? msg('That address isn’t an address at {domains}.', { domains: domains.join(' / ') }) : msg('That address isn’t an address at your domain.') });
         const hit = taken.get(address);
-        if ((hit && !(hit.alias && hit.ws.id === ws.id)) || out.some((x) => x.address === address)) return json(res, 409, { error: `${address} is already in use.` });
+        if ((hit && !(hit.alias && hit.ws.id === ws.id)) || out.some((x) => x.address === address)) return json(res, 409, { error: msg('{address} is already in use.', { address }) });
         const to = [...new Set<string>((Array.isArray(al?.to) ? al.to : []).map(String))].filter((id) => hosted.has(id));
-        if (!to.length) return json(res, 400, { error: `Pick at least one mailbox for ${address}.` });
+        if (!to.length) return json(res, 400, { error: msg('Pick at least one mailbox for {address}.', { address }) });
         out.push({ id: typeof al?.id === 'string' && /^[\w-]{1,40}$/.test(al.id) ? al.id : randomBytes(6).toString('hex'), address, to });
       }
       const latest = db.getDoc('workspaces', ws.id) as any;
@@ -2503,12 +2520,12 @@ createServer(async (req, res) => {
       // the address is refused.
       const { workspaceId, accountId, moveTo } = await body(req);
       const ws = (memberOf(me) as any[]).find((w) => w.id === workspaceId);
-      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can remove mailboxes.' });
-      if (billing.readOnlyWhy(ws)) return json(res, 403, { error: billing.readOnlyWhy(ws) });
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can remove mailboxes.') });
+      if (billing.readOnlyWords(ws)) return json(res, 403, { error: billing.readOnlyWords(ws) });
       const account = (ws.accounts ?? []).find((a: any) => a.id === accountId);
-      if (!account) return json(res, 404, { error: 'No such mailbox.' });
+      if (!account) return json(res, 404, { error: mark('No such mailbox.') });
       const target = moveTo ? (ws.accounts ?? []).find((a: any) => a.id === moveTo && a.id !== account.id && !a.temp) : null;
-      if (moveTo && !target) return json(res, 400, { error: 'Pick a mailbox to move the mail to.' });
+      if (moveTo && !target) return json(res, 400, { error: mark('Pick a mailbox to move the mail to.') });
       const mail = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
       // Deletions first, while the people on the mailbox can still see them.
       db.writeDocs('threads', [], mail.map((t) => t.id), me);
@@ -2531,13 +2548,13 @@ createServer(async (req, res) => {
     }
 
     // An operator signed in as someone never changes their password or deletes their account.
-    if ((p === '/api/password' || p === '/api/account/delete') && session?.operator) return json(res, 403, { error: 'That’s theirs to do: you’re signed in as them.' });
+    if ((p === '/api/password' || p === '/api/account/delete') && session?.operator) return json(res, 403, { error: mark('That’s theirs to do: you’re signed in as them.') });
     if (p === '/api/password' && req.method === 'POST') {
       const { current, next } = await body(req);
       const u = db.getDoc('users', me) as { email?: string } | undefined;
       const login = u?.email && db.findLogin(u.email);
-      if (!login || !(await db.checkPassword(String(current ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your current password is wrong.' });
-      if (typeof next !== 'string' || next.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
+      if (!login || !(await db.checkPassword(String(current ?? ''), login.pw_hash))) return json(res, 400, { error: mark('Your current password is wrong.') });
+      if (typeof next !== 'string' || next.length < 8) return json(res, 400, { error: mark('Use at least 8 characters.') });
       await db.setLogin(me, u.email!, next);
       // Everywhere else signs out, and every remembered device asks for the code again; this device gets a fresh
       // session (still past its second step).
@@ -2559,9 +2576,9 @@ createServer(async (req, res) => {
       const { password } = await body(req);
       const u = db.getDoc('users', me) as any;
       const login = u?.email && db.findLogin(String(u.email).toLowerCase());
-      if (!login || !(await db.checkPassword(String(password ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your password is wrong.' });
+      if (!login || !(await db.checkPassword(String(password ?? ''), login.pw_hash))) return json(res, 400, { error: mark('Your password is wrong.') });
       const owned = memberOf(me).filter((w) => w.members.some((m) => m.userId === me && m.role === 'owner') && !w.members.some((m) => m.userId !== me && m.role === 'owner'));
-      if (owned.length) return json(res, 409, { error: `You’re the only owner of ${owned.map((w: any) => w.name).join(', ')}. Make someone else an owner first, in Settings, General.` });
+      if (owned.length) return json(res, 409, { error: msg('You’re the only owner of {companies}. Make someone else an owner first, in Settings, General.', { companies: owned.map((w: any) => w.name).join(', ') }) });
       const left = memberOf(me).map((w) => ({ ...w, members: w.members.filter((m) => m.userId !== me) }));
       if (left.length) (db.writeDocs('workspaces', left as any, [], me), broadcast('workspaces', left as any, []));
       db.deleteLogin(me);
@@ -2584,16 +2601,16 @@ createServer(async (req, res) => {
     if (p === '/api/client-invite' && req.method === 'POST') {
       const { workspaceId, clientId, name, email } = await body(req);
       const mail = String(email ?? '').trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail) || !String(name ?? '').trim()) return json(res, 400, { error: 'Name and email, please.' });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail) || !String(name ?? '').trim()) return json(res, 400, { error: mark('Name and email, please.') });
       const client = db.getDoc('clients', String(clientId)) as any;
       const w = workspaces().find((x) => x.id === workspaceId) as any;
-      if (!client || !w || client.workspaceId !== w.id) return json(res, 404, { error: 'No such project.' });
+      if (!client || !w || client.workspaceId !== w.id) return json(res, 404, { error: mark('No such project.') });
       // Settings, Permissions, "Invite guests": a Member needs it, unless they lead this project.
       const leads = client.ownerId === me || (client.members ?? []).some((m: any) => m.userId === me && m.role === 'lead');
-      if (memberOf(me).some((x) => x.id === w.id) && !isAdminOf(me, w.id) && !leads && !{ ...DEFAULT_PERMISSIONS, ...(w.permissions ?? {}) }.inviteGuests) return json(res, 403, { error: 'Only admins and its Lead can invite guests here.' });
+      if (memberOf(me).some((x) => x.id === w.id) && !isAdminOf(me, w.id) && !leads && !{ ...DEFAULT_PERMISSIONS, ...(w.permissions ?? {}) }.inviteGuests) return json(res, 403, { error: mark('Only admins and its Lead can invite guests here.') });
       // Only to a project the person can see, and not while the company is read-only.
-      if (memberOf(me).some((x) => x.id === w.id) && !teamLens(me)('clients', client)) return json(res, 404, { error: 'No such project.' });
-      const roInvite = billing.readOnlyWhy(w);
+      if (memberOf(me).some((x) => x.id === w.id) && !teamLens(me)('clients', client)) return json(res, 404, { error: mark('No such project.') });
+      const roInvite = billing.readOnlyWords(w);
       if (roInvite) return json(res, 403, { error: roInvite });
       if (!memberOf(me).some((x) => x.id === w.id)) {
         // A client person inviting a colleague.
@@ -2602,7 +2619,7 @@ createServer(async (req, res) => {
         const domainOf = (e: string) => e.split('@')[1]?.toLowerCase() ?? '';
         const own = domainOf(String(personOf(me)?.email ?? ''));
         const sameDomain = (!!own && !isFreemail(own) && domainOf(mail) === own) || (!!client.domain && domainOf(mail) === String(client.domain).toLowerCase());
-        if (!portalsOf(me).some((pt) => pt.clientId === client.id) || access.invites !== 'direct' || !sameDomain) return json(res, 403, { error: 'This needs the team’s approval.' });
+        if (!portalsOf(me).some((pt) => pt.clientId === client.id) || access.invites !== 'direct' || !sameDomain) return json(res, 403, { error: mark('This needs the team’s approval.') });
       }
       // Someone who already signs in (e.g. a teammate at a company that uses sprint2go) just gets access, no link.
       const existing = db.findLogin(mail);
@@ -2636,8 +2653,8 @@ createServer(async (req, res) => {
     // workspaces through sync (they're in no company yet), so it's made here.
     if (p === '/api/workspace' && req.method === 'POST') {
       const { workspace: w, users: invited = [] } = await body(req);
-      if (!w || typeof w.id !== 'string' || typeof w.name !== 'string' || !w.name.trim()) return json(res, 400, { error: 'Give the company a name.' });
-      if (db.getDoc('workspaces', w.id) || isSandboxId(w.id)) return json(res, 409, { error: 'That workspace already exists.' });
+      if (!w || typeof w.id !== 'string' || typeof w.name !== 'string' || !w.name.trim()) return json(res, 400, { error: mark('Give the company a name.') });
+      if (db.getDoc('workspaces', w.id) || isSandboxId(w.id)) return json(res, 409, { error: mark('That workspace already exists.') });
       const taken = new Set((db.allDocs('users') as any[]).map((u) => String(u.email ?? '').toLowerCase()));
       const people = (invited as any[]).filter((u) => u && typeof u.id === 'string' && !isSandboxId(u.id) && !db.getDoc('users', u.id) && typeof u.email === 'string' && !taken.has(u.email.toLowerCase()));
       const ids = new Set(people.map((u) => u.id));
@@ -2659,7 +2676,7 @@ createServer(async (req, res) => {
       platform.event('company.created', ws.id, me);
       if (trial.why) {
         platform.event('trial.refused', ws.id, me, trial.why.slice(0, 200));
-        notifyUsers([me], `${ws.name} starts on Free. ${trial.why}`, '/settings/billing', ws.id);
+        notifyUsers([me], msg('{company} starts on Free. {why}', { company: ws.name, why: lang.part(trial.whyWords ?? trial.why) }), '/settings/billing', ws.id);
       }
       soonReadiness(ws.id);
       if (people.length) platform.event('team.invited', ws.id, me, `${people.length} at creation`);
@@ -2672,20 +2689,20 @@ createServer(async (req, res) => {
     // An admin invites someone: they get a link to set their own password.
     if (p === '/api/invite' && req.method === 'POST') {
       const { userId, email } = await body(req);
-      if (!memberOf(me).some((w) => isAdminOf(me, w.id))) return json(res, 403, { error: 'Only admins can invite people.' });
-      if (typeof email !== 'string' || !email.includes('@')) return json(res, 400, { error: 'Invalid email' });
+      if (!memberOf(me).some((w) => isAdminOf(me, w.id))) return json(res, 403, { error: mark('Only admins can invite people.') });
+      if (typeof email !== 'string' || !email.includes('@')) return json(res, 400, { error: mark('Invalid email') });
       const target = String(userId ?? '');
       if (!target) return json(res, 400, { error: 'Who?' });
-      if (isSandboxId(target)) return json(res, 403, { error: 'The people in the demo company are made up: nobody is invited from it.' });
+      if (isSandboxId(target)) return json(res, 403, { error: mark('The people in the demo company are made up: nobody is invited from it.') });
       // An invite sets a password, so it can only be for someone who has never signed in: a new person (not saved yet,
       // their doc may still be on its way) or someone added to a company you run. Never an existing account.
-      if (db.hasLogin(target)) return json(res, 409, { error: 'They already have a sign-in.' });
+      if (db.hasLogin(target)) return json(res, 409, { error: mark('They already have a sign-in.') });
       const existing = db.getDoc('users', target) as any;
-      if (existing && !memberOf(me).some((w) => isAdminOf(me, w.id) && w.members.some((m: any) => m.userId === target))) return json(res, 403, { error: 'Only their own company can invite them.' });
+      if (existing && !memberOf(me).some((w) => isAdminOf(me, w.id) && w.members.some((m: any) => m.userId === target))) return json(res, 403, { error: mark('Only their own company can invite them.') });
       // The sign-in goes to their own address, never one the inviter picks for them.
-      if (existing?.email && String(existing.email).toLowerCase() !== email.trim().toLowerCase()) return json(res, 400, { error: 'The invite goes to the address on their profile.' });
+      if (existing?.email && String(existing.email).toLowerCase() !== email.trim().toLowerCase()) return json(res, 400, { error: mark('The invite goes to the address on their profile.') });
       const taken = db.findLogin(email);
-      if (taken) return json(res, 409, { error: 'Someone already uses that email.' });
+      if (taken) return json(res, 409, { error: mark('Someone already uses that email.') });
       return json(res, 200, { link: `/?invite=${db.newInvite(target, email)}` });
     }
 
@@ -2697,12 +2714,12 @@ createServer(async (req, res) => {
       const team = !!t && memberOf(me).some((w) => w.id === t.workspaceId);
       // Guests may press the buttons the team shared with them, on their own project's table, and fill only fields they can edit.
       const guest = !team && !!t && t.share?.enabled && (t.share.buttons ?? []).includes(b.fieldId) && portalsOf(me).some((pt) => pt.clientId === t.clientId);
-      if (!t || (!team && !guest)) return json(res, 404, { error: 'No such table.' });
-      if (team && !teamLens(me)('tables', t)) return json(res, 404, { error: 'No such table.' });
-      const roT = billing.readOnlyWhy(db.getDoc('workspaces', t.workspaceId) as any);
+      if (!t || (!team && !guest)) return json(res, 404, { error: mark('No such table.') });
+      if (team && !teamLens(me)('tables', t)) return json(res, 404, { error: mark('No such table.') });
+      const roT = billing.readOnlyWords(db.getDoc('workspaces', t.workspaceId) as any);
       if (roT) return json(res, 403, { error: roT });
       const f = (t.fields ?? []).find((x: any) => x.id === b.fieldId);
-      if (team && f?.button?.who === 'admins' && !isAdminOf(me, t.workspaceId)) return json(res, 403, { error: 'Only admins can press this button.' });
+      if (team && f?.button?.who === 'admins' && !isAdminOf(me, t.workspaceId)) return json(res, 403, { error: mark('Only admins can press this button.') });
       const input = guest ? Object.fromEntries(Object.entries(b.input ?? {}).filter(([k]) => (t.share.edit ?? []).includes(k))) : (b.input ?? {});
       const out = await tablesEngine.runButton(tablesEnv, t.id, String(b.rowId ?? ''), String(b.fieldId ?? ''), me, input as any);
       // Guests see that it worked, not where the team's webhooks go or what the steps were.
@@ -2711,8 +2728,8 @@ createServer(async (req, res) => {
     if (p === '/api/tables/import' && req.method === 'POST') {
       const b = await body(req);
       const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
-      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId) || !teamLens(me)('tables', t)) return json(res, 404, { error: 'No such table.' });
-      const roI = billing.readOnlyWhy(db.getDoc('workspaces', t.workspaceId) as any);
+      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId) || !teamLens(me)('tables', t)) return json(res, 404, { error: mark('No such table.') });
+      const roI = billing.readOnlyWords(db.getDoc('workspaces', t.workspaceId) as any);
       if (roI) return json(res, 403, { error: roI });
       const out = tablesEngine.importRows(tablesEnv, t.id, me, b);
       return json(res, out.status, out.body);
@@ -2720,7 +2737,7 @@ createServer(async (req, res) => {
     if (p === '/api/tables/test-hook' && req.method === 'POST') {
       const b = await body(req);
       const t = db.getDoc('tables', String(b.tableId ?? '')) as any;
-      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId) || !teamLens(me)('tables', t)) return json(res, 404, { error: 'No such table.' });
+      if (!t || !memberOf(me).some((w) => w.id === t.workspaceId) || !teamLens(me)('tables', t)) return json(res, 404, { error: mark('No such table.') });
       const a = { kind: 'webhook' as const, url: String(b.url ?? ''), fields: b.fields };
       const payload = tablesEngine.testPayload(t, a);
       const out = await tablesEngine.sendHook(t, a.url, payload);
@@ -2740,20 +2757,20 @@ createServer(async (req, res) => {
     if (p === '/api/meet/bot' && req.method === 'POST') {
       const { meeting } = await body(req);
       const ws = workspaces().find((w) => w.id === meeting?.workspaceId) as any;
-      if (!ws || !memberOf(me).some((w) => w.id === ws.id)) return json(res, 403, { error: 'Not in this company.' });
-      if (ws.meetings?.whoCanRecord === 'admins' && !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can send the notetaker here.' });
-      const ro = billing.readOnlyWhy(ws);
+      if (!ws || !memberOf(me).some((w) => w.id === ws.id)) return json(res, 403, { error: mark('Not in this company.') });
+      if (ws.meetings?.whoCanRecord === 'admins' && !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can send the notetaker here.') });
+      const ro = billing.readOnlyWords(ws);
       if (ro) return json(res, 403, { error: ro });
-      if (!RECORDER_URL || !RECORDER_SECRET) return json(res, 409, { error: 'The recorder isn’t set up on this server.' });
-      if (typeof meeting.id !== 'string' || !/^[\w-]{4,80}$/.test(meeting.id)) return json(res, 400, { error: 'Bad meeting.' });
+      if (!RECORDER_URL || !RECORDER_SECRET) return json(res, 409, { error: mark('The recorder isn’t set up on this server.') });
+      if (typeof meeting.id !== 'string' || !/^[\w-]{4,80}$/.test(meeting.id)) return json(res, 400, { error: mark('Bad meeting.') });
       // An existing meeting only when it's this company's and this person may see it (never someone else's by its id).
       const existing = db.getDoc('meetings', meeting.id) as any;
-      if (existing && (existing.workspaceId !== ws.id || !teamLens(me)('meetings', existing))) return json(res, 403, { error: 'Not your meeting.' });
-      if (meeting.clientId && !teamLens(me)('clients', db.getDoc('clients', String(meeting.clientId)) ?? { workspaceId: ws.id })) return json(res, 403, { error: 'Not your project.' });
+      if (existing && (existing.workspaceId !== ws.id || !teamLens(me)('meetings', existing))) return json(res, 403, { error: mark('Not your meeting.') });
+      if (meeting.clientId && !teamLens(me)('clients', db.getDoc('clients', String(meeting.clientId)) ?? { workspaceId: ws.id })) return json(res, 403, { error: mark('Not your project.') });
       // The plan's meeting-bot hours this month (plus the "10 more hours" add-on); the bot leaves when they run out.
       const hours = billing.meetMinutes(ws);
       if (hours.left !== Infinity && hours.left < 1)
-        return json(res, 409, { error: `The notetaker’s ${hours.hours} hours for this month are used up. ${isAdminOf(me, ws.id) ? 'Add 10 more hours in Settings, Plan & billing, Add-ons' : 'An owner can add 10 more hours in Settings, Plan & billing'}, or it starts again on the 1st.`, reason: 'hours' });
+        return json(res, 409, { error: isAdminOf(me, ws.id) ? msg('The notetaker’s {n} hours for this month are used up. Add 10 more hours in Settings, Plan & billing, Add-ons, or it starts again on the 1st.', { n: hours.hours }) : msg('The notetaker’s {n} hours for this month are used up. An owner can add 10 more hours in Settings, Plan & billing, or it starts again on the 1st.', { n: hours.hours }), reason: 'hours' });
       const doc = { ...meeting, bot: true, status: 'queued', createdBy: me, transcript: [], log: [...(meeting.log ?? []).slice(0, 5)] };
       const sent = await dispatchBot(ws, doc);
       return json(res, sent ? 502 : 200, sent ? { error: sent } : {});
@@ -2775,8 +2792,8 @@ createServer(async (req, res) => {
         const people = clientPeople(client, db.allDocs('channels') as any[]);
         return meetingsFor(client, people, [m], access).length > 0;
       };
-      if (!staff && !guestPlays()) return json(res, 404, { error: 'No such meeting.' });
-      if (!staff && meetId[1] !== 'audio' && meetId[1] !== 'video') return json(res, 404, { error: 'No such meeting.' });
+      if (!staff && !guestPlays()) return json(res, 404, { error: mark('No such meeting.') });
+      if (!staff && meetId[1] !== 'audio' && meetId[1] !== 'video') return json(res, 404, { error: mark('No such meeting.') });
       if (meetId[1] === 'stop' && req.method === 'POST') {
         const r = await recorder(`/bots/${m.id}/stop`, { method: 'POST' }).catch(() => null);
         // Not running any more (the recorder restarted, say): close it here so it doesn't spin forever.
@@ -2788,24 +2805,24 @@ createServer(async (req, res) => {
         // Transcribe the kept audio again, in another language or with the company's languages, then rewrite the notes.
         const { language } = await body(req);
         const ws = workspaces().find((w) => w.id === m.workspaceId) as any;
-        const ro = billing.readOnlyWhy(ws);
+        const ro = billing.readOnlyWords(ws);
         if (ro) return json(res, 403, { error: ro });
         const only = typeof language === 'string' && /^[a-z]{2}$/.test(language) ? language : undefined;
         const stt = sttFor(ws, only);
-        if (!stt) return json(res, 409, { error: 'Add a speech-to-text key in Settings, AI first.' });
-        if (!m.recording?.url) return json(res, 409, { error: 'This meeting’s audio wasn’t kept.' });
+        if (!stt) return json(res, 409, { error: mark('Add a speech-to-text key in Settings, AI first.') });
+        if (!m.recording?.url) return json(res, 409, { error: mark('This meeting’s audio wasn’t kept.') });
         const names = ws.members.map((x: any) => (db.getDoc('users', x.userId) as any)?.name).filter(Boolean);
         const r = await recorder(`/recordings/${m.id}/transcribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stt, names, callback: `${PUBLIC_URL}/api/meet/recorder` }) }).catch(() => null);
-        if (!r?.ok) return json(res, 502, { error: 'The recorder couldn’t start transcribing.' });
+        if (!r?.ok) return json(res, 502, { error: mark('The recorder couldn’t start transcribing.') });
         saveMeeting({ ...m, ...(only ? { language: only } : {}), status: 'processing', log: [...(m.log ?? []), meetLine(`Transcribing again in ${only ? languageName(only) : languagesText(ws.meetings?.languages)}`)] });
         return json(res, 200, {});
       }
       if (meetId[1] === 'audio' || meetId[1] === 'video') {
         const watch = m.access?.watch ?? 'everyone';
         const me2 = (db.getDoc('users', me) as any)?.name;
-        if (staff && ((watch === 'admins' && !isAdminOf(me, m.workspaceId)) || (watch === 'attendees' && !isAdminOf(me, m.workspaceId) && m.createdBy !== me && !(m.attendees ?? []).includes(me2)))) return json(res, 403, { error: 'You can’t play this recording.' });
+        if (staff && ((watch === 'admins' && !isAdminOf(me, m.workspaceId)) || (watch === 'attendees' && !isAdminOf(me, m.workspaceId) && m.createdBy !== me && !(m.attendees ?? []).includes(me2)))) return json(res, 403, { error: mark('You can’t play this recording.') });
         const r = await recorder(`/recordings/${m.id}${meetId[1] === 'video' ? '/video' : ''}`, { headers: req.headers.range ? { range: String(req.headers.range) } : {} }).catch(() => null);
-        if (!r?.ok || !r.body) return json(res, r?.status === 404 ? 404 : 502, { error: 'Recording not available.' });
+        if (!r?.ok || !r.body) return json(res, r?.status === 404 ? 404 : 502, { error: mark('Recording not available.') });
         const h: Record<string, string> = { 'cache-control': 'private, max-age=3600' };
         for (const k of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
           const v = r.headers.get(k);
@@ -2828,7 +2845,7 @@ createServer(async (req, res) => {
       const wsId = String(req.headers['x-workspace'] ?? '');
       const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'file')).slice(0, 200);
       const type = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].slice(0, 100);
-      if (isSandboxId(wsId)) return json(res, 403, { error: 'The demo company doesn’t keep files on our server.' });
+      if (isSandboxId(wsId)) return json(res, 403, { error: mark('The demo company doesn’t keep files on our server.') });
       const team = memberOf(me).some((w) => w.id === wsId);
       // A guest uploads only on a project that's still going, with a role that adds things (files in the project's
       // folder, or attached to their messages): never a viewer, someone waiting for approval, or after the work ended.
@@ -2842,7 +2859,7 @@ createServer(async (req, res) => {
           return !!person && person.status !== 'pending' && can(person, 'upload');
         });
       if (!team && !guest) return json(res, 403, { error: portalsOf(me).some((pt) => pt.workspaceId === wsId) ? 'You can’t add files here.' : 'Not in this company.' });
-      const ro = billing.readOnlyWhy(db.getDoc('workspaces', wsId));
+      const ro = billing.readOnlyWords(db.getDoc('workspaces', wsId));
       if (ro) return json(res, 403, { error: ro });
       const room = storageRoom(wsId);
       const cap = Math.min(MAX_UPLOAD, room.left);
@@ -2876,7 +2893,7 @@ createServer(async (req, res) => {
     if (p === '/api/storage' && req.method === 'GET') {
       const wsId = String(url.searchParams.get('workspaceId') ?? '');
       const team = memberOf(me).some((w) => w.id === wsId);
-      if (!team && !portalsOf(me).some((pt) => pt.workspaceId === wsId)) return json(res, 403, { error: 'Not in this company.' });
+      if (!team && !portalsOf(me).some((pt) => pt.workspaceId === wsId)) return json(res, 403, { error: mark('Not in this company.') });
       const room = storageRoom(wsId);
       const w = workspaces().find((x) => x.id === wsId) as any;
       return json(res, 200, { askOverMb: w?.storage?.askOver ?? 500, used: room.used, total: room.total, left: room.left, maxUpload: MAX_UPLOAD, ...(team ? { video: room.video, byPerson: room.byPerson } : {}) });
@@ -2884,7 +2901,7 @@ createServer(async (req, res) => {
     const fileReq = p.match(/^\/api\/files\/([a-f0-9]{32})$/);
     if (fileReq && req.method === 'GET') {
       const f = db.fileInfo(fileReq[1]);
-      if (!f) return json(res, 404, { error: 'No such file.' });
+      if (!f) return json(res, 404, { error: mark('No such file.') });
       // What links the file: the documents it's on (a Drive file, a message, a task, a row, a mail thread).
       const usedOn = () => db.db.prepare("SELECT coll, data FROM docs WHERE data LIKE ? ESCAPE '\\' LIMIT 500").all(`%/api/files/${f.id}%`) as { coll: string; data: string }[];
       // A teammate opens their own uploads, files on something they can see, and files not on anything yet. A file in
@@ -2918,11 +2935,11 @@ createServer(async (req, res) => {
       const supportOp = !!tickets.length && !!opRecord && opRecord.totpOn && platform.permsOf(opRecord.role).includes('support') && platform.sessionVerified(token);
       const myEmail = String(meDoc?.email ?? '').toLowerCase();
       const requester = !supportOp && f.workspaceId === 'platform' && tickets.some((t) => t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail));
-      if (!team && !guest && !supportOp && !requester) return json(res, 404, { error: 'No such file.' });
+      if (!team && !guest && !supportOp && !requester) return json(res, 404, { error: mark('No such file.') });
       if (team && f.by !== me) fileOkNote(seen);
       if (supportOp && !/^bytes=[1-9]/.test(String(req.headers.range ?? '')) && firstOpenInAWhile(`${me}:${f.id}`)) db.audit(opRecord!.email, 'ticket.file-open', tickets[0].ticketId, `#${tickets[0].number}: ${String(f.name).slice(0, 120)}`);
       const path = db.filePath(f.id);
-      if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });
+      if (!existsSync(path)) return json(res, 404, { error: mark('The file is gone.') });
       // Streamed, with ranges, so a long video plays and seeks without loading the whole file.
       const total = statSync(path).size;
       // The type is the uploader's word, so only kinds that can't run code open in the browser (images, video, audio, PDF,
@@ -2952,13 +2969,13 @@ createServer(async (req, res) => {
 
     if (p === '/api/sync' && req.method === 'POST') {
       const r = applySync(me, await body(req), { conn: String(req.headers['x-conn'] ?? ''), operator: session?.operator ?? null });
-      return json(res, r.status, r.body);
+      return json(res, r.status, r.whyWords ? { ...r.body, why: r.whyWords } : r.body);
     }
 
     // Huddles: where audio may travel. With a call relay (TURN_URLS, TURN_SECRET) each team member gets its addresses
     // and credentials that work for an hour; coturn checks them against the same secret, which stays here.
     if (p === '/api/ice' && req.method === 'GET') {
-      if (!memberOf(me).length) return json(res, 403, { error: 'Huddles are for the team.' }); // guests only see their portal
+      if (!memberOf(me).length) return json(res, 403, { error: mark('Huddles are for the team.') }); // guests only see their portal
       const c = turn.credentials(me);
       res.setHeader('cache-control', 'no-store');
       return json(res, 200, c ? { relay: true, iceServers: [{ urls: c.urls, username: c.username, credential: c.credential }], expiresAt: c.expiresAt } : { relay: false, iceServers: [] });
@@ -2966,8 +2983,8 @@ createServer(async (req, res) => {
     // Calendar links: a private .ics or webcal:// address, read on the server (now, every 30 minutes, and on demand).
     if (p === '/api/calendars/link' && req.method === 'POST') {
       if (pset.maintenance.on && !opRecord) return json(res, 503, { error: pset.maintenance.message || 'Changes are paused for a few minutes while sprint2go is updated.' });
-      if (!memberOf(me).length) return json(res, 403, { error: 'Calendars are for people in a company.' });
-      if (tooMany(`callink:${me}`, 12, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of links in a few minutes. Try again shortly.' });
+      if (!memberOf(me).length) return json(res, 403, { error: mark('Calendars are for people in a company.') });
+      if (tooMany(`callink:${me}`, 12, 10 * 60_000)) return json(res, 429, { error: mark('That’s a lot of links in a few minutes. Try again shortly.') });
       try {
         return json(res, 200, await feeds.addLink(me, await body(req)));
       } catch (e) {
@@ -2983,7 +3000,7 @@ createServer(async (req, res) => {
     // A country's public holidays for someone who chose to see them (Calendar, Public holidays, "Countries you see").
     const holidayReq = p.match(/^\/api\/holidays\/([A-Z]{2})$/);
     if (holidayReq && req.method === 'GET') {
-      if (!memberOf(me).length) return json(res, 403, { error: 'Calendars are for people in a company.' });
+      if (!memberOf(me).length) return json(res, 403, { error: mark('Calendars are for people in a company.') });
       try {
         res.setHeader('cache-control', 'private, max-age=3600');
         return json(res, 200, await feeds.holidaysForPerson(holidayReq[1]));
@@ -2996,8 +3013,8 @@ createServer(async (req, res) => {
     if (calRefresh && req.method === 'POST') {
       const cal = db.getDoc('calendars', calRefresh[1]) as any;
       const mineToRefresh = cal && ((cal.source === 'ics' && cal.ownerId === me) || (cal.source === 'holidays' && cal.workspaceId && memberOf(me).some((w) => w.id === cal.workspaceId)));
-      if (!mineToRefresh) return json(res, 404, { error: 'No such calendar.' });
-      if (tooMany(`calsync:${me}`, 20, 10 * 60_000)) return json(res, 429, { error: 'It was just updated. Try again in a few minutes.' });
+      if (!mineToRefresh) return json(res, 404, { error: mark('No such calendar.') });
+      if (tooMany(`calsync:${me}`, 20, 10 * 60_000)) return json(res, 429, { error: mark('It was just updated. Try again in a few minutes.') });
       if (cal.source === 'holidays') {
         await feeds.syncHolidays(cal.workspaceId);
         const after = db.getDoc('calendars', cal.id) as any;
@@ -3011,7 +3028,7 @@ createServer(async (req, res) => {
     if (p === '/api/signal' && req.method === 'POST') {
       const { to, data } = await body(req);
       const peers = new Set(memberOf(me).flatMap((w) => w.members.map((m) => m.userId)));
-      if (typeof to !== 'string' || !peers.has(to)) return json(res, 403, { error: 'Not someone you work with.' });
+      if (typeof to !== 'string' || !peers.has(to)) return json(res, 403, { error: mark('Not someone you work with.') });
       for (const c of clients.values()) if (c.userId === to) c.res.write(`event: signal\ndata: ${JSON.stringify({ from: me, data })}\n\n`);
       return json(res, 200, {});
     }
@@ -3043,9 +3060,9 @@ createServer(async (req, res) => {
     if (p === '/api/push/subscribe' && req.method === 'POST') {
       const b = await body(req);
       const sub = push.validSub(b.subscription);
-      if (!sub) return json(res, 400, { error: 'This browser’s notification address isn’t one we can send to.' });
+      if (!sub) return json(res, 400, { error: mark('This browser’s notification address isn’t one we can send to.') });
       // Someone looking at the app as this person (support) never turns on their notifications.
-      if (session?.operator) return b.refresh === true ? json(res, 200, { on: false }) : json(res, 403, { error: 'Not while you’re looking at the app as someone else.' });
+      if (session?.operator) return b.refresh === true ? json(res, 200, { on: false }) : json(res, 403, { error: mark('Not while you’re looking at the app as someone else.') });
       const on = push.subscribe(me, token!, sub, String(b.device ?? ''), typeof b.replaces === 'string' ? b.replaces : undefined, b.refresh === true);
       return json(res, 200, { on });
     }
@@ -3055,24 +3072,24 @@ createServer(async (req, res) => {
       return json(res, 200, { on: false });
     }
     if (p === '/api/push/test' && req.method === 'POST') {
-      if (tooMany(`push-test:${me}`, 10, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of tests. Try again in a few minutes.' });
+      if (tooMany(`push-test:${me}`, 10, 10 * 60_000)) return json(res, 429, { error: mark('That’s a lot of tests. Try again in a few minutes.') });
       const b = await body(req);
       const ws = memberOf(me)[0] as any;
       const sent = await push.sendToDevice(me, String(b.endpoint ?? ''), { title: ws?.whiteLabel?.enabled ? ws.whiteLabel.name : 'sprint2go', body: 'Notifications work on this device. You’ll get them when you’re away from the app.', url: '/settings?id=notifications', tag: 'test', urgent: true, ttl: 300 });
-      return sent ? json(res, 200, { ok: true }) : json(res, 502, { error: 'The notification service didn’t take it. Turn notifications off and on again on this device.' });
+      return sent ? json(res, 200, { ok: true }) : json(res, 502, { error: mark('The notification service didn’t take it. Turn notifications off and on again on this device.') });
     }
 
     // Vault: shared logins. Only people given access see an item; passwords and 2FA codes leave the server one at a time, logged.
     // WhatsApp Business: the token is kept here (like AI keys); the browser only sees that it's connected.
     if (p === '/api/whatsapp/connect' && req.method === 'POST') {
       const { workspaceId, phoneNumberId, token, displayPhone, appSecret } = await body(req);
-      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can connect WhatsApp.' });
-      if (session?.operator) return json(res, 403, { error: 'Connecting WhatsApp is theirs to do: you’re signed in as them.' });
-      const ro = billing.readOnlyWhy(db.getDoc('workspaces', workspaceId));
+      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: mark('Only admins can connect WhatsApp.') });
+      if (session?.operator) return json(res, 403, { error: mark('Connecting WhatsApp is theirs to do: you’re signed in as them.') });
+      const ro = billing.readOnlyWords(db.getDoc('workspaces', workspaceId));
       if (ro) return json(res, 403, { error: ro });
       // Meta signs each message with the app's secret; without one we can't tell its posts from anyone else's.
       const secret = typeof appSecret === 'string' ? appSecret.trim() : '';
-      if (secret && !/^[a-f0-9]{32}$/i.test(secret)) return json(res, 400, { error: 'That app secret doesn’t look right: Meta shows it as 32 letters and numbers, in App settings, Basic.' });
+      if (secret && !/^[a-f0-9]{32}$/i.test(secret)) return json(res, 400, { error: mark('That app secret doesn’t look right: Meta shows it as 32 letters and numbers, in App settings, Basic.') });
       // Already connected: the secret alone can be added (the number and its token stay).
       const was = db.getDoc('workspaces', workspaceId) as any;
       const kept = db.loadKey(workspaceId, 'whatsapp');
@@ -3083,10 +3100,10 @@ createServer(async (req, res) => {
         broadcast('workspaces', [doc], []);
         return json(res, 200, { verifyToken: doc.whatsapp.verifyToken });
       }
-      if (typeof phoneNumberId !== 'string' || !phoneNumberId.trim() || typeof token !== 'string' || token.trim().length < 20) return json(res, 400, { error: 'Paste the phone number ID and a permanent access token from Meta.' });
-      if (!secret && !whatsapp.platformSecretSet() && !db.loadKey(workspaceId, whatsapp.SECRET_KEY)) return json(res, 400, { error: 'Paste the app secret too (Meta for Developers: your app, App settings, Basic). Without it, messages from Meta can’t be checked, so none are read.' });
+      if (typeof phoneNumberId !== 'string' || !phoneNumberId.trim() || typeof token !== 'string' || token.trim().length < 20) return json(res, 400, { error: mark('Paste the phone number ID and a permanent access token from Meta.') });
+      if (!secret && !whatsapp.platformSecretSet() && !db.loadKey(workspaceId, whatsapp.SECRET_KEY)) return json(res, 400, { error: mark('Paste the app secret too (Meta for Developers: your app, App settings, Basic). Without it, messages from Meta can’t be checked, so none are read.') });
       // One number, one company: its messages can only go to one place.
-      if (workspaces().some((x: any) => x.id !== workspaceId && x.whatsapp?.connected && x.whatsapp.phoneNumberId === phoneNumberId.trim())) return json(res, 409, { error: 'Another company already connected this number. If it’s yours, write to us and we’ll sort it out.' });
+      if (workspaces().some((x: any) => x.id !== workspaceId && x.whatsapp?.connected && x.whatsapp.phoneNumberId === phoneNumberId.trim())) return json(res, 409, { error: mark('Another company already connected this number. If it’s yours, write to us and we’ll sort it out.') });
       db.saveKey(workspaceId, 'whatsapp', token.trim(), phoneNumberId.trim(), me);
       if (secret) db.saveKey(workspaceId, whatsapp.SECRET_KEY, secret, undefined, me);
       const w = db.getDoc('workspaces', workspaceId) as any;
@@ -3110,12 +3127,12 @@ createServer(async (req, res) => {
     if (p === '/api/whatsapp/send' && req.method === 'POST') {
       const { workspaceId, to, text, channelId } = await body(req);
       if (!memberOf(me).some((w) => w.id === workspaceId)) return json(res, 403, {});
-      const roWa = billing.readOnlyWhy(db.getDoc('workspaces', String(workspaceId)) as any);
+      const roWa = billing.readOnlyWords(db.getDoc('workspaces', String(workspaceId)) as any);
       if (roWa) return json(res, 403, { error: roWa });
       const key = db.loadKey(workspaceId, 'whatsapp');
-      if (!key?.baseUrl) return json(res, 409, { error: 'WhatsApp isn’t connected. Settings, Apps & chat.' });
+      if (!key?.baseUrl) return json(res, 409, { error: mark('WhatsApp isn’t connected. Settings, Apps & chat.') });
       const number = String(to ?? '').replace(/\D/g, '');
-      if (!number || typeof text !== 'string' || !text.trim()) return json(res, 400, { error: 'A number and a message, please.' });
+      if (!number || typeof text !== 'string' || !text.trim()) return json(res, 400, { error: mark('A number and a message, please.') });
       const r = await fetch(`https://graph.facebook.com/v21.0/${key.baseUrl}/messages`, { method: 'POST', headers: { authorization: `Bearer ${key.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', to: number, type: 'text', text: { body: text.trim().slice(0, 4000) } }) }).catch(() => null);
       if (!r?.ok) return json(res, 502, { error: ((await r?.json().catch(() => null)) as any)?.error?.message ?? 'WhatsApp didn’t accept the message.' });
       if (typeof channelId === 'string') {
@@ -3138,7 +3155,7 @@ createServer(async (req, res) => {
       // Changing or deleting a login: whoever added it while they're still in the company, or its admins.
       const canEdit = (it: db.VaultRow) => memberOf(me).some((w) => w.id === it.workspaceId) && (it.createdBy === me || isAdminOf(me, it.workspaceId));
       // Nothing new is saved in a paused or suspended company; reading what's there still works.
-      const vaultRo = (wsId: string) => billing.readOnlyWhy(db.getDoc('workspaces', wsId) as any);
+      const vaultRo = (wsId: string) => billing.readOnlyWords(db.getDoc('workspaces', wsId) as any);
       const m = p.match(/^\/api\/vault\/([\w-]+)(?:\/(reveal|code|log))?$/);
       if (p === '/api/vault' && req.method === 'GET') {
         if (!memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
@@ -3148,8 +3165,8 @@ createServer(async (req, res) => {
       const keysReq = p.match(/^\/api\/vault\/([\w-]+)\/keys$/);
       if (keysReq && req.method === 'POST') {
         const it = db.vaultGet(keysReq[1]);
-        if (!it || !canSee(it)) return json(res, 404, { error: 'No such login.' });
-        if (!it.meta.keys?.[me] && !canEdit(it)) return json(res, 403, { error: 'You don’t hold the key to this login.' });
+        if (!it || !canSee(it)) return json(res, 404, { error: mark('No such login.') });
+        if (!it.meta.keys?.[me] && !canEdit(it)) return json(res, 403, { error: mark('You don’t hold the key to this login.') });
         if (vaultRo(it.workspaceId)) return json(res, 403, { error: vaultRo(it.workspaceId) });
         const b = await body(req);
         const added = Object.fromEntries(Object.entries((b.keys ?? {}) as Record<string, any>).filter(([, k]) => k && typeof k.ct === 'string' && typeof k.iv === 'string' && k.epk));
@@ -3162,14 +3179,14 @@ createServer(async (req, res) => {
         if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, {});
         const id = typeof b.id === 'string' && b.id ? b.id : 'v-' + randomBytes(6).toString('hex');
         const before = db.vaultGet(id);
-        if (before && !canEdit(before)) return json(res, 403, { error: 'Only the person who added it, or an admin, can change it.' });
+        if (before && !canEdit(before)) return json(res, 403, { error: mark('Only the person who added it, or an admin, can change it.') });
         const roV = vaultRo(before?.workspaceId ?? String(b.workspaceId));
         if (roV) return json(res, 403, { error: roV });
         if (b.totp && !String(b.totp).startsWith('enc:')) {
           try {
             db.totpCode(String(b.totp));
           } catch {
-            return json(res, 400, { error: 'That 2FA key doesn’t look right. Paste the setup key (letters and numbers) or the otpauth:// link.' });
+            return json(res, 400, { error: mark('That 2FA key doesn’t look right. Paste the setup key (letters and numbers) or the otpauth:// link.') });
           }
         }
         const meta: db.VaultMeta = {
@@ -3186,15 +3203,15 @@ createServer(async (req, res) => {
         return json(res, 200, { id });
       }
       const item = m ? db.vaultGet(m[1]) : undefined;
-      if (!m || !item || !canSee(item)) return json(res, 404, { error: 'Not found.' });
+      if (!m || !item || !canSee(item)) return json(res, 404, { error: mark('Not found.') });
       if (!m[2] && req.method === 'DELETE') {
-        if (!canEdit(item)) return json(res, 403, { error: 'Only the person who added it, or an admin, can delete it.' });
+        if (!canEdit(item)) return json(res, 403, { error: mark('Only the person who added it, or an admin, can delete it.') });
         if (vaultRo(item.workspaceId)) return json(res, 403, { error: vaultRo(item.workspaceId) });
         db.vaultDelete(item.id);
         return json(res, 200, {});
       }
       // An operator looking at the app as someone sees which logins exist, never their passwords or codes.
-      if ((m[2] === 'reveal' || m[2] === 'code') && session?.operator) return json(res, 403, { error: 'Passwords and codes stay with them: you’re signed in as them.' });
+      if ((m[2] === 'reveal' || m[2] === 'code') && session?.operator) return json(res, 403, { error: mark('Passwords and codes stay with them: you’re signed in as them.') });
       if (m[2] === 'reveal' && req.method === 'POST') {
         const { field } = await body(req);
         // The 2FA secret leaves the server only to someone who can edit the login (to move it to end-to-end), or
@@ -3205,7 +3222,7 @@ createServer(async (req, res) => {
       }
       if (m[2] === 'code' && req.method === 'POST') {
         const secret = db.vaultSecret(item.id, 'totp');
-        if (!secret) return json(res, 404, { error: 'No 2FA on this login.' });
+        if (!secret) return json(res, 404, { error: mark('No 2FA on this login.') });
         db.vaultLog(item.id, me, 'used a 2FA code');
         return json(res, 200, db.totpCode(secret));
       }
@@ -3219,12 +3236,12 @@ createServer(async (req, res) => {
     // AI keys: kept encrypted here; the browser only ever sees the last 4 characters.
     if (p === '/api/ai/keys' && req.method === 'POST') {
       const { workspaceId, provider, key, baseUrl, test = true } = await body(req);
-      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can add AI keys.' });
-      if (session?.operator) return json(res, 403, { error: 'AI keys are theirs to add: you’re signed in as them.' });
-      if (aiLimits.blocked(db.getDoc('workspaces', workspaceId) as any).has(String(provider))) return json(res, 409, { error: 'This provider is blocked for the company (Settings, AI, Blocked providers). Unblock it first.' });
+      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: mark('Only admins can add AI keys.') });
+      if (session?.operator) return json(res, 403, { error: mark('AI keys are theirs to add: you’re signed in as them.') });
+      if (aiLimits.blocked(db.getDoc('workspaces', workspaceId) as any).has(String(provider))) return json(res, 409, { error: mark('This provider is blocked for the company (Settings, AI, Blocked providers). Unblock it first.') });
       const info = PROVIDERS.find((x) => x.id === provider);
-      if (!info || typeof key !== 'string' || key.trim().length < 8) return json(res, 400, { error: 'That key looks too short.' });
-      if (baseUrl !== undefined && typeof baseUrl !== 'string') return json(res, 400, { error: 'That address doesn’t look right.' });
+      if (!info || typeof key !== 'string' || key.trim().length < 8) return json(res, 400, { error: mark('That key looks too short.') });
+      if (baseUrl !== undefined && typeof baseUrl !== 'string') return json(res, 400, { error: mark('That address doesn’t look right.') });
       // The provider's own list of models for this key: what the company picks from next, and which model to test with.
       const list = await models.listWith(provider, { key: key.trim(), baseUrl }, (id) => aiplan.priceOf(id));
       if (test && info.kind !== 'speech') {
@@ -3242,7 +3259,7 @@ createServer(async (req, res) => {
     }
     if (p === '/api/ai/keys' && req.method === 'DELETE') {
       const { workspaceId, provider } = await body(req);
-      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can remove AI keys.' });
+      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: mark('Only admins can remove AI keys.') });
       db.deleteKey(workspaceId, provider);
       models.forget(`ws:${workspaceId}`, String(provider ?? ''));
       return json(res, 200, {});
@@ -3252,20 +3269,20 @@ createServer(async (req, res) => {
     if (p === '/api/ai/models' && req.method === 'GET') {
       const wsId = url.searchParams.get('workspaceId') ?? '';
       const provider = url.searchParams.get('provider') ?? '';
-      if (!isAdminOf(me, wsId)) return json(res, 403, { error: 'Only admins can see the AI models.' });
-      if (!PROVIDERS.some((x) => x.id === provider)) return json(res, 400, { error: 'No such provider.' });
+      if (!isAdminOf(me, wsId)) return json(res, 403, { error: mark('Only admins can see the AI models.') });
+      if (!PROVIDERS.some((x) => x.id === provider)) return json(res, 400, { error: mark('No such provider.') });
       const force = url.searchParams.get('refresh') === '1' && !tooMany(`models:${me}`, 10, 60_000);
       return json(res, 200, await companyModels(wsId, provider, force));
     }
     // One tiny call with a model on the company's key: a model id typed in (not on the provider's list), or "Run a sample".
     if (p === '/api/ai/models/check' && req.method === 'POST') {
       const { workspaceId, provider, model } = await body(req);
-      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can try AI models.' });
-      if (session?.operator) return json(res, 403, { error: 'That would use their key: you’re signed in as them.' });
-      if (tooMany(`modelcheck:${me}`, 20, 60_000)) return json(res, 429, { error: 'That’s a lot of tries in one minute. Give it a moment.' });
-      if (aiLimits.blocked(db.getDoc('workspaces', workspaceId) as any).has(String(provider))) return json(res, 409, { error: 'This provider is blocked for the company.' });
+      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: mark('Only admins can try AI models.') });
+      if (session?.operator) return json(res, 403, { error: mark('That would use their key: you’re signed in as them.') });
+      if (tooMany(`modelcheck:${me}`, 20, 60_000)) return json(res, 429, { error: mark('That’s a lot of tries in one minute. Give it a moment.') });
+      if (aiLimits.blocked(db.getDoc('workspaces', workspaceId) as any).has(String(provider))) return json(res, 409, { error: mark('This provider is blocked for the company.') });
       const k = typeof provider === 'string' ? db.loadKey(workspaceId, provider) : null;
-      if (!k) return json(res, 409, { error: 'Add a key for this provider first.' });
+      if (!k) return json(res, 409, { error: mark('Add a key for this provider first.') });
       const started = Date.now();
       const err = await models.checkModel(provider, String(model ?? '').trim(), k);
       return json(res, err ? 400 : 200, err ? { error: err } : { ok: true, ms: Date.now() - started });
@@ -3302,42 +3319,42 @@ createServer(async (req, res) => {
     if (action && routes[action] && req.method === 'POST') {
       const b = await body(req);
       // The demo company never uses anyone's AI (ours or a company's keys): the app answers with samples there.
-      if (isSandboxId(b.workspaceId)) return json(res, 403, { error: 'The demo company uses sample AI answers.' });
+      if (isSandboxId(b.workspaceId)) return json(res, 403, { error: mark('The demo company uses sample AI answers.') });
       const asClient = memberOf(me).some((w) => w.id === b.workspaceId) ? undefined : portalsOf(me).find((pt) => pt.workspaceId === b.workspaceId);
       if (asClient) {
         // Client people: only "Ask AI", only when the company switched it on, within the monthly limit.
         const w = workspaces().find((x) => x.id === asClient.workspaceId) as any;
         const client = db.getDoc('clients', asClient.clientId) as any;
         const access = w && client ? accessFor(w, client) : null;
-        if (action !== 'askmeetings' || b.workspaceId !== asClient.workspaceId || !access?.ai) return json(res, 403, { error: 'AI isn’t switched on for your portal.' });
+        if (action !== 'askmeetings' || b.workspaceId !== asClient.workspaceId || !access?.ai) return json(res, 403, { error: mark('AI isn’t switched on for your portal.') });
         const ids = clientUserIds(asClient.clientId);
-        if (db.monthlyUses(ids, 'ask') >= access.aiQuestions) return json(res, 429, { error: `You’ve used all ${access.aiQuestions} questions for this month.` });
-      } else if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, { error: 'Not in this workspace.' });
-      if (tooMany(`ai:${me}`, 40, 60_000)) return json(res, 429, { error: 'That’s a lot of AI in one minute. Give it a moment.' });
+        if (db.monthlyUses(ids, 'ask') >= access.aiQuestions) return json(res, 429, { error: msg('You’ve used all {n} questions for this month.', { n: access.aiQuestions }) });
+      } else if (!memberOf(me).some((w) => w.id === b.workspaceId)) return json(res, 403, { error: mark('Not in this workspace.') });
+      if (tooMany(`ai:${me}`, 40, 60_000)) return json(res, 429, { error: mark('That’s a lot of AI in one minute. Give it a moment.') });
       // Monthly caps (Settings, AI): what the company, and each person, may spend on its own keys this month.
       const capWs = workspaces().find((w) => w.id === b.workspaceId) as any;
-      const ro = billing.readOnlyWhy(capWs);
+      const ro = billing.readOnlyWords(capWs);
       if (ro) return json(res, 403, { error: ro });
       const caps = capWs?.ai?.caps as { companyRp?: number; personRp?: number } | undefined;
       if (caps?.companyRp || caps?.personRp) {
         const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
         const rows = db.usageSince(b.workspaceId, monthStart) as { job: string; provider: string; model: string; inTokens: number; outTokens: number }[];
-        if (caps.companyRp && spendRp(rows) >= caps.companyRp) return json(res, 429, { error: `The company’s AI budget for this month (Rp ${caps.companyRp.toLocaleString('id-ID')}) is used up. An admin can raise it in Settings, AI.` });
-        if (caps.personRp && spendRp(db.usageSinceFor(b.workspaceId, me, monthStart) as any) >= caps.personRp) return json(res, 429, { error: `Your AI budget for this month (Rp ${caps.personRp.toLocaleString('id-ID')}) is used up. An admin can raise it in Settings, AI.` });
+        if (caps.companyRp && spendRp(rows) >= caps.companyRp) return json(res, 429, { error: msg('The company’s AI budget for this month ({budget}) is used up. An admin can raise it in Settings, AI.', { budget: `Rp ${caps.companyRp.toLocaleString('id-ID')}` }) });
+        if (caps.personRp && spendRp(db.usageSinceFor(b.workspaceId, me, monthStart) as any) >= caps.personRp) return json(res, 429, { error: msg('Your AI budget for this month ({budget}) is used up. An admin can raise it in Settings, AI.', { budget: `Rp ${caps.personRp.toLocaleString('id-ID')}` }) });
       }
       const job = JOB_OF[action];
       const route = withinAllowance(capWs, aiFor(b.workspaceId, job));
       if (!route.chain.length) {
         if (route.message) return json(res, 429, { error: route.message, reason: 'used-up' });
         if (onOurAI(capWs)) return json(res, 503, { error: OUR_AI_DOWN });
-        return json(res, 409, { error: 'no-key', message: NO_AI });
+        return json(res, 409, { error: 'no-key', message: msg(NO_AI) }); // message: in the asker's language
       }
       const log = (cfg: AIConfig, inTokens: number, outTokens: number) => db.logUsage({ workspaceId: b.workspaceId, userId: me, job, provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens });
       const answer = await aiplan.runChain(route.chain, log, () => routes[action](b));
       aiAlerts(b.workspaceId);
       return json(res, 200, answer);
     }
-    return json(res, 404, { error: 'Not found' });
+    return json(res, 404, { error: mark('Not found') });
   } catch (err) {
     const status = err instanceof AIError ? err.status : (err as { status?: number }).status === 429 ? 503 : err instanceof SyntaxError ? 400 : 500;
     console.error(`[${new Date().toISOString()}] ${req.method} ${p}`, err instanceof Error ? (status === 500 ? err.stack : err.message) : err);
@@ -3445,8 +3462,11 @@ function flagsFor(wsIds: string[], flags: platform.PlatformSettings['flags']) {
     .map(([k]) => k);
 }
 
-/** A notice in the app's bell. Operators get theirs in our own company when they're in it; links into the backend open it. */
-function notifyUsers(userIds: string[], text: string, url?: string, workspaceId?: string) {
+/**
+ * A notice in the app's bell. Operators get theirs in our own company when they're in it; links into the backend open it.
+ * `text`: a msg() (each reader sees it in their own language) or fixed text.
+ */
+function notifyUsers(userIds: string[], text: lang.Words, url?: string, workspaceId?: string) {
   const at = new Date().toISOString();
   const home = platform.settings().homeWorkspace;
   const notices = Array.from(new Set(userIds)).flatMap((userId) => {
@@ -3454,13 +3474,19 @@ function notifyUsers(userIds: string[], text: string, url?: string, workspaceId?
     const ws = workspaceId && mine.some((w) => w.id === workspaceId) ? workspaceId : home && mine.some((w) => w.id === home) ? home : mine[0]?.id;
     if (!ws) return [];
     const link = url?.startsWith('/settings/') ? { app: 'settings', id: url.split('/')[2] } : undefined;
-    return [{ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId: ws, kind: 'team', text: text.slice(0, 240), at, read: false, ...(link ? { link } : url ? { url } : {}) }];
+    return [{ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId: ws, kind: 'team', ...noticeWords(text, 240), at, read: false, ...(link ? { link } : url ? { url } : {}) }];
   });
   if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
 }
 
+/** What a notice saves: the English `text` (cut to `max`) and `tr`, so each reader's app shows their own language. */
+function noticeWords(words: lang.Words, max: number): { text: string; tr?: unknown } {
+  const w = lang.saved(words);
+  return w.tr ? { text: w.text.slice(0, max), tr: w.tr } : { text: w.text.slice(0, max) };
+}
+
 /** Tells the support team about a ticket: the assignee for replies, everyone on support for new ones. */
-function supportNotify(t: support.Ticket, text: string, reply = false) {
+function supportNotify(t: support.Ticket, text: lang.Words, reply = false) {
   const users = db.allDocs('users') as any[];
   const emails = reply && t.assignee ? [t.assignee] : platform.operators().filter((o) => !o.disabled && platform.permsOf(o.role).includes('support')).map((o) => o.email);
   const ids = emails.map((e) => users.find((u) => String(u.email ?? '').toLowerCase() === e)?.id).filter(Boolean) as string[];
@@ -3479,30 +3505,30 @@ mailer.onSupportMail(async ({ to, parsed, mid, refs, spam, attachments }) => {
   if (existing && existing.requester.email === email) {
     support.addMessage(existing.id, { kind: 'customer', author: email, authorName: from?.name || null, body: text, internal: false, attachments, mid });
     support.customerReplied(existing.id);
-    supportNotify(existing, `${from?.name || email} replied by email on #${existing.number}`, true);
+    supportNotify(existing, msg('{name} replied by email on #{number}', { name: from?.name || email, number: existing.number }), true);
     return;
   }
   const u = (db.allDocs('users') as any[]).find((x) => String(x.email ?? '').toLowerCase() === email && !x.deletedAt);
   const ws = u ? (memberOf(u.id)[0] as any) : null;
   const tag = to.startsWith('abuse@') ? 'abuse' : to.startsWith('postmaster@') ? 'postmaster' : null;
   const t = support.createTicket({ subject: subject.replace(/^\s*((re|fwd?)\s*:\s*)+/i, '') || '(no subject)', body: text || '(empty)', channel: 'email', email, name: from?.name || u?.name || null, userId: u?.id ?? null, workspaceId: ws?.id ?? null, paying: ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false, priority: tag === 'abuse' ? 'high' : undefined, tags: tag ? [tag] : [], attachments, mid });
-  supportNotify(t, `New ticket #${t.number} by email from ${from?.name || email}: ${t.subject.slice(0, 70)}`);
+  supportNotify(t, msg('New ticket #{number} by email from {name}: {subject}', { number: t.number, name: from?.name || email, subject: t.subject.slice(0, 70) }));
   // A short receipt so they know it arrived (not for auto-replies).
   if (!parsed.headers.get('auto-submitted') && !/no-?reply|mailer-daemon/i.test(email))
     void mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [email], subject: `Re: ${t.subject} [#${t.number}]`, text: `Thanks, we have your message (ticket #${t.number}) and will reply here. Reply to this email to add anything.`, inReplyTo: mid, references: [mid] }).catch(() => {});
 });
 
 /** A notice in these people's bell, of a kind (the push rules and Settings, Notifications go by it), opening `link`. */
-function tell(userIds: string[], workspaceId: string, kind: string, text: string, link: { app: string; id?: string }) {
+function tell(userIds: string[], workspaceId: string, kind: string, text: lang.Words, link: { app: string; id?: string }) {
   const at = new Date().toISOString();
-  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind, text: text.slice(0, 300), at, read: false, link })) as db.Doc[];
+  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind, ...noticeWords(text, 300), at, read: false, link })) as db.Doc[];
   if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
 }
 
 /** A notice for these people (the mail engine uses it for failures and credits). */
-function notifyPeople(userIds: string[], workspaceId: string, text: string, link?: string) {
+function notifyPeople(userIds: string[], workspaceId: string, text: lang.Words, link?: string) {
   const at = new Date().toISOString();
-  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind: 'mail', text, at, read: false, link: link?.startsWith('/settings') ? { app: 'settings', id: link.split('/')[2] } : { app: 'mail' } }));
+  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind: 'mail', ...noticeWords(text, 1000), at, read: false, link: link?.startsWith('/settings') ? { app: 'settings', id: link.split('/')[2] } : { app: 'mail' } }));
   if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
 }
 
@@ -3586,7 +3612,7 @@ setInterval(() => void hourly(), 60 * 60_000);
 const planClock = () => {
   try {
     const save = (ws: any) => (db.writeDocs('workspaces', [ws], [], null), broadcast('workspaces', [ws], []));
-    const tell = (ids: string[], text: string, wsId: string) => notifyUsers(ids, text, '/settings/billing', wsId);
+    const tell = (ids: string[], text: lang.Words, wsId: string) => notifyUsers(ids, text, '/settings/billing', wsId);
     billing.resumeExpiredPauses(save, tell);
     billing.endCancelled(save, tell);
   } catch (e) {
@@ -3726,7 +3752,7 @@ setInterval(() => {
         userId: who,
         workspaceId: t.workspaceId ?? '',
         kind: 'task',
-        text: `Reminder: “${t.title}”${t.due ? `, due ${t.due}` : ''}`,
+        ...(t.due ? msg('Reminder: “{title}”, due {due}', { title: t.title, due: /^\d{4}-\d{2}-\d{2}$/.test(String(t.due)) ? lang.datePhrase(`${t.due}T12:00:00Z`, { tz: 'UTC' }) : String(t.due) }) : msg('Reminder: “{title}”', { title: t.title })),
         at: now,
         read: false,
         link: { app: 'tasks', id: t.id },
@@ -3741,7 +3767,7 @@ setInterval(() => {
   const ring = eventReminders(db.allDocs('events') as any[], Date.parse(now));
   if (ring.length) {
     const events = ring.map((e) => ({ ...e, remindedFor: e.start }));
-    const notices = ring.map((e) => ({ id: randomBytes(6).toString('hex'), userId: e.userId, workspaceId: e.workspaceId ?? '', kind: 'meeting', text: reminderText(e, Date.parse(now)), at: now, read: false, link: { app: 'calendar', id: e.id } }));
+    const notices = ring.map((e) => ({ id: randomBytes(6).toString('hex'), userId: e.userId, workspaceId: e.workspaceId ?? '', kind: 'meeting', ...reminderWords(e, Date.parse(now)), at: now, read: false, link: { app: 'calendar', id: e.id } }));
     db.writeDocs('events', events, [], null);
     db.writeDocs('notices', notices, [], null);
     broadcast('events', events, []);

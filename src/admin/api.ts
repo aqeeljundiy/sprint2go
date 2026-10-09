@@ -1,3 +1,6 @@
+import { t, tn, tx } from '../i18n';
+import { fmtDate, fmtDay, fmtNumber } from '../i18n/format';
+
 /** The operator backend's calls. Every error becomes a thrown Error carrying the server's message (and its status). */
 export class ApiError extends Error {
   constructor(
@@ -10,7 +13,7 @@ export class ApiError extends Error {
 }
 async function read(r: Response) {
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new ApiError((data as { error?: string }).error ?? `Request failed (${r.status})`, r.status, data as Record<string, unknown>);
+  if (!r.ok) throw new ApiError((data as { error?: string }).error ?? t('Request failed ({status})', { status: r.status }), r.status, data as Record<string, unknown>);
   return data;
 }
 export const get = <T = any>(path: string): Promise<T> => fetch(`/api/admin/${path}`).then(read);
@@ -19,12 +22,17 @@ export const post = <T = any>(path: string, body: unknown = {}): Promise<T> => f
 export const rp = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
 /** Short money: Rp 1,2 jt, Rp 340 rb. */
 export const rpShort = (n: number) => (Math.abs(n) >= 1e9 ? `Rp ${(n / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 1 })} M` : Math.abs(n) >= 1e6 ? `Rp ${(n / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt` : Math.abs(n) >= 1e3 ? `Rp ${Math.round(n / 1e3)} rb` : rp(n));
-export const bytes = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : n >= 1e3 ? `${Math.round(n / 1e3)} KB` : `${n} B`);
-export const day = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : '');
-export const dateTime = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
-export const monthName = (ym: string) => new Date(ym + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+const one = (n: number) => fmtNumber(n, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+export const bytes = (n: number) => (n >= 1e9 ? `${one(n / 1e9)} GB` : n >= 1e6 ? `${one(n / 1e6)} MB` : n >= 1e3 ? `${Math.round(n / 1e3)} KB` : `${n} B`);
+/** "8 Oct" (with the year when it isn't this one), in the console's language. */
+export const day = (iso?: string | null) => (iso ? fmtDay(iso) : '');
+/** "8 Oct, 14:30". */
+export const dateTime = (iso?: string | null) => (iso ? fmtDate(iso, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '');
+/** "Oct 26" for a month written 2026-10. */
+export const monthName = (ym: string) => fmtDate(new Date(ym + '-01T00:00:00Z'), { month: 'short', year: '2-digit', timeZone: 'UTC' });
 export const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => {});
-export const duration = (mins: number | null) => (mins === null ? 'none yet' : mins < 60 ? `${mins} min` : mins < 48 * 60 ? `${(mins / 60).toFixed(mins < 600 ? 1 : 0)} h` : `${Math.round(mins / 1440)} days`);
+export const duration = (mins: number | null) =>
+  mins === null ? t('none yet') : mins < 60 ? t('{n} min', { n: mins }) : mins < 48 * 60 ? t('{n} h', { n: fmtNumber(mins / 60, { maximumFractionDigits: mins < 600 ? 1 : 0, minimumFractionDigits: mins < 600 ? 1 : 0 }) }) : tn(Math.round(mins / 1440), '{n} day', '{n} days');
 
 export type State = 'free' | 'trial' | 'paused' | 'comp' | 'paying' | 'suspended';
 export type Perm = 'view' | 'support' | 'impersonate' | 'customers' | 'billing' | 'product' | 'platform' | 'team' | 'danger';
@@ -113,18 +121,48 @@ export interface TicketRow {
   context?: Record<string, unknown> | null;
 }
 
-export const STATE_LABEL: Record<State, string> = { free: 'Free', trial: 'Trial', paused: 'Paused', comp: 'Free months', paying: 'Paying', suspended: 'Suspended' };
-export const STATUS_LABEL: Record<TicketStatus, string> = { new: 'New', open: 'Open', waiting: 'Waiting on them', resolved: 'Resolved', closed: 'Closed' };
-export const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
-export const ROLE_LABEL: Record<OpRole, string> = { owner: 'Owner', admin: 'Admin', support: 'Support', finance: 'Finance', readonly: 'Read-only' };
-export const ROLE_HINT: Record<OpRole, string> = {
-  owner: 'Everything, including deleting companies and managing owners',
-  admin: 'Everything except deleting companies and owners',
-  support: 'Tickets, notes, reset codes and signing in as customers',
-  finance: 'Plans, prices, coupons and invoices',
-  readonly: 'Sees everything, changes nothing',
+// Labels in the console's language: getters, so each read gives the words of the moment (docs/i18n.md).
+export const STATE_LABEL: Record<State, string> = {
+  get free() { return t('Free'); },
+  get trial() { return t('Trial'); },
+  get paused() { return t('Paused'); },
+  get comp() { return t('Free months'); },
+  get paying() { return t('Paying'); },
+  get suspended() { return t('Suspended'); },
 };
-export const planLabel = (p: PlanInfo | null) => (!p || p.tier === 'free' ? 'Free' : `${p.tier[0].toUpperCase()}${p.tier.slice(1)}${p.track === 'ai' ? ' AI' : ''}${p.cycle === 'yearly' ? ' · yearly' : ''}`);
+export const STATUS_LABEL: Record<TicketStatus, string> = {
+  get new() { return tx('ticket', 'New'); },
+  get open() { return tx('ticket', 'Open'); },
+  get waiting() { return t('Waiting on them'); },
+  get resolved() { return t('Resolved'); },
+  get closed() { return tx('ticket', 'Closed'); },
+};
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  get low() { return tx('priority', 'Low'); },
+  get normal() { return tx('priority', 'Normal'); },
+  get high() { return tx('priority', 'High'); },
+  get urgent() { return tx('priority', 'Urgent'); },
+};
+export const ROLE_LABEL: Record<OpRole, string> = {
+  get owner() { return t('Owner'); },
+  get admin() { return t('Admin'); },
+  get support() { return tx('role', 'Support'); },
+  get finance() { return tx('role', 'Finance'); },
+  get readonly() { return t('Read-only'); },
+};
+export const ROLE_HINT: Record<OpRole, string> = {
+  get owner() { return t('Everything, including deleting companies and managing owners'); },
+  get admin() { return t('Everything except deleting companies and owners'); },
+  get support() { return t('Tickets, notes, reset codes and signing in as customers'); },
+  get finance() { return t('Plans, prices, coupons and invoices'); },
+  get readonly() { return t('Sees everything, changes nothing'); },
+};
+/** "Studio AI · yearly": the plan's name stays as it is (a product name), the rest is translated. */
+export const planLabel = (p: PlanInfo | null) => {
+  if (!p || p.tier === 'free') return t('Free');
+  const name = `${p.tier[0].toUpperCase()}${p.tier.slice(1)}${p.track === 'ai' ? ' AI' : ''}`;
+  return p.cycle === 'yearly' ? t('{plan} · yearly', { plan: name }) : name;
+};
 export const initials = (name: string) =>
   name
     .split(/\s+/)
@@ -136,8 +174,10 @@ export const initials = (name: string) =>
 /** "3 min ago" for the past, "in 2 hours" for the future. */
 export function rel(iso: string) {
   const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
-  const fmt = (m: number) => (m < 60 ? `${m} min` : m < 48 * 60 ? `${Math.round(m / 60)} hour${Math.round(m / 60) > 1 ? 's' : ''}` : `${Math.round(m / 1440)} days`);
-  if (mins > 0) return `in ${fmt(mins)}`;
-  if (mins > -1) return 'just now';
-  return `${fmt(-mins)} ago`;
+  const m = Math.abs(mins);
+  const hours = Math.round(m / 60);
+  const days = Math.round(m / 1440);
+  if (mins > 0) return m < 60 ? t('in {n} min', { n: m }) : m < 48 * 60 ? tn(hours, 'in {n} hour', 'in {n} hours') : tn(days, 'in {n} day', 'in {n} days');
+  if (mins > -1) return t('just now');
+  return m < 60 ? tn(m, '{n} min ago', '{n} min ago') : m < 48 * 60 ? tn(hours, '{n} hour ago', '{n} hours ago') : tn(days, '{n} day ago', '{n} days ago');
 }

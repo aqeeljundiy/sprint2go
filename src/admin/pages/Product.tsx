@@ -4,6 +4,8 @@ import { Select } from '../../components/ui/Select';
 import { DatePicker } from '../../components/ui/DatePicker';
 import { dateTime, day, post } from '../api';
 import { Badge, Confirm, Dialog, Empty, Failed, Field, Loading, Page, Section, Switch, Tabs, useAct, useAdmin, useApi } from '../ui';
+import { t, tn } from '../../i18n';
+import { fmtList } from '../../i18n/format';
 
 interface Announcement {
   id: string;
@@ -29,21 +31,36 @@ interface ProductData {
   maintenance: { on: boolean; message: string };
   companies: { id: string; name: string }[];
 }
-const AUDIENCE: Record<string, string> = { all: 'Everyone', owners: 'Company owners', paying: 'Paying companies', trial: 'Companies on trial', list: 'Chosen companies', risk: 'Companies at risk' };
+// Getters: each read gives the words in the console's language of the moment (docs/i18n.md).
+const AUDIENCE: Record<string, string> = {
+  get all() { return t('Everyone'); },
+  get owners() { return t('Company owners'); },
+  get paying() { return t('Paying companies'); },
+  get trial() { return t('Companies on trial'); },
+  get list() { return t('Chosen companies'); },
+  get risk() { return t('Companies at risk'); },
+};
+/** Who a broadcast goes to: always company owners, of which companies. */
+const OWNERS: Record<string, string> = {
+  get all() { return t('All company owners'); },
+  get paying() { return t('Owners of paying companies'); },
+  get trial() { return t('Owners of companies on trial'); },
+  get risk() { return t('Owners of companies at risk'); },
+};
 
 export function Product({ tab }: { tab: string }) {
   const { go } = useAdmin();
   const { data, error, reload } = useApi<ProductData>('product');
   return (
-    <Page title="Product" sub="Talk to customers inside the app, switch features on for some of them, and pause changes while you update.">
+    <Page title={t('Product')} sub={t('Talk to customers inside the app, switch features on for some of them, and pause changes while you update.')}>
       <Tabs
         value={tab}
-        onChange={(t) => go(`/admin/product/${t}`)}
+        onChange={(x) => go(`/admin/product/${x}`)}
         items={[
-          { id: 'announcements', label: 'Announcements' },
-          { id: 'flags', label: 'Feature flags' },
-          { id: 'broadcasts', label: 'Email to owners' },
-          { id: 'maintenance', label: 'Maintenance' },
+          { id: 'announcements', label: t('Announcements') },
+          { id: 'flags', label: t('Feature flags') },
+          { id: 'broadcasts', label: t('Email to owners') },
+          { id: 'maintenance', label: t('Maintenance') },
         ]}
       />
       <div className="adm-tab-body" key={tab}>
@@ -58,7 +75,7 @@ function CompanyPicker({ all, value, onChange }: { all: { id: string; name: stri
   const shown = all.filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="adm-picker">
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${all.length} companies`} />
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tn(all.length, 'Search {n} company', 'Search {n} companies')} />
       <div className="adm-picker-list">
         {shown.map((c) => (
           <label key={c.id}>
@@ -66,18 +83,18 @@ function CompanyPicker({ all, value, onChange }: { all: { id: string; name: stri
             <span>{c.name}</span>
           </label>
         ))}
-        {shown.length === 0 && <small className="muted">No company matches.</small>}
+        {shown.length === 0 && <small className="muted">{t('No company matches.')}</small>}
       </div>
-      <small className="muted">{value.length} chosen</small>
+      <small className="muted">{tn(value.length, '{n} chosen', '{n} chosen')}</small>
     </div>
   );
 }
 
 function stateOf(a: Announcement) {
   const now = new Date().toISOString();
-  if (a.from > now) return { label: `Starts ${day(a.from)}`, tone: 'info' as const };
-  if (a.until && a.until < now) return { label: 'Ended', tone: 'neutral' as const };
-  return { label: 'Showing', tone: 'good' as const };
+  if (a.from > now) return { label: t('Starts {day}', { day: day(a.from) }), tone: 'info' as const };
+  if (a.until && a.until < now) return { label: t('Ended'), tone: 'neutral' as const };
+  return { label: t('Showing'), tone: 'good' as const };
 }
 
 function Announcements({ d, reload }: { d: ProductData; reload: () => void }) {
@@ -86,18 +103,18 @@ function Announcements({ d, reload }: { d: ProductData; reload: () => void }) {
   const [edit, setEdit] = useState<Announcement | 'new' | null>(null);
   return (
     <Section
-      title="Announcements"
-      hint="Shown on Home in the app, for the people you choose"
+      title={t('Announcements')}
+      hint={t('Shown on Home in the app, for the people you choose')}
       actions={
         may('product') && (
           <button className="primary-btn sm" onClick={() => setEdit('new')}>
-            <Plus size={13} /> New announcement
+            <Plus size={13} /> {t('New announcement')}
           </button>
         )
       }
     >
       {d.announcements.length === 0 ? (
-        <Empty title="Nothing announced" text="A new feature, planned maintenance, a price change: write it once and it shows on everyone’s Home until it ends." />
+        <Empty title={t('Nothing announced')} text={t('A new feature, planned maintenance, a price change: write it once and it shows on everyone’s Home until it ends.')} />
       ) : (
         <div className="adm-cards">
           {d.announcements.map((a) => {
@@ -110,15 +127,15 @@ function Announcements({ d, reload }: { d: ProductData; reload: () => void }) {
                   <span className="muted small">
                     {AUDIENCE[a.audience]}
                     {a.audience === 'list' ? ` (${a.companies.length})` : ''}
-                    {a.until ? ` · until ${day(a.until)}` : ''}
+                    {a.until ? ` · ${t('until {day}', { day: day(a.until) })}` : ''}
                   </span>
                   <span className="spacer" />
                   {may('product') && (
                     <>
-                      <button className="icon-btn sm" aria-label="Edit" onClick={() => setEdit(a)}>
+                      <button className="icon-btn sm" aria-label={t('Edit')} onClick={() => setEdit(a)}>
                         <Pencil size={13} />
                       </button>
-                      <button className="icon-btn sm" aria-label="Delete" onClick={() => void act(() => post('announcement', { delete: a.id }), 'Announcement removed').then(reload)}>
+                      <button className="icon-btn sm" aria-label={t('Delete')} onClick={() => void act(() => post('announcement', { delete: a.id }), t('Announcement removed')).then(reload)}>
                         <Trash2 size={13} />
                       </button>
                     </>
@@ -140,41 +157,41 @@ function AnnouncementDialog({ a, companies, onClose, onDone }: { a: Announcement
   const act = useAct();
   return (
     <Dialog
-      title={a ? 'Edit announcement' : 'New announcement'}
+      title={a ? t('Edit announcement') : t('New announcement')}
       onClose={onClose}
       foot={
         <>
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
-          <button className="primary-btn" disabled={!v.text.trim() || (v.audience === 'list' && !v.companies.length)} onClick={() => void act(() => post('announcement', { id: a?.id, ...v, from: v.from ? new Date(v.from + 'T00:00:00').toISOString() : undefined, until: v.until ? new Date(v.until + 'T23:59:59').toISOString() : undefined }), a ? 'Saved' : 'Announced').then((ok) => ok && onDone())}>
-            {a ? 'Save' : 'Announce'}
+          <button className="primary-btn" disabled={!v.text.trim() || (v.audience === 'list' && !v.companies.length)} onClick={() => void act(() => post('announcement', { id: a?.id, ...v, from: v.from ? new Date(v.from + 'T00:00:00').toISOString() : undefined, until: v.until ? new Date(v.until + 'T23:59:59').toISOString() : undefined }), a ? t('Saved') : t('Announced')).then((ok) => ok && onDone())}>
+            {a ? t('Save') : t('Announce')}
           </button>
         </>
       }
     >
       <div className="adm-form">
-        <Field label="Message" hint="One or two short sentences">
+        <Field label={t('Message')} hint={t('One or two short sentences')}>
           <textarea rows={3} maxLength={300} value={v.text} onChange={(e) => setV({ ...v, text: e.target.value })} autoFocus />
         </Field>
-        <Field label="Link (optional)">
+        <Field label={t('Link (optional)')}>
           <input value={v.link} onChange={(e) => setV({ ...v, link: e.target.value })} placeholder="https://" />
         </Field>
         <div className="adm-grid2">
-          <Field label="Kind">
-            <Select value={v.kind} onChange={(x) => setV({ ...v, kind: x as 'news' })} label="Kind" options={[{ value: 'news', label: 'News' }, { value: 'warning', label: 'Warning (maintenance, a problem)' }]} />
+          <Field label={t('Kind')}>
+            <Select value={v.kind} onChange={(x) => setV({ ...v, kind: x as 'news' })} label={t('Kind')} options={[{ value: 'news', label: t('News') }, { value: 'warning', label: t('Warning (maintenance, a problem)') }]} />
           </Field>
-          <Field label="Who sees it">
-            <Select value={v.audience} onChange={(x) => setV({ ...v, audience: x as 'all' })} label="Who sees it" options={['all', 'owners', 'paying', 'trial', 'list'].map((k) => ({ value: k, label: AUDIENCE[k] }))} />
+          <Field label={t('Who sees it')}>
+            <Select value={v.audience} onChange={(x) => setV({ ...v, audience: x as 'all' })} label={t('Who sees it')} options={['all', 'owners', 'paying', 'trial', 'list'].map((k) => ({ value: k, label: AUDIENCE[k] }))} />
           </Field>
         </div>
         {v.audience === 'list' && <CompanyPicker all={companies} value={v.companies} onChange={(c) => setV({ ...v, companies: c })} />}
         <div className="adm-grid2">
-          <Field label="From">
-            <DatePicker value={v.from} onChange={(x) => setV({ ...v, from: x })} clearable label="From" />
+          <Field label={t('From')}>
+            <DatePicker value={v.from} onChange={(x) => setV({ ...v, from: x })} clearable label={t('From')} />
           </Field>
-          <Field label="Until">
-            <DatePicker value={v.until} onChange={(x) => setV({ ...v, until: x })} clearable label="Until" />
+          <Field label={t('Until')}>
+            <DatePicker value={v.until} onChange={(x) => setV({ ...v, until: x })} clearable label={t('Until')} />
           </Field>
         </div>
       </div>
@@ -186,21 +203,21 @@ function Flags({ d, reload }: { d: ProductData; reload: () => void }) {
   const { may } = useAdmin();
   const [edit, setEdit] = useState<{ key: string; f: FlagDef } | 'new' | null>(null);
   const flags = Object.entries(d.flags);
-  const reach = (f: FlagDef) => (f.mode === 'on' ? 'Everyone' : f.mode === 'off' ? 'Nobody' : f.mode === 'percent' ? `${f.percent}% of companies` : `${f.companies.length} chosen companies`);
+  const reach = (f: FlagDef) => (f.mode === 'on' ? t('Everyone') : f.mode === 'off' ? t('Nobody') : f.mode === 'percent' ? t('{n}% of companies', { n: f.percent }) : tn(f.companies.length, '{n} chosen company', '{n} chosen companies'));
   return (
     <Section
-      title="Feature flags"
-      hint="Try something new with a few companies before everyone"
+      title={t('Feature flags')}
+      hint={t('Try something new with a few companies before everyone')}
       actions={
         may('product') && (
           <button className="primary-btn sm" onClick={() => setEdit('new')}>
-            <Plus size={13} /> New flag
+            <Plus size={13} /> {t('New flag')}
           </button>
         )
       }
     >
       {flags.length === 0 ? (
-        <Empty title="No flags yet" text="Name a flag, then ship code that checks it. Turn it on for one company, a percentage, or everyone." />
+        <Empty title={t('No flags yet')} text={t('Name a flag, then ship code that checks it. Turn it on for one company, a percentage, or everyone.')} />
       ) : (
         <div className="adm-mini-list">
           {flags.map(([key, f]) => (
@@ -211,7 +228,7 @@ function Flags({ d, reload }: { d: ProductData; reload: () => void }) {
               </span>
               <Badge tone={f.mode === 'off' ? 'neutral' : f.mode === 'on' ? 'good' : 'accent'}>{reach(f)}</Badge>
               {may('product') && (
-                <button className="icon-btn sm" aria-label="Edit" onClick={() => setEdit({ key, f })}>
+                <button className="icon-btn sm" aria-label={t('Edit')} onClick={() => setEdit({ key, f })}>
                   <Pencil size={13} />
                 </button>
               )}
@@ -228,39 +245,39 @@ function FlagDialog({ k, f, companies, onClose, onDone }: { k: string; f: FlagDe
   const act = useAct();
   return (
     <Dialog
-      title={k ? `Flag ${k}` : 'New flag'}
+      title={k ? t('Flag {name}', { name: k }) : t('New flag')}
       onClose={onClose}
       foot={
         <>
           {k && (
-            <button className="ghost-btn danger-text" onClick={() => void act(() => post('flag', { key: k, delete: true }), 'Flag deleted').then((ok) => ok && onDone())}>
-              Delete
+            <button className="ghost-btn danger-text" onClick={() => void act(() => post('flag', { key: k, delete: true }), t('Flag deleted')).then((ok) => ok && onDone())}>
+              {t('Delete')}
             </button>
           )}
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
-          <button className="primary-btn" disabled={!v.key.trim()} onClick={() => void act(() => post('flag', v), 'Flag saved').then((ok) => ok && onDone())}>
-            Save
+          <button className="primary-btn" disabled={!v.key.trim()} onClick={() => void act(() => post('flag', v), t('Flag saved')).then((ok) => ok && onDone())}>
+            {t('Save')}
           </button>
         </>
       }
     >
       <div className="adm-form">
         <div className="adm-grid2">
-          <Field label="Name" hint="Used in the code, e.g. new-calendar">
+          <Field label={t('Name')} hint={t('Used in the code, e.g. new-calendar')}>
             <input value={v.key} disabled={!!k} onChange={(e) => setV({ ...v, key: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} autoFocus={!k} />
           </Field>
-          <Field label="Who gets it">
-            <Select value={v.mode} onChange={(x) => setV({ ...v, mode: x as 'on' })} label="Who gets it" options={[{ value: 'off', label: 'Nobody' }, { value: 'list', label: 'Chosen companies' }, { value: 'percent', label: 'A percentage' }, { value: 'on', label: 'Everyone' }]} />
+          <Field label={t('Who gets it')}>
+            <Select value={v.mode} onChange={(x) => setV({ ...v, mode: x as 'on' })} label={t('Who gets it')} options={[{ value: 'off', label: t('Nobody') }, { value: 'list', label: t('Chosen companies') }, { value: 'percent', label: t('A percentage') }, { value: 'on', label: t('Everyone') }]} />
           </Field>
         </div>
-        <Field label="What it does">
-          <input value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="The new calendar week view" />
+        <Field label={t('What it does')}>
+          <input value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} placeholder={t('The new calendar week view')} />
         </Field>
         {v.mode === 'percent' && (
-          <Field label={`Percentage of companies: ${v.percent}%`} hint="Each company always lands on the same side">
+          <Field label={t('Percentage of companies: {n}%', { n: v.percent })} hint={t('Each company always lands on the same side')}>
             <input type="range" min={0} max={100} step={5} value={v.percent} onChange={(e) => setV({ ...v, percent: Number(e.target.value) })} />
           </Field>
         )}
@@ -281,31 +298,31 @@ function Broadcasts({ d, reload }: { d: ProductData; reload: () => void }) {
   const check = () => void post<{ count: number; sample: string[] }>('broadcast/preview', { audience }).then((r) => (setPreview(r), setConfirm(true)));
   return (
     <div className="adm-split">
-      <Section title="Write to company owners" hint="One email each, from support">
+      <Section title={t('Write to company owners')} hint={t('One email each, from support')}>
         {!may('product') ? (
-          <Empty title="Your role can’t send these" />
+          <Empty title={t('Your role can’t send these')} />
         ) : (
           <div className="adm-form">
-            <Field label="To">
-              <Select value={audience} onChange={setAudience} label="To" options={['all', 'paying', 'trial', 'risk'].map((k) => ({ value: k, label: k === 'all' ? 'All company owners' : `Owners of ${AUDIENCE[k].toLowerCase()}` }))} />
+            <Field label={t('To')}>
+              <Select value={audience} onChange={setAudience} label={t('To')} options={['all', 'paying', 'trial', 'risk'].map((k) => ({ value: k, label: OWNERS[k] }))} />
             </Field>
-            <Field label="Subject">
+            <Field label={t('Subject')}>
               <input value={subject} onChange={(e) => setSubject(e.target.value)} />
             </Field>
-            <Field label="Message">
+            <Field label={t('Message')}>
               <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} />
             </Field>
             <div>
               <button className="primary-btn sm" disabled={!subject.trim() || !body.trim()} onClick={check}>
-                <Send size={13} /> Send…
+                <Send size={13} /> {t('Send…')}
               </button>
             </div>
           </div>
         )}
       </Section>
-      <Section title="Sent before">
+      <Section title={t('Sent before')}>
         {d.broadcasts.length === 0 ? (
-          <Empty title="Nothing sent yet" />
+          <Empty title={t('Nothing sent yet')} />
         ) : (
           <div className="adm-mini-list">
             {d.broadcasts.map((b) => (
@@ -314,7 +331,7 @@ function Broadcasts({ d, reload }: { d: ProductData; reload: () => void }) {
                   <strong>{b.subject}</strong>
                   <small className="muted">
                     {' '}
-                    · {b.sent} owners · {b.by} · {dateTime(b.at)}
+                    · {tn(b.sent, '{n} owner', '{n} owners')} · {b.by} · {dateTime(b.at)}
                   </small>
                 </span>
               </div>
@@ -324,12 +341,18 @@ function Broadcasts({ d, reload }: { d: ProductData; reload: () => void }) {
       </Section>
       {confirm && preview && (
         <Confirm
-          title={`Send to ${preview.count} owner${preview.count === 1 ? '' : 's'}`}
-          action="Send now"
-          text={preview.count ? `For example ${preview.sample.join(', ')}${preview.count > preview.sample.length ? ' and more' : ''}. Each gets their own copy.` : 'Nobody matches this audience.'}
+          title={tn(preview.count, 'Send to {n} owner', 'Send to {n} owners')}
+          action={t('Send now')}
+          text={
+            !preview.count
+              ? t('Nobody matches this audience.')
+              : preview.count > preview.sample.length
+                ? t('For example {names} and more. Each gets their own copy.', { names: preview.sample.join(', ') })
+                : t('For example {names}. Each gets their own copy.', { names: fmtList(preview.sample) })
+          }
           onClose={() => setConfirm(false)}
           onConfirm={() =>
-            act(() => post('broadcast/send', { audience, subject, body }), `Sent to ${preview.count} owners`).then((ok) => {
+            act(() => post('broadcast/send', { audience, subject, body }), tn(preview.count, 'Sent to {n} owner', 'Sent to {n} owners')).then((ok) => {
               setConfirm(false);
               if (ok) (setSubject(''), setBody(''), reload());
             })
@@ -345,16 +368,16 @@ function Maintenance({ d, reload }: { d: ProductData; reload: () => void }) {
   const act = useAct();
   const [msg, setMsg] = useState(d.maintenance.message);
   return (
-    <Section title="Maintenance mode" hint="Everyone keeps reading; saving is paused until you switch it off">
+    <Section title={t('Maintenance mode')} hint={t('Everyone keeps reading; saving is paused until you switch it off')}>
       <div className="adm-form">
-        <Switch label={d.maintenance.on ? 'On: changes are paused' : 'Off'} hint="Operators can still change things" on={d.maintenance.on} disabled={!may('product')} onChange={(on) => void act(() => post('maintenance', { on, message: msg }), on ? 'Maintenance mode on' : 'Maintenance mode off').then(reload)} />
-        <Field label="What people see">
-          <input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="sprint2go is being updated. Back in about 10 minutes." disabled={!may('product')} />
+        <Switch label={d.maintenance.on ? t('On: changes are paused') : t('Off')} hint={t('Operators can still change things')} on={d.maintenance.on} disabled={!may('product')} onChange={(on) => void act(() => post('maintenance', { on, message: msg }), on ? t('Maintenance mode on') : t('Maintenance mode off')).then(reload)} />
+        <Field label={t('What people see')}>
+          <input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder={t('sprint2go is being updated. Back in about 10 minutes.')} disabled={!may('product')} />
         </Field>
         {d.maintenance.on && msg !== d.maintenance.message && (
           <div>
-            <button className="ghost-btn sm" onClick={() => void act(() => post('maintenance', { on: true, message: msg }), 'Message updated').then(reload)}>
-              Update the message
+            <button className="ghost-btn sm" onClick={() => void act(() => post('maintenance', { on: true, message: msg }), t('Message updated')).then(reload)}>
+              {t('Update the message')}
             </button>
           </div>
         )}

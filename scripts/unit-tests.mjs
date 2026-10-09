@@ -468,7 +468,7 @@ db.writeDocs('events', [
 db.writeDocs('prefs', [{ id: 'aj-ana', value: { 's2g-join:aj-ana': { skip: false } } }], [], null);
 const ajSent = [];
 const ajNotes = [];
-const ajDeps = { recorderUp: () => true, send: async (_ws, m) => (ajSent.push(m), null), notify: (ids, _ws, text) => ajNotes.push({ ids, text }) };
+const ajDeps = { recorderUp: () => true, send: async (_ws, m) => (ajSent.push(m), null), notify: (ids, _ws, text) => ajNotes.push({ ids, text: text?.text ?? text }) };
 await test('Auto-join: only events about to start, with a Meet or Zoom link, that the rules say to record; once per call', async () => {
   const r = await autojoin.runAutoJoin(ajDeps, T0);
   assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['soon', 'sent']]);
@@ -876,7 +876,7 @@ await test('Retention: nothing goes before the notice ends; then old messages go
     { id: 'rm-elsewhere', channelId: 'rc-other', userId: 'aj-ana', text: 'another company', at: old },
   ], [], null);
   const told = [];
-  const deps = { broadcast: () => {}, notify: (ids, ws, text) => told.push(text) };
+  const deps = { broadcast: () => {}, notify: (ids, ws, text) => told.push(text?.text ?? text) };
   assert.deepEqual(retention.runRetention(deps, R0 + 6 * DAYMS).filter((r) => r.workspaceId === 'w-ret'), [], 'still in the notice week');
   assert.ok(db.getDoc('messages', 'rm-old'));
   const r = retention.runRetention(deps, R0 + 7 * DAYMS + 60_000).filter((x) => x.workspaceId === 'w-ret');

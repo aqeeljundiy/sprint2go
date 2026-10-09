@@ -19,6 +19,9 @@ import * as sandbox from './sandbox.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, PlanAdjustment, Tier, Track } from '../src/types.ts';
 import { isZone } from '../src/jobTimes.ts';
+import { mark, msg, phrase, t, textOf, tx } from '../src/i18n/index.ts';
+import { fmtDayLong, fmtMonth } from '../src/i18n/format.ts';
+import * as lang from './lang.ts';
 
 export interface AdminCtx {
   req: IncomingMessage;
@@ -38,7 +41,7 @@ export interface AdminCtx {
   setSession: (res: ServerResponse, token: string | null) => void;
   sseClients: () => number;
   startedAt: number;
-  notifyUsers: (userIds: string[], text: string, url?: string, workspaceId?: string) => void;
+  notifyUsers: (userIds: string[], text: lang.Words, url?: string, workspaceId?: string) => void;
   mailOn: boolean;
 }
 
@@ -87,11 +90,12 @@ export const mrrNow = (ws: any) => mrrOf(ws, billing.activePeople(ws).active);
 function healthOf(c: { lastActive: string | null; people: number; state: State; openTickets: number; overdue: number; setupDone: number; setupTotal: number }) {
   const ago = c.lastActive ? (Date.now() - Date.parse(c.lastActive)) / DAY : Infinity;
   const parts = [
-    { key: 'activity', label: 'Active lately', score: ago <= 3 ? 30 : ago <= 7 ? 20 : ago <= 14 ? 10 : 0, max: 30 },
-    { key: 'team', label: 'Team using it', score: c.people >= 5 ? 20 : c.people >= 2 ? 12 : 4, max: 20 },
-    { key: 'setup', label: 'Set up', score: Math.round((c.setupDone / Math.max(1, c.setupTotal)) * 20), max: 20 },
-    { key: 'support', label: 'No open problems', score: Math.max(0, 15 - c.openTickets * 5), max: 15 },
-    { key: 'billing', label: 'Billing in order', score: c.state === 'suspended' || c.overdue ? 0 : c.state === 'paying' || c.state === 'comp' ? 15 : c.state === 'trial' ? 10 : 8, max: 15 },
+    // Labels are msg(): the console's answers are put in the operator's language on the way out (server/lang.ts).
+    { key: 'activity', label: msg('Active lately'), score: ago <= 3 ? 30 : ago <= 7 ? 20 : ago <= 14 ? 10 : 0, max: 30 },
+    { key: 'team', label: msg('Team using it'), score: c.people >= 5 ? 20 : c.people >= 2 ? 12 : 4, max: 20 },
+    { key: 'setup', label: msg('Set up'), score: Math.round((c.setupDone / Math.max(1, c.setupTotal)) * 20), max: 20 },
+    { key: 'support', label: msg('No open problems'), score: Math.max(0, 15 - c.openTickets * 5), max: 15 },
+    { key: 'billing', label: msg('Billing in order'), score: c.state === 'suspended' || c.overdue ? 0 : c.state === 'paying' || c.state === 'comp' ? 15 : c.state === 'trial' ? 10 : 8, max: 15 },
   ];
   const score = parts.reduce((n, p) => n + p.score, 0);
   return { score, label: score >= 70 ? 'healthy' : score >= 40 ? 'watch' : 'risk', parts } as const;
@@ -217,36 +221,36 @@ function systemInfo(ctx: AdminCtx) {
   };
 }
 
-/** Problems the platform has right now, worst first. Used by Today and by the alert job. */
+/** Problems the platform has right now, worst first. Used by Today and by the alert job. Each text is a msg(). */
 async function warnings(ctx: AdminCtx) {
   const sys = systemInfo(ctx);
-  const out: { kind: string; text: string; level: 'high' | 'normal'; to?: string }[] = [];
-  if (sys.disk && sys.disk.free / sys.disk.total < 0.1) out.push({ kind: 'disk', level: 'high', text: `Disk nearly full: ${(sys.disk.free / 1e9).toFixed(1)} GB free.`, to: '/admin/platform' });
-  if (!sys.lastBackupAt || sys.lastBackupAt < new Date(Date.now() - 36 * 3600_000).toISOString()) out.push({ kind: 'backup', level: 'high', text: sys.lastBackupAt ? 'The last backup is older than a day.' : 'No backup yet.', to: '/admin/platform/backups' });
+  const out: { kind: string; text: lang.Said; level: 'high' | 'normal'; to?: string }[] = [];
+  if (sys.disk && sys.disk.free / sys.disk.total < 0.1) out.push({ kind: 'disk', level: 'high', text: msg('Disk nearly full: {n} GB free.', { n: (sys.disk.free / 1e9).toFixed(1) }), to: '/admin/platform' });
+  if (!sys.lastBackupAt || sys.lastBackupAt < new Date(Date.now() - 36 * 3600_000).toISOString()) out.push({ kind: 'backup', level: 'high', text: sys.lastBackupAt ? msg('The last backup is older than a day.') : msg('No backup yet.'), to: '/admin/platform/backups' });
   // The off-site copy: its last upload failed, or none for two days although it's set up.
   const off = sys.offsite;
-  if (off.configured && off.error && (!off.last || off.error.at > off.last.at)) out.push({ kind: 'offsite', level: 'high', text: `The off-site backup copy failed: ${off.error.message}`, to: '/admin/platform/backups' });
-  else if (off.configured && off.last && off.last.at < new Date(Date.now() - 48 * 3600_000).toISOString()) out.push({ kind: 'offsite', level: 'high', text: 'The last off-site backup copy is older than two days.', to: '/admin/platform/backups' });
+  if (off.configured && off.error && (!off.last || off.error.at > off.last.at)) out.push({ kind: 'offsite', level: 'high', text: msg('The off-site backup copy failed: {error}', { error: off.error.message }), to: '/admin/platform/backups' });
+  else if (off.configured && off.last && off.last.at < new Date(Date.now() - 48 * 3600_000).toISOString()) out.push({ kind: 'offsite', level: 'high', text: msg('The last off-site backup copy is older than two days.'), to: '/admin/platform/backups' });
   // The mail server's certificate: Let's Encrypt couldn't get or renew it, or a trusted one is close to expiring.
   const cert = sys.cert;
-  if (cert.error) out.push({ kind: 'cert', level: cert.trusted ? 'normal' : 'high', text: cert.acme ? `Let’s Encrypt couldn’t ${cert.trusted ? 'renew' : 'issue'} the mail server’s certificate: ${cert.error.message}` : `The mail server’s certificate can’t be used: ${cert.error.message}`, to: '/admin/platform/mail' });
-  else if (cert.source !== 'self-signed' && cert.daysLeft !== null && cert.daysLeft < 14) out.push({ kind: 'cert', level: 'high', text: `The mail server’s certificate expires in ${Math.max(0, cert.daysLeft)} days.`, to: '/admin/platform/mail' });
+  if (cert.error) out.push({ kind: 'cert', level: cert.trusted ? 'normal' : 'high', text: cert.acme ? (cert.trusted ? msg('Let’s Encrypt couldn’t renew the mail server’s certificate: {error}', { error: cert.error.message }) : msg('Let’s Encrypt couldn’t issue the mail server’s certificate: {error}', { error: cert.error.message })) : msg('The mail server’s certificate can’t be used: {error}', { error: cert.error.message }), to: '/admin/platform/mail' });
+  else if (cert.source !== 'self-signed' && cert.daysLeft !== null && cert.daysLeft < 14) out.push({ kind: 'cert', level: 'high', text: msg('The mail server’s certificate expires in {n} days.', { n: Math.max(0, cert.daysLeft) }), to: '/admin/platform/mail' });
   if (ctx.recorder.configured) {
     const h = await ctx.recorder.health();
-    if (!h?.ok) out.push({ kind: 'recorder', level: 'normal', text: 'The meeting recorder does not answer.', to: '/admin/platform' });
+    if (!h?.ok) out.push({ kind: 'recorder', level: 'normal', text: msg('The meeting recorder does not answer.'), to: '/admin/platform' });
   }
   const relay = await turn.health();
-  if (relay.configured && !relay.reachable) out.push({ kind: 'relay', level: 'normal', text: `The call relay doesn’t answer at ${relay.checked ?? 'its address'}: huddles fail on networks that block direct calls.`, to: '/admin/platform' });
+  if (relay.configured && !relay.reachable) out.push({ kind: 'relay', level: 'normal', text: relay.checked ? msg('The call relay doesn’t answer at {address}: huddles fail on networks that block direct calls.', { address: relay.checked }) : msg('The call relay doesn’t answer at its address: huddles fail on networks that block direct calls.'), to: '/admin/platform' });
   const health = await mailer.serverHealth();
-  if (!health.port25.ok) out.push({ kind: 'port25', level: 'normal', text: 'Outgoing port 25 is blocked: mail to outside addresses stays queued.', to: '/admin/platform/mail' });
-  if (!health.ptr.ok && mailer.MAIL_IP) out.push({ kind: 'ptr', level: 'normal', text: `Reverse DNS of ${mailer.MAIL_IP} isn’t ${mailer.MAIL_HOST}: Gmail and Outlook will distrust our mail.`, to: '/admin/platform/mail' });
+  if (!health.port25.ok) out.push({ kind: 'port25', level: 'normal', text: msg('Outgoing port 25 is blocked: mail to outside addresses stays queued.'), to: '/admin/platform/mail' });
+  if (!health.ptr.ok && mailer.MAIL_IP) out.push({ kind: 'ptr', level: 'normal', text: msg('Reverse DNS of {ip} isn’t {host}: Gmail and Outlook will distrust our mail.', { ip: mailer.MAIL_IP, host: mailer.MAIL_HOST }), to: '/admin/platform/mail' });
   const lists = await mailer.blocklists();
   const listed = lists.filter((l) => l.listed === true);
-  if (listed.length) out.push({ kind: 'blocklist', level: 'high', text: `Our mail server is on ${listed.map((l) => l.list).join(', ')}.`, to: '/admin/platform/mail' });
-  for (const p of mailer.pausedMailboxes()) out.push({ kind: `paused:${p.accountId}`, level: 'normal', text: `Sending paused for ${p.email} (${p.company}): ${p.reason}`, to: `/admin/companies/${p.workspaceId}/email` });
+  if (listed.length) out.push({ kind: 'blocklist', level: 'high', text: msg('Our mail server is on {lists}.', { lists: listed.map((l) => l.list).join(', ') }), to: '/admin/platform/mail' });
+  for (const p of mailer.pausedMailboxes()) out.push({ kind: `paused:${p.accountId}`, level: 'normal', text: msg('Sending paused for {email} ({company}): {reason}', { email: p.email, company: p.company, reason: p.reason }), to: `/admin/companies/${p.workspaceId}/email` });
   const fresh = platform.errorGroups().filter((e) => !e.resolvedAt && e.lastAt > new Date(Date.now() - DAY).toISOString() && e.count >= 3);
-  if (fresh.length) out.push({ kind: 'errors', level: 'normal', text: `${fresh.length} error${fresh.length === 1 ? '' : 's'} happening repeatedly today.`, to: '/admin/platform/errors' });
-  if (!sys.https && sys.production) out.push({ kind: 'https', level: 'normal', text: 'The app runs over http. Add the real domain and a certificate.', to: '/admin/platform' });
+  if (fresh.length) out.push({ kind: 'errors', level: 'normal', text: fresh.length === 1 ? msg('1 error happening repeatedly today.') : msg('{n} errors happening repeatedly today.', { n: fresh.length }), to: '/admin/platform/errors' });
+  if (!sys.https && sys.production) out.push({ kind: 'https', level: 'normal', text: msg('The app runs over http. Add the real domain and a certificate.'), to: '/admin/platform' });
   out.push(...aiplan.problems(mrrOf)); // our AI keys, prices, and whether the AI plan pays for itself
   return out;
 }
@@ -259,15 +263,65 @@ export async function checkAlerts(ctx: AdminCtx) {
   const ids = ops.map((o) => users.find((u) => emailOf(u) === o.email)?.id).filter(Boolean) as string[];
   const items = (await warnings(ctx)).filter((w) => w.level === 'high' || w.kind === 'blocklist' || w.kind.startsWith('paused:'));
   const breaching = support.tickets().filter((t) => !t.firstReplyAt && t.dueAt && t.dueAt < now() && (t.status === 'new' || t.status === 'open') && !t.mergedInto);
-  if (breaching.length) items.push({ kind: 'sla', level: 'high', text: `${breaching.length} ticket${breaching.length === 1 ? ' is' : 's are'} past the reply target.`, to: '/admin/tickets' });
+  if (breaching.length) items.push({ kind: 'sla', level: 'high', text: breaching.length === 1 ? msg('1 ticket is past the reply target.') : msg('{n} tickets are past the reply target.', { n: breaching.length }), to: '/admin/tickets' });
   for (const w of items) {
-    if (!platform.alertDue(w.kind, w.text)) continue;
+    if (!platform.alertDue(w.kind, w.text.text)) continue;
     ctx.notifyUsers(ids, w.text, w.to ?? '/admin');
-    void mailer.sendSystemMail({ fromName: 'sprint2go alerts', to: ops.map((o) => o.email), subject: `sprint2go: ${w.text.slice(0, 90)}`, text: `${w.text}\n\nOpen the backend: ${ctx.publicUrl}${w.to ?? '/admin'}` }).catch(() => {});
+    // One email per language: each operator reads it in the console's language they picked.
+    const byLang = new Map<lang.Lang, string[]>();
+    for (const o of ops) {
+      const l = opLang(o, users);
+      byLang.set(l, [...(byLang.get(l) ?? []), o.email]);
+    }
+    for (const [l, to] of byLang) {
+      const mail = lang.inLang(l, () => {
+        const said = textOf(w.text);
+        return { fromName: t('sprint2go alerts'), subject: t('sprint2go: {alert}', { alert: said.slice(0, 90) }), text: `${said}\n\n${t('Open the backend: {link}', { link: `${ctx.publicUrl}${w.to ?? '/admin'}` })}` };
+      });
+      void mailer.sendSystemMail({ ...mail, to }).catch(() => {});
+    }
   }
 }
 
+/** The language an operator reads: what they picked in the console, else their app account's, else English. */
+function opLang(o: platform.Operator, users?: any[]): lang.Lang {
+  if (o.lang) return o.lang;
+  const u = (users ?? (db.allDocs('users') as any[])).find((x) => emailOf(x) === o.email);
+  return lang.langOf(u?.id);
+}
+
 /* ---------- invoices ---------- */
+
+/** The note under a month's invoice (saved in English; shown in the reader's language). */
+const invoiceNote = (period: string) => msg('Active people are those on your team who signed in or used sprint2go in {month}. Guests and shared inboxes are free.', { month: lang.monthPhrase(period) });
+/** The note under a Boosted credits invoice. */
+const creditsNote = (n: string | number) => msg('The {n} emails are added to Boosted sending as soon as this invoice is paid.', { n });
+/** The email an invoice goes out with, in the company's language. `credits`: an invoice for Boosted credits. */
+export function invoiceMail(inv: platform.Invoice, payee: string, l: lang.Lang, credits?: number) {
+  return lang.inLang(l, () => ({
+    subject: t('Invoice {number} from {payee}: {total}', { number: inv.number, payee, total: rp(inv.total) }),
+    text: [
+      t('Hello,'),
+      credits
+        ? t('Your invoice {number} for {n} Boosted sending emails is attached: {total}, due {date}. The emails are added as soon as it’s paid.', { number: inv.number, n: credits.toLocaleString('id-ID'), total: rp(inv.total), date: fmtDayLong(inv.dueAt.slice(0, 10)) })
+        : t('Your invoice {number} for {total} is attached, due {date}.', { number: inv.number, total: rp(inv.total), date: fmtDayLong(inv.dueAt.slice(0, 10)) }),
+      t('Thank you.'),
+    ].join('\n\n'),
+  }));
+}
+/** A support reply by email: the operator's words, their name (or the team's) and the last messages quoted, in `l`. */
+function supportReplyText(text: string, by: string | undefined, thread: { at: string; authorName?: string | null; author: string; body: string }[], l: lang.Lang) {
+  return lang.inLang(l, () => {
+    const quoted = thread
+      .slice(-3)
+      .reverse()
+      .map((m) => `${t('On {date}, {name} wrote:', { date: m.at.slice(0, 16).replace('T', ' '), name: m.authorName ?? m.author })}\n${m.body.split('\n').map((line) => `> ${line}`).join('\n')}`)
+      .join('\n\n');
+    return `${text}\n\n${by ?? t('sprint2go Support')}\n\n${quoted}`;
+  });
+}
+/** A role in words, translated where it's read. */
+const ROLE_WORD: Record<platform.OpRole, string> = { owner: mark('Owner'), admin: mark('Admin'), support: mark('Support'), finance: mark('Finance'), readonly: mark('Read-only') };
 
 /**
  * A month's invoice: the plan for the people who were active that month (signed in or used sprint2go; the billing
@@ -276,36 +330,57 @@ export async function checkAlerts(ctx: AdminCtx) {
 export function invoiceLinesFor(ws: any, period: string) {
   const plan: Plan = ws.plan;
   const { active: people, team } = billing.activePeople(ws, period);
-  const t = monthlyTotal(plan, people);
-  const month = new Date(`${period}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  const who = `${people} active ${people === 1 ? 'person' : 'people'}${team > people ? ` of ${team} on the team` : ''}`;
+  const total = monthlyTotal(plan, people);
+  // Each line is saved with msg(): its English text, and the words to show in the reader's language.
+  const who =
+    team > people
+      ? people === 1
+        ? phrase('1 active person of {team} on the team', { team })
+        : phrase('{n} active people of {team} on the team', { n: people, team })
+      : people === 1
+        ? phrase('1 active person')
+        : phrase('{n} active people', { n: people });
   // Free has no plan line: only the add-ons it bought.
-  const lines: { text: string; amount: number }[] = plan.tier === 'free' ? [] : [{ text: `${planName(plan)} plan, ${who}${plan.cycle === 'yearly' ? ', yearly (10 months)' : ''}`, amount: plan.cycle === 'yearly' ? t.base * 10 : t.base }];
+  const lines: { text: string; amount: number; tr?: any }[] = plan.tier === 'free' ? [] : [{ ...(plan.cycle === 'yearly' ? msg('{plan} plan, {who}, yearly (10 months)', { plan: planName(plan), who }) : msg('{plan} plan, {who}', { plan: planName(plan), who })), amount: plan.cycle === 'yearly' ? total.base * 10 : total.base }];
   const a = plan.addons;
-  if (a.mailboxes) lines.push({ text: `${a.mailboxes} hosted mailbox${a.mailboxes === 1 ? '' : 'es'}`, amount: a.mailboxes * ADDONS.mailboxes.price });
-  if (a.storage50) lines.push({ text: `${a.storage50 * 50} GB extra storage`, amount: a.storage50 * ADDONS.storage50.price });
-  if (a.meetHours10) lines.push({ text: `${a.meetHours10 * 10} more meeting-bot hours`, amount: a.meetHours10 * ADDONS.meetHours10.price });
-  if (a.branding) lines.push({ text: 'Branding add-on', amount: ADDONS.branding.price });
-  if (plan.topUps) lines.push({ text: `${plan.topUps} AI top-up${plan.topUps === 1 ? '' : 's'}`, amount: plan.topUps * TOP_UP.price });
+  if (a.mailboxes) lines.push({ ...(a.mailboxes === 1 ? msg('1 hosted mailbox') : msg('{n} hosted mailboxes', { n: a.mailboxes })), amount: a.mailboxes * ADDONS.mailboxes.price });
+  if (a.storage50) lines.push({ ...msg('{n} GB extra storage', { n: a.storage50 * 50 }), amount: a.storage50 * ADDONS.storage50.price });
+  if (a.meetHours10) lines.push({ ...msg('{n} more meeting-bot hours', { n: a.meetHours10 * 10 }), amount: a.meetHours10 * ADDONS.meetHours10.price });
+  if (a.branding) lines.push({ ...msg('Branding add-on'), amount: ADDONS.branding.price });
+  if (plan.topUps) lines.push({ ...(plan.topUps === 1 ? msg('1 AI top-up') : msg('{n} AI top-ups', { n: plan.topUps })), amount: plan.topUps * TOP_UP.price });
   // Plan switches since the last invoice, prorated: a charge, or a credit (negative). A credit bigger than the invoice
   // brings it to zero and the rest waits for the next one (`carry`).
   lines.push(...billing.adjustmentLines(plan));
   const sum = lines.reduce((n, l) => n + l.amount, 0);
-  if (sum < 0) lines.push({ text: 'Credit left over, taken off your next invoice', amount: -sum });
+  if (sum < 0) lines.push({ ...msg('Credit left over, taken off your next invoice'), amount: -sum });
   const carry = Math.min(0, sum);
   const subtotal = Math.max(0, sum);
-  const note = plan.tier === 'free' ? undefined : `Active people are those on your team who signed in or used sprint2go in ${month}. Guests and shared inboxes are free.`;
+  const note = plan.tier === 'free' ? undefined : invoiceNote(period).text;
   return { lines, discount: discountOf(plan, subtotal), note, carry };
 }
 /** What waits on a plan after its invoice is made: nothing, or the credit that was bigger than the invoice. */
 const afterInvoice = (carry: number, period: string): PlanAdjustment[] | undefined =>
-  carry < 0 ? [{ id: 'adj-' + randomBytes(5).toString('hex'), at: now(), period, invoiced: true, from: '', to: '', daysBefore: 0, days: 0, amount: carry, text: 'Credit left over from your last invoice' }] : undefined;
-export function invoiceHtml(inv: platform.Invoice, wsName: string) {
+  carry < 0 ? [{ id: 'adj-' + randomBytes(5).toString('hex'), at: now(), period, invoiced: true, from: '', to: '', daysBefore: 0, days: 0, amount: carry, text: mark('Credit left over from your last invoice') }] : undefined;
+/** An invoice as a page, in one language (the reader's: the company's when it's emailed, the viewer's when opened). */
+export function invoiceHtml(inv: platform.Invoice, wsName: string, l: lang.Lang = 'en') {
+  return lang.inLang(l, () => invoicePage(inv, wsName, l));
+}
+/** What a saved note reads in the active language: the notes we write are known; one an operator typed stays. */
+function noteWords(inv: platform.Invoice) {
+  if (!inv.note) return '';
+  const auto = invoiceNote(inv.period);
+  if (inv.note === auto.text) return textOf(auto);
+  const credits = inv.lines[0]?.tr?.key === 'Boosted sending: {n} emails' ? creditsNote(String(inv.lines[0].tr.vars?.n ?? '')) : null;
+  if (credits && inv.note === credits.text) return textOf(credits);
+  return inv.note;
+}
+function invoicePage(inv: platform.Invoice, wsName: string, l: lang.Lang) {
   const b = platform.settings().billing;
-  // A credit (a prorated switch to a cheaper plan) shows as one: −Rp 300.000.
-  const row = (l: { text: string; amount: number }) => `<tr><td>${esc(l.text)}${l.amount < 0 ? ' <span class="muted">(credit)</span>' : ''}</td><td class="r">${l.amount < 0 ? `−${rp(-l.amount)}` : rp(l.amount)}</td></tr>`;
-  const st = inv.status === 'paid' ? `<span class="paid">Paid ${esc(inv.paidAt?.slice(0, 10))}</span>` : inv.status === 'void' ? '<span class="void">Void</span>' : `Due ${esc(inv.dueAt.slice(0, 10))}`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(inv.number)}</title><style>
+  // A credit (a prorated switch to a cheaper plan) shows as one: −Rp 300.000. Lines saved with words show in this
+  // language; fixed ones we wrote (a credit carried over) are looked up; an operator's own line stays as typed.
+  const row = (x: { text: string; amount: number; tr?: any }) => `<tr><td>${esc(x.tr ? textOf(x) : t(x.text))}${x.amount < 0 ? ` <span class="muted">${esc(t('(credit)'))}</span>` : ''}</td><td class="r">${x.amount < 0 ? `−${rp(-x.amount)}` : rp(x.amount)}</td></tr>`;
+  const st = inv.status === 'paid' ? `<span class="paid">${esc(t('Paid {date}', { date: inv.paidAt ? fmtDayLong(inv.paidAt.slice(0, 10)) : '' }))}</span>` : inv.status === 'void' ? `<span class="void">${esc(tx('invoice', 'Void'))}</span>` : esc(t('Due {date}', { date: fmtDayLong(inv.dueAt.slice(0, 10)) }));
+  return `<!doctype html><html lang="${l}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(inv.number)}</title><style>
 body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#16161d;background:#f5f6f8;margin:0;padding:24px}
 .page{max-width:720px;margin:0 auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 2px 20px rgba(0,0,0,.06)}
 h1{font-size:22px;margin:0 0 4px}.muted{color:#6b6f7b;font-size:13px;line-height:1.5}.row{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;margin:24px 0}
@@ -314,14 +389,14 @@ table{width:100%;border-collapse:collapse;margin-top:16px}td{padding:10px 0;bord
 .print{display:inline-block;margin-top:24px;padding:10px 16px;border-radius:10px;background:#2448ff;color:#fff;text-decoration:none;font-size:14px;border:0;cursor:pointer}
 @media print{body{background:#fff;padding:0}.page{box-shadow:none}.print{display:none}}
 </style></head><body><div class="page">
-<div class="row" style="margin-top:0"><div><h1>Invoice ${esc(inv.number)}</h1><div class="muted">${esc(new Date(inv.period + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }))} · ${st}</div></div>
+<div class="row" style="margin-top:0"><div><h1>${esc(t('Invoice {number}', { number: inv.number }))}</h1><div class="muted">${esc(fmtMonth(inv.period + '-15'))} · ${st}</div></div>
 <div class="muted" style="text-align:right"><strong style="color:#16161d">${esc(b.name)}</strong><br>${esc(b.address).replace(/\n/g, '<br>')}${b.npwp ? `<br>NPWP ${esc(b.npwp)}` : ''}${b.email ? `<br>${esc(b.email)}` : ''}</div></div>
-<div class="muted">Bill to</div><div><strong>${esc(inv.billTo?.company || wsName)}</strong></div><div class="muted">${esc(inv.billTo?.address ?? '').replace(/\n/g, '<br>')}${inv.billTo?.npwp ? `<br>NPWP ${esc(inv.billTo.npwp)}` : ''}</div>
+<div class="muted">${esc(t('Bill to'))}</div><div><strong>${esc(inv.billTo?.company || wsName)}</strong></div><div class="muted">${esc(inv.billTo?.address ?? '').replace(/\n/g, '<br>')}${inv.billTo?.npwp ? `<br>NPWP ${esc(inv.billTo.npwp)}` : ''}</div>
 <table>${inv.lines.map(row).join('')}</table>
-<table class="tot"><tr><td class="r" style="width:70%">Subtotal</td><td class="r">${rp(inv.subtotal)}</td></tr>${inv.discount ? `<tr><td class="r">Discount</td><td class="r">−${rp(inv.discount)}</td></tr>` : ''}<tr><td class="r">PPN 11%</td><td class="r">${rp(inv.tax)}</td></tr><tr class="grand"><td class="r">Total</td><td class="r">${rp(inv.total)}</td></tr></table>
-${b.bank && inv.status !== 'paid' ? `<p class="muted" style="margin-top:24px">Pay by bank transfer to <strong style="color:#16161d">${esc(b.bank)}</strong>, with ${esc(inv.number)} as the reference.</p>` : ''}
-${inv.note ? `<p class="muted">${esc(inv.note)}</p>` : ''}
-<button class="print" onclick="print()">Print or save as PDF</button></div></body></html>`;
+<table class="tot"><tr><td class="r" style="width:70%">${esc(t('Subtotal'))}</td><td class="r">${rp(inv.subtotal)}</td></tr>${inv.discount ? `<tr><td class="r">${esc(t('Discount'))}</td><td class="r">−${rp(inv.discount)}</td></tr>` : ''}<tr><td class="r">${esc(t('PPN 11%'))}</td><td class="r">${rp(inv.tax)}</td></tr><tr class="grand"><td class="r">${esc(t('Total'))}</td><td class="r">${rp(inv.total)}</td></tr></table>
+${b.bank && inv.status !== 'paid' ? `<p class="muted" style="margin-top:24px">${t('Pay by bank transfer to {bank}, with {number} as the reference.', { bank: `<strong style="color:#16161d">${esc(b.bank)}</strong>`, number: esc(inv.number) })}</p>` : ''}
+${inv.note ? `<p class="muted">${esc(noteWords(inv))}</p>` : ''}
+<button class="print" onclick="print()">${esc(t('Print or save as PDF'))}</button></div></body></html>`;
 }
 
 /* ---------- the routes ---------- */
@@ -334,7 +409,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   const op = platform.operator(email)!;
   const perms = platform.permsOf(op.role);
   const may = (perm: platform.Perm) => perms.includes(perm);
-  const deny = (perm: platform.Perm) => (may(perm) ? false : (json(res, 403, { error: `Your role (${op.role}) can’t do that.` }), true));
+  const deny = (perm: platform.Perm) => (may(perm) ? false : (json(res, 403, { error: msg('Your role ({role}) can’t do that.', { role: phrase(ROLE_WORD[op.role]) }) }), true));
   const log = (action: string, target: string | null, detail?: string) => db.audit(email, action, target, detail);
   const wsById = (id: string) => db.getDoc('workspaces', id) as any;
   const saveWs = (ws: any) => {
@@ -346,21 +421,28 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   const verified = platform.sessionVerified(ctx.token);
 
   /* ----- who am I, and two-step ----- */
-  if (sub === 'me') return (json(res, 200, { email, name: meDoc?.name, role: op.role, perms, totpOn: op.totpOn, verified, supportEmail: mailer.SUPPORT_EMAIL }), true);
+  // `lang`: the console's language they picked (else their app account's, if any): the console opens in it.
+  if (sub === 'me') return (json(res, 200, { email, name: meDoc?.name, role: op.role, perms, totpOn: op.totpOn, verified, supportEmail: mailer.SUPPORT_EMAIL, lang: op.lang ?? lang.ownLang(ctx.me) ?? null }), true);
+  if (sub === 'me/lang' && POST) {
+    const { lang: l } = await body(req);
+    if (l !== 'en' && l !== 'id') return (json(res, 400, { error: mark('Pick a language.') }), true);
+    platform.setOperatorLang(email, l);
+    return (json(res, 200, { ok: true }), true);
+  }
   if (sub === '2fa/setup' && POST) {
-    if (op.totpOn && !verified) return (json(res, 403, { error: 'Confirm your current code first.' }), true);
+    if (op.totpOn && !verified) return (json(res, 403, { error: mark('Confirm your current code first.') }), true);
     return (json(res, 200, await twostep.totpSetup('sprint2go', email, platform.startTotp(email))), true);
   }
   if (sub === '2fa/verify' && POST) {
     const { code } = await body(req);
-    if (!platform.checkTotp(email, String(code ?? ''))) return (json(res, 400, { error: 'That code isn’t right. Check the time on your phone and try the next one.' }), true);
+    if (!platform.checkTotp(email, String(code ?? ''))) return (json(res, 400, { error: mark('That code isn’t right. Check the time on your phone and try the next one.') }), true);
     if (!op.totpOn) (platform.confirmTotp(email), log('team.2fa-on', email));
     platform.markSessionVerified(ctx.token);
     return (json(res, 200, { ok: true }), true);
   }
   // Everything else needs a confirmed second step in this session.
-  if (!op.totpOn) return (json(res, 428, { error: 'Set up two-step sign-in first.', enroll: true }), true);
-  if (!verified) return (json(res, 401, { error: 'Enter your 2FA code.', verify: true }), true);
+  if (!op.totpOn) return (json(res, 428, { error: mark('Set up two-step sign-in first.'), enroll: true }), true);
+  if (!verified) return (json(res, 401, { error: mark('Enter your 2FA code.'), verify: true }), true);
 
   /* ----- AI: our keys, the model for each job, prices, and whether the AI plan pays (server/aiplan.ts) ----- */
   if (sub === 'ai' || sub.startsWith('ai/')) return aiplan.handleAdmin(sub, { req, res, json, body, may, deny, log, email, mrrOf });
@@ -450,7 +532,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   if (sub === 'company' && GET) {
     const id = url.searchParams.get('id') ?? '';
     const ws = wsById(id);
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
     const row = companyRows(ctx).find((c) => c.id === id)!;
     const users = db.allDocs('users') as any[];
     const seen = db.lastSeen();
@@ -502,11 +584,11 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const name = String(b.name ?? '').trim();
     const mail = String(b.ownerEmail ?? '').trim().toLowerCase();
     const ownerName = String(b.ownerName ?? '').trim() || mail.split('@')[0];
-    if (name.length < 2) return (json(res, 400, { error: 'Give the company a name.' }), true);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return (json(res, 400, { error: 'That email doesn’t look right.' }), true);
+    if (name.length < 2) return (json(res, 400, { error: mark('Give the company a name.') }), true);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return (json(res, 400, { error: mark('That email doesn’t look right.') }), true);
     const users = db.allDocs('users') as any[];
     let owner = users.find((u) => emailOf(u) === mail && !u.deletedAt);
-    if (owner?.clientOf) return (json(res, 409, { error: 'That person is a guest somewhere; ask them to start their own workspace from "Shared with you".' }), true);
+    if (owner?.clientOf) return (json(res, 409, { error: mark('That person is a guest somewhere; ask them to start their own workspace from "Shared with you".') }), true);
     const colors = ['#5b5bf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
     if (!owner) {
       owner = { id: 'u-' + randomBytes(6).toString('hex'), name: ownerName, email: mail, title: '', color: colors[Math.floor(Math.random() * colors.length)] };
@@ -532,7 +614,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   if (sub === 'company/plan' && POST) {
     const b = await body(req);
     const ws = wsById(String(b.id ?? ''));
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
     // Trials and free months are customer care; tiers, prices and add-ons are billing.
     const billingChange = ['tier', 'track', 'cycle', 'addons', 'discount'].some((k) => k in b);
     if (deny(billingChange ? 'billing' : 'customers')) return true;
@@ -565,7 +647,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('customers')) return true;
     const b = await body(req);
     const ws = wsById(String(b.id ?? ''));
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
     if (b.on === false) {
       saveWs({ ...ws, suspended: undefined });
       platform.event('company.unsuspended', ws.id, null);
@@ -610,8 +692,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('danger')) return true;
     const b = await body(req);
     const ws = wsById(String(b.id ?? ''));
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
-    if (String(b.confirm ?? '') !== ws.name) return (json(res, 400, { error: 'Type the company name exactly to confirm.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
+    if (String(b.confirm ?? '') !== ws.name) return (json(res, 400, { error: mark('Type the company name exactly to confirm.') }), true);
     const gone = db.deleteWorkspaceDocs(ws.id, true);
     for (const [coll, ids] of Object.entries(gone)) ctx.broadcast(coll, [], ids);
     platform.event('company.deleted', ws.id, null, `${b.why ?? 'other'}: ${ws.name}`);
@@ -623,8 +705,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('danger')) return true;
     const b = await body(req);
     const ws = wsById(String(b.id ?? ''));
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
-    if (String(b.confirm ?? '') !== 'RESET') return (json(res, 400, { error: 'Type RESET to confirm.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
+    if (String(b.confirm ?? '') !== 'RESET') return (json(res, 400, { error: mark('Type RESET to confirm.') }), true);
     const gone = db.deleteWorkspaceDocs(ws.id, false);
     for (const [coll, ids] of Object.entries(gone)) ctx.broadcast(coll, [], ids);
     saveWs({ ...ws, accounts: [], aliases: undefined, tabDefaults: undefined });
@@ -636,7 +718,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('customers')) return true;
     const id = url.searchParams.get('id') ?? '';
     const ws = wsById(id);
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
     const rows = db.db.prepare("SELECT coll, data FROM docs WHERE json_extract(data, '$.workspaceId') = ?").all(id) as { coll: string; data: string }[];
     const byColl: Record<string, unknown[]> = {};
     for (const r of rows) (byColl[r.coll] ??= []).push(JSON.parse(r.data));
@@ -653,7 +735,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('danger')) return true;
     const b = await body(req);
     const ws = wsById(String(b.id ?? ''));
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
     const s = platform.settings();
     if (b.cancel) {
       platform.setSetting('dataRequests', s.dataRequests.map((r) => (r.workspaceId === ws.id && !r.done && !r.cancelled ? { ...r, cancelled: now() } : r)));
@@ -670,19 +752,19 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('customers')) return true;
     const b = await body(req);
     const ws = wsById(String(b.id ?? ''));
-    if (!ws) return (json(res, 404, { error: 'No such company.' }), true);
+    if (!ws) return (json(res, 404, { error: mark('No such company.') }), true);
     const mail = String(b.email ?? '').trim().toLowerCase();
     const name = String(b.name ?? '').trim() || mail.split('@')[0];
     const role = ['owner', 'admin', 'member'].includes(b.role) ? b.role : 'member';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return (json(res, 400, { error: 'That email doesn’t look right.' }), true);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return (json(res, 400, { error: mark('That email doesn’t look right.') }), true);
     let u = (db.allDocs('users') as any[]).find((x) => emailOf(x) === mail && !x.deletedAt);
-    if (u?.clientOf) return (json(res, 409, { error: 'That person is a guest; they can’t join a team with the same account.' }), true);
+    if (u?.clientOf) return (json(res, 409, { error: mark('That person is a guest; they can’t join a team with the same account.') }), true);
     if (!u) {
       u = { id: 'u-' + randomBytes(6).toString('hex'), name, email: mail, title: '', color: '#5b5bf6' };
       db.writeDocs('users', [u], [], ctx.me);
       ctx.broadcast('users', [u], []);
     }
-    if ((ws.members ?? []).some((m: any) => m.userId === u.id)) return (json(res, 409, { error: 'Already in this company.' }), true);
+    if ((ws.members ?? []).some((m: any) => m.userId === u.id)) return (json(res, 409, { error: mark('Already in this company.') }), true);
     saveWs({ ...ws, members: [...(ws.members ?? []), { userId: u.id, role }] });
     const link = db.hasLogin(u.id) ? null : `${ctx.publicUrl}/?invite=${db.newInvite(u.id, mail)}`;
     log('company.person', ws.id, `${mail} added as ${role}`);
@@ -696,7 +778,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     else if (b.pin !== undefined) platform.pinNote(String(b.id), !!b.pin);
     else {
       const text = String(b.text ?? '').trim();
-      if (!text) return (json(res, 400, { error: 'Write something first.' }), true);
+      if (!text) return (json(res, 400, { error: mark('Write something first.') }), true);
       platform.addNote(String(b.workspaceId), email, text);
       log('company.note', String(b.workspaceId), text.slice(0, 80));
     }
@@ -741,7 +823,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   if (sub === 'person' && GET) {
     const id = url.searchParams.get('id') ?? '';
     const u = db.getDoc('users', id) as any;
-    if (!u) return (json(res, 404, { error: 'No such person.' }), true);
+    if (!u) return (json(res, 404, { error: mark('No such person.') }), true);
     const wss = db.allDocs('workspaces') as any[];
     return (
       json(res, 200, {
@@ -774,8 +856,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('impersonate')) return true;
     const b = await body(req);
     const u = db.getDoc('users', String(b.userId ?? '')) as any;
-    if (!u?.email) return (json(res, 404, { error: 'No such person.' }), true);
-    if (!db.hasLogin(u.id)) return (json(res, 409, { error: 'They have no sign-in yet; send an invite link instead.' }), true);
+    if (!u?.email) return (json(res, 404, { error: mark('No such person.') }), true);
+    if (!db.hasLogin(u.id)) return (json(res, 409, { error: mark('They have no sign-in yet; send an invite link instead.') }), true);
     const code = ctx.newCode();
     ctx.codes.set(`reset:${emailOf(u)}`, { code, until: Date.now() + 15 * 60_000, tries: 0 } as any);
     log('person.reset-code', u.id, emailOf(u));
@@ -786,7 +868,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('customers')) return true;
     const b = await body(req);
     const u = db.getDoc('users', String(b.userId ?? '')) as any;
-    if (!u) return (json(res, 404, { error: 'No such person.' }), true);
+    if (!u) return (json(res, 404, { error: mark('No such person.') }), true);
     billing.grantTrial(u.id, email, b.note ? String(b.note).slice(0, 200) : undefined);
     log('person.trial-grant', u.id, `${emailOf(u)}${b.note ? `: ${b.note}` : ''}`);
     return (json(res, 200, { ok: true }), true);
@@ -796,15 +878,22 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('impersonate')) return true;
     const b = await body(req);
     const u = db.getDoc('users', String(b.userId ?? '')) as any;
-    if (!u) return (json(res, 404, { error: 'No such person.' }), true);
-    if (!twostep.isOn(u.id)) return (json(res, 409, { error: 'Two-step sign-in isn’t on for them.' }), true);
+    if (!u) return (json(res, 404, { error: mark('No such person.') }), true);
+    if (!twostep.isOn(u.id)) return (json(res, 409, { error: mark('Two-step sign-in isn’t on for them.') }), true);
     twostep.forget(u.id);
     db.endSessions(u.id);
     log('person.2fa-reset', u.id, `${emailOf(u)}${b.reason ? `: ${b.reason}` : ''}`);
     for (const w of db.allDocs('workspaces') as any[]) if ((w.members ?? []).some((m: any) => m.userId === u.id)) platform.event('security.2fa-reset', w.id, null, `${platform.settings().supportName} reset two-step sign-in for ${u.name}`);
     if (u.email)
       void mailer
-        .sendSystemMail({ fromName: platform.settings().supportName, to: [emailOf(u)], subject: 'Your two-step sign-in was reset', text: `Hi ${String(u.name ?? '').split(' ')[0]},\n\nWe reset two-step sign-in on your sprint2go account, as you asked, so it no longer asks for a code from your authenticator app. You can turn it on again in Settings, Account (your company may ask you to straight away).\n\nIf you didn’t ask for this, reply to this email now.` })
+        .sendSystemMail({
+          fromName: platform.settings().supportName,
+          to: [emailOf(u)],
+          ...lang.forUser(u.id, null, () => ({
+            subject: t('Your two-step sign-in was reset'),
+            text: [t('Hi {name},', { name: String(u.name ?? '').split(' ')[0] }), t('We reset two-step sign-in on your sprint2go account, as you asked, so it no longer asks for a code from your authenticator app. You can turn it on again in Settings, Account (your company may ask you to straight away).'), t('If you didn’t ask for this, reply to this email now.')].join('\n\n'),
+          })),
+        })
         .catch(() => {});
     return (json(res, 200, { ok: true }), true);
   }
@@ -812,8 +901,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('impersonate')) return true;
     const b = await body(req);
     const u = db.getDoc('users', String(b.userId ?? '')) as any;
-    if (!u?.email) return (json(res, 404, { error: 'No such person.' }), true);
-    if (db.hasLogin(u.id)) return (json(res, 409, { error: 'They already sign in; send a reset code instead.' }), true);
+    if (!u?.email) return (json(res, 404, { error: mark('No such person.') }), true);
+    if (db.hasLogin(u.id)) return (json(res, 409, { error: mark('They already sign in; send a reset code instead.') }), true);
     log('person.invite', u.id, emailOf(u));
     return (json(res, 200, { link: `${ctx.publicUrl}/?invite=${db.newInvite(u.id, emailOf(u))}` }), true);
   }
@@ -821,8 +910,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('customers')) return true;
     const b = await body(req);
     const u = db.getDoc('users', String(b.userId ?? '')) as any;
-    if (!u) return (json(res, 404, { error: 'No such person.' }), true);
-    if (platform.operator(emailOf(u))) return (json(res, 403, { error: 'Remove them from the operator team first.' }), true);
+    if (!u) return (json(res, 404, { error: mark('No such person.') }), true);
+    if (platform.operator(emailOf(u))) return (json(res, 403, { error: mark('Remove them from the operator team first.') }), true);
     const next = b.on === false ? { ...u, suspended: undefined } : { ...u, suspended: { at: now(), by: email, reason: String(b.reason ?? '').slice(0, 300) } };
     db.writeDocs('users', [next], [], ctx.me);
     ctx.broadcast('users', [next], []);
@@ -835,7 +924,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const b = await body(req);
     const ws = wsById(String(b.id ?? ''));
     const u = db.getDoc('users', String(b.userId ?? '')) as any;
-    if (!ws || !u) return (json(res, 404, { error: 'No such company or person.' }), true);
+    if (!ws || !u) return (json(res, 404, { error: mark('No such company or person.') }), true);
     const role = ['owner', 'admin', 'member'].includes(b.role) ? b.role : 'owner';
     const members = (ws.members ?? []).map((m: any) => (m.userId === u.id ? { ...m, role } : m));
     if (!members.some((m: any) => m.userId === u.id)) members.push({ userId: u.id, role });
@@ -854,9 +943,9 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('impersonate')) return true;
     const b = await body(req);
     const u = db.getDoc('users', String(b.userId ?? '')) as any;
-    if (!u || u.deletedAt) return (json(res, 404, { error: 'No such person.' }), true);
-    if (u.suspended) return (json(res, 409, { error: 'That account is suspended.' }), true);
-    if (platform.operator(emailOf(u)) && op.role !== 'owner') return (json(res, 403, { error: 'Only an owner can sign in as another operator.' }), true);
+    if (!u || u.deletedAt) return (json(res, 404, { error: mark('No such person.') }), true);
+    if (u.suspended) return (json(res, 409, { error: mark('That account is suspended.') }), true);
+    if (platform.operator(emailOf(u)) && op.role !== 'owner') return (json(res, 403, { error: mark('Only an owner can sign in as another operator.') }), true);
     ctx.setSession(res, db.newSession(u.id, email));
     log('person.signin-as', u.id, `${emailOf(u)} (${u.name})${b.ticket ? ` for ticket #${b.ticket}` : ''}`);
     return (json(res, 200, { ok: true }), true);
@@ -879,7 +968,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   }
   if (sub === 'ticket' && GET) {
     const t = support.ticket(url.searchParams.get('id') ?? '');
-    if (!t) return (json(res, 404, { error: 'No such ticket.' }), true);
+    if (!t) return (json(res, 404, { error: mark('No such ticket.') }), true);
     const company = t.workspaceId ? companyRows(ctx).find((c) => c.id === t.workspaceId) ?? null : null;
     const others = support.ticketsOfUser(t.requester.userId ?? '', t.requester.email).filter((x) => x.id !== t.id).map((x) => ({ id: x.id, number: x.number, subject: x.subject, status: x.status, updatedAt: x.updatedAt }));
     const user = t.requester.userId ? (db.getDoc('users', t.requester.userId) as any) : (db.allDocs('users') as any[]).find((u) => emailOf(u) === t.requester.email);
@@ -900,9 +989,9 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('support')) return true;
     const b = await body(req);
     const t = support.ticket(String(b.id ?? ''));
-    if (!t) return (json(res, 404, { error: 'No such ticket.' }), true);
+    if (!t) return (json(res, 404, { error: mark('No such ticket.') }), true);
     const text = String(b.body ?? '').trim();
-    if (!text) return (json(res, 400, { error: 'Write a reply first.' }), true);
+    if (!text) return (json(res, 400, { error: mark('Write a reply first.') }), true);
     const internal = !!b.internal;
     const attachments = (Array.isArray(b.attachments) ? b.attachments : []).filter((a: any) => a && typeof a.url === 'string').map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: String(a.url), size: a.size ? String(a.size) : undefined }));
     let mid: string | null = null;
@@ -914,16 +1003,13 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
       if (byEmail) {
         const thread = support.messagesOf(t.id, false);
         const refs = [t.lastMid].filter(Boolean) as string[];
-        const quoted = thread
-          .slice(-3)
-          .reverse()
-          .map((m) => `On ${m.at.slice(0, 16).replace('T', ' ')}, ${m.authorName ?? m.author} wrote:\n${m.body.split('\n').map((l) => `> ${l}`).join('\n')}`)
-          .join('\n\n');
+        // The quoted lines and the signature in the customer's language (their account's, else English).
+        const mailText = supportReplyText(text, meDoc?.name, thread, lang.langOfEmail(t.requester.email, t.workspaceId));
         mid = await mailer
-          .sendSystemMail({ fromName: platform.settings().supportName, to: [t.requester.email], subject: `Re: ${t.subject} [#${t.number}]`, text: `${text}\n\n${meDoc?.name ?? 'sprint2go Support'}\n\n${quoted}`, inReplyTo: t.lastMid ?? undefined, references: refs })
+          .sendSystemMail({ fromName: platform.settings().supportName, to: [t.requester.email], subject: `Re: ${t.subject} [#${t.number}]`, text: mailText, inReplyTo: t.lastMid ?? undefined, references: refs })
           .catch(() => null);
       }
-      if (user) ctx.notifyUsers([user.id], `Support replied to “${t.subject.slice(0, 60)}”`, '/settings/help');
+      if (user) ctx.notifyUsers([user.id], msg('Support replied to “{subject}”', { subject: t.subject.slice(0, 60) }), '/settings/help');
     }
     support.addMessage(t.id, { kind: 'operator', author: email, authorName: meDoc?.name ?? email, body: text, internal, attachments, mid: mid ?? undefined });
     if (!internal) support.operatorReplied(t.id, (['open', 'waiting', 'resolved'].includes(b.status) ? b.status : 'waiting') as support.Status, mid);
@@ -947,7 +1033,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
       const t = support.update(id, patch);
       if (t && patch.assignee && patch.assignee !== email) {
         const u = (db.allDocs('users') as any[]).find((x) => emailOf(x) === patch.assignee);
-        if (u) ctx.notifyUsers([u.id], `${meDoc?.name ?? email} gave you ticket #${t.number}: ${t.subject.slice(0, 60)}`, `/admin/tickets/${t.id}`);
+        if (u) ctx.notifyUsers([u.id], msg('{name} gave you ticket #{number}: {subject}', { name: meDoc?.name ?? email, number: t.number, subject: t.subject.slice(0, 60) }), `/admin/tickets/${t.id}`);
       }
     }
     log('ticket.update', ids.join(','), JSON.stringify(patch).slice(0, 200));
@@ -958,7 +1044,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const b = await body(req);
     const from = support.ticket(String(b.id ?? ''));
     const into = support.ticket(String(b.into ?? ''));
-    if (!from || !into || from.id === into.id) return (json(res, 400, { error: 'Pick another ticket to merge into.' }), true);
+    if (!from || !into || from.id === into.id) return (json(res, 400, { error: mark('Pick another ticket to merge into.') }), true);
     support.merge(from.id, into.id);
     log('ticket.merge', into.id, `#${from.number} into #${into.number}`);
     return (json(res, 200, { id: into.id }), true);
@@ -967,7 +1053,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('support')) return true;
     const b = await body(req);
     const mail = String(b.email ?? '').trim().toLowerCase();
-    if (!mail.includes('@') || !String(b.subject ?? '').trim()) return (json(res, 400, { error: 'An email and a subject, please.' }), true);
+    if (!mail.includes('@') || !String(b.subject ?? '').trim()) return (json(res, 400, { error: mark('An email and a subject, please.') }), true);
     const u = (db.allDocs('users') as any[]).find((x) => emailOf(x) === mail && !x.deletedAt);
     const ws = u ? (db.allDocs('workspaces') as any[]).find((w) => (w.members ?? []).some((m: any) => m.userId === u.id)) : null;
     const t = support.createTicket({ subject: String(b.subject), body: String(b.body ?? '').trim() || '(logged by support)', channel: 'email', email: mail, name: u?.name ?? null, userId: u?.id ?? null, workspaceId: ws?.id ?? null, paying: ws ? mrrOf(ws, 1).state === 'paying' : false, priority: b.priority });
@@ -981,7 +1067,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const b = await body(req);
     if (b.delete) support.deleteMacro(String(b.delete));
     else {
-      if (!String(b.title ?? '').trim() || !String(b.body ?? '').trim()) return (json(res, 400, { error: 'A title and the reply, please.' }), true);
+      if (!String(b.title ?? '').trim() || !String(b.body ?? '').trim()) return (json(res, 400, { error: mark('A title and the reply, please.') }), true);
       support.saveMacro({ id: b.id, title: String(b.title).trim(), body: String(b.body) }, email);
     }
     log('macro.save', null, String(b.title ?? b.delete ?? '').slice(0, 80));
@@ -1048,7 +1134,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
   }
   if (sub === 'invoice.html' && GET) {
     const inv = platform.invoice(url.searchParams.get('id') ?? '');
-    if (!inv) return (json(res, 404, { error: 'No such invoice.' }), true);
+    if (!inv) return (json(res, 404, { error: mark('No such invoice.') }), true);
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" });
     res.end(invoiceHtml(inv, (wsById(inv.workspaceId) as any)?.name ?? ''));
     return true;
@@ -1057,7 +1143,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('billing')) return true;
     const b = await body(req);
     const ws = wsById(String(b.workspaceId ?? ''));
-    if (!ws?.plan) return (json(res, 404, { error: 'No such company, or it has no plan.' }), true);
+    if (!ws?.plan) return (json(res, 404, { error: mark('No such company, or it has no plan.') }), true);
     const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(b.period ?? '')) ? String(b.period) : monthStart().slice(0, 7);
     const auto = invoiceLinesFor(ws, period);
     const custom = Array.isArray(b.lines) && b.lines.length;
@@ -1089,14 +1175,18 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('billing')) return true;
     const b = await body(req);
     const inv = platform.invoice(String(b.id ?? ''));
-    if (!inv) return (json(res, 404, { error: 'No such invoice.' }), true);
+    if (!inv) return (json(res, 404, { error: mark('No such invoice.') }), true);
     if (b.status === 'sent') {
       const ws = wsById(inv.workspaceId);
       const to = inv.billTo?.emails?.length ? inv.billTo.emails : (ws?.members ?? []).filter((m: any) => m.role === 'owner').map((m: any) => emailOf(db.getDoc('users', m.userId))).filter(Boolean);
-      if (!to.length) return (json(res, 400, { error: 'This company has no billing email. Add one on its Billing tab.' }), true);
-      const html = invoiceHtml(inv, ws?.name ?? '');
-      await mailer.sendSystemMail({ fromName: platform.settings().billing.name || 'sprint2go', to, subject: `Invoice ${inv.number} from ${platform.settings().billing.name || 'sprint2go'}: ${rp(inv.total)}`, text: `Hello,\n\nYour invoice ${inv.number} for ${rp(inv.total)} is attached, due ${inv.dueAt.slice(0, 10)}.\n\nThank you.`, attachments: [{ filename: `${inv.number}.html`, content: Buffer.from(html), contentType: 'text/html' }] }).catch(() => null);
-      for (const m of (ws?.members ?? []).filter((x: any) => x.role !== 'member')) ctx.notifyUsers([m.userId], `Invoice ${inv.number}: ${rp(inv.total)}, due ${inv.dueAt.slice(0, 10)}`, '/settings/billing', ws.id);
+      if (!to.length) return (json(res, 400, { error: mark('This company has no billing email. Add one on its Billing tab.') }), true);
+      // In the company's language (Settings, General), else its billing contact's, else English.
+      const l = lang.companyLang(inv.workspaceId) ?? lang.langOfEmail(to[0], inv.workspaceId);
+      const html = invoiceHtml(inv, ws?.name ?? '', l);
+      const payee = platform.settings().billing.name || 'sprint2go';
+      const words = invoiceMail(inv, payee, l);
+      await mailer.sendSystemMail({ fromName: payee, to, ...words, attachments: [{ filename: `${inv.number}.html`, content: Buffer.from(html), contentType: 'text/html' }] }).catch(() => null);
+      for (const m of (ws?.members ?? []).filter((x: any) => x.role !== 'member')) ctx.notifyUsers([m.userId], msg('Invoice {number}: {total}, due {date}', { number: inv.number, total: rp(inv.total), date: lang.datePhrase(`${inv.dueAt.slice(0, 10)}T12:00:00Z`, { tz: 'UTC' }) }), '/settings/billing', ws.id);
     }
     const next = platform.setInvoiceStatus(inv.id, b.status, b.method);
     if (b.status === 'paid') platform.event('invoice.paid', inv.workspaceId, null, `${inv.number} ${rp(inv.total)}`);
@@ -1132,7 +1222,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     try {
       if (b.apply) {
         const ws = wsById(String(b.workspaceId ?? ''));
-        if (!ws?.plan) return (json(res, 404, { error: 'No such company, or it has no plan.' }), true);
+        if (!ws?.plan) return (json(res, 404, { error: mark('No such company, or it has no plan.') }), true);
         const ok = platform.couponUsable(String(b.apply));
         if (!ok.ok) return (json(res, 400, { error: ok.error }), true);
         saveWs({ ...ws, plan: applyCoupon(ws.plan, ok.coupon) });
@@ -1162,13 +1252,13 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const createdIds = new Set(created.map((c) => c.id));
     const evOf = (type: string) => new Set(platform.eventsSince(since, [type]).map((e) => e.workspaceId));
     const funnel = [
-      { key: 'visits', label: 'Visited the landing page', n: visits },
-      { key: 'started', label: 'Started signing up', n: count('signup.started') },
-      { key: 'verified', label: 'Confirmed their email', n: count('signup.verified') },
-      { key: 'company', label: 'Created a company', n: created.length },
-      { key: 'invited', label: 'Invited their team', n: [...evOf('team.invited')].filter((id) => id && createdIds.has(id)).length },
-      { key: 'used', label: 'Used it for real', n: [...evOf('first.use')].filter((id) => id && createdIds.has(id)).length },
-      { key: 'paid', label: 'Paying', n: created.filter((c) => c.state === 'paying').length },
+      { key: 'visits', label: msg('Visited the landing page'), n: visits },
+      { key: 'started', label: msg('Started signing up'), n: count('signup.started') },
+      { key: 'verified', label: msg('Confirmed their email'), n: count('signup.verified') },
+      { key: 'company', label: msg('Created a company'), n: created.length },
+      { key: 'invited', label: msg('Invited their team'), n: [...evOf('team.invited')].filter((id) => id && createdIds.has(id)).length },
+      { key: 'used', label: msg('Used it for real'), n: [...evOf('first.use')].filter((id) => id && createdIds.has(id)).length },
+      { key: 'paid', label: msg('Paying'), n: created.filter((c) => c.state === 'paying').length },
     ];
     const sources: Record<string, { visits: number; signups: number }> = {};
     for (const v of views.filter((x) => x.path === '/')) (sources[v.source] ??= { visits: 0, signups: 0 }).visits += v.n;
@@ -1199,8 +1289,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     });
     const appRows = db.db.prepare("SELECT coll, json_extract(data, '$.workspaceId') AS ws FROM docs WHERE updated_at >= ? AND json_extract(data, '$.workspaceId') IS NOT NULL GROUP BY coll, ws").all(new Date(Date.now() - 30 * DAY).toISOString()) as { coll: string; ws: string }[];
     const realIds = new Set(companies.map((c) => c.id));
-    const APP: Record<string, string> = { threads: 'Mail', messages: 'Chat', todos: 'Tasks', clients: 'Projects', events: 'Calendar', drive: 'Drive', meetings: 'Meet', tables: 'Tables', notes: 'Notes', quotes: 'Quotes' };
-    const apps = Object.entries(APP).map(([coll, label]) => ({ label, companies: new Set(appRows.filter((r) => r.coll === coll && realIds.has(r.ws)).map((r) => r.ws)).size }));
+    const APP: Record<string, string> = { threads: mark('Mail'), messages: mark('Chat'), todos: mark('Tasks'), clients: mark('Projects'), events: mark('Calendar'), drive: mark('Drive'), meetings: mark('Meet'), tables: mark('Tables'), notes: mark('Notes'), quotes: mark('Quotes') };
+    const apps = Object.entries(APP).map(([coll, label]) => ({ label: msg(label), companies: new Set(appRows.filter((r) => r.coll === coll && realIds.has(r.ws)).map((r) => r.ws)).size }));
     const trialEnded = companies.filter((c) => c.plan?.trialEnds && c.plan.trialEnds < now() && c.plan.trialEnds >= since);
     return (
       json(res, 200, {
@@ -1229,7 +1319,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (b.delete) platform.setSetting('announcements', s.announcements.filter((a) => a.id !== b.delete));
     else {
       const a = { id: b.id || 'an-' + randomBytes(4).toString('hex'), text: String(b.text ?? '').slice(0, 300), link: b.link ? String(b.link).slice(0, 300) : undefined, kind: b.kind === 'warning' ? ('warning' as const) : ('news' as const), audience: ['all', 'owners', 'paying', 'trial', 'list'].includes(b.audience) ? b.audience : 'all', companies: Array.isArray(b.companies) ? b.companies.map(String) : [], from: b.from || now(), until: b.until || undefined, createdBy: email };
-      if (!a.text) return (json(res, 400, { error: 'Write the announcement first.' }), true);
+      if (!a.text) return (json(res, 400, { error: mark('Write the announcement first.') }), true);
       platform.setSetting('announcements', [a, ...s.announcements.filter((x) => x.id !== a.id)]);
     }
     log('announcement.save', null, String(b.text ?? b.delete ?? '').slice(0, 80));
@@ -1241,7 +1331,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const s = platform.settings();
     const flags = { ...s.flags };
     const key = String(b.key ?? '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    if (!key) return (json(res, 400, { error: 'Give the flag a name.' }), true);
+    if (!key) return (json(res, 400, { error: mark('Give the flag a name.') }), true);
     if (b.delete) delete flags[key];
     else flags[key] = { description: String(b.description ?? '').slice(0, 200), mode: ['off', 'on', 'list', 'percent'].includes(b.mode) ? b.mode : 'off', companies: Array.isArray(b.companies) ? b.companies.map(String) : [], percent: Math.max(0, Math.min(100, Number(b.percent) || 0)) };
     platform.setSetting('flags', flags);
@@ -1265,8 +1355,9 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (sub === 'broadcast/preview') return (json(res, 200, { count: to.length, sample: to.slice(0, 5) }), true);
     const subject = String(b.subject ?? '').trim();
     const text = String(b.body ?? '').trim();
-    if (!subject || !text) return (json(res, 400, { error: 'A subject and a message, please.' }), true);
-    for (const addr of to) await mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [addr], subject, text: `${text}\n\nYou get this because you own a company on sprint2go.` }).catch(() => null);
+    if (!subject || !text) return (json(res, 400, { error: mark('A subject and a message, please.') }), true);
+    // The operator's own words as they wrote them; the line under them in each owner's language.
+    for (const addr of to) await mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [addr], subject, text: `${text}\n\n${lang.inLang(lang.langOfEmail(addr), () => t('You get this because you own a company on sprint2go.'))}` }).catch(() => null);
     const s = platform.settings();
     platform.setSetting('broadcasts', [{ id: 'bc-' + randomBytes(4).toString('hex'), subject, audience, sent: to.length, at: now(), by: email }, ...s.broadcasts].slice(0, 100));
     log('broadcast.send', null, `${subject} to ${to.length} owners (${audience})`);
@@ -1336,7 +1427,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('platform')) return true;
     const file = (url.searchParams.get('file') ?? '').replace(/[^a-z0-9._-]/gi, '');
     const path = join(db.dataDir, 'backups', file);
-    if (!file || !existsSync(path)) return (json(res, 404, { error: 'No such backup.' }), true);
+    if (!file || !existsSync(path)) return (json(res, 404, { error: mark('No such backup.') }), true);
     log('system.backup-download', null, file);
     res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename="${file}"`, 'content-length': statSync(path).size });
     res.end(readFileSync(path));
@@ -1364,10 +1455,10 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const b = await body(req);
     const mail = String(b.email ?? '').trim().toLowerCase();
     const role = (platform.ROLES.includes(b.role) ? b.role : 'support') as platform.OpRole;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return (json(res, 400, { error: 'That email doesn’t look right.' }), true);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return (json(res, 400, { error: mark('That email doesn’t look right.') }), true);
     const cur = platform.operator(mail);
-    if ((role === 'owner' || cur?.role === 'owner') && op.role !== 'owner') return (json(res, 403, { error: 'Only an owner can make or change owners.' }), true);
-    if (cur?.role === 'owner' && role !== 'owner' && platform.operators().filter((o) => o.role === 'owner' && !o.disabled).length < 2) return (json(res, 409, { error: 'Keep at least one owner.' }), true);
+    if ((role === 'owner' || cur?.role === 'owner') && op.role !== 'owner') return (json(res, 403, { error: mark('Only an owner can make or change owners.') }), true);
+    if (cur?.role === 'owner' && role !== 'owner' && platform.operators().filter((o) => o.role === 'owner' && !o.disabled).length < 2) return (json(res, 409, { error: mark('Keep at least one owner.') }), true);
     platform.saveOperator(mail, role, email);
     // They need an account in the app; new ones get an invite link, and join our own company if one is set.
     let u = (db.allDocs('users') as any[]).find((x) => emailOf(x) === mail && !x.deletedAt);
@@ -1387,9 +1478,9 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     if (deny('team')) return true;
     const b = await body(req);
     const target = platform.operator(String(b.email ?? ''));
-    if (!target) return (json(res, 404, { error: 'Not on the team.' }), true);
-    if (target.role === 'owner' && op.role !== 'owner') return (json(res, 403, { error: 'Only an owner can remove an owner.' }), true);
-    if (target.role === 'owner' && platform.operators().filter((o) => o.role === 'owner' && !o.disabled).length < 2) return (json(res, 409, { error: 'Keep at least one owner.' }), true);
+    if (!target) return (json(res, 404, { error: mark('Not on the team.') }), true);
+    if (target.role === 'owner' && op.role !== 'owner') return (json(res, 403, { error: mark('Only an owner can remove an owner.') }), true);
+    if (target.role === 'owner' && platform.operators().filter((o) => o.role === 'owner' && !o.disabled).length < 2) return (json(res, 409, { error: mark('Keep at least one owner.') }), true);
     platform.removeOperator(target.email);
     log('team.remove', target.email);
     return (json(res, 200, { ok: true }), true);

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, KeyRound, Plus, RefreshCw, RotateCcw, Sparkles, TrendingDown } from 'lucide-react';
 import { Select, type Option } from '../../components/ui/Select';
 import { CRED_FIELDS, PROVIDERS } from '../../data/aiCatalog';
-import { ApiError, day, get, post, rel, rp, rpShort } from '../api';
+import { ApiError, STATE_LABEL, day, get, post, rel, rp, rpShort } from '../api';
 import { Badge, Confirm, Dialog, Empty, Failed, Field, Loading, Menu, MoneyInput, Page, Section, Stat, Stats, Tabs, useAct, useAdmin, useApi } from '../ui';
+import { t, tn, tx } from '../../i18n';
+import { fmtList, fmtNumber, fmtPercent } from '../../i18n/format';
 
 interface Choice {
   provider: string;
@@ -94,11 +96,12 @@ interface AIData {
   problems: { kind: string; text: string; level: 'high' | 'normal'; to: string }[];
 }
 
-const usd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
-const list = (xs: string[], max = 3) => (xs.length <= max ? xs.join(xs.length === 2 ? ' and ' : ', ').replace(/, ([^,]*)$/, ' and $1') : `${xs.slice(0, max).join(', ')} and ${xs.length - max} more`);
+const usd = (n: number) => `$${fmtNumber(n, { maximumFractionDigits: 4 })}`;
+/** "a, b and c", or "a, b, c and 2 more" past `max`, in the console's language. */
+const list = (xs: string[], max = 3) => (xs.length <= max ? fmtList(xs) : t('{names} and {n} more', { names: xs.slice(0, max).join(', '), n: xs.length - max }));
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-/** A job's name inside a sentence: "brain dump & briefs", but "Ask AI" stays a name. */
-const jobWord = (name: string) => (/^Ask AI/.test(name) ? name : lower(name));
+/** A job's name inside a sentence: "brain dump & briefs", but "Ask AI" (in either language) stays a name. */
+const jobWord = (name: string) => (/^Ask AI/.test(name) || name.startsWith(t('Ask AI')) ? name : lower(name));
 /** The company behind a provider, for its mark: "Claude (Anthropic)" is A. */
 const markOf = (name: string) => (name.match(/\(([^)]+)\)/)?.[1] ?? name).charAt(0);
 
@@ -110,15 +113,15 @@ export function AIPage({ tab }: { tab: string }) {
   const modelIssues = data?.problems.filter((p) => p.to === '/admin/ai/models').length ?? 0;
   const priceIssues = data ? data.problems.filter((p) => p.to === '/admin/ai/prices').length : 0;
   return (
-    <Page title="AI" sub="Our keys, the model for each job, and whether the AI plan pays for itself. Only AI-plan companies, trials and free months use our keys.">
+    <Page title={t('AI')} sub={t('Our keys, the model for each job, and whether the AI plan pays for itself. Only AI-plan companies, trials and free months use our keys.')}>
       <Tabs
         value={tab}
-        onChange={(t) => go(`/admin/ai/${t}`)}
+        onChange={(id) => go(`/admin/ai/${id}`)}
         items={[
-          { id: 'margin', label: 'Margin' },
-          { id: 'keys', label: 'Our keys', count: keyIssues },
-          { id: 'models', label: 'Models per job', count: modelIssues },
-          { id: 'prices', label: 'Prices', count: priceIssues },
+          { id: 'margin', label: t('Margin') },
+          { id: 'keys', label: t('Our keys'), count: keyIssues },
+          { id: 'models', label: t('Models per job'), count: modelIssues },
+          { id: 'prices', label: t('Prices'), count: priceIssues },
         ]}
       />
       <div className="adm-tab-body" key={tab}>
@@ -130,7 +133,13 @@ export function AIPage({ tab }: { tab: string }) {
 
 /* ---------- margin: lead with the verdict ---------- */
 
-const WHY_LABEL = { trial: 'Trial', comp: 'Free months', internal: 'Ours', other: 'Not on the AI plan' } as const;
+/** Why a company uses our AI without paying for it: getters, so each read gives the console's language. */
+const WHY_LABEL: Record<'trial' | 'comp' | 'internal' | 'other', string> = {
+  get trial() { return STATE_LABEL.trial; },
+  get comp() { return STATE_LABEL.comp; },
+  get internal() { return tx('company', 'Ours'); },
+  get other() { return t('Not on the AI plan'); },
+};
 function Margin({ d }: { d: AIData }) {
   const { go } = useAdmin();
   const m = d.money;
@@ -146,7 +155,7 @@ function Margin({ d }: { d: AIData }) {
           <AlertTriangle size={16} />
           <span>{down.text}</span>
           <button className="ghost-btn sm" onClick={() => go('/admin/ai/keys')}>
-            Add a key
+            {t('Add a key')}
           </button>
         </div>
       )}
@@ -156,30 +165,28 @@ function Margin({ d }: { d: AIData }) {
       </div>
       {(m.companies > 0 || m.cost > 0) && (
         <Stats>
-          <Stat i={0} label="The AI plan earns" value={rpShort(m.earned)} hint={`this month, from ${m.companies} paying ${m.companies === 1 ? 'company' : 'companies'}`} />
-          <Stat i={1} label="Their AI cost so far" value={rpShort(m.cost)} hint={`day ${today} of ${days}`} />
-          <Stat i={2} label="By the end of the month" value={rpShort(m.forecast)} hint="at the pace so far" />
+          <Stat i={0} label={t('The AI plan earns')} value={rpShort(m.earned)} hint={tn(m.companies, 'this month, from {n} paying company', 'this month, from {n} paying companies')} />
+          <Stat i={1} label={t('Their AI cost so far')} value={rpShort(m.cost)} hint={t('day {day} of {days}', { day: today, days })} />
+          <Stat i={2} label={t('By the end of the month')} value={rpShort(m.forecast)} hint={t('at the pace so far')} />
           <Stat
             i={3}
-            label="Margin"
+            label={t('Margin')}
             value={m.margin < 0 ? `−${rpShort(-m.margin)}` : rpShort(m.margin)}
             tone={m.margin < 0 ? 'bad' : undefined}
-            hint={!m.earned ? 'nothing earned yet' : m.margin >= 0 ? `${Math.round((m.margin / m.earned) * 100)}% of what it earns` : `AI costs ${(m.forecast / m.earned).toLocaleString('id-ID', { maximumFractionDigits: 1 })}× what it earns`}
+            hint={!m.earned ? t('nothing earned yet') : m.margin >= 0 ? t('{share} of what it earns', { share: fmtPercent(m.margin / m.earned) }) : t('AI costs {times}× what it earns', { times: fmtNumber(m.forecast / m.earned, { maximumFractionDigits: 1 }) })}
           />
         </Stats>
       )}
       {m.losing.length > 0 && (
-        <Section title="Costing more than they pay" hint="At the pace so far this month">
+        <Section title={t('Costing more than they pay')} hint={t('At the pace so far this month')}>
           <div className="adm-mini-list">
             {m.losing.map((c) => (
               <button key={c.id} type="button" className="adm-ai-line" onClick={() => go(`/admin/companies/${c.id}`)}>
                 <span className="grow adm-ai-two">
                   <strong>{c.name}</strong>
-                  <small>
-                    {c.plan} · pays {rp(c.earned)} for AI, AI heading for {rp(c.forecast)}
-                  </small>
+                  <small>{t('{plan} · pays {earned} for AI, AI heading for {forecast}', { plan: c.plan, earned: rp(c.earned), forecast: rp(c.forecast) })}</small>
                 </span>
-                <Badge tone="bad">{rpShort(c.forecast - c.earned)} short</Badge>
+                <Badge tone="bad">{t('{amount} short', { amount: rpShort(c.forecast - c.earned) })}</Badge>
               </button>
             ))}
           </div>
@@ -189,33 +196,38 @@ function Margin({ d }: { d: AIData }) {
         <div className="adm-banner warn">
           <AlertTriangle size={16} />
           <span>
-            {list(m.unpriced.map((u) => u.name))} ran {m.unpriced.reduce((n, u) => n + u.uses, 0).toLocaleString('id-ID')} times this month without a price, so that cost isn’t counted above.
+            {tn(
+              m.unpriced.reduce((n, u) => n + u.uses, 0),
+              '{models} ran {n} time this month without a price, so that cost isn’t counted above.',
+              '{models} ran {n} times this month without a price, so that cost isn’t counted above.',
+              { models: list(m.unpriced.map((u) => u.name)) },
+            )}
           </span>
           <button className="ghost-btn sm" onClick={() => go('/admin/ai/prices')}>
-            Add prices
+            {t('Add prices')}
           </button>
         </div>
       )}
       {m.jobs.length > 0 && (
-        <Section title="Cost per job" hint="This month, everyone on our AI">
+        <Section title={t('Cost per job')} hint={t('This month, everyone on our AI')}>
           <div className="adm-mini-list">
             {m.jobs.map((j) => (
               <div key={j.job} className="adm-mini-row">
                 <span className="grow adm-ai-two">
                   <strong>{j.name}</strong>
                   <small>
-                    {j.uses.toLocaleString('id-ID')} {j.uses === 1 ? 'use' : 'uses'} · {j.models.join(', ')}
-                    {j.cost > 0 ? ` · ${rp(j.perUse)} each` : ''}
+                    {tn(j.uses, '{n} use', '{n} uses')} · {j.models.join(', ')}
+                    {j.cost > 0 ? ` · ${t('{price} each', { price: rp(j.perUse) })}` : ''}
                   </small>
                 </span>
-                <span className="adm-num-r">{j.cost > 0 ? rp(j.cost) : <span className="muted">no price</span>}</span>
+                <span className="adm-num-r">{j.cost > 0 ? rp(j.cost) : <span className="muted">{t('no price')}</span>}</span>
               </div>
             ))}
           </div>
         </Section>
       )}
       {m.other.length > 0 && (
-        <Section title="Not paying for AI yet" hint={`${rp(m.otherCost)} of AI this month with nothing earned`}>
+        <Section title={t('Not paying for AI yet')} hint={t('{amount} of AI this month with nothing earned', { amount: rp(m.otherCost) })}>
           <div className="adm-mini-list">
             {m.other.map((c) => (
               <button key={c.id} type="button" className="adm-ai-line" onClick={() => go(`/admin/companies/${c.id}`)}>
@@ -264,30 +276,30 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
   const test = (k: KeyRow) => {
     setTesting(k.id);
     void post<{ ok: boolean; error: string | null }>('ai/key/test', { provider: k.provider, source: k.source })
-      .then((r) => toast(r.ok ? `${k.name} key works` : `${k.name} key failed: ${r.error}`), (e: Error) => toast(e.message))
+      .then((r) => toast(r.ok ? t('{provider} key works', { provider: k.name }) : t('{provider} key failed: {error}', { provider: k.name, error: r.error ?? t('no answer') })), (e: Error) => toast(e.message))
       .finally(() => (setTesting(null), reload()));
   };
   return (
     <>
       <Section
-        title="Our keys"
-        hint="Encrypted on the server; only the last 4 characters come back"
+        title={t('Our keys')}
+        hint={t('Encrypted on the server; only the last 4 characters come back')}
         actions={
           d.can && (
             <button className="primary-btn sm" onClick={() => setAdding({ provider: null })}>
-              <Plus size={13} /> Add a key
+              <Plus size={13} /> {t('Add a key')}
             </button>
           )
         }
       >
         {d.keys.length === 0 ? (
-          <Empty title="No keys yet" text="AI-plan companies can’t use AI until a job has a working key. Start with the provider most jobs use." />
+          <Empty title={t('No keys yet')} text={t('AI-plan companies can’t use AI until a job has a working key. Start with the provider most jobs use.')} />
         ) : (
           <div className="adm-mini-list">
             {d.keys.map((k) => {
               const failing = !!k.failedAt && (!k.usedAt || k.failedAt > k.usedAt);
-              const state = !k.on ? 'Switched off' : k.source === 'server' && !k.inUse ? 'Standby: the saved Claude key goes first' : failing ? `Failed ${rel(k.failedAt!)}: ${k.failError}` : k.usedAt ? `Last answered ${rel(k.usedAt)}` : 'Not used yet';
-              const tested = k.testedAt ? (k.testOk ? `tested ${rel(k.testedAt)}` : `test failed ${rel(k.testedAt)}: ${k.testError}`) : null;
+              const state = !k.on ? t('Switched off') : k.source === 'server' && !k.inUse ? t('Standby: the saved Claude key goes first') : failing ? t('Failed {when}: {error}', { when: rel(k.failedAt!), error: k.failError ?? t('no answer') }) : k.usedAt ? t('Last answered {when}', { when: rel(k.usedAt) }) : t('Not used yet');
+              const tested = k.testedAt ? (k.testOk ? t('tested {when}', { when: rel(k.testedAt) }) : t('test failed {when}: {error}', { when: rel(k.testedAt), error: k.testError ?? t('no answer') })) : null;
               return (
                 <div key={k.id} className={`adm-mini-row adm-ai-key ${leaving === k.id ? 'leaving' : ''} ${k.on ? '' : 'off'}`}>
                   <span className="adm-ai-mark" aria-hidden>
@@ -296,40 +308,40 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
                   <span className="grow adm-ai-two">
                     <strong>
                       {k.name} <span className="adm-ai-last4">•••• {k.last4}</span>
-                      {k.source === 'server' && <Badge tone="info">From the server settings</Badge>}
+                      {k.source === 'server' && <Badge tone="info">{t('From the server settings')}</Badge>}
                     </strong>
                     <small className={failing && k.on ? 'adm-ai-bad' : ''}>
                       {state}
                       {tested ? ` · ${tested}` : ''}
                     </small>
                     <small>
-                      {k.jobs.length ? `Picked for ${list(k.jobs.map((j) => jobWord(jobName(j))))}` : 'Not picked for any job'}
-                      {k.addedBy ? ` · added by ${k.addedBy.split(' ')[0]} ${day(k.addedAt)}` : ''}
+                      {k.jobs.length ? t('Picked for {jobs}', { jobs: list(k.jobs.map((j) => jobWord(jobName(j)))) }) : t('Not picked for any job')}
+                      {k.addedBy ? ` · ${t('added by {name} {date}', { name: k.addedBy.split(' ')[0], date: day(k.addedAt) })}` : ''}
                     </small>
                   </span>
                   {d.can && (
                     <span className="adm-ai-acts">
                       <button className="ghost-btn sm" disabled={testing === k.id} onClick={() => test(k)}>
-                        {testing === k.id ? 'Testing…' : 'Test'}
+                        {testing === k.id ? t('Testing…') : tx('verb', 'Test')}
                       </button>
                       <button
                         type="button"
                         role="switch"
                         aria-checked={k.on}
-                        aria-label={`${k.name} key ${k.on ? 'on' : 'off'}`}
-                        title={k.on ? 'Switch off' : 'Switch on'}
+                        aria-label={k.on ? t('{provider} key on', { provider: k.name }) : t('{provider} key off', { provider: k.name })}
+                        title={k.on ? t('Switch off') : t('Switch on')}
                         className={`switch ${k.on ? 'on' : ''}`}
-                        onClick={() => void act(() => post('ai/key/switch', { provider: k.provider, source: k.source, on: !k.on }), k.on ? `${k.name} key switched off` : `${k.name} key switched on`)}
+                        onClick={() => void act(() => post('ai/key/switch', { provider: k.provider, source: k.source, on: !k.on }), k.on ? t('{provider} key switched off', { provider: k.name }) : t('{provider} key switched on', { provider: k.name }))}
                       >
                         <span />
                       </button>
                       {k.source === 'saved' && (
                         <Menu
-                          label="More"
+                          label={t('More')}
                           items={[
-                            ...(isText(k.provider) ? [{ label: 'Choose its model', hint: 'For every job, or the best match for each', run: () => setChoosing(k.provider) }] : []),
-                            { label: 'Replace the key', hint: 'Test a new one, then swap', run: () => setAdding({ provider: k.provider, rotate: true }) },
-                            { label: 'Remove', danger: true, run: () => setRemoving(k) },
+                            ...(isText(k.provider) ? [{ label: t('Choose its model'), hint: t('For every job, or the best match for each'), run: () => setChoosing(k.provider) }] : []),
+                            { label: t('Replace the key'), hint: t('Test a new one, then swap'), run: () => setAdding({ provider: k.provider, rotate: true }) },
+                            { label: t('Remove'), danger: true, run: () => setRemoving(k) },
                           ]}
                         />
                       )}
@@ -340,17 +352,17 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
             })}
           </div>
         )}
-        {d.keys.some((k) => k.source === 'server') && <p className="adm-note">The key from the server settings (ANTHROPIC_API_KEY) can be tested and switched off here. To remove it, take it out of the server settings; a saved Claude key goes first anyway.</p>}
+        {d.keys.some((k) => k.source === 'server') && <p className="adm-note">{t('The key from the server settings (ANTHROPIC_API_KEY) can be tested and switched off here. To remove it, take it out of the server settings; a saved Claude key goes first anyway.')}</p>}
       </Section>
       {needed.length > 0 && (
         <Section
-          title="Picked for a job, but no key"
-          hint="Those jobs use their fallback, or don’t run"
+          title={t('Picked for a job, but no key')}
+          hint={t('Those jobs use their fallback, or don’t run')}
           actions={
             d.can &&
             textKeyOn && (
-              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset', { noKeyOnly: true }), 'Those jobs now use the best match on our keys').then(reload)}>
-                Use our keys for these
+              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset', { noKeyOnly: true }), t('Those jobs now use the best match on our keys')).then(reload)}>
+                {t('Use our keys for these')}
               </button>
             )
           }
@@ -361,16 +373,16 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
                 <KeyRound size={15} />
                 <span className="grow adm-ai-two">
                   <strong>{n.name}</strong>
-                  <small>For {list(n.jobs.map(jobWord))}</small>
+                  <small>{t('For {jobs}', { jobs: list(n.jobs.map(jobWord)) })}</small>
                 </span>
                 {d.can &&
                   (d.keys.some((k) => k.provider === n.id && k.source === 'saved' && !k.on) ? (
-                    <button className="ghost-btn sm" onClick={() => void act(() => post('ai/key/switch', { provider: n.id, source: 'saved', on: true }), `${n.name} key switched on`)}>
-                      Switch on
+                    <button className="ghost-btn sm" onClick={() => void act(() => post('ai/key/switch', { provider: n.id, source: 'saved', on: true }), t('{provider} key switched on', { provider: n.name }))}>
+                      {t('Switch on')}
                     </button>
                   ) : (
                     <button className="ghost-btn sm" onClick={() => setAdding({ provider: n.id })}>
-                      Add key
+                      {t('Add key')}
                     </button>
                   ))}
               </div>
@@ -397,9 +409,9 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
       {choosing && <ChooseModel provider={choosing} name={d.providers.find((p) => p.id === choosing)?.name ?? choosing} onClose={() => setChoosing(null)} onDone={(text) => (setChoosing(null), toast(text), reload())} />}
       {removing && (
         <Confirm
-          title={`Remove the ${removing.name} key?`}
-          text={removing.jobs.length ? `${list(removing.jobs.map(jobName))} will use their fallback, or stop for AI-plan companies until there’s another key.` : 'No job uses it right now.'}
-          action="Remove key"
+          title={t('Remove the {provider} key?', { provider: removing.name })}
+          text={removing.jobs.length ? t('{Jobs} will use their fallback, or stop for AI-plan companies until there’s another key.', { jobs: list(removing.jobs.map(jobName)) }) : t('No job uses it right now.')}
+          action={t('Remove key')}
           danger
           onClose={() => setRemoving(null)}
           onConfirm={async () => {
@@ -408,7 +420,7 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
             setRemoving(null);
             if (!done) return;
             setLeaving(k.id);
-            toast(`${k.name} key removed`);
+            toast(t('{provider} key removed', { provider: k.name }));
             setTimeout(() => (setLeaving(null), reload()), 200);
           }}
         />
@@ -427,28 +439,28 @@ function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: s
   const info = d.providers.find((p) => p.id === provider);
   const cred = provider ? CRED_FIELDS[provider as keyof typeof CRED_FIELDS] : undefined;
   const ready = !!info && (cred ? cred.fields.every((f) => f.optional || fields[f.key]?.trim()) : key.trim().length >= 8 && (!info.needsUrl || !!url.trim()));
-  const KIND = { direct: 'Direct', gateway: 'One key, many models', cloud: 'Cloud account', private: 'Private', speech: 'Speech to text' } as Record<string, string>;
-  const options: Option[] = d.providers.filter((p) => p.supported).map((p) => ({ value: p.id, label: p.name, hint: p.saved ? 'has a key' : undefined, group: KIND[p.kind] ?? p.kind }));
+  const KIND = { direct: t('Direct'), gateway: t('One key, many models'), cloud: t('Cloud account'), private: t('Private'), speech: t('Speech to text') } as Record<string, string>;
+  const options: Option[] = d.providers.filter((p) => p.supported).map((p) => ({ value: p.id, label: p.name, hint: p.saved ? t('has a key') : undefined, group: KIND[p.kind] ?? p.kind }));
   const save = () => {
     if (!ready || !info) return;
     setBusy(true);
     setErr(null);
     const packed = cred ? JSON.stringify(Object.fromEntries(cred.fields.map((f) => [f.key, (fields[f.key] ?? '').trim()]))) : key.trim();
     void post<{ last4: string }>('ai/key', { provider, key: packed, baseUrl: cred ? (fields[cred.url] ?? '').trim() || undefined : url.trim() || undefined })
-      .then((r) => onDone(`${info.name} key ${rotate ? 'replaced' : 'added'} (•••• ${r.last4}). It worked on a test call.`, provider ?? undefined), (e: ApiError) => setErr(e.message))
+      .then((r) => onDone(rotate ? t('{provider} key replaced (•••• {last4}). It worked on a test call.', { provider: info.name, last4: r.last4 }) : t('{provider} key added (•••• {last4}). It worked on a test call.', { provider: info.name, last4: r.last4 }), provider ?? undefined), (e: ApiError) => setErr(e.message))
       .finally(() => setBusy(false));
   };
   return (
     <Dialog
-      title={rotate && info ? `Replace the ${info.name} key` : 'Add a key'}
+      title={rotate && info ? t('Replace the {provider} key', { provider: info.name }) : t('Add a key')}
       onClose={onClose}
       foot={
         <>
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" disabled={!ready || busy} onClick={save}>
-            {busy ? 'Testing…' : 'Test and save'}
+            {busy ? t('Testing…') : t('Test and save')}
           </button>
         </>
       }
@@ -461,8 +473,8 @@ function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: s
         }}
       >
         {!rotate && (
-          <Field label="Provider">
-            <Select value={provider} options={options} onChange={(v) => (setProvider(v), setErr(null), setFields({}), setKey(''), setUrl(''))} placeholder="Choose a provider" label="Provider" searchable width={340} />
+          <Field label={t('Provider')}>
+            <Select value={provider} options={options} onChange={(v) => (setProvider(v), setErr(null), setFields({}), setKey(''), setUrl(''))} placeholder={t('Choose a provider')} label={t('Provider')} searchable width={340} />
           </Field>
         )}
         {info?.warn && (
@@ -473,7 +485,7 @@ function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: s
         {info && cred && (
           <>
             {cred.fields.map((f) => (
-              <Field key={f.key} label={f.label + (f.optional ? ' (optional)' : '')}>
+              <Field key={f.key} label={f.optional ? t('{label} (optional)', { label: f.label }) : f.label}>
                 {f.multiline ? (
                   <textarea rows={5} spellCheck={false} autoComplete="off" value={fields[f.key] ?? ''} placeholder={f.placeholder} onChange={(e) => (setFields({ ...fields, [f.key]: e.target.value }), setErr(null))} className="adm-ai-secret-area" />
                 ) : (
@@ -487,17 +499,17 @@ function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: s
         {info && !cred && (
           <>
             {info.needsUrl && (
-              <Field label="Address" hint="Must start with https://">
+              <Field label={t('Address')} hint={t('Must start with https://')}>
                 <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" autoComplete="off" />
               </Field>
             )}
-            <Field label="Key" hint={info.keyHint}>
+            <Field label={t('Key')} hint={info.keyHint}>
               <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => (setKey(e.target.value), setErr(null))} autoFocus={rotate} />
             </Field>
           </>
         )}
         {err && <p className="err">{err}</p>}
-        {info && <p className="adm-note">We send one tiny request with it first. It’s saved only if that works, encrypted, and only the last 4 characters are shown again.</p>}
+        {info && <p className="adm-note">{t('We send one tiny request with it first. It’s saved only if that works, encrypted, and only the last 4 characters are shown again.')}</p>}
       </form>
     </Dialog>
   );
@@ -519,7 +531,7 @@ function ChooseModel({ provider, name, onClose, onDone }: { provider: string; na
     void get<AIData>('ai').then(setData, (e: Error) => setFailed(e.message));
   }, []);
   const mine = (data?.options.text ?? []).filter((o) => o.provider === provider && !o.gone);
-  const options: Option[] = mine.map((o) => ({ value: o.model, label: o.name, hint: o.price ? `${usd(o.price[0])} / ${usd(o.price[1])} per million` : 'price unknown', group: o.recommended ? 'Recommended' : 'More models', keywords: o.model }));
+  const options: Option[] = mine.map((o) => ({ value: o.model, label: o.name, hint: o.price ? t('{in} / {out} per million', { in: usd(o.price[0]), out: usd(o.price[1]) }) : t('price unknown'), group: o.recommended ? t('Recommended') : t('More models'), keywords: o.model }));
   const onThis = (data?.jobs ?? []).filter((j) => j.id !== 'speech' && j.primary.provider === provider);
   const save = async () => {
     setBusy(true);
@@ -530,19 +542,19 @@ function ChooseModel({ provider, name, onClose, onDone }: { provider: string; na
     setBusy(false);
     if (!ok) return;
     const label = mine.find((o) => o.model === model)?.name ?? model;
-    onDone(mode === 'one' ? `Every job now uses ${label} on ${name}` : `Each job uses the best match on our keys`);
+    onDone(mode === 'one' ? t('Every job now uses {model} on {provider}', { model: label ?? '', provider: name }) : t('Each job uses the best match on our keys'));
   };
   return (
     <Dialog
-      title={`Which model should ${name} use?`}
+      title={t('Which model should {provider} use?', { provider: name })}
       onClose={onClose}
       foot={
         <>
           <button className="ghost-btn" onClick={onClose}>
-            Not now
+            {t('Not now')}
           </button>
           <button className="primary-btn" disabled={busy || !data || (mode === 'one' && !model)} onClick={() => void save()}>
-            {busy ? 'Saving…' : 'Save'}
+            {busy ? t('Saving…') : t('Save')}
           </button>
         </>
       }
@@ -554,18 +566,18 @@ function ChooseModel({ provider, name, onClose, onDone }: { provider: string; na
           <Loading rows={3} />
         ) : (
           <>
-            <div className="segmented sm" role="tablist" aria-label="How jobs pick a model">
+            <div className="segmented sm" role="tablist" aria-label={t('How jobs pick a model')}>
               <button type="button" role="tab" aria-selected={mode === 'auto'} className={mode === 'auto' ? 'on' : ''} onClick={() => setMode('auto')}>
-                Best match for each job
+                {t('Best match for each job')}
               </button>
               <button type="button" role="tab" aria-selected={mode === 'one'} className={mode === 'one' ? 'on' : ''} onClick={() => setMode('one')}>
-                One model for every job
+                {t('One model for every job')}
               </button>
             </div>
             {mode === 'auto' ? (
               <>
                 <p className="adm-note">
-                  Each job runs on the model it was made for, or the closest one our keys have, with a strong model for heavy jobs like Ask AI and a fast one for light jobs. Jobs set by hand to a provider we have no key for move too.
+                  {t('Each job runs on the model it was made for, or the closest one our keys have, with a strong model for heavy jobs like Ask AI and a fast one for light jobs. Jobs set by hand to a provider we have no key for move too.')}
                 </p>
                 {onThis.length > 0 && (
                   <div className="adm-mini-list">
@@ -579,8 +591,8 @@ function ChooseModel({ provider, name, onClose, onDone }: { provider: string; na
                 )}
               </>
             ) : (
-              <Field label="Model" hint={mine.length ? `${mine.length} models from ${name}’s own list` : `${name} didn’t list its models; try again in a minute`}>
-                <Select value={model} options={options} onChange={setModel} placeholder="Choose a model" label="Model" searchable width={420} />
+              <Field label={t('Model')} hint={mine.length ? tn(mine.length, '{n} model from {provider}’s own list', '{n} models from {provider}’s own list', { provider: name }) : t('{provider} didn’t list its models; try again in a minute', { provider: name })}>
+                <Select value={model} options={options} onChange={setModel} placeholder={t('Choose a model')} label={t('Model')} searchable width={420} />
               </Field>
             )}
           </>
@@ -592,11 +604,12 @@ function ChooseModel({ provider, name, onClose, onDone }: { provider: string; na
 
 /* ---------- the model for each job ---------- */
 
-const GROUPS: [string, string[]][] = [
-  ['Meetings', ['meeting', 'speech']],
-  ['Asking and planning', ['ask', 'braindump']],
-  ['Email', ['draft', 'summary', 'replies', 'todos']],
-  ['Behind the scenes', ['sorting', 'digest', 'translate']],
+/** The jobs in groups; a function, so the names are in the console's language when it's drawn. */
+const groups = (): { id: string; name: string; jobs: string[] }[] => [
+  { id: 'meetings', name: t('Meetings'), jobs: ['meeting', 'speech'] },
+  { id: 'asking', name: t('Asking and planning'), jobs: ['ask', 'braindump'] },
+  { id: 'email', name: t('Email'), jobs: ['draft', 'summary', 'replies', 'todos'] },
+  { id: 'behind', name: t('Behind the scenes'), jobs: ['sorting', 'digest', 'translate'] },
 ];
 function Models({ d, reload }: { d: AIData; reload: () => void }) {
   const act = useAct();
@@ -610,7 +623,7 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
     (speech ? d.options.speech : d.options.text).filter((o) => o.hasKey || !anyKey(speech) || inUse.has(`${o.provider}|${o.model}`)).map((o) => ({
       value: `${o.provider}|${o.model}`,
       label: o.name,
-      hint: o.gone ? 'no longer offered: pick another' : !o.hasKey ? 'no key yet' : speech ? undefined : o.price ? `${usd(o.price[0])} / ${usd(o.price[1])}` : 'no price yet',
+      hint: o.gone ? t('no longer offered: pick another') : !o.hasKey ? t('no key yet') : speech ? undefined : o.price ? `${usd(o.price[0])} / ${usd(o.price[1])}` : t('no price yet'),
       group: o.providerName,
       keywords: `${o.providerName} ${o.model}`,
     }));
@@ -620,7 +633,7 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
   const gone = d.jobs.filter((j) => j.gone);
   const refresh = () => {
     setRefreshing(true);
-    void act(() => post('ai/models/refresh'), 'Read the providers’ model lists again')
+    void act(() => post('ai/models/refresh'), t('Read the providers’ model lists again'))
       .then(reload)
       .finally(() => setRefreshing(false));
   };
@@ -628,12 +641,12 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
     const [provider, model] = v.split('|');
     return { provider, model };
   };
-  const save = (j: JobRow, primary: Choice, fallback: Choice | null) => void act(() => post('ai/job', { job: j.id, primary, fallback }), `${j.name}: saved`).then(reload);
+  const save = (j: JobRow, primary: Choice, fallback: Choice | null) => void act(() => post('ai/job', { job: j.id, primary, fallback }), t('{job}: saved', { job: j.name })).then(reload);
   // The chosen model with its provider: the same model is sold by several gateways.
   const shown = (o: Option | undefined) => (
     <>
       <span className="sel-text">
-        {o?.label ?? 'Choose'}
+        {o?.label ?? t('Choose')}
         {o?.group && <em className="adm-ai-selprov"> · {o.group.match(/\(([^)]+)\)/)?.[1] ?? o.group}</em>}
       </span>
       <ChevronDown size={14} className="sel-chev" />
@@ -642,19 +655,19 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
   const custom = d.jobs.some((j) => !j.isDefault);
   return (
     <Section
-      title="Which model does each job"
-      hint="For AI-plan companies. Until you pick, each job uses the recommended model on the keys we have. The fallback takes over when the first one fails."
+      title={t('Which model does each job')}
+      hint={t('For AI-plan companies. Until you pick, each job uses the recommended model on the keys we have. The fallback takes over when the first one fails.')}
       actions={
         d.can && (
           <>
             {d.lists.length > 0 && (
-              <button className="ghost-btn sm" disabled={refreshing} onClick={refresh} title="Read each provider’s model list again">
-                <RefreshCw size={13} className={refreshing ? 'spin' : ''} /> {refreshing ? 'Reading lists…' : 'Check for new models'}
+              <button className="ghost-btn sm" disabled={refreshing} onClick={refresh} title={t('Read each provider’s model list again')}>
+                <RefreshCw size={13} className={refreshing ? 'spin' : ''} /> {refreshing ? t('Reading lists…') : t('Check for new models')}
               </button>
             )}
             {custom && (
-              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset'), 'Every job is back to automatic: the recommended model on our keys').then(reload)}>
-                <RotateCcw size={13} /> Back to automatic
+              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset'), t('Every job is back to automatic: the recommended model on our keys')).then(reload)}>
+                <RotateCcw size={13} /> {t('Back to automatic')}
               </button>
             )}
           </>
@@ -663,29 +676,39 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
     >
       {Array.from(new Set(gone.map((j) => j.gone!))).map((text) => {
         const js = gone.filter((j) => j.gone === text);
-        const words = list(js.map((j) => jobWord(j.name)));
+        const jobs = list(js.map((j) => jobWord(j.name)));
         const fallback = js.every((j) => j.state === 'fallback');
         return (
           <div key={text} className="adm-banner warn">
             <AlertTriangle size={16} />
             <span>
-              {text} {words.charAt(0).toUpperCase() + words.slice(1)} {fallback ? (js.length === 1 ? 'runs on its fallback' : 'run on their fallbacks') : js.length === 1 ? 'has nothing to run on' : 'run on a fallback where they have one'}. Pick another model below.
+              {text}{' '}
+              {fallback
+                ? tn(js.length, '{Jobs} runs on its fallback. Pick another model below.', '{Jobs} run on their fallbacks. Pick another model below.', { jobs })
+                : js.length === 1
+                  ? t('{Jobs} has nothing to run on. Pick another model below.', { jobs })
+                  : t('{Jobs} run on a fallback where they have one. Pick another model below.', { jobs })}
             </span>
           </div>
         );
       })}
       {(live.length > 0 || notListed.length > 0) && (
         <p className="adm-note adm-ai-lists">
-          {live.length > 0 && `Models for ${list(live.map((l) => l.name))} come from ${live.length === 1 ? 'its own list' : 'their own lists'} for our ${live.length === 1 ? 'key' : 'keys'}${oldest ? `, read ${rel(oldest)}` : ''}. `}
+          {live.length > 0 &&
+            `${
+              oldest
+                ? tn(live.length, 'Models for {providers} come from its own list for our key, read {when}.', 'Models for {providers} come from their own lists for our keys, read {when}.', { providers: list(live.map((l) => l.name)), when: rel(oldest) })
+                : tn(live.length, 'Models for {providers} come from its own list for our key.', 'Models for {providers} come from their own lists for our keys.', { providers: list(live.map((l) => l.name)) })
+            } `}
           {notListed.map((l) => `${l.name}: ${l.note}`).join(' ')}
         </p>
       )}
       <div className="adm-ai-groups">
-        {GROUPS.map(([g, ids]) => (
-          <div key={g} className="adm-ai-group">
-            <h3>{g}</h3>
+        {groups().map((g) => (
+          <div key={g.id} className="adm-ai-group">
+            <h3>{g.name}</h3>
             <div className="adm-mini-list">
-              {ids.map((id) => {
+              {g.jobs.map((id) => {
                 const j = d.jobs.find((x) => x.id === id);
                 if (!j) return null;
                 const o = opts(j.id === 'speech');
@@ -696,37 +719,37 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
                       <small>{j.hint}</small>
                     </span>
                     <span className="adm-ai-pick">
-                      <small>First</small>
-                      <Select className="sel-flat" value={`${j.primary.provider}|${j.primary.model}`} options={o} onChange={(v) => save(j, pick(v), j.fallback)} renderValue={shown} disabled={!d.can} searchable width={320} label={`${j.name}: first choice`} title={`${j.name}: first choice`} />
+                      <small>{t('First')}</small>
+                      <Select className="sel-flat" value={`${j.primary.provider}|${j.primary.model}`} options={o} onChange={(v) => save(j, pick(v), j.fallback)} renderValue={shown} disabled={!d.can} searchable width={320} label={t('{job}: first choice', { job: j.name })} title={t('{job}: first choice', { job: j.name })} />
                     </span>
                     <span className="adm-ai-pick">
-                      <small>If it fails</small>
+                      <small>{t('If it fails')}</small>
                       <Select
                         className="sel-flat"
                         value={j.fallback ? `${j.fallback.provider}|${j.fallback.model}` : 'none'}
-                        options={[{ value: 'none', label: 'No fallback' }, ...o.filter((x) => x.value !== `${j.primary.provider}|${j.primary.model}`)]}
+                        options={[{ value: 'none', label: t('No fallback') }, ...o.filter((x) => x.value !== `${j.primary.provider}|${j.primary.model}`)]}
                         onChange={(v) => save(j, j.primary, v === 'none' ? null : pick(v))}
                         renderValue={shown}
                         disabled={!d.can}
                         searchable
                         width={320}
-                        label={`${j.name}: fallback`}
-                        title={`${j.name}: fallback`}
+                        label={t('{job}: fallback', { job: j.name })}
+                        title={t('{job}: fallback', { job: j.name })}
                       />
                     </span>
                     <span className="adm-ai-job-state">
                       {j.gone ? (
-                        <Badge tone={j.state === 'fallback' ? 'warn' : 'bad'}>{j.state === 'fallback' ? 'Model gone, fallback runs' : 'Model gone'}</Badge>
+                        <Badge tone={j.state === 'fallback' ? 'warn' : 'bad'}>{j.state === 'fallback' ? t('Model gone, fallback runs') : t('Model gone')}</Badge>
                       ) : j.state === 'none' ? (
-                        <Badge tone="bad">No key</Badge>
+                        <Badge tone="bad">{t('No key')}</Badge>
                       ) : j.state === 'fallback' ? (
-                        <Badge tone="warn">Fallback in use</Badge>
+                        <Badge tone="warn">{t('Fallback in use')}</Badge>
                       ) : j.id === 'speech' ? (
-                        <small>per audio minute, not counted yet</small>
+                        <small>{t('per audio minute, not counted yet')}</small>
                       ) : j.per100 !== null ? (
-                        <small>{j.id === 'meeting' ? `≈ ${rp(j.per100 / 100)} per meeting hour` : `≈ ${rp(j.per100)} per 100 uses`}</small>
+                        <small>{j.id === 'meeting' ? t('≈ {price} per meeting hour', { price: rp(j.per100 / 100) }) : t('≈ {price} per 100 uses', { price: rp(j.per100) })}</small>
                       ) : (
-                        <Badge tone="warn">No price</Badge>
+                        <Badge tone="warn">{t('No price')}</Badge>
                       )}
                     </span>
                   </div>
@@ -764,18 +787,18 @@ function Prices({ d, reload }: { d: AIData; reload: () => void }) {
       const b = num(o);
       prices[model] = a !== null && b !== null && a >= 0 && b >= 0 ? [a, b] : null;
     }
-    void act(() => post('ai/prices', { prices, rate: draft.rate }), 'Prices saved: costs and allowances use them now').then(reload);
+    void act(() => post('ai/prices', { prices, rate: draft.rate }), t('Prices saved: costs and allowances use them now')).then(reload);
   };
   return (
     <>
       <Section
-        title="Dollar rate"
-        hint="Every cost in rupiah uses it"
+        title={t('Dollar rate')}
+        hint={t('Every cost in rupiah uses it')}
         actions={
           d.can &&
           custom && (
-            <button className="ghost-btn sm" onClick={() => void act(() => post('ai/prices/reset'), 'Back to list prices and Rp 17.500').then(reload)}>
-              <RotateCcw size={13} /> List prices
+            <button className="ghost-btn sm" onClick={() => void act(() => post('ai/prices/reset'), t('Back to list prices and {rate}', { rate: rp(d.defaultRate) })).then(reload)}>
+              <RotateCcw size={13} /> {t('List prices')}
             </button>
           )
         }
@@ -783,17 +806,17 @@ function Prices({ d, reload }: { d: AIData; reload: () => void }) {
         <div className="adm-inline">
           <span>US$1 =</span>
           <span className="adm-ai-rate">
-            <MoneyInput value={draft.rate} disabled={!d.can} onChange={(n) => setDraft({ ...draft, rate: n })} label="Rupiah per US dollar" />
+            <MoneyInput value={draft.rate} disabled={!d.can} onChange={(n) => setDraft({ ...draft, rate: n })} label={t('Rupiah per US dollar')} />
           </span>
           <span className="muted">rupiah</span>
         </div>
       </Section>
-      <Section title="Model prices" hint="US$ per million tokens. List prices to start with; change one when the bill says otherwise.">
+      <Section title={t('Model prices')} hint={t('US$ per million tokens. List prices to start with; change one when the bill says otherwise.')}>
         <div className="adm-ai-prices" role="table">
           <div className="adm-ai-price head" role="row">
-            <span role="columnheader">Model</span>
-            <span role="columnheader">In</span>
-            <span role="columnheader">Out</span>
+            <span role="columnheader">{t('Model')}</span>
+            <span role="columnheader">{tx('tokens', 'In')}</span>
+            <span role="columnheader">{tx('tokens', 'Out')}</span>
           </div>
           {rows.map((p) => {
             const [i, o] = draft.prices[p.model] ?? ['', ''];
@@ -802,21 +825,21 @@ function Prices({ d, reload }: { d: AIData; reload: () => void }) {
               <div key={p.model} className="adm-ai-price" role="row">
                 <span className="adm-ai-two" role="cell">
                   <strong>
-                    {p.name} {missing ? <Badge tone="warn">No price</Badge> : p.own && p.catalog ? <Badge>Changed</Badge> : null}
+                    {p.name} {missing ? <Badge tone="warn">{t('No price')}</Badge> : p.own && p.catalog ? <Badge>{t('Changed')}</Badge> : null}
                   </strong>
                   <small>
                     {p.providers.join(', ')}
                     {!PROVIDERS.some((pr) => pr.models.some((m) => m.id === p.model)) ? ` · ${p.model}` : ''}
                     {p.usedBy.length ? ` · ${list(p.usedBy.map((j) => jobWord(jobName(j))), 2)}` : ''}
-                    {p.uses ? ` · ${p.uses.toLocaleString('id-ID')} ${p.uses === 1 ? 'use' : 'uses'} this month` : ''}
-                    {p.own && p.catalog ? ` · list ${usd(p.catalog[0])} / ${usd(p.catalog[1])}` : ''}
+                    {p.uses ? ` · ${tn(p.uses, '{n} use this month', '{n} uses this month')}` : ''}
+                    {p.own && p.catalog ? ` · ${t('list {in} / {out}', { in: usd(p.catalog[0]), out: usd(p.catalog[1]) })}` : ''}
                   </small>
                 </span>
                 <span role="cell" className="adm-ai-usd">
-                  <input inputMode="decimal" value={i} placeholder="none" disabled={!d.can} aria-label={`${p.name} (${p.providers[0]}): US$ per million tokens in`} onChange={(e) => setDraft({ ...draft, prices: { ...draft.prices, [p.model]: [e.target.value.replace(/[^\d.,]/g, ''), o] } })} />
+                  <input inputMode="decimal" value={i} placeholder={t('none')} disabled={!d.can} aria-label={t('{model} ({provider}): US$ per million tokens in', { model: p.name, provider: p.providers[0] ?? '' })} onChange={(e) => setDraft({ ...draft, prices: { ...draft.prices, [p.model]: [e.target.value.replace(/[^\d.,]/g, ''), o] } })} />
                 </span>
                 <span role="cell" className="adm-ai-usd">
-                  <input inputMode="decimal" value={o} placeholder="none" disabled={!d.can} aria-label={`${p.name} (${p.providers[0]}): US$ per million tokens out`} onChange={(e) => setDraft({ ...draft, prices: { ...draft.prices, [p.model]: [i, e.target.value.replace(/[^\d.,]/g, '')] } })} />
+                  <input inputMode="decimal" value={o} placeholder={t('none')} disabled={!d.can} aria-label={t('{model} ({provider}): US$ per million tokens out', { model: p.name, provider: p.providers[0] ?? '' })} onChange={(e) => setDraft({ ...draft, prices: { ...draft.prices, [p.model]: [i, e.target.value.replace(/[^\d.,]/g, '')] } })} />
                 </span>
               </div>
             );
@@ -825,12 +848,12 @@ function Prices({ d, reload }: { d: AIData; reload: () => void }) {
       </Section>
       {d.can && (
         <div className={`adm-savebar ${changed ? 'show' : ''}`} aria-hidden={!changed}>
-          <span>Unsaved prices</span>
+          <span>{t('Unsaved prices')}</span>
           <button className="ghost-btn sm" onClick={() => setDraft(base)}>
-            Undo
+            {t('Undo')}
           </button>
           <button className="primary-btn sm" onClick={save}>
-            Save
+            {t('Save')}
           </button>
         </div>
       )}

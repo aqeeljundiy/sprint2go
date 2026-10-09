@@ -23,6 +23,7 @@ import { SOURCE_NAME, UNDO_HOURS, type ImportChoices, type ImportJob, type Impor
 import * as slack from './importSlack.ts';
 import * as trello from './importTrello.ts';
 import * as drive from './importDrive.ts';
+import { mark } from '../src/i18n/index.ts';
 
 const MB = 1024 * 1024;
 const HOUR = 3_600_000;
@@ -417,12 +418,12 @@ const SOURCES: ImportSource[] = ['slack', 'trello', 'drive'];
 
 /** Who may import into a company: its owners and admins, never in the demo company, never while it's read-only. */
 function allowed(me: string, wsId: string, change: boolean, operator: string | null): { ws: any } | { status: number; error: string } {
-  if (isSandboxId(wsId)) return { status: 403, error: 'The demo company doesn’t take imports: nothing is uploaded there. Import into your real company.' };
+  if (isSandboxId(wsId)) return { status: 403, error: mark('The demo company doesn’t take imports: nothing is uploaded there. Import into your real company.') };
   const ws = db.getDoc('workspaces', wsId) as any;
   const role = ws?.members?.find((m: any) => m.userId === me)?.role;
-  if (!ws || !role) return { status: 404, error: 'No such company.' };
-  if (role === 'member') return { status: 403, error: 'Only owners and admins can import.' };
-  if (change && operator) return { status: 403, error: 'That’s theirs to do: you’re signed in as them.' };
+  if (!ws || !role) return { status: 404, error: mark('No such company.') };
+  if (role === 'member') return { status: 403, error: mark('Only owners and admins can import.') };
+  if (change && operator) return { status: 403, error: mark('That’s theirs to do: you’re signed in as them.') };
   const ro = change ? billing.readOnlyWhy(ws) : null;
   if (ro) return { status: 403, error: ro };
   return { ws };
@@ -450,9 +451,9 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
     const source = String(url.searchParams.get('source') ?? '') as ImportSource;
     const a = allowed(me, wsId, true, c.operator);
     if ('error' in a) return (req.resume(), deny(a));
-    if (!SOURCES.includes(source)) return (req.resume(), json(res, 400, { error: 'Import from Slack, Trello or Google Drive.' }), true);
+    if (!SOURCES.includes(source)) return (req.resume(), json(res, 400, { error: mark('Import from Slack, Trello or Google Drive.') }), true);
     const busy = db.db.prepare("SELECT id FROM imports WHERE workspace_id = ? AND status IN ('reading', 'running')").get(wsId);
-    if (busy) return (req.resume(), json(res, 409, { error: 'Another import is going on in this company. Wait for it to finish, then start this one.' }), true);
+    if (busy) return (req.resume(), json(res, 409, { error: mark('Another import is going on in this company. Wait for it to finish, then start this one.') }), true);
     const cap = source === 'trello' ? Math.min(limits().upload, limits().json) : limits().upload;
     const capText = `Exports up to ${Math.round(cap / MB).toLocaleString('en')} MB.`;
     if (Number(req.headers['content-length'] ?? 0) > cap) return (req.resume(), json(res, 413, { error: `That file is too big. ${capText}` }), true);
@@ -497,11 +498,11 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
   }
 
   const m = p.match(/^\/api\/import\/([a-f0-9]{24})(?:\/(start|cancel|undo))?$/);
-  if (!m) return (json(res, 404, { error: 'No such import.' }), true);
+  if (!m) return (json(res, 404, { error: mark('No such import.') }), true);
   const r = rowOf(m[1]);
   // Someone who isn't an admin of its company finds nothing here.
   const a = r ? allowed(me, r.workspace_id, req.method !== 'GET', c.operator) : null;
-  if (!r || !a || ('error' in a && a.status === 404)) return (json(res, 404, { error: 'No such import.' }), true);
+  if (!r || !a || ('error' in a && a.status === 404)) return (json(res, 404, { error: mark('No such import.') }), true);
   if ('error' in a) return deny(a);
 
   if (!m[2] && req.method === 'GET') return (json(res, 200, { job: jobOf(r) }), true);
@@ -516,8 +517,8 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
   if (m[2] === 'start' && req.method === 'POST') {
     if (r.status !== 'ready') return (json(res, 409, { error: r.status === 'running' ? 'It’s already running.' : 'This import can’t start again. Upload the file again.' }), true);
     const busy = db.db.prepare("SELECT id FROM imports WHERE workspace_id = ? AND status = 'running'").get(r.workspace_id);
-    if (busy) return (json(res, 409, { error: 'Another import is going on in this company. Wait for it to finish.' }), true);
-    if (!existsSync(uploadPath(r.id))) return (json(res, 409, { error: 'The uploaded file is gone. Upload it again.' }), true);
+    if (busy) return (json(res, 409, { error: mark('Another import is going on in this company. Wait for it to finish.') }), true);
+    if (!existsSync(uploadPath(r.id))) return (json(res, 409, { error: mark('The uploaded file is gone. Upload it again.') }), true);
     const b = await c.body(req);
     let choices: ImportChoices;
     try {
@@ -542,7 +543,7 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
     undo(r.id, me);
     return (json(res, 200, { job: jobOf(rowOf(r.id)!) }), true);
   }
-  json(res, 404, { error: 'No such import.' });
+  json(res, 404, { error: mark('No such import.') });
   return true;
 }
 

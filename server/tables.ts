@@ -6,6 +6,7 @@ import { cellText, guessField, isEmpty, parseIncoming, passes, repeatWords, rowN
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
 import { stageIdFor, stagesFrom } from '../src/stages.ts';
 import { companyTz } from '../src/jobTimes.ts';
+import { mark } from '../src/i18n/index.ts';
 
 export interface Env {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
@@ -348,16 +349,16 @@ const hits = new Map<string, number[]>();
 /** Data posted to a table's own URL: mapped into a row (or into the matching row, when duplicates are merged). */
 export function intake(env: Env, token: string, payload: unknown): { status: number; body: unknown } {
   const t = tables().find((x) => x.intake?.token === token);
-  if (!t || !t.intake) return { status: 404, body: { error: 'Unknown address' } };
+  if (!t || !t.intake) return { status: 404, body: { error: mark('Unknown address') } };
 
   const recent = (hits.get(token) ?? []).filter((x) => Date.now() - x < 60_000);
-  if (recent.length >= 120) return { status: 429, body: { error: 'Too many deliveries; at most 120 a minute' } };
+  if (recent.length >= 120) return { status: 429, body: { error: mark('Too many deliveries; at most 120 a minute') } };
   hits.set(token, [...recent, Date.now()]);
 
   const flat = flatten(payload);
   if (!Object.keys(flat).length) {
     logTo(env, t.id, { dir: 'in', ok: false, text: 'A delivery arrived with no data' });
-    return { status: 400, body: { error: 'No data' } };
+    return { status: 400, body: { error: mark('No data') } };
   }
   // Listening for a test: capture what arrived so its variables can be matched to fields; no row yet.
   if (t.intake.listening) {
@@ -367,7 +368,7 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
     save(env, 'tables', [{ ...t, intake: { ...t.intake, listening: false, sample, mapping, testAt: now() }, log: [...(t.log ?? []), { at: now(), dir: 'in' as const, ok: true, text: `Test received: ${Object.keys(sample).length} values to match to fields` }].slice(-50) }]);
     return { status: 200, body: { ok: true, test: true, received: Object.keys(sample) } };
   }
-  if (!t.intake.enabled) return { status: 403, body: { error: 'This table isn’t accepting data yet. Finish matching the test delivery to fields, then turn it on.' } };
+  if (!t.intake.enabled) return { status: 403, body: { error: mark('This table isn’t accepting data yet. Finish matching the test delivery to fields, then turn it on.') } };
   const users = usersOf(t.workspaceId);
   // Keys never seen before get their best field by name, remembered so the mapping screen shows them.
   const mapping = { ...t.intake.mapping };
@@ -411,8 +412,8 @@ export function testPayload(t: DataTable, a: Extract<TableAction, { kind: 'webho
 /** A CSV import: the table's fields (with any new ones), new rows, and rows updated because they matched. */
 export function importRows(env: Env, tableId: string, me: string, plan: { fields: TableField[]; creates: Record<string, CellValue>[]; updates: { id: string; values: Record<string, CellValue> }[]; runRules?: boolean }) {
   const t = tables().find((x) => x.id === tableId);
-  if (!t) return { status: 404, body: { error: 'No such table' } };
-  if (!Array.isArray(plan.fields) || !plan.fields.length || plan.creates.length + plan.updates.length > 20_000) return { status: 400, body: { error: 'That import is too big or incomplete' } };
+  if (!t) return { status: 404, body: { error: mark('No such table') } };
+  if (!Array.isArray(plan.fields) || !plan.fields.length || plan.creates.length + plan.updates.length > 20_000) return { status: 400, body: { error: mark('That import is too big or incomplete') } };
   // Existing fields keep their kind and settings; only new fields and new choices come from the import.
   const fields = plan.fields.map((f) => {
     const before = t.fields.find((x) => x.id === f.id);

@@ -8,6 +8,7 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import QRCode from 'qrcode';
 import * as db from './db.ts';
+import { mark } from '../src/i18n/index.ts';
 
 db.db.exec(`CREATE TABLE IF NOT EXISTS two_step (user_id TEXT PRIMARY KEY, secret TEXT, pending TEXT, on_at TEXT, last_step INTEGER NOT NULL DEFAULT 0, backup TEXT NOT NULL DEFAULT '[]')`);
 db.db.exec('CREATE TABLE IF NOT EXISTS trusted_devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL, used_at TEXT NOT NULL, expires_at TEXT NOT NULL)');
@@ -269,16 +270,16 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
   const logAll = (type: string, detail?: string) => mine().forEach((w) => ctx.event(type, w.id, me, detail));
   /** A code from the app or a backup code, counting wrong ones. */
   const proof = (code: unknown): { error: string; status: number } | { error?: undefined; used: 'app' | 'backup' } => {
-    if (lockedOut(me)) return { error: 'Too many wrong codes. Wait an hour and try again.', status: 429 };
+    if (lockedOut(me)) return { error: mark('Too many wrong codes. Wait an hour and try again.'), status: 429 };
     const used = check(me, String(code ?? ''));
     if (!used) {
       missed(me);
-      return { error: 'That code isn’t right, or it was already used. Wait for the next one in your app.', status: 400 };
+      return { error: mark('That code isn’t right, or it was already used. Wait for the next one in your app.'), status: 400 };
     }
     return { used };
   };
 
-  if (ctx.operator && p.startsWith('/api/2fa/') && POST) return send(403, { error: 'Two-step sign-in is theirs to change: you’re signed in as them.' });
+  if (ctx.operator && p.startsWith('/api/2fa/') && POST) return send(403, { error: mark('Two-step sign-in is theirs to change: you’re signed in as them.') });
   if (p === '/api/2fa' && req.method === 'GET') {
     const r = requirement(me, ctx.workspaces());
     return send(200, { ...status(me), required: r, devices: isOn(me) ? devices(me, ctx.deviceCookie) : [] });
@@ -293,7 +294,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     }
     const id = String(b.id ?? '');
     const name = devices(me).find((d) => d.id === id)?.name;
-    if (!forgetDevice(me, id)) return send(404, { error: 'That device was already forgotten.' });
+    if (!forgetDevice(me, id)) return send(404, { error: mark('That device was already forgotten.') });
     logAll('security.2fa-devices', `forgot a remembered device (${name ?? 'a browser'})`);
     return send(200, { ok: true });
   }
@@ -318,7 +319,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     const b = await ctx.body(req);
     const again = isOn(me);
     const codes = enable(me, String(b.code ?? ''));
-    if (!codes) return send(400, { error: 'That code isn’t right. Check that the time on your phone is set automatically, then try the next code.' });
+    if (!codes) return send(400, { error: mark('That code isn’t right. Check that the time on your phone is set automatically, then try the next code.') });
     markPassed(ctx.token);
     // Anyone else signed in as this person (with only the password) is signed out; a new phone also means devices
     // remembered with the old one ask for a code again.
@@ -328,7 +329,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     return send(200, { backupCodes: codes });
   }
   if (p === '/api/2fa/verify' && POST) {
-    if (!isOn(me)) return send(400, { error: 'Two-step sign-in isn’t on for this account.' });
+    if (!isOn(me)) return send(400, { error: mark('Two-step sign-in isn’t on for this account.') });
     if (sessionPassed(ctx.token)) return send(200, { ok: true });
     const b = await ctx.body(req);
     const ok = proof(b.code);
@@ -339,7 +340,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
       if (n >= 5) {
         sessionMisses.delete(ctx.token);
         db.endSession(ctx.token);
-        return send(401, { error: 'Too many wrong codes. Sign in again.', restart: true });
+        return send(401, { error: mark('Too many wrong codes. Sign in again.'), restart: true });
       }
       return send(ok.status, { error: ok.error });
     }
@@ -367,7 +368,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     if (r) return send(409, { error: `${r.companies.join(' and ')} require${r.companies.length === 1 ? 's' : ''} two-step sign-in, so it stays on. To use another phone, set it up again.` });
     const b = await ctx.body(req);
     const login = email ? db.findLogin(email) : undefined;
-    if (!login || !(await db.checkPassword(String(b.password ?? ''), login.pw_hash))) return send(400, { error: 'Your password is wrong.' });
+    if (!login || !(await db.checkPassword(String(b.password ?? ''), login.pw_hash))) return send(400, { error: mark('Your password is wrong.') });
     const ok = proof(b.code);
     if (ok.error !== undefined) return send(ok.status, { error: ok.error });
     forget(me);
@@ -381,7 +382,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     const wsId = String(POST ? b.workspaceId ?? '' : ctx.url.searchParams.get('workspaceId') ?? '');
     const ws = ctx.workspaces().find((w) => w.id === wsId);
     const role = ws?.members.find((m) => m.userId === me)?.role;
-    if (!ws || !role || role === 'member') return send(403, { error: 'Only owners and admins can see this.' });
+    if (!ws || !role || role === 'member') return send(403, { error: mark('Only owners and admins can see this.') });
     const people = ws.members.map((m) => m.userId);
     if (p === '/api/security' && req.method === 'GET') {
       const on = onAmong(people);
@@ -406,10 +407,10 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
     if (p === '/api/security/reset' && POST) {
       const target = String(b.userId ?? '');
       const theirs = ws.members.find((m) => m.userId === target);
-      if (!theirs) return send(404, { error: 'They aren’t in this company.' });
-      if (target === me) return send(400, { error: 'Use one of your backup codes, or ask another owner.' });
-      if (theirs.role === 'owner' && role !== 'owner') return send(403, { error: 'Only an owner can reset an owner’s two-step sign-in.' });
-      if (!isOn(target)) return send(409, { error: 'Two-step sign-in isn’t on for them.' });
+      if (!theirs) return send(404, { error: mark('They aren’t in this company.') });
+      if (target === me) return send(400, { error: mark('Use one of your backup codes, or ask another owner.') });
+      if (theirs.role === 'owner' && role !== 'owner') return send(403, { error: mark('Only an owner can reset an owner’s two-step sign-in.') });
+      if (!isOn(target)) return send(409, { error: mark('Two-step sign-in isn’t on for them.') });
       const them = db.getDoc('users', target) as { email?: string; name?: string } | undefined;
       forget(target);
       ctx.kick(target);
@@ -419,7 +420,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
         void ctx.mail(them.email, 'Your two-step sign-in was reset', [`${user?.name ?? 'An admin'} at ${ws.name} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.`, ws.security?.twoStep ? `${ws.name} requires it, so you’ll set it up again the next time you sign in.` : 'You can turn it on again in Settings, Account.', 'If you didn’t ask for this, tell your admin straight away.']).catch(() => {});
       return send(200, { ok: true });
     }
-    return send(404, { error: 'No such route.' });
+    return send(404, { error: mark('No such route.') });
   }
   return false;
 }
@@ -430,11 +431,11 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
  */
 export function resetNeedsCode(userId: string, code: unknown): { status: number; body: Record<string, unknown> } | null {
   if (!isOn(userId)) return null;
-  if (code === undefined || code === null || String(code).trim() === '') return { status: 401, body: { error: 'Enter the code from your authenticator app, or a backup code.', twoStep: 'code' } };
-  if (lockedOut(userId)) return { status: 429, body: { error: 'Too many wrong codes. Wait an hour and try again.', twoStep: 'code' } };
+  if (code === undefined || code === null || String(code).trim() === '') return { status: 401, body: { error: mark('Enter the code from your authenticator app, or a backup code.'), twoStep: 'code' } };
+  if (lockedOut(userId)) return { status: 429, body: { error: mark('Too many wrong codes. Wait an hour and try again.'), twoStep: 'code' } };
   if (!check(userId, String(code))) {
     missed(userId);
-    return { status: 400, body: { error: 'That code isn’t right, or it was already used. Wait for the next one in your app.', twoStep: 'code' } };
+    return { status: 400, body: { error: mark('That code isn’t right, or it was already used. Wait for the next one in your app.'), twoStep: 'code' } };
   }
   return null;
 }

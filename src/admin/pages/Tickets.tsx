@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Bug, ChevronDown, FileX, LogIn, Mail, MessageSquare, Paperclip, Plus, Smartphone } from 'lucide-react';
 import { Select } from '../../components/ui/Select';
 import { SmoothHeight } from '../../components/ui/Smooth';
+import { t, tn, tx } from '../../i18n';
+import { fmtNumber, fmtPercent } from '../../i18n/format';
 
 import { rel, dateTime, duration, post, PRIORITY_LABEL, rpShort, STATE_LABEL, STATUS_LABEL, type Priority, type TicketRow, type TicketStatus } from '../api';
 import { Badge, Dialog, Empty, Failed, Field, HealthPill, Initials, KV, Loading, Menu, Page, Section, Table, useAct, useAdmin, useApi, Who } from '../ui';
@@ -9,7 +11,7 @@ import { Badge, Dialog, Empty, Failed, Field, HealthPill, Initials, KV, Loading,
 const STATUS_TONE: Record<TicketStatus, 'accent' | 'warn' | 'info' | 'good' | 'neutral'> = { new: 'accent', open: 'warn', waiting: 'info', resolved: 'good', closed: 'neutral' };
 const PRIO_TONE: Record<Priority, 'neutral' | 'warn' | 'bad'> = { low: 'neutral', normal: 'neutral', high: 'warn', urgent: 'bad' };
 const CHANNEL_ICON = { app: Smartphone, email: Mail, crash: Bug } as const;
-const live = (t: { status: TicketStatus }) => t.status === 'new' || t.status === 'open';
+const live = (tk: { status: TicketStatus }) => tk.status === 'new' || tk.status === 'open';
 
 export function StatusBadge({ s }: { s: TicketStatus }) {
   return <Badge tone={STATUS_TONE[s]}>{STATUS_LABEL[s]}</Badge>;
@@ -20,17 +22,22 @@ export function Tickets() {
   const { data, error, reload } = useApi<{ tickets: TicketRow[]; operators: string[]; stats: { opened: number; medianFirstReplyMin: number | null; satisfaction: number | null; rated: number } }>('tickets', [], 30_000);
   const [creating, setCreating] = useState(false);
   const act = useAct();
-  if (error) return <Page title="Tickets"><Failed error={error} retry={reload} /></Page>;
-  if (!data) return <Page title="Tickets"><Loading rows={8} /></Page>;
+  if (error) return <Page title={t('Tickets')}><Failed error={error} retry={reload} /></Page>;
+  if (!data) return <Page title={t('Tickets')}><Loading rows={8} /></Page>;
   const s = data.stats;
+  const sums = { opened: fmtNumber(s.opened), reply: duration(s.medianFirstReplyMin) };
   return (
     <Page
-      title="Tickets"
-      sub={`Last 30 days: ${s.opened} opened · first reply ${duration(s.medianFirstReplyMin)}${s.satisfaction !== null ? ` · ${s.satisfaction}% rated good (${s.rated})` : ''}`}
+      title={t('Tickets')}
+      sub={
+        s.satisfaction !== null
+          ? t('Last 30 days: {opened} opened · first reply {reply} · {rate} rated good ({rated})', { ...sums, rate: fmtPercent(s.satisfaction / 100), rated: fmtNumber(s.rated) })
+          : t('Last 30 days: {opened} opened · first reply {reply}', sums)
+      }
       actions={
         may('support') && (
           <button className="primary-btn sm" onClick={() => setCreating(true)}>
-            <Plus size={14} /> Log a ticket
+            <Plus size={14} /> {t('Log a ticket')}
           </button>
         )
       }
@@ -38,33 +45,33 @@ export function Tickets() {
       <Table
         id="tickets"
         rows={data.tickets}
-        rowKey={(t) => t.id}
-        onOpen={(t) => go(`/admin/tickets/${t.id}`)}
-        search={(t) => `${t.number} ${t.subject} ${t.requester.email} ${t.requester.name ?? ''} ${t.company ?? ''} ${t.tags.join(' ')}`}
+        rowKey={(tk) => tk.id}
+        onOpen={(tk) => go(`/admin/tickets/${tk.id}`)}
+        search={(tk) => `${tk.number} ${tk.subject} ${tk.requester.email} ${tk.requester.name ?? ''} ${tk.company ?? ''} ${tk.tags.join(' ')}`}
         initialSort={{ key: 'updated', dir: -1 }}
-        rowTone={(t) => (t.breaching ? 'tone-bad' : t.priority === 'urgent' && live(t) ? 'tone-warn' : undefined)}
+        rowTone={(tk) => (tk.breaching ? 'tone-bad' : tk.priority === 'urgent' && live(tk) ? 'tone-warn' : undefined)}
         views={[
-          { id: 'mine', label: 'Mine', test: (t) => t.assignee === me.email && t.status !== 'resolved' && t.status !== 'closed' },
-          { id: 'unassigned', label: 'Nobody on it', test: (t) => !t.assignee && live(t) },
-          { id: 'open', label: 'Open', test: live },
-          { id: 'late', label: 'Past target', test: (t) => t.breaching },
-          { id: 'waiting', label: 'Waiting on them', test: (t) => t.status === 'waiting' },
-          { id: 'done', label: 'Resolved', test: (t) => t.status === 'resolved' || t.status === 'closed' },
-          { id: 'all', label: 'All', test: () => true },
+          { id: 'mine', label: t('Mine'), test: (tk) => tk.assignee === me.email && tk.status !== 'resolved' && tk.status !== 'closed' },
+          { id: 'unassigned', label: t('Nobody on it'), test: (tk) => !tk.assignee && live(tk) },
+          { id: 'open', label: STATUS_LABEL.open, test: live },
+          { id: 'late', label: t('Past target'), test: (tk) => tk.breaching },
+          { id: 'waiting', label: STATUS_LABEL.waiting, test: (tk) => tk.status === 'waiting' },
+          { id: 'done', label: STATUS_LABEL.resolved, test: (tk) => tk.status === 'resolved' || tk.status === 'closed' },
+          { id: 'all', label: t('All'), test: () => true },
         ]}
-        empty={{ title: 'No tickets here', text: 'Tickets come from Help in the app, the crash screen, and email to support.' }}
+        empty={{ title: t('No tickets here'), text: t('Tickets come from Help in the app, the crash screen, and email to support.') }}
         bulk={
           may('support')
             ? (sel, clear) => (
                 <>
-                  <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { ids: sel.map((t) => t.id), assignee: me.email }), `${sel.length} assigned to you`).then(clear)}>
-                    Assign to me
+                  <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { ids: sel.map((tk) => tk.id), assignee: me.email }), tn(sel.length, '{n} assigned to you', '{n} assigned to you')).then(clear)}>
+                    {t('Assign to me')}
                   </button>
-                  <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { ids: sel.map((t) => t.id), status: 'resolved' }), `${sel.length} resolved`).then(clear)}>
-                    Resolve
+                  <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { ids: sel.map((tk) => tk.id), status: 'resolved' }), tn(sel.length, '{n} resolved', '{n} resolved')).then(clear)}>
+                    {t('Resolve')}
                   </button>
-                  <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { ids: sel.map((t) => t.id), priority: 'high' }), 'Priority raised').then(clear)}>
-                    High priority
+                  <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { ids: sel.map((tk) => tk.id), priority: 'high' }), t('Priority raised')).then(clear)}>
+                    {t('High priority')}
                   </button>
                 </>
               )
@@ -73,29 +80,29 @@ export function Tickets() {
         cols={[
           {
             key: 'subject',
-            label: 'Ticket',
+            label: t('Ticket'),
             width: 'minmax(0, 2.4fr)',
-            sort: (t) => t.number,
-            render: (t) => {
-              const Icon = CHANNEL_ICON[t.channel];
+            sort: (tk) => tk.number,
+            render: (tk) => {
+              const Icon = CHANNEL_ICON[tk.channel];
               return (
                 <span className="adm-cell-main">
                   <strong>
-                    <span className="adm-num">#{t.number}</span> {t.subject}
+                    <span className="adm-num">#{tk.number}</span> {tk.subject}
                   </strong>
                   <small>
-                    <Icon size={11} /> {t.requester.name ?? t.requester.email}
-                    {t.tags.length ? ` · ${t.tags.join(', ')}` : ''}
+                    <Icon size={11} /> {tk.requester.name ?? tk.requester.email}
+                    {tk.tags.length ? ` · ${tk.tags.join(', ')}` : ''}
                   </small>
                 </span>
               );
             },
           },
-          { key: 'company', label: 'Company', width: 'minmax(0, 1.1fr)', hide: 'phone', sort: (t) => t.company ?? '', render: (t) => <span className="adm-ellipsis">{t.company ?? <span className="muted">no company</span>}</span> },
-          { key: 'status', label: 'Status', width: '130px', sort: (t) => ['new', 'open', 'waiting', 'resolved', 'closed'].indexOf(t.status), render: (t) => <StatusBadge s={t.status} /> },
-          { key: 'priority', label: 'Priority', width: '90px', hide: 'tablet', sort: (t) => ['low', 'normal', 'high', 'urgent'].indexOf(t.priority), render: (t) => (t.priority === 'normal' ? <span className="muted">Normal</span> : <Badge tone={PRIO_TONE[t.priority]}>{PRIORITY_LABEL[t.priority]}</Badge>) },
-          { key: 'assignee', label: 'On it', width: '120px', hide: 'phone', sort: (t) => t.assignee ?? '', render: (t) => (t.assignee ? <span className="adm-ellipsis">{t.assignee === me.email ? 'You' : t.assignee.split('@')[0]}</span> : <span className="muted">nobody</span>) },
-          { key: 'updated', label: 'Updated', width: '110px', align: 'right', sort: (t) => t.updatedAt, render: (t) => <span className={t.breaching ? 'adm-late' : 'muted'}>{t.breaching ? 'past target' : rel(t.updatedAt)}</span> },
+          { key: 'company', label: t('Company'), width: 'minmax(0, 1.1fr)', hide: 'phone', sort: (tk) => tk.company ?? '', render: (tk) => <span className="adm-ellipsis">{tk.company ?? <span className="muted">{t('no company')}</span>}</span> },
+          { key: 'status', label: t('Status'), width: '130px', sort: (tk) => ['new', 'open', 'waiting', 'resolved', 'closed'].indexOf(tk.status), render: (tk) => <StatusBadge s={tk.status} /> },
+          { key: 'priority', label: t('Priority'), width: '90px', hide: 'tablet', sort: (tk) => ['low', 'normal', 'high', 'urgent'].indexOf(tk.priority), render: (tk) => (tk.priority === 'normal' ? <span className="muted">{PRIORITY_LABEL.normal}</span> : <Badge tone={PRIO_TONE[tk.priority]}>{PRIORITY_LABEL[tk.priority]}</Badge>) },
+          { key: 'assignee', label: t('On it'), width: '120px', hide: 'phone', sort: (tk) => tk.assignee ?? '', render: (tk) => (tk.assignee ? <span className="adm-ellipsis">{tk.assignee === me.email ? t('You') : tk.assignee.split('@')[0]}</span> : <span className="muted">{t('nobody')}</span>) },
+          { key: 'updated', label: t('Updated'), width: '110px', align: 'right', sort: (tk) => tk.updatedAt, render: (tk) => <span className={tk.breaching ? 'adm-late' : 'muted'}>{tk.breaching ? t('past target') : rel(tk.updatedAt)}</span> },
         ]}
       />
       {creating && <NewTicket onClose={() => setCreating(false)} onDone={(id) => (setCreating(false), go(`/admin/tickets/${id}`))} />}
@@ -112,12 +119,12 @@ function NewTicket({ onClose, onDone }: { onClose: () => void; onDone: (id: stri
   const { toast } = useAdmin();
   return (
     <Dialog
-      title="Log a ticket"
+      title={t('Log a ticket')}
       onClose={onClose}
       foot={
         <>
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button
             className="primary-btn"
@@ -130,24 +137,24 @@ function NewTicket({ onClose, onDone }: { onClose: () => void; onDone: (id: stri
                 .finally(() => setBusy(false));
             }}
           >
-            Create
+            {t('Create')}
           </button>
         </>
       }
     >
       <div className="adm-form">
-        <p className="adm-dialog-text">For a call, a WhatsApp message or a conversation: the ticket is linked to the person and company by email, and it’s yours.</p>
-        <Field label="Their email">
+        <p className="adm-dialog-text">{t('For a call, a WhatsApp message or a conversation: the ticket is linked to the person and company by email, and it’s yours.')}</p>
+        <Field label={t('Their email')}>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
         </Field>
-        <Field label="What it’s about">
+        <Field label={t('What it’s about')}>
           <input value={subject} onChange={(e) => setSubject(e.target.value)} />
         </Field>
-        <Field label="What they said">
+        <Field label={t('What they said')}>
           <textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)} />
         </Field>
-        <Field label="Priority">
-          <Select value={priority} onChange={(v) => setPriority(v as Priority)} label="Priority" options={(['low', 'normal', 'high', 'urgent'] as Priority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))} />
+        <Field label={t('Priority')}>
+          <Select value={priority} onChange={(v) => setPriority(v as Priority)} label={t('Priority')} options={(['low', 'normal', 'high', 'urgent'] as Priority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))} />
         </Field>
       </div>
     </Dialog>
@@ -179,45 +186,47 @@ export function TicketPage({ id }: { id: string }) {
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'nearest' });
   }, [count]);
-  if (error) return <Page title="Ticket" back={{ label: 'Tickets', to: '/admin/tickets' }}><Failed error={error} retry={reload} /></Page>;
-  if (!data) return <Page title="Ticket" back={{ label: 'Tickets', to: '/admin/tickets' }}><Loading rows={6} /></Page>;
-  const t = data.ticket;
-  const first = (data.person?.name ?? t.requester.name ?? '').split(' ')[0] || 'there';
+  if (error) return <Page title={t('Ticket')} back={{ label: t('Tickets'), to: '/admin/tickets' }}><Failed error={error} retry={reload} /></Page>;
+  if (!data) return <Page title={t('Ticket')} back={{ label: t('Tickets'), to: '/admin/tickets' }}><Loading rows={6} /></Page>;
+  const tk = data.ticket;
+  const first = (data.person?.name ?? tk.requester.name ?? '').split(' ')[0] || tx('greeting', 'there');
   const send = async (status: TicketStatus) => {
     if (!text.trim()) return;
     setBusy(true);
-    const ok = await act(() => post('ticket/reply', { id: t.id, body: text, internal, status }), internal ? 'Note added' : status === 'resolved' ? 'Sent and resolved' : 'Sent');
+    const ok = await act(() => post('ticket/reply', { id: tk.id, body: text, internal, status }), internal ? t('Note added') : status === 'resolved' ? t('Sent and resolved') : t('Sent'));
     setBusy(false);
     if (ok) (setText(''), reload());
   };
-  const update = (patch: Record<string, unknown>, done: string) => void act(() => post('ticket/update', { id: t.id, ...patch }), done).then(reload);
-  const ctx = t.context ?? {};
+  const update = (patch: Record<string, unknown>, done: string) => void act(() => post('ticket/update', { id: tk.id, ...patch }), done).then(reload);
+  const ctx = tk.context ?? {};
+  const errors = Array.isArray(ctx.errors) ? (ctx.errors as unknown[]).length : 0;
+  const rated = { good: t('Rated good'), okay: t('Rated okay'), bad: t('Rated bad') };
   return (
     <Page
-      back={{ label: 'Tickets', to: '/admin/tickets' }}
+      back={{ label: t('Tickets'), to: '/admin/tickets' }}
       title={
         <>
-          <span className="adm-num">#{t.number}</span> {t.subject}
+          <span className="adm-num">#{tk.number}</span> {tk.subject}
         </>
       }
       sub={
         <span className="adm-head-badges">
-          <StatusBadge s={t.status} />
-          {t.priority !== 'normal' && <Badge tone={PRIO_TONE[t.priority]}>{PRIORITY_LABEL[t.priority]}</Badge>}
-          {t.breaching && <Badge tone="bad">Past the reply target</Badge>}
-          {!t.breaching && !t.firstReplyAt && t.dueAt && <span className="muted">Reply due {rel(t.dueAt)}</span>}
+          <StatusBadge s={tk.status} />
+          {tk.priority !== 'normal' && <Badge tone={PRIO_TONE[tk.priority]}>{PRIORITY_LABEL[tk.priority]}</Badge>}
+          {tk.breaching && <Badge tone="bad">{t('Past the reply target')}</Badge>}
+          {!tk.breaching && !tk.firstReplyAt && tk.dueAt && <span className="muted">{t('Reply due {when}', { when: rel(tk.dueAt) })}</span>}
           <span className="muted">
-            {t.channel === 'email' ? 'By email' : t.channel === 'crash' ? 'From the crash screen' : 'From the app'} · {dateTime(t.createdAt)}
+            {tk.channel === 'email' ? t('By email') : tk.channel === 'crash' ? t('From the crash screen') : t('From the app')} · {dateTime(tk.createdAt)}
           </span>
         </span>
       }
       actions={
         <Menu
-          label="More"
+          label={t('More')}
           items={[
-            { label: 'Copy link', run: () => void navigator.clipboard?.writeText(location.href) },
-            may('support') && { label: 'Merge into another ticket', run: () => setMerging(true) },
-            may('support') && t.status !== 'closed' && { label: 'Close without reply', run: () => update({ status: 'closed' }, 'Closed') },
+            { label: t('Copy link'), run: () => void navigator.clipboard?.writeText(location.href) },
+            may('support') && { label: t('Merge into another ticket'), run: () => setMerging(true) },
+            may('support') && tk.status !== 'closed' && { label: t('Close without reply'), run: () => update({ status: 'closed' }, STATUS_LABEL.closed) },
           ]}
         />
       }
@@ -231,8 +240,8 @@ export function TicketPage({ id }: { id: string }) {
                 <Initials name={m.authorName ?? m.author} color={m.kind === 'operator' ? 'var(--accent)' : data.person?.color} size={30} />
                 <div className="adm-msg-body">
                   <header>
-                    <strong>{m.kind === 'operator' ? (m.author === me.email ? 'You' : m.authorName ?? m.author) : m.authorName ?? m.author}</strong>
-                    {m.internal && <Badge tone="warn">Internal note</Badge>}
+                    <strong>{m.kind === 'operator' ? (m.author === me.email ? t('You') : m.authorName ?? m.author) : m.authorName ?? m.author}</strong>
+                    {m.internal && <Badge tone="warn">{t('Internal note')}</Badge>}
                     <time title={dateTime(m.at)}>{rel(m.at)}</time>
                   </header>
                   <div className="adm-msg-text">{m.body}</div>
@@ -258,10 +267,10 @@ export function TicketPage({ id }: { id: string }) {
             ))}
             <div ref={end} />
           </div>
-          {t.rating && (
-            <p className={`adm-rating ${t.rating}`}>
-              Rated {t.rating}
-              {t.ratingNote ? `: “${t.ratingNote}”` : ''}
+          {tk.rating && (
+            <p className={`adm-rating ${tk.rating}`}>
+              {rated[tk.rating]}
+              {tk.ratingNote ? `: “${tk.ratingNote}”` : ''}
             </p>
           )}
           {may('support') && (
@@ -269,19 +278,19 @@ export function TicketPage({ id }: { id: string }) {
               <div className="adm-compose-top">
                 <div className="segmented sm">
                   <button type="button" className={!internal ? 'on' : ''} onClick={() => setInternal(false)}>
-                    Reply
+                    {t('Reply')}
                   </button>
                   <button type="button" className={internal ? 'on' : ''} onClick={() => setInternal(true)}>
-                    Internal note
+                    {t('Internal note')}
                   </button>
                 </div>
                 <span className="spacer" />
                 <Menu
-                  label="Saved replies"
+                  label={t('Saved replies')}
                   icon={<MessageSquare size={13} />}
                   items={[
                     ...data.macros.map((m) => ({ label: m.title, run: () => setText((x) => (x ? `${x}\n\n` : '') + m.body.replace(/\{name\}/g, first).replace(/\{me\}/g, me.name.split(' ')[0])) })),
-                    { label: 'Manage saved replies', run: () => go('/admin/team/replies'), hint: 'Use {name} for their first name' },
+                    { label: t('Manage saved replies'), run: () => go('/admin/team/replies'), hint: t('Use {name} for their first name', { name: '{name}' }) },
                   ]}
                 />
               </div>
@@ -289,23 +298,23 @@ export function TicketPage({ id }: { id: string }) {
                 rows={5}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder={internal ? 'Only the team sees this' : `Hi ${first}, …`}
-                onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && void send(internal ? t.status : 'waiting')}
+                placeholder={internal ? t('Only the team sees this') : t('Hi {name}, …', { name: first })}
+                onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && void send(internal ? tk.status : 'waiting')}
               />
               <div className="adm-compose-foot">
-                <small className="muted">{internal ? 'Not sent to them.' : t.channel === 'email' ? 'Sent by email and shown in their Help screen.' : 'Shown in their Help screen; by email too if they haven’t been back.'}</small>
+                <small className="muted">{internal ? t('Not sent to them.') : tk.channel === 'email' ? t('Sent by email and shown in their Help screen.') : t('Shown in their Help screen; by email too if they haven’t been back.')}</small>
                 <span className="spacer" />
                 {internal ? (
-                  <button className="primary-btn sm" disabled={busy || !text.trim()} onClick={() => void send(t.status)}>
-                    Add note
+                  <button className="primary-btn sm" disabled={busy || !text.trim()} onClick={() => void send(tk.status)}>
+                    {t('Add note')}
                   </button>
                 ) : (
                   <>
                     <button className="ghost-btn sm" disabled={busy || !text.trim()} onClick={() => void send('resolved')}>
-                      Send and resolve
+                      {t('Send and resolve')}
                     </button>
                     <button className="primary-btn sm" disabled={busy || !text.trim()} onClick={() => void send('waiting')}>
-                      Send
+                      {t('Send')}
                     </button>
                   </>
                 )}
@@ -315,21 +324,21 @@ export function TicketPage({ id }: { id: string }) {
         </div>
 
         <aside className="adm-side">
-          <Section title="Ticket">
+          <Section title={t('Ticket')}>
             <div className="adm-form tight">
-              <Field label="Status">
-                <Select value={t.status} disabled={!may('support')} onChange={(v) => update({ status: v }, `Now ${STATUS_LABEL[v as TicketStatus].toLowerCase()}`)} label="Status" options={(['new', 'open', 'waiting', 'resolved', 'closed'] as TicketStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))} />
+              <Field label={t('Status')}>
+                <Select value={tk.status} disabled={!may('support')} onChange={(v) => update({ status: v }, t('Now {status}', { status: STATUS_LABEL[v as TicketStatus].toLowerCase() }))} label={t('Status')} options={(['new', 'open', 'waiting', 'resolved', 'closed'] as TicketStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))} />
               </Field>
-              <Field label="Priority">
-                <Select value={t.priority} disabled={!may('support')} onChange={(v) => update({ priority: v }, 'Priority changed')} label="Priority" options={(['low', 'normal', 'high', 'urgent'] as Priority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))} />
+              <Field label={t('Priority')}>
+                <Select value={tk.priority} disabled={!may('support')} onChange={(v) => update({ priority: v }, t('Priority changed'))} label={t('Priority')} options={(['low', 'normal', 'high', 'urgent'] as Priority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))} />
               </Field>
-              <Field label="On it">
-                <Select value={t.assignee ?? ''} disabled={!may('support')} onChange={(v) => update({ assignee: v || null }, v ? `Given to ${v === me.email ? 'you' : v}` : 'Unassigned')} label="On it" options={[{ value: '', label: 'Nobody' }, ...data.operators.map((o) => ({ value: o, label: o === me.email ? `You (${o})` : o }))]} />
+              <Field label={t('On it')}>
+                <Select value={tk.assignee ?? ''} disabled={!may('support')} onChange={(v) => update({ assignee: v || null }, !v ? t('Unassigned') : v === me.email ? t('Given to you') : t('Given to {who}', { who: v }))} label={t('On it')} options={[{ value: '', label: t('Nobody') }, ...data.operators.map((o) => ({ value: o, label: o === me.email ? t('You ({email})', { email: o }) : o }))]} />
               </Field>
-              <Field label="Tags">
+              <Field label={t('Tags')}>
                 <span className="adm-tags">
-                  {t.tags.map((x) => (
-                    <button key={x} type="button" className="adm-tag" disabled={!may('support')} onClick={() => update({ tags: t.tags.filter((y) => y !== x) }, 'Tag removed')} title="Remove">
+                  {tk.tags.map((x) => (
+                    <button key={x} type="button" className="adm-tag" disabled={!may('support')} onClick={() => update({ tags: tk.tags.filter((y) => y !== x) }, t('Tag removed'))} title={t('Remove')}>
                       {x} ×
                     </button>
                   ))}
@@ -337,9 +346,9 @@ export function TicketPage({ id }: { id: string }) {
                     <input
                       value={tag}
                       onChange={(e) => setTag(e.target.value)}
-                      placeholder="Add a tag"
+                      placeholder={t('Add a tag')}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && tag.trim()) (update({ tags: [...t.tags, tag.trim()] }, 'Tagged'), setTag(''));
+                        if (e.key === 'Enter' && tag.trim()) (update({ tags: [...tk.tags, tag.trim()] }, t('Tagged')), setTag(''));
                       }}
                     />
                   )}
@@ -348,51 +357,51 @@ export function TicketPage({ id }: { id: string }) {
             </div>
           </Section>
 
-          <Section title="Who">
+          <Section title={tx('ticket', 'Who')}>
             {data.person ? (
               <div className="adm-who">
                 <button type="button" className="adm-who-main" onClick={() => go(`/admin/people/${data.person!.id}`)}>
-                  <Who name={data.person.name} email={data.person.email} color={data.person.color} sub={`${data.person.email} · ${data.person.lastSeen ? `seen ${rel(data.person.lastSeen)}` : 'not seen in the app yet'}`} />
+                  <Who name={data.person.name} email={data.person.email} color={data.person.color} sub={`${data.person.email} · ${data.person.lastSeen ? t('seen {when}', { when: rel(data.person.lastSeen) }) : t('not seen in the app yet')}`} />
                 </button>
                 {may('impersonate') && (
-                  <button className="ghost-btn sm" onClick={() => signInAs(data.person!.id, t.number)}>
-                    <LogIn size={13} /> Sign in as {data.person.name.split(' ')[0]}
+                  <button className="ghost-btn sm" onClick={() => signInAs(data.person!.id, tk.number)}>
+                    <LogIn size={13} /> {t('Sign in as {name}', { name: data.person.name.split(' ')[0] })}
                   </button>
                 )}
               </div>
             ) : (
               <p className="adm-small">
-                {t.requester.name ? `${t.requester.name} · ` : ''}
-                {t.requester.email} <span className="muted">(no account)</span>
+                {tk.requester.name ? `${tk.requester.name} · ` : ''}
+                {tk.requester.email} <span className="muted">({t('no account')})</span>
               </p>
             )}
           </Section>
 
           {data.company && (
-            <Section title="Company">
+            <Section title={t('Company')}>
               <button type="button" className="adm-card-link" onClick={() => go(`/admin/companies/${data.company!.id}`)}>
                 <span className="adm-card-row">
                   <strong>{data.company.name}</strong>
                   <HealthPill h={data.company.health} />
                 </span>
                 <small>
-                  {STATE_LABEL[data.company.state]} · {data.company.people} people · {rpShort(data.company.mrr || data.company.after || 0)}/month
+                  {STATE_LABEL[data.company.state]} · {tn(data.company.people, '{n} person', '{n} people')} · {t('{amount}/month', { amount: rpShort(data.company.mrr || data.company.after || 0) })}
                 </small>
               </button>
             </Section>
           )}
 
           {Object.keys(ctx).length > 0 && (
-            <Section title="What we know">
+            <Section title={t('What we know')}>
               <KV
                 items={Object.entries(ctx)
                   .filter(([k]) => k !== 'errors')
                   .map(([k, v]) => ({ k: k[0].toUpperCase() + k.slice(1), v: <span className="adm-wrap">{String(v)}</span> }))}
               />
-              {Array.isArray(ctx.errors) && (ctx.errors as unknown[]).length > 0 && (
+              {errors > 0 && (
                 <>
                   <button type="button" className="link-btn small adm-fold-btn" onClick={() => setErrorsOpen((o) => !o)}>
-                    {(ctx.errors as unknown[]).length} recent errors in their browser <ChevronDown size={12} className={`rot-chev ${errorsOpen ? 'open' : ''}`} />
+                    {tn(errors, '{n} recent error in their browser', '{n} recent errors in their browser')} <ChevronDown size={12} className={`rot-chev ${errorsOpen ? 'open' : ''}`} />
                   </button>
                   <div className={`fold ${errorsOpen ? 'open' : ''}`}>
                     <div className="fold-in">
@@ -405,7 +414,7 @@ export function TicketPage({ id }: { id: string }) {
           )}
 
           {data.others.length > 0 && (
-            <Section title="Their other tickets">
+            <Section title={t('Their other tickets')}>
               <div className="adm-mini-list">
                 {data.others.map((o) => (
                   <button key={o.id} type="button" onClick={() => go(`/admin/tickets/${o.id}`)}>
@@ -420,7 +429,7 @@ export function TicketPage({ id }: { id: string }) {
           )}
         </aside>
       </div>
-      {merging && <Merge from={t} onClose={() => setMerging(false)} />}
+      {merging && <Merge from={tk} onClose={() => setMerging(false)} />}
     </Page>
   );
 }
@@ -430,31 +439,31 @@ function Merge({ from, onClose }: { from: TicketRow; onClose: () => void }) {
   const { go, toast } = useAdmin();
   return (
     <Dialog
-      title={`Merge #${from.number}`}
+      title={t('Merge #{number}', { number: from.number })}
       size="sm"
       onClose={onClose}
       foot={
         <>
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button
             className="primary-btn"
             disabled={!/^\d+$/.test(n.trim())}
             onClick={() =>
               void post<{ id: string }>('ticket/merge', { id: from.id, into: n.trim() })
-                .then((r) => (toast('Merged'), go(`/admin/tickets/${r.id}`)))
+                .then((r) => (toast(t('Merged')), go(`/admin/tickets/${r.id}`)))
                 .catch((e: Error) => toast(e.message))
             }
           >
-            Merge
+            {t('Merge')}
           </button>
         </>
       }
     >
       <div className="adm-form">
-        <p className="adm-dialog-text">All messages move to the other ticket and this one closes. Use it when someone wrote twice about the same thing.</p>
-        <Field label="Merge into ticket number">
+        <p className="adm-dialog-text">{t('All messages move to the other ticket and this one closes. Use it when someone wrote twice about the same thing.')}</p>
+        <Field label={t('Merge into ticket number')}>
           <input inputMode="numeric" value={n} onChange={(e) => setN(e.target.value.replace(/\D/g, ''))} placeholder="1001" autoFocus />
         </Field>
       </div>
@@ -464,7 +473,7 @@ function Merge({ from, onClose }: { from: TicketRow; onClose: () => void }) {
 
 export function TicketList({ tickets }: { tickets: { id: string; number: number; subject: string; status: TicketStatus; updatedAt: string; requester?: string }[] }) {
   const { go } = useAdmin();
-  if (!tickets.length) return <Empty title="No tickets" text="Nothing from them yet." />;
+  if (!tickets.length) return <Empty title={t('No tickets')} text={t('Nothing from them yet.')} />;
   return (
     <SmoothHeight>
       <div className="adm-mini-list">
@@ -481,4 +490,3 @@ export function TicketList({ tickets }: { tickets: { id: string; number: number;
     </SmoothHeight>
   );
 }
-

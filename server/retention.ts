@@ -6,6 +6,8 @@ import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { kindOf } from '../src/data/drive.ts';
 import { COMPANY_TZ, companyTz } from '../src/jobTimes.ts';
+import { msg, phrase } from '../src/i18n/index.ts';
+import { datePhrase, type Said } from './lang.ts';
 
 export const RETENTION_DAYS = { '1y': 365, '90d': 90 } as const;
 export type Period = keyof typeof RETENTION_DAYS;
@@ -13,7 +15,8 @@ export const NOTICE_DAYS = 7;
 const DAY = 86_400_000;
 const isPeriod = (h: unknown): h is Period => typeof h === 'string' && h in RETENTION_DAYS;
 export const periodWords = (h: Period) => (h === '1y' ? '1 year' : '90 days');
-const dayWords = (at: string, tz: string) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: tz });
+/** The period as words translated when read. */
+const periodPhrase = (h: Period) => (h === '1y' ? phrase('1 year') : phrase('90 days'));
 
 /** What the server keeps about deleting (the app shows it, never sets it). */
 export interface RetentionState {
@@ -40,12 +43,13 @@ export function chatOnSave(next: any, before: any, now = Date.now()): { chat: an
 }
 
 /** The admins' notice when deleting is switched on: when it starts (the day by the company's clock) and what it does. */
-export const noticeText = (company: string, period: Period, from: string, tz = COMPANY_TZ) =>
-  `From ${dayWords(from, tz)}, chat messages older than ${periodWords(period)} will be deleted every day for everyone at ${company}. Pinned messages and the projects you keep stay; files stay in Drive. Change it in Settings, Apps & chat.`;
+export const noticeWords = (company: string, period: Period, from: string, tz = COMPANY_TZ): Said =>
+  msg('From {date}, chat messages older than {period} will be deleted every day for everyone at {company}. Pinned messages and the projects you keep stay; files stay in Drive. Change it in Settings, Apps & chat.', { date: datePhrase(from, { tz }), period: periodPhrase(period), company });
+export const noticeText = (company: string, period: Period, from: string, tz = COMPANY_TZ) => noticeWords(company, period, from, tz).text;
 
 export interface RetentionDeps {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) => void;
-  notify: (userIds: string[], workspaceId: string, text: string, link: { app: string; id?: string }) => void;
+  notify: (userIds: string[], workspaceId: string, text: Said, link: { app: string; id?: string }) => void;
 }
 
 const adminsOf = (ws: any) => (ws.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId as string);
@@ -63,7 +67,7 @@ export function runRetention(deps: RetentionDeps, now = Date.now()) {
       const next = { ...ws, chat: { ...chat, deleteFrom: from } };
       db.writeDocs('workspaces', [next], [], null);
       deps.broadcast('workspaces', [next], []);
-      deps.notify(adminsOf(ws), ws.id, noticeText(ws.name, chat.history, from, companyTz(ws)), { app: 'settings', id: 'apps' });
+      deps.notify(adminsOf(ws), ws.id, noticeWords(ws.name, chat.history, from, companyTz(ws)), { app: 'settings', id: 'apps' });
       out.push({ workspaceId: ws.id, deleted: 0, files: 0, noticeOnly: true });
       continue;
     }
@@ -101,7 +105,16 @@ export function runRetention(deps: RetentionDeps, now = Date.now()) {
     deps.broadcast('workspaces', [next], []);
     db.audit('system', 'chat.retention.run', ws.id, `${gone.length} chat message${gone.length === 1 ? '' : 's'} older than ${periodWords(chat.history)} (before ${before.slice(0, 10)}) deleted${drive.length ? `; ${drive.length} file${drive.length === 1 ? '' : 's'} kept in Drive` : ''}`);
     if (!chat.lastRun)
-      deps.notify(adminsOf(ws), ws.id, `Old chat messages are now deleted every day: ${gone.length} older than ${periodWords(chat.history)} went today${drive.length ? `, and their ${drive.length} file${drive.length === 1 ? ' is' : 's are'} in Drive` : ''}.`, { app: 'settings', id: 'apps' });
+      deps.notify(
+        adminsOf(ws),
+        ws.id,
+        !drive.length
+          ? msg('Old chat messages are now deleted every day: {n} older than {period} went today.', { n: gone.length, period: periodPhrase(chat.history) })
+          : drive.length === 1
+            ? msg('Old chat messages are now deleted every day: {n} older than {period} went today, and their 1 file is in Drive.', { n: gone.length, period: periodPhrase(chat.history) })
+            : msg('Old chat messages are now deleted every day: {n} older than {period} went today, and their {files} files are in Drive.', { n: gone.length, period: periodPhrase(chat.history), files: drive.length }),
+        { app: 'settings', id: 'apps' },
+      );
     out.push({ workspaceId: ws.id, deleted: gone.length, files: drive.length });
   }
   return out;
