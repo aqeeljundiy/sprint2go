@@ -13,6 +13,8 @@
 // 10. invoices bill the people who were active that month, and say so
 // 11. the company's time zone: only admins set it, only zones the clock knows
 // 12. mail: a refused send plans nothing; "Remind me if no reply" is noted when the email goes out
+// 13. chat: a message sent later is its author's alone until its time, then goes out with its notices; a saved
+//     message's reminder comes once
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -375,6 +377,25 @@ try {
   const rem = reminders('t-remind')[0];
   const days = rem ? (Date.parse(rem.due_at) - Date.now()) / 86_400_000 : 0;
   check(sent.ok && rem?.by_user === 'u-aqeel' && rem.state === 'waiting' && days > 2.9 && days <= 3, 'a tracked email with “Remind me if no reply” is noted on the server, three days out');
+
+  /* ---------- 13. chat: Send later and Remind me ---------- */
+  const inAnHour = new Date(Date.now() + 3600_000).toISOString();
+  await aqeel.sync('messages', [{ id: 'msg-later', channelId: 'ch-both', userId: 'u-aqeel', text: '@Dewi this goes out later', at: now(), sendAt: inAnHour }]);
+  check(doc('messages', 'msg-later')?.sendAt === inAnHour, 'a message can wait for its time');
+  check(!(await dewi.state()).messages.some((x) => x.id === 'msg-later') && (await aqeel.state()).messages.some((x) => x.id === 'msg-later'), 'until then only its author sees it');
+  await dewi.sync('messages', [{ ...doc('messages', 'msg-later'), reactions: { '👍': ['u-dewi'] } }]);
+  await dewi.sync('messages', [], ['msg-later']);
+  check(!!doc('messages', 'msg-later') && !doc('messages', 'msg-later').reactions, 'nobody else can touch it or delete it');
+  await aqeel.sync('messages', [{ ...doc('messages', 'msg-aqeel'), sendAt: inAnHour }]);
+  check(!doc('messages', 'msg-aqeel').sendAt, 'a message that went out can’t be made to wait again');
+  await aqeel.sync('messages', [{ ...doc('messages', 'msg-later'), sendAt: new Date(Date.now() - 1000).toISOString() }]);
+  const dewiPrefs = doc('prefs', 'u-dewi')?.value ?? {};
+  await dewi.sync('prefs', [{ id: 'u-dewi', value: { ...dewiPrefs, 's2g-chat-saved:u-dewi': [{ id: 'msg-aqeel', channelId: 'ch-both', at: now(), remindAt: new Date(Date.now() - 1000).toISOString() }] } }]);
+  const chatNotices = () => db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND json_extract(data, '$.userId') = 'u-dewi' AND json_extract(data, '$.link.app') = 'chat'").all().map((r) => JSON.parse(r.data).text);
+  const went = await waitFor(() => !doc('messages', 'msg-later').sendAt && chatNotices().some((t) => t.startsWith('Reminder:')), 400);
+  check(!!went && (await dewi.state()).messages.some((x) => x.id === 'msg-later'), 'when its time comes the server sends it, and now she sees it');
+  check(chatNotices().some((t) => t === 'Aqeel mentioned you in #both: “@Dewi this goes out later”'), 'the person it mentions hears about it');
+  check(chatNotices().filter((t) => t === 'Reminder: Aqeel in #both: “I said this”').length === 1 && doc('prefs', 'u-dewi').value['s2g-chat-saved:u-dewi'][0].reminded === true, 'a saved message’s reminder comes once, and is marked done in her settings');
 
   db.close();
 } catch (e) {

@@ -1096,6 +1096,89 @@ await test('Demo company: hidden, shown, cleaned up after a month unused, and co
   assert.equal(sandbox.stateOf('u-unit', true).state, 'none', 'made again, fresh, the next time');
 });
 
+/* ---------- chat: send later, reminders on saved messages, mutes (server/chatLater.ts) ---------- */
+
+const chatLater = await import('../server/chatLater.ts');
+{
+  const T = Date.parse('2026-10-09T10:00:00Z');
+  const at = (mins) => new Date(T + mins * 60_000).toISOString();
+  db.writeDocs('users', [{ id: 'u-cl-ann', name: 'Ann Lee', email: 'ann@cl.example' }, { id: 'u-cl-bo', name: 'Bo Tan', email: 'bo@cl.example' }, { id: 'u-cl-cy', name: 'Cy Ray', email: 'cy@cl.example' }], [], null);
+  db.writeDocs('channels', [
+    { id: 'ch-cl-dm', workspaceId: 'w-cl', kind: 'dm', name: '', members: ['u-cl-ann', 'u-cl-bo'] },
+    { id: 'ch-cl-room', workspaceId: 'w-cl', kind: 'channel', name: 'launch', members: ['u-cl-ann', 'u-cl-bo', 'u-cl-cy'] },
+  ], [], null);
+  await test('Send later: a time only while the message hasn’t gone out, at most 120 days ahead', () => {
+    const fresh = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: at(60) }, null, T);
+    assert.equal(fresh.sendAt, at(60));
+    const far = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: at(60 * 24 * 400) }, null, T);
+    assert.equal(far.sendAt, new Date(T + 120 * 86_400_000).toISOString(), 'clamped to 120 days');
+    const sent = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: at(60) }, { id: 'm1', userId: 'u-cl-ann', text: 'hi', at: at(-5) }, T);
+    assert.equal('sendAt' in sent, false, 'a message that went out can’t be made to wait again');
+    const bad = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: 'soon' }, null, T);
+    assert.equal('sendAt' in bad, false, 'a time that isn’t one is dropped');
+    const now = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: null }, { id: 'm1', userId: 'u-cl-ann', sendAt: at(60) }, T);
+    assert.equal('sendAt' in now, false, '“Send now” clears it');
+  });
+  await test('Send later: waiting messages are their author’s alone', () => {
+    const m = { id: 'm2', userId: 'u-cl-ann', sendAt: at(5) };
+    assert.equal(chatLater.hiddenFrom(m, 'u-cl-bo'), true);
+    assert.equal(chatLater.hiddenFrom(m, 'u-cl-ann'), false);
+    assert.equal(chatLater.hiddenFrom({ id: 'm3', userId: 'u-cl-ann' }, 'u-cl-bo'), false);
+  });
+  await test('Send later: due messages go out now, with the notices a message sent then would bring', () => {
+    db.writeDocs('messages', [
+      { id: 'm-root', channelId: 'ch-cl-room', userId: 'u-cl-cy', text: 'Who has the deck?', at: at(-60) },
+      { id: 'm-dm', channelId: 'ch-cl-dm', userId: 'u-cl-ann', text: 'Morning! Call at 10?', at: at(-30), sendAt: at(-1) },
+      { id: 'm-mention', channelId: 'ch-cl-room', userId: 'u-cl-ann', text: '@Bo can you check the numbers', at: at(-30), sendAt: at(0) },
+      { id: 'm-reply', channelId: 'ch-cl-room', userId: 'u-cl-ann', text: 'I do', at: at(-30), sendAt: at(-2), parentId: 'm-root' },
+      { id: 'm-later', channelId: 'ch-cl-room', userId: 'u-cl-ann', text: 'not yet', at: at(-30), sendAt: at(30) },
+    ], [], null);
+    const out = chatLater.publishDue(T);
+    assert.deepEqual(out.messages.map((m) => m.id).sort(), ['m-dm', 'm-mention', 'm-reply']);
+    assert.ok(out.messages.every((m) => m.at === at(0) && !('sendAt' in m)), 'their time is now, and they wait no more');
+    const texts = out.notices.map((n) => `${n.userId}: ${n.text}`).sort();
+    assert.deepEqual(texts, ['u-cl-bo: Ann mentioned you in #launch: “@Bo can you check the numbers”', 'u-cl-bo: Ann messaged you: “Morning! Call at 10?”', 'u-cl-cy: Ann replied to your message in #launch: “I do”']);
+    assert.ok(out.notices.every((n) => n.kind === 'mention' && n.workspaceId === 'w-cl' && n.link.app === 'chat' && n.read === false));
+    db.writeDocs('messages', out.messages, [], null);
+    assert.deepEqual(chatLater.publishDue(T).messages, [], 'each goes out once');
+  });
+  await test('Remind me: a saved message’s reminder comes once, at its time, and an older copy of the settings can’t bring it back', () => {
+    const key = 'p-unit-saved';
+    const saved = [
+      { id: 'm-root', channelId: 'ch-cl-room', at: at(-10), remindAt: at(-1) },
+      { id: 'm-dm', channelId: 'ch-cl-dm', at: at(-10), remindAt: at(60) },
+      { id: 'm-mention', channelId: 'ch-cl-room', at: at(-10) },
+    ];
+    db.writeDocs('prefs', [{ id: 'u-cl-bo', value: { [`s2g-chat-saved:u-cl-bo`]: saved, other: key } }], [], null);
+    const out = chatLater.remindersDue(T, () => true);
+    assert.equal(out.notices.length, 1);
+    assert.equal(out.notices[0].text, 'Reminder: Cy in #launch: “Who has the deck?”');
+    assert.equal(out.notices[0].userId, 'u-cl-bo');
+    assert.deepEqual(out.notices[0].link, { app: 'chat', id: 'ch-cl-room', msg: 'm-root' });
+    const after = out.prefs[0].value['s2g-chat-saved:u-cl-bo'];
+    assert.deepEqual(after.map((x) => !!x.reminded), [true, false, false]);
+    assert.equal(out.prefs[0].value.other, key, 'the rest of their settings stay');
+    db.writeDocs('prefs', out.prefs, [], null);
+    assert.equal(chatLater.remindersDue(T, () => true).notices.length, 0, 'once');
+    const stale = { id: 'u-cl-bo', value: { 's2g-chat-saved:u-cl-bo': saved } };
+    const kept = chatLater.keepReminded(stale, db.getDoc('prefs', 'u-cl-bo'));
+    assert.equal(kept.value['s2g-chat-saved:u-cl-bo'][0].reminded, true, 'an older copy keeps it done');
+    const moved = chatLater.keepReminded({ id: 'u-cl-bo', value: { 's2g-chat-saved:u-cl-bo': [{ ...saved[0], remindAt: at(120) }] } }, db.getDoc('prefs', 'u-cl-bo'));
+    assert.equal(!!moved.value['s2g-chat-saved:u-cl-bo'][0].reminded, false, 'a new time is a new reminder');
+    db.writeDocs('prefs', [{ id: 'u-cl-cy', value: { 's2g-chat-saved:u-cl-cy': [{ id: 'm-dm', channelId: 'ch-cl-dm', remindAt: at(-1) }] } }], [], null);
+    const blind = chatLater.remindersDue(T, () => false);
+    assert.equal(blind.notices[0].text, 'Reminder: a message you saved', 'a message they can’t read isn’t quoted');
+  });
+  await test('Mute: for an hour, until a time, or for good', () => {
+    const v = { 's2g-chat-muted:u-cl-bo': { a: 'always', b: at(30), c: at(-30) } };
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'a', T), true);
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'b', T), true);
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'c', T), false, 'the hour is over');
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'd', T), false);
+    assert.equal(chatLater.mutedFor(v, 'u-cl-ann', 'a', T), false, 'only their own');
+  });
+}
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import * as push from './push.ts';
 import { clientPeople, companyOf } from '../src/clientView.ts';
+import { mutedFor } from './chatLater.ts';
 
 /** What someone can switch on or off (Settings, Notifications); stored with their other settings. */
 export type PushKind = 'messages' | 'mail' | 'tasks' | 'guests' | 'meetings' | 'other';
@@ -37,6 +38,12 @@ function blockedBy(userId: string, email: string) {
   return Array.isArray(rules) && rules.some((b: any) => (b?.kind === 'address' ? b.value === e : typeof b?.value === 'string' && e.endsWith('@' + b.value)));
 }
 
+/**
+ * A conversation this person muted (Chat, long-press a conversation, Mute): no buzz for a direct message there or a
+ * guest writing in it. Mentions and replies to them still come, as in Slack.
+ */
+const muted = (userId: string, channelId: string) => mutedFor(prefsOf(userId), userId, channelId);
+
 /** Only fresh things: an old notice saved again (read elsewhere, edited) never buzzes. Allows for a slow clock. */
 const recent = (at: unknown) => {
   const t = Date.parse(String(at ?? ''));
@@ -65,8 +72,9 @@ const kindOf = (n: any): PushKind => (n.fromGuest ? 'guests' : n.kind === 'menti
 function notices(docs: any[]) {
   for (const n of docs) {
     if (!n || n.read || typeof n.userId !== 'string' || n.userId.startsWith('email:') || !recent(n.at)) continue;
-    if (!reachable(n.userId) || !push.once(`n:${n.id}`)) continue;
     const l = n.link ?? {};
+    if (l.app === 'chat' && l.id && muted(n.userId, String(l.id)) && (db.getDoc('channels', String(l.id)) as any)?.kind === 'dm') continue;
+    if (!reachable(n.userId) || !push.once(`n:${n.id}`)) continue;
     const url = n.url ? String(n.url) : `/${l.app ?? ''}${q({ ws: n.workspaceId, id: l.id, msg: l.msg, notice: n.id })}`;
     const tag = l.app === 'chat' && l.id ? `chat:${l.id}` : l.app === 'tasks' && l.id ? `task:${l.id}` : l.app === 'mail' && l.id ? `mail:${l.id}` : l.app === 'calendar' && l.id ? `event:${l.id}` : `n:${n.id}`;
     const kind = kindOf(n);
@@ -79,7 +87,7 @@ function guestMessages(docs: any[]) {
   for (const m of docs) {
     if (!m || m.userId !== 'guest' || !recent(m.at)) continue;
     const ch = db.getDoc('channels', String(m.channelId)) as any;
-    const team: string[] = (ch?.members ?? []).filter((id: string) => reachable(id));
+    const team: string[] = (ch?.members ?? []).filter((id: string) => reachable(id) && !muted(id, String(ch.id)));
     if (!ch || !team.length || !push.once(`gm:${m.id}`)) continue;
     const client = ch.clientId ? (db.getDoc('clients', ch.clientId) as any) : null;
     const email = String(m.guestEmail ?? '').toLowerCase();
