@@ -8,7 +8,8 @@ import { Badge } from '../ui/Person';
 import { Layer } from '../ui/Layer';
 import { listImports } from './importApi';
 import { ImportDialog } from './ImportDialog';
-import { HOW, ProgressBar, SOURCE_ICON, madeWords, shareOf, untilWords } from './importWords';
+import { HOW, ProgressBar, SOURCE_ICON, madeWords, runningWords, shareOf, untilWords } from './importWords';
+import { t } from '../../i18n';
 import './imports.css';
 
 const SOURCES: ImportSource[] = ['slack', 'trello', 'drive'];
@@ -18,21 +19,22 @@ const live = (j: ImportJob) => j.status === 'reading' || j.status === 'running';
 function statusLine(j: ImportJob): string {
   switch (j.status) {
     case 'reading':
-      return j.progress?.phase ?? 'Reading the file';
+      return t(j.progress?.phase ?? 'Reading the file');
     case 'ready':
-      return 'Waiting for you to check it and start';
+      return t('Waiting for you to check it and start');
     case 'running':
-      return j.progress?.phase && j.progress.phase !== 'Starting' ? `Bringing in ${j.progress.phase}` : 'Starting';
+      return runningWords(j.progress?.phase);
     case 'done': {
       const made = j.summary ? madeWords(j.summary.made) : '';
-      return `${made ? `${made}, ` : 'Done '}${relative(j.finishedAt ?? j.createdAt)}`;
+      const when = relative(j.finishedAt ?? j.createdAt);
+      return made ? t('{made}, {when}', { made, when }) : t('Done {when}', { when });
     }
     case 'failed':
-      return j.error ?? 'It stopped';
+      return t(j.error ?? 'It stopped');
     case 'undone':
-      return `Undone ${relative(j.undoneAt ?? j.createdAt)}`;
+      return t('Undone {when}', { when: relative(j.undoneAt ?? j.createdAt) });
     default:
-      return 'Cancelled';
+      return t('Cancelled');
   }
 }
 
@@ -64,8 +66,8 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
   const anyLive = !!jobs?.some(live);
   useEffect(() => {
     if (!anyLive) return;
-    const t = setInterval(() => void load(), 1500);
-    return () => clearInterval(t);
+    const timer = setInterval(() => void load(), 1500);
+    return () => clearInterval(timer);
   }, [anyLive, ws.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changed = (j: ImportJob) => setJobs((list) => (list ? [j, ...list.filter((x) => x.id !== j.id)].filter((x) => x.status !== 'cancelled').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [j]));
@@ -76,8 +78,8 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
 
   return (
     <>
-      <h2>Import</h2>
-      <p className="set-intro">Bring your team’s history over from Slack, Trello or Google Drive. You check what comes in before anything is made, and you can undo an import for a day after.</p>
+      <h2>{t('Import')}</h2>
+      <p className="set-intro">{t('Bring your team’s history over from Slack, Trello or Google Drive. You check what comes in before anything is made, and you can undo an import for a day after.')}</p>
       <div className="acct-list imp-sources">
         {SOURCES.map((s) => {
           const Icon = SOURCE_ICON[s];
@@ -92,19 +94,19 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
                 <strong>{SOURCE_NAME[s]}</strong>
                 <small>{HOW[s].line()}</small>
               </span>
-              <button type="button" className="ghost-btn sm" disabled={held} title={held ? 'Another import is going on' : undefined} onClick={() => setOpen(mine ? { source: s, job: mine } : { source: s })}>
-                {mine ? 'Open' : 'Import'}
+              <button type="button" className="ghost-btn sm" disabled={held} title={held ? t('Another import is going on') : undefined} onClick={() => setOpen(mine ? { source: s, job: mine } : { source: s })}>
+                {mine ? t('Open') : t('Import')}
               </button>
             </div>
           );
         })}
       </div>
-      {busy && <p className="set-hint">One import at a time: the others can start once this one is done.</p>}
-      {error && <p className="err">{error}</p>}
+      {busy && <p className="set-hint">{t('One import at a time: the others can start once this one is done.')}</p>}
+      {error && <p className="err">{t(error)}</p>}
 
       {!!jobs?.length && (
         <>
-          <h3>Recent imports</h3>
+          <h3>{t('Recent imports')}</h3>
           <div className="acct-list imp-recent">
             {jobs.map((j) => {
               const Icon = SOURCE_ICON[j.source];
@@ -119,17 +121,17 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
                       <span className="imp-file-name">{j.preview?.board?.name ?? j.fileName}</span>
                       {j.status === 'failed' && (
                         <Badge small tone="bad">
-                          Stopped
+                          {t('Stopped')}
                         </Badge>
                       )}
                     </strong>
                     <small>{statusLine(j)}</small>
-                    {live(j) && <ProgressBar share={shareOf(j)} label={`${SOURCE_NAME[j.source]} import`} />}
-                    {j.undoUntil && <small className="imp-undo-hint">Can be undone until {untilWords(j.undoUntil)}</small>}
+                    {live(j) && <ProgressBar share={shareOf(j)} label={t('{source} import', { source: SOURCE_NAME[j.source] })} />}
+                    {j.undoUntil && <small className="imp-undo-hint">{t('Can be undone until {when}', { when: untilWords(j.undoUntil) })}</small>}
                   </span>
                   {j.status !== 'cancelled' && (
                     <button type="button" className="ghost-btn sm" onClick={() => setOpen({ source: j.source, job: j })}>
-                      {j.status === 'ready' ? 'Continue' : 'Open'}
+                      {j.status === 'ready' ? t('Continue') : t('Open')}
                     </button>
                   )}
                 </div>

@@ -6,6 +6,8 @@ import { prettyModelName } from '../../data/aiModels';
 import { ALLOWANCE, TOP_UP, options, priceFor, rp, seatsFor, TIER_NAME } from '../../data/pricing';
 import { server } from '../../sync';
 import { brand as product } from '../../terms';
+import { t, tn } from '../../i18n';
+import { fmtNumber } from '../../i18n/format';
 
 const USD = 17_500; // rupiah per US$, same rate as the AI catalogue
 
@@ -30,7 +32,10 @@ function priceOf(provider: string, model: string): [number, number] | null {
   return null;
 }
 const usdOf = (r: { inTokens: number; outTokens: number }, price: [number, number]) => (r.inTokens * price[0] + r.outTokens * price[1]) / 1e6;
-const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+const tokens = (n: number) =>
+  n >= 1e6 ? t('{n}M', { n: fmtNumber(n / 1e6, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }) : n >= 1e3 ? t('{n}k', { n: fmtNumber(Math.round(n / 1e3)) }) : fmtNumber(n);
+/** US$ with cents, the local way: US$12.50 / US$12,50. */
+const dollars = (n: number) => `US$${fmtNumber(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** What one setup would cost for the same work: each job priced on the model that setup uses for it. */
 function costWith(rows: Row[], pick: (job: AIJobId, row: Row) => { provider: string; model: string } | null, price: typeof priceOf = priceOf) {
@@ -107,11 +112,19 @@ export function AISpend({ ws, ai, plan, people, typical, listPrice }: { ws: stri
   const topUps = Math.ceil(over);
   const included = aiPrice - ownPrice + topUps * TOP_UP.price;
 
+  const who = tn(people, '{n} person', '{n} people');
   const cards = [
-    { id: 'now', name: hasKeys ? 'Your keys, setup now' : 'Your keys, balanced', rp: now.rp, note: now.unpriced ? `${now.unpriced} uses on models without a listed price` : 'List prices of the models you picked' },
-    { id: 'cheap', name: 'Your keys, lowest cost', rp: cheap.rp, note: 'DeepSeek and Flash models where they fit' },
-    { id: 'best', name: 'Your keys, best quality', rp: best.rp, note: 'Top models for every job' },
-    { id: 'included', name: `${product.name} AI included`, rp: included, note: `${TIER_NAME[tier]} AI vs ${TIER_NAME[tier]} for ${people} people${topUps ? ` + ${topUps} top-up${topUps > 1 ? 's' : ''}` : ', within the allowance'}` },
+    { id: 'now', name: hasKeys ? t('Your keys, setup now') : t('Your keys, balanced'), rp: now.rp, note: now.unpriced ? tn(now.unpriced, '{n} use on models without a listed price', '{n} uses on models without a listed price') : t('List prices of the models you picked') },
+    { id: 'cheap', name: t('Your keys, lowest cost'), rp: cheap.rp, note: t('DeepSeek and Flash models where they fit') },
+    { id: 'best', name: t('Your keys, best quality'), rp: best.rp, note: t('Top models for every job') },
+    {
+      id: 'included',
+      name: t('{product} AI included', { product: product.name }),
+      rp: included,
+      note: topUps
+        ? t('{tier} AI vs {tier} for {who} + {topUps}', { tier: TIER_NAME[tier], who, topUps: tn(topUps, '{n} top-up', '{n} top-ups') })
+        : t('{tier} AI vs {tier} for {who}, within the allowance', { tier: TIER_NAME[tier], who }),
+    },
   ];
   const cheapest = cards.reduce((a, b) => (b.rp < a.rp ? b : a));
   const diff = Math.abs(now.rp - included);
@@ -119,72 +132,72 @@ export function AISpend({ ws, ai, plan, people, typical, listPrice }: { ws: stri
   return (
     <div className="set-block spend">
       <h3>
-        <Coins size={15} /> Spending
-        <span className={`spend-src ${measured ? 'real' : ''}`}>{measured ? 'Measured, last 30 days' : 'Estimate from typical use'}</span>
+        <Coins size={15} /> {t('Spending')}
+        <span className={`spend-src ${measured ? 'real' : ''}`}>{measured ? t('Measured, last 30 days') : t('Estimate from typical use')}</span>
       </h3>
       <p className="muted small">
         {measured
-          ? 'Every AI call on your keys is counted here: tokens in and out, priced at the provider’s list price. Your provider’s bill is the final number.'
-          : 'Nothing measured yet, so this uses typical monthly use for a company your size. Once your keys are in use, the real numbers replace it.'}
+          ? t('Every AI call on your keys is counted here: tokens in and out, priced at the provider’s list price. Your provider’s bill is the final number.')
+          : t('Nothing measured yet, so this uses typical monthly use for a company your size. Once your keys are in use, the real numbers replace it.')}
       </p>
 
       <div className="spend-lead">
         <b>{rp(now.rp)}</b>
-        <span>a month on {hasKeys ? 'your keys' : 'your own keys'}, about US${now.usd.toFixed(2)}</span>
+        <span>{hasKeys ? t('a month on your keys, about {usd}', { usd: dollars(now.usd) }) : t('a month on your own keys, about {usd}', { usd: dollars(now.usd) })}</span>
       </div>
       <p className="spend-verdict">
         {now.rp <= included
-          ? `Your own keys cost about ${rp(diff)} a month less than ${product.name} AI included, for this much use. You manage the keys and the provider bills.`
-          : `${product.name} AI included costs about ${rp(diff)} a month less than your own keys, for this much use, and there are no keys or provider bills to manage.`}
+          ? t('Your own keys cost about {diff} a month less than {product} AI included, for this much use. You manage the keys and the provider bills.', { diff: rp(diff), product: product.name })
+          : t('{product} AI included costs about {diff} a month less than your own keys, for this much use, and there are no keys or provider bills to manage.', { diff: rp(diff), product: product.name })}
       </p>
-      <h4 className="spend-sub">The same work, a month, on each setup</h4>
+      <h4 className="spend-sub">{t('The same work, a month, on each setup')}</h4>
       <div className="spend-compare">
         {cards.map((c) => (
           <div key={c.id} className={`spend-card ${c.id === cheapest.id ? 'best' : ''} ${c.id === (ai.payer === 'sprint2go' ? 'included' : 'now') ? 'current' : ''}`}>
             <span className="sc-name">{c.name}</span>
             <b>{rp(c.rp)}</b>
             <small>{c.note}</small>
-            {c.id === cheapest.id && <em>Cheapest</em>}
+            {c.id === cheapest.id && <em>{t('Cheapest')}</em>}
           </div>
         ))}
       </div>
       <details className="spend-details">
-        <summary>Where it goes: each job, uses and tokens</summary>
+        <summary>{t('Where it goes: each job, uses and tokens')}</summary>
       <div className="spend-totals">
         <div>
-          <b>{totalUses.toLocaleString('id-ID')}</b>
-          <span>AI uses</span>
+          <b>{fmtNumber(totalUses)}</b>
+          <span>{t('AI uses')}</span>
         </div>
         <div>
           <b>{tokens(totalIn)}</b>
-          <span>tokens in</span>
+          <span>{t('tokens in')}</span>
         </div>
         <div>
           <b>{tokens(totalOut)}</b>
-          <span>tokens out</span>
+          <span>{t('tokens out')}</span>
         </div>
       </div>
 
       <table className="spend-table">
         <thead>
           <tr>
-            <th>Job</th>
-            <th>Uses</th>
-            <th>Tokens in / out</th>
-            <th>Model</th>
-            <th>Cost</th>
+            <th>{t('Job')}</th>
+            <th>{t('Uses')}</th>
+            <th>{t('Tokens in / out')}</th>
+            <th>{t('Model')}</th>
+            <th>{t('Cost')}</th>
           </tr>
         </thead>
         <tbody>
           {byJob.map((x) => (
             <tr key={x.job.id}>
               <td>{x.job.name}</td>
-              <td>{x.uses.toLocaleString('id-ID')}</td>
+              <td>{fmtNumber(x.uses)}</td>
               <td>
                 {tokens(x.inT)} / {tokens(x.outT)}
               </td>
               <td className="muted">{x.models.join(', ')}</td>
-              <td>{x.included ? <span className="muted">in plan</span> : x.unpriced && !x.usd ? <span className="muted">no list price</span> : rp(x.usd * USD)}</td>
+              <td>{x.included ? <span className="muted">{t('in plan')}</span> : x.unpriced && !x.usd ? <span className="muted">{t('no list price')}</span> : rp(x.usd * USD)}</td>
             </tr>
           ))}
         </tbody>

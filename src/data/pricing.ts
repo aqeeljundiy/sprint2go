@@ -1,4 +1,7 @@
 import type { Plan, PlanAdjustment, Tier, Track } from '../types';
+// The full paths: the server imports this file, and Node can't import a folder (server/register.mjs only adds ".ts").
+import { mark, t } from '../i18n/index';
+import { fmtDate } from '../i18n/format';
 
 /** Rupiah prices from PLAN.md. Per month; yearly = 10 months. */
 export const PRICES: Record<Track, Record<Exclude<Tier, 'free'>, { base: number; included: number; extra: number; perPerson?: boolean }>> = {
@@ -17,20 +20,66 @@ export const PRICES: Record<Track, Record<Exclude<Tier, 'free'>, { base: number;
 };
 
 export const TIER_NAME: Record<Tier, string> = { free: 'Free', small: 'Small', studio: 'Studio', agency: 'Agency', business: 'Business' };
-export const TRACK_NAME: Record<Track, string> = { own: 'Own AI keys', ai: 'AI included' };
+/** The two tracks in the reader's language (getters: read while rendering). */
+export const TRACK_NAME: Record<Track, string> = {
+  get own() {
+    return t('Own AI keys');
+  },
+  get ai() {
+    return t('AI included');
+  },
+};
 export const planName = (p: Pick<Plan, 'track' | 'tier'>) => (p.tier === 'free' ? 'Free' : `${TIER_NAME[p.tier]}${p.track === 'ai' ? ' AI' : ''}`);
 
+// Names and units are getters, in the reader's language (the server reads them in English).
 export const ADDONS = {
-  mailboxes: { name: 'Hosted mailbox (10 GB)', price: 15_000, unit: 'per mailbox' },
-  storage50: { name: 'Extra 50 GB storage', price: 39_000, unit: 'per 50 GB' },
-  meetHours10: { name: 'Meeting bot, 10 more hours', price: 49_000, unit: 'per 10 hours' },
-  branding: { name: 'Remove “Made with sprint2go” from shared spaces', price: 49_000, unit: 'per month' },
+  mailboxes: {
+    get name() {
+      return t('Hosted mailbox (10 GB)');
+    },
+    price: 15_000,
+    get unit() {
+      return t('per mailbox');
+    },
+  },
+  storage50: {
+    get name() {
+      return t('Extra 50 GB storage');
+    },
+    price: 39_000,
+    get unit() {
+      return t('per 50 GB');
+    },
+  },
+  meetHours10: {
+    get name() {
+      return t('Meeting bot, 10 more hours');
+    },
+    price: 49_000,
+    get unit() {
+      return t('per 10 hours');
+    },
+  },
+  branding: {
+    get name() {
+      return t('Remove “Made with sprint2go” from shared spaces');
+    },
+    price: 49_000,
+    get unit() {
+      return t('per month');
+    },
+  },
 } as const;
 
 /** The branding add-on, or Business, which includes it. A company's own address for its guests goes live only with it. */
 export const hasBranding = (plan?: { tier?: string; addons?: { branding?: boolean } } | null) => plan?.tier === 'business' || !!plan?.addons?.branding;
 
-export const TOP_UP = { price: 99_000, gives: 'about 50 meeting hours, or 110 Ask AI questions, or 120 brain dumps, or 600 email summaries' };
+export const TOP_UP = {
+  price: 99_000,
+  get gives() {
+    return t('about 50 meeting hours, or 110 Ask AI questions, or 120 brain dumps, or 600 email summaries');
+  },
+};
 
 /** Boosted sending credits: one per email to an outside address. Paid by bank transfer until card payments exist. */
 export const MAIL_PACKS = [
@@ -82,7 +131,7 @@ export interface PricingOverride {
 export const DEFAULT_PRICES = JSON.parse(JSON.stringify({ prices: PRICES, addons: Object.fromEntries(Object.entries(ADDONS).map(([k, v]) => [k, v.price])), topUp: TOP_UP.price }));
 export function applyPricing(o: PricingOverride | null | undefined) {
   if (!o) return;
-  for (const t of Object.keys(o.prices ?? {}) as Track[]) for (const tier of Object.keys(o.prices![t] ?? {}) as Exclude<Tier, 'free'>[]) Object.assign(PRICES[t][tier], o.prices![t]![tier]);
+  for (const track of Object.keys(o.prices ?? {}) as Track[]) for (const tier of Object.keys(o.prices![track] ?? {}) as Exclude<Tier, 'free'>[]) Object.assign(PRICES[track][tier], o.prices![track]![tier]);
   for (const [k, v] of Object.entries(o.addons ?? {})) if (typeof v === 'number' && k in ADDONS) (ADDONS as unknown as Record<string, { price: number }>)[k].price = v;
   if (typeof o.topUp === 'number') (TOP_UP as { price: number }).price = o.topUp;
 }
@@ -136,12 +185,13 @@ export function monthlyTotal(plan: Plan, people: number) {
   return { base, addons, total: base + addons };
 }
 
+/** English, as the landing page looks them up; the app shows them with t(f). */
 export const PLAN_FEATURES: Record<Tier, string[]> = {
-  free: ['5 people, 1 team', 'AI with your own keys', '90 days of visible history', '5 GB storage, 2 meeting-bot hours', '1 guest'],
-  small: ['For 1 to 9 people', 'Every app, hosted email', 'Guests and shared spaces', '20 GB storage per person'],
-  studio: ['10 people included', 'Hosted email, every app', 'Guests and shared spaces', '250 GB shared storage'],
-  agency: ['30 people included', '1 TB shared storage', 'Permissions and retention rules'],
-  business: ['80 people included', '3 TB shared storage', 'SSO, audit log, priority support', 'Unlimited meeting bot'],
+  free: [mark('5 people, 1 team'), mark('AI with your own keys'), mark('90 days of visible history'), mark('5 GB storage, 2 meeting-bot hours'), mark('1 guest')],
+  small: [mark('For 1 to 9 people'), mark('Every app, hosted email'), mark('Guests and shared spaces'), mark('20 GB storage per person')],
+  studio: [mark('10 people included'), mark('Hosted email, every app'), mark('Guests and shared spaces'), mark('250 GB shared storage')],
+  agency: [mark('30 people included'), mark('1 TB shared storage'), mark('Permissions and retention rules')],
+  business: [mark('80 people included'), mark('3 TB shared storage'), mark('SSO, audit log, priority support'), mark('Unlimited meeting bot')],
 };
 
 
@@ -162,8 +212,9 @@ export function billingPeriod(plan: Pick<Plan, 'cycle' | 'since'>, at = new Date
 }
 /** What a plan costs for one whole period (the plan itself; add-ons are their own lines). */
 const periodPrice = (plan: Pick<Plan, 'track' | 'tier' | 'cycle'>, people: number) => (priceFor(plan.track, plan.tier, people) ?? 0) * (plan.cycle === 'yearly' ? 10 : 1);
-const dayMonth = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
-const monthName = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+// In the reader's language; on the server (English) "9 October" and "October", as the invoices say.
+const dayMonth = (ms: number) => fmtDate(ms, { day: 'numeric', month: 'long', timeZone: 'UTC' });
+const monthName = (ms: number) => fmtDate(ms, { month: 'long', timeZone: 'UTC' });
 
 /**
  * A plan switch prorated for the period it happens in, or null when nothing is: the old or the new plan is Free (a
@@ -185,13 +236,18 @@ export function prorate(prev: Plan, next: Pick<Plan, 'track' | 'tier' | 'cycle'>
   const to = planName(next);
   return { at: iso, period: p.key, invoiced, from, to, daysBefore, days, amount, text: adjustmentText({ invoiced, from, to, daysBefore, days, start: p.start, at: at.getTime(), yearly: prev.cycle === 'yearly' }) };
 }
-/** How a prorated switch reads on the invoice and the billing page. */
+/**
+ * How a prorated switch reads on the invoice and the billing page. The server writes it in English (t() has no other
+ * language there); the billing page shows a saved one in the reader's language with the same sentences.
+ */
 export function adjustmentText(a: { invoiced: boolean; from: string; to: string; daysBefore: number; days: number; start: number; at: number; yearly?: boolean }) {
   const left = a.days - a.daysBefore;
-  const span = a.yearly ? 'the rest of the year' : `the rest of ${monthName(a.start)}`;
-  if (a.from === a.to) return `Plan changes on ${dayMonth(a.at)}, back to ${a.to}`;
-  if (a.invoiced) return `${a.to} instead of ${a.from} from ${dayMonth(a.at)}: ${span} (${left} of ${a.days} days)`;
-  return a.daysBefore ? `${a.from} instead of ${a.to} until ${dayMonth(a.at - DAY_MS)} (${a.daysBefore} of ${a.days} days)` : `${a.to} from the start of the period`;
+  const span = a.yearly ? t('the rest of the year') : t('the rest of {month}', { month: monthName(a.start) });
+  if (a.from === a.to) return t('Plan changes on {date}, back to {plan}', { date: dayMonth(a.at), plan: a.to });
+  if (a.invoiced) return t('{to} instead of {from} from {date}: {span} ({left} of {days} days)', { to: a.to, from: a.from, date: dayMonth(a.at), span, left, days: a.days });
+  return a.daysBefore
+    ? t('{from} instead of {to} until {date} ({before} of {days} days)', { from: a.from, to: a.to, date: dayMonth(a.at - DAY_MS), before: a.daysBefore, days: a.days })
+    : t('{plan} from the start of the period', { plan: a.to });
 }
 /**
  * Adds a switch to the ones waiting for the next invoice. Switches of the same period and kind become one line (a
@@ -214,8 +270,8 @@ export function addAdjustment(list: PlanAdjustment[] | undefined, a: Omit<PlanAd
     text: sameDay
       ? adjustmentText({ ...a, from: same.from, start: Date.parse(`${a.period}-01T00:00:00Z`), at: Date.parse(same.at) })
       : same.from === a.to
-        ? `${same.to} from ${dayMonth(Date.parse(same.at))} to ${dayMonth(Date.parse(a.at) - DAY_MS)}, then back to ${a.to}`
-        : `${same.from} to ${same.to} on ${dayMonth(Date.parse(same.at))}, then ${a.to} on ${dayMonth(Date.parse(a.at))}, prorated by the days on each`,
+        ? t('{plan} from {start} to {end}, then back to {back}', { plan: same.to, start: dayMonth(Date.parse(same.at)), end: dayMonth(Date.parse(a.at) - DAY_MS), back: a.to })
+        : t('{from} to {mid} on {date}, then {to} on {then}, prorated by the days on each', { from: same.from, mid: same.to, date: dayMonth(Date.parse(same.at)), to: a.to, then: dayMonth(Date.parse(a.at)) }),
   };
   if (sameDay) merged.daysBefore = same.daysBefore;
   return [...rest, merged];

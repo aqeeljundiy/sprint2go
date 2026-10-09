@@ -18,6 +18,9 @@ import { relative } from '../../utils';
 import { loadTwoStep } from '../TwoStep';
 import { JOIN_MODES } from '../../meetingLinks';
 import { isSandbox } from '../../sandbox';
+import { mark, t, tn, tx } from '../../i18n';
+import { tj } from '../../i18n/tj';
+import { fmtDate, fmtNumber, fmtPercent, fmtWeekdayLong } from '../../i18n/format';
 
 const Switch = ({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
   <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
@@ -40,21 +43,21 @@ export function PermissionsSection({ ws, canManage, onWorkspace }: { ws: Workspa
   const p = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   const set = (k: keyof MemberPermissions, v: boolean) => onWorkspace({ permissions: { ...ws.permissions, [k]: v } });
   const rows: { k: keyof MemberPermissions; title: string; hint: string }[] = [
-    { k: 'createProjects', title: `Start new ${term.many}`, hint: `They become the ${term.one}’s Lead` },
-    { k: 'seeAllProjects', title: `See every ${term.one}`, hint: `Off: only the ${term.many} they’re on` },
-    { k: 'inviteGuests', title: 'Invite guests', hint: `Bring a ${term.who}’s people into a ${term.one}. Its Lead always can.` },
-    { k: 'editTables', title: 'Change how tables work', hint: 'Columns, views and automations. Adding and editing rows is always allowed.' },
-    { k: 'createTeams', title: 'Create teams', hint: 'They lead the team they make' },
-    { k: 'deleteThings', title: 'Delete things', hint: `${term.Many}, tables and channels, and other people’s notes and files. Their own are always theirs to delete.` },
-    { k: 'seeBilling', title: 'See plan, billing and AI usage', hint: 'What the company pays and what the AI costs' },
+    { k: 'createProjects', title: t('Start new {projects}', { projects: term.many }), hint: t('They become the {project}’s Lead', { project: term.one }) },
+    { k: 'seeAllProjects', title: t('See every {project}', { project: term.one }), hint: t('Off: only the {projects} they’re on', { projects: term.many }) },
+    { k: 'inviteGuests', title: t('Invite guests'), hint: t('Bring a {who}’s people into a {project}. Its Lead always can.', { who: term.who, project: term.one }) },
+    { k: 'editTables', title: t('Change how tables work'), hint: t('Columns, views and automations. Adding and editing rows is always allowed.') },
+    { k: 'createTeams', title: t('Create teams'), hint: t('They lead the team they make') },
+    { k: 'deleteThings', title: t('Delete things'), hint: t('{Projects}, tables and channels, and other people’s notes and files. Their own are always theirs to delete.', { projects: term.many }) },
+    { k: 'seeBilling', title: t('See plan, billing and AI usage'), hint: t('What the company pays and what the AI costs') },
   ];
   return (
     <>
-      <h2>Permissions</h2>
-      <p className="set-intro">Owners and admins can do everything. These switches decide what people with the Member role can do. A {term.one}’s Lead can always manage that {term.one}: its people, guests and settings.</p>
+      <h2>{t('Permissions')}</h2>
+      <p className="set-intro">{t('Owners and admins can do everything. These switches decide what people with the Member role can do. A {project}’s Lead can always manage that {project}: its people, guests and settings.', { project: term.one })}</p>
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
-          <h3>What Members can do</h3>
+          <h3>{t('What Members can do')}</h3>
           {rows.map(({ k, title, hint }) => (
             <Row key={k} title={title} hint={hint}>
               <Switch on={p[k]} onChange={(v) => set(k, v)} />
@@ -100,16 +103,16 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
   const mailBytes = room?.byPerson?.find((x) => x.userId === 'mail')?.bytes ?? 0;
   const parts = live
     ? [
-        { name: 'Files', size: Math.max(0, (room?.used ?? 0) - (room?.video ?? 0) - mailBytes), color: '#10b981' },
-        { name: 'Videos', size: room?.video ?? 0, color: '#f97316' },
-        { name: 'Email attachments', size: mailBytes, color: '#8b5cf6' },
+        { name: t('Files'), size: Math.max(0, (room?.used ?? 0) - (room?.video ?? 0) - mailBytes), color: '#10b981' },
+        { name: t('Videos'), size: room?.video ?? 0, color: '#f97316' },
+        { name: t('Email attachments'), size: mailBytes, color: '#8b5cf6' },
       ]
     : [
-        { name: 'Mail', size: 1.3 * 1024 ** 3 * Math.max(1, people / 3), color: 'var(--accent)' },
-        { name: 'Files', size: sum(files.filter((d) => !d.channelId && d.kind !== 'video' && d.kind !== 'audio')), color: '#10b981' },
-        { name: 'Videos', size: sum(files.filter((d) => d.kind === 'video')), color: '#f97316' },
-        { name: 'Chat files', size: sum(files.filter((d) => d.channelId)), color: '#8b5cf6' },
-        { name: 'Meeting recordings', size: 3 * 1.1 * 1024 ** 3, color: '#ec4899' },
+        { name: t('Mail'), size: 1.3 * 1024 ** 3 * Math.max(1, people / 3), color: 'var(--accent)' },
+        { name: t('Files'), size: sum(files.filter((d) => !d.channelId && d.kind !== 'video' && d.kind !== 'audio')), color: '#10b981' },
+        { name: t('Videos'), size: sum(files.filter((d) => d.kind === 'video')), color: '#f97316' },
+        { name: t('Chat files'), size: sum(files.filter((d) => d.channelId)), color: '#8b5cf6' },
+        { name: t('Meeting recordings'), size: 3 * 1.1 * 1024 ** 3, color: '#ec4899' },
       ];
   const used = live ? room?.used ?? 0 : parts.reduce((s, x) => s + x.size, 0);
   const byPerson = live
@@ -124,9 +127,9 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
 
   return (
     <>
-      <h2>Storage</h2>
+      <h2>{t('Storage')}</h2>
       <p className="set-intro">
-        {live && !room ? 'Adding up what your files take…' : `${fmtSize(used)} of ${fmtSize(pool)} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.`}
+        {live && !room ? t('Adding up what your files take…') : t('{used} of {total} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.', { used: fmtSize(used), total: fmtSize(pool) })}
       </p>
       <div className="stack-bar">
         {parts.map((x) => (
@@ -140,42 +143,46 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
           </span>
         ))}
       </div>
-      {live && <p className="muted small">Counts files uploaded to Drive, chat, tables and the shared spaces, and email attachments. The text of emails and meeting recordings aren’t counted.</p>}
+      {live && <p className="muted small">{t('Counts files uploaded to Drive, chat, tables and the shared spaces, and email attachments. The text of emails and meeting recordings aren’t counted.')}</p>}
       {used / pool > 0.8 && (
         <p className="trial-note">
-          You’ve used {Math.round((used / pool) * 100)}%. Add 50 GB for {rp(39_000)} a month, or{' '}
-          <button className="link-btn" onClick={onBilling}>
-            see plans
-          </button>
-          .
+          {tj('You’ve used {percent}. Add 50 GB for {price} a month, or {plans}.', {
+            percent: fmtPercent(used / pool),
+            price: rp(39_000),
+            plans: (
+              <button className="link-btn" onClick={onBilling}>
+                {t('see plans')}
+              </button>
+            ),
+          })}
         </p>
       )}
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
-          <h3>Big files</h3>
-          <Row title="Ask before saving big files" hint="Anyone uploading something bigger is asked first, with its size and the storage the company has left.">
+          <h3>{t('Big files')}</h3>
+          <Row title={t('Ask before saving big files')} hint={t('Anyone uploading something bigger is asked first, with its size and the storage the company has left.')}>
             <Select
               value={String(st.askOver)}
               onChange={(v) => onStorage({ ...st, askOver: Number(v) as StorageSettings['askOver'] })}
-              label="Ask before saving big files"
+              label={t('Ask before saving big files')}
               options={[
-                { value: '200', label: 'Over 200 MB' },
-                { value: '500', label: 'Over 500 MB' },
-                { value: '1000', label: 'Over 1 GB' },
-                { value: '0', label: 'Never ask' },
+                { value: '200', label: t('Over {size}', { size: '200 MB' }) },
+                { value: '500', label: t('Over {size}', { size: '500 MB' }) },
+                { value: '1000', label: t('Over {size}', { size: '1 GB' }) },
+                { value: '0', label: t('Never ask') },
               ]}
             />
           </Row>
-          {live && caps.maxUploadMb > 0 && <p className="muted small">One file can be up to {caps.maxUploadMb >= 1024 ? `${+(caps.maxUploadMb / 1024).toFixed(1)} GB` : `${caps.maxUploadMb} MB`}.</p>}
-          <Row title={<><Cloud size={14} /> Use your own storage</>} hint={`Coming soon: raw footage and huge files kept in your own Google Drive, Dropbox or Backblaze B2, still showing on the ${term.one} page. Until then everything is saved in ${product.name}.`}>
-            <Badge>Not yet</Badge>
+          {live && caps.maxUploadMb > 0 && <p className="muted small">{t('One file can be up to {size}.', { size: caps.maxUploadMb >= 1024 ? `${fmtNumber(caps.maxUploadMb / 1024, { maximumFractionDigits: 1 })} GB` : `${fmtNumber(caps.maxUploadMb)} MB` })}</p>}
+          <Row title={<><Cloud size={14} /> {t('Use your own storage')}</>} hint={t('Coming soon: raw footage and huge files kept in your own Google Drive, Dropbox or Backblaze B2, still showing on the {project} page. Until then everything is saved in {product}.', { project: term.one, product: product.name })}>
+            <Badge>{tx('feature', 'Not yet')}</Badge>
           </Row>
         </div>
       </fieldset>
 
       <div className="set-block">
-        <h3>Biggest files</h3>
-        {biggest.length === 0 && <p className="muted small">No files in Drive yet.</p>}
+        <h3>{t('Biggest files')}</h3>
+        {biggest.length === 0 && <p className="muted small">{t('No files in Drive yet.')}</p>}
         {biggest.map((f) => (
           <div key={f.id} className="pa-row">
             <span className="cf-icon">{f.kind === 'video' ? <Video size={15} /> : <FileText size={15} />}</span>
@@ -185,8 +192,8 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
         ))}
       </div>
       <div className="set-block">
-        <h3>By channel</h3>
-        {byChannel.length === 0 && <p className="muted small">No files shared in chat yet.</p>}
+        <h3>{t('By channel')}</h3>
+        {byChannel.length === 0 && <p className="muted small">{t('No files shared in chat yet.')}</p>}
         {byChannel.map((c) => (
           <div key={c.name} className="pa-row">
             <span className="pa-title"># {c.name}</span>
@@ -195,8 +202,8 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
         ))}
       </div>
       <div className="set-block">
-        <h3>By person</h3>
-        {live && room && byPerson.length === 0 && <p className="muted small">Nobody has uploaded anything yet.</p>}
+        <h3>{t('By person')}</h3>
+        {live && room && byPerson.length === 0 && <p className="muted small">{t('Nobody has uploaded anything yet.')}</p>}
         {byPerson.map(({ user: u, bytes }) => (
           <div key={u.id} className="pa-row">
             <PersonCell person={u} sub={null} size={24} />
@@ -212,10 +219,35 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
 
 // Audio is the default and the most reliable; video (Beta) also saves cameras and screen shares, with a separate
 // audio file kept alongside so the transcript never depends on the video.
-export const KEEP: { value: MeetingSettings['keep']; label: string; hint: string }[] = [
-  { value: 'audio', label: 'Audio and notes', hint: 'About 30 MB per hour' },
-  { value: 'video', label: 'Video, audio and notes (Beta)', hint: 'About 1 GB per hour' },
-  { value: 'notes', label: 'Notes and transcript only', hint: 'Under 1 MB per hour' },
+// Getters, so the words are read in the person's language each time (docs/i18n.md).
+export const KEEP: { value: MeetingSettings['keep']; readonly label: string; readonly hint: string }[] = [
+  {
+    value: 'audio',
+    get label() {
+      return t('Audio and notes');
+    },
+    get hint() {
+      return t('About {size} per hour', { size: '30 MB' });
+    },
+  },
+  {
+    value: 'video',
+    get label() {
+      return t('Video, audio and notes (Beta)');
+    },
+    get hint() {
+      return t('About {size} per hour', { size: '1 GB' });
+    },
+  },
+  {
+    value: 'notes',
+    get label() {
+      return t('Notes and transcript only');
+    },
+    get hint() {
+      return t('Under {size} per hour', { size: '1 MB' });
+    },
+  },
 ];
 
 export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; canManage: boolean; onMeetings: (m: MeetingSettings) => void }) {
@@ -223,79 +255,80 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
   const set = (p: Partial<MeetingSettings>) => onMeetings({ ...m, ...p });
   return (
     <>
-      <h2>Meetings</h2>
-      <p className="set-intro">The notetaker records the whole meeting so the notes are accurate, then keeps only what you choose here. People can still change it for a single meeting.</p>
+      <h2>{t('Meetings')}</h2>
+      <p className="set-intro">{t('The notetaker records the whole meeting so the notes are accurate, then keeps only what you choose here. People can still change it for a single meeting.')}</p>
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
-          <h3>What to keep</h3>
-          <Row title={`${term.Who} meetings`} hint={`Meetings with a ${term.who} on the invite`}>
-            <Select value={m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label={`${term.Who} meetings`} width={300} />
+          <h3>{t('What to keep')}</h3>
+          <Row title={t('{Who} meetings', { who: term.who })} hint={t('Meetings with a {who} on the invite', { who: term.who })}>
+            <Select value={m.clientMeetings} onChange={(v) => set({ clientMeetings: v })} options={KEEP} label={t('{Who} meetings', { who: term.who })} width={300} />
           </Row>
-          <Row title="Internal meetings" hint="Standups, team syncs">
-            <Select value={m.internalMeetings} onChange={(v) => set({ internalMeetings: v })} options={KEEP} label="Internal meetings" width={300} />
+          <Row title={t('Internal meetings')} hint={t('Standups, team syncs')}>
+            <Select value={m.internalMeetings} onChange={(v) => set({ internalMeetings: v })} options={KEEP} label={t('Internal meetings')} width={300} />
           </Row>
           <div className={`fold ${m.clientMeetings === 'video' || m.internalMeetings === 'video' ? 'open' : ''}`}>
             <div className="fold-in">
-              <Row title="Turn old video into audio" hint="Keeps the audio, transcript and notes; frees about 97% of the space">
+              <Row title={t('Turn old video into audio')} hint={t('Keeps the audio, transcript and notes; frees about 97% of the space')}>
                 <Select
                   value={String(m.downgradeAfter)}
                   onChange={(v) => set({ downgradeAfter: Number(v) as MeetingSettings['downgradeAfter'] })}
-                  label="Turn old video into audio"
+                  label={t('Turn old video into audio')}
                   options={[
-                    { value: '30', label: 'After 30 days' },
-                    { value: '60', label: 'After 60 days' },
-                    { value: '90', label: 'After 90 days' },
-                    { value: '0', label: 'Never' },
+                    { value: '30', label: t('After {n} days', { n: 30 }) },
+                    { value: '60', label: t('After {n} days', { n: 60 }) },
+                    { value: '90', label: t('After {n} days', { n: 90 }) },
+                    { value: '0', label: t('Never') },
                   ]}
                 />
               </Row>
-              <p className="muted small">Video is in Beta: the picture can stutter on a busy server. The audio is saved separately, so transcripts and notes are never affected.</p>
+              <p className="muted small">{t('Video is in Beta: the picture can stutter on a busy server. The audio is saved separately, so transcripts and notes are never affected.')}</p>
             </div>
           </div>
         </div>
         <div className="set-block">
-          <h3>Languages</h3>
-          <p className="muted small">What your meetings are spoken in. The transcript only ever comes out in these, so Indonesian is never mistaken for Spanish. Pick two (say Indonesian and English) if people mix them; the first is the main one.</p>
+          <h3>{t('Languages')}</h3>
+          <p className="muted small">{t('What your meetings are spoken in. The transcript only ever comes out in these, so Indonesian is never mistaken for Spanish. Pick two (say Indonesian and English) if people mix them; the first is the main one.')}</p>
           <LanguagePicker value={m.languages ?? []} onChange={(languages) => set({ languages })} />
-          {!(m.languages?.length) && <p className="muted small">Nothing picked: the speech service guesses the language for each meeting.</p>}
+          {!(m.languages?.length) && <p className="muted small">{t('Nothing picked: the speech service guesses the language for each meeting.')}</p>}
         </div>
         <div className="set-block">
-          <h3>Permissions</h3>
-          <Row title="Who can record" hint="Who can invite the notetaker to a meeting">
+          <h3>{t('Permissions')}</h3>
+          <Row title={t('Who can record')} hint={t('Who can invite the notetaker to a meeting')}>
             <Select
               value={m.whoCanRecord}
               onChange={(v) => set({ whoCanRecord: v })}
-              label="Who can record"
+              label={t('Who can record')}
               options={[
-                { value: 'everyone', label: 'Everyone' },
-                { value: 'admins', label: 'Only admins' },
+                { value: 'everyone', label: t('Everyone') },
+                { value: 'admins', label: t('Only admins') },
               ]}
             />
           </Row>
-          <Row title={`Share notes with the ${term.who} by default`} hint={`Notes from ${term.who} meetings appear in their shared space. Recordings never do unless someone shares them`}>
+          <Row title={t('Share notes with the {who} by default', { who: term.who })} hint={t('Notes from {who} meetings appear in their shared space. Recordings never do unless someone shares them', { who: term.who })}>
             <Switch on={m.shareNotesWithClient} onChange={(v) => set({ shareNotesWithClient: v })} />
           </Row>
-          <p className="muted small">On each meeting you can choose who can watch or download the recording, who sees the transcript, and whether the {term.who} sees the notes.</p>
+          <p className="muted small">{t('On each meeting you can choose who can watch or download the recording, who sees the transcript, and whether the {who} sees the notes.', { who: term.who })}</p>
         </div>
         <div className="set-block">
-          <h3>Notetaker</h3>
+          <h3>{t('Notetaker')}</h3>
           {/* The server sends the notetaker by itself (server/autojoin.ts), once the recorder is there to send. */}
           <Row
-            title="Join meetings from calendars automatically"
+            title={t('Join meetings from calendars automatically')}
             hint={
               !server.on || caps.demo || caps.recorder
-                ? 'Google Meet and Zoom calls on people’s calendars. It joins a minute before; anyone can switch it off for one meeting in Meet, Upcoming.'
-                : 'The notetaker isn’t available on this server yet, so it can’t join meetings by itself. This starts working as soon as it is.'
+                ? t('Google Meet and Zoom calls on people’s calendars. It joins a minute before; anyone can switch it off for one meeting in Meet, Upcoming.')
+                : t('The notetaker isn’t available on this server yet, so it can’t join meetings by itself. This starts working as soon as it is.')
             }
           >
-            <Select value={m.joinMode ?? 'accepted'} onChange={(v) => set({ joinMode: v })} options={JOIN_MODES.map((x) => ({ value: x.value, label: x.label, hint: x.hint }))} label="Join meetings from calendars automatically" width={300} disabled={!(!server.on || caps.demo || caps.recorder)} />
+            {/* JOIN_MODES' words belong to Meet (src/meetingLinks.ts): translated where they're shown. */}
+            <Select value={m.joinMode ?? 'accepted'} onChange={(v) => set({ joinMode: v })} options={JOIN_MODES.map((x) => ({ value: x.value, label: t(x.label), hint: t(x.hint) }))} label={t('Join meetings from calendars automatically')} width={300} disabled={!(!server.on || caps.demo || caps.recorder)} />
           </Row>
-          <Row title="Announce recording" hint="The bot says it’s recording when it joins. The host can stop it at any time">
+          <Row title={t('Announce recording')} hint={t('The bot says it’s recording when it joins. The host can stop it at any time')}>
             <Switch on={m.announce} onChange={(v) => set({ announce: v })} />
           </Row>
           <div className="set-row">
             <span>
-              <strong>Bot name</strong>
+              <strong>{t('Bot name')}</strong>
             </span>
             <input className="inline-input" value={m.botName} onChange={(e) => set({ botName: e.target.value })} />
           </div>
@@ -311,22 +344,23 @@ export function MeetingsSection({ ws, canManage, onMeetings }: { ws: Workspace; 
 export function TeamsLink({ teams, users, onOpen }: { teams: Team[]; users: User[]; onOpen: (id?: string) => void }) {
   return (
     <>
-      <h2>Teams</h2>
-      <p className="set-intro">Departments like Video editing or Finance. Teams have their own app in the sidebar: make teams, add people (someone can be in several), set who can join, and see each team’s work and workload.</p>
+      <h2>{t('Teams')}</h2>
+      <p className="set-intro">{t('Departments like Video editing or Finance. Teams have their own app in the sidebar: make teams, add people (someone can be in several), set who can join, and see each team’s work and workload.')}</p>
       <div className="set-block">
-        {teams.map((t) => {
-          const lead = users.find((u) => u.id === t.leadId);
+        {teams.map((tm) => {
+          const lead = users.find((u) => u.id === tm.leadId);
+          const size = tn(tm.members.length, '{n} person', '{n} people');
           return (
-            <Row key={t.id} title={<><span className="team-square" style={{ background: t.color }} /> {t.name}</>} hint={`${t.members.length} ${t.members.length === 1 ? 'person' : 'people'}${lead ? ` · led by ${lead.name}` : ''}`}>
-              <button type="button" className="ghost-btn sm" onClick={() => onOpen(t.id)}>
-                Open
+            <Row key={tm.id} title={<><span className="team-square" style={{ background: tm.color }} /> {tm.name}</>} hint={lead ? t('{people} · led by {name}', { people: size, name: lead.name }) : size}>
+              <button type="button" className="ghost-btn sm" onClick={() => onOpen(tm.id)}>
+                {t('Open')}
               </button>
             </Row>
           );
         })}
         <div className="set-foot">
           <button type="button" className="primary-btn sm" onClick={() => onOpen()}>
-            <Users size={14} /> Open Teams
+            <Users size={14} /> {t('Open Teams')}
           </button>
         </div>
       </div>
@@ -342,8 +376,8 @@ export function AppsSection({ ws, canManage, onWorkspace, projects }: { ws: Work
   const toggleApp = (id: AppId) => onWorkspace({ apps: apps.includes(id) ? apps.filter((a) => a !== id) : [...apps, id] });
   return (
     <>
-      <h2>Apps</h2>
-      <p className="set-intro">Switch off what your company doesn’t use. Nothing is deleted; switching an app back on brings everything back.</p>
+      <h2>{t('Apps')}</h2>
+      <p className="set-intro">{t('Switch off what your company doesn’t use. Nothing is deleted; switching an app back on brings everything back.')}</p>
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
           {APPS.filter((a) => a.id !== 'home').map((a) => (
@@ -354,31 +388,31 @@ export function AppsSection({ ws, canManage, onWorkspace, projects }: { ws: Work
         </div>
         {!isSandbox(ws) && (
           <div className="set-block">
-            <h3>Demo company</h3>
-            <Row title="Let our people open the demo company" hint="Everyone gets their own private copy of a sample agency to try things in. Nobody else sees it, and nothing in it is sent anywhere. Guests never see it.">
+            <h3>{t('Demo company')}</h3>
+            <Row title={t('Let our people open the demo company')} hint={t('Everyone gets their own private copy of a sample agency to try things in. Nobody else sees it, and nothing in it is sent anywhere. Guests never see it.')}>
               <Switch on={ws.demoCompany !== false} onChange={(v) => onWorkspace({ demoCompany: v })} />
             </Row>
           </div>
         )}
         {!isSandbox(ws) && <WhatsAppBlock ws={ws} canManage={canManage} />}
         <div className="set-block">
-          <h3>Chat</h3>
-          <Row title="Celebrate finished work" hint={`A small confetti and a note in the ${term.one}’s channel when a task is done`}>
+          <h3>{t('Chat')}</h3>
+          <Row title={t('Celebrate finished work')} hint={t('A small confetti and a note in the {project}’s channel when a task is done', { project: term.one })}>
             <Switch on={chat.celebrations} onChange={(v) => onWorkspace({ chat: { ...chat, celebrations: v } })} />
           </Row>
-          <Row title="Who can create channels" hint={chat.whoCanCreate === 'admins' ? 'Members can still message people directly, and teams get their own channel.' : undefined}>
-            <Select value={chat.whoCanCreate} onChange={(v) => onWorkspace({ chat: { ...chat, whoCanCreate: v } })} label="Who can create channels" options={[{ value: 'everyone', label: 'Everyone' }, { value: 'admins', label: 'Only admins' }]} />
+          <Row title={t('Who can create channels')} hint={chat.whoCanCreate === 'admins' ? t('Members can still message people directly, and teams get their own channel.') : undefined}>
+            <Select value={chat.whoCanCreate} onChange={(v) => onWorkspace({ chat: { ...chat, whoCanCreate: v } })} label={t('Who can create channels')} options={[{ value: 'everyone', label: t('Everyone') }, { value: 'admins', label: t('Only admins') }]} />
           </Row>
-          <Row title="Delete old messages" hint={chat.history === 'forever' ? 'Chat is kept for good.' : undefined}>
+          <Row title={t('Delete old messages')} hint={chat.history === 'forever' ? t('Chat is kept for good.') : undefined}>
             <Select
               value={chat.history}
               onChange={(v) => onWorkspace({ chat: { ...chat, history: v } })}
-              label="Delete old messages"
+              label={t('Delete old messages')}
               width={260}
               options={[
-                { value: 'forever', label: 'Never: keep everything' },
-                { value: '1y', label: 'Older than 1 year' },
-                { value: '90d', label: 'Older than 90 days' },
+                { value: 'forever', label: t('Never: keep everything') },
+                { value: '1y', label: t('Older than 1 year') },
+                { value: '90d', label: t('Older than 90 days') },
               ]}
             />
           </Row>
@@ -395,22 +429,24 @@ export function AppsSection({ ws, canManage, onWorkspace, projects }: { ws: Work
  */
 function RetentionDetails({ ws, chat, projects, onWorkspace }: { ws: Workspace; chat: NonNullable<Workspace['chat']>; projects: { id: string; name: string; color: string }[]; onWorkspace: (p: Partial<Workspace>) => void }) {
   const on = !!chat.history && chat.history !== 'forever';
-  // Kept while folding closed, so the words don't change on the way out.
-  const [period, setPeriod] = useState(chat.history === '90d' ? '90 days' : '1 year');
+  // Kept while folding closed, so the words don't change on the way out (the setting, translated where it's shown).
+  const [kept, setKept] = useState(chat.history === '90d' ? '90d' : '1y');
   useEffect(() => {
-    if (on) setPeriod(chat.history === '90d' ? '90 days' : '1 year');
+    if (on) setKept(chat.history === '90d' ? '90d' : '1y');
   }, [on, chat.history]);
+  const period = kept === '90d' ? t('90 days') : t('1 year');
   const keep = chat.keep ?? [];
-  const day = (iso: string) => new Date(iso).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
   const status = !server.on
-    ? 'In this demo nothing is deleted.'
+    ? t('In this demo nothing is deleted.')
     : chat.lastRun
-      ? `Last run ${relative(chat.lastRun.at)}: ${chat.lastRun.deleted ? `${chat.lastRun.deleted} message${chat.lastRun.deleted === 1 ? '' : 's'} deleted` : 'nothing old enough to delete'}. It runs once a day.`
+      ? chat.lastRun.deleted
+        ? tn(chat.lastRun.deleted, 'Last run {when}: {n} message deleted. It runs once a day.', 'Last run {when}: {n} messages deleted. It runs once a day.', { when: relative(chat.lastRun.at) })
+        : t('Last run {when}: nothing old enough to delete. It runs once a day.', { when: relative(chat.lastRun.at) })
       : chat.deleteFrom && chat.deleteFrom > new Date().toISOString()
-        ? `Nothing is deleted before ${day(chat.deleteFrom)}. Admins got a notice; switch it back to Never before then to keep everything.`
+        ? t('Nothing is deleted before {day}. Admins got a notice; switch it back to Never before then to keep everything.', { day: fmtWeekdayLong(chat.deleteFrom) })
         : chat.deleteFrom
-          ? 'Deleting starts today.'
-          : 'Deleting starts a week after you switch it on, with a notice to admins first.';
+          ? t('Deleting starts today.')
+          : t('Deleting starts a week after you switch it on, with a notice to admins first.');
   const setKeep = (ids: string[]) => onWorkspace({ chat: { ...chat, keep: ids } });
   return (
     <div className={`fold ${on ? 'open' : ''}`}>
@@ -419,17 +455,17 @@ function RetentionDetails({ ws, chat, projects, onWorkspace }: { ws: Workspace; 
           <AlertTriangle size={16} aria-hidden />
           <div>
             <p>
-              <strong>Chat messages older than {period} are deleted for everyone, every day, and can’t be brought back.</strong> Pinned messages, conversations still going and the {term.many} below stay. Files shared in deleted messages stay in Drive.
+              <strong>{t('Chat messages older than {period} are deleted for everyone, every day, and can’t be brought back.', { period })}</strong> {t('Pinned messages, conversations still going and the {projects} below stay. Files shared in deleted messages stay in Drive.', { projects: term.many })}
             </p>
             <p>{status}</p>
           </div>
         </div>
-        <Row title={`Keep everything for these ${term.many}`} hint={keep.length ? undefined : `Their channels keep all their messages, for ${term.many} with a contract or a legal reason to.`}>
+        <Row title={t('Keep everything for these {projects}', { projects: term.many })} hint={keep.length ? undefined : t('Their channels keep all their messages, for {projects} with a contract or a legal reason to.', { projects: term.many })}>
           <Select
             value={null}
             onChange={(id) => setKeep([...keep, id])}
-            label={`Keep everything for a ${term.one}`}
-            placeholder={`Add a ${term.one}`}
+            label={t('Keep everything for a {project}', { project: term.one })}
+            placeholder={t('Add a {project}', { project: term.one })}
             width={240}
             options={projects.filter((x) => !keep.includes(x.id)).map((x) => ({ value: x.id, label: x.name, icon: <span className="sel-dot" style={{ background: x.color }} /> }))}
           />
@@ -438,11 +474,12 @@ function RetentionDetails({ ws, chat, projects, onWorkspace }: { ws: Workspace; 
           <div className="retention-keep">
             {keep.map((id) => {
               const x = projects.find((c) => c.id === id);
+              const name = x?.name ?? t('A removed {project}', { project: term.one });
               return (
                 <span key={id} className="retention-chip">
                   <span className="sel-dot" style={{ background: x?.color ?? 'var(--text-3)' }} />
-                  {x?.name ?? `A removed ${term.one}`}
-                  <button type="button" className="icon-btn sm" onClick={() => setKeep(keep.filter((k) => k !== id))} aria-label={`Stop keeping everything for ${x?.name ?? 'it'}`}>
+                  {name}
+                  <button type="button" className="icon-btn sm" onClick={() => setKeep(keep.filter((k) => k !== id))} aria-label={t('Stop keeping everything for {name}', { name })}>
                     <X size={13} />
                   </button>
                 </span>
@@ -479,84 +516,97 @@ function WhatsAppBlock({ ws, canManage }: { ws: Workspace; canManage: boolean })
     setErr('');
     const r = await fetch('/api/whatsapp/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, phoneNumberId: phoneId, token, displayPhone: display, appSecret: secret || undefined }) });
     setBusy(false);
-    if (!r.ok) return setErr(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t connect.');
+    if (!r.ok) return setErr(((await r.json().catch(() => ({}))) as { error?: string }).error ?? mark('Couldn’t connect.'));
     setToken('');
     setSecret('');
     setOpen(false);
   };
-  const disconnect = () => confirm('Disconnect WhatsApp? Messages from guests stop arriving here.') && void fetch('/api/whatsapp/connect', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) });
+  const disconnect = () => confirm(t('Disconnect WhatsApp? Messages from guests stop arriving here.')) && void fetch('/api/whatsapp/connect', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) });
+  const shownAs = ws.whatsapp?.displayPhone;
   return (
     <div className="set-block">
       <h3>WhatsApp</h3>
-      <Row title="WhatsApp for guests" hint={on ? `Connected${ws.whatsapp?.displayPhone ? ` as ${ws.whatsapp.displayPhone}` : ''}. Guests’ messages land in their project’s shared channel; write back from the Guests tab.` : 'Guests message your WhatsApp Business number; it lands in their project’s shared channel. Needs a number on Meta’s Cloud API.'}>
+      <Row
+        title={t('WhatsApp for guests')}
+        hint={
+          on
+            ? shownAs
+              ? t('Connected as {phone}. Guests’ messages land in their project’s shared channel; write back from the Guests tab.', { phone: shownAs })
+              : t('Connected. Guests’ messages land in their project’s shared channel; write back from the Guests tab.')
+            : t('Guests message your WhatsApp Business number; it lands in their project’s shared channel. Needs a number on Meta’s Cloud API.')
+        }
+      >
         {on && !unchecked ? (
           <button type="button" className="ghost-btn sm" onClick={disconnect} disabled={!canManage}>
-            Disconnect
+            {t('Disconnect')}
           </button>
         ) : (
           <button type="button" className="ghost-btn sm" onClick={() => setOpen((x) => !x)} disabled={!canManage}>
-            {unchecked ? 'Add the app secret' : 'Connect'}
+            {unchecked ? t('Add the app secret') : t('Connect')}
           </button>
         )}
       </Row>
-      {unchecked && <p className="warn-note small">Messages from WhatsApp aren’t read yet: Meta signs each one with your app’s secret, and we need it to check that they really come from Meta. Add the app secret to switch it on.</p>}
+      {unchecked && <p className="warn-note small">{t('Messages from WhatsApp aren’t read yet: Meta signs each one with your app’s secret, and we need it to check that they really come from Meta. Add the app secret to switch it on.')}</p>}
       <div className={`fold ${open && (!on || unchecked) ? 'open' : ''}`}>
         <div className="fold-in wa-form">
           <p className="muted small">
             {unchecked
-              ? 'In Meta for Developers: your app, App settings, Basic. Copy the app secret.'
-              : `In Meta for Developers: your app, WhatsApp, API setup. Copy the phone number ID and make a permanent access token (a system user with the WhatsApp permissions)${needsSecret ? '. The app secret is under App settings, Basic.' : '.'}`}
+              ? t('In Meta for Developers: your app, App settings, Basic. Copy the app secret.')
+              : needsSecret
+                ? t('In Meta for Developers: your app, WhatsApp, API setup. Copy the phone number ID and make a permanent access token (a system user with the WhatsApp permissions). The app secret is under App settings, Basic.')
+                : t('In Meta for Developers: your app, WhatsApp, API setup. Copy the phone number ID and make a permanent access token (a system user with the WhatsApp permissions).')}
           </p>
           {!unchecked && (
             <>
               <label className="team-field">
-                <span>Phone number ID</span>
-                <input value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder="e.g. 103912345678901" />
+                <span>{t('Phone number ID')}</span>
+                <input value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder={t('e.g. {example}', { example: '103912345678901' })} />
               </label>
               <label className="team-field">
-                <span>Access token</span>
+                <span>{t('Access token')}</span>
                 <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG…" autoComplete="off" />
               </label>
             </>
           )}
           {(needsSecret || unchecked) && (
             <label className="team-field">
-              <span>App secret</span>
-              <input type="password" value={secret} onChange={(e) => setSecret(e.target.value.trim())} placeholder="32 letters and numbers" autoComplete="off" />
+              <span>{t('App secret')}</span>
+              <input type="password" value={secret} onChange={(e) => setSecret(e.target.value.trim())} placeholder={t('32 letters and numbers')} autoComplete="off" />
             </label>
           )}
           {!unchecked && (
             <label className="team-field">
-              <span>Shown as</span>
-              <input value={display} onChange={(e) => setDisplay(e.target.value)} placeholder="+62 812 0000 0000 (optional)" />
+              <span>{t('Shown as')}</span>
+              <input value={display} onChange={(e) => setDisplay(e.target.value)} placeholder={t('{example} (optional)', { example: '+62 812 0000 0000' })} />
             </label>
           )}
-          {err && <p className="err small">{err}</p>}
+          {err && <p className="err small">{t(err)}</p>}
           <div className="wl-new-actions">
             <button type="button" className="primary-btn sm" disabled={busy || (unchecked ? secret.length < 32 : !phoneId.trim() || token.trim().length < 20 || (needsSecret && secret.length < 32))} onClick={() => void connect()}>
-              {busy ? 'Saving…' : unchecked ? 'Save the app secret' : 'Connect'}
+              {busy ? t('Saving…') : unchecked ? t('Save the app secret') : t('Connect')}
             </button>
           </div>
         </div>
       </div>
       {on && ws.whatsapp && (
         <div className="wa-hook">
-          <p className="small">In Meta, under Webhooks, subscribe to <b>messages</b> with:</p>
+          <p className="small">{tj('In Meta, under Webhooks, subscribe to {messages} with:', { messages: <b>messages</b> })}</p>
           <div className="wl-dns">
             <span className="mono">URL</span>
             <span className="mono wa-wide">{hook}</span>
-            <button type="button" className="icon-btn sm" title="Copy" onClick={() => void navigator.clipboard?.writeText(hook)}>
+            <button type="button" className="icon-btn sm" title={t('Copy')} onClick={() => void navigator.clipboard?.writeText(hook)}>
               <Download size={13} />
             </button>
           </div>
           <div className="wl-dns">
-            <span className="mono">Verify</span>
+            {/* Meta's "Verify token" field. */}
+            <span className="mono">{tx('webhook', 'Verify')}</span>
             <span className="mono wa-wide">{ws.whatsapp.verifyToken}</span>
-            <button type="button" className="icon-btn sm" title="Copy" onClick={() => void navigator.clipboard?.writeText(ws.whatsapp!.verifyToken)}>
+            <button type="button" className="icon-btn sm" title={t('Copy')} onClick={() => void navigator.clipboard?.writeText(ws.whatsapp!.verifyToken)}>
               <Download size={13} />
             </button>
           </div>
-          <p className="muted small">Guests need their WhatsApp number on their invite (Guests tab) so we know whose message it is. Numbers we don’t know go to admins as a notification.</p>
+          <p className="muted small">{t('Guests need their WhatsApp number on their invite (Guests tab) so we know whose message it is. Numbers we don’t know go to admins as a notification.')}</p>
         </div>
       )}
     </div>
@@ -586,16 +636,16 @@ export function MyAppsSection({ ws, hidden, isAdmin, asked, onHidden, onCompanyA
   };
   return (
     <>
-      <h2>Your apps</h2>
-      <p className="set-intro">Put your apps in the order you use them (or drag them in the left rail), and hide the ones you don’t. Your team still has them, and you can show them again any time.</p>
+      <h2>{t('Your apps')}</h2>
+      <p className="set-intro">{t('Put your apps in the order you use them (or drag them in the left rail), and hide the ones you don’t. Your team still has them, and you can show them again any time.')}</p>
       <div className="set-block">
         {on.map((a, i) => (
-          <Row key={a.id} title={<><a.icon size={15} /> {a.name}</>} hint={hidden.includes(a.id) ? 'Hidden for you' : undefined}>
+          <Row key={a.id} title={<><a.icon size={15} /> {a.name}</>} hint={hidden.includes(a.id) ? t('Hidden for you') : undefined}>
             <span className="app-order">
-              <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(a.id, -1)} aria-label={`Move ${a.name} up`}>
+              <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(a.id, -1)} aria-label={t('Move {app} up', { app: a.name })}>
                 <ArrowUp size={13} />
               </button>
-              <button type="button" className="icon-btn sm" disabled={i === on.length - 1} onClick={() => move(a.id, 1)} aria-label={`Move ${a.name} down`}>
+              <button type="button" className="icon-btn sm" disabled={i === on.length - 1} onClick={() => move(a.id, 1)} aria-label={t('Move {app} down', { app: a.name })}>
                 <ArrowDown size={13} />
               </button>
               <Switch on={!hidden.includes(a.id)} onChange={() => onHidden(hidden.includes(a.id) ? hidden.filter((x) => x !== a.id) : [...hidden, a.id])} />
@@ -605,31 +655,31 @@ export function MyAppsSection({ ws, hidden, isAdmin, asked, onHidden, onCompanyA
         <div className="app-order-foot">
           {order.mine && (
             <button type="button" className="link-btn small" onClick={order.reset}>
-              {order.shared.defaults.rail ? 'Use the company’s order' : 'Back to the usual order'}
+              {order.shared.defaults.rail ? t('Use the company’s order') : t('Back to the usual order')}
             </button>
           )}
           {isAdmin && (
             <button type="button" className="link-btn small" onClick={() => order.shared.set('rail', { order: ids, hidden: [] })}>
-              Make this everyone’s order
+              {t('Make this everyone’s order')}
             </button>
           )}
         </div>
       </div>
       {off.length > 0 && (
         <div className="set-block">
-          <h3>Off for {ws.name || 'the company'}</h3>
-          <p className="muted small">{isAdmin ? 'Switch one on and it appears for everyone.' : 'An admin decides which apps the company uses. Ask, and they get a notification that takes them straight to the switch.'}</p>
+          <h3>{t('Off for {company}', { company: ws.name || t('the company') })}</h3>
+          <p className="muted small">{isAdmin ? t('Switch one on and it appears for everyone.') : t('An admin decides which apps the company uses. Ask, and they get a notification that takes them straight to the switch.')}</p>
           {off.map((a) => (
             <Row key={a.id} title={<><a.icon size={15} /> {a.name}</>}>
               {isAdmin ? (
                 <button className="ghost-btn sm outline" onClick={() => onCompanyApp(a.id)}>
-                  Switch on for everyone
+                  {t('Switch on for everyone')}
                 </button>
               ) : asked.includes(a.id) ? (
-                <span className="muted small">Asked</span>
+                <span className="muted small">{t('Asked')}</span>
               ) : (
                 <button className="ghost-btn sm outline" onClick={() => onAsk(a.id)}>
-                  Ask an admin
+                  {t('Ask an admin')}
                 </button>
               )}
             </Row>
@@ -647,13 +697,12 @@ type SecurityInfo = {
   required: { since: string | null; from: string; graceDays: number } | null;
   log: { at: string; type: string; userId: string | null; detail: string | null }[];
 };
-const GRACE = [
-  { value: '0', label: 'Right away', hint: 'At their next sign-in' },
-  { value: '3', label: '3 days' },
-  { value: '7', label: '7 days' },
-  { value: '14', label: '14 days' },
+// A function, so the words are read in the person's language each time (docs/i18n.md).
+const grace = () => [
+  { value: '0', label: t('Right away'), hint: t('At their next sign-in') },
+  ...[3, 7, 14].map((n) => ({ value: String(n), label: tn(n, '{n} day', '{n} days') })),
 ];
-const longDay = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'long' });
+const longDay = (iso: string) => fmtDate(iso, { day: 'numeric', month: 'long' });
 
 export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExport, onDelete, onAccount, users, toast }: {
   ws: Workspace;
@@ -668,7 +717,8 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
   toast: (t: string) => void;
 }) {
   const sec = { twoStep: false, google: false, microsoft: false, sso: false, ...ws.security };
-  const grace = sec.graceDays ?? 7;
+  const days = sec.graceDays ?? 7;
+  const co = ws.name || t('the company');
   const [typed, setTyped] = useState('');
   const [info, setInfo] = useState<SecurityInfo | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
@@ -687,13 +737,13 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
   // A switch just changed: the save goes out a moment later, then the list and the log are read again.
   useEffect(() => {
     if (!live || !canManage) return;
-    const t = setTimeout(load, info ? 700 : 0);
-    return () => clearTimeout(t);
-  }, [ws.id, sec.twoStep, grace, live, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
+    const timer = setTimeout(load, info ? 700 : 0);
+    return () => clearTimeout(timer);
+  }, [ws.id, sec.twoStep, days, live, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
   // When it starts to apply: the day it was switched on (now, if it just was) plus the days people were given.
-  const from = new Date(Date.parse(sec.twoStepSince ?? new Date().toISOString()) + grace * 86_400_000).toISOString();
+  const from = new Date(Date.parse(sec.twoStepSince ?? new Date().toISOString()) + days * 86_400_000).toISOString();
   const biting = from <= new Date().toISOString();
-  const nameOf = (id: string | null) => (id === null ? `${product.name} support` : id === me ? 'You' : users.find((u) => u.id === id)?.name ?? 'Someone who left');
+  const nameOf = (id: string | null) => (id === null ? t('{product} support', { product: product.name }) : id === me ? t('You') : users.find((u) => u.id === id)?.name ?? t('Someone who left'));
   const people = (info?.people ?? [])
     .map((x) => ({ ...x, user: users.find((u) => u.id === x.userId) }))
     .filter((x): x is typeof x & { user: User } => !!x.user)
@@ -705,49 +755,61 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
     setBusy(true);
     void fetch('/api/security/remind', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id }) })
       .then((r) => r.json())
-      .then((d: { sent?: number; error?: string }) => (toast(d.error ?? `Reminded ${d.sent} ${d.sent === 1 ? 'person' : 'people'}`), load()))
+      .then((d: { sent?: number; error?: string }) => (toast(d.error ? t(d.error) : tn(d.sent ?? 0, 'Reminded {n} person', 'Reminded {n} people')), load()))
       .finally(() => setBusy(false));
   };
   const OTHER = [
-    { k: 'google', title: 'Sign in with Google', why: caps.signIn.googleApp ? 'Coming soon.' : `Coming soon. Needs a Google sign-in app set up by ${product.name}.` },
-    { k: 'microsoft', title: 'Sign in with Microsoft', why: caps.signIn.microsoftApp ? 'Coming soon.' : `Coming soon. Needs a Microsoft sign-in app set up by ${product.name}.` },
-    { k: 'saml', title: 'Single sign-on (SAML)', why: 'Coming soon: Okta, Azure AD or Google Workspace as your company’s sign-in.' },
+    { k: 'google', title: t('Sign in with Google'), why: caps.signIn.googleApp ? t('Coming soon.') : t('Coming soon. Needs a Google sign-in app set up by {product}.', { product: product.name }) },
+    { k: 'microsoft', title: t('Sign in with Microsoft'), why: caps.signIn.microsoftApp ? t('Coming soon.') : t('Coming soon. Needs a Microsoft sign-in app set up by {product}.', { product: product.name }) },
+    { k: 'saml', title: t('Single sign-on (SAML)'), why: t('Coming soon: Okta, Azure AD or Google Workspace as your company’s sign-in.') },
   ] as const;
 
   return (
     <>
-      <h2>Security & data</h2>
-      <p className="set-intro">How people sign in to {ws.name || 'the company'}, what it may track, and the company’s data.</p>
+      <h2>{t('Security & data')}</h2>
+      <p className="set-intro">{t('How people sign in to {company}, what it may track, and the company’s data.', { company: co })}</p>
       <div className="set-block">
-        <h3>Sign-in</h3>
+        <h3>{t('Sign-in')}</h3>
         {canManage ? (
           <>
-            <Row title="Require two-step sign-in" hint={`Everyone in the company signs in with a code from an authenticator app, not just a password.${!isOwner ? ' Only owners change this.' : !sec.twoStep && mine === false ? ' Turn it on for your own account first.' : ''}`}>
+            <Row
+              title={t('Require two-step sign-in')}
+              hint={[t('Everyone in the company signs in with a code from an authenticator app, not just a password.'), !isOwner ? t('Only owners change this.') : !sec.twoStep && mine === false ? t('Turn it on for your own account first.') : ''].filter(Boolean).join(' ')}
+            >
               {isOwner && !sec.twoStep && mine === false ? (
                 <button type="button" className="ghost-btn outline sm" onClick={onAccount}>
-                  Turn yours on
+                  {t('Turn yours on')}
                 </button>
               ) : (
-                <Switch on={sec.twoStep} disabled={!isOwner || mine === null} onChange={(v) => onWorkspace({ security: { ...sec, twoStep: v, graceDays: grace } })} />
+                <Switch on={sec.twoStep} disabled={!isOwner || mine === null} onChange={(v) => onWorkspace({ security: { ...sec, twoStep: v, graceDays: days } })} />
               )}
             </Row>
             <div className={`fold ${sec.twoStep ? 'open' : ''}`}>
               <div className="fold-in">
-                <Row title="Time to set it up" hint={sec.twoStep ? (biting ? 'It applies now: anyone without it sets it up before they can go on.' : `From ${longDay(from)}, anyone without it sets it up at sign-in before they can go on. They got a notification.`) : undefined}>
-                  <Select value={String(grace)} disabled={!isOwner} onChange={(v) => onWorkspace({ security: { ...sec, graceDays: Number(v) } })} label="Time to set it up" options={GRACE} width={200} />
+                <Row title={t('Time to set it up')} hint={sec.twoStep ? (biting ? t('It applies now: anyone without it sets it up before they can go on.') : t('From {day}, anyone without it sets it up at sign-in before they can go on. They got a notification.', { day: longDay(from) })) : undefined}>
+                  <Select value={String(days)} disabled={!isOwner} onChange={(v) => onWorkspace({ security: { ...sec, graceDays: Number(v) } })} label={t('Time to set it up')} options={grace()} width={200} />
                 </Row>
               </div>
             </div>
             {OTHER.map((o) => (
               <Row key={o.k} title={o.title} hint={o.why}>
-                <Badge>Not yet</Badge>
+                <Badge>{tx('feature', 'Not yet')}</Badge>
               </Row>
             ))}
           </>
         ) : (
-          <Row title="Two-step sign-in" hint={sec.twoStep ? `${ws.name} requires a code from an authenticator app when you sign in${biting ? '.' : `, from ${longDay(from)}.`}` : 'A code from an authenticator app when you sign in. Turn it on for your own account.'}>
+          <Row
+            title={t('Two-step sign-in')}
+            hint={
+              sec.twoStep
+                ? biting
+                  ? t('{company} requires a code from an authenticator app when you sign in.', { company: ws.name })
+                  : t('{company} requires a code from an authenticator app when you sign in, from {day}.', { company: ws.name, day: longDay(from) })
+                : t('A code from an authenticator app when you sign in. Turn it on for your own account.')
+            }
+          >
             <button type="button" className="ghost-btn outline sm" onClick={onAccount}>
-              Your settings
+              {t('Your settings')}
             </button>
           </Row>
         )}
@@ -755,16 +817,16 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
 
       {canManage && live && (
         <div className="set-block">
-          <h3>Two-step sign-in by person</h3>
+          <h3>{t('Two-step sign-in by person')}</h3>
           {!info ? (
-            <p className="muted small">Loading…</p>
+            <p className="muted small">{t('Loading…')}</p>
           ) : (
             <>
               {missing.length > 0 && (
                 <div className="ts-remind">
-                  <span>{missing.length === 1 ? `${missing[0].user.name.split(' ')[0]} hasn’t turned it on yet.` : `${missing.length} people haven’t turned it on yet.`}</span>
+                  <span>{missing.length === 1 ? t('{name} hasn’t turned it on yet.', { name: missing[0].user.name.split(' ')[0] }) : tn(missing.length, '{n} person hasn’t turned it on yet.', '{n} people haven’t turned it on yet.')}</span>
                   <button type="button" className="ghost-btn outline sm" disabled={busy} onClick={remind}>
-                    {busy ? 'Sending…' : 'Send a reminder'}
+                    {busy ? t('Sending…') : t('Send a reminder')}
                   </button>
                 </div>
               )}
@@ -772,12 +834,12 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
                 {people.map((x) => {
                   return (
                     <div key={x.userId} className="pa-row ts-person">
-                      <PersonCell person={x.user} badges={x.userId === me && <Badge tone="accent">You</Badge>} />
-                      <Badge tone={x.on ? 'good' : 'warn'}>{x.on ? 'On' : 'Not yet'}</Badge>
+                      <PersonCell person={x.user} badges={x.userId === me && <Badge tone="accent">{t('You')}</Badge>} />
+                      <Badge tone={x.on ? 'good' : 'warn'}>{x.on ? t('On') : t('Not yet')}</Badge>
                       <span className="ts-person-act">
                         {canReset(x) && (
                           <button type="button" className="ghost-btn sm" onClick={() => setResetting(x.user)}>
-                            Reset
+                            {tx('two-step', 'Reset')}
                           </button>
                         )}
                       </span>
@@ -785,7 +847,11 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
                   );
                 })}
               </div>
-              <p className="muted small">Someone lost their phone and their backup codes? Reset theirs: they sign in with just their password, then set it up again{sec.twoStep ? '' : ' if they want'}.</p>
+              <p className="muted small">
+                {sec.twoStep
+                  ? t('Someone lost their phone and their backup codes? Reset theirs: they sign in with just their password, then set it up again.')
+                  : t('Someone lost their phone and their backup codes? Reset theirs: they sign in with just their password, then set it up again if they want.')}
+              </p>
             </>
           )}
         </div>
@@ -794,22 +860,22 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
       {canManage && (
         <div className="set-block">
           <h3>
-            <ShieldCheck size={15} /> Security log
+            <ShieldCheck size={15} /> {t('Security log')}
           </h3>
           {!live ? (
             DEMO_LOG.map(([who, what, when], i) => (
               <div key={i} className="pa-row">
                 {users.find((u) => u.name.startsWith(who)) && <Avatar person={users.find((u) => u.name.startsWith(who))!} size={20} />}
                 <span className="pa-title">
-                  <b>{who}</b>&nbsp;{what}
+                  <b>{who}</b>&nbsp;{t(what)}
                 </span>
-                <span className="muted small">{when}</span>
+                <span className="muted small">{t(when)}</span>
               </div>
             ))
           ) : !info ? (
-            <p className="muted small">Loading…</p>
+            <p className="muted small">{t('Loading…')}</p>
           ) : info.log.length === 0 ? (
-            <p className="muted small">Nothing yet. Changes to the sign-in rules and to people’s two-step sign-in show up here.</p>
+            <p className="muted small">{t('Nothing yet. Changes to the sign-in rules and to people’s two-step sign-in show up here.')}</p>
           ) : (
             info.log.map((e, i) => {
               const u = e.userId ? users.find((x) => x.id === e.userId) : undefined;
@@ -817,7 +883,8 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
                 <div key={i} className="pa-row ts-log">
                   {u && <Avatar person={u} size={20} />}
                   <span className="pa-title">
-                    <b>{nameOf(e.userId)}</b>&nbsp;{e.detail}
+                    {/* The server writes the detail in English: its fixed ones are in this area's dictionary. */}
+                    <b>{nameOf(e.userId)}</b>&nbsp;{e.detail && t(e.detail)}
                   </span>
                   <span className="muted small">{relative(e.at)}</span>
                 </div>
@@ -828,44 +895,50 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
       )}
 
       <div className="set-block">
-        <h3>Privacy</h3>
+        <h3>{t('Privacy')}</h3>
         <Row
-          title="Read tracking on email to people outside the company"
-          hint={
+          title={t('Read tracking on email to people outside the company')}
+          hint={[
             ws.readTracking !== false
-              ? `People can choose to see when someone outside ${ws.name || 'the company'} opens their email and which links they click. Teammates are never tracked.${canManage ? '' : ' Only owners and admins change this.'}`
-              : `Off: nobody in ${ws.name || 'the company'} can track email, and pictures in mail already sent stop counting.${canManage ? '' : ' Only owners and admins change this.'}`
-          }
+              ? t('People can choose to see when someone outside {company} opens their email and which links they click. Teammates are never tracked.', { company: co })
+              : t('Off: nobody in {company} can track email, and pictures in mail already sent stop counting.', { company: co }),
+            canManage ? '' : t('Only owners and admins change this.'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
         >
           <Switch on={ws.readTracking !== false} disabled={!canManage} onChange={(v) => onWorkspace({ readTracking: v })} />
         </Row>
         <Row
-          title="Let people connect AI apps"
-          hint={
+          title={t('Let people connect AI apps')}
+          hint={[
             ws.aiApps !== false
-              ? `People can connect Claude, ChatGPT and other AI apps to ${ws.name || 'the company'}. An app sees only what its person sees, works under their name, and mail or messages to guests stay drafts they send themselves.${canManage ? '' : ' Only owners and admins change this.'}`
-              : `Off: AI apps can’t reach ${ws.name || 'the company'}, and the ones people connected stop working until it’s back on.${canManage ? '' : ' Only owners and admins change this.'}`
-          }
+              ? t('People can connect Claude, ChatGPT and other AI apps to {company}. An app sees only what its person sees, works under their name, and mail or messages to guests stay drafts they send themselves.', { company: co })
+              : t('Off: AI apps can’t reach {company}, and the ones people connected stop working until it’s back on.', { company: co }),
+            canManage ? '' : t('Only owners and admins change this.'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
         >
           <Switch on={ws.aiApps !== false} disabled={!canManage} onChange={(v) => onWorkspace({ aiApps: v })} />
         </Row>
       </div>
 
       <div className="set-block">
-        <h3>Your data</h3>
-        <Row title={<><Download size={14} /> Export everything</>} hint={`Mail, chat, tasks, ${term.many}, calendars and file lists as one download. Always free, on every plan`}>
+        <h3>{t('Your data')}</h3>
+        <Row title={<><Download size={14} /> {t('Export everything')}</>} hint={t('Mail, chat, tasks, {projects}, calendars and file lists as one download. Always free, on every plan', { projects: term.many })}>
           <button type="button" className="ghost-btn sm" onClick={onExport}>
-            <HardDrive size={14} /> Download
+            <HardDrive size={14} /> {t('Download')}
           </button>
         </Row>
         {isOwner && (
           <div className="danger-zone">
-            <strong>Delete {ws.name}</strong>
-            <small>Removes the company and everything in it for everyone. Type the company name to confirm.</small>
+            <strong>{t('Delete {company}', { company: ws.name })}</strong>
+            <small>{t('Removes the company and everything in it for everyone. Type the company name to confirm.')}</small>
             <div className="add-prov inline">
               <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={ws.name} />
               <button type="button" className="danger-btn sm" disabled={typed !== ws.name} onClick={onDelete}>
-                Delete company
+                {t('Delete company')}
               </button>
             </div>
           </div>
@@ -879,8 +952,8 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
           onReset={async () => {
             const r = await fetch('/api/security/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, userId: resetting.id }) });
             const d = (await r.json().catch(() => ({}))) as { error?: string };
-            if (!r.ok) throw new Error(d.error ?? 'Couldn’t reset it.');
-            toast(`Two-step sign-in reset for ${resetting.name.split(' ')[0]}`);
+            if (!r.ok) throw new Error(d.error ?? mark('Couldn’t reset it.'));
+            toast(t('Two-step sign-in reset for {name}', { name: resetting.name.split(' ')[0] }));
             setResetting(null);
             load();
           }}
@@ -890,12 +963,12 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
   );
 }
 
-/** The demo's sample log (no server: nothing has really happened). */
+/** The demo's sample log (no server: nothing has really happened). Translated where it's shown. */
 const DEMO_LOG = [
-  ['Aqeel', 'changed the AI setup to Balanced', '2 hours ago'],
-  ['Faisal', 'added an Anthropic key', '3 days ago'],
-  ['Aqeel', 'invited Nadia Putri as a guest in #kopikita', '2 weeks ago'],
-  ['Dewi', 'downloaded the September invoice', '1 month ago'],
+  ['Aqeel', mark('changed the AI setup to Balanced'), mark('2 hours ago')],
+  ['Faisal', mark('added an Anthropic key'), mark('3 days ago')],
+  ['Aqeel', mark('invited Nadia Putri as a guest in #kopikita'), mark('2 weeks ago')],
+  ['Dewi', mark('downloaded the September invoice'), mark('1 month ago')],
 ];
 
 /** Confirming a reset: what happens to them, and a nudge to be sure it's really them asking. */
@@ -905,28 +978,30 @@ function ResetTwoStep({ person, required, onClose, onReset }: { person: User; re
   const first = person.name.split(' ')[0];
   return createPortal(
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal ts-modal sm" role="dialog" aria-label={`Reset two-step sign-in for ${person.name}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="modal ts-modal sm" role="dialog" aria-label={t('Reset two-step sign-in for {name}', { name: person.name })} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <ShieldCheck size={15} /> Reset two-step sign-in
+            <ShieldCheck size={15} /> {t('Reset two-step sign-in')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body">
           <p className="ts-text">
-            {first} is signed out everywhere and signs in next time with just their password{required ? ', then sets two-step sign-in up again, since the company requires it' : ''}. They get an email about it.
+            {required
+              ? t('{name} is signed out everywhere and signs in next time with just their password, then sets two-step sign-in up again, since the company requires it. They get an email about it.', { name: first })
+              : t('{name} is signed out everywhere and signs in next time with just their password. They get an email about it.', { name: first })}
           </p>
-          <p className="muted small">Only do this when you’re sure it’s {first} asking, for example on a call or in person.</p>
-          {error && <p className="err small">{error}</p>}
+          <p className="muted small">{t('Only do this when you’re sure it’s {name} asking, for example on a call or in person.', { name: first })}</p>
+          {error && <p className="err small">{t(error)}</p>}
         </div>
         <footer className="modal-foot">
           <button type="button" className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" className="primary-btn danger-btn" disabled={busy} onClick={() => (setBusy(true), setError(''), void onReset().catch((e: Error) => (setError(e.message), setBusy(false))))}>
-            {busy ? 'Resetting…' : `Reset for ${first}`}
+            {busy ? t('Resetting…') : t('Reset for {name}', { name: first })}
           </button>
         </footer>
       </div>

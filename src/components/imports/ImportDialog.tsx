@@ -6,7 +6,9 @@ import { fmtSize } from '../../data/drive';
 import { SmoothHeight, TabPane } from '../ui/Smooth';
 import { cancelImport, getImport, startImport, undoCheck, undoImport, uploadImport } from './importApi';
 import { ImportPreviewStep, blocker } from './ImportPreview';
-import { HOW, ProgressBar, SOURCE_ICON, madeWords, num, shareOf, title, untilWords } from './importWords';
+import { HOW, ProgressBar, SOURCE_ICON, madeWords, num, runningWords, shareOf, title, untilWords } from './importWords';
+import { mark, t, tn } from '../../i18n';
+import { fmtList, fmtPercent } from '../../i18n/format';
 
 interface Props {
   source: ImportSource;
@@ -23,9 +25,9 @@ interface Props {
 
 type Step = 'pick' | 'uploading' | 'reading' | 'preview' | 'running' | 'summary';
 const STEPS: { key: string; label: string; of: Step[] }[] = [
-  { key: 'up', label: 'Upload', of: ['pick', 'uploading', 'reading'] },
-  { key: 'check', label: 'Check', of: ['preview'] },
-  { key: 'run', label: 'Import', of: ['running', 'summary'] },
+  { key: 'up', label: mark('Upload'), of: ['pick', 'uploading', 'reading'] },
+  { key: 'check', label: mark('Check'), of: ['preview'] },
+  { key: 'run', label: mark('Import'), of: ['running', 'summary'] },
 ];
 
 /** The choices a preview starts with: matches kept, the server's suggestions, everything in, big files out. */
@@ -72,13 +74,13 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
   useEffect(() => {
     if (!job || (job.status !== 'reading' && job.status !== 'running')) return;
     let stop = false;
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       void getImport(job.id).then(
         (j) => !stop && update(j),
         () => {},
       );
     }, 800);
-    return () => ((stop = true), clearInterval(t));
+    return () => ((stop = true), clearInterval(timer));
   }, [job?.id, job?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => {
@@ -91,8 +93,8 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
     if (unreadable) setJob(null);
     const lower = file.name.toLowerCase();
     if (source === 'trello' ? !lower.endsWith('.json') : !lower.endsWith('.zip'))
-      return setError(`That’s not a ${how.kind}. ${source === 'trello' ? 'Trello exports a board as a .json file.' : 'The export comes as a .zip file.'}`);
-    if (maxUpload && file.size > maxUpload) return setError(`That file is ${fmtSize(file.size)}; imports take up to ${fmtSize(maxUpload)}.`);
+      return setError(how.wrongFile());
+    if (maxUpload && file.size > maxUpload) return setError(t('That file is {size}; imports take up to {max}.', { size: fmtSize(file.size), max: fmtSize(maxUpload) }));
     const up = uploadImport(workspaceId, source, file, (share) => setUpload((u) => (u ? { ...u, share } : u)));
     setUpload({ name: file.name, size: file.size, share: 0, abort: up.abort });
     up.done.then(
@@ -145,7 +147,7 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
     try {
       update(await undoImport(job.id));
       setUndoAsk(null);
-      toast(`The ${SOURCE_NAME[source]} import is undone`);
+      toast(t('The {source} import is undone', { source: SOURCE_NAME[source] }));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -164,19 +166,19 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
           <span className="dump-title">
             <Icon size={15} /> {title(source)}
           </span>
-          <button type="button" className="icon-btn sm" onClick={close} aria-label="Close">
+          <button type="button" className="icon-btn sm" onClick={close} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body">
-          <ol className="imp-steps" aria-label="Steps">
+          <ol className="imp-steps" aria-label={t('Steps')}>
             {STEPS.map((s, i) => {
               // A finished import has all three ticked.
               const at = step === 'summary' && job?.status === 'done' ? STEPS.length : STEPS.findIndex((x) => x.of.includes(step));
               return (
                 <li key={s.key} className={i === at ? 'on' : i < at ? 'done' : ''} aria-current={i === at ? 'step' : undefined}>
                   <span className="imp-step-n">{i < at ? <CircleCheck size={14} /> : i + 1}</span>
-                  {s.label}
+                  {t(s.label)}
                 </li>
               );
             })}
@@ -188,7 +190,7 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                   <>
                     <p className="imp-lead">{how.lead()}</p>
                     <ol className="imp-how">
-                      {how.steps.map((s) => (
+                      {how.steps().map((s) => (
                         <li key={s}>{s}</li>
                       ))}
                     </ol>
@@ -206,11 +208,11 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                       }}
                     >
                       <Upload size={20} />
-                      <strong>Drop the {how.kind} here, or choose it</strong>
-                      <small>{maxUpload ? `Up to ${fmtSize(maxUpload)}. ` : ''}You check what comes in before anything is made.</small>
+                      <strong>{how.drop()}</strong>
+                      <small>{maxUpload ? t('Up to {size}. You check what comes in before anything is made.', { size: fmtSize(maxUpload) }) : t('You check what comes in before anything is made.')}</small>
                     </button>
                     <input ref={fileRef} type="file" accept={how.accept} hidden onChange={(e) => (e.target.files?.[0] && send(e.target.files[0]), (e.target.value = ''))} />
-                    {how.note && <p className="imp-note">{how.note}</p>}
+                    {how.note && <p className="imp-note">{how.note()}</p>}
                   </>
                 )}
                 {step === 'uploading' && upload && (
@@ -222,23 +224,23 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                         <small>{fmtSize(upload.size)}</small>
                       </span>
                     </span>
-                    <ProgressBar share={upload.share} label="Uploading" />
-                    <p className="imp-line muted">{upload.share >= 1 ? 'Uploaded. Opening it…' : `Uploading, ${Math.round(upload.share * 100)}%. Keep this open until it’s up.`}</p>
+                    <ProgressBar share={upload.share} label={t('Uploading')} />
+                    <p className="imp-line muted">{upload.share >= 1 ? t('Uploaded. Opening it…') : t('Uploading, {percent}. Keep this open until it’s up.', { percent: fmtPercent(upload.share) })}</p>
                   </div>
                 )}
                 {step === 'reading' && job && (
                   <div className="imp-live">
-                    <p className="imp-phase">{job.progress?.phase ?? 'Reading the file'}</p>
-                    <ProgressBar share={shareOf(job)} label="Reading the export" />
-                    <p className="imp-line muted">Looking through it to show you what comes in. Nothing is made yet.</p>
+                    <p className="imp-phase">{t(job.progress?.phase ?? 'Reading the file')}</p>
+                    <ProgressBar share={shareOf(job)} label={t('Reading the export')} />
+                    <p className="imp-line muted">{t('Looking through it to show you what comes in. Nothing is made yet.')}</p>
                   </div>
                 )}
                 {step === 'preview' && job?.preview && choices && <ImportPreviewStep preview={job.preview} choices={choices} onChoices={setChoices} members={members} stages={stages} projects={projects} />}
                 {step === 'running' && job && (
                   <div className="imp-live">
-                    <p className="imp-phase">{job.progress?.phase && job.progress.phase !== 'Starting' ? `Bringing in ${job.progress.phase}` : 'Starting'}</p>
-                    <ProgressBar share={shareOf(job)} label="Importing" />
-                    <p className="imp-line muted">You can close this. It keeps going on the server, and you’ll get a notification when it’s done.</p>
+                    <p className="imp-phase">{runningWords(job.progress?.phase)}</p>
+                    <ProgressBar share={shareOf(job)} label={t('Importing')} />
+                    <p className="imp-line muted">{t('You can close this. It keeps going on the server, and you’ll get a notification when it’s done.')}</p>
                   </div>
                 )}
                 {step === 'summary' && job && (
@@ -246,15 +248,15 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                     {job.status === 'done' && (
                       <p className="imp-result ok">
                         <CircleCheck size={18} />
-                        <span>{made ? `${made} came over.` : 'Done. There was nothing new to bring over.'}</span>
+                        <span>{made ? t('{made} came over.', { made }) : t('Done. There was nothing new to bring over.')}</span>
                       </p>
                     )}
                     {job.status === 'failed' && (
                       <p className="imp-result bad">
                         <TriangleAlert size={18} />
                         <span>
-                          {job.error ?? 'It stopped.'}
-                          {made ? ` Before it stopped: ${made}.` : ''}
+                          {t(job.error ?? 'It stopped.')}
+                          {made ? ` ${t('Before it stopped: {made}.', { made })}` : ''}
                         </span>
                       </p>
                     )}
@@ -262,16 +264,16 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                       <p className="imp-result">
                         <RotateCcw size={18} />
                         <span>
-                          Undone: everything it made was removed.
-                          {summary?.kept?.length ? ` ${summary.kept.join(', ')} already joined, so they stay on the team.` : ''}
+                          {t('Undone: everything it made was removed.')}
+                          {summary?.kept?.length ? ` ${t('{names} already joined, so they stay on the team.', { names: fmtList(summary.kept) })}` : ''}
                         </span>
                       </p>
                     )}
-                    {job.status === 'cancelled' && <p className="imp-result">This import was cancelled before it started.</p>}
+                    {job.status === 'cancelled' && <p className="imp-result">{t('This import was cancelled before it started.')}</p>}
                     {job.status !== 'undone' && summary && summary.invited.length > 0 && (
                       <section className="imp-sec">
-                        <h4>Invited</h4>
-                        <p className="imp-line muted">Send each their link to pick a password. Links work for 7 days.</p>
+                        <h4>{t('Invited')}</h4>
+                        <p className="imp-line muted">{t('Send each their link to pick a password. Links work for 7 days.')}</p>
                         <div className="imp-list" role="list">
                           {summary.invited.map((x) => (
                             <div key={x.email} role="listitem" className="imp-row">
@@ -283,12 +285,12 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                                 <button
                                   type="button"
                                   className="ghost-btn sm"
-                                  onClick={() => void navigator.clipboard?.writeText(`${location.origin}${x.link}`).then(() => toast(`${x.name.split(' ')[0]}’s invite link is copied`))}
+                                  onClick={() => void navigator.clipboard?.writeText(`${location.origin}${x.link}`).then(() => toast(t('{name}’s invite link is copied', { name: x.name.split(' ')[0] })))}
                                 >
-                                  <Copy size={13} /> Copy link
+                                  <Copy size={13} /> {t('Copy link')}
                                 </button>
                               ) : (
-                                <small className="muted">Already signs in</small>
+                                <small className="muted">{t('Already signs in')}</small>
                               )}
                             </div>
                           ))}
@@ -302,7 +304,7 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                           {(() => {
                             const n = summary.missing.length + summary.missingMore;
                             const files = summary.missing.every((m) => m.kind !== 'conversation');
-                            return `${num(n)} ${files ? (n === 1 ? 'file' : 'files') : n === 1 ? 'thing' : 'things'} didn’t come over`;
+                            return files ? tn(n, '{n} file didn’t come over', '{n} files didn’t come over') : tn(n, '{n} thing didn’t come over', '{n} things didn’t come over');
                           })()}
                         </button>
                         <div className={`fold ${showMissing ? 'open' : ''}`}>
@@ -313,13 +315,13 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                                   <span className="imp-row-text">
                                     <strong>{m.name}</strong>
                                     <small>
-                                      {m.where ? `${m.where}: ` : ''}
-                                      {m.why}
+                                      {m.where ? `${t(m.where)}: ` : ''}
+                                      {t(m.why)}
                                     </small>
                                   </span>
                                 </div>
                               ))}
-                              {summary.missingMore > 0 && <p className="imp-line muted">And {num(summary.missingMore)} more.</p>}
+                              {summary.missingMore > 0 && <p className="imp-line muted">{t('And {n} more.', { n: num(summary.missingMore) })}</p>}
                             </div>
                           </div>
                         </div>
@@ -330,23 +332,29 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                         {undoAsk === null ? (
                           <p className="imp-line muted">
                             {job.status === 'failed'
-                              ? `It made a few things before it stopped. You can take them out until ${untilWords(job.undoUntil)}.`
-                              : `Not what you wanted? You can undo it until ${untilWords(job.undoUntil)}.`}{' '}
+                              ? t('It made a few things before it stopped. You can take them out until {when}.', { when: untilWords(job.undoUntil) })
+                              : t('Not what you wanted? You can undo it until {when}.', { when: untilWords(job.undoUntil) })}{' '}
                             <button type="button" className="link-btn small" onClick={() => void askUndo()}>
-                              {job.status === 'failed' ? 'Undo what it made' : 'Undo this import'}
+                              {job.status === 'failed' ? t('Undo what it made') : t('Undo this import')}
                             </button>
                           </p>
                         ) : (
                           <div className="imp-confirm">
                             <p className="imp-line">
-                              Undo removes everything this import made{undoAsk > 0 ? `, and ${num(undoAsk)} thing${undoAsk === 1 ? '' : 's'} people added inside it since` : ''}. People it invited who already joined stay.
+                              {undoAsk > 0
+                                ? tn(
+                                    undoAsk,
+                                    'Undo removes everything this import made, and {n} thing people added inside it since. People it invited who already joined stay.',
+                                    'Undo removes everything this import made, and {n} things people added inside it since. People it invited who already joined stay.',
+                                  )
+                                : t('Undo removes everything this import made. People it invited who already joined stay.')}
                             </p>
                             <div className="imp-confirm-actions">
                               <button type="button" className="ghost-btn sm" onClick={() => setUndoAsk(null)} disabled={busy}>
-                                Keep it
+                                {t('Keep it')}
                               </button>
                               <button type="button" className="ghost-btn sm danger-text" onClick={() => void undo()} disabled={busy}>
-                                {busy ? 'Undoing…' : 'Undo import'}
+                                {busy ? t('Undoing…') : t('Undo import')}
                               </button>
                             </div>
                           </div>
@@ -355,7 +363,7 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
                     )}
                   </div>
                 )}
-                {(error || (unreadable && step === 'pick' && job?.error)) && <p className="err">{error || job?.error}</p>}
+                {(error || (unreadable && step === 'pick' && job?.error)) && <p className="err">{t(error || job?.error || '')}</p>}
                 {step === 'preview' && stop && <p className="imp-note warn">{stop}</p>}
               </div>
             </TabPane>
@@ -365,24 +373,24 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
           {step === 'preview' ? (
             <>
               <button type="button" className="ghost-btn" onClick={() => void cancel()} disabled={busy}>
-                Cancel import
+                {t('Cancel import')}
               </button>
               <span className="spacer" />
               <button type="button" className="primary-btn" onClick={() => void start()} disabled={busy || !!stop}>
-                {busy ? 'Starting…' : 'Start import'}
+                {busy ? t('Starting…') : t('Start import')}
               </button>
             </>
           ) : step === 'uploading' ? (
             <button type="button" className="ghost-btn" onClick={() => (upload?.abort(), setUpload(null))}>
-              Stop upload
+              {t('Stop upload')}
             </button>
           ) : step === 'summary' ? (
             <button type="button" className="primary-btn" onClick={close}>
-              Done
+              {t('Done')}
             </button>
           ) : (
             <button type="button" className="ghost-btn" onClick={close}>
-              {step === 'pick' ? 'Cancel' : 'Close'}
+              {step === 'pick' ? t('Cancel') : t('Close')}
             </button>
           )}
         </footer>

@@ -3,6 +3,8 @@ import { Loader2 } from 'lucide-react';
 import { server } from '../../sync';
 import { catalogList, type ModelEntry, type ModelList } from '../../data/aiModels';
 import { Select, type Option } from '../ui/Select';
+import { t } from '../../i18n';
+import { fmtNumber } from '../../i18n/format';
 
 // The models each of a company's keys can use. With the server: the provider's own list (GET /api/ai/models, which
 // keeps it about an hour). In the demo: our catalogue. Kept here for the visit, so pickers don't wait twice.
@@ -54,9 +56,9 @@ export function useModelLists(ws: string, providers: string[]) {
   return { lists, loading: (p: string) => loading.has(k(ws, p)) };
 }
 
-const usd = (n: number) => `US$${n.toLocaleString('en-US', { maximumFractionDigits: 3 })}`;
+const usd = (n: number) => `US$${fmtNumber(n, { maximumFractionDigits: 3 })}`;
 /** A model's price, short: "US$2 in, US$10 out per 1M tokens", or that it isn't known. */
-export const priceHint = (p: [number, number] | null | undefined) => (p ? `${usd(p[0])} in, ${usd(p[1])} out per 1M tokens` : 'Price unknown');
+export const priceHint = (p: [number, number] | null | undefined) => (p ? t('{in} in, {out} out per 1M tokens', { in: usd(p[0]), out: usd(p[1]) }) : t('Price unknown'));
 
 /** The text models a list offers. */
 export const textModels = (list: ModelList | undefined) => (list?.models ?? []).filter((m: ModelEntry) => m.kind === 'text');
@@ -64,8 +66,9 @@ export const textModels = (list: ModelList | undefined) => (list?.models ?? []).
 /** Options for a key's model: recommended first, then by family; a typed id on top when it's in use. */
 export function keyModelOptions(list: ModelList, extra?: string | null): Option[] {
   const text = textModels(list);
-  const opts: Option[] = text.map((m) => ({ value: m.id, label: m.name, hint: priceHint(m.price), group: m.recommended ? 'Recommended' : m.family, keywords: `${m.id} ${m.family}` }));
-  if (extra && !text.some((m) => m.id === extra)) opts.unshift({ value: extra, label: extra, hint: 'Your model id, checked with one call', group: 'Typed in' });
+  // Families are names (Claude, GPT…), except the one for everything else.
+  const opts: Option[] = text.map((m) => ({ value: m.id, label: m.name, hint: priceHint(m.price), group: m.recommended ? t('Recommended') : m.family === 'Other' ? t('Other') : m.family, keywords: `${m.id} ${m.family}` }));
+  if (extra && !text.some((m) => m.id === extra)) opts.unshift({ value: extra, label: extra, hint: t('Your model id, checked with one call'), group: t('Typed in') });
   return opts;
 }
 
@@ -122,14 +125,14 @@ export function ModelPicker({
         width={width}
         className={flat ? 'sel-flat' : ''}
         disabled={disabled || !!checking}
-        placeholder="Choose a model"
-        create={check ? { label: 'Other model id', placeholder: 'The id exactly as the provider writes it', make: (s) => s.trim() || null } : undefined}
+        placeholder={t('Choose a model')}
+        create={check ? { label: t('Other model id'), placeholder: t('The id exactly as the provider writes it'), make: (s) => s.trim() || null } : undefined}
       />
       {(checking || error) && (
         <small className={`model-pick-note ${error ? 'err' : 'muted'}`} role={error ? 'alert' : 'status'}>
           {checking ? (
             <>
-              <Loader2 size={12} className="spin" /> Trying “{checking}” with one tiny call…
+              <Loader2 size={12} className="spin" /> {t('Trying “{model}” with one tiny call…', { model: checking })}
             </>
           ) : (
             error

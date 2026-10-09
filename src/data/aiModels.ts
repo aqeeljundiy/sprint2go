@@ -1,5 +1,7 @@
 import type { ProviderId } from '../types';
 import { PROVIDERS, providerOf } from './aiCatalog';
+// The full path: the server imports this file, and Node can't import a folder (server/register.mjs only adds ".ts").
+import { mark } from '../i18n/index';
 
 // The models a provider really offers a key. The server reads each provider's own list (server/models.ts) and merges it
 // with our catalogue here: catalogue models keep their friendly names, tiers and prices; the rest get a readable name
@@ -162,7 +164,8 @@ export function mergeModels(provider: string, raw: RawModel[], priceOf?: (id: st
       : { id: r.id, name: r.name?.trim() || prettyModelName(r.id), family: familyOf(r.id), price: r.price ?? priceOf?.(r.id) ?? null, recommended: false, kind };
     (c ? rec : rest).push(entry);
   }
-  if (!rec.length && !rest.length) return catalogList(provider, 'The provider’s list had no chat models, so ours is shown.', priceOf);
+  // The server sends the note in English; Settings, AI shows it with t().
+  if (!rec.length && !rest.length) return catalogList(provider, mark('The provider’s list had no chat models, so ours is shown.'), priceOf);
   rec.sort((a, b) => cat.findIndex((m) => m.id === a.id) - cat.findIndex((m) => m.id === b.id));
   rest.sort((a, b) => familyRank(a.family) - familyRank(b.family) || a.family.localeCompare(b.family) || byName(a, b));
   // Two ids with the same readable name (dated versions): the id tells them apart.

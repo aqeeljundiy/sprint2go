@@ -5,6 +5,8 @@ import { SmoothHeight, TabPane, useLeaving } from './ui/Smooth';
 import { EmptyState } from './ui/EmptyState';
 import { server } from '../sync';
 import { relative } from '../utils';
+import { mark, t, tn } from '../i18n';
+import { fmtDay, fmtList } from '../i18n/format';
 import '../phoneMailApps.css';
 
 /*
@@ -15,7 +17,7 @@ import '../phoneMailApps.css';
  */
 
 /** Its place in Settings (one line in SettingsPage's SECTIONS). */
-export const MAIL_APPS_SECTION = { id: 'mailapps' as const, name: 'Phone mail apps', icon: Smartphone, group: 'You' as const };
+export const MAIL_APPS_SECTION = { id: 'mailapps' as const, name: mark('Phone mail apps'), icon: Smartphone, group: 'You' as const };
 
 interface AppPassword {
   id: string;
@@ -40,10 +42,9 @@ interface Info {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const d = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(d.error ?? 'Something went wrong. Try again.');
+  if (!r.ok) throw new Error(d.error ? t(d.error) : t('Something went wrong. Try again.'));
   return d;
 }
-const day = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 
 /** A value to type into a mail app, with Copy. */
 function Value({ text, label }: { text: string; label: string }) {
@@ -54,8 +55,8 @@ function Value({ text, label }: { text: string; label: string }) {
       <button
         type="button"
         className="icon-btn sm pm-copy"
-        aria-label={`Copy the ${label}`}
-        title={copied ? 'Copied' : 'Copy'}
+        aria-label={t('Copy the {what}', { what: label })}
+        title={copied ? t('Copied') : t('Copy')}
         onClick={() => void navigator.clipboard?.writeText(text).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1600)), () => {})}
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -106,8 +107,8 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
   if (!server.on)
     return (
       <>
-        <h2>Phone mail apps</h2>
-        <p className="set-intro">Read and send your sprint2go mail in iPhone Mail, Gmail, Outlook or Thunderbird. This works with sprint2go on a server; this demo has none.</p>
+        <h2>{t('Phone mail apps')}</h2>
+        <p className="set-intro">{t('Read and send your sprint2go mail in iPhone Mail, Gmail, Outlook or Thunderbird. This works with sprint2go on a server; this demo has none.')}</p>
       </>
     );
 
@@ -127,7 +128,7 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
       setPw('');
       setInfo((x) => (x && x !== 'failed' ? { ...x, passwords: [{ id: r.id, name: r.name, createdAt: r.createdAt, lastUsedAt: null, lastUsedBy: null }, ...x.passwords] } : x));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'It couldn’t be made. Try again.');
+      setError(e instanceof Error ? e.message : t('It couldn’t be made. Try again.'));
       setPw('');
     } finally {
       setBusy(null);
@@ -138,9 +139,9 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
     try {
       await post('/api/mailapps/passwords/remove', { id: p.id });
       setInfo((x) => (x && x !== 'failed' ? { ...x, passwords: x.passwords.filter((y) => y.id !== p.id) } : x));
-      toast?.(`“${p.name}” removed. Mail apps using it are signed out.`);
+      toast?.(t('“{name}” removed. Mail apps using it are signed out.', { name: p.name }));
     } catch (e) {
-      toast?.(e instanceof Error ? e.message : 'It couldn’t be removed. Try again.');
+      toast?.(e instanceof Error ? e.message : t('It couldn’t be removed. Try again.'));
     } finally {
       setBusy(null);
     }
@@ -152,52 +153,60 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
   };
   const missingText =
     d?.missing === 'switch'
-      ? 'Not available yet: other mail apps aren’t switched on for this sprint2go server.'
+      ? t('Not available yet: other mail apps aren’t switched on for this sprint2go server.')
       : d?.missing === 'certificate'
-        ? `Not available yet: it waits on a trusted certificate for ${d.host}${d.acme ? '' : ', which waits on the Cloudflare token'}.`
+        ? d.acme
+          ? t('Not available yet: it waits on a trusted certificate for {host}.', { host: d.host })
+          : t('Not available yet: it waits on a trusted certificate for {host}, which waits on the Cloudflare token.', { host: d.host })
         : d?.missing === 'ports'
-          ? 'Not available yet: the mail app ports couldn’t open on this server.'
+          ? t('Not available yet: the mail app ports couldn’t open on this server.')
           : null;
   const canMake = !!d?.on && d.mailboxes.length > 0;
-  const used = (p: AppPassword) => (p.lastUsedAt ? `used ${relative(p.lastUsedAt)}${p.lastUsedBy === 'smtp' ? ' to send' : ''}` : 'not used yet');
+  /** "Made 8 Oct, used 5 min ago": one sentence per state, so each language orders it its own way. */
+  const madeLine = (p: AppPassword) =>
+    !p.lastUsedAt
+      ? t('Made {day}, not used yet', { day: fmtDay(p.createdAt) })
+      : p.lastUsedBy === 'smtp'
+        ? t('Made {day}, used {ago} to send', { day: fmtDay(p.createdAt), ago: relative(p.lastUsedAt) })
+        : t('Made {day}, used {ago}', { day: fmtDay(p.createdAt), ago: relative(p.lastUsedAt) });
 
   // The title and intro sit straight in the section (a phone's screen title takes their place); the rest reacts to its width.
   return (
     <>
-      <h2>Phone mail apps</h2>
-      <p className="set-intro">Read and send your sprint2go mail in iPhone Mail, Gmail, Outlook or Thunderbird. Reading, moving and deleting there changes the same mail here.</p>
+      <h2>{t('Phone mail apps')}</h2>
+      <p className="set-intro">{t('Read and send your sprint2go mail in iPhone Mail, Gmail, Outlook or Thunderbird. Reading, moving and deleting there changes the same mail here.')}</p>
       <div className="pm">
         <SmoothHeight>
           {info === null ? (
-            <p className="muted small pm-loading">Checking…</p>
+            <p className="muted small pm-loading">{t('Checking…')}</p>
           ) : info === 'failed' ? (
-            <p className="pm-note">Couldn’t check right now. Try again in a moment.</p>
+            <p className="pm-note">{t('Couldn’t check right now. Try again in a moment.')}</p>
           ) : (
             <>
               {missingText && (
                 <p className="pm-note">
                   {missingText}
-                  {d?.detail && d.missing !== 'switch' && <small>{d.detail}</small>}
+                  {d?.detail && d.missing !== 'switch' && <small>{t(d.detail)}</small>}
                 </p>
               )}
               {d && d.off.length > 0 && (
                 <p className="pm-note">
-                  {d.off.map((o) => o.name).join(', ')} switched other mail apps off, so {d.off.length === 1 ? 'its' : 'their'} mailboxes don’t show in mail apps.
-                  {canManage && d.off.some((o) => o.id === ws.id) && <small>You can switch it back on at the bottom of this page.</small>}
+                  {tn(d.off.length, '{names} switched other mail apps off, so its mailboxes don’t show in mail apps.', '{names} switched other mail apps off, so their mailboxes don’t show in mail apps.', { names: fmtList(d.off.map((o) => o.name)) })}
+                  {canManage && d.off.some((o) => o.id === ws.id) && <small>{t('You can switch it back on at the bottom of this page.')}</small>}
                 </p>
               )}
-              {d?.on && !d.mailboxes.length && !d.off.length && <p className="pm-note">You aren’t on any mailbox here yet, so there’s nothing to open in a mail app.</p>}
+              {d?.on && !d.mailboxes.length && !d.off.length && <p className="pm-note">{t('You aren’t on any mailbox here yet, so there’s nothing to open in a mail app.')}</p>}
             </>
           )}
         </SmoothHeight>
 
         {d && (canMake || d.passwords.length > 0) && (
           <div className="set-block pm-block">
-            <h3>App passwords</h3>
-            <p className="set-hint pm-hint">Each mail app signs in with its own app password. Your sprint2go password never works there, so two-step sign-in stays safe. Remove one and that app is signed out at once.</p>
+            <h3>{t('App passwords')}</h3>
+            <p className="set-hint pm-hint">{t('Each mail app signs in with its own app password. Your sprint2go password never works there, so two-step sign-in stays safe. Remove one and that app is signed out at once.')}</p>
             <SmoothHeight>
               {rows.length === 0 ? (
-                <EmptyState compact text="No app passwords yet." />
+                <EmptyState compact text={t('No app passwords yet.')} />
               ) : (
                 rows.map(({ item: p, leaving }) => (
                   <div key={p.id} className={`set-row pm-pw ${leaving ? 'row-leaving' : ''}`}>
@@ -205,12 +214,10 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
                       <strong>
                         <KeyRound size={14} /> {p.name}
                       </strong>
-                      <small>
-                        Made {day(p.createdAt)}, {used(p)}
-                      </small>
+                      <small>{madeLine(p)}</small>
                     </span>
                     <button type="button" className="ghost-btn outline sm" disabled={busy === p.id || leaving} onClick={() => void remove(p)}>
-                      {busy === p.id ? 'Removing…' : 'Remove'}
+                      {busy === p.id ? t('Removing…') : t('Remove')}
                     </button>
                   </div>
                 ))
@@ -225,17 +232,17 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
                         <TabPane key={step === 'shown' ? 'shown' : 'form'}>
                           {step === 'shown' && made ? (
                             <div className="pm-made">
-                              <span className="pm-made-label">Your app password for “{made.name}”</span>
+                              <span className="pm-made-label">{t('Your app password for “{name}”', { name: made.name })}</span>
                               <span className="pm-secret">
                                 <code>{made.password}</code>
                                 <button type="button" className="ghost-btn sm" onClick={() => void navigator.clipboard?.writeText(made.password).then(() => setCopied(true), () => {})}>
-                                  {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
+                                  {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? t('Copied') : t('Copy')}
                                 </button>
                               </span>
-                              <small>Type it into your mail app as the password, with your email address as the user name. You won’t see it here again.</small>
+                              <small>{t('Type it into your mail app as the password, with your email address as the user name. You won’t see it here again.')}</small>
                               <div className="pm-actions">
                                 <button type="button" className="primary-btn sm" onClick={close}>
-                                  Done
+                                  {t('Done')}
                                 </button>
                               </div>
                             </div>
@@ -248,21 +255,21 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
                               }}
                             >
                               <div className="field">
-                                <label htmlFor="pm-name">Name</label>
-                                <input id="pm-name" ref={nameRef} value={name} maxLength={60} placeholder="iPhone, Work laptop…" autoComplete="off" onChange={(e) => setName(e.target.value)} tabIndex={step === 'form' ? 0 : -1} />
+                                <label htmlFor="pm-name">{t('Name')}</label>
+                                <input id="pm-name" ref={nameRef} value={name} maxLength={60} placeholder={t('iPhone, Work laptop…')} autoComplete="off" onChange={(e) => setName(e.target.value)} tabIndex={step === 'form' ? 0 : -1} />
                               </div>
                               <div className="field">
-                                <label htmlFor="pm-pw">Your sprint2go password</label>
+                                <label htmlFor="pm-pw">{t('Your sprint2go password')}</label>
                                 <input id="pm-pw" type="password" value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} tabIndex={step === 'form' ? 0 : -1} />
-                                <small>So nobody at an unlocked computer can add a way into your mail.</small>
+                                <small>{t('So nobody at an unlocked computer can add a way into your mail.')}</small>
                               </div>
                               <SmoothHeight>{error ? <p className="pm-error" role="alert">{error}</p> : null}</SmoothHeight>
                               <div className="pm-actions">
                                 <button type="button" className="ghost-btn sm" onClick={close} tabIndex={step === 'form' ? 0 : -1}>
-                                  Cancel
+                                  {t('Cancel')}
                                 </button>
                                 <button type="submit" className="primary-btn sm" disabled={!name.trim() || !pw || busy === 'make'} tabIndex={step === 'form' ? 0 : -1}>
-                                  {busy === 'make' ? 'Making it…' : 'Make app password'}
+                                  {busy === 'make' ? t('Making it…') : t('Make app password')}
                                 </button>
                               </div>
                             </form>
@@ -276,7 +283,7 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
                   <div className="fold-in">
                     <div className="pm-add">
                       <button type="button" className={d.passwords.length ? 'ghost-btn outline sm' : 'primary-btn sm'} onClick={() => setStep('form')} tabIndex={step === 'closed' ? 0 : -1}>
-                        <KeyRound size={14} /> New app password
+                        <KeyRound size={14} /> {t('New app password')}
                       </button>
                     </div>
                   </div>
@@ -288,11 +295,11 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
 
         {d?.on && top && (
           <div className="set-block pm-block">
-            <h3>Set up your mail app</h3>
-            <div className="segmented pm-tabs" role="tablist" aria-label="Mail app">
-              {TABS.map((t) => (
-                <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
-                  {t.name}
+            <h3>{t('Set up your mail app')}</h3>
+            <div className="segmented pm-tabs" role="tablist" aria-label={t('Mail app')}>
+              {TABS.map((tb) => (
+                <button key={tb.id} type="button" role="tab" aria-selected={tab === tb.id} className={tab === tb.id ? 'on' : ''} onClick={() => setTab(tb.id)}>
+                  {tb.name}
                 </button>
               ))}
             </div>
@@ -302,70 +309,66 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
                   {tab === 'iphone' && (
                     <>
                       <li>
-                        On the iPhone or iPad, open this page and download the setup profile: it fills in everything but the password.
+                        {t('On the iPhone or iPad, open this page and download the setup profile: it fills in everything but the password.')}
                         <a className="ghost-btn outline sm pm-profile" href={`/api/mailapps/profile?mailbox=${encodeURIComponent(top.email)}`} download>
-                          <Download size={14} /> Setup profile for {top.email}
+                          <Download size={14} /> {t('Setup profile for {email}', { email: top.email })}
                         </a>
                       </li>
-                      <li>Open Settings, tap Profile Downloaded near the top, then Install. When it asks for a password, type an app password.</li>
-                      <li>Or by hand: Settings, Apps, Mail, Mail Accounts, Add Account, Other, Add Mail Account. Choose IMAP and type the settings below for both servers.</li>
+                      <li>{t('Open Settings, tap Profile Downloaded near the top, then Install. When it asks for a password, type an app password.')}</li>
+                      <li>{t('Or by hand: Settings, Apps, Mail, Mail Accounts, Add Account, Other, Add Mail Account. Choose IMAP and type the settings below for both servers.')}</li>
                     </>
                   )}
                   {tab === 'android' && (
                     <>
-                      <li>In the Gmail app, tap your picture, then Add another account, then Other.</li>
-                      <li>Type your email address, tap Manual setup and choose Personal (IMAP).</li>
-                      <li>Type an app password, then the settings below for the incoming and outgoing servers, with SSL/TLS.</li>
+                      <li>{t('In the Gmail app, tap your picture, then Add another account, then Other.')}</li>
+                      <li>{t('Type your email address, tap Manual setup and choose Personal (IMAP).')}</li>
+                      <li>{t('Type an app password, then the settings below for the incoming and outgoing servers, with SSL/TLS.')}</li>
                     </>
                   )}
                   {tab === 'outlook' && (
                     <>
-                      <li>In Outlook, add an account and type your email address.</li>
-                      <li>When it asks which kind, choose IMAP, then open the advanced settings.</li>
-                      <li>Type the settings below and an app password for both servers.</li>
+                      <li>{t('In Outlook, add an account and type your email address.')}</li>
+                      <li>{t('When it asks which kind, choose IMAP, then open the advanced settings.')}</li>
+                      <li>{t('Type the settings below and an app password for both servers.')}</li>
                     </>
                   )}
                   {tab === 'thunderbird' && (
                     <>
-                      <li>In Thunderbird, choose New, Existing Email Account.</li>
-                      <li>Type your name, your email address and an app password. Thunderbird finds the rest by itself.</li>
-                      <li>If it can’t, choose Configure manually and type the settings below.</li>
+                      <li>{t('In Thunderbird, choose New, Existing Email Account.')}</li>
+                      <li>{t('Type your name, your email address and an app password. Thunderbird finds the rest by itself.')}</li>
+                      <li>{t('If it can’t, choose Configure manually and type the settings below.')}</li>
                     </>
                   )}
                 </ol>
               </TabPane>
             </SmoothHeight>
             <dl className="pm-settings">
-              <dt>Incoming mail (IMAP)</dt>
+              <dt>{t('Incoming mail (IMAP)')}</dt>
               <dd>
-                <Value text={d.host} label="incoming server" />
-                <small>
-                  Port {d.ports.imap}, SSL/TLS (or {d.ports.imapStarttls} with STARTTLS)
-                </small>
+                <Value text={d.host} label={t('incoming server')} />
+                <small>{t('Port {port}, SSL/TLS (or {other} with STARTTLS)', { port: String(d.ports.imap), other: String(d.ports.imapStarttls) })}</small>
               </dd>
-              <dt>Outgoing mail (SMTP)</dt>
+              <dt>{t('Outgoing mail (SMTP)')}</dt>
               <dd>
-                <Value text={d.host} label="outgoing server" />
-                <small>
-                  Port {d.ports.smtp}, SSL/TLS (or {d.ports.smtpStarttls} with STARTTLS), sign-in on
-                </small>
+                <Value text={d.host} label={t('outgoing server')} />
+                <small>{t('Port {port}, SSL/TLS (or {other} with STARTTLS), sign-in on', { port: String(d.ports.smtp), other: String(d.ports.smtpStarttls) })}</small>
               </dd>
-              <dt>User name</dt>
+              <dt>{t('User name')}</dt>
               <dd>
-                <Value text={top.email} label="user name" />
+                <Value text={top.email} label={t('user name')} />
               </dd>
-              <dt>Password</dt>
+              <dt>{t('Password')}</dt>
               <dd>
-                <small className="pm-plain">An app password from above, never your sprint2go password</small>
+                <small className="pm-plain">{t('An app password from above, never your sprint2go password')}</small>
               </dd>
             </dl>
             <p className="set-hint pm-hint">
-              {top.email} shows at the top: Inbox, Sent, Drafts, Archive (your Done), Snoozed, Trash, Spam and your labels.
-              {others.length > 0 && ` ${others.map((m) => m.email).join(', ')} ${others.length === 1 ? 'shows' : 'show'} as folders inside it.`} Mail you send there goes out from sprint2go and shows in Sent here too.
+              {t('{email} shows at the top: Inbox, Sent, Drafts, Archive (your Done), Snoozed, Trash, Spam and your labels.', { email: top.email })}
+              {others.length > 0 && ` ${tn(others.length, '{list} shows as folders inside it.', '{list} show as folders inside it.', { list: fmtList(others.map((m) => m.email)) })}`} {t('Mail you send there goes out from sprint2go and shows in Sent here too.')}
             </p>
             {others.some((m) => m.shared) && (
               <p className="set-hint pm-hint">
-                {others.filter((m) => m.shared).length === 1 ? 'The shared inbox follows' : 'Shared inboxes follow'} who is on {others.filter((m) => m.shared).length === 1 ? 'it' : 'them'} in sprint2go: take someone off and it leaves their mail app.
+                {tn(others.filter((m) => m.shared).length, 'The shared inbox follows who is on it in sprint2go: take someone off and it leaves their mail app.', 'Shared inboxes follow who is on them in sprint2go: take someone off and it leaves their mail app.')}
               </p>
             )}
           </div>
@@ -373,17 +376,17 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
 
         {canManage && d && (
           <div className="set-block pm-block">
-            <h3>{ws.name || 'Your company'}</h3>
+            <h3>{ws.name || t('Your company')}</h3>
             <div className="set-row">
               <span>
-                <strong>Let people use other mail apps</strong>
+                <strong>{t('Let people use other mail apps')}</strong>
                 <small>
                   {here
-                    ? `People at ${ws.name || 'the company'} can open their mailboxes here in iPhone Mail, Gmail, Outlook and Thunderbird, with app passwords.`
-                    : `Off: nobody at ${ws.name || 'the company'} can open its mailboxes in other mail apps, and open connections ended.`}
+                    ? t('People at {company} can open their mailboxes here in iPhone Mail, Gmail, Outlook and Thunderbird, with app passwords.', { company: ws.name || t('the company') })
+                    : t('Off: nobody at {company} can open its mailboxes in other mail apps, and open connections ended.', { company: ws.name || t('the company') })}
                 </small>
               </span>
-              <button type="button" role="switch" aria-checked={here} aria-label="Let people use other mail apps" className={`switch ${here ? 'on' : ''}`} onClick={() => onWorkspace({ mailApps: !here })}>
+              <button type="button" role="switch" aria-checked={here} aria-label={t('Let people use other mail apps')} className={`switch ${here ? 'on' : ''}`} onClick={() => onWorkspace({ mailApps: !here })}>
                 <span />
               </button>
             </div>

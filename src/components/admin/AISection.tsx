@@ -11,6 +11,9 @@ import { defaultAI } from '../../data/workspaces';
 import { Select, type Option } from '../ui/Select';
 import { SmoothHeight, TabPane, useLeaving } from '../ui/Smooth';
 import { ModelPicker, keepModels, textModels, useModelLists } from './AIModels';
+import { mark, t, tn, tx } from '../../i18n';
+import { tj } from '../../i18n/tj';
+import { fmtList, fmtNumber } from '../../i18n/format';
 
 interface Props {
   ws: Workspace;
@@ -23,7 +26,8 @@ interface Props {
   toast: (text: string) => void;
 }
 
-const KIND_NAME = { direct: 'Direct', gateway: 'One key, many models', cloud: 'Company cloud account', private: 'Private', speech: 'Speech to text' } as const;
+/** Shown with t(). */
+const KIND_NAME = { direct: mark('Direct'), gateway: mark('One key, many models'), cloud: mark('Company cloud account'), private: mark('Private'), speech: mark('Speech to text') };
 /** The provider's name in sentences: "Claude (Anthropic)" is Anthropic. */
 const shortName = (id: string) => {
   const n = providerOf(id as ProviderId)?.name ?? id;
@@ -63,8 +67,27 @@ interface PlanView {
   spendUsd?: Record<string, number>; // this month, on each of the company's own keys (list prices)
   capped?: string[]; // keys resting at their monthly cap until the 1st
 }
-const jobWord = (name: string) => (/^Ask AI/.test(name) ? name : name.charAt(0).toLowerCase() + name.slice(1));
-const joinAnd = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+/** A job's name (the server sends it in English) inside a sentence, in the reader's language: "brain dump & briefs", but "Ask AI". */
+const jobWord = (name: string) => {
+  const n = t(name);
+  return /^(Ask AI|Tanya AI)/.test(n) ? n : n.charAt(0).toLowerCase() + n.slice(1);
+};
+/** US$ with cents, the local way: US$12.50 / US$12,50. */
+const dollars = (n: number) => `US$${fmtNumber(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** Seconds with one decimal: 1.4 / 1,4. */
+const secs = (ms: number) => fmtNumber(ms / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** The toast after a preset: one whole sentence each. */
+const presetToast = (preset: 'best' | 'balanced' | 'cheap') =>
+  preset === 'best' ? t('Every job now uses the best setup') : preset === 'balanced' ? t('Every job now uses the balanced setup') : t('Every job now uses the lowest cost setup');
+/** "Only where it fits": what the jobs keep. */
+const keepHint = (preset: string, provider: string) =>
+  preset === 'custom'
+    ? t('Jobs keep the models you picked; where that uses {provider}, they use this model.', { provider })
+    : preset === 'best'
+      ? t('Jobs keep the best setup; where that uses {provider}, they use this model.', { provider })
+      : preset === 'cheap'
+        ? t('Jobs keep the lowest cost setup; where that uses {provider}, they use this model.', { provider })
+        : t('Jobs keep the balanced setup; where that uses {provider}, they use this model.', { provider });
 
 /** "Who handles your data": each company that processes a job on our AI, in plain words, as the operators set it. */
 function DataRoute({ view, both }: { view: PlanView; both: boolean }) {
@@ -82,7 +105,9 @@ function DataRoute({ view, both }: { view: PlanView; both: boolean }) {
   return (
     <>
       <p className="muted small">
-        On {product.name}’s AI, these companies process what each job sends them. We choose the models{both ? '; jobs you set to your own keys use those first' : ''}. This list always shows what runs today.
+        {both
+          ? t('On {product}’s AI, these companies process what each job sends them. We choose the models; jobs you set to your own keys use those first. This list always shows what runs today.', { product: product.name })
+          : t('On {product}’s AI, these companies process what each job sends them. We choose the models. This list always shows what runs today.', { product: product.name })}
       </p>
       {Array.from(groups.values()).map((g) => (
         <div key={`${g.pick.provider}|${g.pick.model}`} className="set-row">
@@ -90,19 +115,19 @@ function DataRoute({ view, both }: { view: PlanView; both: boolean }) {
             <strong>
               {g.pick.providerName} ({g.pick.modelName})
             </strong>
-            <small>For {joinAnd(g.jobs)}</small>
+            <small>{t('For {jobs}', { jobs: fmtList(g.jobs) })}</small>
           </span>
         </div>
       ))}
-      {backups.length > 0 && <p className="muted small">If one of them is down, {joinAnd(backups.map((b) => `${b.providerName} (${b.modelName})`))} takes over for that job.</p>}
+      {backups.length > 0 && <p className="muted small">{t('If one of them is down, {backups} takes over for that job.', { backups: fmtList(backups.map((b) => `${b.providerName} (${b.modelName})`)) })}</p>}
       {down.length > 0 && (
         <p className="muted small">
-          Not available on {product.name}’s AI right now: {joinAnd(down)}. To use {down.length === 1 ? 'it' : 'them'} now, add your own key below.
+          {tn(down.length, 'Not available on {product}’s AI right now: {jobs}. To use it now, add your own key below.', 'Not available on {product}’s AI right now: {jobs}. To use them now, add your own key below.', { product: product.name, jobs: fmtList(down) })}
         </p>
       )}
       {warns.map((w) => (
         <p key={w.provider} className="warn-note">
-          <AlertTriangle size={14} /> {w.providerName}: {w.warn}
+          <AlertTriangle size={14} /> {w.providerName}: {t(w.warn ?? '')}
         </p>
       ))}
     </>
@@ -144,17 +169,17 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
 
   const pickPreset = (preset: 'best' | 'balanced' | 'cheap') => {
     set({ preset, jobs: presetJobs(preset, connected, allowIncluded, known()) });
-    toast(`Every job now uses the ${preset === 'cheap' ? 'lowest cost' : preset} setup`);
+    toast(presetToast(preset));
   };
 
   /** One tiny call with a model on a saved key: an id typed in, before it's used. */
   const checkModel = (provider: ProviderId) => async (id: string): Promise<string | null> => {
     // DEMO ONLY: no provider to ask, so an id that looks right is taken
-    if (!server.on) return new Promise((r) => setTimeout(() => r(MODEL_ID.test(id) ? null : 'That doesn’t look like a model id: letters, numbers and . _ : / - only.'), 700));
+    if (!server.on) return new Promise((r) => setTimeout(() => r(MODEL_ID.test(id) ? null : t('That doesn’t look like a model id: letters, numbers and . _ : / - only.')), 700));
     const r = await fetch('/api/ai/models/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider, model: id }) }).catch(() => null);
-    if (!r) return 'Could not reach the server.';
+    if (!r) return t('Could not reach the server.');
     const d = (await r.json().catch(() => ({}))) as { error?: string };
-    return r.ok ? null : d.error ?? 'That model didn’t answer.';
+    return r.ok ? null : d.error ? t(d.error) : t('That model didn’t answer.');
   };
 
   /** A key's default model changes: the jobs that used the old one move with it. */
@@ -170,7 +195,8 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
       moved++;
     }
     set({ providers: ai.providers.map((x) => (x.id === c.id ? { ...x, model: id, typed: typed || undefined } : x)), jobs, ...(moved ? { preset: 'custom' as const } : {}) });
-    toast(`${shortName(c.id)} now uses ${modelLabel(id, lists[c.id])}${moved ? `. ${moved} job${moved === 1 ? '' : 's'} moved to it` : ''}`);
+    const vars = { provider: shortName(c.id), model: modelLabel(id, lists[c.id]) };
+    toast(moved ? tn(moved, '{provider} now uses {model}. {n} job moved to it', '{provider} now uses {model}. {n} jobs moved to it', vars) : t('{provider} now uses {model}', vars));
   };
 
   /** After "Test and save": the key's model, for every text job or only where the setup already picked this provider. */
@@ -190,7 +216,13 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
     onAI({ ...ai, providers: ai.providers.map((p) => (p.id === id ? { ...p, model, typed: a.typed || undefined } : p)), jobs, ...(n ? { preset: 'custom' as const } : {}) });
     setAdding(null);
     const name = modelLabel(model, a.list);
-    toast(a.scope === 'all' ? `Every text job now uses ${name}` : n ? `${shortName(id)} now uses ${name} for ${n} job${n === 1 ? '' : 's'}` : `${shortName(id)} uses ${name}. No job picked it yet: choose it for a job below`);
+    toast(
+      a.scope === 'all'
+        ? t('Every text job now uses {model}', { model: name })
+        : n
+          ? tn(n, '{provider} now uses {model} for {n} job', '{provider} now uses {model} for {n} jobs', { provider: shortName(id), model: name })
+          : t('{provider} uses {model}. No job picked it yet: choose it for a job below', { provider: shortName(id), model: name }),
+    );
   };
 
   const addProvider = () => {
@@ -226,7 +258,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
       // A company's own server has nothing in our catalogue: its model is typed in when its list can't be read.
       if (!picksModel(id) || (!text.length && id !== 'custom')) {
         setAdding(null);
-        toast(`${info.name} connected. The key is encrypted and only the last 4 characters are kept`);
+        toast(t('{provider} connected. The key is encrypted and only the last 4 characters are kept', { provider: info.name }));
         return;
       }
       // Next: which model it uses.
@@ -249,7 +281,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
    */
   const jobOptions = (job: (typeof JOBS)[number]): Option[] => {
     const speech = job.id === 'speech';
-    const out: Option[] = allowIncluded && !speech ? [{ value: 'included|included', label: `${product.name} (included in your plan)`, group: 'Included', icon: <Sparkles size={14} /> }] : [];
+    const out: Option[] = allowIncluded && !speech ? [{ value: 'included|included', label: t('{product} (included in your plan)', { product: product.name }), group: t('Included'), icon: <Sparkles size={14} /> }] : [];
     for (const c of ai.providers) {
       if (c.status !== 'ok' || ai.blocked.includes(c.id)) continue;
       const info = providerOf(c.id)!;
@@ -257,25 +289,25 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
       const ms = list.models.filter((m) => (speech ? m.kind === 'speech' || (info.kind === 'speech' && list.source === 'catalog') : m.kind === 'text' && !(info.kind === 'speech' && list.source === 'catalog')));
       for (const m of ms) {
         const cost = speech ? null : costPer100(job, c.id, m.id, m.price);
-        out.push({ value: `${c.id}|${m.id}`, label: m.name, hint: speech ? info.name : cost !== null ? `≈ ${rp(cost)} / 100 uses` : 'Price unknown', group: info.name, keywords: `${m.id} ${m.family}` });
+        out.push({ value: `${c.id}|${m.id}`, label: m.name, hint: speech ? info.name : cost !== null ? t('≈ {cost} / 100 uses', { cost: rp(cost) }) : t('Price unknown'), group: info.name, keywords: `${m.id} ${m.family}` });
       }
       // A model id typed in for this key, and whatever the job uses now, stay pickable.
-      if (!speech && c.typed && c.model && !ms.some((m) => m.id === c.model)) out.push({ value: `${c.id}|${c.model}`, label: c.model, hint: 'Your model id', group: info.name });
+      if (!speech && c.typed && c.model && !ms.some((m) => m.id === c.model)) out.push({ value: `${c.id}|${c.model}`, label: c.model, hint: t('Your model id'), group: info.name });
     }
     const cur = ai.jobs[job.id];
     if (cur && cur.provider !== 'included' && cur.model && cur.model !== 'browser' && !out.some((o) => o.value === `${cur.provider}|${cur.model}`) && ai.providers.some((p) => p.id === cur.provider)) {
-      out.push({ value: `${cur.provider}|${cur.model}`, label: modelLabel(cur.model, lists[cur.provider]), hint: cur.typed ? 'Your model id' : 'Not on the provider’s list', group: providerOf(cur.provider)?.name ?? cur.provider });
+      out.push({ value: `${cur.provider}|${cur.model}`, label: modelLabel(cur.model, lists[cur.provider]), hint: cur.typed ? t('Your model id') : t('Not on the provider’s list'), group: providerOf(cur.provider)?.name ?? cur.provider });
     }
-    if (speech) out.push({ value: 'custom|browser', label: 'Browser speech (free)', hint: 'Chrome and Safari only', group: 'Free' });
+    if (speech) out.push({ value: 'custom|browser', label: t('Browser speech (free)'), hint: t('Chrome and Safari only'), group: tx('price', 'Free') });
     return out;
   };
 
   const usage = [
-    ['Brain dumps', 41, 'braindump'],
-    ['Ask AI questions', 118, 'ask'],
-    ['Meeting notes (hours)', 22, 'meeting'],
-    ['Email summaries', 236, 'summary'],
-    ['Drafts and rewrites', 97, 'draft'],
+    [t('Brain dumps'), 41, 'braindump'],
+    [t('Ask AI questions'), 118, 'ask'],
+    [t('Meeting notes (hours)'), 22, 'meeting'],
+    [t('Email summaries'), 236, 'summary'],
+    [t('Drafts and rewrites'), 97, 'draft'],
   ] as const;
   const seats = plan ? seatsFor(plan.tier, people) : people;
   const pool = { braindump: ALLOWANCE.braindump * seats, ask: ALLOWANCE.ask * seats, meeting: ALLOWANCE.meetingHours * seats, summary: ALLOWANCE.summary * seats, draft: ALLOWANCE.draft * seats } as Record<string, number>;
@@ -290,17 +322,17 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   return (
     <>
       <h2>AI</h2>
-      <p className="set-intro">Pick who pays for AI and which model does each job. AI only runs when someone clicks, or once in the background for the jobs you allow.</p>
-      {!canManage && <p className="modal-note">Only owners and admins can change AI settings.</p>}
+      <p className="set-intro">{t('Pick who pays for AI and which model does each job. AI only runs when someone clicks, or once in the background for the jobs you allow.')}</p>
+      {!canManage && <p className="modal-note">{t('Only owners and admins can change AI settings.')}</p>}
       <fieldset className="plain" disabled={!canManage}>
         <div className="set-block">
-          <h3>Who pays for AI</h3>
+          <h3>{t('Who pays for AI')}</h3>
           <div className="payer-pick">
             {(
               [
-                ['sprint2go', `${product.name}`, included ? `Included in ${planName(plan!)}: shared allowance for the whole company` : 'Needs an “AI included” plan'],
-                ['own', 'Our own keys', 'Your providers bill you directly. Cheapest plans'],
-                ['both', 'Both', 'Your keys first; the plan’s allowance as backup'],
+                ['sprint2go', `${product.name}`, included ? t('Included in {plan}: shared allowance for the whole company', { plan: planName(plan!) }) : t('Needs an “AI included” plan')],
+                ['own', t('Our own keys'), t('Your providers bill you directly. Cheapest plans')],
+                ['both', t('Both'), t('Your keys first; the plan’s allowance as backup')],
               ] as const
             ).map(([v, l, h]) => (
               <button key={v} type="button" className={ai.payer === v ? 'on' : ''} disabled={(v === 'sprint2go' || v === 'both') && !included} onClick={() => set({ payer: v, jobs: v === 'own' ? presetJobs(ai.preset === 'custom' ? 'balanced' : ai.preset, connected, false) : ai.jobs })}>
@@ -311,36 +343,42 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           </div>
           {!included && (
             <p className="muted small">
-              You’re on {plan ? planName(plan) : 'Free'} with your own keys.{' '}
-              <button type="button" className="link-btn" onClick={onBilling}>
-                Switch to AI included
-              </button>{' '}
-              if you’d rather not manage keys.
+              {tj('You’re on {plan} with your own keys. {link} if you’d rather not manage keys.', {
+                plan: plan ? planName(plan) : 'Free',
+                link: (
+                  <button type="button" className="link-btn" onClick={onBilling}>
+                    {t('Switch to AI included')}
+                  </button>
+                ),
+              })}
             </p>
           )}
         </div>
 
         {plan?.tier === 'free' && !included && (
           <div className="set-block">
-            <h3>AI on Free</h3>
+            <h3>{t('AI on Free')}</h3>
             <p className="muted small">
-              Free doesn’t include AI from {product.name}. Add your own key above and it works right away, with no limit from us, or{' '}
-              <button type="button" className="link-btn" onClick={onBilling}>
-                pick a plan with AI included
-              </button>
-              .
+              {tj('Free doesn’t include AI from {product}. Add your own key above and it works right away, with no limit from us, or {link}.', {
+                product: product.name,
+                link: (
+                  <button type="button" className="link-btn" onClick={onBilling}>
+                    {t('pick a plan with AI included')}
+                  </button>
+                ),
+              })}
             </p>
           </div>
         )}
         {included && ai.payer !== 'own' && view && (
           <div className="set-block">
-            <h3>Who handles your data</h3>
+            <h3>{t('Who handles your data')}</h3>
             <DataRoute view={view} both={ai.payer === 'both'} />
           </div>
         )}
         {included && ai.payer !== 'own' && (
           <div className="set-block">
-            <h3>Left this month</h3>
+            <h3>{t('Left this month')}</h3>
             {allowance?.unlimited || !showUsage ? null : (
               <div className="allow-meter">
                 <span className="bar wide">
@@ -348,38 +386,46 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                 </span>
                 {usedUp ? (
                   <p>
-                    <b>Used up for this month.</b>{' '}
-                    {view?.why === 'trial' ? (
-                      <>
-                        The trial’s AI starts again on the 1st.{' '}
-                        <button type="button" className="link-btn" onClick={onBilling}>
-                          Pick a plan
-                        </button>{' '}
-                        or add your own key above to carry on now.
-                      </>
-                    ) : view?.why === 'comp' ? (
-                      'It starts again on the 1st. Add your own key above to carry on now.'
-                    ) : plan?.autoTopUp?.on ? (
-                      <>
-                        Automatic top-ups reached their monthly limit.{' '}
-                        <button type="button" className="link-btn" onClick={onBilling}>
-                          Raise the limit or add a top-up
-                        </button>
-                        .
-                      </>
-                    ) : (
-                      <>
-                        <button type="button" className="link-btn" onClick={onBilling}>
-                          Add a top-up
-                        </button>{' '}
-                        ({rp(TOP_UP.price)}) to carry on, or turn on automatic top-ups.
-                      </>
-                    )}
+                    <b>{t('Used up for this month.')}</b>{' '}
+                    {view?.why === 'trial'
+                      ? tj('The trial’s AI starts again on the 1st. {link} or add your own key above to carry on now.', {
+                          link: (
+                            <button type="button" className="link-btn" onClick={onBilling}>
+                              {t('Pick a plan')}
+                            </button>
+                          ),
+                        })
+                      : view?.why === 'comp'
+                        ? t('It starts again on the 1st. Add your own key above to carry on now.')
+                        : plan?.autoTopUp?.on
+                          ? tj('Automatic top-ups reached their monthly limit. {link}.', {
+                              link: (
+                                <button type="button" className="link-btn" onClick={onBilling}>
+                                  {t('Raise the limit or add a top-up')}
+                                </button>
+                              ),
+                            })
+                          : tj('{link} ({price}) to carry on, or turn on automatic top-ups.', {
+                              link: (
+                                <button type="button" className="link-btn" onClick={onBilling}>
+                                  {t('Add a top-up')}
+                                </button>
+                              ),
+                              price: rp(TOP_UP.price),
+                            })}
                   </p>
                 ) : (
                   <p>
-                    About <b>{leftOf('meeting') ?? 0} meeting hours</b>, or <b>{leftOf('ask') ?? 0} questions</b>, or <b>{leftOf('braindump') ?? 0} brain dumps</b> left, shared by the whole company
-                    {allowance?.topUps ? `, with ${allowance.topUps} top-up${allowance.topUps === 1 ? '' : 's'} this month` : ''}.
+                    {(() => {
+                      const parts = {
+                        hours: <b>{tn(leftOf('meeting') ?? 0, '{n} meeting hour', '{n} meeting hours')}</b>,
+                        questions: <b>{tn(leftOf('ask') ?? 0, '{n} question', '{n} questions')}</b>,
+                        dumps: <b>{tn(leftOf('braindump') ?? 0, '{n} brain dump', '{n} brain dumps')}</b>,
+                      };
+                      return allowance?.topUps
+                        ? tj('About {hours}, or {questions}, or {dumps} left, shared by the whole company, with {topUps} this month.', { ...parts, topUps: tn(allowance.topUps, '{n} top-up', '{n} top-ups') })
+                        : tj('About {hours}, or {questions}, or {dumps} left, shared by the whole company.', parts);
+                    })()}
                   </p>
                 )}
               </div>
@@ -389,7 +435,9 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                 {usage.map(([l, n, k]) => (
                   <div key={k}>
                     <b>{allowance ? allowance.uses[k] ?? 0 : n}</b>
-                    <span>{allowance ? (k === 'meeting' ? 'Meetings with notes' : l) : l} {allowance ? <em>this month</em> : <em>of {pool[k]}</em>}</span>
+                    <span>
+                      {allowance ? (k === 'meeting' ? t('Meetings with notes') : l) : l} {allowance ? <em>{t('this month')}</em> : <em>{t('of {total}', { total: fmtNumber(pool[k]) })}</em>}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -400,21 +448,25 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
         )}
 
         <div className="set-block">
-          <h3>{ai.payer === 'sprint2go' ? 'Providers' : 'Your AI keys'}</h3>
+          <h3>{ai.payer === 'sprint2go' ? t('Providers') : t('Your AI keys')}</h3>
           {notes.length > 0 && (
             <div className="ai-notes">
               {notes.map(({ item: n, leaving }) => (
                 <p key={n.id} className={`warn-note ai-note ${leaving ? 'row-leaving' : ''}`}>
                   <AlertTriangle size={14} />
                   <span>{n.text}</span>
-                  <button type="button" className="icon-btn sm" title="Got it" aria-label="Dismiss" onClick={() => set({ notes: (ai.notes ?? []).filter((x) => x.id !== n.id) })}>
+                  <button type="button" className="icon-btn sm" title={t('Got it')} aria-label={t('Dismiss')} onClick={() => set({ notes: (ai.notes ?? []).filter((x) => x.id !== n.id) })}>
                     <X size={14} />
                   </button>
                 </p>
               ))}
             </div>
           )}
-          {ai.providers.length === 0 && <p className="muted small">No keys yet. {included && ai.payer !== 'own' ? `${product.name}’s AI is used for everything.` : 'Add a key to switch the AI on, then pick which model does each job below.'}</p>}
+          {ai.providers.length === 0 && (
+            <p className="muted small">
+              {included && ai.payer !== 'own' ? t('No keys yet. {product}’s AI is used for everything.', { product: product.name }) : t('No keys yet. Add a key to switch the AI on, then pick which model does each job below.')}
+            </p>
+          )}
           <div className="prov-list">
             {ai.providers.map((c) => {
               const info = providerOf(c.id)!;
@@ -433,36 +485,36 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                       {info.name} {c.status === 'ok' ? <CheckCircle2 size={13} className="ok" /> : <AlertTriangle size={13} className="bad" />}
                     </strong>
                     <small>
-                      <KeyRound size={11} /> •••• {c.keyLast4} · added by {users.find((u) => u.id === c.addedBy)?.name.split(' ')[0] ?? 'someone'}
+                      <KeyRound size={11} /> •••• {c.keyLast4} · {t('added by {name}', { name: users.find((u) => u.id === c.addedBy)?.name.split(' ')[0] ?? t('someone') })}
                     </small>
                     {picksModel(c.id) && c.status === 'ok' ? (
                       <span className="prov-model">
-                        <ModelPicker list={list} value={current || null} typed={c.typed} onPick={(id, typed) => changeModel(c, id, typed)} check={checkModel(c.id)} label={`${info.name}: model`} flat width={360} disabled={!canManage} />
-                        <span className="prov-uses muted">{uses ? `${uses} job${uses === 1 ? ' uses' : 's use'} it` : 'No job uses it yet'}</span>
+                        <ModelPicker list={list} value={current || null} typed={c.typed} onPick={(id, typed) => changeModel(c, id, typed)} check={checkModel(c.id)} label={t('{provider}: model', { provider: info.name })} flat width={360} disabled={!canManage} />
+                        <span className="prov-uses muted">{uses ? tn(uses, '{n} job uses it', '{n} jobs use it') : t('No job uses it yet')}</span>
                       </span>
                     ) : (
-                      <span className="prov-uses muted">{c.id === 'azure' ? 'Runs the model of your Azure deployment' : uses ? `${uses} job${uses === 1 ? ' uses' : 's use'} it` : 'No job uses it yet'}</span>
+                      <span className="prov-uses muted">{c.id === 'azure' ? t('Runs the model of your Azure deployment') : uses ? tn(uses, '{n} job uses it', '{n} jobs use it') : t('No job uses it yet')}</span>
                     )}
                     <span className="prov-spend">
                       <span className="bar wide">
                         <span style={{ width: `${pct}%` }} className={pct > 80 ? 'warn' : ''} />
                       </span>
-                      about US${spent.toFixed(2)} this month{c.capUsd ? ` of US$${c.capUsd} cap` : ''}
-                      {resting ? '. At its cap: it rests until the 1st' : ''}
+                      {c.capUsd ? t('about {spent} this month of {cap} cap', { spent: dollars(spent), cap: `US$${fmtNumber(c.capUsd)}` }) : t('about {spent} this month', { spent: dollars(spent) })}
+                      {resting ? `. ${t('At its cap: it rests until the 1st')}` : ''}
                     </span>
                   </span>
                   <span className="prov-cap">
-                    <label>Monthly cap US$</label>
-                    <input type="number" min={0} value={c.capUsd ?? ''} placeholder="none" onChange={(e) => set({ providers: ai.providers.map((x) => (x.id === c.id ? { ...x, capUsd: e.target.value ? Number(e.target.value) : undefined } : x)) })} />
+                    <label>{t('Monthly cap US$')}</label>
+                    <input type="number" min={0} value={c.capUsd ?? ''} placeholder={tx('cap', 'none')} onChange={(e) => set({ providers: ai.providers.map((x) => (x.id === c.id ? { ...x, capUsd: e.target.value ? Number(e.target.value) : undefined } : x)) })} />
                   </span>
                   <span className="prov-acts">
                     <button type="button" className="ghost-btn sm outline" onClick={() => setAdding({ id: c.id, key: '', url: c.baseUrl ?? '', state: 'idle' })}>
-                      <KeyRound size={13} /> Replace key
+                      <KeyRound size={13} /> {t('Replace key')}
                     </button>
                     <button
                       type="button"
                       className="icon-btn sm"
-                      title="Remove key"
+                      title={t('Remove key')}
                       onClick={() => {
                         if (server.on) void fetch('/api/ai/keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: c.id }) });
                         const providers = ai.providers.filter((x) => x.id !== c.id);
@@ -475,7 +527,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                           else delete jobs[j.id];
                         }
                         set({ providers, jobs });
-                        toast(`${info.name} key removed${moved.length ? `. ${moved.length} job${moved.length === 1 ? '' : 's'} moved to another model` : ''}`);
+                        toast(moved.length ? tn(moved.length, '{provider} key removed. {n} job moved to another model', '{provider} key removed. {n} jobs moved to another model', { provider: info.name }) : t('{provider} key removed', { provider: info.name }));
                       }}
                     >
                       <Trash2 size={15} />
@@ -490,24 +542,28 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               {adding?.step === 'model' && adding.id && adding.list ? (
                 <div className="add-prov add-model">
                   <p className="add-model-done">
-                    <CheckCircle2 size={14} className="ok" /> {providerOf(adding.id)!.name} is connected. The key is encrypted; only its last 4 characters are kept.
+                    <CheckCircle2 size={14} className="ok" /> {t('{provider} is connected. The key is encrypted; only its last 4 characters are kept.', { provider: providerOf(adding.id)!.name })}
                   </p>
                   <p className="add-model-q" id="add-model-q">
-                    Which model should {shortName(adding.id)} use?
+                    {t('Which model should {provider} use?', { provider: shortName(adding.id) })}
                   </p>
-                  <ModelPicker list={adding.list} value={adding.model ?? null} typed={adding.typed} onPick={(model, typed) => setAdding((a) => a && { ...a, model, typed })} check={checkModel(adding.id)} label={`Which model should ${shortName(adding.id)} use?`} width={380} />
+                  <ModelPicker list={adding.list} value={adding.model ?? null} typed={adding.typed} onPick={(model, typed) => setAdding((a) => a && { ...a, model, typed })} check={checkModel(adding.id)} label={t('Which model should {provider} use?', { provider: shortName(adding.id) })} width={380} />
                   <p className="muted small">
                     {!textModels(adding.list).length
-                      ? 'Open the list and choose Other model id: type the id exactly as your server names it. We try it with one tiny call.'
+                      ? t('Open the list and choose Other model id: type the id exactly as your server names it. We try it with one tiny call.')
                       : adding.list.source === 'live'
-                      ? `From ${shortName(adding.id)}’s own list for this key. Recommended ones first; search by name or id.`
-                      : adding.list.note ?? (server.on ? `${shortName(adding.id)} doesn’t share a list, so these are the models we know.` : 'Demo: these are the models we know. With the server, the provider’s own list shows here.')}
+                      ? t('From {provider}’s own list for this key. Recommended ones first; search by name or id.', { provider: shortName(adding.id) })
+                      : adding.list.note
+                        ? t(adding.list.note)
+                        : server.on
+                          ? t('{provider} doesn’t share a list, so these are the models we know.', { provider: shortName(adding.id) })
+                          : t('Demo: these are the models we know. With the server, the provider’s own list shows here.')}
                   </p>
-                  <div className="model-scope" role="radiogroup" aria-label="Which jobs use this model">
+                  <div className="model-scope" role="radiogroup" aria-label={t('Which jobs use this model')}>
                     {(
                       [
-                        ['all', 'Use it for every job', 'Every text job runs on this model. Voice notes keep their speech service.'],
-                        ['fit', 'Only where it fits', `Jobs keep the ${ai.preset === 'custom' ? 'models you picked' : `${ai.preset === 'cheap' ? 'lowest cost' : ai.preset} setup`}; where that uses ${shortName(adding.id)}, they use this model.`],
+                        ['all', t('Use it for every job'), t('Every text job runs on this model. Voice notes keep their speech service.')],
+                        ['fit', t('Only where it fits'), keepHint(ai.preset, shortName(adding.id))],
                       ] as const
                     ).map(([v, l, h]) => (
                       <button key={v} type="button" role="radio" aria-checked={adding.scope === v} className={adding.scope === v ? 'on' : ''} onClick={() => setAdding((a) => a && { ...a, scope: v })}>
@@ -526,13 +582,13 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                       onClick={() => {
                         const id = adding.id!;
                         setAdding(null);
-                        toast(`${providerOf(id)!.name} connected. Pick its model any time on its row`);
+                        toast(t('{provider} connected. Pick its model any time on its row', { provider: providerOf(id)!.name }));
                       }}
                     >
-                      Later
+                      {t('Later')}
                     </button>
                     <button type="button" className="primary-btn sm" disabled={!adding.model} onClick={applyModel}>
-                      <CheckCircle2 size={14} /> Use this model
+                      <CheckCircle2 size={14} /> {t('Use this model')}
                     </button>
                   </div>
                 </div>
@@ -541,11 +597,11 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                   <Select<ProviderId>
                     value={adding.id}
                     onChange={(id) => setAdding({ ...adding, id, state: 'idle' })}
-                    placeholder="Choose a provider"
-                    label="Provider"
+                    placeholder={t('Choose a provider')}
+                    label={t('Provider')}
                     width={340}
                     searchable
-                    options={PROVIDERS.map((p) => ({ value: p.id, label: p.name, hint: p.note, group: KIND_NAME[p.kind], icon: <span className="prov-mark sm">{p.name.charAt(0)}</span> }))}
+                    options={PROVIDERS.map((p) => ({ value: p.id, label: p.name, hint: p.note, group: t(KIND_NAME[p.kind]), icon: <span className="prov-mark sm">{p.name.charAt(0)}</span> }))}
                   />
                   {adding.id && providerOf(adding.id)?.warn && (
                     <p className="warn-note">
@@ -575,39 +631,39 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                             aria-label={f.label}
                             value={adding.fields?.[f.key] ?? ''}
                             onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
-                            placeholder={`${f.label}${f.optional ? ' (optional)' : ''}${f.placeholder ? `: ${f.placeholder}` : ''}`}
+                            placeholder={`${f.optional ? t('{label} (optional)', { label: f.label }) : f.label}${f.placeholder ? `: ${f.placeholder}` : ''}`}
                           />
                         ),
                       )}
                       <p className="muted small">{CRED_FIELDS[adding.id]!.help}</p>
-                      {adding.state === 'error' && <p className="err">{adding.message ?? 'Fill in every field.'}</p>}
+                      {adding.state === 'error' && <p className="err">{adding.message ? t(adding.message) : t('Fill in every field.')}</p>}
                     </>
                   )}
                   {adding.id && !CRED_FIELDS[adding.id] && (
                     <>
-                      {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : 'Endpoint'} aria-label="Address" />}
-                      <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} aria-label="Key" />
-                      {adding.state === 'error' && <p className="err">{adding.message ?? `That doesn’t look like a valid key${providerOf(adding.id)!.needsUrl ? ' and address' : ''}.`}</p>}
+                      {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : t('Endpoint')} aria-label={t('Address')} />}
+                      <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} aria-label={t('Key')} />
+                      {adding.state === 'error' && <p className="err">{adding.message ? t(adding.message) : providerOf(adding.id)!.needsUrl ? t('That doesn’t look like a valid key and address.') : t('That doesn’t look like a valid key.')}</p>}
                     </>
                   )}
                   {adding.id && (
                     <p className="muted small">
-                      {server.on ? 'We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.' : 'Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.'}
-                      {picksModel(adding.id) ? ' Then you pick its model.' : ''}
+                      {server.on ? t('We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.') : t('Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.')}
+                      {picksModel(adding.id) ? ` ${t('Then you pick its model.')}` : ''}
                     </p>
                   )}
                   <div className="add-prov-foot">
                     <button type="button" className="ghost-btn sm" onClick={() => setAdding(null)}>
-                      Cancel
+                      {t('Cancel')}
                     </button>
                     <button type="button" className="primary-btn sm" disabled={!adding.id || (!CRED_FIELDS[adding.id] && !adding.key) || adding.state === 'testing'} onClick={addProvider}>
-                      {adding.state === 'testing' ? <Loader2 size={14} className="spin" /> : <KeyRound size={14} />} {adding.state === 'testing' ? 'Testing…' : 'Test and save'}
+                      {adding.state === 'testing' ? <Loader2 size={14} className="spin" /> : <KeyRound size={14} />} {adding.state === 'testing' ? t('Testing…') : t('Test and save')}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button type="button" className="ghost-btn sm add-prov-open" onClick={() => setAdding({ id: null, key: '', url: '', state: 'idle' })}>
-                  <Plus size={14} /> Add a provider
+                  <Plus size={14} /> {t('Add a provider')}
                 </button>
               )}
             </TabPane>
@@ -633,31 +689,31 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
             if (!server.on)
               return void setTimeout(() => {
                 setTesting(null);
-                setTested((t) => ({ ...t, [job.id]: { ok: true, text: `${(0.6 + Math.random() * 2.4).toFixed(1)}s · sample looked fine` } }));
+                setTested((prev) => ({ ...prev, [job.id]: { ok: true, text: t('{secs}s · sample looked fine', { secs: secs((0.6 + Math.random() * 2.4) * 1000) }) } }));
               }, 1100);
             const name = modelLabel(cur.model, lists[cur.provider]);
             void fetch('/api/ai/models/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: cur.provider, model: cur.model }) })
               .then(async (r) => {
                 const d = (await r.json().catch(() => ({}))) as { ms?: number; error?: string };
-                setTested((t) => ({ ...t, [job.id]: r.ok ? { ok: true, text: `${name} answered in ${((d.ms ?? 0) / 1000).toFixed(1)}s` } : { ok: false, text: d.error ?? `${name} didn’t answer.` } }));
+                setTested((prev) => ({ ...prev, [job.id]: r.ok ? { ok: true, text: t('{model} answered in {secs}s', { model: name, secs: secs(d.ms ?? 0) }) } : { ok: false, text: d.error ? t(d.error) : t('{model} didn’t answer.', { model: name }) } }));
               })
-              .catch(() => setTested((t) => ({ ...t, [job.id]: { ok: false, text: 'Could not reach the server.' } })))
+              .catch(() => setTested((prev) => ({ ...prev, [job.id]: { ok: false, text: t('Could not reach the server.') } })))
               .finally(() => setTesting(null));
           };
           const row = (job: (typeof JOBS)[number]) => {
             const cur = ai.jobs[job.id] ?? (allowIncluded ? { provider: 'included' as const, model: 'included' } : undefined);
             const entry = cur && cur.provider !== 'included' ? lists[cur.provider]?.models.find((m) => m.id === cur.model) : undefined;
             const cost = cur ? costPer100(job, cur.provider, cur.model, entry?.price) : null;
-            const recModel = (preset: 'best' | 'balanced' | 'cheap') => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === job.rec[preset] || m.id.endsWith(job.rec[preset]))?.name ?? (job.rec[preset] === 'browser' ? 'Browser' : job.rec[preset]);
+            const recModel = (preset: 'best' | 'balanced' | 'cheap') => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === job.rec[preset] || m.id.endsWith(job.rec[preset]))?.name ?? (job.rec[preset] === 'browser' ? t('Browser') : job.rec[preset]);
             // A real one-call try on the server (not on our AI, browser speech or speech services); a pretend one in the demo.
             const canTry = !!cur && (!server.on || (cur.provider !== 'included' && job.id !== 'speech' && cur.model !== 'browser' && ai.providers.some((x) => x.id === cur.provider)));
-            const t = tested[job.id];
+            const result = tested[job.id];
             return (
               <div key={job.id} className="job-row">
                 <div className="job-name">
                   <strong>{job.name}</strong>
                   <small>
-                    {job.hint} · {job.when === 'click' ? 'on click' : job.when === 'auto' ? 'automatic, once' : 'opt-in'}
+                    {job.hint} · {job.when === 'click' ? t('on click') : job.when === 'auto' ? t('automatic, once') : t('opt-in')}
                   </small>
                 </div>
                 <div className="job-pick">
@@ -665,7 +721,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                     value={cur ? `${cur.provider}|${cur.model}` : null}
                     onChange={(v) => set({ preset: 'custom', jobs: { ...ai.jobs, [job.id]: pickFor(job.id, v) } })}
                     options={jobOptions(job)}
-                    placeholder={connected.length || allowIncluded ? 'Choose a model' : 'Add a key first'}
+                    placeholder={connected.length || allowIncluded ? t('Choose a model') : t('Add a key first')}
                     label={job.name}
                     title={job.name}
                     width={360}
@@ -673,41 +729,40 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                   />
                   <small className="muted">
                     {cur && cur.provider !== 'included' && ai.providers.some((x) => x.id === cur.provider) ? (
-                      <>
-                        Uses your {providerOf(cur.provider)!.name} key •••• {ai.providers.find((x) => x.id === cur.provider)!.keyLast4} ·{' '}
-                      </>
+                      <>{t('Uses your {provider} key •••• {last4}', { provider: providerOf(cur.provider)!.name, last4: ai.providers.find((x) => x.id === cur.provider)!.keyLast4 })} · </>
                     ) : cur?.provider === 'included' ? (
-                      `${product.name}’s AI · `
+                      <>{t('{product}’s AI', { product: product.name })} · </>
                     ) : null}
-                    Suggested: {recModel('balanced')}, cheapest {recModel('cheap')}
+                    {t('Suggested: {balanced}, cheapest {cheap}', { balanced: recModel('balanced'), cheap: recModel('cheap') })}
                   </small>
                 </div>
-                <span className="job-cost">{cur?.provider === 'included' ? 'In your plan' : cur?.model === 'browser' ? 'Free' : cost !== null && cost !== undefined ? `≈ ${rp(cost)} / 100 uses` : cur ? 'See provider prices' : ''}</span>
-                <button type="button" className="icon-btn sm" title={server.on ? 'Try it with one tiny call' : 'Run a sample'} aria-label={`Try ${job.name}`} disabled={!canTry || testing === job.id} onClick={() => cur && sample(job, cur)}>
+                <span className="job-cost">{cur?.provider === 'included' ? t('In your plan') : cur?.model === 'browser' ? tx('price', 'Free') : cost !== null && cost !== undefined ? t('≈ {cost} / 100 uses', { cost: rp(cost) }) : cur ? t('See provider prices') : ''}</span>
+                <button type="button" className="icon-btn sm" title={server.on ? t('Try it with one tiny call') : t('Run a sample')} aria-label={t('Try {job}', { job: job.name })} disabled={!canTry || testing === job.id} onClick={() => cur && sample(job, cur)}>
                   {testing === job.id ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
                 </button>
-                {t && <small className={`job-test ${t.ok ? '' : 'bad'}`}>{t.text}</small>}
+                {result && <small className={`job-test ${result.ok ? '' : 'bad'}`}>{result.text}</small>}
               </div>
             );
           };
           const groups: [string, AIJobId[]][] = [
-            ['Meetings', ['meeting', 'speech']],
-            ['Asking and planning', ['ask', 'braindump']],
-            ['Email', ['draft', 'summary', 'replies', 'todos']],
-            ['Behind the scenes', ['sorting', 'digest', 'translate']],
+            [t('Meetings'), ['meeting', 'speech']],
+            [t('Asking and planning'), ['ask', 'braindump']],
+            [t('Email'), ['draft', 'summary', 'replies', 'todos']],
+            [t('Behind the scenes'), ['sorting', 'digest', 'translate']],
           ];
           // Every text model of every key (costs differ per job, so none are shown here).
-          const everything = jobOptions(JOBS.find((j) => j.id === 'ask')!).map((o) => ({ ...o, hint: o.hint === 'Your model id' ? o.hint : undefined }));
+          const typedHint = t('Your model id');
+          const everything = jobOptions(JOBS.find((j) => j.id === 'ask')!).map((o) => ({ ...o, hint: o.hint === typedHint ? o.hint : undefined }));
           const board = (
             <>
               <div className="job-tools">
-                <span className="muted small">Fill in for me:</span>
+                <span className="muted small">{t('Fill in for me:')}</span>
                 <div className="segmented">
                   {(
                     [
-                      ['best', 'Best quality'],
-                      ['balanced', 'Balanced'],
-                      ['cheap', 'Lowest cost'],
+                      ['best', t('Best quality')],
+                      ['balanced', t('Balanced')],
+                      ['cheap', t('Lowest cost')],
                     ] as const
                   ).map(([v, l]) => (
                     <button key={v} type="button" className={ai.preset === v ? 'on' : ''} onClick={() => pickPreset(v)}>
@@ -722,18 +777,19 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                       const jobs = { ...ai.jobs };
                       for (const j of JOBS) if (j.id !== 'speech') jobs[j.id] = pickFor(j.id, v);
                       set({ preset: 'custom', jobs });
-                      toast(`Every text job now uses ${everything.find((o) => o.value === v)?.label ?? 'that model'}`);
+                      const model = everything.find((o) => o.value === v)?.label;
+                      toast(model ? t('Every text job now uses {model}', { model }) : t('Every text job now uses that model'));
                     }}
                     options={everything}
-                    placeholder="One model for everything…"
-                    label="One model for everything"
+                    placeholder={t('One model for everything…')}
+                    label={t('One model for everything')}
                     className="sel-flat"
                     width={360}
                     searchable
                   />
                 )}
               </div>
-              {ai.preset === 'custom' && <p className="muted small">Your own mix. Pick a setup above to start over.</p>}
+              {ai.preset === 'custom' && <p className="muted small">{t('Your own mix. Pick a setup above to start over.')}</p>}
               {groups.map(([g, ids]) => (
                 <div key={g} className="job-group">
                   <h4>{g}</h4>
@@ -744,15 +800,17 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           );
           return own ? (
             <div className="set-block">
-              <h3>Which AI does each job</h3>
-              <p className="muted small">Spend on the jobs that assign people and talk to {term.whos}; save on the ones nobody reads twice. Each job only uses the key you pick for it, with the model exactly as the provider names it.</p>
+              <h3>{t('Which AI does each job')}</h3>
+              <p className="muted small">
+                {t('Spend on the jobs that assign people and talk to {guests}; save on the ones nobody reads twice. Each job only uses the key you pick for it, with the model exactly as the provider names it.', { guests: term.whos })}
+              </p>
               {board}
             </div>
           ) : (
             <details className="set-block advanced">
               <summary>
-                <h3>Which AI does each job</h3>
-                <small className="muted">{product.name} picks good models for you. Open this to choose your own.</small>
+                <h3>{t('Which AI does each job')}</h3>
+                <small className="muted">{t('{product} picks good models for you. Open this to choose your own.', { product: product.name })}</small>
               </summary>
               {board}
             </details>
@@ -760,13 +818,13 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
         })()}
 
         <div className="set-block">
-          <h3>Automatic jobs</h3>
-          <p className="muted small">These run once in the background on a cheap model, in batches. Everything else waits for a click.</p>
+          <h3>{t('Automatic jobs')}</h3>
+          <p className="muted small">{t('These run once in the background on a cheap model, in batches. Everything else waits for a click.')}</p>
           {(
             [
-              ['meetingNotes', 'Meeting notes after each meeting', 'Summary, decisions and action items'],
-              ['emailTodos', `To-dos from ${term.who} emails`, `Only emails from ${term.whos} and known contacts. Skips newsletters, receipts and no-reply`],
-              ['digests', 'Daily channel digests', 'Only for channels that switch it on'],
+              ['meetingNotes', t('Meeting notes after each meeting'), t('Summary, decisions and action items')],
+              ['emailTodos', t('To-dos from {guest} emails', { guest: term.who }), t('Only emails from {guests} and known contacts. Skips newsletters, receipts and no-reply', { guests: term.whos })],
+              ['digests', t('Daily channel digests'), t('Only for channels that switch it on')],
             ] as const
           ).map(([k, l, h]) => (
             <label key={k} className="set-row toggle-row">
@@ -782,11 +840,11 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
         </div>
 
         <div className="set-block">
-          <h3>Guardrails</h3>
+          <h3>{t('Guardrails')}</h3>
           <label className="set-row toggle-row">
             <span>
-              <strong>Alert admins at 50%, 80% and 100%</strong>
-              <small>Of the plan’s allowance, the company’s limit and each key’s cap. A key at its cap rests until the 1st</small>
+              <strong>{t('Alert admins at 50%, 80% and 100%')}</strong>
+              <small>{t('Of the plan’s allowance, the company’s limit and each key’s cap. A key at its cap rests until the 1st')}</small>
             </span>
             <button type="button" role="switch" aria-checked={ai.alerts} className={`switch ${ai.alerts ? 'on' : ''}`} onClick={() => set({ alerts: !ai.alerts })}>
               <span />
@@ -794,22 +852,22 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           </label>
           <div className="set-row">
             <span>
-              <strong>Monthly limit for the company</strong>
-              <small>On your own keys, at list prices. AI stops for everyone when it’s reached. Empty: no limit.</small>
+              <strong>{t('Monthly limit for the company')}</strong>
+              <small>{t('On your own keys, at list prices. AI stops for everyone when it’s reached. Empty: no limit.')}</small>
             </span>
-            <input type="number" className="cap-input" min={0} step={50000} value={ai.caps?.companyRp ?? ''} placeholder="Rp" onChange={(e) => set({ caps: { ...ai.caps, companyRp: e.target.value ? Number(e.target.value) : undefined } })} aria-label="Company limit in rupiah" />
+            <input type="number" className="cap-input" min={0} step={50000} value={ai.caps?.companyRp ?? ''} placeholder="Rp" onChange={(e) => set({ caps: { ...ai.caps, companyRp: e.target.value ? Number(e.target.value) : undefined } })} aria-label={t('Company limit in rupiah')} />
           </div>
           <div className="set-row">
             <span>
-              <strong>Monthly limit per person</strong>
-              <small>Each person stops at this amount; admins raise it here.</small>
+              <strong>{t('Monthly limit per person')}</strong>
+              <small>{t('Each person stops at this amount; admins raise it here.')}</small>
             </span>
-            <input type="number" className="cap-input" min={0} step={10000} value={ai.caps?.personRp ?? ''} placeholder="Rp" onChange={(e) => set({ caps: { ...ai.caps, personRp: e.target.value ? Number(e.target.value) : undefined } })} aria-label="Limit per person in rupiah" />
+            <input type="number" className="cap-input" min={0} step={10000} value={ai.caps?.personRp ?? ''} placeholder="Rp" onChange={(e) => set({ caps: { ...ai.caps, personRp: e.target.value ? Number(e.target.value) : undefined } })} aria-label={t('Limit per person in rupiah')} />
           </div>
           <div className="set-row">
             <span>
-              <strong>Blocked providers</strong>
-              <small>Nobody in the company can use these, for example if a {term.who} doesn’t allow data in China</small>
+              <strong>{t('Blocked providers')}</strong>
+              <small>{t('Nobody in the company can use these, for example if a {guest} doesn’t allow data in China', { guest: term.who })}</small>
             </span>
           </div>
           <div className="chip-pick">

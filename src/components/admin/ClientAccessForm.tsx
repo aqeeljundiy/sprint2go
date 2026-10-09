@@ -1,22 +1,24 @@
 import type { ReactNode } from 'react';
-import { term, brand as product } from '../../terms';
+import { term } from '../../terms';
 import { RotateCcw } from 'lucide-react';
 import { DEFAULT_CLIENT_ACCESS, type ClientAccess, type Team } from '../../types';
 import { Select } from '../ui/Select';
+import { t } from '../../i18n';
 
 type Key = keyof ClientAccess;
 
+// Getters, so the words are read in the person's language (and the company's words) each time (docs/i18n.md).
 const LABEL: Record<Key, [string, string]> = {
-  teamNames: ['Show who’s doing the work', 'On tasks, requests and in chat'],
-  get requests() { return ['Requests', `${term.Whos} send requests that land in your team’s queue, like tickets`] as [string, string]; },
-  requestsTo: ['Requests go to', 'Who picks them up first'],
-  get meetingNotes() { return ['Meeting notes', `For meetings the ${term.who} was in`] as [string, string]; },
-  recordings: ['Meeting recordings', 'Only for meetings they attended'],
-  get invites() { return [`${term.Whos} invite colleagues`, 'People at the same company'] as [string, string]; },
-  get ai() { return [`AI for ${term.whos}`, `Answers only from what the ${term.who} can see. Uses your AI allowance or keys`] as [string, string]; },
-  get aiQuestions() { return ['AI questions per month', `For each ${term.one}`] as [string, string]; },
-  get uploads() { return [`${term.Whos} upload files`, `Into a “From ${term.who}” folder you can see`] as [string, string]; },
-  hideBranding: [`Hide “Made with ${product.name}”`, 'Needs the branding add-on (Plan & billing)'],
+  get teamNames() { return [t('Show who’s doing the work'), t('On tasks, requests and in chat')] as [string, string]; },
+  get requests() { return [t('Requests'), t('{Whos} send requests that land in your team’s queue, like tickets', { whos: term.whos })] as [string, string]; },
+  get requestsTo() { return [t('Requests go to'), t('Who picks them up first')] as [string, string]; },
+  get meetingNotes() { return [t('Meeting notes'), t('For meetings the {who} was in', { who: term.who })] as [string, string]; },
+  get recordings() { return [t('Meeting recordings'), t('Only for meetings they attended')] as [string, string]; },
+  get invites() { return [t('{Whos} invite colleagues', { whos: term.whos }), t('People at the same company')] as [string, string]; },
+  get ai() { return [t('AI for {whos}', { whos: term.whos }), t('Answers only from what the {who} can see. Uses your AI allowance or keys', { who: term.who })] as [string, string]; },
+  get aiQuestions() { return [t('AI questions per month'), t('For each {project}', { project: term.one })] as [string, string]; },
+  get uploads() { return [t('{Whos} upload files', { whos: term.whos }), t('Into a “From {who}” folder you can see', { who: term.who })] as [string, string]; },
+  get hideBranding() { return [t('Hide “Made with sprint2go”'), t('Needs the branding add-on (Plan & billing)')] as [string, string]; },
 };
 
 /**
@@ -52,13 +54,13 @@ export function ClientAccessForm({
   );
   const show = (k: Key, v: ClientAccess[Key]) => {
     const words: Partial<Record<Key, Record<string, string>>> = {
-      teamNames: { full: 'Full names', first: 'First names', hide: 'Hidden' },
-      meetingNotes: { auto: 'Shared automatically', manual: 'When you share them' },
-      recordings: { off: 'Off', audio: 'Audio', video: 'Video' },
-      invites: { direct: 'Yes', approve: 'With approval', off: 'No' },
-      requestsTo: { owner: 'Account manager', ...Object.fromEntries(teams.map((t) => [t.id, t.name])) },
+      teamNames: { full: t('Full names'), first: t('First names'), hide: t('Hidden') },
+      meetingNotes: { auto: t('Shared automatically'), manual: t('When you share them') },
+      recordings: { off: t('Off'), audio: t('Audio'), video: t('Video') },
+      invites: { direct: t('Yes'), approve: t('With approval'), off: t('No') },
+      requestsTo: { owner: t('Account manager'), ...Object.fromEntries(teams.map((tm) => [tm.id, tm.name])) },
     };
-    if (typeof v === 'boolean') return v ? 'On' : 'Off';
+    if (typeof v === 'boolean') return v ? t('On') : t('Off');
     return words[k]?.[String(v)] ?? String(v);
   };
   const row = (k: Key, control: ReactNode) => (
@@ -72,10 +74,10 @@ export function ClientAccessForm({
               {' · '}
               {overrides && k in overrides ? (
                 <button className="link-btn" onClick={() => onReset?.(k)} disabled={!canManage}>
-                  <RotateCcw size={11} /> Use company setting ({show(k, company[k])})
+                  <RotateCcw size={11} /> {t('Use company setting ({value})', { value: show(k, company[k]) })}
                 </button>
               ) : (
-                <span className="ca-company">company setting</span>
+                <span className="ca-company">{t('company setting')}</span>
               )}
             </>
           )}
@@ -90,37 +92,37 @@ export function ClientAccessForm({
       {row(
         'teamNames',
         sel('teamNames', [
-          { value: 'full', label: 'Full names and photos' },
-          { value: 'first', label: 'First names and photos' },
-          { value: 'hide', label: 'Hide', hint: 'Shows your company name instead' },
+          { value: 'full', label: t('Full names and photos') },
+          { value: 'first', label: t('First names and photos') },
+          { value: 'hide', label: t('Hide'), hint: t('Shows your company name instead') },
         ]),
       )}
       {row('requests', toggle('requests'))}
       {value.requests &&
         row(
           'requestsTo',
-          sel('requestsTo', [{ value: 'owner', label: `The ${term.one}’s account manager` }, ...teams.map((t) => ({ value: t.id, label: `${t.name} team queue` }))]),
+          sel('requestsTo', [{ value: 'owner', label: t('The {project}’s account manager', { project: term.one }) }, ...teams.map((tm) => ({ value: tm.id, label: t('{team} team queue', { team: tm.name }) }))]),
         )}
       {row(
         'meetingNotes',
         sel('meetingNotes', [
-          { value: 'auto', label: 'Shared automatically', hint: 'Meetings they attended' },
-          { value: 'manual', label: 'Only when we share each one' },
+          { value: 'auto', label: t('Shared automatically'), hint: t('Meetings they attended') },
+          { value: 'manual', label: t('Only when we share each one') },
         ]),
       )}
       {row(
         'recordings',
         sel('recordings', [
-          { value: 'off', label: 'Off' },
-          { value: 'audio', label: 'Audio' },
+          { value: 'off', label: t('Off') },
+          { value: 'audio', label: t('Audio') },
         ]),
       )}
       {row(
         'invites',
         sel('invites', [
-          { value: 'direct', label: 'Yes, straight away' },
-          { value: 'approve', label: 'Yes, an admin approves' },
-          { value: 'off', label: 'No' },
+          { value: 'direct', label: t('Yes, straight away') },
+          { value: 'approve', label: t('Yes, an admin approves') },
+          { value: 'off', label: t('No') },
         ]),
       )}
       {row('uploads', toggle('uploads'))}
