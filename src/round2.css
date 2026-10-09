@@ -1875,14 +1875,6 @@ button.chat-members:hover {
   }
 }
 @media (max-width: 767px) {
-  .chat-side {
-    width: 100%;
-    border-left: 0;
-    animation: sheet-up 0.22s ease-out;
-  }
-  .cm-tools {
-    top: -14px;
-  }
   .cat-pick {
     grid-template-columns: 1fr 1fr;
   }
@@ -4201,20 +4193,6 @@ button.tl:hover,
 }
 .is-leaving.huddle {
   animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
-}
-@media (max-width: 767px) {
-  .huddle {
-    left: 12px;
-    right: 12px;
-    width: auto;
-    bottom: calc(var(--bar-space) + 12px);
-  }
-  .huddle-btn .lbl {
-    display: none;
-  }
-  .huddle-note .ghost-btn.sm {
-    min-height: 40px;
-  }
 }
 
 /* ---------- quotes and contracts ---------- */

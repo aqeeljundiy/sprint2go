@@ -1,12 +1,54 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Headphones, Mic, MicOff, PhoneOff } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, Headphones, MessageSquare, Mic, MicOff, PhoneOff, SmilePlus } from 'lucide-react';
 import type { Channel, User } from '../types';
 import { Avatar } from './Avatar';
 import { sendSignal } from '../sync';
 import { caps } from '../caps';
 import { iceConfig, redacted } from '../ice';
+import { usePhone } from '../mobile/media';
+import { Sheet } from './ui/Sheet';
+import { useHuddleDock } from './chat/huddleDock';
 
-type Note = { channelId: string; kind: 'offer' | 'answer' | 'ice' | 'bye'; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit };
+type Note = { channelId: string; kind: 'offer' | 'answer' | 'ice' | 'bye' | 'react'; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit; emoji?: string };
+const REACTIONS = ['👍', '😂', '👏', '❤️', '🎉', '👀'];
+
+/** Who's talking right now: the level of each voice, checked a few times a second (live status, so it may move). */
+function useSpeaking(streams: Record<string, MediaStream>, local: MediaStream | null, me: string, muted: boolean) {
+  const [speaking, setSpeaking] = useState<string[]>([]);
+  useEffect(() => {
+    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const all = { ...streams, ...(local && !muted ? { [me]: local } : {}) };
+    if (!Object.keys(all).length) return setSpeaking([]);
+    const ctx = new AC();
+    void ctx.resume().catch(() => {});
+    const meters = Object.entries(all).flatMap(([id, st]) => {
+      if (!st.getAudioTracks().length) return [];
+      try {
+        const an = ctx.createAnalyser();
+        an.fftSize = 512;
+        ctx.createMediaStreamSource(st).connect(an);
+        return [{ id, an, buf: new Uint8Array(an.fftSize) }];
+      } catch {
+        return [];
+      }
+    });
+    const t = setInterval(() => {
+      const now = meters
+        .filter(({ an, buf }) => {
+          an.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (const v of buf) sum += ((v - 128) / 128) ** 2;
+          return Math.sqrt(sum / buf.length) > 0.035;
+        })
+        .map((x) => x.id);
+      setSpeaking((was) => (was.join() === now.join() ? was : now));
+    }, 200);
+    return () => (clearInterval(t), void ctx.close().catch(() => {}));
+  }, [streams, local, me, muted]);
+  return speaking;
+}
 /** How the line to one person is doing. blocked: no route between the two networks; silent: they never answered. */
 type Line = 'connecting' | 'connected' | 'retrying' | 'blocked' | 'silent';
 const LINE_LABEL: Record<Line, string> = { connecting: 'Connecting', connected: '', retrying: 'Reconnecting', blocked: 'Can’t connect', silent: 'Not answering' };
@@ -36,7 +78,13 @@ const statusOf = (pc: RTCPeerConnection): NonNullable<Peer['status']> =>
  * networks can't reach each other directly; the server only relays the setup notes. A line that fails gets one
  * fresh route (an ICE restart); if that fails too, the huddle says so instead of staying silent.
  */
-export function Huddle({ channel, users, me, onLeave }: { channel: Channel; users: User[]; me: string; onLeave: () => void }) {
+export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel: Channel; users: User[]; me: string; onLeave: () => void; onOpenChannel?: () => void }) {
+  const phone = usePhone();
+  const dock = useHuddleDock();
+  const [full, setFull] = useState(false); // phones: the call screen over everything
+  const [floating, setFloating] = useState<{ id: string; emoji: string; key: number }[]>([]);
+  const [reacting, setReacting] = useState(false);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [muted, setMuted] = useState(false);
   const [mic, setMic] = useState<'asking' | 'on' | 'denied'>('asking');
   const [streams, setStreams] = useState<Record<string, MediaStream>>({});
@@ -232,6 +280,7 @@ export function Huddle({ channel, users, me, onLeave }: { channel: Channel; user
       .then((s) => {
         if (gone) return s.getTracks().forEach((t) => t.stop());
         local.current = s;
+        setLocalStream(s);
         setMic('on');
         callAll();
       })
@@ -249,7 +298,9 @@ export function Huddle({ channel, users, me, onLeave }: { channel: Channel; user
   useEffect(() => {
     const on = (e: Event) => {
       const { from, data } = (e as CustomEvent<{ from: string; data: Note }>).detail;
-      if (data.channelId === channel.id) enqueue(from, () => receive(from, data));
+      if (data.channelId !== channel.id) return;
+      if (data.kind === 'react') return void (data.emoji && REACTIONS.includes(data.emoji) && float(from, data.emoji));
+      enqueue(from, () => receive(from, data));
     };
     window.addEventListener('s2g:signal', on);
     return () => window.removeEventListener('s2g:signal', on);
@@ -259,6 +310,25 @@ export function Huddle({ channel, users, me, onLeave }: { channel: Channel; user
   useEffect(() => {
     for (const id of [...peers.current.keys()]) if (!others.includes(id)) drop(id);
   }, [others.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The channel's header (phones) opens the call screen.
+  useEffect(() => {
+    const on = () => setFull(true);
+    window.addEventListener('s2g:huddle-open', on);
+    return () => window.removeEventListener('s2g:huddle-open', on);
+  }, []);
+  /** A reaction floats up from someone's picture for a moment. */
+  const float = (id: string, emoji: string) => {
+    const key = Date.now() + Math.random();
+    setFloating((f) => [...f.slice(-5), { id, emoji, key }]);
+    setTimeout(() => setFloating((f) => f.filter((x) => x.key !== key)), 1800);
+  };
+  const react = (emoji: string) => {
+    for (const id of others) note(id, { kind: 'react', emoji });
+    float(me, emoji);
+    setReacting(false);
+  };
+  const speaking = useSpeaking(streams, localStream, me, muted);
 
   const leave = () => {
     for (const id of new Set([...others, ...peers.current.keys()])) note(id, { kind: 'bye' });
@@ -308,46 +378,151 @@ export function Huddle({ channel, users, me, onLeave }: { channel: Channel; user
     return others.length ? `${others.length + 1} in the huddle` : 'Waiting for others';
   })();
 
+  const audio = Object.entries(streams).map(([id, st]) => (
+    <audio
+      key={id}
+      autoPlay
+      ref={(el) => {
+        if (el && el.srcObject !== st) el.srcObject = st;
+      }}
+    />
+  ));
+  const avatar = (id: string, size: number) => {
+    const u = users.find((x) => x.id === id);
+    const l = id === me ? 'connected' : lineOf(id);
+    return u ? (
+      <span key={id} className={`huddle-av is-${l}${id === me && muted ? ' muted' : ''}${speaking.includes(id) ? ' speaking' : ''}`} title={LINE_LABEL[l] ? `${u.name}: ${LINE_LABEL[l].toLowerCase()}` : u.name}>
+        <Avatar person={u} size={size} />
+        {id === me && muted && <MicOff size={size > 40 ? 14 : 10} />}
+        {floating
+          .filter((f) => f.id === id)
+          .map((f) => (
+            <i key={f.key} className="huddle-float" aria-hidden>
+              {f.emoji}
+            </i>
+          ))}
+      </span>
+    ) : null;
+  };
+  const talking = speaking.filter((id) => id !== me);
+  const line = talking.length ? `${names(talking)} ${talking.length === 1 ? 'is' : 'are'} talking` : status;
+  const problemNote = (
+    <div className={`fold huddle-fold${problem ? ' open' : ''}`} role="status" aria-live="polite">
+      <div className="fold-in">
+        <div className="huddle-note">
+          <AlertTriangle size={14} />
+          <span>{shown.current}</span>
+          <button type="button" className="ghost-btn sm" onClick={retry}>
+            Try again
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  const reactRow = (
+    <div className={`fold hs-react-fold${reacting ? ' open' : ''}`} aria-hidden={!reacting}>
+      <div>
+        <div className="hs-react" role="group" aria-label="React">
+          {REACTIONS.map((e) => (
+            <button key={e} type="button" tabIndex={reacting ? 0 : -1} onClick={() => react(e)} aria-label={`React ${e}`}>
+              {e}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  /* Phones: a slim bar in its own row (under the channel's header, or under the top bar elsewhere), never over the
+     message box. Tapping it opens the call screen. */
+  if (phone)
+    return (
+      <>
+        {audio}
+        {dock &&
+          createPortal(
+            <div className="huddle-bar" role="region" aria-label={`Huddle in ${name}`}>
+              <button type="button" className="hb-main" onClick={() => setFull(true)} aria-label={`Huddle in ${name}: ${line}. Open the call`}>
+                <Headphones size={16} className="hb-icon" />
+                <span className="hb-text">
+                  <strong>{name}</strong>
+                  <small>{line}</small>
+                </span>
+                <span className="hb-avs">{members.slice(0, 3).map((id) => avatar(id, 24))}</span>
+              </button>
+              <button type="button" className={`icon-btn hb-mic${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted}>
+                {muted ? <MicOff size={18} /> : <Mic size={18} />}
+              </button>
+              <button type="button" className="icon-btn hb-leave" onClick={leave} aria-label="Leave the huddle">
+                <PhoneOff size={18} />
+              </button>
+            </div>,
+            dock,
+          )}
+        {full && (
+          <Sheet title={name} size="full" onClose={() => setFull(false)} className="huddle-sheet" label={`Huddle in ${name}`}>
+            <p className="hs-status">{line}</p>
+            {problemNote}
+            <div className="hs-people">
+              {members.map((id) => (
+                <div key={id} className="hs-person">
+                  {avatar(id, 72)}
+                  <span>{id === me ? 'You' : first(id)}</span>
+                </div>
+              ))}
+            </div>
+            {reactRow}
+            <div className="hs-controls">
+              <button type="button" className={`hs-ctl${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-pressed={muted}>
+                <span>{muted ? <MicOff size={22} /> : <Mic size={22} />}</span>
+                {muted ? 'Unmute' : 'Mute'}
+              </button>
+              <button type="button" className={`hs-ctl${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting}>
+                <span>
+                  <SmilePlus size={22} />
+                </span>
+                React
+              </button>
+              {onOpenChannel && (
+                <button type="button" className="hs-ctl" onClick={() => (setFull(false), onOpenChannel())}>
+                  <span>
+                    <MessageSquare size={22} />
+                  </span>
+                  Chat
+                </button>
+              )}
+              <button type="button" className="hs-ctl leave" onClick={() => (setFull(false), leave())}>
+                <span>
+                  <PhoneOff size={22} />
+                </span>
+                Leave
+              </button>
+            </div>
+          </Sheet>
+        )}
+      </>
+    );
+
   return (
     <aside className="huddle" role="region" aria-label={`Huddle in ${name}`}>
       <header>
         <Headphones size={15} />
-        <strong>{name}</strong>
-        <small className="muted">{status}</small>
-        <div className={`fold huddle-fold${problem ? ' open' : ''}`} role="status" aria-live="polite">
-          <div className="fold-in">
-            <div className="huddle-note">
-              <AlertTriangle size={14} />
-              <span>{shown.current}</span>
-              <button type="button" className="ghost-btn sm" onClick={retry}>
-                Try again
-              </button>
-            </div>
-          </div>
-        </div>
+        {onOpenChannel ? (
+          <button type="button" className="huddle-name" onClick={onOpenChannel} title={`Open ${name}`}>
+            {name}
+          </button>
+        ) : (
+          <strong>{name}</strong>
+        )}
+        <small className="muted">{line}</small>
+        {problemNote}
       </header>
-      <div className="huddle-people">
-        {members.map((id) => {
-          const u = users.find((x) => x.id === id);
-          const l = id === me ? 'connected' : lineOf(id);
-          return u ? (
-            <span key={id} className={`huddle-av is-${l}${id === me && muted ? ' muted' : ''}`} title={LINE_LABEL[l] ? `${u.name}: ${LINE_LABEL[l].toLowerCase()}` : u.name}>
-              <Avatar person={u} size={32} />
-              {id === me && muted && <MicOff size={10} />}
-            </span>
-          ) : null;
-        })}
-      </div>
-      {Object.entries(streams).map(([id, s]) => (
-        <audio
-          key={id}
-          autoPlay
-          ref={(el) => {
-            if (el && el.srcObject !== s) el.srcObject = s;
-          }}
-        />
-      ))}
+      <div className="huddle-people">{members.map((id) => avatar(id, 32))}</div>
+      {audio}
       <div className="huddle-actions">
+        <button type="button" className={`ghost-btn sm huddle-react${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting} aria-label="React" title="React">
+          <SmilePlus size={14} />
+        </button>
         <button type="button" className={`ghost-btn sm${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'}>
           {muted ? <MicOff size={14} /> : <Mic size={14} />} {muted ? 'Unmute' : 'Mute'}
         </button>
@@ -355,6 +530,7 @@ export function Huddle({ channel, users, me, onLeave }: { channel: Channel; user
           <PhoneOff size={14} /> Leave
         </button>
       </div>
+      {reactRow}
     </aside>
   );
 }

@@ -116,8 +116,26 @@ export function guestTable(client: Pick<Client, 'id'>, t: DataTable): DataTable 
     .filter((f) => visible.has(f.id) && (f.type !== 'button' || share.buttons.includes(f.id)) && (f.type !== 'link'))
     .map((f) => (f.type === 'button' ? { id: f.id, name: f.name, type: f.type, button: { label: f.button?.label ?? f.name, color: f.button?.color, confirm: f.button?.confirm, ask: f.button?.ask?.filter((x) => share.edit.includes(x)), actions: [] } } : f));
   const ids = new Set(fields.map((f) => f.id));
-  const views = t.views.map((v) => ({ ...v, hidden: v.hidden?.filter((x) => ids.has(x)), filters: v.filters?.filter((x) => ids.has(x.fieldId)), sort: v.sort && ids.has(v.sort.fieldId) ? v.sort : undefined, groupBy: v.groupBy && ids.has(v.groupBy) ? v.groupBy : undefined }));
-  return { id: t.id, workspaceId: t.workspaceId, name: t.name, color: t.color, clientId: t.clientId, description: t.description, fields, views, createdBy: t.createdBy, createdAt: t.createdAt, share };
+  const has = (id: string | undefined) => (id && ids.has(id) ? id : undefined);
+  // Nothing in a view may point at a field they don't see (a filter's value, a colour rule, a sort would give it away).
+  const views = t.views.map((v) => ({
+    ...v,
+    hidden: v.hidden?.filter((x) => ids.has(x)),
+    filters: v.filters?.filter((x) => ids.has(x.fieldId)),
+    filterGroups: v.filterGroups?.map((g) => ({ ...g, filters: g.filters.filter((x) => ids.has(x.fieldId)) })).filter((g) => g.filters.length),
+    colors: v.colors?.filter((x) => ids.has(x.when.fieldId)),
+    sort: v.sort && ids.has(v.sort.fieldId) ? v.sort : undefined,
+    sorts: v.sorts?.filter((x) => ids.has(x.fieldId)),
+    groupBy: has(v.groupBy),
+    subGroupBy: has(v.subGroupBy),
+    dateField: has(v.dateField),
+    endField: has(v.endField),
+    cardFields: v.cardFields?.filter((x) => ids.has(x)),
+    order: v.order?.filter((x) => ids.has(x)),
+  }));
+  // The row page's pinned fields and main button, among what they see (sections and templates stay with the team).
+  const page = t.page ? { pinned: t.page.pinned?.filter((x) => ids.has(x)), main: share.buttons.includes(t.page.main ?? '') ? t.page.main : undefined, order: t.page.order?.filter((x) => ids.has(x)), hideEmpty: t.page.hideEmpty } : undefined;
+  return { id: t.id, workspaceId: t.workspaceId, name: t.name, color: t.color, clientId: t.clientId, description: t.description, fields, views, page, createdBy: t.createdBy, createdAt: t.createdAt, share };
 }
 
 /** A row as guests see it: shared fields only, no comments, history of shared fields only. */

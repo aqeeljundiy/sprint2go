@@ -66,7 +66,12 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatPages } from './components/chat/Pages';
+import { useDockRef } from './components/chat/huddleDock';
+import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
+import { chanName } from './components/chat/Sheets';
+import { preview as msgPreview } from './components/chat/Message';
 import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { openSettingsList } from './components/settingsList';
@@ -495,6 +500,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [focusMsg, setFocusMsg] = useState<string | null>(null); // a notification lands on this chat message
   const [viewAs, setViewAs] = useState<{ clientId: string; email: string } | null>(null); // "View as client"
   const [chatId, setChatId] = useState<string | null>(null);
+  const [chatPage, setChatPage] = useState<ChatPage | null>(null); // Catch up, Threads, Drafts and sent, Saved
   const [huddleId, setHuddleId] = useState<string | null>(null); // the channel whose huddle I'm in
   const [meetPage, setMeetPage] = useState<MeetPage>({ kind: 'list' });
   const [sendBotOpen, setSendBotOpen] = useState(false);
@@ -522,7 +528,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [dump, setDump] = useState<string | null>(null); // null = closed
-  const [lastRead, setLastRead] = usePersisted<Record<string, string>>(`s2g-read:${user.id}`, {});
+  // Chat's read markers and mutes (the conversation marks itself read: src/components/chat/Conversation.tsx).
+  const [lastRead] = usePersisted<Record<string, string>>(`s2g-read:${user.id}`, {});
+  const [chatMuted] = usePersisted<Record<string, string>>(`s2g-chat-muted:${user.id}`, {});
 
   useEffect(() => {
     if (!toast) return;
@@ -1445,17 +1453,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const out: Record<string, number> = {};
     const fallback = new Date(Date.now() - 90 * 60_000).toISOString();
     for (const c of wsChannels) {
+      if (isMutedValue(chatMuted[c.id])) continue;
       const since = lastRead[c.id] ?? fallback;
-      const n = messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > since && (!m.parentId || m.alsoInChannel)).length;
+      const n = messages.filter((m) => m.channelId === c.id && m.userId !== user.id && !m.sendAt && m.at > since && (!m.parentId || m.alsoInChannel)).length;
       if (n) out[c.id] = n;
     }
     return out;
-  }, [wsChannels, messages, lastRead, user.id]);
-  const chatLastAt = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const m of messages) if (!out[m.channelId] || m.at > out[m.channelId]) out[m.channelId] = m.at;
-    return out;
-  }, [messages]);
+  }, [wsChannels, messages, lastRead, chatMuted, user.id]);
+  // The messages of the conversations I'm in (the chat list's last messages, Catch up, Threads, Drafts and sent).
+  const wsMessages = useMemo(() => {
+    const ids = new Set(wsChannels.map((c) => c.id));
+    return messages.filter((m) => ids.has(m.channelId));
+  }, [messages, wsChannels]);
   const chatUnreadTotal = Object.values(chatUnread).reduce((a, b) => a + b, 0);
 
   // Chat always opens on a channel (the first one, usually #general), also after switching workspace.
@@ -1478,11 +1487,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const c = job ? costPer100(JOBS.find((j) => j.id === 'digest')!, job.provider, job.model) : null;
     return c !== null && c !== undefined ? `about ${rp(c / 100)} on your own AI key` : 'a small amount on your own AI key';
   })();
-
-  // Reading a channel marks it read.
-  useEffect(() => {
-    if (mode === 'chat' && chatId) setLastRead((r) => ({ ...r, [chatId]: nowIso() }));
-  }, [mode, chatId, messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const notify = (userId: string, kind: Notice['kind'], text: string, link?: Notice['link']) => {
     if (userId === user.id) return;
@@ -1908,6 +1912,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   const openChannel = (id: string) => {
     setChatId(id);
+    setChatPage(null);
     go('chat');
   };
   const openMeeting = (id: string) => {
@@ -2183,27 +2188,36 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return { ...f, driveId: id };
     });
 
-  const sendChat = (pl: SendPayload) => {
-    if (!chatId) return;
-    const ch = channels.find((c) => c.id === chatId);
-    if (!ch) return;
-    const files = pl.files ? saveChatFiles(pl.files, ch) : undefined;
-    const msgId = uid();
-    if (pl.voice) tried('voice');
-    setMessages((ms) => [...ms, { id: msgId, channelId: chatId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor }]);
-    const text = pl.text;
+  /** Who hears about a message as it goes out: the other side of a DM, people it mentions, whoever wrote what it answers. */
+  const chatNotices = (m: ChatMessage, ch: Channel) => {
+    const text = m.text;
     const where = ch.kind === 'dm' ? 'a message' : `#${ch.name}`;
-    if (pl.kind === 'kudos' && pl.kudosFor) notify(pl.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id, msg: msgId });
-    if (pl.parentId) {
-      const root = messages.find((m) => m.id === pl.parentId);
-      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
+    if (m.kind === 'kudos' && m.kudosFor) notify(m.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id, msg: m.id });
+    if (m.parentId) {
+      const root = messages.find((x) => x.id === m.parentId);
+      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
     }
     for (const id of ch.members) {
       if (id === user.id) continue;
       const fn = firstOf(id);
-      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || (pl.voice ? 'a voice note' : pl.files ? 'a file' : '')).slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
-      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
+      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || msgPreview(m)).slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
+      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
     }
+  };
+  const sendChat = (pl: SendPayload) => chatId && sendChatTo(chatId, pl);
+  /** A message from me into a conversation; with `sendAt` it waits (the server sends it then, with its notices). */
+  const sendChatTo = (channelId: string, pl: SendPayload & { forwarded?: ChatMessage['forwarded'] }) => {
+    const ch = channels.find((c) => c.id === channelId);
+    if (!ch) return;
+    // Files already in Drive (shared from it) aren't saved there again.
+    const files = pl.files ? [...saveChatFiles(pl.files.filter((f) => !f.driveId), ch), ...pl.files.filter((f) => f.driveId)] : undefined;
+    const msgId = uid();
+    if (pl.voice) tried('voice');
+    const msg: ChatMessage = { id: msgId, channelId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor, taskId: pl.taskId, ref: pl.ref, forwarded: pl.forwarded, sendAt: pl.sendAt };
+    setMessages((ms) => [...ms, msg]);
+    if (pl.sendAt) return;
+    chatNotices(msg, ch);
+    const text = pl.text;
     // DEMO ONLY: the other person answers a DM a few seconds later, so the chat feels alive.
     if (demoOk && ch.kind === 'dm' && !pl.parentId) {
       const other = ch.members.find((m) => m !== user.id)!;
@@ -2212,6 +2226,53 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: other, text: reply, at: nowIso() }]);
       }, 3500);
     }
+  };
+  /** A message waiting to be sent goes now (Drafts and sent, "Send now"). */
+  const sendChatNow = (id: string) => {
+    const m = messages.find((x) => x.id === id);
+    const ch = m && channels.find((c) => c.id === m.channelId);
+    if (!m || !ch || !m.sendAt) return;
+    const sent: ChatMessage = { ...m, at: nowIso(), sendAt: undefined };
+    setMessages((ms) => ms.map((x) => (x.id === id ? sent : x)));
+    chatNotices(sent, ch);
+  };
+  // Without a server (and in the demo company, which the server doesn't run) messages sent later go out from here.
+  useEffect(() => {
+    if (server.on && !inSandbox) return;
+    const tick = () => {
+      const now = nowIso();
+      for (const m of messages) if (m.sendAt && m.userId === user.id && m.sendAt <= now) sendChatNow(m.id);
+    };
+    tick();
+    const t = setInterval(tick, 15_000);
+    return () => clearInterval(t);
+  }, [messages, inSandbox]); // eslint-disable-line react-hooks/exhaustive-deps
+  const editMessage = (id: string, text: string) => setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, text, edited: true } : m)));
+  const forwardMessage = (m: ChatMessage, to: { channelId?: string; userId?: string }, note: string) => {
+    const target = to.channelId ?? (to.userId ? dmWith(to.userId) : null);
+    const from = channels.find((c) => c.id === m.channelId);
+    if (!target || !from) return;
+    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'A guest') : (allUsers.find((u) => u.id === m.userId)?.name ?? m.authorName ?? 'Someone');
+    // Next tick: a brand-new DM has to exist before its first message.
+    setTimeout(() => {
+      sendChatTo(target, { text: note, forwarded: { channelId: m.channelId, messageId: m.id, userId: m.userId, who, where: chanName(from, allUsers, user.id), text: m.text || msgPreview(m), at: m.at } });
+      const toCh = channels.find((c) => c.id === target);
+      showToast({ text: `Forwarded to ${toCh ? chanName(toCh, allUsers, user.id) : firstOf(to.userId)}`, action: { label: 'Open', run: () => openChannel(target) } });
+    }, 0);
+  };
+  const leaveChannel = (id: string) => {
+    const ch = channels.find((c) => c.id === id);
+    if (!ch) return;
+    setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: c.members.filter((x) => x !== user.id) } : c)));
+    if (chatId === id) setChatId(null);
+    showToast({ text: `You left ${chanName(ch, allUsers, user.id)}`, action: ch.private ? undefined : { label: 'Undo', run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...new Set([...c.members, user.id])] } : c))) } });
+  };
+  const openChatRef = (r: NonNullable<ChatMessage['ref']>) => {
+    if (r.kind === 'note') return wsNotes.some((n) => n.id === r.id) ? openNote(r.id) : showToast({ text: 'That note is private, or isn’t here any more.' });
+    if (r.kind === 'row') return r.tableId && wsTables.some((t) => t.id === r.tableId) ? openTable(r.tableId, r.id) : showToast({ text: 'You can’t open that table.' });
+    const it = wsDrive.find((d) => d.id === r.id && !d.trashed);
+    if (it) setPreview({ item: it, list: [it] });
+    else showToast({ text: 'That file isn’t in Drive any more.' });
   };
 
   const reactTo = (id: string, emoji: string) =>
@@ -3040,6 +3101,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- The phone shell (src/mobile/, docs/mobile-kit.md) ---------------- */
 
+  // Where the huddle's slim bar sits on phones outside its channel: its own row under the top bar (chat/huddleDock.ts).
+  const huddleDock = useDockRef();
+
   const chrome = useChrome(mode);
   const kb = useKeyboard();
   const ownBarOn = ownBar || savedBar.join() !== DEFAULT_BAR.join();
@@ -3065,10 +3129,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const at = new RegExp(`@${name}\\b`, 'i');
     let n = 0;
     for (const c of wsChannels) {
-      const u = chatUnread[c.id];
-      if (!u) continue;
-      if (c.kind === 'dm') n += u;
-      else n += messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > (lastRead[c.id] ?? fallback) && at.test(m.text)).length;
+      if (c.kind === 'dm') n += chatUnread[c.id] ?? 0;
+      // Mentions count even in a muted channel (muting stops the rest).
+      else n += messages.filter((m) => m.channelId === c.id && m.userId !== user.id && !m.sendAt && m.at > (lastRead[c.id] ?? fallback) && at.test(m.text)).length;
     }
     return n;
   }, [chatUnread, wsChannels, messages, lastRead, myFirst, user.id]);
@@ -3538,22 +3601,28 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
           ) : appMode === 'chat' ? (
           <ChatSidebar
+            variant="side"
             channels={visibleChannels}
+            messages={wsMessages}
             users={members}
             me={user.id}
+            myFirst={myFirst}
             workspaceId={ws.id}
-            current={chatId}
-            unread={chatUnread}
-            lastAt={chatLastAt}
+            current={chatPage ? null : chatId}
+            page={chatPage}
+            onPage={(pg) => (setChatPage(pg), setSidebarOpen(false))}
+            onLeave={leaveChannel}
             statuses={statuses}
             presence={presence}
             onOpen={(id) => {
               setChatId(id);
+              setChatPage(null);
               setSidebarOpen(false);
             }}
             onJoin={(id) => {
               setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...c.members, user.id] } : c)));
               setChatId(id);
+              setChatPage(null);
               setSidebarOpen(false);
             }}
             onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
@@ -3630,16 +3699,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSearch={searchHere}
           />
         )}
-        {mobile && mode === 'chat' && !chatId && (
-          <section className="mobile-list view-enter">
+        {mobile && <div className="huddle-dock top-dock" ref={huddleDock} />}
+        {mobile && mode === 'chat' && (
+          <section className="mobile-list chat-list view-enter">
             <ChatSidebar
+              variant="phone"
               channels={visibleChannels}
+              messages={wsMessages}
               users={members}
               me={user.id}
+              myFirst={myFirst}
               workspaceId={ws.id}
               current={chatId}
-              unread={chatUnread}
-              lastAt={chatLastAt}
+              page={chatPage}
+              onPage={setChatPage}
+              onLeave={leaveChannel}
               statuses={statuses}
               presence={presence}
               onOpen={setChatId}
@@ -3887,12 +3961,54 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
         )}
 
-        {mode === 'chat' && (!mobile || chatId) && (
+        {mode === 'chat' && !mobile && chatPage && (
+          <ChatPages
+            page={chatPage}
+            phone={false}
+            channels={wsChannels}
+            messages={wsMessages}
+            users={members}
+            me={user.id}
+            myFirst={myFirst}
+            onClose={() => setChatPage(null)}
+            onOpen={(id, msg) => (setChatId(id), setChatPage(null), msg && setFocusMsg(msg))}
+            onSendTo={(id, text) => sendChatTo(id, { text })}
+            onSendNow={sendChatNow}
+            onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
+            onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
+          />
+        )}
+        {mode === 'chat' && mobile && chatPage && (
+          <ChatPages
+            page={chatPage}
+            phone
+            channels={wsChannels}
+            messages={wsMessages}
+            users={members}
+            me={user.id}
+            myFirst={myFirst}
+            onClose={() => setChatPage(null)}
+            onOpen={(id, msg) => (setChatId(id), msg && setFocusMsg(msg))}
+            onSendTo={(id, text) => sendChatTo(id, { text })}
+            onSendNow={sendChatNow}
+            onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
+            onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
+          />
+        )}
+        {mode === 'chat' && (mobile ? !!chatId : !chatPage) && (
           <ChatView
+            channels={wsChannels}
+            library={{ tasks: wsTasks, notes: wsNotes, tables: wsTables, rows: wsTableRows, drive: wsDrive, newTask: (title) => createTask({ title, userId: user.id, clientId: channels.find((c) => c.id === chatId)?.clientId, channelId: chatId ?? undefined, source: 'chat' }, { chat: false }).id }}
+            onEdit={editMessage}
+            onForward={forwardMessage}
+            onOpenRef={openChatRef}
+            onOpenScheduled={() => setChatPage('drafts')}
+            onLeave={() => chatId && leaveChannel(chatId)}
             huddle={
               server.on && chatId
                 ? {
                     joined: huddleId === chatId,
+                    onOpen: () => window.dispatchEvent(new CustomEvent('s2g:huddle-open')),
                     onJoin: () => {
                       tried('voice');
                       if (huddleId && huddleId !== chatId) leaveHuddle();
@@ -4798,7 +4914,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {sharedPreview && meetings.some((m) => m.id === sharedPreview) && (
         <SharedPage m={meetings.find((m) => m.id === sharedPreview)!} brand={ws.name} tasks={wsTasks.filter((t) => t.meetingId === sharedPreview)} users={members} onClose={() => setSharedPreview(null)} />
       )}
-      {huddleChannel?.huddle?.members.includes(user.id) && <Huddle key={huddleChannel.id} channel={huddleChannel} users={allUsers} me={user.id} onLeave={leaveHuddle} />}
+      <ChatPrefsHost me={user.id} />
+      {huddleChannel?.huddle?.members.includes(user.id) && <Huddle key={huddleChannel.id} channel={huddleChannel} users={allUsers} me={user.id} onLeave={leaveHuddle} onOpenChannel={() => openChannel(huddleChannel.id)} />}
       {askScope && (
         <Assistant
           scope={askScope}

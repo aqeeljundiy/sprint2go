@@ -48,6 +48,7 @@ import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRo
 import { DEFAULT_STAGES, cleanStages, stageIdFor, stagesFrom } from '../src/stages.ts';
 import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
+import * as chatLater from './chatLater.ts';
 import * as digest from './digest.ts';
 import * as retention from './retention.ts';
 import * as sandbox from './sandbox.ts';
@@ -359,7 +360,8 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
       case 'todos':
         return taskOk(d);
       case 'messages':
-        return channelOk(channels.get(d.channelId));
+        // A message waiting for its send time is its author's alone (server/chatLater.ts).
+        return channelOk(channels.get(d.channelId)) && !chatLater.hiddenFrom(d, userId);
       case 'drive': {
         const wsId = typeof d.workspaceId === 'string' ? d.workspaceId : firstWs;
         return mine.has(wsId) && (d.ownerId === userId || d.uploadedBy === userId || inProject(driveProject(d)) || (!!d.channelId && isMember(channels.get(String(d.channelId)) ?? {})));
@@ -439,7 +441,7 @@ function clientLens(me: Person) {
       case 'channels':
         return myChannels.has(d.id) ? { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests, materials: d.materials, bookmarks: d.bookmarks } : null;
       case 'messages':
-        return myChannels.has(d.channelId) ? d : null;
+        return myChannels.has(d.channelId) && !chatLater.scheduled(d) ? d : null;
       case 'quotes':
         return d.clientId === clientId && d.status !== 'draft' ? d : null; // what was sent to them, never drafts
       case 'todos': {
@@ -1335,12 +1337,14 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       return { ...before, members, requests } as db.Doc;
     }
     if (coll === 'tables' && before && !p.editTables && before.createdBy !== me) {
-      // Rows and new choices yes; the columns themselves, automations and sharing stay as they were.
+      // Rows and new choices yes; the columns themselves, the views everyone sees (their filters and sorts too: each
+      // person's own are kept in their prefs), the row page's layout, row templates, automations and sharing stay as
+      // they were.
       const fields = (before.fields ?? []).map((bf: any) => {
         const nf = ((d as any).fields ?? []).find((x: any) => x.id === bf.id);
         return nf && nf.type === bf.type ? { ...bf, options: nf.options ?? bf.options } : bf;
       });
-      return { ...d, fields, rules: before.rules, intake: before.intake, signingSecret: before.signingSecret, share: before.share } as db.Doc;
+      return { ...d, fields, views: before.views, page: before.page, templates: before.templates, rules: before.rules, intake: before.intake, signingSecret: before.signingSecret, share: before.share } as db.Doc;
     }
     return d;
   };
@@ -1479,11 +1483,15 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
     // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
     if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
+    // Your own message: a send time only while it hasn't gone out (Send later, server/chatLater.ts).
+    if (coll === 'messages' && before && before.userId === me) return chatLater.guardOwnMessage(d, before);
+    // A reminder that went off stays done, whatever an older copy of your settings says.
+    if (coll === 'prefs' && before) return chatLater.keepReminded(d, before);
     if (before) return d;
     // New things carry who made them.
     if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
     // Your own message; a guest's message is theirs when it carries their own email (checked by clientWrite too).
-    if (coll === 'messages') return d.userId === me || (d.userId === 'guest' && String((d as any).guestEmail ?? '').toLowerCase() === String(person.email ?? '').toLowerCase()) ? d : null;
+    if (coll === 'messages') return d.userId === me ? chatLater.guardOwnMessage(d, null) : d.userId === 'guest' && String((d as any).guestEmail ?? '').toLowerCase() === String(person.email ?? '').toLowerCase() ? d : null;
     if (coll === 'notes') return { ...d, ownerId: me } as db.Doc;
     if (coll === 'channels' && d.kind === 'channel' && !d.teamId && limited(d.workspaceId) && (db.getDoc('workspaces', String(d.workspaceId)) as any)?.chat?.whoCanCreate === 'admins') return null; // only admins start channels here
     if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
@@ -1520,7 +1528,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       const d = ok[i] as any;
       // listening: once a test arrives the server switches it off; an older copy can't switch it back on unless it asks afresh.
       const listening = !!d.intake?.listening && String(d.intake?.listenFrom ?? '') > String(before.intake?.testAt ?? '');
-      ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
+      ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, templateRuns: before.templateRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
     }
   const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
   // Public holidays switched on, off or to another country.
@@ -3701,5 +3709,16 @@ setInterval(() => {
     db.writeDocs('notices', notices, [], null);
     broadcast('todos', todos, []);
     broadcast('notices', notices, []);
+  }
+  // Chat: messages sent later go out, and reminders on saved messages come (server/chatLater.ts).
+  try {
+    const sent = chatLater.publishDue();
+    if (sent.messages.length) (db.writeDocs('messages', sent.messages, [], null), broadcast('messages', sent.messages, []));
+    const rem = chatLater.remindersDue(Date.now(), (userId, m) => !!lens(userId)('messages', m));
+    if (rem.prefs.length) (db.writeDocs('prefs', rem.prefs, [], null), broadcast('prefs', rem.prefs, []));
+    const told = [...sent.notices, ...rem.notices];
+    if (told.length) (db.writeDocs('notices', told, [], null), broadcast('notices', told, []));
+  } catch (e) {
+    console.error('[chat later]', e instanceof Error ? e.message : e);
   }
 }, 30_000);

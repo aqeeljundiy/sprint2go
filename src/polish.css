@@ -661,8 +661,7 @@ details.advanced[open] summary h3::after {
 /* Phone: the shell (top bar, bottom bar, More) lives in src/mobile/shell.css. Screens' own phone rules follow. */
 @media (max-width: 767px) {
   /* Pane headers become simple sub-headers under the top bar. */
-  .tracking-head,
-  .chat-head {
+  .tracking-head {
     padding: 10px 14px;
   }
   .tracking-head h1 {

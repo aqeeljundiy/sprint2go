@@ -2,7 +2,7 @@
 // One engine for all of them, so a button, a rule and an incoming lead behave the same way.
 import { createHmac, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { cellText, guessField, isEmpty, parseIncoming, passes, rowName, valueOf } from '../src/components/tables/core.ts';
+import { cellText, guessField, isEmpty, parseIncoming, passes, repeatWords, rowName, templateDue, templateValues, valueOf } from '../src/components/tables/core.ts';
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
 import { stageIdFor, stagesFrom } from '../src/stages.ts';
 import { companyTz } from '../src/jobTimes.ts';
@@ -473,6 +473,33 @@ export function runSchedules(env: Env) {
         for (const r of due) for (const a of rule.actions.filter((x) => x.kind !== 'email' && x.kind !== 'open')) await runAction(env, a, t, r, t.createdBy, 1, 'schedule').catch(() => null);
         logTo(env, t.id, { dir: 'out', ok: true, text: `Scheduled rule “${rule.name}” ran on ${due.length} row${due.length === 1 ? '' : 's'}` });
       })();
+    }
+  }
+  runTemplates(env);
+}
+
+/**
+ * Repeating row templates ("Weekly report, every Monday at 9:00"): a new row from the template, once each day it's
+ * due, in the template's own time zone. The row counts as added by whoever made the table, and rules run on it.
+ */
+export function runTemplates(env: Env, clock?: (tz: string) => { day: string; hour: number; weekday: number }) {
+  for (const t of tables()) {
+    for (const tpl of (t.templates ?? []).filter((x) => x.repeat)) {
+      const r = tpl.repeat!;
+      const home = companyTz(db.getDoc('workspaces', t.workspaceId) as { timeZone?: string } | undefined);
+      let at;
+      try {
+        at = (clock ?? localNow)(r.tz || home);
+      } catch {
+        at = (clock ?? localNow)(home);
+      }
+      const cur = db.getDoc('tables', t.id) as unknown as DataTable;
+      if (!templateDue(r, at, cur.templateRuns?.[tpl.id])) continue;
+      save(env, 'tables', [{ ...cur, templateRuns: { ...(cur.templateRuns ?? {}), [tpl.id]: at.day } }]);
+      const made = newRow(cur, templateValues(cur, tpl, cur.createdBy, at.day), cur.createdBy);
+      save(env, 'rows', [made]);
+      afterRowWrite(env, new Map(), [made], cur.createdBy, 1);
+      logTo(env, t.id, { dir: 'in', ok: true, text: `“${tpl.name}” added ${rowName(cur, made)} (${repeatWords(r).toLowerCase()})`, rowId: made.id });
     }
   }
 }
