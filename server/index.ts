@@ -2695,7 +2695,8 @@ createServer(async (req, res) => {
             const asked = planFromApp((d as any).plan, before.plan);
             const planChanged = JSON.stringify((d as any).plan ?? null) !== JSON.stringify(before.plan ?? null);
             if (!owner && planChanged) say('Only owners can change the plan and billing.');
-            const plan = owner ? { ...asked.plan, adjustments: billing.adjustmentsOnSave(before, before.plan, asked.plan) } : before.plan;
+            // A switch of tier or track is prorated (server/billing.ts); a company without a plan keeps having none.
+            const plan = owner ? (asked.plan ? { ...asked.plan, adjustments: billing.adjustmentsOnSave(before, before.plan, asked.plan) } : asked.plan) : before.plan;
             if (owner) say(asked.why);
             // An operator looking at the app as someone can't change the company's sign-in rules.
             const sec = session?.operator ? { security: before.security, changed: null } : twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
