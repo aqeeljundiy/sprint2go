@@ -3,6 +3,7 @@ import type { CalEvent, CalendarDef, Person, User } from '../../types';
 import { fromWall, wallIn } from './calTools';
 import { Sheet } from '../ui/Sheet';
 import { Draft, draftEvent, draftTimes, EventForm, NO_REPEAT } from './EventForm';
+import { t } from '../../i18n';
 
 /**
  * New event on a phone: the block drawn on the grid (with handles for its time) and this sheet over the lower part
@@ -75,15 +76,15 @@ export function QuickCreate({
   return (
     <Sheet
       onClose={onClose}
-      label={draft.kind === 'task' ? 'New task' : 'New event'}
+      label={draft.kind === 'task' ? t('New task') : t('New event')}
       className={`quick-sheet${more ? ' more' : ''}`}
       footer={
         <>
           <button type="button" className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" className="primary-btn" onClick={save} disabled={!valid}>
-            {draft.kind === 'task' ? 'Add task' : 'Save'}
+            {draft.kind === 'task' ? t('Add task') : t('Save')}
           </button>
         </>
       }

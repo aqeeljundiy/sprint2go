@@ -34,14 +34,14 @@ export function UpNext({ events, color, onOpen, botWill }: { events: CalEvent[];
         {ev && (
           <div className="cal-upnext" style={{ ['--c' as string]: color(ev.calendarId) }}>
             <button type="button" className="cu-main" onClick={() => onOpen(ev.id)}>
-              <span className="cu-when">{new Date(ev.start).getTime() <= now ? 'Now' : startsIn(ev, now)}</span>
+              <span className="cu-when">{new Date(ev.start).getTime() <= now ? t('Now') : startsIn(ev, now)}</span>
               <span className="cu-title">{ev.title}</span>
               {ev.rrule && <Repeat size={13} className="cu-repeat" aria-label={t('Repeats')} />}
-              {bot !== undefined && (bot ? <Mic size={14} className="cu-bot on" aria-label="The notetaker will join" /> : <MicOff size={14} className="cu-bot" aria-label="The notetaker won’t join" />)}
+              {bot !== undefined && (bot ? <Mic size={14} className="cu-bot on" aria-label={t('The notetaker will join')} /> : <MicOff size={14} className="cu-bot" aria-label={t('The notetaker won’t join')} />)}
             </button>
             {link && (
-              <a className="primary-btn sm cu-join" href={link.url} target="_blank" rel="noopener noreferrer" aria-label={`Join ${MEETING_NAME[link.kind]}`}>
-                <Video size={14} /> Join
+              <a className="primary-btn sm cu-join" href={link.url} target="_blank" rel="noopener noreferrer" aria-label={t('Join {app}', { app: MEETING_NAME[link.kind] })}>
+                <Video size={14} /> {t('Join')}
               </a>
             )}
           </div>

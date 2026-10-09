@@ -4,6 +4,8 @@ import type { CalEvent } from '../../types';
 import { addDays, eventsOn, sameDay, startOfDay, startOfWeek } from '../../calendarUtils';
 import { EventCard, type CardKit } from './EventCard';
 import { expandEvents } from '../../repeat';
+import { t } from '../../i18n';
+import { fmtDate, fmtTime, fmtWeekdayLong } from '../../i18n/format';
 
 export interface DueTask {
   id: string;
@@ -120,30 +122,30 @@ export function ScheduleView({
   return (
     <div className="sch" ref={scroll}>
       <button type="button" className="sch-earlier" onClick={earlier}>
-        <ChevronUp size={15} /> Earlier
+        <ChevronUp size={15} /> {t('Earlier')}
       </button>
       {days.map(({ day, list, tasks }) => {
         const isToday = sameDay(day, today);
-        const mh = day.getMonth() !== month ? day.toLocaleDateString([], { month: 'long', year: day.getFullYear() !== today.getFullYear() ? 'numeric' : undefined }) : null;
+        const mh = day.getMonth() !== month ? fmtDate(day, { month: 'long', year: day.getFullYear() !== today.getFullYear() ? 'numeric' : undefined }) : null;
         month = day.getMonth();
         // Today: the "now" line goes before the first thing that hasn't ended.
         const nowAt = isToday ? list.findIndex((e) => !e.allDay && new Date(e.end).getTime() > now) : -2;
         return (
           <Fragment key={day.toDateString()}>
             {mh && <div className="sch-month">{mh}</div>}
-            <section className={`sch-day${isToday ? ' today' : ''}`} data-day={startOfDay(day).getTime()} aria-label={day.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}>
+            <section className={`sch-day${isToday ? ' today' : ''}`} data-day={startOfDay(day).getTime()} aria-label={fmtWeekdayLong(day)}>
               <div className="sch-date" aria-hidden>
-                <span className="sch-dow">{day.toLocaleDateString([], { weekday: 'short' })}</span>
+                <span className="sch-dow">{fmtDate(day, { weekday: 'short' })}</span>
                 <span className="sch-num">{day.getDate()}</span>
               </div>
               <div className="sch-items">
-                {tasks.map((t) => (
-                  <div key={t.id} className={`sch-task${t.done ? ' done' : ''}`}>
-                    <button type="button" className={`ev-check${t.done ? ' on' : ''}`} aria-label={t.done ? `${t.title}: done` : `Mark “${t.title}” done`} aria-pressed={t.done} onClick={() => onToggleTask?.(t.id)}>
-                      {t.done && <Check size={13} strokeWidth={3} />}
+                {tasks.map((task) => (
+                  <div key={task.id} className={`sch-task${task.done ? ' done' : ''}`}>
+                    <button type="button" className={`ev-check${task.done ? ' on' : ''}`} aria-label={task.done ? t('{title}: done', { title: task.title }) : t('Mark “{title}” done', { title: task.title })} aria-pressed={task.done} onClick={() => onToggleTask?.(task.id)}>
+                      {task.done && <Check size={13} strokeWidth={3} />}
                     </button>
-                    <button type="button" className="sch-task-title" onClick={() => onOpenTask?.(t.id)}>
-                      {t.title}
+                    <button type="button" className="sch-task-title" onClick={() => onOpenTask?.(task.id)}>
+                      {task.title}
                     </button>
                   </div>
                 ))}
@@ -156,7 +158,7 @@ export function ScheduleView({
                 {isToday && nowAt === -1 && list.length > 0 && <NowLine />}
                 {!list.length && !tasks.length && (
                   <button type="button" className="sch-free" onClick={() => onEmptyDay?.(day)}>
-                    {isToday ? 'Nothing planned today' : 'Nothing planned'}
+                    {isToday ? t('Nothing planned today') : t('Nothing planned')}
                   </button>
                 )}
               </div>
@@ -165,16 +167,15 @@ export function ScheduleView({
         );
       })}
       <div ref={end} className="sch-end">
-        Nothing planned after this
+        {t('Nothing planned after this')}
       </div>
     </div>
   );
 }
 
 function NowLine() {
-  const t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   return (
-    <div className="sch-now" role="separator" aria-label={`Now, ${t}`}>
+    <div className="sch-now" role="separator" aria-label={t('Now, {time}', { time: fmtTime(new Date()) })}>
       <span />
     </div>
   );

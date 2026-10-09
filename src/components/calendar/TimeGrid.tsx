@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, Mic, Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
-import { eventsOn, fmtTime, hourLabel, layoutDay, minutesIntoDay, sameDay, startOfDay } from '../../calendarUtils';
+import { eventsOn, fmtTime, fmtTimeRange, hourLabel, layoutDay, minutesIntoDay, sameDay, startOfDay } from '../../calendarUtils';
 import { haptic, useLongPress } from '../ui/useLongPress';
 import { isMaybe, isPending } from './calTools';
 import { swipeLock, useSwipeNav } from './useSwipeNav';
 import { t } from '../../i18n';
+import { fmtDate, fmtWeekdayLong } from '../../i18n/format';
 
 const Q = 15 * 60_000;
 
@@ -193,8 +194,8 @@ export function TimeGrid(p: GridProps) {
       <div className="tg-head">
         <div className="tg-gutter" />
         {days.map((d) => (
-          <button key={d.toISOString()} className={`tg-day ${sameDay(d, now) ? 'today' : ''}`} onClick={() => p.onDay(d)} aria-label={d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}>
-            <span className="tg-dow">{d.toLocaleDateString([], { weekday: 'short' })}</span>
+          <button key={d.toISOString()} className={`tg-day ${sameDay(d, now) ? 'today' : ''}`} onClick={() => p.onDay(d)} aria-label={fmtWeekdayLong(d)}>
+            <span className="tg-dow">{fmtDate(d, { weekday: 'short' })}</span>
             <span className="tg-num">{d.getDate()}</span>
           </button>
         ))}
@@ -202,7 +203,7 @@ export function TimeGrid(p: GridProps) {
 
       {hasAllDay && (
         <div className="tg-allday">
-          <div className="tg-gutter">all day</div>
+          <div className="tg-gutter">{t('all day')}</div>
           {allDay.map((list, i) => (
             <div key={i} className="tg-allday-cell">
               {list.slice(0, perDay).map((e) => (
@@ -212,7 +213,7 @@ export function TimeGrid(p: GridProps) {
                 </button>
               ))}
               {list.length > perDay && (
-                <button className="tg-allday-more" onClick={() => p.onAllDay(days[i])} aria-label={`${list.length - perDay} more all-day events`}>
+                <button className="tg-allday-more" onClick={() => p.onAllDay(days[i])} aria-label={t('{n} more all-day events', { n: list.length - perDay })}>
                   +{list.length - perDay}
                 </button>
               )}
@@ -358,7 +359,7 @@ function Block(b: {
     <div
       role="button"
       tabIndex={0}
-      aria-label={ev.rrule ? t('{label}, repeats', { label: `${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}` }) : `${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}`}
+      aria-label={ev.rrule ? t('{label}, repeats', { label: `${ev.title}, ${fmtTimeRange(s, e)}` }) : `${ev.title}, ${fmtTimeRange(s, e)}`}
       className={cls}
       {...press}
       onPointerDown={(pe) => {
@@ -390,7 +391,7 @@ function Block(b: {
         <button
           type="button"
           className={`ev-check sm${b.task.done ? ' on' : ''}`}
-          aria-label={b.task.done ? 'Done' : 'Mark the task done'}
+          aria-label={b.task.done ? t('Done') : t('Mark the task done')}
           onPointerDown={(x) => x.stopPropagation()}
           onClick={(x) => (x.stopPropagation(), !b.task!.done && (haptic(), b.onTaskDone()))}
         >
@@ -399,10 +400,9 @@ function Block(b: {
       )}
       <span className="be-title">{ev.title}</span>
       <span className="be-time">
-        {b.bot && <Mic size={11} className="be-bot" aria-label="The notetaker will join" />}
+        {b.bot && <Mic size={11} className="be-bot" aria-label={t('The notetaker will join')} />}
         {ev.rrule && <Repeat size={11} className="be-repeat" aria-label={t('Repeats')} />}
-        {fmtTime(s)}
-        {(!short || b.dragging) && ` to ${fmtTime(e)}`}
+        {!short || b.dragging ? fmtTimeRange(s, e) : fmtTime(s)}
       </span>
       {b.editable && <span className="be-resize" aria-hidden />}
     </div>
@@ -447,11 +447,11 @@ function Ghost({ q, hour, onChange }: { q: { start: Date; end: Date }; hour: num
   const up = () => (st.current = null);
   return (
     <div className="ghost-block" style={{ top, height }} onClick={(e) => e.stopPropagation()} onPointerDown={down('move')} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
-      <span className="gh-handle top" onPointerDown={down('start')} aria-label="Drag to change the start" role="slider" aria-valuenow={minutesIntoDay(q.start)} aria-valuetext={fmtTime(q.start)} />
+      <span className="gh-handle top" onPointerDown={down('start')} aria-label={t('Drag to change the start')} role="slider" aria-valuenow={minutesIntoDay(q.start)} aria-valuetext={fmtTime(q.start)} />
       <span className="gh-time">
-        {fmtTime(q.start)} to {fmtTime(q.end)}
+        {fmtTimeRange(q.start, q.end)}
       </span>
-      <span className="gh-handle bottom" onPointerDown={down('end')} aria-label="Drag to change the end" role="slider" aria-valuenow={minutesIntoDay(q.end)} aria-valuetext={fmtTime(q.end)} />
+      <span className="gh-handle bottom" onPointerDown={down('end')} aria-label={t('Drag to change the end')} role="slider" aria-valuenow={minutesIntoDay(q.end)} aria-valuetext={fmtTime(q.end)} />
     </div>
   );
 }

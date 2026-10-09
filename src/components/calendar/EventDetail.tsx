@@ -9,7 +9,9 @@ import { fromWall, isPending, startsIn, wallIn, whenLine, zoneCity } from './cal
 import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
 import { repeatWords } from '../../repeat';
-import { t, tn } from '../../i18n';
+import { mark, t, tn } from '../../i18n';
+import { fmtTime } from '../../i18n/format';
+import { calLabel } from '../../data/calendar';
 
 export type { GuestAnswer };
 
@@ -39,11 +41,11 @@ export interface DetailProps {
 }
 
 const ANSWER: Record<GuestAnswer, { label: string; tone: BadgeTone }> = {
-  accepted: { label: 'Going', tone: 'good' },
-  tentative: { label: 'Maybe', tone: 'warn' },
-  declined: { label: 'Not going', tone: 'bad' },
-  'needs-action': { label: 'No answer yet', tone: 'neutral' },
-  delegated: { label: 'Sent someone', tone: 'neutral' },
+  accepted: { label: mark('Going'), tone: 'good' },
+  tentative: { label: mark('Maybe'), tone: 'warn' },
+  declined: { label: mark('Not going'), tone: 'bad' },
+  'needs-action': { label: mark('No answer yet'), tone: 'neutral' },
+  delegated: { label: mark('Sent someone'), tone: 'neutral' },
 };
 
 /**
@@ -58,17 +60,17 @@ export function EventDetail(p: DetailProps) {
   const actions = (
     <div className="ev-actions">
       {!p.readOnly && p.onEdit && (
-        <button className="icon-btn" onClick={p.onEdit} aria-label="Edit event" title="Edit">
+        <button className="icon-btn" onClick={p.onEdit} aria-label={t('Edit event')} title={t('Edit')}>
           <Pencil size={17} />
         </button>
       )}
       {!p.readOnly && (
-        <button className="icon-btn" onClick={(e) => p.onDelete(e.currentTarget)} aria-label="Delete event" title="Delete">
+        <button className="icon-btn" onClick={(e) => p.onDelete(e.currentTarget)} aria-label={t('Delete event')} title={t('Delete')}>
           <Trash2 size={17} />
         </button>
       )}
       {!p.phone && (
-        <button className="icon-btn" onClick={p.onClose} aria-label="Close" title="Close (Esc)">
+        <button className="icon-btn" onClick={p.onClose} aria-label={t('Close')} title={t('Close (Esc)')}>
           <X size={17} />
         </button>
       )}
@@ -91,13 +93,13 @@ export function EventDetail(p: DetailProps) {
 
 function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus, at?: Element) => void }) {
   const opts: [RsvpStatus, string][] = [
-    ['accepted', 'Yes'],
-    ['tentative', 'Maybe'],
-    ['declined', 'No'],
+    ['accepted', t('Yes')],
+    ['tentative', t('Maybe')],
+    ['declined', t('No')],
   ];
   return (
-    <div className="ev-rsvp" role="group" aria-label="Going?">
-      <span className="ev-rsvp-q">Going?</span>
+    <div className="ev-rsvp" role="group" aria-label={t('Going?')}>
+      <span className="ev-rsvp-q">{t('Going?')}</span>
       {opts.map(([v, l]) => (
         <button key={v} type="button" className={`ev-rsvp-btn${value === v ? ' on' : ''}`} aria-pressed={value === v} onClick={(e) => onPick(v, e.currentTarget)}>
           {value === v && <Check size={14} />}
@@ -143,7 +145,7 @@ function DetailBody(p: DetailProps) {
       </div>
       <Row icon={<Clock size={16} />}>
         {whenLine(new Date(event.start), new Date(event.end), event.allDay)}
-        {soon && !event.allDay && <em className="ev-soon">{startMs <= now ? 'Now' : startsIn(event, now)}</em>}
+        {soon && !event.allDay && <em className="ev-soon">{startMs <= now ? t('Now') : startsIn(event, now)}</em>}
       </Row>
       {event.timeZone && isZone(event.timeZone) && event.timeZone !== deviceTz() && !event.allDay && (
         <Row icon={<Globe size={16} />} muted>
@@ -151,8 +153,8 @@ function DetailBody(p: DetailProps) {
             // The same moments on the clock where it was set.
             const s = wallIn(new Date(event.start), event.timeZone);
             const e = wallIn(new Date(event.end), event.timeZone);
-            const t = (w: { date: string; time: string }) => fromWall(w.date, w.time, null).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            return `${t(s)} to ${t(e)} in ${zoneCity(event.timeZone)}`;
+            const at = (w: { date: string; time: string }) => fmtTime(fromWall(w.date, w.time, null));
+            return t('{first} to {last} in {city}', { first: at(s), last: at(e), city: zoneCity(event.timeZone) });
           })()}
         </Row>
       )}
@@ -164,27 +166,27 @@ function DetailBody(p: DetailProps) {
       {link && !ended && (
         <div className="ev-join">
           <a className="primary-btn ev-join-btn" href={link.url} target="_blank" rel="noopener noreferrer">
-            <Video size={16} /> Join {MEETING_NAME[link.kind]}
+            <Video size={16} /> {t('Join {app}', { app: MEETING_NAME[link.kind] })}
           </a>
           {p.sentBot ? (
             <button type="button" className="link-btn small" onClick={p.sentBot}>
-              The notetaker is on its way. Open the meeting
+              {t('The notetaker is on its way. Open the meeting')}
             </button>
           ) : !notetakerJoins(link.kind) ? null : p.botWill ? (
             <span className="ev-bot-note">
-              <Mic size={14} aria-hidden /> The notetaker will join
+              <Mic size={14} aria-hidden /> {t('The notetaker will join')}
               <button type="button" className="link-btn small" onClick={() => p.onBotJoin?.(false)}>
-                Don’t record
+                {t('Don’t record')}
               </button>
             </span>
           ) : p.onBotJoin && !startsSoon ? (
             <button className="ghost-btn sm" onClick={() => p.onBotJoin!(true)}>
-              <Mic size={14} /> Record this meeting
+              <Mic size={14} /> {t('Record this meeting')}
             </button>
           ) : (
             p.onNotetaker && (
               <button className="ghost-btn sm" onClick={p.onNotetaker}>
-                <Mic size={14} /> Send notetaker
+                <Mic size={14} /> {t('Send notetaker')}
               </button>
             )
           )}
@@ -193,15 +195,14 @@ function DetailBody(p: DetailProps) {
       {event.location && event.location !== link?.url && <Row icon={<MapPin size={16} />}>{event.location}</Row>}
       {(event.organizer || event.inviteUid) && (
         <Row icon={<Mail size={16} />} muted>
-          {event.organizer ? `Invited by ${event.organizer.name}` : 'From an invite'}
-          {isPending(event) ? '. You haven’t answered yet' : event.rsvp === 'tentative' ? '. You said maybe' : event.rsvp === 'accepted' ? '. You’re going' : ''}
+          {[event.organizer ? t('Invited by {name}', { name: event.organizer.name }) : t('From an invite'), isPending(event) ? t('You haven’t answered yet') : event.rsvp === 'tentative' ? t('You said maybe') : event.rsvp === 'accepted' ? t('You’re going') : ''].filter(Boolean).join('. ')}
         </Row>
       )}
       {guests.length > 0 && (
         <div className="ev-row top">
           <Users size={16} />
           <div className="ev-guests">
-            <span>{guests.length + 1} people</span>
+            <span>{tn(guests.length + 1, '{n} person', '{n} people')}</span>
             {guests.map((g) => {
               const a = p.answers?.[g.email.toLowerCase()];
               return (
@@ -210,7 +211,7 @@ function DetailBody(p: DetailProps) {
                   <span className="ev-guest-name">{g.name}</span>
                   {a && (
                     <Badge tone={ANSWER[a].tone} small>
-                      {ANSWER[a].label}
+                      {t(ANSWER[a].label)}
                     </Badge>
                   )}
                 </div>
@@ -224,7 +225,7 @@ function DetailBody(p: DetailProps) {
           {p.inviteNote ?? inviteWords(event)}
         </Row>
       )}
-      {typeof event.remind === 'number' && <Row icon={<AlarmClock size={16} />} muted>Reminder {remindWords(event.remind).toLowerCase()}</Row>}
+      {typeof event.remind === 'number' && <Row icon={<AlarmClock size={16} />} muted>{t('Reminder: {when}', { when: remindWords(event.remind) })}</Row>}
       {event.notes && (
         <div className="ev-row top">
           <StickyNote size={16} />
@@ -234,27 +235,27 @@ function DetailBody(p: DetailProps) {
       {calendar && (
         <div className="ev-row muted">
           <span className="dot" style={{ background: calendar.color, margin: '0 4px' }} />
-          <span>{calendar.name}</span>
+          <span>{calLabel(calendar)}</span>
         </div>
       )}
       {event.feed && (
         <Row icon={<Lock size={14} />} muted>
-          {event.feed === 'holidays' ? (event.workspaceId ? 'Public holiday, shown to everyone in the company.' : 'Public holiday in a country you chose to see. Just on your calendar.') : 'Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.'}
+          {event.feed === 'holidays' ? (event.workspaceId ? t('Public holiday, shown to everyone in the company.') : t('Public holiday in a country you chose to see. Just on your calendar.')) : t('Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.')}
         </Row>
       )}
       {task && (
         <div className="ev-task">
-          <span className="muted small">{task.done ? 'Task done' : 'Time blocked for a task'}</span>
+          <span className="muted small">{task.done ? t('Task done') : t('Time blocked for a task')}</span>
           {!task.done && (
             <div className="ev-task-btns">
               <button className="ghost-btn sm" onClick={() => p.onExtend?.(30)}>
-                Extend 30 min
+                {t('Extend 30 min')}
               </button>
               <button className="ghost-btn sm" onClick={p.onTomorrow}>
-                Move to tomorrow
+                {t('Move to tomorrow')}
               </button>
               <button className="primary-btn sm" onClick={p.onTaskDone}>
-                Mark task done
+                {t('Mark task done')}
               </button>
             </div>
           )}
@@ -262,7 +263,7 @@ function DetailBody(p: DetailProps) {
       )}
       {event.threadId && (
         <button className="ghost-btn outline ev-thread" onClick={() => p.onOpenThread(event.threadId!)}>
-          <Mail size={15} /> {isPending(event) ? 'Open the invite' : 'Open related email'}
+          <Mail size={15} /> {isPending(event) ? t('Open the invite') : t('Open related email')}
         </button>
       )}
     </div>

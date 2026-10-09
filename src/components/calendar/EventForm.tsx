@@ -11,7 +11,8 @@ import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
 import { GuestPicker } from './GuestPicker';
 import { RepeatField, RepeatToken, type RepeatDraft } from './RepeatField';
-import { t } from '../../i18n';
+import { t, tn, tx } from '../../i18n';
+import { calLabel } from '../../data/calendar';
 
 /** What the event editor and the phone's quick create hold while someone types. */
 export interface Draft {
@@ -108,17 +109,18 @@ export function draftEvent(d: Draft): Omit<CalEvent, 'id'> {
 
 const SOURCE: Record<string, string> = { google: 'Google', microsoft: 'Outlook', icloud: 'iCloud', ics: 'link' };
 /** A calendar's name, with where it lives when another one has the same name ("Personal" and "Personal, Google"). */
-export const calName = (c: CalendarDef, all: CalendarDef[]) => (c.source && SOURCE[c.source] && all.some((x) => x !== c && x.name === c.name) ? `${c.name}, ${SOURCE[c.source]}` : c.name);
+export const calName = (c: CalendarDef, all: CalendarDef[]) => (c.source && SOURCE[c.source] && all.some((x) => x !== c && x.name === c.name) ? `${calLabel(c)}, ${c.source === 'ics' ? t('link') : SOURCE[c.source]}` : calLabel(c));
 
-const REMIND: { value: string; label: string }[] = [
-  { value: '0', label: 'When it starts' },
-  { value: '5', label: '5 minutes before' },
-  { value: '10', label: '10 minutes before' },
-  { value: '30', label: '30 minutes before' },
-  { value: '60', label: '1 hour before' },
-  { value: '1440', label: '1 day before' },
+/** The reminder choices, in the person's language. */
+const remindOptions = (): { value: string; label: string }[] => [
+  { value: '0', label: t('When it starts') },
+  { value: '5', label: t('5 minutes before') },
+  { value: '10', label: t('10 minutes before') },
+  { value: '30', label: t('30 minutes before') },
+  { value: '60', label: t('1 hour before') },
+  { value: '1440', label: t('1 day before') },
 ];
-export const remindWords = (m: number) => REMIND.find((r) => r.value === String(m))?.label ?? `${m} minutes before`;
+export const remindWords = (m: number) => remindOptions().find((r) => r.value === String(m))?.label ?? tn(m, '{n} minute before', '{n} minutes before');
 
 type Extra = 'location' | 'meet' | 'notes' | 'remind' | 'calendar' | 'tz' | 'repeat';
 
@@ -183,18 +185,18 @@ export function EventForm({
   };
   const cal = calendars.find((c) => c.id === draft.calendarId) ?? calendars[0];
   const quiet: { id: Extra | 'allday'; label: string; icon: typeof Sun; on?: boolean }[] = [
-    { id: 'allday', label: 'All day', icon: Sun, on: draft.allDay },
+    { id: 'allday', label: t('All day'), icon: Sun, on: draft.allDay },
     ...(!task ? [{ id: 'repeat' as const, label: t('Repeat'), icon: Repeat }] : []),
     ...(!task
       ? ([
-          { id: 'meet', label: 'Video call', icon: Video },
-          { id: 'location', label: 'Location', icon: MapPin },
+          { id: 'meet', label: t('Video call'), icon: Video },
+          { id: 'location', label: t('Location'), icon: MapPin },
         ] as const)
       : []),
-    ...(!draft.allDay ? [{ id: 'tz' as const, label: 'Time zone', icon: Globe }] : []),
-    { id: 'remind', label: 'Reminder', icon: AlarmClock },
-    { id: 'notes', label: 'Notes', icon: StickyNote },
-    ...(!task && calendars.length > 1 ? [{ id: 'calendar' as const, label: cal ? calName(cal, calendars) : 'Calendar', icon: CalendarDays }] : []),
+    ...(!draft.allDay ? [{ id: 'tz' as const, label: t('Time zone'), icon: Globe }] : []),
+    { id: 'remind', label: t('Reminder'), icon: AlarmClock },
+    { id: 'notes', label: t('Notes'), icon: StickyNote },
+    ...(!task && calendars.length > 1 ? [{ id: 'calendar' as const, label: cal ? calName(cal, calendars) : t('Calendar'), icon: CalendarDays }] : []),
   ];
   const tokens = quiet.filter((q) => q.id === 'allday' || !shows(q.id as Extra));
   return (
@@ -207,27 +209,27 @@ export function EventForm({
         onChange={(e) => set({ title: e.target.value })}
         // Enter saves once (⌘ Enter in a dialog would reach its own shortcut too, and save it twice).
         onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && (e.stopPropagation(), e.preventDefault(), onSubmit())}
-        placeholder={task ? 'What needs doing' : 'Add title'}
-        aria-label="Title"
+        placeholder={task ? t('What needs doing') : t('Add title')}
+        aria-label={tx('event', 'Title')}
         enterKeyHint="done"
       />
       {kindSwitch && (
-        <div className="segmented ev-kind" role="tablist" aria-label="Event or task">
+        <div className="segmented ev-kind" role="tablist" aria-label={t('Event or task')}>
           <button type="button" role="tab" aria-selected={!task} className={!task ? 'on' : ''} onClick={() => set({ kind: 'event' })}>
-            <CalendarDays size={14} /> Event
+            <CalendarDays size={14} /> {t('Event')}
           </button>
           <button type="button" role="tab" aria-selected={task} className={task ? 'on' : ''} onClick={() => set({ kind: 'task' })}>
-            <CalendarCheck size={14} /> Task
+            <CalendarCheck size={14} /> {t('Task')}
           </button>
         </div>
       )}
       <div className="field-row ev-when">
-        <DatePicker value={draft.date} onChange={(v) => v && moveDate(v)} clearable={false} label="Date" />
+        <DatePicker value={draft.date} onChange={(v) => v && moveDate(v)} clearable={false} label={t('Date')} />
         {!draft.allDay && (
           <span className="ev-times">
-            <TimePicker value={draft.from} onChange={moveStart} label="Starts" />
-            <span className="muted">to</span>
-            <TimePicker value={draft.to} onChange={(v) => set({ to: v })} label="Ends" />
+            <TimePicker value={draft.from} onChange={moveStart} label={t('Starts')} />
+            <span className="muted">{tx('time', 'to')}</span>
+            <TimePicker value={draft.to} onChange={(v) => set({ to: v })} label={tx('time', 'Ends')} />
           </span>
         )}
       </div>
@@ -262,13 +264,13 @@ export function EventForm({
             {!task && shows('meet') && (
               <label className="ev-extra">
                 <Video size={16} />
-                <input autoFocus={opened.has('meet') && !draft.meetUrl} value={draft.meetUrl} onChange={(e) => set({ meetUrl: e.target.value })} placeholder="Paste a Meet, Zoom or Teams link" inputMode="url" aria-label="Video call link" />
+                <input autoFocus={opened.has('meet') && !draft.meetUrl} value={draft.meetUrl} onChange={(e) => set({ meetUrl: e.target.value })} placeholder={t('Paste a Meet, Zoom or Teams link')} inputMode="url" aria-label={t('Video call link')} />
               </label>
             )}
             {!task && shows('location') && (
               <label className="ev-extra">
                 <MapPin size={16} />
-                <input autoFocus={opened.has('location') && !draft.location} value={draft.location} onChange={(e) => set({ location: e.target.value })} placeholder="Where" aria-label="Location" />
+                <input autoFocus={opened.has('location') && !draft.location} value={draft.location} onChange={(e) => set({ location: e.target.value })} placeholder={t('Where')} aria-label={t('Location')} />
               </label>
             )}
             {shows('tz') && !draft.allDay && (
@@ -279,8 +281,8 @@ export function EventForm({
                   // The same clock times, now in the chosen zone ("10:00, Singapore time").
                   onChange={(v) => set({ tz: v === deviceTz() ? null : v })}
                   options={zoneOptions(draft.tz ?? deviceTz())}
-                  label="Time zone"
-                  title="The times are in"
+                  label={t('Time zone')}
+                  title={t('The times are in')}
                   searchable
                   className="sel-flat"
                 />
@@ -292,10 +294,10 @@ export function EventForm({
                 <Select<string>
                   value={draft.remind === null ? '' : String(draft.remind)}
                   onChange={(v) => set({ remind: v === 'none' ? null : Number(v) })}
-                  options={[...REMIND, { value: 'none', label: 'No reminder' }]}
-                  label="Reminder"
-                  title="Remind me"
-                  placeholder="Remind me…"
+                  options={[...remindOptions(), { value: 'none', label: t('No reminder') }]}
+                  label={t('Reminder')}
+                  title={t('Remind me')}
+                  placeholder={t('Remind me…')}
                   className="sel-flat"
                 />
               </div>
@@ -303,11 +305,11 @@ export function EventForm({
             {shows('notes') && (
               <label className="ev-extra top">
                 <StickyNote size={16} />
-                <textarea autoFocus={opened.has('notes') && !draft.notes} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="Notes" rows={3} aria-label="Notes" />
+                <textarea autoFocus={opened.has('notes') && !draft.notes} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} placeholder={t('Notes')} rows={3} aria-label={t('Notes')} />
               </label>
             )}
             {!task && shows('calendar') && (
-              <div className="cal-pick" role="radiogroup" aria-label="Calendar">
+              <div className="cal-pick" role="radiogroup" aria-label={t('Calendar')}>
                 {calendars.map((c) => (
                   <button key={c.id} type="button" role="radio" aria-checked={draft.calendarId === c.id} className={draft.calendarId === c.id ? 'on' : ''} style={{ ['--c' as string]: c.color }} onClick={() => set({ calendarId: c.id })}>
                     <span className="dot" style={{ background: c.color }} />
@@ -321,11 +323,11 @@ export function EventForm({
       </SmoothHeight>
       {compact ? (
         <button type="button" className="link-btn ev-more" onClick={() => onMore?.()}>
-          More options <ChevronDown size={14} />
+          {t('More options')} <ChevronDown size={14} />
         </button>
       ) : (
         tokens.length > 0 && (
-          <div className="ev-quiet" aria-label="More details">
+          <div className="ev-quiet" aria-label={t('More details')}>
             {tokens.map((q) =>
               q.id === 'repeat' ? (
                 // Repeat picks straight away: the word opens the list of repeats.

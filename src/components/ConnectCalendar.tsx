@@ -7,6 +7,7 @@ import { Select } from './ui/Select';
 import { HOLIDAY_COUNTRIES, holidayCountry } from '../data/holidays';
 import { calendarLinkKey } from '../calendarLink';
 import { HolidayCountries } from './HolidayCountries';
+import { t } from '../i18n';
 
 export const SOURCE_NAME: Record<CalendarSource, string> = {
   get sprint2go() {
@@ -15,8 +16,12 @@ export const SOURCE_NAME: Record<CalendarSource, string> = {
   google: 'Google Calendar',
   microsoft: 'Outlook / Microsoft 365',
   icloud: 'iCloud',
-  ics: 'Calendar link',
-  holidays: 'Public holidays',
+  get ics() {
+    return t('Calendar link');
+  },
+  get holidays() {
+    return t('Public holidays');
+  },
 };
 
 /** Small brand-neutral marks for each source (no logos, just colour and a letter). */
@@ -41,29 +46,30 @@ const COLORS = ['#4285f4', '#0078d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'
 
 /** Where each calendar app keeps its private link. */
 type HowTo = 'google' | 'outlook' | 'apple';
-const HOW_TO: Record<HowTo, { name: string; steps: string[] }> = {
+// The apps' own menu names stay as they show them (in English), in quotes.
+const HOW_TO: Record<HowTo, { name: string; steps: () => string[] }> = {
   google: {
     name: 'Google',
-    steps: [
-      'Open Google Calendar on a computer, then Settings (the gear).',
-      'On the left, under “Settings for my calendars”, click the calendar.',
-      'In “Integrate calendar”, copy “Secret address in iCal format”.',
+    steps: () => [
+      t('Open Google Calendar on a computer, then Settings (the gear).'),
+      t('On the left, under “Settings for my calendars”, click the calendar.'),
+      t('In “Integrate calendar”, copy “Secret address in iCal format”.'),
     ],
   },
   outlook: {
     name: 'Outlook',
-    steps: [
-      'Open Outlook on the web, then Settings, Calendar, Shared calendars.',
-      'Under “Publish a calendar”, pick the calendar and “Can view all details”, then Publish.',
-      'Copy the ICS link it shows.',
+    steps: () => [
+      t('Open Outlook on the web, then Settings, Calendar, Shared calendars.'),
+      t('Under “Publish a calendar”, pick the calendar and “Can view all details”, then Publish.'),
+      t('Copy the ICS link it shows.'),
     ],
   },
   apple: {
     name: 'Apple',
-    steps: [
-      'Open the Calendar app on your iPhone, or Calendar on iCloud.com.',
-      'Tap the info button next to the calendar and turn on Public Calendar.',
-      'Tap Share Link and copy the webcal:// address it shows.',
+    steps: () => [
+      t('Open the Calendar app on your iPhone, or Calendar on iCloud.com.'),
+      t('Tap the info button next to the calendar and turn on Public Calendar.'),
+      t('Tap Share Link and copy the webcal:// address it shows.'),
     ],
   },
 };
@@ -143,7 +149,7 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
       }).catch(() => null);
       const d = (await r?.json().catch(() => null)) as { calendar?: CalendarDef; upcoming?: number; error?: string } | null;
       if (r?.ok && d?.calendar) return onLinked(d.calendar, d.upcoming ?? 0);
-      setError(d?.error ?? 'Couldn’t reach the server. Check your connection and try again.');
+      setError(d?.error ? t(d.error) : t('Couldn’t reach the server. Check your connection and try again.'));
       setStep('details');
       return;
     }
@@ -163,21 +169,21 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
         share,
         syncedAt: new Date().toISOString(),
       });
-      onConnect(source === 'ics' ? [make(name.trim() || 'Bookings', 0)] : picked.map(make));
+      onConnect(source === 'ics' ? [make(name.trim() || t('Bookings'), 0)] : picked.map(make));
     }, 900);
   };
 
   const shareField = (
     <div className="field">
-      <span>What teammates see</span>
+      <span>{t('What teammates see')}</span>
       <Select<'busy' | 'details' | 'private'>
         value={share}
         onChange={setShare}
-        label="What teammates see"
+        label={t('What teammates see')}
         options={[
-          { value: 'busy', label: 'Busy only (recommended)', hint: 'They see a busy block, never the title' },
-          { value: 'details', label: 'Full details', hint: 'Titles and places' },
-          { value: 'private', label: 'Nothing', hint: 'Only you see these events' },
+          { value: 'busy', label: t('Busy only (recommended)'), hint: t('They see a busy block, never the title') },
+          { value: 'details', label: t('Full details'), hint: t('Titles and places') },
+          { value: 'private', label: t('Nothing'), hint: t('Only you see these events') },
         ]}
       />
     </div>
@@ -185,12 +191,12 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
 
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal connect-modal" role="dialog" aria-label="Add a calendar" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal connect-modal" role="dialog" aria-label={t('Add a calendar')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <CalendarDays size={15} /> {step === 'pick' ? 'Add a calendar' : SOURCE_NAME[source!]}
+            <CalendarDays size={15} /> {step === 'pick' ? t('Add a calendar') : SOURCE_NAME[source!]}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -199,7 +205,7 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
           <SmoothHeight>
             {step === 'pick' && (
               <TabPane key="pick">
-                <p className="modal-intro">Bring in the calendars you already use. They show next to your {product.name} calendar, and teammates only see “Busy” unless you choose otherwise.</p>
+                <p className="modal-intro">{t('Bring in the calendars you already use. They show next to your {product} calendar, and teammates only see “Busy” unless you choose otherwise.', { product: product.name })}</p>
                 <div className="source-grid">
                   {(['ics', 'holidays', 'google', 'microsoft', 'icloud'] as CalendarSource[]).map((s) => (
                     <button key={s} className={`source-card ${ready(s) ? '' : 'later'}`} onClick={() => choose(s)}>
@@ -207,14 +213,14 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                       <span>
                         <strong>{SOURCE_NAME[s]}</strong>
                         <small>
-                          {s === 'ics' && `Paste a private .ics or webcal:// link from Google, Outlook, Apple or a booking tool. Read only, updated every 30 minutes.`}
-                          {s === 'holidays' && (holidaysOn ? `${holidaysOn.name}, shown to everyone at ${ws.name}` : `For everyone at ${ws.name}. Pick your country.`)}
-                          {s === 'google' && (ready(s) ? 'Two way: events you add here show in Google' : 'Two-way sync isn’t ready yet. Add it with its calendar link for now.')}
-                          {s === 'microsoft' && (ready(s) ? 'Two way, for Outlook.com and Microsoft 365' : 'Two-way sync isn’t ready yet. Add it with its calendar link for now.')}
-                          {s === 'icloud' && (ready(s) ? 'Two way, with an app-specific password' : 'Two-way sync isn’t ready yet. Add it with its calendar link for now.')}
+                          {s === 'ics' && t('Paste a private .ics or webcal:// link from Google, Outlook, Apple or a booking tool. Read only, updated every 30 minutes.')}
+                          {s === 'holidays' && (holidaysOn ? t('{country}, shown to everyone at {company}', { country: t(holidaysOn.name), company: ws.name }) : t('For everyone at {company}. Pick your country.', { company: ws.name }))}
+                          {s === 'google' && (ready(s) ? t('Two way: events you add here show in Google') : t('Two-way sync isn’t ready yet. Add it with its calendar link for now.'))}
+                          {s === 'microsoft' && (ready(s) ? t('Two way, for Outlook.com and Microsoft 365') : t('Two-way sync isn’t ready yet. Add it with its calendar link for now.'))}
+                          {s === 'icloud' && (ready(s) ? t('Two way, with an app-specific password') : t('Two-way sync isn’t ready yet. Add it with its calendar link for now.'))}
                         </small>
                       </span>
-                      {!ready(s) && <em className="source-tag">Link for now</em>}
+                      {!ready(s) && <em className="source-tag">{t('Link for now')}</em>}
                     </button>
                   ))}
                 </div>
@@ -227,27 +233,27 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                   {(source === 'google' || source === 'microsoft') && (
                     <>
                       <p className="modal-intro">
-                        You’ll sign in with {source === 'google' ? 'Google' : 'Microsoft'} in a new window. {product.name} only asks for calendar access, never your email or files.
+                        {t('You’ll sign in with {provider} in a new window. {product} only asks for calendar access, never your email or files.', { provider: source === 'google' ? 'Google' : 'Microsoft', product: product.name })}
                       </p>
                       <label className="field">
-                        <span>Account</span>
+                        <span>{t('Account')}</span>
                         <input autoFocus value={account} onChange={(e) => setAccount(e.target.value)} placeholder={source === 'google' ? 'you@gmail.com' : 'you@outlook.com'} />
                       </label>
                     </>
                   )}
                   {source === 'icloud' && (
                     <>
-                      <p className="modal-intro">Apple asks for an app-specific password: make one at appleid.apple.com under Sign-In and Security, then paste it here. Your normal Apple ID password won’t work, and that’s on purpose.</p>
+                      <p className="modal-intro">{t('Apple asks for an app-specific password: make one at appleid.apple.com under Sign-In and Security, then paste it here. Your normal Apple ID password won’t work, and that’s on purpose.')}</p>
                       <label className="field">
                         <span>Apple ID</span>
                         <input autoFocus value={account} onChange={(e) => setAccount(e.target.value)} placeholder="you@icloud.com" />
                       </label>
-                      <p className="muted small">The app-specific password is entered on the real connection screen once the backend is live. This prototype doesn’t ask for it.</p>
+                      <p className="muted small">{t('The app-specific password is entered on the real connection screen once the backend is live. This prototype doesn’t ask for it.')}</p>
                     </>
                   )}
                   {subCals[source] && (
                     <div className="field">
-                      <span>Calendars to show</span>
+                      <span>{t('Calendars to show')}</span>
                       <div className="sub-cals">
                         {subCals[source].map((c) => (
                           <label key={c} className="check-row">
@@ -264,14 +270,14 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                         <p className="modal-note">
                           <Info size={14} />
                           <span>
-                            Signing in with {via === 'google' ? 'Google' : via === 'microsoft' ? 'Microsoft' : 'Apple'} for two-way sync isn’t ready yet. Its calendar link works today: read only, updated every 30 minutes.
+                            {t('Signing in with {provider} for two-way sync isn’t ready yet. Its calendar link works today: read only, updated every 30 minutes.', { provider: via === 'google' ? 'Google' : via === 'microsoft' ? 'Microsoft' : 'Apple' })}
                           </span>
                         </p>
                       )}
                       <div className="howto">
                         <div className="howto-head">
-                          <span>Where to find the link</span>
-                          <div className="segmented sm" role="tablist" aria-label="Calendar app">
+                          <span>{t('Where to find the link')}</span>
+                          <div className="segmented sm" role="tablist" aria-label={t('Calendar app')}>
                             {(Object.keys(HOW_TO) as HowTo[]).map((h) => (
                               <button key={h} type="button" role="tab" aria-selected={howTo === h} className={howTo === h ? 'on' : ''} onClick={() => setHowTo(h)}>
                                 {HOW_TO[h].name}
@@ -281,14 +287,14 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                         </div>
                         <TabPane key={howTo}>
                           <ol className="howto-steps">
-                            {HOW_TO[howTo].steps.map((s) => (
+                            {HOW_TO[howTo].steps().map((s) => (
                               <li key={s}>{s}</li>
                             ))}
                           </ol>
                         </TabPane>
                       </div>
                       <label className="field">
-                        <span>Calendar link</span>
+                        <span>{t('Calendar link')}</span>
                         <input
                           autoFocus
                           type="url"
@@ -307,13 +313,13 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                           </small>
                         ) : dup ? (
                           <small className="link-dup" role="status">
-                            <Info size={13} /> Already added, as “{dup.name}”. It updates by itself every 30 minutes.
+                            <Info size={13} /> {t('Already added, as “{name}”. It updates by itself every 30 minutes.', { name: dup.name })}
                           </small>
                         ) : null}
                       </label>
                       <label className="field">
-                        <span>Name</span>
-                        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`e.g. Personal, or a ${term.one}’s bookings`} maxLength={80} />
+                        <span>{t('Name')}</span>
+                        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('e.g. Personal, or a {project}’s bookings', { project: term.one })} maxLength={80} />
                       </label>
                     </>
                   )}
@@ -321,32 +327,32 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                   {source === 'holidays' &&
                     (isAdmin ? (
                       <>
-                        <p className="modal-intro">Public holidays show as all-day items in everyone’s calendar at {ws.name}, and tasks due on a holiday get a note.</p>
+                        <p className="modal-intro">{t('Public holidays show as all-day items in everyone’s calendar at {company}, and tasks due on a holiday get a note.', { company: ws.name })}</p>
                         <div className="field">
-                          <span>Country for everyone</span>
+                          <span>{t('Country for everyone')}</span>
                           <Select
                             value={country}
                             onChange={setCountry}
-                            label="Country"
+                            label={t('Country')}
                             searchable
-                            options={[...HOLIDAY_COUNTRIES.map((c) => ({ value: c.code, label: c.name })), ...(ws.holidays ? [{ value: '', label: 'No public holidays', hint: 'Remove them for everyone' }] : [])]}
+                            options={[...HOLIDAY_COUNTRIES.map((c) => ({ value: c.code, label: t(c.name) })), ...(ws.holidays ? [{ value: '', label: t('No public holidays'), hint: t('Remove them for everyone') }] : [])]}
                           />
                         </div>
                       </>
                     ) : (
                       <p className="modal-intro">
-                        {holidaysOn ? `${ws.name} shows public holidays in ${holidaysOn.name} to everyone. Only owners and admins can change the company’s country, in Settings, General.` : `${ws.name} doesn’t show public holidays yet. Ask an owner or admin to pick the country, in Settings, General.`}
+                        {holidaysOn ? t('{company} shows public holidays in {country} to everyone. Only owners and admins can change the company’s country, in Settings, General.', { company: ws.name, country: t(holidaysOn.name) }) : t('{company} doesn’t show public holidays yet. Ask an owner or admin to pick the country, in Settings, General.', { company: ws.name })}
                       </p>
                     ))}
                   {source === 'holidays' && holidayRegions && onHolidayRegions && (
                     <div className="field">
-                      <span>Countries you see (just you)</span>
+                      <span>{t('Countries you see (just you)')}</span>
                       <HolidayCountries field regions={holidayRegions} company={ws.holidays?.country} companyName={ws.name} onChange={onHolidayRegions} />
                     </div>
                   )}
 
                   {source !== 'holidays' && shareField}
-                  {source === 'ics' && <p className="muted small">The link stays private to you: teammates never see it. These events are read only here; change them in the calendar they come from.</p>}
+                  {source === 'ics' && <p className="muted small">{t('The link stays private to you: teammates never see it. These events are read only here; change them in the calendar they come from.')}</p>}
                 </div>
               </TabPane>
             )}
@@ -357,13 +363,13 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                   <Loader2 size={22} className="spin" />
                   {source === 'ics' && live ? (
                     <>
-                      <strong>Reading the calendar…</strong>
-                      <span className="muted small">This takes a few seconds.</span>
+                      <strong>{t('Reading the calendar…')}</strong>
+                      <span className="muted small">{t('This takes a few seconds.')}</span>
                     </>
                   ) : (
                     <>
-                      <strong>Connecting and syncing…</strong>
-                      <span className="muted small">Demo: no real account is contacted.</span>
+                      <strong>{t('Connecting and syncing…')}</strong>
+                      <span className="muted small">{t('Demo: no real account is contacted.')}</span>
                     </>
                   )}
                 </div>
@@ -376,32 +382,32 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
           <footer className="modal-foot">
             {!start && (
               <button className="ghost-btn" onClick={() => (setStep('pick'), setError(''))}>
-                <ArrowLeft size={14} /> Back
+                <ArrowLeft size={14} /> {t('Back')}
               </button>
             )}
             <span className="spacer" />
             {source === 'holidays' && !isAdmin ? (
               <button className="primary-btn" onClick={onClose}>
-                Got it
+                {t('Got it')}
               </button>
             ) : (
               <button className="primary-btn" onClick={() => void connect()} disabled={!valid && !(source === 'holidays' && isAdmin)}>
                 <Check size={15} />{' '}
                 {source === 'google'
-                  ? 'Continue with Google'
+                  ? t('Continue with Google')
                   : source === 'microsoft'
-                    ? 'Continue with Microsoft'
+                    ? t('Continue with Microsoft')
                     : source === 'icloud'
-                      ? 'Connect iCloud'
+                      ? t('Connect iCloud')
                       : source === 'holidays'
                         ? (country || '') === (ws.holidays?.country ?? '')
-                          ? 'Done'
+                          ? t('Done')
                           : !country
-                            ? 'Remove holidays'
+                            ? t('Remove holidays')
                             : ws.holidays
-                              ? 'Change country'
-                              : 'Show holidays'
-                        : 'Add calendar'}
+                              ? t('Change country')
+                              : t('Show holidays')
+                        : t('Add calendar')}
               </button>
             )}
           </footer>

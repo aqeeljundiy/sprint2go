@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { addMonths, monthGrid, sameDay } from '../../calendarUtils';
 import { useSwipeNav } from './useSwipeNav';
+import { fmtDate, fmtWeekdayLong } from '../../i18n/format';
 
 /**
  * The mini month that folds down from the calendar's title: tap a day to go there (it folds back up), swipe it or use
@@ -45,7 +46,7 @@ export function MonthDrop({ open, cursor, busyOf, months, onPick }: { open: bool
                   className={['md-month', i === today.getMonth() && month.getFullYear() === today.getFullYear() && 'today', i === cursor.getMonth() && month.getFullYear() === cursor.getFullYear() && 'picked'].filter(Boolean).join(' ')}
                   onClick={() => pickMonth(i)}
                 >
-                  {new Date(2000, i, 1).toLocaleDateString([], { month: 'short' })}
+                  {fmtDate(new Date(2000, i, 1), { month: 'short' })}
                 </button>
               ))}
             </div>
@@ -53,7 +54,7 @@ export function MonthDrop({ open, cursor, busyOf, months, onPick }: { open: bool
           <div className="md-grid" ref={grid}>
             {cells.slice(0, 7).map((d) => (
               <span key={`h${d.getDay()}`} className="md-dow" aria-hidden>
-                {d.toLocaleDateString([], { weekday: 'narrow' })}
+                {fmtDate(d, { weekday: 'narrow' })}
               </span>
             ))}
             {cells.map((d) => (
@@ -62,7 +63,7 @@ export function MonthDrop({ open, cursor, busyOf, months, onPick }: { open: bool
                 type="button"
                 className={['md-day', d.getMonth() !== month.getMonth() && 'out', sameDay(d, today) && 'today', sameDay(d, cursor) && 'picked', busy.has(d.toDateString()) && 'busy'].filter(Boolean).join(' ')}
                 onClick={() => onPick(d)}
-                aria-label={d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}
+                aria-label={fmtWeekdayLong(d)}
               >
                 {d.getDate()}
               </button>

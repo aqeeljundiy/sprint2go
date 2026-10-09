@@ -7,6 +7,9 @@ import { Avatar } from './Avatar';
 import { Popover } from './ui/Popover';
 import { SourceMark } from './ConnectCalendar';
 import { HolidayCountries } from './HolidayCountries';
+import { calLabel } from '../data/calendar';
+import { mark, t } from '../i18n';
+import { fmtDate, fmtMonth } from '../i18n/format';
 
 interface Props {
   cursor: Date;
@@ -43,7 +46,8 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
   const [syncing, setSyncing] = useState<string | null>(null);
   const anchor = useRef<HTMLElement | null>(null);
   const menuCal = external.find((c) => c.id === menuFor);
-  const groupOf = (c: CalendarDef) => c.account ?? (c.source === 'holidays' ? 'Public holidays' : 'Calendar links');
+  // The group's key; the two built-in groups are shown in the person's language (t(acc)).
+  const groupOf = (c: CalendarDef) => c.account ?? (c.source === 'holidays' ? mark('Public holidays') : mark('Calendar links'));
   const accounts = [...new Set(external.map(groupOf))];
   const companyHolidays = menuCal?.source === 'holidays' && !!menuCal.workspaceId;
   const myHolidays = menuCal?.source === 'holidays' && !menuCal.workspaceId; // another country, chosen by this person
@@ -61,20 +65,20 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
 
   return (
     <>
-      <button className="compose-btn" onClick={onNew} title="New event (C)">
+      <button className="compose-btn" onClick={onNew} title={t('New event (C)')}>
         <Plus size={16} />
-        <span className="sb-label">New event</span>
+        <span className="sb-label">{t('New event')}</span>
         <kbd className="sb-label">C</kbd>
       </button>
 
       <div className="mini">
         <div className="mini-head">
-          <span>{cursor.toLocaleDateString([], { month: 'long', year: 'numeric' })}</span>
+          <span>{fmtMonth(cursor)}</span>
           <div>
-            <button className="icon-btn sm" onClick={() => onCursor(addMonths(cursor, -1))} aria-label="Previous month">
+            <button className="icon-btn sm" onClick={() => onCursor(addMonths(cursor, -1))} aria-label={t('Previous month')}>
               <ChevronLeft size={15} />
             </button>
-            <button className="icon-btn sm" onClick={() => onCursor(addMonths(cursor, 1))} aria-label="Next month">
+            <button className="icon-btn sm" onClick={() => onCursor(addMonths(cursor, 1))} aria-label={t('Next month')}>
               <ChevronRight size={15} />
             </button>
           </div>
@@ -82,7 +86,7 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
         <div className="mini-grid">
           {cells.slice(0, 7).map((d) => (
             <span key={`h${d.getDay()}`} className="mini-dow">
-              {d.toLocaleDateString([], { weekday: 'narrow' })}
+              {fmtDate(d, { weekday: 'narrow' })}
             </span>
           ))}
           {cells.map((d) => (
@@ -108,28 +112,28 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
 
       {toPlan.length > 0 && (
         <>
-          <div className="nav-heading sb-label">Plan your tasks</div>
-          <p className="muted small sb-label plan-hint">Drag a task onto the calendar, or click it to pick a time.</p>
+          <div className="nav-heading sb-label">{t('Plan your tasks')}</div>
+          <p className="muted small sb-label plan-hint">{t('Drag a task onto the calendar, or click it to pick a time.')}</p>
           <nav className="nav plan-list">
-            {toPlan.slice(0, 8).map((t) => (
+            {toPlan.slice(0, 8).map((task) => (
               <div
-                key={t.id}
-                className={`plan-task sb-label ${t.late ? 'late' : ''}`}
+                key={task.id}
+                className={`plan-task sb-label ${task.late ? 'late' : ''}`}
                 draggable
-                onClick={() => onPlan?.(t.id)}
+                onClick={() => onPlan?.(task.id)}
                 onDragStart={(e) => {
-                  e.dataTransfer.setData('text/s2g-task', t.id);
+                  e.dataTransfer.setData('text/s2g-task', task.id);
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
-                title="Drag onto the calendar"
+                title={t('Drag onto the calendar')}
               >
                 <GripVertical size={13} className="pt-grip" />
                 <span className="pt-text">
-                  <strong>{t.title}</strong>
-                  {t.sub && <small>{t.sub}</small>}
+                  <strong>{task.title}</strong>
+                  {task.sub && <small>{task.sub}</small>}
                 </span>
                 {onPlan && (
-                  <button className="icon-btn sm pt-add" title="Pick a time" aria-label={`Pick a time for “${t.title}”`} onClick={(e) => (e.stopPropagation(), onPlan(t.id))}>
+                  <button className="icon-btn sm pt-add" title={t('Pick a time')} aria-label={t('Pick a time for “{title}”', { title: task.title })} onClick={(e) => (e.stopPropagation(), onPlan(task.id))}>
                     <CalendarPlus size={14} />
                   </button>
                 )}
@@ -139,16 +143,16 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
         </>
       )}
 
-      <div className="nav-heading sb-label">My calendars</div>
+      <div className="nav-heading sb-label">{t('My calendars')}</div>
       <nav className="nav">
         {calendars.map((c) => {
           const on = !hidden.has(c.id);
           return (
-            <button key={c.id} className="nav-item" onClick={() => onToggle(c.id)} title={c.name}>
+            <button key={c.id} className="nav-item" onClick={() => onToggle(c.id)} title={calLabel(c)}>
               <span className={`cal-check ${on ? 'on' : ''}`} style={{ ['--c' as string]: c.color }}>
                 {on && <Check size={11} strokeWidth={3} />}
               </span>
-              <span className="sb-label">{c.name}</span>
+              <span className="sb-label">{calLabel(c)}</span>
             </button>
           );
         })}
@@ -161,7 +165,7 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
               const first = external.find((c) => groupOf(c) === acc)!;
               return <SourceMark source={first.source ?? 'sprint2go'} size={14} />;
             })()}
-            <span>{acc}</span>
+            <span>{acc === 'Public holidays' || acc === 'Calendar links' ? t(acc) : acc}</span>
           </div>
           <nav className="nav">
             {external
@@ -170,20 +174,20 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
                 const on = !hidden.has(c.id);
                 return (
                   <div key={c.id} className="nav-row">
-                    <button className="nav-item" onClick={() => onToggle(c.id)} title={c.error ? `${c.name}: not updating. ${c.error}` : `${c.name}${c.syncedAt ? `, updated ${relative(c.syncedAt)}` : ''}`}>
+                    <button className="nav-item" onClick={() => onToggle(c.id)} title={c.error ? t('{name}: not updating. {why}', { name: calLabel(c), why: t(c.error) }) : c.syncedAt ? t('{name}, updated {when}', { name: calLabel(c), when: relative(c.syncedAt) }) : calLabel(c)}>
                       <span className={`cal-check ${on ? 'on' : ''}`} style={{ ['--c' as string]: c.color }}>
                         {on && <Check size={11} strokeWidth={3} />}
                       </span>
                       <span className="sb-label">
-                        {c.name}
-                        {c.source !== 'holidays' && c.share === 'busy' && <em className="cal-share">busy only</em>}
-                        {c.source !== 'holidays' && c.share === 'private' && <em className="cal-share">private</em>}
+                        {calLabel(c)}
+                        {c.source !== 'holidays' && c.share === 'busy' && <em className="cal-share">{t('busy only')}</em>}
+                        {c.source !== 'holidays' && c.share === 'private' && <em className="cal-share">{t('private')}</em>}
                       </span>
-                      {c.error && <AlertTriangle size={13} className="cal-warn sb-label" aria-label="Not updating" />}
+                      {c.error && <AlertTriangle size={13} className="cal-warn sb-label" aria-label={t('Not updating')} />}
                     </button>
                     <button
                       className="nav-more"
-                      aria-label="Calendar options"
+                      aria-label={t('Calendar options')}
                       onClick={(e) => {
                         anchor.current = e.currentTarget;
                         setMenuFor(c.id);
@@ -201,20 +205,20 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
         </div>
       ))}
       <nav className="nav">
-        <button className="nav-item" onClick={onAddCalendar} title="Add a calendar">
+        <button className="nav-item" onClick={onAddCalendar} title={t('Add a calendar')}>
           <Plus size={16} />
-          <span className="sb-label">Add a calendar</span>
+          <span className="sb-label">{t('Add a calendar')}</span>
         </button>
       </nav>
 
       {teammates.length > 0 && (
         <>
-          <div className="nav-heading sb-label">Teammates</div>
+          <div className="nav-heading sb-label">{t('Teammates')}</div>
           <nav className="nav">
             {teammates.map((u) => {
               const on = shownMates.has(u.id);
               return (
-                <button key={u.id} className={`nav-item ${on ? 'active' : ''}`} onClick={() => onToggleMate(u.id)} title={`Show when ${u.name.split(' ')[0]} is busy`}>
+                <button key={u.id} className={`nav-item ${on ? 'active' : ''}`} onClick={() => onToggleMate(u.id)} title={t('Show when {name} is busy', { name: u.name.split(' ')[0] })}>
                   <Avatar person={u} size={20} />
                   <span className="sb-label">{u.name}</span>
                   {on && <Check size={14} className="mate-on" />}
@@ -225,7 +229,7 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
         </>
       )}
 
-      <Popover anchor={anchor} open={!!menuCal} onClose={() => setMenuFor(null)} width={280} title={menuCal?.name}>
+      <Popover anchor={anchor} open={!!menuCal} onClose={() => setMenuFor(null)} width={280} title={menuCal ? calLabel(menuCal) : undefined}>
         {menuCal && (
           <div className="sel-pop cal-menu">
             {/* Where it comes from and whether it's keeping up. */}
@@ -233,10 +237,10 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
               <div className="cal-status bad" role="status">
                 <AlertTriangle size={14} />
                 <span>
-                  <strong>Not updating</strong>
+                  <strong>{t('Not updating')}</strong>
                   <small>
-                    {menuCal.error}
-                    {menuCal.syncedAt ? ` Last worked ${relative(menuCal.syncedAt)}.` : ''}
+                    {t(menuCal.error)}
+                    {menuCal.syncedAt ? ` ${t('Last worked {when}.', { when: relative(menuCal.syncedAt) })}` : ''}
                   </small>
                 </span>
               </div>
@@ -244,19 +248,19 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
               <div className="cal-status">
                 {menuCal.source === 'holidays' ? <Globe size={14} /> : <RefreshCw size={14} />}
                 <span>
-                  <strong>{menuCal.syncedAt ? `Updated ${relative(menuCal.syncedAt)}` : 'Reading it now…'}</strong>
-                  <small>{companyHolidays ? `For everyone at ${companyName}. Checked daily.` : myHolidays ? 'Only on your calendar. Checked daily.' : 'Read only. Updates every 30 minutes.'}</small>
+                  <strong>{menuCal.syncedAt ? t('Updated {when}', { when: relative(menuCal.syncedAt) }) : t('Reading it now…')}</strong>
+                  <small>{companyHolidays ? t('For everyone at {company}. Checked daily.', { company: companyName }) : myHolidays ? t('Only on your calendar. Checked daily.') : t('Read only. Updates every 30 minutes.')}</small>
                 </span>
               </div>
             ) : null}
             {!companyHolidays && !myHolidays && (
               <>
-                <div className="sel-group">Teammates see</div>
+                <div className="sel-group">{t('Teammates see')}</div>
                 {(
                   [
-                    ['busy', 'Busy only', 'A busy block, never the title'],
-                    ['details', 'Full details', 'Titles and places'],
-                    ['private', 'Nothing', 'Only you see these'],
+                    ['busy', t('Busy only'), t('A busy block, never the title')],
+                    ['details', t('Full details'), t('Titles and places')],
+                    ['private', t('Nothing'), t('Only you see these')],
                   ] as const
                 ).map(([v, l, h]) => (
                   <button key={v} className="sel-opt" onClick={() => (onShare(menuCal.id, v), setMenuFor(null))}>
@@ -272,25 +276,25 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
             )}
             {(!menuCal.readOnly || menuCal.source === 'ics' || companyHolidays) && (
               <button className="sel-opt" disabled={syncing === menuCal.id} onClick={() => void sync(menuCal.id).then(() => setMenuFor(null))}>
-                <RefreshCw size={14} className={syncing === menuCal.id ? 'spin' : ''} /> {menuCal.error ? 'Try again now' : 'Update now'}
+                <RefreshCw size={14} className={syncing === menuCal.id ? 'spin' : ''} /> {menuCal.error ? t('Try again now') : t('Update now')}
               </button>
             )}
             {companyHolidays ? (
               isAdmin ? (
                 <>
                   <button className="sel-opt" onClick={() => (setMenuFor(null), onHolidays())}>
-                    <Globe size={14} /> Change country
+                    <Globe size={14} /> {t('Change country')}
                   </button>
                   <button className="sel-opt danger" onClick={() => (setMenuFor(null), onHolidaysOff())}>
-                    <Trash2 size={14} /> Remove for everyone
+                    <Trash2 size={14} /> {t('Remove for everyone')}
                   </button>
                 </>
               ) : (
-                <p className="cal-menu-note">Owners and admins pick the company’s country, in Settings, General. Untick it to hide it just for you, or choose other countries under Public holidays.</p>
+                <p className="cal-menu-note">{t('Owners and admins pick the company’s country, in Settings, General. Untick it to hide it just for you, or choose other countries under Public holidays.')}</p>
               )
             ) : (
               <button className="sel-opt danger" onClick={() => (onRemove(menuCal.id), setMenuFor(null))}>
-                <Trash2 size={14} /> {myHolidays ? 'Remove from my calendar' : 'Remove calendar'}
+                <Trash2 size={14} /> {myHolidays ? t('Remove from my calendar') : t('Remove calendar')}
               </button>
             )}
           </div>

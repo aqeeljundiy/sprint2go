@@ -1,6 +1,8 @@
 import type { CalEvent } from '../../types';
 import { addDays, eventsOn, sameDay, startOfDay, startOfWeek, toDateInput, toTimeInput } from '../../calendarUtils';
 import { localParts, zonedTime } from '../../jobTimes';
+import { t, tx } from '../../i18n';
+import { fmtTime, fmtWeekday } from '../../i18n/format';
 
 /**
  * The calendar's views. Phones get Schedule, Day, 3 Day and Month; Week (seven columns) only when the pane is wide
@@ -8,7 +10,8 @@ import { localParts, zonedTime } from '../../jobTimes';
  */
 export type CalView = 'schedule' | 'day' | '3day' | 'week' | 'month';
 
-export const VIEW_LABEL: Record<CalView, string> = { schedule: 'Schedule', day: 'Day', '3day': '3 days', week: 'Week', month: 'Month' };
+/** A view's name in the person's language. */
+export const viewLabel = (v: CalView): string => (v === 'schedule' ? tx('view', 'Schedule') : v === 'day' ? t('Day') : v === '3day' ? t('3 days') : v === 'week' ? t('Week') : t('Month'));
 
 /** The pane width from which Week (seven time columns) fits. */
 export const WEEK_MIN = 640;
@@ -42,10 +45,10 @@ export const isPast = (e: CalEvent, now = Date.now()) => new Date(e.end).getTime
 /** "in 12 min", "now", "in 1 h 5 min". */
 export function startsIn(e: CalEvent, now = Date.now()) {
   const m = Math.round((new Date(e.start).getTime() - now) / 60_000);
-  if (m <= 0) return 'now';
-  if (m < 60) return `in ${m} min`;
+  if (m <= 0) return t('now');
+  if (m < 60) return t('in {n} min', { n: m });
   const h = Math.floor(m / 60);
-  return `in ${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
+  return m % 60 ? t('in {h} h {m} min', { h, m: m % 60 }) : t('in {h} h', { h });
 }
 
 /** The next meeting starting within 30 minutes (or started under 5 minutes ago): what the Up next strip shows. */
@@ -61,13 +64,12 @@ export function upNext(events: CalEvent[], now = Date.now()) {
 
 /** "Fri 9 Oct, 10:00 to 10:30" (or "Fri 9 Oct, all day"). */
 export function whenLine(start: Date, end: Date, allDay?: boolean) {
-  const day = start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  const day = fmtWeekday(start);
   if (allDay) {
     const last = addDays(end, -1);
-    return sameDay(start, last) || last < start ? `${day}, all day` : `${day} to ${last.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}, all day`;
+    return sameDay(start, last) || last < start ? t('{day}, all day', { day }) : t('{first} to {last}, all day', { first: day, last: fmtWeekday(last) });
   }
-  const t = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return sameDay(start, end) ? `${day}, ${t(start)} to ${t(end)}` : `${day}, ${t(start)} to ${end.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}, ${t(end)}`;
+  return sameDay(start, end) ? `${day}, ${t('{first} to {last}', { first: fmtTime(start), last: fmtTime(end) })}` : t('{first} to {last}', { first: `${day}, ${fmtTime(start)}`, last: `${fmtWeekday(end)}, ${fmtTime(end)}` });
 }
 
 const Q = 15 * 60_000;

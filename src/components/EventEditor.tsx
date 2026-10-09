@@ -3,6 +3,7 @@ import { SmoothHeight } from './ui/Smooth';
 import { X } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, User } from '../types';
 import { Draft, draftEvent, draftOf, draftTimes, EventForm } from './calendar/EventForm';
+import { t } from '../i18n';
 
 interface Props {
   start: Date;
@@ -24,7 +25,7 @@ export function EventEditor({ start, event, calendars, team, contacts, me, onSav
   const { ok } = draftTimes(draft);
   const valid = !!draft.title.trim() && ok;
   const save = () => valid && onSave(draftEvent(draft), draft.kind, saveBtn.current ?? undefined);
-  const what = event ? 'Edit event' : draft.kind === 'task' ? 'New task' : 'New event';
+  const what = event ? t('Edit event') : draft.kind === 'task' ? t('New task') : t('New event');
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
       <div
@@ -39,7 +40,7 @@ export function EventEditor({ start, event, calendars, team, contacts, me, onSav
       >
         <header className="modal-head">
           <span>{what}</span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -49,12 +50,12 @@ export function EventEditor({ start, event, calendars, team, contacts, me, onSav
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
-          {!ok && draft.title.trim() && <span className="muted small">End must be after start</span>}
+          {!ok && draft.title.trim() && <span className="muted small">{t('End must be after start')}</span>}
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button ref={saveBtn} className="primary-btn" onClick={save} disabled={!valid}>
-            {event ? 'Save' : draft.kind === 'task' ? 'Add task' : 'Save'} <kbd>⌘↵</kbd>
+            {event ? t('Save') : draft.kind === 'task' ? t('Add task') : t('Save')} <kbd>⌘↵</kbd>
           </button>
         </footer>
       </div>

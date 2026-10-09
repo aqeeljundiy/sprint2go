@@ -1,14 +1,27 @@
 import type { CalEvent, CalendarDef, Person } from '../types';
 import { addDays, startOfDay, startOfWeek } from '../calendarUtils';
+import { mark, t } from '../i18n/index'; // the full path: the server loads this file (seed.ts)
+import { holidayCountry } from './holidays';
 
 // Sample calendar. This gets replaced by Stalwart's calendar (CalDAV / JMAP Calendars) later.
 
 export const CALENDARS: CalendarDef[] = [
-  { id: 'work', name: 'Work', color: '#5b5bf6' },
-  { id: 'clients', name: 'Clients', color: '#10b981' },
-  { id: 'personal', name: 'Personal', color: '#f59e0b' },
-  { id: 'reminders', name: 'Reminders', color: '#0ea5e9' },
+  { id: 'work', name: mark('Work'), color: '#5b5bf6' },
+  { id: 'clients', name: mark('Clients'), color: '#10b981' },
+  { id: 'personal', name: mark('Personal'), color: '#f59e0b' },
+  { id: 'reminders', name: mark('Reminders'), color: '#0ea5e9' },
 ];
+const BUILT_IN = new Set(CALENDARS.map((c) => c.id));
+
+/**
+ * A calendar's name in the person's language: sprint2go's own four and the public holiday calendars ("Holidays in
+ * Indonesia") are the app's words; any other calendar keeps the name it was given.
+ */
+export function calLabel(c: Pick<CalendarDef, 'id' | 'name' | 'source' | 'country'>): string {
+  if (BUILT_IN.has(c.id)) return t(c.name);
+  const country = c.source === 'holidays' ? holidayCountry(c.country) : undefined;
+  return country ? t('Holidays in {country}', { country: t(country.name) }) : c.name;
+}
 
 const week = startOfWeek(new Date());
 
