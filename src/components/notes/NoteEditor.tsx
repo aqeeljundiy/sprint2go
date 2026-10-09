@@ -68,7 +68,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
   const [editing, setEditing] = useState(!phone || !!p.fresh || (!note.title && !note.html));
   const [panel, setPanel] = useState<'format' | 'link' | 'mention' | null>(null);
   const [lineMenu, setLineMenu] = useState<{ block: HTMLElement; x: number; y: number } | null>(null);
-  const save = useSaveState();
+  const save = useSaveState(note.id);
   const { ctx, sheets } = useNoteMenu(api);
   const tasks = useMemo(() => new Map(p.todos.filter((t) => t.noteId === note.id || note.html.includes(t.id)).map((t) => [t.id, t])), [p.todos, note.id, note.html]);
   const links = useMemo(() => linkedFrom(note, p.notes, p.todos), [note, p.notes, p.todos]);
@@ -201,6 +201,10 @@ function Open(p: NoteEditorProps & { note: Note }) {
     ) : save.state === 'failed' ? (
       <>
         <CloudOff size={13} /> Not saved to the server{save.why ? `: ${save.why}` : ''}. It’s kept on this device.
+      </>
+    ) : save.state === 'saving' ? (
+      <>
+        <Cloud size={13} /> Saving…
       </>
     ) : Date.now() - Date.parse(note.updatedAt) < 8000 && note.updatedBy === me ? (
       <>

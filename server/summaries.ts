@@ -28,7 +28,7 @@ function inputFor(ch: any, period: SummaryPeriod, users: Map<string, any>, todos
   const from = new Date(zonedTime(period.from, 0, tz)).toISOString();
   const to = new Date(zonedTime(period.to, 0, tz)).toISOString();
   const msgs = (db.allDocs('messages') as any[])
-    .filter((m) => m.channelId === ch.id && m.at >= from && m.at < to && m.kind !== 'summary' && m.kind !== 'system')
+    .filter((m) => m.channelId === ch.id && m.at >= from && m.at < to && m.kind !== 'summary' && m.kind !== 'system' && !m.sendAt) // not messages still waiting to be sent
     .sort((a, b) => String(a.at).localeCompare(String(b.at)))
     .slice(-MAX_MESSAGES);
   if (!msgs.length) return null;

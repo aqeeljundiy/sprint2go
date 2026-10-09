@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GripVertical, Maximize2, MoreHorizontal, Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GripVertical, Info, Maximize2, MoreHorizontal, Plus } from 'lucide-react';
 import type { CalcKind, CellValue, Channel, DataTable, TableField, TableRow, TableViewDef } from '../../types';
 import { ButtonCell, CellView, ContactActions, FilesPopover, InlineInput, PickPopover, RatingInput, TextPopover, typesInline, type CellCtx } from './Cell';
 import { ColumnMenu, type ColumnAction } from './ColumnMenu';
 import { FieldMenu } from './FieldMenu';
-import { CALCS, calc, cellText, fieldIcon, groupRows, isComputed, isNumeric, sortsOf, valueOf, viewFields, type RowGroup } from './fields';
+import { CALCS, calc, cellText, fieldIcon, groupRows, isComputed, isNumeric, rowColors, sortsOf, valueOf, viewFields, type RowGroup } from './fields';
+import { useLongPress } from '../ui/useLongPress';
 import { DatePicker } from '../ui/DatePicker';
 import { Popover } from '../ui/Popover';
 
@@ -41,13 +42,18 @@ export interface GridProps {
   canAdd?: boolean;
   channels?: Channel[];
   toast?: (t: string) => void;
+  /** Phones: a tap on a cell opens its editor in a sheet (no choose-then-edit), long-press a row for its menu. */
+  touch?: boolean;
+  onTouchCell?: (rowId: string, fieldId: string) => void;
 }
 
 type Pos = { r: number; c: number };
 const key = (rowId: string, fieldId: string) => `${rowId}:${fieldId}`;
 
 /** One cell. Shows the value; the grid tells it when to edit (typing, a picker, the date picker, stars). */
-function GridCell({ t, f, row, ctx, onCell, readOnly, active, inRange, editing, initial, onActivate, onEdit, onDone, wrap }: {
+function GridCell({ t, f, row, ctx, onCell, readOnly, active, inRange, editing, initial, onActivate, onEdit, onDone, wrap, tint, onTouch }: {
+  tint?: string; // a colour rule on this cell
+  onTouch?: () => void; // phones: the tap opens the editor
   t: DataTable;
   f: TableField;
   row: TableRow;
@@ -72,7 +78,7 @@ function GridCell({ t, f, row, ctx, onCell, readOnly, active, inRange, editing, 
   }, [active, editing]);
   if (f.type === 'button')
     return (
-      <div className={`tb-cell t-button${active ? ' active' : ''}`} role="gridcell" data-cell={key(row.id, f.id)} onMouseDown={onActivate}>
+      <div className={`tb-cell t-button${active ? ' active' : ''}`} role="gridcell" data-cell={key(row.id, f.id)} onMouseDown={onTouch ? undefined : onActivate}>
         <ButtonCell f={f} row={row} ctx={ctx} />
       </div>
     );
@@ -80,22 +86,25 @@ function GridCell({ t, f, row, ctx, onCell, readOnly, active, inRange, editing, 
   return (
     <div
       ref={ref}
-      className={`tb-cell t-${f.type}${active ? ' active' : ''}${inRange ? ' in-range' : ''}${editing ? ' editing' : ''}${wrap ? ' wrap' : ''}${ro ? ' ro' : ''}`}
+      className={`tb-cell t-${f.type}${active ? ' active' : ''}${inRange ? ' in-range' : ''}${editing ? ' editing' : ''}${wrap ? ' wrap' : ''}${ro ? ' ro' : ''}${tint ? ' tinted' : ''}`}
+      style={tint ? { ['--tint' as string]: tint } : undefined}
       role="gridcell"
       tabIndex={active ? 0 : -1}
       data-cell={key(row.id, f.id)}
-      onMouseDown={(e) => !editing && e.currentTarget.contains(e.target as Node) && onActivate(e)}
-      // A click on the cell you're already on edits it; a checkbox changes at once.
+      onMouseDown={(e) => !onTouch && !editing && e.currentTarget.contains(e.target as Node) && onActivate(e)}
+      // A click on the cell you're already on edits it; a checkbox changes at once. On phones a tap edits.
       onClick={(e) => {
         if (!e.currentTarget.contains(e.target as Node) || ro || editing) return;
+        if (onTouch && (e.target as HTMLElement).closest('a')) return;
+        if (onTouch) return f.type === 'checkbox' ? save(!v) : onTouch();
         if (f.type === 'checkbox') return save(!v);
         if (active && f.type !== 'rating') onEdit();
       }}
-      onDoubleClick={() => !ro && f.type !== 'checkbox' && f.type !== 'rating' && onEdit()}
+      onDoubleClick={() => !onTouch && !ro && f.type !== 'checkbox' && f.type !== 'rating' && onEdit()}
     >
       {inline ? (
         <InlineInput f={f} v={v} initial={initial} onSave={save} onDone={onDone} />
-      ) : f.type === 'rating' && !ro ? (
+      ) : f.type === 'rating' && !ro && !onTouch ? (
         <RatingInput v={v} max={f.max ?? 5} onSave={save} />
       ) : (
         <>
@@ -111,6 +120,16 @@ function GridCell({ t, f, row, ctx, onCell, readOnly, active, inRange, editing, 
           <DatePicker value={typeof v === 'string' ? v : ''} onChange={(d) => save(d || null)} label={f.name} autoOpen onClosed={() => onDone()} compact />
         </span>
       )}
+    </div>
+  );
+}
+
+/** A row of the grid. On phones a long-press opens the row's menu (the same one right-click opens on a computer). */
+function GridRow({ touch, onHold, children, ...rest }: React.HTMLAttributes<HTMLDivElement> & { touch: boolean; onHold: (x: number, y: number) => void }) {
+  const press = useLongPress((pt) => onHold(pt.x, pt.y), { disabled: !touch });
+  return (
+    <div {...rest} role="row" {...(touch ? press : {})} onContextMenu={(e) => (touch && press.onContextMenu(e), rest.onContextMenu?.(e))}>
+      {children}
     </div>
   );
 }
@@ -202,6 +221,11 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
       <button ref={ref} type="button" className="tb-th-btn" onClick={() => !ro && (menu || editing ? (setMenu(false), setEditing(false)) : setMenu(true))} title={f.description || (ro ? f.name : `${f.name}: click for options, drag to move`)}>
         <Icon size={13} />
         <span>{f.name}</span>
+        {f.description && (
+          <span className="tb-th-info" title={f.description} aria-label={`About ${f.name}: ${f.description}`}>
+            <Info size={12} />
+          </span>
+        )}
         {first && <span className="tb-name-tag" title="Each row’s name. Another column can take this role from its menu.">Title</span>}
         {sort?.dir === 'asc' && <ArrowDown size={12} className="tb-sorted" />}
         {sort?.dir === 'desc' && <ArrowUp size={12} className="tb-sorted" />}
@@ -283,16 +307,21 @@ function FootCell({ f, p, rows, sticky }: { f: TableField; p: GridProps; rows: T
 export function GridView(p: GridProps) {
   const { table: t, view } = p;
   const fields = useMemo(() => viewFields(t, view), [t, view]);
-  const pinnedN = Math.min(view.pinned ?? 0, fields.length);
   const nameId = t.fields[0]?.id;
-  const widths = fields.map((f) => widthOf(view, f, f.id === nameId));
-  const cols = `${SEL_W}px ${widths.map((w) => `${w}px`).join(' ')} 48px`;
-  const stickyLeft = (i: number) => (i < pinnedN ? SEL_W + widths.slice(0, i).reduce((a, b) => a + b, 0) : undefined);
+  // On a phone the name column always stays in view (only the rest scrolls sideways) and narrower columns fit more.
+  const pinnedN = Math.min(p.touch ? Math.max(view.pinned ?? 0, fields.findIndex((f) => f.id === nameId) + 1) : (view.pinned ?? 0), fields.length);
+  const SEL = p.touch ? 0 : SEL_W;
+  const widths = fields.map((f) => (p.touch ? Math.min(widthOf(view, f, f.id === nameId), f.id === nameId ? 150 : 170) : widthOf(view, f, f.id === nameId)));
+  const cols = `${SEL}px ${widths.map((w) => `${w}px`).join(' ')} ${p.touch ? 16 : 48}px`;
+  const stickyLeft = (i: number) => (i < pinnedN ? SEL + widths.slice(0, i).reduce((a, b) => a + b, 0) : undefined);
 
   const groupField = view.groupBy ? t.fields.find((f) => f.id === view.groupBy) : undefined;
+  const subField = groupField && view.subGroupBy ? t.fields.find((f) => f.id === view.subGroupBy) : undefined;
   const groups: RowGroup[] = useMemo(() => (groupField ? groupRows(t, groupField, p.rows, p.ctx) : [{ key: '*', label: '', value: null, rows: p.rows }]), [groupField, t, p.rows, p.ctx]);
   const collapsed = new Set(view.collapsed ?? []);
-  const flat = groups.flatMap((g) => (collapsed.has(g.key) ? [] : g.rows)); // rows in screen order, for the keyboard
+  // Inside each group, its sub-groups (when the view has them): their keys are "group/sub".
+  const subsOf = (g: RowGroup) => (subField ? groupRows(t, subField, g.rows, p.ctx).map((sg) => ({ ...sg, key: `${g.key}/${sg.key}` })) : null);
+  const flat = groups.flatMap((g) => (collapsed.has(g.key) ? [] : (subsOf(g)?.flatMap((sg) => (collapsed.has(sg.key) ? [] : sg.rows)) ?? g.rows))); // rows in screen order, for the keyboard
 
   const [active, setActive] = useState<Pos | null>(null);
   const [anchor, setAnchor] = useState<Pos | null>(null); // with shift: a range from here to active
@@ -421,15 +450,17 @@ export function GridView(p: GridProps) {
   const rowsDraggable = !p.readOnly && !p.locked && !sortsOf(view).length;
   const indexOf = new Map(flat.map((r, i) => [r.id, i]));
 
-  const renderRow = (row: TableRow, g: RowGroup) => {
+  const renderRow = (row: TableRow, g: RowGroup, groupValues: { fieldId: string; value: CellValue }[]) => {
     const ri = indexOf.get(row.id) ?? 0;
     const over = rowDrag?.over?.id === row.id && rowDrag.id !== row.id ? (rowDrag.over.after ? ' drop-after' : ' drop-before') : '';
+    const tint = view.colors?.length ? rowColors(t, view, row, p.ctx) : { cells: {} as Record<string, string> };
     return (
-      <div
+      <GridRow
         key={row.id}
-        className={`tb-tr${p.selected.has(row.id) ? ' on' : ''}${rowDrag?.id === row.id ? ' row-dragging' : ''}${over}`}
-        role="row"
-        style={{ ['--i' as string]: Math.min(ri, 20) }}
+        touch={!!p.touch && !p.locked && !p.readOnly}
+        onHold={(x, y) => p.onRowMenu(row.id, { x, y })}
+        className={`tb-tr${p.selected.has(row.id) ? ' on' : ''}${rowDrag?.id === row.id ? ' row-dragging' : ''}${over}${tint.row ? ' tinted' : ''}`}
+        style={{ ['--i' as string]: Math.min(ri, 20), ...(tint.row ? { ['--tint' as string]: tint.row } : {}) }}
         onContextMenu={(e) => !p.locked && !p.readOnly && (e.preventDefault(), p.onRowMenu(row.id, { x: e.clientX, y: e.clientY }))}
         onDragOver={(e) => {
           if (!rowDrag) return;
@@ -441,7 +472,7 @@ export function GridView(p: GridProps) {
         onDrop={(e) => {
           if (!rowDrag) return;
           e.preventDefault();
-          if (rowDrag.id !== row.id && rowDrag.over) p.onMoveRow(rowDrag.id, row.id, rowDrag.over.after, groupField && !isComputed(groupField) ? { fieldId: groupField.id, value: g.value } : undefined);
+          if (rowDrag.id !== row.id && rowDrag.over) p.onMoveRow(rowDrag.id, row.id, rowDrag.over.after, groupValues[0]);
           setRowDrag(null);
         }}
       >
@@ -480,6 +511,8 @@ export function GridView(p: GridProps) {
               onEdit={() => startEdit({ r: ri, c: ci })}
               onDone={doneEditing}
               wrap={!!view.wrap?.includes(f.id)}
+              tint={tint.cells[f.id]}
+              onTouch={p.touch && p.onTouchCell ? () => p.onTouchCell!(row.id, f.id) : undefined}
             />
           );
           if (f.id === nameId)
@@ -505,7 +538,7 @@ export function GridView(p: GridProps) {
           );
         })}
         <div />
-      </div>
+      </GridRow>
     );
   };
 
@@ -519,7 +552,7 @@ export function GridView(p: GridProps) {
   };
 
   return (
-    <div className="tb-grid-wrap" ref={wrapRef} onKeyDown={onKey} onCopy={onCopy} onPaste={onPasteEv}>
+    <div className={`tb-grid-wrap${p.touch ? ' touch' : ''}`} ref={wrapRef} onKeyDown={onKey} onCopy={onCopy} onPaste={onPasteEv}>
       <div className="tb-grid" role="grid" style={{ ['--cols' as string]: cols }} aria-rowcount={flat.length}>
         <div className="tb-tr tb-head" role="row" onDrop={(e) => (e.preventDefault(), colDrop())} onDragEnd={() => setColDrag(null)}>
           <div className="tb-th tb-sel sticky0">{!p.readOnly && !p.locked && <input type="checkbox" aria-label="Select all" checked={selAll} onChange={() => p.onSelect(selAll ? new Set() : new Set(flat.map((r) => r.id)))} />}</div>
@@ -548,26 +581,46 @@ export function GridView(p: GridProps) {
           </div>
         </div>
 
-        {groups.map((g) => (
-          <div key={g.key} className="tb-group-block">
-            {groupField && (
-              <div className="tb-group-row">
-                <button type="button" className="tb-group-toggle" onClick={() => p.onView({ collapsed: collapsed.has(g.key) ? [...collapsed].filter((x) => x !== g.key) : [...collapsed, g.key] })} aria-expanded={!collapsed.has(g.key)}>
-                  <ChevronRight size={14} className={`rot-chev ${collapsed.has(g.key) ? '' : 'open'}`} />
-                  {g.color && <i className="tb-dot" style={{ background: g.color }} />}
-                  <strong>{g.label}</strong>
-                  <span className="muted small">{g.rows.length}</span>
-                </button>
-              </div>
-            )}
-            {!collapsed.has(g.key) && g.rows.map((r) => renderRow(r, g))}
-            {!collapsed.has(g.key) && !p.readOnly && p.canAdd !== false && (
-              <button type="button" className="tb-grid-add" onClick={() => p.onAddRow(groupField && g.value !== null && !isComputed(groupField) ? { [groupField.id]: g.value } : {})}>
-                <Plus size={14} /> New row{groupField ? ` in ${g.label}` : ''}
+        {groups.map((g) => {
+          const own = groupField && g.value !== null && !isComputed(groupField) ? [{ fieldId: groupField.id, value: g.value }] : [];
+          const subs = subsOf(g);
+          const addRow = (vals: { fieldId: string; value: CellValue }[], label: string) =>
+            !p.readOnly &&
+            p.canAdd !== false && (
+              <button type="button" className="tb-grid-add" onClick={() => p.onAddRow(Object.fromEntries(vals.map((x) => [x.fieldId, x.value])))}>
+                <Plus size={14} /> New row{label ? ` in ${label}` : ''}
               </button>
-            )}
-          </div>
-        ))}
+            );
+          const toggle = (k: string, gg: RowGroup, sub?: boolean) => (
+            <div className={`tb-group-row${sub ? ' sub' : ''}`}>
+              <button type="button" className="tb-group-toggle" onClick={() => p.onView({ collapsed: collapsed.has(k) ? [...collapsed].filter((x) => x !== k) : [...collapsed, k] })} aria-expanded={!collapsed.has(k)}>
+                <ChevronRight size={14} className={`rot-chev ${collapsed.has(k) ? '' : 'open'}`} />
+                {gg.color && <i className="tb-dot" style={{ background: gg.color }} />}
+                <strong>{gg.label}</strong>
+                <span className="muted small">{gg.rows.length}</span>
+              </button>
+            </div>
+          );
+          return (
+            <div key={g.key} className="tb-group-block">
+              {groupField && toggle(g.key, g)}
+              {!collapsed.has(g.key) &&
+                (subs
+                  ? subs.map((sg) => {
+                      const vals = [...own, ...(sg.value !== null && subField && !isComputed(subField) ? [{ fieldId: subField.id, value: sg.value }] : [])];
+                      return (
+                        <div key={sg.key} className="tb-subgroup-block">
+                          {toggle(sg.key, sg, true)}
+                          {!collapsed.has(sg.key) && sg.rows.map((r) => renderRow(r, sg, vals))}
+                          {!collapsed.has(sg.key) && addRow(vals, `${g.label}, ${sg.label}`)}
+                        </div>
+                      );
+                    })
+                  : g.rows.map((r) => renderRow(r, g, own)))}
+              {!collapsed.has(g.key) && !subs && addRow(own, groupField ? g.label : '')}
+            </div>
+          );
+        })}
 
         {p.rows.length > 0 && (
           <div className="tb-tr tb-foot" role="row">

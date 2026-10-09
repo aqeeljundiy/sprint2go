@@ -664,8 +664,7 @@ details.advanced[open] summary h3::after {
   .home-head .home-date {
     display: none;
   }
-  .tracking-head,
-  .chat-head {
+  .tracking-head {
     padding: 10px 14px;
   }
   .tracking-head h1 {
@@ -706,8 +705,7 @@ details.advanced[open] summary h3::after {
   .meet-pane > .tracking-head:not(.m-head):not(:has(.ghost-btn)) {
     display: none;
   }
-  .list-head h1,
-  .list-title h1 {
+  .list-head h1 {
     display: none;
   }
   /* Row actions live in the task view on phones; rows stay calm. */
@@ -1972,6 +1970,16 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 }
 .is-leaving.push-screen {
   animation: s2gPushOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+/* Mail's bar for several selected emails goes back down (the tab bar comes back in its place on phones). */
+.is-leaving.mail-bulk {
+  animation: s2gMailBulkOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+@keyframes s2gMailBulkOut {
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
 }
 @keyframes s2gPushOut {
   to {

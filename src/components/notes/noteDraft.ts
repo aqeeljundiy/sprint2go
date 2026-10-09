@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Note } from '../../types';
-import { live } from '../../sync';
+import { live, unsent } from '../../sync';
 import { lsKey } from '../../settings';
 
 /** How long Recently deleted keeps a note (the server deletes it for good after). */
@@ -45,14 +45,22 @@ export function useNoteDraft(note: Note | undefined, patch: (id: string, p: Part
   }, [note?.id, note?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-export type SaveState = 'saved' | 'device' | 'failed';
+export type SaveState = 'saved' | 'saving' | 'device' | 'failed';
 
-/** Whether changes reach the server: "Saved", "Saved on this device, will sync", or a save that was refused. */
-export function useSaveState() {
-  const [state, setState] = useState<SaveState>(() => (navigator.onLine === false || live.down ? 'device' : 'saved'));
+/**
+ * Whether this note's changes reached the server: "Saved", "Saving", "Saved on this device, will sync" (offline, or
+ * the connection dropped: src/sync.ts sends them again when it's back), or a save the server refused.
+ */
+export function useSaveState(noteId: string) {
+  const current = (): SaveState => {
+    const u = unsent('notes');
+    if (navigator.onLine === false || live.down || (u.failed && u.ids.has(noteId))) return 'device';
+    return u.ids.has(noteId) ? 'saving' : 'saved';
+  };
+  const [state, setState] = useState<SaveState>(current);
   const failed = useRef('');
   useEffect(() => {
-    const check = () => setState((s) => (navigator.onLine === false || live.down ? 'device' : s === 'device' ? 'saved' : s));
+    const check = () => setState((s) => (s === 'failed' ? s : current()));
     const fail = (e: Event) => {
       const d = (e as CustomEvent<{ coll: string; error?: string }>).detail;
       if (d?.coll !== 'notes') return;
@@ -62,13 +70,15 @@ export function useSaveState() {
     window.addEventListener('online', check);
     window.addEventListener('offline', check);
     window.addEventListener('s2g:live', check);
+    window.addEventListener('s2g:unsent', check);
     window.addEventListener('s2g:save-failed', fail);
     return () => {
       window.removeEventListener('online', check);
       window.removeEventListener('offline', check);
       window.removeEventListener('s2g:live', check);
+      window.removeEventListener('s2g:unsent', check);
       window.removeEventListener('s2g:save-failed', fail);
     };
-  }, []);
-  return { state, why: failed.current, edited: () => state === 'failed' && setState(navigator.onLine === false || live.down ? 'device' : 'saved') };
+  }, [noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { state, why: failed.current, edited: () => setState((s) => (s === 'failed' ? current() : s)) };
 }

@@ -159,14 +159,6 @@
     font-size: 12px;
   }
 
-  /* Invite cards in mail */
-  .invite {
-    flex-wrap: wrap;
-  }
-  .invite .primary-btn {
-    width: 100%;
-    justify-content: center;
-  }
 }
 
 /* Narrow phones: the 3-day columns give the gutter a little less room. */

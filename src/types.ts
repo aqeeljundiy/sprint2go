@@ -6,7 +6,7 @@ export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'sp
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
 export type Location = 'inbox' | 'drafts' | 'archive' | 'spam' | 'trash';
 
-export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' };
+export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string };
 
 export interface Person {
   name: string;
@@ -23,6 +23,7 @@ export interface Message {
   id: string;
   from: Person;
   to: Person[];
+  bcc?: Person[]; // the sender's own copy only: who got it without the others seeing
   date: string; // ISO
   body: string; // plain-text version (used for snippets and search)
   html?: string; // rich version, when the message was written with formatting
@@ -120,8 +121,10 @@ export interface Thread {
   messages: Message[];
   invite?: Invite;
   assignee?: string; // shared inboxes: who is handling it
-  notes?: { id: string; by: string; text: string; at: string }[]; // internal notes, only the team sees them
+  assignedBy?: string; // who gave it to them (set by the server)
+  notes?: { id: string; by: string; text: string; at: string }[]; // comments: only the people with this mailbox see them, never the sender
   snoozedUntil?: string; // hidden from the inbox until then
+  snoozeIfNoReply?: string; // "only if no reply": the last message when it was snoozed; anyone writing since cancels the comeback (src/mailRules.ts)
   scannedFor?: string[]; // `${userId}:${lastMessageId}`: already read for to-dos (so the AI reads each email once)
   sendAt?: string; // scheduled to send
   workspaceId?: string; // set by the server for mail it received
@@ -662,6 +665,12 @@ export interface ChatMessage {
   via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
   pinned?: boolean;
+  /** Send later: it waits, seen only by its author, until this time; the server then sends it (server/chatLater.ts). */
+  sendAt?: string;
+  /** Forwarded from another conversation: what it said there, and who said it. */
+  forwarded?: { channelId: string; messageId: string; userId: string; who: string; where: string; text: string; at: string };
+  /** Something from sprint2go shared in the message (from the composer's +): opens it. Tasks use taskId. */
+  ref?: { kind: 'note' | 'row' | 'file'; id: string; title: string; tableId?: string };
 }
 
 export interface Status {
@@ -987,15 +996,43 @@ export interface TableFilter {
 
 export type CalcKind = 'count' | 'filled' | 'empty' | 'percent' | 'sum' | 'avg' | 'min' | 'max' | 'unique';
 
+/** A group of conditions inside a view's filter (the second level): all of them, or any of them. */
+export interface TableFilterGroup {
+  id: string;
+  mode: 'and' | 'or';
+  filters: TableFilter[];
+}
+
+/** A colour rule on a view: rows that match get a tint, on the whole row or only on the matching field's cell. */
+export interface TableColorRule {
+  id: string;
+  when: TableFilter;
+  color: string;
+  target: 'row' | 'cell';
+}
+
+/** The filters and sorts a view shows. Each person's own changes sit on top of the view's until saved for everyone. */
+export interface TableViewTweak {
+  filters?: TableFilter[];
+  filterMode?: 'and' | 'or';
+  filterGroups?: TableFilterGroup[];
+  sorts?: { fieldId: string; dir: 'asc' | 'desc' }[];
+  collapsed?: string[];
+}
+
 export interface TableViewDef {
   id: string;
   name: string;
-  kind: 'grid' | 'board' | 'list' | 'gallery' | 'calendar';
+  kind: 'grid' | 'board' | 'list' | 'gallery' | 'calendar' | 'timeline';
   groupBy?: string; // board: its columns (a single choice field); grid and list: group rows by any field
+  subGroupBy?: string; // board: swimlanes; grid and list: groups inside each group
   sort?: { fieldId: string; dir: 'asc' | 'desc' }; // older views: one sort
   sorts?: { fieldId: string; dir: 'asc' | 'desc' }[]; // sort by this, then by that
   filters?: TableFilter[];
   filterMode?: 'and' | 'or'; // all conditions, or any
+  filterGroups?: TableFilterGroup[]; // groups of conditions, joined to the others by filterMode
+  colors?: TableColorRule[]; // rows or cells tinted by a rule
+  endField?: string; // timeline: where each bar ends (a date field); starts at dateField
   hidden?: string[]; // field ids not shown in this view
   order?: string[]; // field order in this view (others follow in the table's order)
   widths?: Record<string, number>; // grid column widths
@@ -1024,12 +1061,35 @@ export interface DataTable {
   intake?: TableIntake;
   signingSecret?: string; // signs outgoing webhooks (X-sprint2go-Signature)
   share?: TableShare; // shown to the project's guests
-  page?: { order?: string[]; hidden?: string[]; hideEmpty?: boolean }; // the row page: field order, fields kept off it, empty ones folded
+  page?: TablePage; // the row page: field order, fields kept off it, empty ones folded, pinned fields, sections
+  templates?: RowTemplate[]; // rows to start from (one can be the default), some made by themselves on a schedule
   ruleRuns?: Record<string, string>; // scheduled rule id -> the day it last ran (the server's)
+  templateRuns?: Record<string, string>; // repeating template id -> the day it last made a row (the server's)
   turns?: Record<string, number>; // "assign in turns": whose turn is next, per person field (the server's)
   log?: TableLogEntry[]; // the last webhook deliveries, both ways
   createdBy: string;
   createdAt: string;
+}
+
+/** How a row's page is laid out (the same for every row of the table). */
+export interface TablePage {
+  order?: string[];
+  hidden?: string[];
+  hideEmpty?: boolean;
+  pinned?: string[]; // three to five key fields, shown as chips under the title
+  sections?: { id: string; name: string; fields: string[] }[]; // named groups of fields, in this order, after the rest
+  main?: string; // a Button field pinned to the bottom of the page on phones (Approve, Move to Won)
+}
+
+/** A row to start from: values filled in, optionally the default for new rows, optionally made by itself on a schedule. */
+export interface RowTemplate {
+  id: string;
+  name: string;
+  values: Record<string, CellValue>; // "@today" and "@me" fill in when it's used
+  isDefault?: boolean; // new rows start from it
+  // Made by itself: every day (days: which weekdays, 0 = Sunday), week (on days), month or year (on the day of `from`),
+  // from the hour given, in this time zone. The server makes the row once each day it's due.
+  repeat?: { every: 'day' | 'week' | 'month' | 'year'; days?: number[]; hour: number; tz: string; from: string };
 }
 
 export type CellValue = string | number | boolean | string[] | FileRef[] | null;

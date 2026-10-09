@@ -96,9 +96,14 @@ export async function connect(apply: <K extends CollectionKey>(k: K, v: Collecti
     if (!r.ok) throw new Error('Could not load');
     const state = (await r.json()) as Record<CollectionKey, Doc[]>;
     for (const k of Object.keys(state) as CollectionKey[]) {
+      // Things made or changed here that never reached the server (written offline, or while the connection was
+      // down) stay on screen and go up now, instead of being replaced by the server's older copy.
+      const local = isRecord(k) ? [] : unsentDocs(k);
       remember(k, state[k]);
-      latest[k] = fromDocs(k, state[k]);
-      apply(k, fromDocs(k, state[k]) as Collections[typeof k]);
+      const docs = local.length ? [...state[k].filter((d) => !local.some((x) => x.id === d.id)), ...local] : state[k];
+      latest[k] = fromDocs(k, docs);
+      apply(k, fromDocs(k, docs) as Collections[typeof k]);
+      if (local.length) pushChange(k, latest[k] as Collections[typeof k]);
     }
     if (!only || only.includes('threads')) (live.mailAt = Date.now()), liveChanged();
   };
@@ -115,6 +120,7 @@ export async function connect(apply: <K extends CollectionKey>(k: K, v: Collecti
       startPresence(server.conn); // so notifications go to phones only while the person is away
       live.down = false;
       liveChanged();
+      retryUnsent();
       if (!first) void load().catch(() => {}); // reconnected: catch up on anything missed
       first = false;
     });
@@ -177,6 +183,31 @@ export function setDemo(d: DemoState | null) {
   window.dispatchEvent(new CustomEvent('s2g:demo'));
 }
 
+/* ---------- changes that couldn't be sent yet ---------- */
+
+/** Collections whose last save didn't reach the server (offline, the connection dropped), and since when. */
+const failedAt: Partial<Record<CollectionKey, number>> = {};
+const unsentChanged = () => window.dispatchEvent(new CustomEvent('s2g:unsent'));
+/** Documents changed here that the server doesn't have yet (lists only). */
+function unsentDocs(k: CollectionKey): Doc[] {
+  const before = synced[k];
+  if (!before || latest[k] === undefined || isRecord(k)) return [];
+  return toDocs(k, latest[k]).filter((d) => before.get(d.id) !== d);
+}
+/**
+ * Ids in a collection that are made or changed here but not on the server yet, and whether the last try failed
+ * (then they wait for the connection; otherwise they're on their way). Listen to `s2g:unsent` for changes.
+ */
+export function unsent(k: CollectionKey): { ids: Set<string>; failed: boolean } {
+  if (!server.on) return { ids: new Set(), failed: false };
+  return { ids: new Set(unsentDocs(k).map((d) => d.id)), failed: !!failedAt[k] };
+}
+/** Sends again whatever couldn't be sent: when the phone is back online, the live connection is back, or on Retry. */
+export function retryUnsent() {
+  for (const k of Object.keys(failedAt) as CollectionKey[]) if (latest[k] !== undefined) pushChange(k, latest[k] as Collections[typeof k]);
+}
+if (typeof window !== 'undefined') window.addEventListener('online', () => retryUnsent());
+
 /** Called on every local change: sends only what changed, a moment later (several quick edits go together). */
 export function pushChange<K extends CollectionKey>(k: K, value: Collections[K]) {
   latest[k] = value;
@@ -189,7 +220,11 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
     const upserts = docs.filter((d) => before.get(d.id) !== d && (!isRecord(k) || JSON.stringify(before.get(d.id)) !== JSON.stringify(d)));
     const deletes = [...before.keys()].filter((id) => !now.has(id));
     synced[k] = now;
-    if (!upserts.length && !deletes.length) return;
+    if (!upserts.length && !deletes.length) {
+      if (failedAt[k]) (delete failedAt[k], unsentChanged());
+      return;
+    }
+    unsentChanged();
     void fetch('/api/sync', { method: 'POST', headers: { 'content-type': 'application/json', 'x-conn': server.conn }, body: JSON.stringify({ coll: k, upserts, deletes }) })
       .then(async (r) => {
         if (r.status === 401 || r.status === 403) {
@@ -197,9 +232,13 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
           const d = (await r.clone().json().catch(() => ({}))) as { twoStep?: string };
           if (d.twoStep) return location.reload();
         }
+        if (failedAt[k]) delete failedAt[k];
+        unsentChanged();
         if (r.status === 401) return window.dispatchEvent(new CustomEvent('s2g:signed-out'));
         if (!r.ok) {
           synced[k] = before;
+          // The server is restarting or busy: like being offline, it goes again with the connection.
+          if (r.status >= 500) return void ((failedAt[k] = Date.now()), unsentChanged());
           window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: ((await r.json().catch(() => ({}))) as { error?: string }).error } }));
           return;
         }
@@ -210,7 +249,9 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
         else if (typeof saved === 'number' && saved < upserts.length) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: 'Part of that change isn’t allowed for your role, so it was left out.' } }));
       })
       .catch(() => {
-        synced[k] = before; // try again with the next change
+        synced[k] = before; // tried again with the next change, when the connection is back, or on Retry
+        failedAt[k] = Date.now();
+        unsentChanged();
       });
   }, 250);
 }

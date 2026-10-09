@@ -23,6 +23,7 @@ const LEAVING = [
   '.ask-drawer',
   '.ask-pill',
   '.huddle',
+  '.huddle-bar',
   '.later-menu',
   '.track-menu',
   '.tb-popup',
@@ -33,6 +34,7 @@ const LEAVING = [
   '.inline-sheet',
   '.paused-banner',
   '.demo-bar',
+  '.mail-bulk',
 ].join(',');
 
 const MS = 200;

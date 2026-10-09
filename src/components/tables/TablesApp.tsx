@@ -8,6 +8,7 @@ import { ProjectPicker } from '../ProjectPicker';
 import { TABLE_COLORS, TEMPLATES, templateFields, type TemplateId } from './fields';
 import { EmptyState } from '../ui/EmptyState';
 import { useCreateAction } from '../../mobile/chrome';
+import { useTableLinkOpen } from './hooks';
 
 /* ---------- sidebar ---------- */
 
@@ -160,6 +161,7 @@ export function ProjectTables({ tables, rows, onOpen, onNew, bare }: { tables: D
 /** Tables with none open: every table as a card (company first, then each project's), or how to start. */
 export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { tables: DataTable[]; rows: TableRow[]; clients: Client[]; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void }) {
   useCreateAction('tables', { label: 'New table', icon: Plus, run: onNew });
+  useTableLinkOpen(null, onOpen); // a link to a table, a view or a row
   const groups = [{ id: '', name: 'Company', list: tables.filter((t) => !t.clientId) }, ...clients.map((c) => ({ id: c.id, name: c.name, list: tables.filter((t) => t.clientId === c.id) }))].filter((g) => g.list.length);
   return (
     <section className="tasks-pane view-enter">
@@ -189,8 +191,8 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
           />
         ) : (
           groups.map((g) => (
-            <div key={g.id || 'company'} className="tb-group">
-              <h3 className="tb-group-head">{g.name}</h3>
+            <div key={g.id || 'company'} className="tb-home-group">
+              <h3 className="tb-home-group-head">{g.name}</h3>
               <ProjectTables tables={g.list} rows={rows} onOpen={onOpen} onNew={onNew} bare />
             </div>
           ))

@@ -6,6 +6,8 @@ import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import * as push from './push.ts';
 import { clientPeople, companyOf } from '../src/clientView.ts';
+import { mutedFor } from './chatLater.ts';
+import { fromPerson } from '../src/mailRules.ts';
 
 /** What someone can switch on or off (Settings, Notifications); stored with their other settings. */
 export type PushKind = 'messages' | 'mail' | 'tasks' | 'guests' | 'meetings' | 'other';
@@ -37,6 +39,12 @@ function blockedBy(userId: string, email: string) {
   return Array.isArray(rules) && rules.some((b: any) => (b?.kind === 'address' ? b.value === e : typeof b?.value === 'string' && e.endsWith('@' + b.value)));
 }
 
+/**
+ * A conversation this person muted (Chat, long-press a conversation, Mute): no buzz for a direct message there or a
+ * guest writing in it. Mentions and replies to them still come, as in Slack.
+ */
+const muted = (userId: string, channelId: string) => mutedFor(prefsOf(userId), userId, channelId);
+
 /** Only fresh things: an old notice saved again (read elsewhere, edited) never buzzes. Allows for a slow clock. */
 const recent = (at: unknown) => {
   const t = Date.parse(String(at ?? ''));
@@ -59,18 +67,40 @@ function alert(userId: string, kind: PushKind, p: Omit<push.Push, 'badge'>) {
   void push.sendTo(userId, { ...p, badge }).catch((e) => console.error('[push]', e instanceof Error ? e.message : e));
 }
 
+/**
+ * Mail pushes (new mail, an email given to you, a mention in a comment) wait about 20 seconds and go only if nobody saw
+ * the email or the notice meanwhile, on another device or in the app (Front's rule). S2G_PUSH_HOLD_MS changes the wait.
+ */
+let HOLD_MS = process.env.S2G_PUSH_HOLD_MS ? Math.max(0, Number(process.env.S2G_PUSH_HOLD_MS) || 0) : 20_000;
+export const setPushHold = (ms: number) => void (HOLD_MS = Math.max(0, ms));
+function hold(fn: () => void) {
+  if (!HOLD_MS) return fn();
+  const t = setTimeout(() => {
+    try {
+      fn();
+    } catch (e) {
+      console.error('[push]', e instanceof Error ? e.message : e);
+    }
+  }, HOLD_MS);
+  t.unref?.();
+}
+
 const kindOf = (n: any): PushKind => (n.fromGuest ? 'guests' : n.kind === 'mention' ? 'messages' : n.kind === 'mail' ? 'mail' : n.kind === 'task' ? 'tasks' : n.kind === 'meeting' ? 'meetings' : 'other');
 
 /** New notices (the bell): the same words on the lock screen; a tap opens the exact item. */
 function notices(docs: any[]) {
   for (const n of docs) {
     if (!n || n.read || typeof n.userId !== 'string' || n.userId.startsWith('email:') || !recent(n.at)) continue;
-    if (!reachable(n.userId) || !push.once(`n:${n.id}`)) continue;
     const l = n.link ?? {};
+    if (l.app === 'chat' && l.id && muted(n.userId, String(l.id)) && (db.getDoc('channels', String(l.id)) as any)?.kind === 'dm') continue;
+    if (!reachable(n.userId) || !push.once(`n:${n.id}`)) continue;
     const url = n.url ? String(n.url) : `/${l.app ?? ''}${q({ ws: n.workspaceId, id: l.id, msg: l.msg, notice: n.id })}`;
     const tag = l.app === 'chat' && l.id ? `chat:${l.id}` : l.app === 'tasks' && l.id ? `task:${l.id}` : l.app === 'mail' && l.id ? `mail:${l.id}` : l.app === 'calendar' && l.id ? `event:${l.id}` : `n:${n.id}`;
     const kind = kindOf(n);
-    alert(n.userId, kind, { title: wsName(n.workspaceId), body: String(n.text ?? ''), url, tag, notice: n.id, urgent: kind === 'messages' || kind === 'guests' || l.app === 'calendar', ttl: l.app === 'calendar' ? 15 * 60 : undefined });
+    const send = () => alert(n.userId, kind, { title: wsName(n.workspaceId), body: String(n.text ?? ''), url, tag, notice: n.id, urgent: kind === 'messages' || kind === 'guests' || l.app === 'calendar', ttl: l.app === 'calendar' ? 15 * 60 : undefined });
+    // About an email (given to you, a mention in its comments): held, and dropped once the notice was read elsewhere.
+    if (l.app === 'mail') hold(() => (db.getDoc('notices', n.id) as any)?.read === false && send());
+    else send();
   }
 }
 
@@ -79,7 +109,7 @@ function guestMessages(docs: any[]) {
   for (const m of docs) {
     if (!m || m.userId !== 'guest' || !recent(m.at)) continue;
     const ch = db.getDoc('channels', String(m.channelId)) as any;
-    const team: string[] = (ch?.members ?? []).filter((id: string) => reachable(id));
+    const team: string[] = (ch?.members ?? []).filter((id: string) => reachable(id) && !muted(id, String(ch.id)));
     if (!ch || !team.length || !push.once(`gm:${m.id}`)) continue;
     const client = ch.clientId ? (db.getDoc('clients', ch.clientId) as any) : null;
     const email = String(m.guestEmail ?? '').toLowerCase();
@@ -93,14 +123,15 @@ function guestMessages(docs: any[]) {
 
 /**
  * Mail that arrived in someone's inbox: personal mailboxes tell their people; a shared inbox tells only the person
- * the email is assigned to. Never newsletters (they carry an unsubscribe link), spam, blocked senders, or mail
- * sent by someone on the team to themselves.
+ * the email is assigned to. Only mail from people: never newsletters (they carry an unsubscribe link), notifications
+ * and receipts from systems, spam, blocked senders, or mail sent by someone on the team to themselves. Each push waits
+ * about 20 seconds and is dropped if the email was read meanwhile (or snoozed, moved, given to someone else).
  */
 function mail(docs: any[]) {
   for (const t of docs) {
     if (!t || t.location !== 'inbox' || !t.unread || t.sendAt) continue;
     // Most thread saves are someone reading, moving or replying: only a message that just arrived matters.
-    const fresh = (t.messages ?? []).filter((m: any) => recent(m.date) && !m.listUnsubscribe && m.from?.email);
+    const fresh = (t.messages ?? []).filter((m: any) => recent(m.date) && m.from?.email && fromPerson(m));
     if (!fresh.length) continue;
     const ws = (db.allDocs('workspaces') as any[]).find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId));
     const acct = ws?.accounts?.find((a: any) => a.id === t.accountId);
@@ -115,7 +146,13 @@ function mail(docs: any[]) {
       const to = people.filter((u) => !senders.has(u) && !blockedBy(u, from));
       if (!to.length || !push.once(`mail:${m.id ?? m.mid}`)) continue;
       const line = String(m.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
-      for (const uid of to) alert(uid, 'mail', { title: m.from?.name || from, body: `${t.subject}${line ? `\n${line}` : ''}`, url: `/mail${q({ ws: ws.id, id: t.id })}`, tag: `mail:${t.id}` });
+      const still = (uid: string) => {
+        const cur = db.getDoc('threads', t.id) as any;
+        if (!cur || !cur.unread || cur.location !== 'inbox') return false;
+        if (cur.snoozedUntil && cur.snoozedUntil > new Date().toISOString()) return false;
+        return acct.kind !== 'shared' || cur.assignee === uid;
+      };
+      for (const uid of to) hold(() => still(uid) && alert(uid, 'mail', { title: m.from?.name || from, body: `${t.subject}${line ? `\n${line}` : ''}`, url: `/mail${q({ ws: ws.id, id: t.id })}`, tag: `mail:${t.id}` }));
     }
   }
 }
