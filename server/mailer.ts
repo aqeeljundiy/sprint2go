@@ -21,6 +21,7 @@ import { applyInbound, readInvite } from './invites.ts';
 import { maybeAnswer, type Away } from './away.ts';
 import { overRoom, overRoomWhy } from './billing.ts';
 import * as track from './readTracking.ts';
+import { keepRaw } from './mailRaw.ts';
 export { domainKey };
 
 db.db.exec(`
@@ -473,6 +474,8 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const thread = existing
       ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, messages: [...existing.messages, msg] }
       : { id: 't-' + randomBytes(6).toString('hex'), accountId: account.id, subject: cleanSubject(parsed.subject ?? '') || '(no subject)', location: spam ? 'spam' : 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: ws.id };
+    // The source as it arrived, for mail apps over IMAP (server/imap.ts).
+    keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ws.id, 'in', spam ? 'spam' : 'inbox', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
@@ -495,10 +498,12 @@ export interface Outgoing {
   from: Person;
   to: Person[];
   cc: Person[];
+  bcc?: Person[]; // sent to them, named nowhere (mail apps' Bcc, through SMTP submission)
   subject: string;
   text: string;
   html?: string;
-  files: { name: string; url: string }[];
+  files: { name: string; url: string; cid?: string }[]; // cid: a picture shown inside the HTML
+  mid?: string; // the Message-ID to use (a mail app's own), instead of a new one
   inReplyTo?: string;
   references?: string[];
   ical?: { method: string; content: string }; // a calendar part, e.g. the REPLY to an invite
@@ -529,12 +534,12 @@ export const keepsMailLocal = () => process.env.NODE_ENV !== 'production' && !pr
 /** What a message held on this computer says, in the app and on its outbox rows. */
 export const LOCAL_ONLY = 'Held on this computer: a local sprint2go doesn’t send mail to outside addresses. Set MAIL_RELAY_URL or MAIL_ENABLED=1 to send for real.';
 /** The outside addresses of an email that would be held on this computer (none on a live server, or with a relay). */
-export function heldLocally(o: Pick<Outgoing, 'workspaceId' | 'to' | 'cc'>): string[] {
+export function heldLocally(o: Pick<Outgoing, 'workspaceId' | 'to' | 'cc' | 'bcc'>): string[] {
   if (!keepsMailLocal()) return [];
   const ws = workspaces().find((w) => w.id === o.workspaceId);
   if (ws?.mailRoute === 'boosted' && boostedAvailable() && (ws.mailCredits ?? 0) > 0) return []; // Amazon sends it, not our engine
   const mine = localAccounts();
-  return Array.from(new Set([...o.to, ...o.cc].map((p) => lower(p.email)).filter((e) => e && !mine.has(e))));
+  return Array.from(new Set([...o.to, ...o.cc, ...(o.bcc ?? [])].map((p) => lower(p.email)).filter((e) => e && !mine.has(e))));
 }
 
 /** Builds the message, signs it and queues one delivery per outside recipient; our own mailboxes get it at once. */
@@ -550,16 +555,18 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     markDelivery(o.threadId, o.messageId, null, 'failed', blocked);
     throw new Error(blocked);
   }
-  const recipientsCount = [...o.to, ...o.cc].length;
+  const recipientsCount = [...o.to, ...o.cc, ...(o.bcc ?? [])].length;
   const sentLastHour = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 3600_000).toISOString()) as { n: number }).n;
   const sentLastDay = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
   if (sentLastHour + recipientsCount > LIMITS.hour || sentLastDay + recipientsCount > LIMITS.day)
     throw new Error(`This mailbox has reached its sending limit (${LIMITS.hour} an hour, ${LIMITS.day} a day). Try again later, or use Boosted sending for bigger sends.`);
   const domain = lower(o.from.email.split('@')[1] ?? '');
   if (domain && domain !== MAIL_HOST && !mayUse(ws, domain)) throw new Error(`Another company uses ${domain}, so mail can’t be sent from it here. An admin can prove it’s yours in Settings, Email delivery.`);
-  const mid = `<${randomBytes(12).toString('hex')}@${domain || MAIL_HOST}>`;
+  const mid = o.mid && /^<[^<>\s]{1,250}@[^<>\s]{1,250}>$/.test(o.mid) ? o.mid : `<${randomBytes(12).toString('hex')}@${domain || MAIL_HOST}>`;
   let route: 'own' | 'boosted' = ws.mailRoute === 'boosted' && boostedAvailable() ? 'boosted' : 'own';
-  const recipients = [...o.to, ...o.cc].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
+  const recipients = [...o.to, ...o.cc, ...(o.bcc ?? [])].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
+  // Who the email names (To and Cc): what our own mailboxes' copies show, never the Bcc.
+  const named = [...o.to, ...o.cc].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
   const mine = localAccounts();
   const local = recipients.filter((p) => mine.has(p.email));
   const remote = recipients.filter((p) => !mine.has(p.email));
@@ -581,7 +588,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     messageId: mid,
     inReplyTo: o.inReplyTo,
     references: o.references,
-    attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url, ws.id) ?? Buffer.alloc(0) })),
+    attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url, ws.id) ?? Buffer.alloc(0), ...(f.cid ? { cid: f.cid } : {}) })),
     icalEvent: o.ical ? { method: o.ical.method, content: o.ical.content, filename: 'invite.ics' } : undefined,
     headers: { 'X-Mailer': 'sprint2go', ...(o.headers ?? {}) },
   };
@@ -592,6 +599,9 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     return route === 'own' && domain ? signFor(raw, domain, ws.id) : raw;
   };
   const raw = await build(o.html);
+  // The sender's copy as it went out (with its Bcc line, which only the sender sees), for mail apps over IMAP. A copy
+  // a mail app already gave us (SMTP submission, APPEND) stays as it is.
+  keepRaw(o.threadId, o.messageId, o.bcc?.length ? await new MailComposer({ ...message, bcc: o.bcc.map((p) => ({ name: p.name, address: p.email })), keepBcc: true } as ConstructorParameters<typeof MailComposer>[0]).compile().build() : raw);
   // Our own mailboxes get a copy straight away (an alias: each of its mailboxes), here or in other companies; never the
   // mailbox it was sent from.
   let localCount = 0;
@@ -604,8 +614,13 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   for (const { hit, shared } of localBoxes) {
     if (hit.account.id === o.accountId) continue;
     const parsed = await simpleParser(raw);
-    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: recipients, date: now(), body: o.text, html: o.html, attachments: parsed.attachments.length ? o.files.map((f, i) => ({ name: f.name, size: fmtSize(parsed.attachments[i]?.size ?? 0), url: f.url })) : undefined };
+    // Pictures inside the HTML (from a mail app) arrive as part of it, as in received mail, not as attachments.
+    const inline = o.files.some((f) => f.cid);
+    const listed = o.files.filter((f) => !f.cid);
+    const sizes = parsed.attachments.filter((a) => !(inline && a.related && a.contentId));
+    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: named, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
+    keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     localCount++;
