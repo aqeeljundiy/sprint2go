@@ -33,3 +33,5 @@ jobs:
         run: node scripts/smoke-mail.mjs
       - name: Security and billing checks
         run: node scripts/security-tests.mjs
+      - name: AI models (provider lists, picking, fallback)
+        run: node scripts/ai-models-e2e.mjs
