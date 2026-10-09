@@ -45,3 +45,4 @@ export const EndClientDialog = split(() => import('./components/EndClientDialog'
 export const BlockDialog = split(() => import('./components/BlockDialog').then((m) => m.BlockDialog));
 export const AdminApp = split(() => import('./admin/AdminApp').then((m) => m.AdminApp));
 export const ActingBanner = split(() => import('./admin/AdminApp').then((m) => m.ActingBanner));
+export const ConnectApp = split(() => import('./components/ConnectApp').then((m) => m.ConnectApp));

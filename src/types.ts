@@ -125,6 +125,7 @@ export interface Thread {
   scannedFor?: string[]; // `${userId}:${lastMessageId}`: already read for to-dos (so the AI reads each email once)
   sendAt?: string; // scheduled to send
   workspaceId?: string; // set by the server for mail it received
+  replyTo?: { threadId: string; mid?: string; references?: string[] }; // a reply drafted in a connected AI app: when sent, it carries that conversation's headers so it lands in the same thread
 }
 
 /** A meeting proposed inside an email, offered as "Add to calendar". */
@@ -301,6 +302,8 @@ export interface Workspace {
   readTracking?: boolean;
   /** "Let our people open the demo company" (Settings, Apps & chat). Missing: on. */
   demoCompany?: boolean;
+  /** "Let people connect AI apps" (Settings, Security & data): Claude, ChatGPT and others through /mcp. Missing: on. */
+  aiApps?: boolean;
   /** Set on someone's own demo company only (src/sandbox.ts): whose it is, and their "Try this" list. */
   sandbox?: SandboxMark;
 }

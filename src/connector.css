@@ -1,0 +1,281 @@
+/* Connecting AI apps: the consent screen (ConnectApp.tsx), Settings, Account (ConnectedApps.tsx) and the draft an AI
+   app leaves for a channel with guests (ChatDraft.tsx). Shared pieces (.signin-card, .set-row, .fold) do the rest. */
+
+/* ---------- the consent screen ---------- */
+
+.signin-card.cn-card {
+  width: min(460px, 100%);
+}
+.cn-card .cn-body {
+  width: 100%;
+}
+.cn-card .tab-pane {
+  display: grid;
+  gap: 16px;
+  justify-self: stretch;
+  width: 100%;
+}
+.cn-center {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 6px;
+}
+.cn-center h1 {
+  margin: 8px 0 0;
+  text-wrap: balance;
+}
+.cn-center .signin-sub {
+  margin: 0;
+  text-wrap: pretty;
+}
+.cn-wait {
+  margin: 16px 0 8px;
+  text-align: center;
+}
+.cn-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-top: 12px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  transition: background 0.2s, color 0.2s;
+}
+.cn-icon.good {
+  background: color-mix(in srgb, #10b981 16%, transparent);
+  color: #059669;
+}
+.cn-icon.warn {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  color: #dc2626;
+}
+:root[data-theme='dark'] .cn-icon.good {
+  color: #34d399;
+}
+:root[data-theme='dark'] .cn-icon.warn {
+  color: #f87171;
+}
+.cn-pop {
+  animation: cnPop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards;
+}
+@keyframes cnPop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+.cn-section {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.cn-section h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2, var(--text));
+}
+/* The companies: rows without borders of their own (the card is the box), a soft fill when picked. */
+.cn-companies {
+  display: grid;
+  gap: 4px;
+}
+.cn-company {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.18s, box-shadow 0.18s, opacity 0.18s;
+}
+.cn-company:hover:not(:disabled) {
+  background: var(--hover);
+}
+.cn-company.on {
+  background: var(--accent-soft);
+}
+.cn-company:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.cn-company:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.cn-company .ws-logo {
+  flex: none;
+}
+.cn-company-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.cn-company-text strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.cn-company-text small {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.cn-radio {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--border);
+  transition: box-shadow 0.18s;
+}
+.cn-company.on .cn-radio {
+  box-shadow: inset 0 0 0 5px var(--accent);
+}
+.cn-can {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cn-can li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-2, var(--text));
+}
+.cn-can li + li {
+  border-top: 1px solid var(--border);
+}
+.cn-can svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+.cn-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.cn-actions button {
+  min-width: 112px;
+  min-height: 40px;
+  justify-content: center;
+}
+.cn-who {
+  margin: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .signin-card.cn-card {
+    padding: 28px 16px 20px;
+  }
+  .cn-actions {
+    flex-direction: column-reverse;
+  }
+  .cn-actions button {
+    width: 100%;
+    height: 44px;
+  }
+  .cn-who .link-btn {
+    padding: 12px 4px;
+  }
+}
+
+/* ---------- Settings, Account: connected apps ---------- */
+
+.cn-hint {
+  margin-top: 0;
+}
+.cn-loading {
+  margin: 8px 0;
+}
+.cn-grant small {
+  overflow-wrap: anywhere;
+}
+.cn-grant strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cn-add .cn-url {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--hover);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.cn-copy {
+  flex: none;
+  min-width: 88px;
+  justify-content: center;
+}
+@media (max-width: 600px) {
+  .cn-grant .ghost-btn,
+  .cn-copy {
+    min-height: 40px;
+  }
+}
+
+/* ---------- a draft for a channel with guests, above its message box ---------- */
+
+.chat-draft-fold {
+  margin: 0 16px;
+}
+.chat-draft {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: var(--r-control, 10px);
+  background: var(--accent-soft);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.chat-draft svg {
+  flex: none;
+  color: var(--accent);
+}
+.chat-draft span {
+  flex: 1 1 200px;
+}
+.chat-draft .link-btn {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .chat-draft .link-btn {
+    min-height: 40px;
+    padding: 0 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cn-pop {
+    animation: none;
+  }
+  .cn-company,
+  .cn-radio,
+  .cn-icon {
+    transition: none;
+  }
+}
