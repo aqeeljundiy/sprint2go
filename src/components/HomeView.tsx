@@ -1,20 +1,24 @@
 import { ProjectBadge } from './ProjectBadge';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, FileText, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search, Megaphone } from 'lucide-react';
 import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, Todo, User } from '../types';
 import { fmtTime } from '../calendarUtils';
-import { meetingLinkOf } from '../meetingLinks';
 import { isMine } from '../identity';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
+import { Sheet } from './ui/Sheet';
 import { doers, dueLabel, isBrief, peopleOptions } from './TasksView';
 import { kindOf } from '../stages';
 import { EmptyState } from './ui/EmptyState';
-import { useCreateAction } from '../mobile/chrome';
+import { useAppSettings, useCreateAction } from '../mobile/chrome';
+import { usePhone } from '../mobile/media';
+import { needsYou, updatesOf } from '../needsYou';
+import { dueText } from '../taskDates';
+import { CustomiseList, LiveCalls, MeetingStrip, NeedsList, TodayBlock, Updates } from './home/HomeParts';
 
 type CardId =
   | 'briefing'
@@ -46,7 +50,7 @@ const CARD_INFO: Record<CardId, { name: string; hint: string }> = {
   risk: { get name() { return `${term.Many} at risk`; }, get hint() { return `Late or stuck work per ${term.one}`; } },
   lateByTeam: { name: 'Teams', hint: 'Open and late work per team' },
   workload: { name: 'Workload', hint: 'How busy each person is' },
-  waiting: { name: 'Waiting on you', hint: 'Already at the top, in Up next' },
+  waiting: { name: 'Waiting on you', hint: 'Already at the top, in Needs you' },
   teamQueue: { name: 'Team queue', hint: 'Tasks nobody has picked up yet' },
   briefs: { name: 'Briefs', hint: 'Bigger jobs and their progress' },
   mytasks: { name: 'My tasks', hint: 'Your queue, in order' },
@@ -130,6 +134,18 @@ interface Props {
   setup?: { key: string; label: string; hint: string; done: boolean; onOpen: () => void }[];
   /** At the top of Home: the demo company's "Try this" list, or the invitation to look around it first. */
   top?: ReactNode;
+  onStart: (taskId: string) => void; // a guest request: start it
+  onReschedule: (taskId: string, day: string) => void; // '' clears the date
+  onReadNotices: (ids: string[]) => void;
+  onAllNotices: () => void; // phones: every notification, read and unread
+  /** Huddles going on in your channels, and joining one. */
+  calls?: { id: string; name: string; people: User[] }[];
+  onJoinHuddle?: (channelId: string) => void;
+  /** The notetaker for the meeting about to start: on or off when it joins by itself, else sent from here. */
+  botWillJoin?: (e: CalEvent) => boolean;
+  onBotJoin?: (e: CalEvent, join: boolean) => void;
+  onSendNotetaker?: (e: CalEvent) => void;
+  notetakerSent?: Record<string, string>;
 }
 
 /** The template that fits a person: owners get the company view, team leads the team view, then by team. */
@@ -201,22 +217,44 @@ export function HomeView(p: Props) {
         .map((b) => ({ key: 'b' + b.id, text: `All tasks done in “${b.title}”`, sub: 'Review and close the brief', run: () => p.onOpenTask(b.id) })),
       ...mine.filter((t) => t.priority === 'high' && t.due && t.due <= today).map((t) => ({ key: 'm' + t.id, text: t.title, sub: 'High priority, due now', run: () => p.onOpenTask(t.id), tone: 'warn' as const })),
     ];
-    // Up next: everything that needs this person, across apps, most urgent first, each with its action.
-    type Next = { key: string; rank: number; kind: 'meeting' | 'review' | 'request' | 'late' | 'today' | 'queue' | 'delegated' | 'mail' | 'brief'; text: string; sub: string; task?: Todo; thread?: Thread; event?: CalEvent };
-    const soon = Date.now() + 45 * 60_000;
-    const upnext = ([
-      ...todayEvents.filter((e) => new Date(e.start).getTime() <= soon).map((e) => ({ key: 'e' + e.id, rank: 100, kind: 'meeting' as const, text: e.title, sub: new Date(e.start).getTime() <= Date.now() ? 'Happening now' : `Starts at ${fmtTime(e.start)}`, event: e })),
-      ...open.filter((t) => kindOf(t) === 'review' && t.supervisorId === p.me.id).map((t) => ({ key: 'r' + t.id, rank: 90, kind: 'review' as const, text: t.title, sub: `${p.users.find((u) => u.id === doers(t)[0])?.name.split(' ')[0] ?? 'Someone'} finished it, waiting for your review`, task: t })),
-      ...open.filter((t) => t.source === 'request' && kindOf(t) === 'open' && (doers(t).includes(p.me.id) || (!t.userId && p.teams.some((tm) => tm.id === t.teamId && tm.leadId === p.me.id)))).map((t) => ({ key: 'q' + t.id, rank: 85, kind: 'request' as const, text: t.title, sub: `New request from ${p.clients.find((c) => c.id === t.clientId)?.name ?? 'a client'}`, task: t })),
-      ...mine.filter(late).map((t) => ({ key: 'l' + t.id, rank: 80, kind: 'late' as const, text: t.title, sub: `Late: was due ${new Date(t.due! + 'T12:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}`, task: t })),
-      ...mine.filter((t) => t.due === today && kindOf(t) !== 'review').map((t) => ({ key: 't' + t.id, rank: 70, kind: 'today' as const, text: t.title, sub: 'Due today', task: t })),
-      ...queue.map((t) => ({ key: 'u' + t.id, rank: 60, kind: 'queue' as const, text: t.title, sub: `${p.teams.find((x) => x.id === t.teamId)?.name ?? 'Team'} queue, nobody on it yet`, task: t })),
-      ...work.filter((t) => t.createdBy === p.me.id && t.userId && !doers(t).includes(p.me.id) && late(t)).map((t) => ({ key: 'd' + t.id, rank: 50, kind: 'delegated' as const, text: t.title, sub: `Late with ${p.users.find((u) => u.id === t.userId)?.name.split(' ')[0] ?? 'someone'}`, task: t })),
-      ...unread.filter((t) => p.clients.some((c) => c.domain && t.messages[t.messages.length - 1].from.email.toLowerCase().endsWith('@' + c.domain))).map((t) => ({ key: 'm' + t.id, rank: 45, kind: 'mail' as const, text: t.subject, sub: `${t.messages[t.messages.length - 1].from.name} is waiting for a reply`, thread: t })),
-      ...briefs.filter((b) => b.userId === p.me.id && work.some((t) => t.briefId === b.id) && work.filter((t) => t.briefId === b.id).every((t) => t.done)).map((b) => ({ key: 'b' + b.id, rank: 30, kind: 'brief' as const, text: b.title, sub: 'Every task is done, close the brief', task: b })),
-    ] as Next[]).sort((a, b) => b.rank - a.rank || (a.task?.due ?? '').localeCompare(b.task?.due ?? ''));
-    return { open, late, mine, briefs, myBriefs, doneWeek, unread, todayEvents, pendingActions, risk, byTeam, people, queue, waiting, myTeams, upnext };
+    return { open, late, mine, briefs, myBriefs, doneWeek, unread, todayEvents, pendingActions, risk, byTeam, people, queue, waiting, myTeams };
   }, [p.tasks, p.threads, p.events, p.meetings, p.clients, p.teams, p.users, p.me.id, p.isOwner]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Needs you: the same rules as the Home badge and the AI connector (src/needsYou.ts). It looks again every half
+  // minute, so the meeting strip comes and goes on time.
+  const [clock, setClock] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setClock((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const needs = useMemo(
+    () =>
+      needsYou({
+        me: p.me.id,
+        today,
+        now: Date.now(),
+        tasks: p.tasks,
+        stageKind: (t) => kindOf(t as Todo),
+        teams: p.teams,
+        clients: p.clients,
+        isOwner: p.isOwner,
+        firstName: (id) => p.users.find((u) => u.id === id)?.name.split(' ')[0] ?? '',
+        events: p.events,
+        threads: p.threads,
+        mine: isMine,
+        notices: p.notices,
+        dayWords: (day) => dueText(day, today).replace(/^Yesterday$/, 'yesterday'),
+        minutes: (iso) => fmtTime(iso),
+      }),
+    [p.tasks, p.events, p.threads, p.notices, p.teams, p.clients, p.users, p.me.id, p.isOwner, clock, today], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const strip = needs.filter((x) => x.group === 'now');
+  const needList = needs.filter((x) => x.group === 'needs');
+  const dueToday = needs.filter((x) => x.group === 'today').map((x) => p.tasks.find((t) => t.id === x.taskId)).filter((t): t is Todo => !!t);
+  const updates = updatesOf(p.notices, needs);
+  const laterToday = d.todayEvents.filter((e) => !strip.some((x) => x.eventId === e.id));
+  const phone = usePhone();
+  const [customising, setCustomising] = useState(false);
 
   // A short, plain-language briefing built from the numbers (no AI call needed).
   const brief: string[] = [];
@@ -636,6 +674,60 @@ export function HomeView(p: Props) {
     setLayout({ ...layout, cards: list });
   };
 
+  // Customise on a phone: a list to show, hide and move cards (from the title or the end of Home).
+  const customise = (
+    <CustomiseList
+      cards={[...visible.map((c) => c.id), ...missing].map((id) => ({ id, name: CARD_INFO[id].name, hint: CARD_INFO[id].hint, on: visible.some((c) => c.id === id) }))}
+      onToggle={(id) => {
+        const cid = id as CardId;
+        setLayout(layout.cards.some((c) => c.id === cid) ? { ...layout, cards: layout.cards.filter((c) => c.id !== cid) } : { ...layout, cards: [...layout.cards, { id: cid, size: 'm' }] });
+      }}
+      onMove={(id, by) => {
+        const shown = visible.map((c) => c.id);
+        const i = shown.indexOf(id as CardId);
+        const target = shown[i + by];
+        if (target) move(id as CardId, layout.cards.findIndex((c) => c.id === target));
+      }}
+      template={
+        <Select<HomeTemplateId>
+          value={layout.template}
+          options={(Object.keys(TEMPLATES) as HomeTemplateId[]).map((id) => ({ value: id, label: TEMPLATES[id].name, hint: TEMPLATES[id].hint }))}
+          onChange={(t) => setLayout(fromTemplate(t))}
+          label="Start from"
+          renderValue={(o) => (
+            <span className="sel-text">
+              Start from: <b>{o?.label}</b>
+            </span>
+          )}
+        />
+      }
+      onReset={() => setSaved(null)}
+    />
+  );
+  useAppSettings('home', { id: 'customise', label: 'Customise Home', hint: 'Which cards show, and in what order', render: () => <HomeCustomise storageKey={`s2g-home:${p.me.id}:${p.workspaceId}`} fallback={guessTemplate(p)} enabled={p.enabled} /> });
+
+  // Finish setting up (admins): only what's left to do.
+  const todo = (p.setup ?? []).filter((x) => !x.done);
+  const setupCard = todo.length > 0 && (
+    <section className="setup-card">
+      <h2>Finish setting up</h2>
+      <ul>
+        {todo.map((x) => (
+          <li key={x.key}>
+            <span className="setup-mark" />
+            <button type="button" className="setup-text" onClick={x.onOpen}>
+              <strong>{x.label}</strong>
+              <small>{x.hint}</small>
+            </button>
+            <button type="button" className="ghost-btn sm" onClick={x.onOpen}>
+              Set up
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+
   return (
     <section className="home-pane view-enter">
       <div className="home-scroll">
@@ -720,43 +812,67 @@ export function HomeView(p: Props) {
 
         {p.top}
 
-        {p.setup && p.setup.some((x) => !x.done) && (
-          <section className="setup-card">
-            <h2>Finish setting up</h2>
-            <ul>
-              {p.setup.map((x) => (
-                <li key={x.key} className={x.done ? 'done' : ''}>
-                  <span className="setup-mark">{x.done ? <Check size={13} /> : null}</span>
-                  <button type="button" className="setup-text" onClick={x.onOpen} disabled={x.done}>
-                    <strong>{x.label}</strong>
-                    <small>{x.hint}</small>
-                  </button>
-                  {!x.done && (
-                    <button type="button" className="ghost-btn sm" onClick={x.onOpen}>
-                      Set up
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+        {!phone && setupCard}
+
+        <MeetingStrip items={strip} events={p.events} botWillJoin={p.botWillJoin} onBotJoin={p.onBotJoin} onSendNotetaker={p.onSendNotetaker} sent={p.notetakerSent} onOpen={(id) => p.onOpenCalendar(id)} />
+        {p.calls && p.onJoinHuddle && <LiveCalls calls={p.calls} onJoin={p.onJoinHuddle} />}
+
+        <div className="home-top">
+          <section className={`hsec needs${needList.length ? '' : ' clear'}`} aria-label="Needs you">
+            <h2 className="hsec-h">
+              <span>{needList.length ? 'Needs you' : 'You’re clear for now'}</span>
+            </h2>
+            <SmoothHeight>
+              {needList.length ? (
+                <NeedsList
+                  items={needList}
+                  a={{
+                    me: p.me.id,
+                    users: p.users,
+                    teams: p.teams,
+                    tasks: p.tasks,
+                    notices: p.notices,
+                    today,
+                    onDone: p.onToggleTask,
+                    onStart: p.onStart,
+                    onAssign: p.onAssign,
+                    onNudge: p.onNudge,
+                    onReschedule: p.onReschedule,
+                    onOpenTask: p.onOpenTask,
+                    onOpenThread: p.onOpenThread,
+                    onNotice: p.onNotice,
+                    onRead: p.onReadNotices,
+                  }}
+                />
+              ) : (
+                <p className="hsec-empty">
+                  {laterToday[0]
+                    ? `Next: ${laterToday[0].title} at ${fmtTime(laterToday[0].start)}.`
+                    : (() => {
+                        const next = d.mine.find((t) => t.due && t.due > today);
+                        return next ? `Next on your list: “${next.title}”, ${dueWord(next.due!)}.` : 'Nothing waiting on you. A good time to get ahead.';
+                      })()}
+                </p>
+              )}
+            </SmoothHeight>
           </section>
-        )}
+          {(dueToday.length > 0 || laterToday.length > 0) && (
+            <TodayBlock
+              tasks={dueToday}
+              events={laterToday}
+              clients={p.clients}
+              today={today}
+              onTick={p.onToggleTask}
+              onReschedule={p.onReschedule}
+              onOpenTask={p.onOpenTask}
+              onOpenEvent={(id) => p.onOpenCalendar(id)}
+              onOpenCalendar={p.enabled.has('calendar') ? () => p.onOpenCalendar() : undefined}
+            />
+          )}
+        </div>
 
-        <UpNext
-          items={d.upnext}
-          mine={d.mine}
-          events={d.todayEvents}
-          users={p.users}
-          teams={p.teams}
-          me={p.me.id}
-          onDone={p.onToggleTask}
-          onAssign={p.onAssign}
-          onNudge={p.onNudge}
-          onOpenTask={p.onOpenTask}
-          onOpenThread={p.onOpenThread}
-          onOpenEvent={(id) => p.onOpenCalendar(id)}
-        />
-
+        {phone && <Updates notices={updates} onOpen={p.onNotice} onRead={p.onReadNotices} onAll={p.onAllNotices} />}
+        {phone && setupCard}
         <div className={`home-grid cards ${editing ? 'editing' : ''}`}>
           {visible.map((c, i) => {
             const card = cards[c.id];
@@ -808,7 +924,17 @@ export function HomeView(p: Props) {
             );
           })}
         </div>
+        {phone && (
+          <button type="button" className="ghost-btn home-customise" onClick={() => setCustomising(true)}>
+            <Settings2 size={16} /> Customise Home
+          </button>
+        )}
       </div>
+      {customising && (
+        <Sheet onClose={() => setCustomising(false)} title="Customise Home" size="tall" head={<button type="button" className="primary-btn sm" onClick={() => setCustomising(false)}>Done</button>}>
+          {customise}
+        </Sheet>
+      )}
     </section>
   );
 }
@@ -818,156 +944,49 @@ const dueWord = (d: string) => {
   const t = dueLabel(d).text;
   return /^[A-Z][a-z]{2},/.test(t) ? t : t.toLowerCase();
 };
-type NextItem = ReturnType<typeof nextShape>;
-const nextShape = (x: { key: string; rank: number; kind: 'meeting' | 'review' | 'request' | 'late' | 'today' | 'queue' | 'delegated' | 'mail' | 'brief'; text: string; sub: string; task?: Todo; thread?: Thread; event?: CalEvent }) => x;
+const NEEDS_APP: Partial<Record<CardId, string>> = { dump: 'tasks', mytasks: 'tasks', today: 'calendar', unread: 'mail', meetings: 'meet' };
 
-/** The top of Home: what needs you now, across apps, with the action right there. No counts. */
-function UpNext(p: {
-  items: NextItem[];
-  mine: Todo[];
-  events: CalEvent[];
-  users: User[];
-  teams: Team[];
-  me: string;
-  onDone: (id: string) => void;
-  onAssign: (taskId: string, userId: string) => void;
-  onNudge: (taskId: string) => void;
-  onOpenTask: (id: string) => void;
-  onOpenThread: (id: string) => void;
-  onOpenEvent: (id: string) => void;
-}) {
-  const [all, setAll] = useState(false);
-  const [gone, setGone] = useState<string[]>([]); // acted on: folds away, then leaves the list
-  const [leaving, setLeaving] = useState<string[]>([]);
-  const items = p.items.filter((x) => !gone.includes(x.key));
-  const shown = all ? items : items.slice(0, 6);
-  const act = (key: string, fn: () => void) => {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return (setGone((g) => [...g, key]), fn());
-    setLeaving((l) => [...l, key]);
-    setTimeout(() => {
-      setGone((g) => [...g, key]);
-      setLeaving((l) => l.filter((k) => k !== key));
-      fn();
-    }, 240);
-  };
-  const open = (x: NextItem) => (x.task ? p.onOpenTask(x.task.id) : x.thread ? p.onOpenThread(x.thread.id) : x.event ? p.onOpenEvent(x.event.id) : undefined);
-  const action = (x: NextItem) => {
-    const t = x.task;
-    switch (x.kind) {
-      case 'meeting': {
-        // A call link: join it from here.
-        const link = x.event && meetingLinkOf(x.event);
-        return link ? (
-          <a className="primary-btn sm" href={link.url} target="_blank" rel="noopener noreferrer">
-            <Video size={14} /> Join
-          </a>
-        ) : (
-          <button className="primary-btn sm" onClick={() => open(x)}>
-            Open
-          </button>
-        );
-      }
-      case 'review':
-        return (
-          <button className="primary-btn sm" onClick={() => act(x.key, () => p.onDone(t!.id))}>
-            <Check size={14} /> Approve
-          </button>
-        );
-      case 'late':
-      case 'today':
-        return (
-          <button className="ghost-btn sm" onClick={() => act(x.key, () => p.onDone(t!.id))}>
-            <Check size={14} /> Done
-          </button>
-        );
-      case 'queue': {
-        const tm = p.teams.find((m) => m.id === t!.teamId);
-        return (
-          <Select
-            value=""
-            options={peopleOptions(p.users.filter((u) => !tm || tm.members.includes(u.id)), p.me, false)}
-            onChange={(v) => act(x.key, () => p.onAssign(t!.id, v))}
-            label="Assign"
-            placeholder="Assign"
-            className="sel-flat"
-          />
-        );
-      }
-      case 'delegated':
-        return (
-          <button className="ghost-btn sm" onClick={() => act(x.key, () => p.onNudge(t!.id))}>
-            Remind
-          </button>
-        );
-      case 'mail':
-        return (
-          <button className="ghost-btn sm" onClick={() => open(x)}>
-            Reply
-          </button>
-        );
-      case 'brief':
-        return (
-          <button className="ghost-btn sm" onClick={() => act(x.key, () => p.onDone(t!.id))}>
-            Close brief
-          </button>
-        );
-      default:
-        return (
-          <button className="ghost-btn sm" onClick={() => open(x)}>
-            Open
-          </button>
-        );
-    }
-  };
-  const ICON: Record<NextItem['kind'], ReactNode> = {
-    meeting: <Video size={15} />,
-    review: <Check size={15} />,
-    request: <Inbox size={15} />,
-    late: <AlertTriangle size={15} />,
-    today: <ListChecks size={15} />,
-    queue: <Users size={15} />,
-    delegated: <AlertTriangle size={15} />,
-    mail: <Inbox size={15} />,
-    brief: <FileText size={15} />,
-  };
-
-  if (!items.length) {
-    // Clear: say what comes next instead of an empty box.
-    const nextTask = p.mine.find((t) => t.due);
-    const nextEvent = p.events[0];
-    return (
-      <section className="up-next clear">
-        <h2>
-          <Check size={16} /> You’re clear for now
-        </h2>
-        <p className="muted">
-          {nextEvent ? `Next: ${nextEvent.title} at ${fmtTime(nextEvent.start)}.` : nextTask ? `Next on your list: “${nextTask.title}”, ${dueWord(nextTask.due!)}.` : 'Nothing scheduled. A good time to get ahead.'}
-        </p>
-      </section>
-    );
-  }
+/** Customise Home, opened full screen from the title on a phone. It keeps the same saved layout as Home itself. */
+function HomeCustomise({ storageKey, fallback, enabled }: { storageKey: string; fallback: HomeTemplateId; enabled: Set<string> }) {
+  const [saved, setSaved] = usePersisted<Layout | null>(storageKey, null);
+  const layout = saved ?? fromTemplate(fallback);
+  const allowed = (id: CardId) => !NEEDS_APP[id] || enabled.has(NEEDS_APP[id]!);
+  const shown = layout.cards.filter((c) => allowed(c.id)).map((c) => c.id);
+  const hidden = (Object.keys(CARD_INFO) as CardId[]).filter((id) => allowed(id) && !shown.includes(id));
   return (
-    <section className="up-next">
-      <h2>Up next</h2>
-      <SmoothHeight>
-      <ul>
-        {shown.map((x) => (
-          <li key={x.key} className={`un-row k-${x.kind} ${leaving.includes(x.key) ? 'leaving' : ''}`}>
-            <span className="un-icon">{ICON[x.kind]}</span>
-            <button className="un-text" onClick={() => open(x)}>
-              <strong>{x.text}</strong>
-              <small>{x.sub}</small>
-            </button>
-            <span className="un-act">{action(x)}</span>
-          </li>
-        ))}
-      </ul>
-      </SmoothHeight>
-      {items.length > 6 && (
-        <button className="link-btn un-more" onClick={() => setAll((a) => !a)}>
-          {all ? 'Show less' : `Show ${items.length - 6} more`}
-        </button>
-      )}
-    </section>
+    <div className="hcust-page">
+      <CustomiseList
+        cards={[...shown, ...hidden].map((id) => ({ id, name: CARD_INFO[id].name, hint: CARD_INFO[id].hint, on: shown.includes(id) }))}
+        onToggle={(id) => {
+          const cid = id as CardId;
+          setSaved(layout.cards.some((c) => c.id === cid) ? { ...layout, cards: layout.cards.filter((c) => c.id !== cid) } : { ...layout, cards: [...layout.cards, { id: cid, size: 'm' }] });
+        }}
+        onMove={(id, by) => {
+          const i = shown.indexOf(id as CardId);
+          const target = shown[i + by];
+          if (!target) return;
+          const list = [...layout.cards];
+          const from = list.findIndex((c) => c.id === id);
+          const to = list.findIndex((c) => c.id === target);
+          const [x] = list.splice(from, 1);
+          list.splice(to, 0, x);
+          setSaved({ ...layout, cards: list });
+        }}
+        template={
+          <Select<HomeTemplateId>
+            value={layout.template}
+            options={(Object.keys(TEMPLATES) as HomeTemplateId[]).map((id) => ({ value: id, label: TEMPLATES[id].name, hint: TEMPLATES[id].hint }))}
+            onChange={(t) => setSaved(fromTemplate(t))}
+            label="Start from"
+            renderValue={(o) => (
+              <span className="sel-text">
+                Start from: <b>{o?.label}</b>
+              </span>
+            )}
+          />
+        }
+        onReset={() => setSaved(null)}
+      />
+    </div>
   );
 }

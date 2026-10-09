@@ -20,7 +20,8 @@ export interface MoreLink {
 
 /**
  * More, on phones: jump (search), make something new, open another app, pick up where you were (Recent), then Ask AI,
- * Notifications, editing the bar and Account. Editing the bar happens in the same sheet.
+ * editing the bar and Account. Editing the bar happens in the same sheet. (Notifications live on Home, in Updates; a
+ * screen that has no Home, like a guest portal, can still pass onNotices to list them here.)
  */
 export function MoreSheet({
   onClose,
@@ -45,8 +46,8 @@ export function MoreSheet({
   onApp: (id: string) => void;
   current: string;
   recent: MoreLink[];
-  notices: number;
-  onNotices: () => void;
+  notices?: number;
+  onNotices?: () => void;
   onAsk?: () => void;
   onAccount: () => void;
   editing: boolean;
@@ -137,11 +138,13 @@ export function MoreSheet({
 
               <div className="as-sep" />
               <div className="as-list">
-                <button type="button" className="as-item" onClick={onNotices}>
-                  <Bell size={18} className="as-icon" />
-                  <span className="as-label">Notifications</span>
-                  {notices > 0 && <b className="more-count">{notices > 99 ? '99+' : notices}</b>}
-                </button>
+                {onNotices && (
+                  <button type="button" className="as-item" onClick={onNotices}>
+                    <Bell size={18} className="as-icon" />
+                    <span className="as-label">Notifications</span>
+                    {!!notices && <b className="more-count">{notices > 99 ? '99+' : notices}</b>}
+                  </button>
+                )}
                 {onAsk && (
                   <button type="button" className="as-item" onClick={() => (onClose(), onAsk())}>
                     <Sparkles size={18} className="as-icon" />

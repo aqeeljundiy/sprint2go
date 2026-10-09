@@ -73,6 +73,7 @@ import { offerInstall } from './components/InstallPrompt';
 import { BottomBar } from './mobile/BottomBar';
 import { MoreSheet } from './mobile/MoreSheet';
 import { duplicateOf } from './components/tasks/taskOps';
+import { needsCount, needsYou } from './needsYou';
 import { DEFAULT_BAR, MORE_ORDER, companyBar } from './mobile/BarDefaults';
 import { useChrome, useFocusedScreen } from './mobile/chrome';
 import { PHONE, TABLET, useMedia } from './mobile/media';
@@ -3049,8 +3050,28 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     return n;
   }, [chatUnread, wsChannels, messages, lastRead, myFirst, user.id]);
-  const unreadNotices = myNotices.filter((n) => !n.read).length;
-  const barBadge = (id: AppId) => (id === 'home' ? unreadNotices : id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : 0);
+  // Home's badge: what's in its "Needs you" list (src/needsYou.ts, the same rules Home and the AI connector use).
+  const needsBadge = useMemo(
+    () =>
+      needsCount(
+        needsYou({
+          me: user.id,
+          today: localDay(),
+          now: Date.now(),
+          tasks: wsTasks,
+          stageKind: (t) => stageKind(t as Todo),
+          teams: wsTeams,
+          clients: wsClients,
+          isOwner: ws.members.some((m) => m.userId === user.id && m.role === 'owner'),
+          firstName: (id) => firstOf(id),
+          threads: scoped,
+          mine: isMine,
+          notices: myNotices,
+        }),
+      ),
+    [wsTasks, wsTeams, wsClients, scoped, myNotices, user.id, ws.members], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const barBadge = (id: AppId) => (id === 'home' ? needsBadge : id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : 0);
   // Search: inside the app on screen when it has things to search, with "All apps" one tap away.
   const [searchScope, setSearchScope] = useState<AppId | null>(null);
   const openSearch = (scope: AppId | null) => (setSearchScope(scope), setPaletteOpen(true));
@@ -3687,6 +3708,38 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenClient={openClient}
             onOpenMeeting={openMeeting}
             onNotice={openNotice}
+            onStart={(id) => {
+              const t = todos.find((x) => x.id === id);
+              if (t) setTaskStatus(id, stageIdFor(t, 'active'));
+            }}
+            onReschedule={(id, day) => patchTask(id, { due: day || undefined })}
+            onReadNotices={(ids) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)))}
+            onAllNotices={() => setNoticesOpen(true)}
+            calls={wsChannels
+              .filter((c) => c.huddle && c.huddle.members.some((m) => m !== user.id) && huddleId !== c.id)
+              .map((c) => ({ id: c.id, name: c.name, people: c.huddle!.members.filter((m) => m !== user.id).map((m) => allUsers.find((u) => u.id === m)).filter((u): u is User => !!u) }))}
+            onJoinHuddle={
+              server.on
+                ? (id) => {
+                    if (huddleId && huddleId !== id) leaveHuddle();
+                    setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, huddle: { by: c.huddle?.by ?? user.id, at: c.huddle?.at ?? nowIso(), members: [...new Set([...(c.huddle?.members ?? []), user.id])] } } : c)));
+                    setHuddleId(id);
+                    openChannel(id);
+                  }
+                : (id) => openChannel(id)
+            }
+            botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
+            onBotJoin={
+              autoJoin === 'live'
+                ? (e, join) => {
+                    const byRule = botJoins(e, meetSettings.joinMode, {}, isMine);
+                    setBotJoin(e.id, join === byRule ? null : join);
+                    showToast({ text: join ? `The notetaker will join “${e.title}”` : `The notetaker won’t join “${e.title}”`, action: { label: 'Undo', run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
+                  }
+                : undefined
+            }
+            onSendNotetaker={botOn && autoJoin !== 'live' ? sendNotetakerTo : undefined}
+            notetakerSent={sentFor}
             onMenu={() => setSidebarOpen(true)}
             news={news.filter((n) => !newsSeen.includes(n.id))}
             onDismissNews={(id) => setNewsSeen((s) => [...s.slice(-50), id])}
@@ -4435,8 +4488,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onApp={(id) => go(id as AppId)}
           current={mode}
           recent={recentLinks}
-          notices={unreadNotices}
-          onNotices={() => (setMoreOpen(false), setNoticesOpen(true))}
           onAsk={toggleAsk}
           onAccount={() => go('settings')}
           editing={editingBar}

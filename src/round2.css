@@ -943,26 +943,11 @@ button.cell:hover {
 }
 
 @media (max-width: 767px) {
-  .home-grid.cards {
-    grid-template-columns: 1fr;
-  }
-  .home-grid.cards .home-card.wide {
-    grid-column: auto;
-  }
   .phone-only {
     display: inline-flex !important;
   }
   .hide-phone {
     display: none !important;
-  }
-  .pulse {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .customise-btn {
-    padding: 6px 10px;
-  }
-  .tr-name {
-    flex-basis: 96px;
   }
 }
 .he-row .sel {

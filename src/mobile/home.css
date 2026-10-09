@@ -3,4 +3,186 @@
    Loaded after src/system.css and src/mobile/shell.css, so a rule here wins over the old ones without
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
+   The shared look of Needs you, Today and Updates is in src/home.css.
    ========================================================================== */
+
+@media (max-width: 767px) {
+  /* The top bar says Home and search is in it: no greeting, no second search box. The first thing that needs
+     you sits right under the bar. */
+  .home-head,
+  .home-search {
+    display: none;
+  }
+  .home-scroll {
+    padding: 8px 12px calc(24px + var(--fab-space));
+  }
+  .news-card {
+    margin-bottom: 10px;
+  }
+
+  .hsec {
+    padding: 10px 12px 6px;
+    border-radius: 16px;
+  }
+  .hsec + .hsec,
+  .home-top + .hsec,
+  .hsec + .setup-card {
+    margin-top: 12px;
+  }
+  .home-top > .hsec + .hsec {
+    margin-top: 0;
+  }
+  .home-top {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .hsec-h {
+    min-height: 32px;
+    font-size: 16px;
+  }
+  .hsec-h .link-btn {
+    min-height: 40px;
+  }
+
+  /* Needs you: bigger rows and their one action, swipeable. */
+  .ny-row {
+    gap: 10px;
+    min-height: 60px;
+    padding: 10px 2px;
+  }
+  .ny-text strong {
+    font-size: 15px;
+  }
+  .ny-text small {
+    font-size: 13px;
+  }
+  .ny-btn {
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .sel.ny-assign {
+    height: 40px;
+  }
+  .ny-more {
+    min-height: 40px;
+    margin: 2px 0 4px 42px;
+  }
+
+  /* The meeting strip: what and when on top, the notetaker and Join under it. */
+  .upn,
+  .hcall {
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 12px;
+  }
+  .upn-text,
+  .hcall-text {
+    flex: 1 1 calc(100% - 46px);
+  }
+  .upn-text strong {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .upn-bot,
+  .upn-send,
+  .upn-sent {
+    margin-left: 46px;
+    min-height: 40px;
+  }
+  .upn .upn-join,
+  .upn > .ghost-btn:last-child,
+  .hcall > .primary-btn {
+    margin-left: auto;
+    min-height: 40px;
+    padding-inline: 18px;
+  }
+  .hcall-faces {
+    margin-left: 46px;
+  }
+
+  /* Today */
+  .htd-ev {
+    min-height: 48px;
+  }
+  .htd-ev time {
+    width: 60px;
+    font-size: 13px;
+  }
+  .htd-ev-title,
+  .htd-title {
+    font-size: 15px;
+  }
+  .htd-ev .ghost-btn {
+    min-height: 36px;
+  }
+  .htd-task {
+    padding: 8px 0;
+  }
+  .htd-task .trow-check {
+    width: 44px;
+    height: 44px;
+    margin: -8px -6px -8px -8px;
+  }
+  .htd-task .trow-check .ring {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Updates: the bell's place on phones. */
+  .hupd-row {
+    min-height: 56px;
+  }
+  .hupd-text {
+    font-size: 15px;
+  }
+
+  /* Customise, as a list */
+  .hcust-moves .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .home-customise {
+    min-height: var(--tap);
+  }
+
+  /* The cards under it: one column. */
+  .home-grid,
+  .home-grid.cards {
+    grid-template-columns: 1fr;
+  }
+  .home-grid.cards .home-card.wide {
+    grid-column: auto;
+  }
+  .home-dump {
+    flex-wrap: wrap;
+    border-radius: 18px;
+    padding: 8px 8px 8px 14px;
+  }
+  .home-dump input {
+    flex-basis: calc(100% - 40px);
+  }
+  .home-dump .primary-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .pulse {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .tr-name {
+    flex-basis: 96px;
+  }
+  /* Titles wrap to two lines instead of being cut mid-word (a date chip used to squeeze them). */
+  .home-task {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .home-task .ht-title {
+    flex: 1 1 calc(100% - 40px);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
