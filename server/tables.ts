@@ -4,7 +4,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { cellText, guessField, isEmpty, parseIncoming, passes, rowName, valueOf } from '../src/components/tables/core.ts';
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
-import { cleanStages, stageIdFor } from '../src/stages.ts';
+import { stageIdFor, stagesFrom } from '../src/stages.ts';
 import { companyTz } from '../src/jobTimes.ts';
 
 export interface Env {
@@ -198,7 +198,8 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
       const who = personFrom(a.assignee, t, r, me) ?? '';
       const due = a.dueDays != null ? new Date(Date.now() + a.dueDays * 86_400_000).toISOString().slice(0, 10) : undefined;
       const title = fill(a.title || 'Follow up {' + t.fields[0].name + '}', t, r, users).slice(0, 200);
-      const stages = cleanStages((db.getDoc('workspaces', t.workspaceId) as any)?.taskStages);
+      // The project's own stages when the table belongs to one that has them, else the company's.
+      const stages = stagesFrom({ client: t.clientId ? (db.getDoc('clients', t.clientId) as any) : null, workspace: db.getDoc('workspaces', t.workspaceId) as any });
       const task = { id: uid(), title, userId: who, assignees: who ? [who] : [], due, done: false, status: stageIdFor(t, 'open', stages), priority: 'normal', source: 'manual', workspaceId: t.workspaceId, clientId: t.clientId, createdBy: me, createdAt: now(), notes: `From ${t.name}: ${rowName(t, r)}`, history: [{ id: uid(), at: now(), by: me, kind: 'created' }] };
       save(env, 'todos', [task]);
       if (who && who !== me) save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', text: `New task: ${title}`, at: now(), read: false, link: { app: 'tasks', id: task.id } }]);

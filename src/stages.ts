@@ -1,6 +1,8 @@
 // A company's task stages: the board's columns and the choices for a task's status. Admins rename, add, reorder,
 // colour and remove them (Settings, Task stages). Each stage has a kind, and everything that reacts to where a task
 // is (Home, reminders, approvals, the guest portal, the server) checks the kind, never a stage's id or name.
+// A project or a team can use its own stages instead (its settings, starting from a copy of the company's): a task
+// follows its project's own stages, else its team's own, else the company's (stagesForTask).
 // The five built-in stages keep the ids tasks always had ('todo', 'doing', 'waiting', 'review', 'done'), so nothing
 // needs moving; stages a company adds get new ids.
 import { term } from './terms';
@@ -63,32 +65,103 @@ export function cleanStages(list: unknown): TaskStage[] {
   return out.some((s) => s.kind === 'open') && out.some((s) => s.kind === 'done') ? out : DEFAULT_STAGES;
 }
 
-// Every company's stages this person can see, so any screen finds a task's stage from its workspace.
+// Every company's stages this person can see, so any screen finds a task's stage from its workspace; and the projects
+// and teams that use stages of their own.
 const registry = new Map<string, { from: TaskStage[] | undefined; list: TaskStage[] }>();
+const own = { clients: new Map<string, { from: TaskStage[]; list: TaskStage[] }>(), teams: new Map<string, { from: TaskStage[]; list: TaskStage[] }>() };
 let current = '';
-/** Called while the app renders (like the company's words): every workspace on hand, and the one on screen. */
-export function registerStages(workspaces: Pick<Workspace, 'id' | 'taskStages'>[], currentId?: string) {
+type WithStages = { id: string; taskStages?: TaskStage[] };
+/** A project's or team's own list, when it has a usable one (else it follows the company's). */
+export const ownList = (x: { taskStages?: TaskStage[] } | undefined | null): TaskStage[] | null => {
+  if (!x?.taskStages?.length) return null;
+  const c = cleanStages(x.taskStages);
+  return c === DEFAULT_STAGES ? null : c;
+};
+function keep(map: Map<string, { from: TaskStage[]; list: TaskStage[] }>, list: WithStages[] | undefined) {
+  if (!list) return;
+  const seen = new Set<string>();
+  for (const x of list) {
+    seen.add(x.id);
+    if (!x.taskStages?.length) map.delete(x.id);
+    else if (map.get(x.id)?.from !== x.taskStages) {
+      const l = ownList(x);
+      if (l) map.set(x.id, { from: x.taskStages, list: l });
+      else map.delete(x.id);
+    }
+  }
+  for (const id of [...map.keys()]) if (!seen.has(id)) map.delete(id);
+}
+/**
+ * Called while the app renders (like the company's words): every workspace on hand, and the one on screen; with the
+ * projects and teams on hand, the ones that use their own stages.
+ */
+export function registerStages(workspaces: Pick<Workspace, 'id' | 'taskStages'>[], currentId?: string, extra?: { clients?: WithStages[]; teams?: WithStages[] }) {
   for (const w of workspaces) {
     if (registry.get(w.id)?.from === w.taskStages) continue; // unchanged: keep the same list, so memos hold
     registry.set(w.id, { from: w.taskStages, list: w.taskStages?.length ? cleanStages(w.taskStages) : DEFAULT_STAGES });
   }
+  keep(own.clients, extra?.clients);
+  keep(own.teams, extra?.teams);
   if (currentId) current = currentId;
 }
 /** A company's stages in board order (the one on screen when there's no id). */
 export const stagesFor = (wsId?: string): TaskStage[] => (registry.get(wsId || current) ?? registry.get(current))?.list ?? DEFAULT_STAGES;
+/** A project's own stages, else null (it follows its team's or the company's). */
+export const projectStages = (clientId?: string) => (clientId ? own.clients.get(clientId)?.list ?? null : null);
+/** A team's own stages, else null. */
+export const teamStages = (teamId?: string) => (teamId ? own.teams.get(teamId)?.list ?? null : null);
+type TaskRef = Pick<Todo, 'workspaceId'> & Partial<Pick<Todo, 'clientId' | 'teamId'>>;
+/** The stages a task follows: its project's own, else its team's own, else its company's. */
+export const stagesForTask = (t: TaskRef): TaskStage[] => projectStages(t.clientId) ?? teamStages(t.teamId) ?? stagesFor(t.workspaceId);
+/**
+ * The same, from the documents themselves (the server, which has no registry): the project's own, the team's own, or
+ * the company's.
+ */
+export const stagesFrom = (src: { client?: { taskStages?: TaskStage[] } | null; team?: { taskStages?: TaskStage[] } | null; workspace?: { taskStages?: TaskStage[] } | null }): TaskStage[] =>
+  ownList(src.client) ?? ownList(src.team) ?? (src.workspace?.taskStages?.length ? cleanStages(src.workspace.taskStages) : DEFAULT_STAGES);
+/** The board's columns for a page: a project's or team's own stages there, else the company's. */
+export const stagesForScope = (wsId: string, scope: { clientId?: string; teamId?: string }): TaskStage[] => projectStages(scope.clientId) ?? teamStages(scope.teamId) ?? stagesFor(wsId);
+
+/**
+ * Which board column a task sits in when the board's stages aren't its own (My tasks, across projects with stages of
+ * their own): its own stage when the board has it, else the board's first stage of the same kind.
+ */
+export function columnOf(t: Pick<Todo, 'status' | 'done' | 'workspaceId'> & Partial<Pick<Todo, 'clientId' | 'teamId'>>, board: TaskStage[]): TaskStage {
+  const mine = stageOf(t);
+  return board.find((s) => s.id === mine.id && s.kind === mine.kind) ?? firstOf(mine.kind, board) ?? (mine.kind === 'done' ? firstOf('done', board) : firstOf('open', board)) ?? board[0];
+}
+/** Moving a task onto a board column of other stages: the task's own first stage of that column's kind. */
+export const ownStageForColumn = (t: TaskRef, col: TaskStage): TaskStage => {
+  const list = stagesForTask(t);
+  return list.find((s) => s.id === col.id) ?? firstOf(col.kind, list) ?? (col.kind === 'done' ? firstOf('done', list) : firstOf('open', list)) ?? list[0];
+};
+
+/**
+ * A task moving to another project or team whose stages are different: its stage of the same name there, else the
+ * first stage (a finished task stays finished: the first done stage). Null when the stages are the same.
+ */
+export function stageAfterMove(t: Pick<Todo, 'status' | 'done' | 'workspaceId'> & Partial<Pick<Todo, 'clientId' | 'teamId'>>, next: TaskRef): { stage: TaskStage; kept: boolean; from: TaskStage } | null {
+  const before = stagesForTask(t);
+  const after = stagesForTask(next);
+  if (before === after || JSON.stringify(before) === JSON.stringify(after)) return null;
+  const from = stageOf(t, before);
+  const same = after.find((s) => stageName(s).trim().toLowerCase() === stageName(from).trim().toLowerCase() && (s.kind === 'done') === (from.kind === 'done'));
+  const stage = same ?? (t.done ? firstOf('done', after) : after[0]) ?? after[0];
+  return { stage, kept: !!same, from };
+}
 
 export const firstOf = (kind: StageKind, list: TaskStage[]) => list.find((s) => s.kind === kind);
 export const hasKind = (kind: StageKind, wsId?: string) => stagesFor(wsId).some((s) => s.kind === kind);
 
 /** A task's stage. One whose stage was removed (or that never had one) sits in the first open or done stage. */
-export function stageOf(t: Pick<Todo, 'status' | 'done' | 'workspaceId'>, list: TaskStage[] = stagesFor(t.workspaceId)): TaskStage {
+export function stageOf(t: Pick<Todo, 'status' | 'done' | 'workspaceId'> & Partial<Pick<Todo, 'clientId' | 'teamId'>>, list: TaskStage[] = stagesForTask(t)): TaskStage {
   const s = t.status ? list.find((x) => x.id === t.status) : undefined;
   if (s && (s.kind === 'done') === !!t.done) return s;
   return (t.done ? firstOf('done', list) : firstOf('open', list)) ?? list[0];
 }
-export const kindOf = (t: Pick<Todo, 'status' | 'done' | 'workspaceId'>, list?: TaskStage[]): StageKind => stageOf(t, list).kind;
+export const kindOf = (t: Pick<Todo, 'status' | 'done' | 'workspaceId'> & Partial<Pick<Todo, 'clientId' | 'teamId'>>, list?: TaskStage[]): StageKind => stageOf(t, list).kind;
 
 /** Where a task goes for a kind: Start is the first active stage, ticking it the first done one, unticking the first open one. */
-export function stageIdFor(t: Pick<Todo, 'workspaceId'>, kind: StageKind, list: TaskStage[] = stagesFor(t.workspaceId)): string {
+export function stageIdFor(t: TaskRef, kind: StageKind, list: TaskStage[] = stagesForTask(t)): string {
   return (firstOf(kind, list) ?? firstOf(kind === 'done' ? 'done' : 'open', list) ?? list[0]).id;
 }

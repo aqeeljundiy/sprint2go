@@ -17,7 +17,8 @@ import * as turn from './turn.ts';
 import * as twostep from './twostep.ts';
 import * as sandbox from './sandbox.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
-import type { Plan, Tier, Track } from '../src/types.ts';
+import type { Plan, PlanAdjustment, Tier, Track } from '../src/types.ts';
+import { isZone } from '../src/jobTimes.ts';
 
 export interface AdminCtx {
   req: IncomingMessage;
@@ -79,6 +80,9 @@ export function mrrOf(ws: any, people: number): { mrr: number; state: State; aft
   return { mrr: full, state: 'paying', discount };
 }
 
+/** A company's money now, for the people active this month: the same rule as its invoice and its billing page. */
+export const mrrNow = (ws: any) => mrrOf(ws, billing.activePeople(ws).active);
+
 /** 0 to 100, with the parts it's made of. Below 40 is "at risk". */
 function healthOf(c: { lastActive: string | null; people: number; state: State; openTickets: number; overdue: number; setupDone: number; setupTotal: number }) {
   const ago = c.lastActive ? (Date.now() - Date.parse(c.lastActive)) / DAY : Infinity;
@@ -108,7 +112,9 @@ function companyRows(ctx: AdminCtx) {
     const people = members.length;
     const owner = byId.get(members.find((m: any) => m.role === 'owner')?.userId);
     const lastActive = members.map((m: any) => seen.get(m.userId) ?? '').sort().pop() || null;
-    const money = mrrOf(ws, people);
+    // Monthly revenue counts the people who are active this month, the same rule as the invoice and the billing page.
+    const active = billing.activePeople(ws).active;
+    const money = mrrNow(ws);
     const projects = clients.filter((c) => c.workspaceId === ws.id);
     const guests = projects.reduce((n, c) => n + (c.people ?? []).filter((p: any) => p.status === 'joined').length, 0);
     const openTickets = tix.filter((t) => t.workspaceId === ws.id).length;
@@ -122,6 +128,7 @@ function companyRows(ctx: AdminCtx) {
       plan: ws.plan ? { tier: ws.plan.tier, track: ws.plan.track, cycle: ws.plan.cycle, trialEnds: ws.plan.trialEnds ?? null, paused: !!ws.plan.paused, comp: ws.plan.comp ?? null, discount: ws.plan.discount ?? null, addons: ws.plan.addons, billing: ws.plan.billing ?? null } : null,
       ...money,
       people,
+      active,
       guests,
       projects: projects.length,
       owner: owner ? { id: owner.id, name: owner.name, email: owner.email } : null,
@@ -266,7 +273,7 @@ export async function checkAlerts(ctx: AdminCtx) {
  * A month's invoice: the plan for the people who were active that month (signed in or used sprint2go; the billing
  * page promises only they are billed), and the add-ons. The plan line says how many were active, and of how many.
  */
-function invoiceLinesFor(ws: any, period: string) {
+export function invoiceLinesFor(ws: any, period: string) {
   const plan: Plan = ws.plan;
   const { active: people, team } = billing.activePeople(ws, period);
   const t = monthlyTotal(plan, people);
@@ -280,13 +287,23 @@ function invoiceLinesFor(ws: any, period: string) {
   if (a.meetHours10) lines.push({ text: `${a.meetHours10 * 10} more meeting-bot hours`, amount: a.meetHours10 * ADDONS.meetHours10.price });
   if (a.branding) lines.push({ text: 'Branding add-on', amount: ADDONS.branding.price });
   if (plan.topUps) lines.push({ text: `${plan.topUps} AI top-up${plan.topUps === 1 ? '' : 's'}`, amount: plan.topUps * TOP_UP.price });
-  const subtotal = lines.reduce((n, l) => n + l.amount, 0);
+  // Plan switches since the last invoice, prorated: a charge, or a credit (negative). A credit bigger than the invoice
+  // brings it to zero and the rest waits for the next one (`carry`).
+  lines.push(...billing.adjustmentLines(plan));
+  const sum = lines.reduce((n, l) => n + l.amount, 0);
+  if (sum < 0) lines.push({ text: 'Credit left over, taken off your next invoice', amount: -sum });
+  const carry = Math.min(0, sum);
+  const subtotal = Math.max(0, sum);
   const note = plan.tier === 'free' ? undefined : `Active people are those on your team who signed in or used sprint2go in ${month}. Guests and shared inboxes are free.`;
-  return { lines, discount: discountOf(plan, subtotal), note };
+  return { lines, discount: discountOf(plan, subtotal), note, carry };
 }
+/** What waits on a plan after its invoice is made: nothing, or the credit that was bigger than the invoice. */
+const afterInvoice = (carry: number, period: string): PlanAdjustment[] | undefined =>
+  carry < 0 ? [{ id: 'adj-' + randomBytes(5).toString('hex'), at: now(), period, invoiced: true, from: '', to: '', daysBefore: 0, days: 0, amount: carry, text: 'Credit left over from your last invoice' }] : undefined;
 export function invoiceHtml(inv: platform.Invoice, wsName: string) {
   const b = platform.settings().billing;
-  const row = (l: { text: string; amount: number }) => `<tr><td>${esc(l.text)}</td><td class="r">${rp(l.amount)}</td></tr>`;
+  // A credit (a prorated switch to a cheaper plan) shows as one: −Rp 300.000.
+  const row = (l: { text: string; amount: number }) => `<tr><td>${esc(l.text)}${l.amount < 0 ? ' <span class="muted">(credit)</span>' : ''}</td><td class="r">${l.amount < 0 ? `−${rp(-l.amount)}` : rp(l.amount)}</td></tr>`;
   const st = inv.status === 'paid' ? `<span class="paid">Paid ${esc(inv.paidAt?.slice(0, 10))}</span>` : inv.status === 'void' ? '<span class="void">Void</span>' : `Due ${esc(inv.dueAt.slice(0, 10))}`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(inv.number)}</title><style>
 body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#16161d;background:#f5f6f8;margin:0;padding:24px}
@@ -500,11 +517,15 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const track: Track = b.track === 'own' ? 'own' : 'ai';
     const trialDays = Number(b.trialDays ?? 14);
     const plan: Plan = { track, tier, cycle: 'monthly', trialEnds: tier !== 'free' && trialDays > 0 ? new Date(Date.now() + trialDays * DAY).toISOString() : undefined, addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: name, emails: [mail] }, since: now() };
-    const ws = { id: 'ws-' + randomBytes(5).toString('hex'), name, color: colors[Math.floor(Math.random() * colors.length)], domains: [], accounts: [], members: [{ userId: owner.id, role: 'owner' }], plan, createdAt: now(), createdBy: 'operator' };
+    // The company's clock: the zone the operator picked (their own browser's by default), else Jakarta as before.
+    const timeZone = isZone(b.timeZone) ? String(b.timeZone) : undefined;
+    const ws = { id: 'ws-' + randomBytes(5).toString('hex'), name, color: colors[Math.floor(Math.random() * colors.length)], domains: [], accounts: [], members: [{ userId: owner.id, role: 'owner' }], plan, timeZone, createdAt: now(), createdBy: 'operator' };
     saveWs(ws);
+    // An operator's trial is theirs to give; it still counts as the owner's trial for the companies they make later.
+    if (plan.trialEnds) billing.recordTrial(owner.id, mail, ws, 'operator');
     platform.event('company.created', ws.id, owner.id, `by ${email}`);
     const link = db.hasLogin(owner.id) ? null : `${ctx.publicUrl}/?invite=${db.newInvite(owner.id, mail)}`;
-    log('company.create', ws.id, `${name} for ${mail}, ${tier} ${track}${plan.trialEnds ? `, trial ${trialDays} days` : ''}`);
+    log('company.create', ws.id, `${name} for ${mail}, ${tier} ${track}${plan.trialEnds ? `, trial ${trialDays} days` : ''}${timeZone ? `, ${timeZone}` : ''}`);
     return (json(res, 200, { id: ws.id, link, existing: !link }), true);
   }
 
@@ -533,6 +554,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     }
     if (b.billing && typeof b.billing === 'object') (changes.push('billing details'), (plan.billing = { company: String(b.billing.company ?? ws.name).slice(0, 120), npwp: String(b.billing.npwp ?? '').slice(0, 40) || undefined, address: String(b.billing.address ?? '').slice(0, 400) || undefined, emails: (Array.isArray(b.billing.emails) ? b.billing.emails : []).map(String).filter((e: string) => e.includes('@')).slice(0, 5) }));
     if (!changes.length) return (json(res, 200, { ok: true }), true);
+    if (ws.plan) plan.adjustments = billing.adjustmentsOnSave(ws, ws.plan, plan); // a tier or track switch, prorated
     saveWs({ ...ws, plan });
     platform.event('plan.changed', ws.id, null, changes.join('; '));
     log('company.plan', ws.id, changes.join('; '));
@@ -733,6 +755,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
           suspended: u.suspended ?? null,
           hasLogin: db.hasLogin(u.id),
           twoStep: twostep.isOn(u.id),
+          trial: billing.trialsOf(u.id),
           lastSeen: db.lastSeen().get(u.id) ?? null,
           operator: platform.operator(emailOf(u))?.role ?? null,
           disposable: platform.isDisposable(emailOf(u)),
@@ -757,6 +780,16 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     ctx.codes.set(`reset:${emailOf(u)}`, { code, until: Date.now() + 15 * 60_000, tries: 0 } as any);
     log('person.reset-code', u.id, emailOf(u));
     return (json(res, 200, { code, until: new Date(Date.now() + 15 * 60_000).toISOString() }), true);
+  }
+  // One more free trial for someone who already had theirs: their next new company starts on it.
+  if (sub === 'person/trial-grant' && POST) {
+    if (deny('customers')) return true;
+    const b = await body(req);
+    const u = db.getDoc('users', String(b.userId ?? '')) as any;
+    if (!u) return (json(res, 404, { error: 'No such person.' }), true);
+    billing.grantTrial(u.id, email, b.note ? String(b.note).slice(0, 200) : undefined);
+    log('person.trial-grant', u.id, `${emailOf(u)}${b.note ? `: ${b.note}` : ''}`);
+    return (json(res, 200, { ok: true }), true);
   }
   // Lost their phone and their backup codes: two-step sign-in comes off, they're signed out everywhere, and told by email.
   if (sub === 'person/2fa-reset' && POST) {
@@ -853,7 +886,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     return (
       json(res, 200, {
         ticket: { ...t, breaching: !t.firstReplyAt && !!t.dueAt && t.dueAt < now() && (t.status === 'new' || t.status === 'open') },
-        messages: support.messagesOf(t.id, true),
+        messages: support.messagesForOperators(t, db.fileInfo),
         company: company ? { id: company.id, name: company.name, color: company.color, plan: company.plan, state: company.state, mrr: company.mrr, after: company.after, people: company.people, health: company.health, lastActive: company.lastActive } : null,
         person: user ? { id: user.id, name: user.name, email: user.email, color: user.color, lastSeen: db.lastSeen().get(user.id) ?? null, companies: (db.allDocs('workspaces') as any[]).filter((w) => (w.members ?? []).some((m: any) => m.userId === user.id)).map((w) => ({ id: w.id, name: w.name })) } : null,
         others,
@@ -1030,6 +1063,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const custom = Array.isArray(b.lines) && b.lines.length;
     const lines = custom ? b.lines.map((l: any) => ({ text: String(l.text ?? '').slice(0, 200), amount: Math.round(Number(l.amount) || 0) })).filter((l: any) => l.text) : auto.lines;
     const inv = platform.createInvoice({ workspaceId: ws.id, period, lines, discount: 'discount' in b ? Number(b.discount) || 0 : auto.discount, dueDays: Number(b.dueDays ?? 14), billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: b.note ?? (custom ? undefined : auto.note) });
+    if (!custom && (ws.plan.adjustments?.length || auto.carry)) saveWs({ ...ws, plan: { ...ws.plan, adjustments: afterInvoice(auto.carry, period) } }); // the switches are on this invoice now
     log('invoice.create', ws.id, `${inv.number} ${rp(inv.total)}`);
     return (json(res, 200, { id: inv.id }), true);
   }
@@ -1044,7 +1078,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
       const ws = wsById(c.id);
       const auto = invoiceLinesFor(ws, period);
       platform.createInvoice({ workspaceId: c.id, period, lines: auto.lines, discount: auto.discount, dueDays: 14, billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: auto.note });
-      if (ws.plan.topUps) saveWs({ ...ws, plan: { ...ws.plan, topUps: 0 } }); // invoiced: the count starts again
+      // Invoiced: the top-up count starts again, and the prorated switches are on this invoice now.
+      if (ws.plan.topUps || ws.plan.adjustments?.length || auto.carry) saveWs({ ...ws, plan: { ...ws.plan, topUps: 0, adjustments: afterInvoice(auto.carry, period) } });
       made++;
     }
     log('invoice.generate', null, `${made} drafts for ${period}`);
@@ -1256,6 +1291,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         limits: mailer.LIMITS,
         health: await mailer.serverHealth(),
         cert: certState(mailer.MAIL_HOST),
+        dkim: await mailer.platformDkim(),
         blocklists: await mailer.blocklists(),
         queued: mailer.queue('queued').map((q) => ({ ...q, company: names.get(q.workspaceId) ?? (q.workspaceId === 'platform' ? 'sprint2go' : q.workspaceId) })),
         failed: mailer.queue('failed', 100).map((q) => ({ ...q, company: names.get(q.workspaceId) ?? (q.workspaceId === 'platform' ? 'sprint2go' : q.workspaceId) })),

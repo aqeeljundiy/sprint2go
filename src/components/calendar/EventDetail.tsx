@@ -204,7 +204,7 @@ function DetailBody(p: DetailProps) {
       )}
       {event.feed && (
         <Row icon={<Lock size={14} />} muted>
-          {event.feed === 'holidays' ? 'Public holiday, shown to everyone in the company.' : 'Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.'}
+          {event.feed === 'holidays' ? (event.workspaceId ? 'Public holiday, shown to everyone in the company.' : 'Public holiday in a country you chose to see. Just on your calendar.') : 'Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.'}
         </Row>
       )}
       {task && (

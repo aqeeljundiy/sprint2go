@@ -55,6 +55,8 @@ export interface CompanyRow {
   after?: number;
   discount: number;
   people: number;
+  /** People on the team who signed in or used sprint2go this month: what the plan bills, and what `mrr` counts. */
+  active: number;
   guests: number;
   projects: number;
   owner: { id: string; name: string; email: string } | null;

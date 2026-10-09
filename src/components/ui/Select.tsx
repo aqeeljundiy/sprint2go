@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, Plus, Search } from 'lucide-react';
 import { Popover } from './Popover';
 
@@ -47,6 +47,7 @@ export function Select<V extends string = string>({
   create?: { label: string; placeholder?: string; make: (name: string) => V | null };
 }) {
   const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
@@ -60,6 +61,16 @@ export function Select<V extends string = string>({
   };
   const current = options.find((o) => o.value === value);
   const showSearch = searchable ?? options.length > 7;
+  // Focus goes into the list (or its search) once it's placed: the popover is hidden while it measures, and a hidden
+  // field can't take focus, so autoFocus alone left typing in whatever had focus before (a dialog's first field).
+  useEffect(() => {
+    if (!open) return;
+    const f = requestAnimationFrame(() => {
+      const el = pop.current?.querySelector<HTMLElement>(showSearch ? '.sel-search input' : '[role="listbox"]');
+      if (el && document.activeElement !== el) el.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(f);
+  }, [open, showSearch]);
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -123,7 +134,7 @@ export function Select<V extends string = string>({
         )}
       </button>
       <Popover anchor={btn} open={open} onClose={() => (setOpen(false), setQ(''), setMaking(null))} width={width} title={title ?? label}>
-        <div className="sel-pop" onKeyDown={onKey}>
+        <div className="sel-pop" ref={pop} onKeyDown={onKey}>
           {showSearch && (
             <label className="sel-search">
               <Search size={14} />

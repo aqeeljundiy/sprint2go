@@ -6,6 +6,7 @@ import { relative } from '../utils';
 import { Avatar } from './Avatar';
 import { Popover } from './ui/Popover';
 import { SourceMark } from './ConnectCalendar';
+import { HolidayCountries } from './HolidayCountries';
 
 interface Props {
   cursor: Date;
@@ -28,12 +29,16 @@ interface Props {
   isAdmin: boolean;
   onHolidays: () => void; // pick or change the country
   onHolidaysOff: () => void;
+  /** Whose public holidays this person sees (any of our countries; the company's until they choose). */
+  holidayRegions?: string[];
+  companyHolidayCountry?: string;
+  onHolidayRegions?: (codes: string[]) => void;
   /** My open tasks without a time block yet: drag one onto the calendar. */
   toPlan?: { id: string; title: string; sub?: string; late?: boolean }[];
   onPlan?: (id: string) => void; // pick a time for it (phones can't drag): how long, then a free slot
 }
 
-export function CalendarSidebar({ cursor, calendars, external, teammates, shownMates, hidden, busyDays, onCursor, onToggle, onToggleMate, onNew, onAddCalendar, onShare, onSync, onRemove, companyName, isAdmin, onHolidays, onHolidaysOff, toPlan = [], onPlan }: Props) {
+export function CalendarSidebar({ cursor, calendars, external, teammates, shownMates, hidden, busyDays, onCursor, onToggle, onToggleMate, onNew, onAddCalendar, onShare, onSync, onRemove, companyName, isAdmin, onHolidays, onHolidaysOff, holidayRegions, companyHolidayCountry, onHolidayRegions, toPlan = [], onPlan }: Props) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null);
   const anchor = useRef<HTMLElement | null>(null);
@@ -41,6 +46,7 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
   const groupOf = (c: CalendarDef) => c.account ?? (c.source === 'holidays' ? 'Public holidays' : 'Calendar links');
   const accounts = [...new Set(external.map(groupOf))];
   const companyHolidays = menuCal?.source === 'holidays' && !!menuCal.workspaceId;
+  const myHolidays = menuCal?.source === 'holidays' && !menuCal.workspaceId; // another country, chosen by this person
   const sync = async (id: string) => {
     setSyncing(id);
     try {
@@ -188,6 +194,9 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
                   </div>
                 );
               })}
+            {acc === 'Public holidays' && holidayRegions && onHolidayRegions && (
+              <HolidayCountries regions={holidayRegions} company={companyHolidayCountry} companyName={companyName} onChange={onHolidayRegions} />
+            )}
           </nav>
         </div>
       ))}
@@ -236,11 +245,11 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
                 {menuCal.source === 'holidays' ? <Globe size={14} /> : <RefreshCw size={14} />}
                 <span>
                   <strong>{menuCal.syncedAt ? `Updated ${relative(menuCal.syncedAt)}` : 'Reading it now…'}</strong>
-                  <small>{companyHolidays ? `For everyone at ${companyName}. Checked daily.` : 'Read only. Updates every 30 minutes.'}</small>
+                  <small>{companyHolidays ? `For everyone at ${companyName}. Checked daily.` : myHolidays ? 'Only on your calendar. Checked daily.' : 'Read only. Updates every 30 minutes.'}</small>
                 </span>
               </div>
             ) : null}
-            {!companyHolidays && (
+            {!companyHolidays && !myHolidays && (
               <>
                 <div className="sel-group">Teammates see</div>
                 {(
@@ -277,11 +286,11 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
                   </button>
                 </>
               ) : (
-                <p className="cal-menu-note">Owners and admins pick the country, in Settings, General. Untick it to hide it just for you.</p>
+                <p className="cal-menu-note">Owners and admins pick the company’s country, in Settings, General. Untick it to hide it just for you, or choose other countries under Public holidays.</p>
               )
             ) : (
               <button className="sel-opt danger" onClick={() => (onRemove(menuCal.id), setMenuFor(null))}>
-                <Trash2 size={14} /> Remove calendar
+                <Trash2 size={14} /> {myHolidays ? 'Remove from my calendar' : 'Remove calendar'}
               </button>
             )}
           </div>
@@ -290,3 +299,4 @@ export function CalendarSidebar({ cursor, calendars, external, teammates, shownM
     </>
   );
 }
+

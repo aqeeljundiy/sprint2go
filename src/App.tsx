@@ -39,6 +39,8 @@ import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped }
 import { isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
+import { inviteCalendarTimes } from './inviteTimes';
+import { isPersonalHoliday, personalHolidayId, regionsToSave, useHolidayRegions } from './holidayRegions';
 import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
 import { EmailDeliverySection } from './components/admin/EmailDelivery';
@@ -70,6 +72,7 @@ import type { DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
+import { openSettingsList } from './components/settingsList';
 import { PushScreen } from './components/ui/PushScreen';
 import { Sheet } from './components/ui/Sheet';
 import { offerInstall } from './components/InstallPrompt';
@@ -84,7 +87,7 @@ import { SEARCHABLE } from './components/CommandPalette';
 import type { ToastMsg } from './toast';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
-import { firstOf as firstStage, kindOf as stageKind, registerStages, stageIdFor, stageName, stageOf, stagesFor } from './stages';
+import { firstOf as firstStage, kindOf as stageKind, registerStages, stageAfterMove, stageIdFor, stageName, stageOf, stagesForTask } from './stages';
 import { celebrate } from './components/ui/confetti';
 import type { AskScope, MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS, trialPlan } from './data/workspaces';
@@ -169,7 +172,8 @@ function PushedSettings({ push, onBack, children }: { push: { label: string } | 
   );
 }
 
-type Toast = { id: number; text: string; action?: { label: string; run: () => void }; more?: { label: string; run: () => void }; ms?: number };
+/** `quiet`: news nobody asked for just now (to-dos found in the background). Phones show it over the top bar, not over content. `more`: a second button (Open next to Undo). */
+type Toast = { id: number; text: string; action?: { label: string; run: () => void }; more?: { label: string; run: () => void }; ms?: number; quiet?: boolean };
 type ComposeState = { key: number; draftId?: string; initial?: Outgoing };
 
 interface AppProps {
@@ -474,6 +478,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
   const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal' | undefined>(undefined);
   const [teams, setTeams] = useStored('teams');
+  registerStages([], undefined, { clients, teams }); // projects and teams with stages of their own
   const [statuses, setStatuses] = useStored('statuses');
   const [savedTemplates, setSavedTemplates] = useStored('templates');
   const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
@@ -802,9 +807,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     );
   /** After the mail engine took an email: "sent", with Undo for as long as it's still waiting there. */
   const sentToast = async (r: Response, text: string, undo: () => void) => {
-    const d = (await r.json().catch(() => ({}))) as { held?: boolean; until?: string };
+    const d = (await r.json().catch(() => ({}))) as { held?: boolean; until?: string; note?: string };
     const left = d.held && d.until ? Date.parse(d.until) - Date.now() - 300 : 0;
-    showToast(left > 1000 ? { text, ms: left, action: { label: 'Undo', run: undo } } : { text });
+    // `note`: a local server kept it on this computer instead of sending it out.
+    if (d.note) text = d.note;
+    showToast(left > 1000 ? { text, ms: Math.max(left, d.note ? 6000 : 0), action: { label: 'Undo', run: undo } } : { text, ms: d.note ? 6000 : undefined });
   };
   const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number } | null>(null);
 
@@ -1138,7 +1145,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const have = new Set(todosRef.current.filter((x) => x.threadId === t.id && (shared || x.userId === user.id)).map((x) => x.title.toLowerCase()));
         const next = found
           .filter((f) => !have.has(f.title.toLowerCase()))
-          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: stageIdFor({ workspaceId: ws.id }, 'open'), threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
+          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: stageIdFor({ workspaceId: ws.id, clientId: clientForThread(t)?.id }, 'open'), threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
         // Remember it on the email itself, so no reload or other device reads it again.
         const mark = `${user.id}:${last.id}`;
         setThreads((ts) => ts.map((x) => (x.id === t.id && !x.scannedFor?.includes(mark) ? { ...x, scannedFor: [...(x.scannedFor ?? []), mark].slice(-20) } : x)));
@@ -1158,6 +1165,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         showToast({
           text: `✨ Found ${added} to-do${added > 1 ? 's' : ''} in your email`,
           action: { label: 'View', run: () => openTasks({ kind: 'mine' }) },
+          quiet: true,
         });
       else if (force) showToast({ text: 'No new to-dos found' });
     });
@@ -1630,8 +1638,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   function setTaskStatus(id: string, requested: TaskStatus, quiet = false) {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    // Stages are the company's own; what happens depends on the kind of stage, not on its name.
-    const list = stagesFor(t.workspaceId);
+    // The task's own stages (its project's or team's, else the company's); what happens depends on the kind, not the name.
+    const list = stagesForTask(t);
     const target = list.find((s) => s.id === requested);
     if (!target) return;
     const from = stageOf(t, list);
@@ -1727,8 +1735,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // Keep userId (first person doing it) and assignees in step.
     if (patch.userId !== undefined && patch.assignees === undefined && t) patch = { ...patch, assignees: patch.userId ? [patch.userId, ...doersOf(t).filter((x) => x !== patch.userId && x !== t.userId)] : [] };
     if (patch.assignees && patch.userId === undefined) patch = { ...patch, userId: patch.assignees[0] ?? '' };
+    // Moving to a project or team with stages of its own: the stage of the same name there, else its first stage.
+    const moved = t && !('status' in patch) && (('clientId' in patch && patch.clientId !== t.clientId) || ('teamId' in patch && patch.teamId !== t.teamId)) ? stageAfterMove(t, { ...t, ...patch }) : null;
+    if (moved) patch = { ...patch, status: moved.stage.id, done: moved.stage.kind === 'done', ...(moved.stage.kind === 'done' ? {} : { doneAt: undefined, doneBy: undefined }) };
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     if (!t) return;
+    if (moved) {
+      const where = 'clientId' in patch && patch.clientId !== t.clientId ? (clients.find((c) => c.id === patch.clientId)?.name ?? 'no project') : (teams.find((x) => x.id === patch.teamId)?.name ?? 'no team');
+      logTask(id, 'status', moved.kept ? `kept it in ${stageName(moved.stage)} when it moved to ${where}` : `moved it to ${stageName(moved.stage)} when it moved to ${where}, which has no ${stageName(moved.from)} stage`);
+      showToast({ text: moved.kept ? `Moved to ${where}, still in “${stageName(moved.stage)}”.` : `Moved to ${where}, which has no “${stageName(moved.from)}” stage, so the task is in “${stageName(moved.stage)}” now.`, ms: moved.kept ? undefined : 7000 });
+    }
     const before = doersOf(t);
     if (patch.assignees) {
       const added = patch.assignees.filter((x) => !before.includes(x));
@@ -2528,27 +2544,30 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // My outside calendars (personal: they show in every workspace), this company's public holidays, and teammates'
   // availability on top.
-  const myExtCals = useMemo(() => extCals.filter((c) => c.ownerId === user.id || (c.source === 'holidays' && c.workspaceId === ws.id)), [extCals, user.id, ws.id]);
+  // Public holidays: the countries this person chose (the company's until they choose), src/holidayRegions.ts.
+  const holidays = useHolidayRegions({ chosen: settings.holidayRegions, companyCountry: ws.holidays?.country, live: server.on });
+  const setHolidayRegions = (codes: string[]) => updateSettings({ holidayRegions: regionsToSave(codes, ws.holidays?.country) });
+  const myExtCals = useMemo(() => [...extCals.filter((c) => c.ownerId === user.id || (c.source === 'holidays' && c.workspaceId === ws.id && holidays.showCompany)), ...holidays.calendars], [extCals, user.id, ws.id, holidays.showCompany, holidays.calendars]);
   const extIds = useMemo(() => new Set(extCals.map((c) => c.id)), [extCals]);
-  // Public holidays by day, for the date picker and tasks due on a holiday.
+  // Public holidays by day, for the date picker and tasks due on a holiday (the countries this person sees).
   const holidayDays = useMemo(() => {
     const days = new Map<string, string>();
-    for (const e of events) {
-      if (e.feed !== 'holidays' || e.workspaceId !== ws.id) continue;
+    for (const e of [...events, ...holidays.events]) {
+      if (e.feed !== 'holidays' || (e.workspaceId ? e.workspaceId !== ws.id || !holidays.showCompany : false)) continue;
       for (let d = new Date(e.start); d < new Date(e.end); d.setDate(d.getDate() + 1)) {
         const day = localDay(d);
         days.set(day, days.has(day) ? `${days.get(day)}, ${e.title}` : e.title);
       }
     }
     return days;
-  }, [events, ws.id]);
+  }, [events, ws.id, holidays.events, holidays.showCompany]);
   setHolidayDays(holidayDays);
   const mateCals = useMemo(() => members.filter((u) => shownMates.has(u.id)).map((u) => ({ id: `mate-${u.id}`, name: u.name, color: u.color })), [members, shownMates]);
   const allCals = useMemo(() => [...CALENDARS, ...myExtCals, ...mateCals], [myExtCals, mateCals]);
   const visibleEvents = useMemo(() => {
     const mine = events.filter((e) => {
       if (hiddenCals.has(e.calendarId)) return false;
-      if (e.feed === 'holidays') return e.workspaceId === ws.id; // the company's: everyone's
+      if (e.feed === 'holidays') return e.workspaceId === ws.id && holidays.showCompany; // the company's, unless they chose other countries
       return (e.userId ?? 'u-aqeel') === user.id && (extIds.has(e.calendarId) ? myExtCals.some((c) => c.id === e.calendarId) : (e.workspaceId ?? 'pnp') === ws.id);
     });
     const mates = events.flatMap((e) => {
@@ -2562,8 +2581,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const first = (allUsers.find((u) => u.id === owner)?.name ?? 'Someone').split(' ')[0];
       return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${share === 'busy' || e.busy ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined, meetUrl: undefined }];
     });
-    return [...mine, ...mates];
-  }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers]);
+    return [...mine, ...holidays.events.filter((e) => !hiddenCals.has(e.calendarId)), ...mates];
+  }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers, holidays.events, holidays.showCompany]);
   const myEvents = useMemo(() => visibleEvents.filter((e) => !e.calendarId.startsWith('mate-')), [visibleEvents]);
   // The notetaker joining by itself: the server does it when the real recorder answers; the demo keeps its switches.
   const autoJoin: 'live' | 'demo' | 'off' = recorderOn && real ? 'live' : demoOk ? 'demo' : 'off';
@@ -2769,7 +2788,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setThreads((ts) => ts.map((x) => (x.id !== t.id ? x : { ...x, messages: x.messages.map((y) => (y.id === m.id ? { ...y, invite: { ...inv, answer: { status, at, by: user.id, sent: false } } } : y)) })));
     setEvents((es) => [
       ...es.filter((e) => !(e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id)),
-      ...(status === 'declined' ? [] : [{ id: uid(), title: inv.title, calendarId: 'work', start: inv.start, end: inv.end, allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, rsvp: status, organizer: inv.organizer } as CalEvent]),
+      ...(status === 'declined' ? [] : [{ id: uid(), title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, rsvp: status, organizer: inv.organizer } as CalEvent]),
     ]);
     tell(false, ' Demo: no answer is sent.');
     return true;
@@ -3167,6 +3186,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         showToast({ text: 'Synced' });
       }}
       onRemove={(id) => {
+        // Another country's holidays: off this person's list (Undo puts it back).
+        if (isPersonalHoliday(id)) {
+          const before = holidays.regions;
+          setHolidayRegions(before.filter((c) => personalHolidayId(c) !== id));
+          return showToast({ text: `${myExtCals.find((c) => c.id === id)?.name ?? 'Holidays'} removed from your calendar`, action: { label: 'Undo', run: () => setHolidayRegions(before) } });
+        }
         const cal = extCals.find((c) => c.id === id);
         if (!cal) return;
         const snapshot = { extCals, events };
@@ -3179,6 +3204,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       companyName={ws.name}
       isAdmin={isAdmin}
       onHolidays={() => setConnectCal('holidays')}
+      holidayRegions={holidays.regions}
+      companyHolidayCountry={ws.holidays?.country}
+      onHolidayRegions={setHolidayRegions}
       onHolidaysOff={() => {
         const before = ws.holidays;
         patchWorkspace(ws.id, { holidays: undefined });
@@ -3293,8 +3321,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const tabApps: AppId[] = (ownBarOn ? savedBar : (teamBar ?? DEFAULT_BAR)).filter((id) => enabled.has(id)).slice(0, 4);
   const setTabApps = (bar: string[]) => (setSavedBar(bar as AppId[]), setOwnBar(true));
   // Focused screens that live in this file: an open mail on a phone, and a project's page (its Back goes in the top bar).
-  useFocusedScreen(mobile && mode === 'mail' && readerOpen);
-  useFocusedScreen(mobile && mode === 'projects' && projScope.kind === 'client', () => setProjScope({ kind: 'projects' }));
+  // Not while the guest view takes over the screen ("View as guest", a shared space): its own bar shows then.
+  const guestView = !!viewAs || portalKey === '*' || myPortals.some((pt) => pt.key === portalKey);
+  useFocusedScreen(mobile && mode === 'mail' && readerOpen && !guestView);
+  useFocusedScreen(mobile && mode === 'projects' && projScope.kind === 'client' && !guestView, () => setProjScope({ kind: 'projects' }));
   // The bar steps aside on focused screens and while the keyboard is up.
   const barAway = chrome.focused || kb.open;
   useEffect(() => {
@@ -3483,7 +3513,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         onSignOut={onSignOut}
         account={{ me: user, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => (patch.name !== undefined && updateSettings({ name: patch.name, title: patch.title ?? settings.title, avatarColor: patch.color ?? settings.avatarColor }), onUpdateUser(patch)) }}
         switcher={<WorkspaceSwitcher onHome={myPortals.length > 1 ? () => setPortalKey('*') : undefined} workspaces={workspaces} current={pws} currentPortal={portal.key} unread={wsUnread} portals={portalItems} onPortal={setPortalKey} onSwitch={(id) => (setPortalKey(''), switchWorkspace(id))} />}
-        mobileSwitch={{ workspaces: [...workspaces, pws], onWorkspace: (id) => id !== pws.id && (setPortalKey(''), switchWorkspace(id)) }}
+        mobileSwitch={{ workspaces, onWorkspace: (id) => (setPortalKey(''), switchWorkspace(id)), portals: portalItems, current: portal.key, onPortal: setPortalKey, onShared: myPortals.length > 1 ? () => setPortalKey('*') : undefined, onAdd: () => (setPortalKey(''), setNewWs(true)) }}
       />
     );
   }
@@ -3949,7 +3979,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             tasks={wsTasks}
             clients={wsClientsAll}
             teams={wsTeams}
-            onScope={(sc) => (mode === 'projects' && (sc.kind === 'client' || sc.kind === 'past') ? setProjScope(sc) : openTasks(sc))}
+            onScope={(sc) => (mode === 'projects' && (sc.kind === 'client' || sc.kind === 'past' || sc.kind === 'projects') ? setProjScope(sc) : openTasks(sc))}
             logins={vaultItems.map((v) => ({ id: v.id, title: v.meta.title, url: v.meta.url, username: v.meta.username, clientId: v.meta.clientId, hasTotp: v.hasTotp }))}
             onOpenLogins={(clientId) => (setVaultFilter(clientId), go('vault'))}
             onNewLogin={(clientId) => (setVaultFilter(clientId), setVaultEditing('new'), go('vault'))}
@@ -4446,6 +4476,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 onHomeTemplate={(v) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [team.id]: v } })}
                 onOpenTask={openTask}
                 onBack={() => setTeamId(null)}
+                onOpen={setTeamId}
+                companyName={ws.name}
+                wordsKey={ws.terms?.word ?? ''}
+                onMoveTasks={(moves) => {
+                  const by = new Map(moves.map((m) => [m.id, m.patch]));
+                  setTodos((ts) => ts.map((x) => (by.has(x.id) ? { ...x, ...by.get(x.id) } : x)));
+                  if (moves.length) showToast({ text: `Moved ${moves.length} task${moves.length === 1 ? '' : 's'}` });
+                }}
               />
             ) : (
               <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} />
@@ -4652,7 +4690,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           notices={unreadNotices}
           onNotices={() => (setMoreOpen(false), setNoticesOpen(true))}
           onAsk={toggleAsk}
-          onAccount={() => go('settings')}
+          onAccount={() => (mode !== 'settings' && openSettingsList(), go('settings'))}
           editing={editingBar}
           onEditing={setEditingBar}
           edit={{
@@ -4836,6 +4874,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           google={caps.googleCalendar}
           microsoft={caps.microsoftCalendar}
           start={connectCal === 'holidays' ? 'holidays' : undefined}
+          holidayRegions={holidays.regions}
+          onHolidayRegions={setHolidayRegions}
           onClose={() => setConnectCal(false)}
           onConnect={(cals) => {
             setExtCals((cs) => [...cs, ...cals]);
@@ -5068,7 +5108,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       )}
 
       {toast && (
-        <div className="toast" role="status" key={toast.id}>
+        <div className={`toast${toast.quiet ? ' quiet' : ''}`} role="status" key={toast.id}>
           <span>{toast.text}</span>
           {toast.more && (
             <button

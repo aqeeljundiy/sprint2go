@@ -40,7 +40,7 @@ export function Popover({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const entry = useRef<Entry | null>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; up: boolean } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; up: boolean; maxH?: number } | null>(null);
   const sheet = typeof window !== 'undefined' && window.matchMedia(PHONE).matches;
 
   useLayoutEffect(() => {
@@ -58,21 +58,38 @@ export function Popover({
 
   useLayoutEffect(() => {
     if (!open || sheet) return;
+    let side: boolean | null = null; // above or below, decided once per opening so it never jumps sides
+    let cap = Infinity; // the stylesheet's own max-height, read before any of ours is set
     const place = () => {
       const a = anchor.current?.getBoundingClientRect();
       const el = ref.current;
       if (!a || !el) return;
+      if (side === null) cap = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
       const w = el.offsetWidth;
-      const h = el.offsetHeight;
+      // Its whole height, even while a max-height of ours clips it (so a list that grows or shrinks is measured right).
+      const h = Math.min(el.scrollHeight + el.offsetHeight - el.clientHeight, cap);
       const below = window.innerHeight - a.bottom;
-      const up = below < h + 12 && a.top > below;
+      const up = side ?? (below < h + 12 && a.top > below);
+      side = up;
       let left = align === 'end' ? a.right - w : a.left;
       left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
-      setPos({ top: up ? a.top - h - 6 : a.bottom + 6, left, up });
+      // Taller than the room on its side (a long list near the bottom of a short window): it scrolls instead of
+      // running off the screen.
+      const room = (up ? a.top : below) - 14;
+      const maxH = h > room ? Math.max(120, room) : undefined;
+      const height = maxH ?? h;
+      const next = { top: up ? Math.max(8, a.top - height - 6) : a.bottom + 6, left, up, maxH };
+      setPos((p) => (p && p.top === next.top && p.left === next.left && p.up === next.up && p.maxH === next.maxH ? p : next));
     };
     place();
     window.addEventListener('resize', place);
-    return () => window.removeEventListener('resize', place);
+    // A list that filters as you type changes height: one opened upwards stays against what it was opened from.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => place()) : null;
+    if (ref.current) ro?.observe(ref.current);
+    return () => {
+      window.removeEventListener('resize', place);
+      ro?.disconnect();
+    };
   }, [open, sheet, anchor, align]);
 
   useEffect(() => {
@@ -126,7 +143,7 @@ export function Popover({
       className={`pop ${pos?.up ? 'up' : ''}`}
       role="dialog"
       aria-label={title}
-      style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width, visibility: pos ? 'visible' : 'hidden' }}
+      style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width, visibility: pos ? 'visible' : 'hidden', ...(pos?.maxH ? { maxHeight: pos.maxH } : {}) }}
     >
       {children}
     </div>,
