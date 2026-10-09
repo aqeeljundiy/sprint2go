@@ -41,8 +41,17 @@ Nothing running. The 9 Oct "do everything" pass is merged and live; see Done.
   - Watch the motion itself (open and close animations) on a real device; builders checked layouts with animations off.
   - Model lists were tested against fake providers only; try them with real SumoPod, Anthropic and Gemini keys. Bedrock's list needs the `bedrock:ListFoundationModels` permission.
   - Right after the server seeds demo data, signing in can fail for a moment while the demo passwords are being saved (local only).
+- **From the demo build, not checked yet**: the demo bar's closing fade and the slide when switching companies; Settings, Help and the first-run card at phone width and in dark mode; starting a huddle or a voice note inside the demo; the time-zone helper on the live server (if it fails, the demo uses start-up dates).
+- **Demo naming**: the public demo greets "Aqeel" at "Pixel & Profits". Decide whether it should be a made-up company and person.
+- **Local mail you write still tries real delivery** (system codes no longer do). Block it locally unless a relay is set.
 
 ## Done
+
+**9 Oct, demo company and no-signup demo, live:**
+- Everyone can open their own demo company (Pixel & Profits sample, made fresh in their time zone), kept apart on the server: no job, mail or operator number sees it, and AI, sending, uploads, invites and the notetaker refuse it. A bar with Reset and Hide, a "Try this" list of 8 things, a Demo badge in the switcher, and admins can turn it off for their people. Unused copies go after 30 days.
+- app.sprint2go.com/try runs the demo in the browser with no account and nothing saved on our server; sprint2go.com/try goes there and the landing page has "Try it without signing up".
+- A "Make a task" button on every email. New events no longer save twice with Cmd+Enter.
+- Local servers show sign-in and reset codes on screen instead of emailing real people.
 
 **9 Oct, after Aqeel's SumoPod note, live:**
 - Adding an AI key asks which model to use, from the provider's own list (SumoPod, OpenRouter, OpenAI, Anthropic, Gemini, DeepSeek, Mistral, Qwen, Groq, Bedrock, your own server), with "Other model id"; each key's row and every job picker show the full list; a model the provider drops falls back and Settings says so. The operator console works the same for our keys.
