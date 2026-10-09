@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, Mic } from 'lucide-react';
+import { Check, Mic, Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { eventsOn, fmtTime, hourLabel, layoutDay, minutesIntoDay, sameDay, startOfDay } from '../../calendarUtils';
 import { haptic, useLongPress } from '../ui/useLongPress';
@@ -16,7 +16,7 @@ export interface GridProps {
   color: (calendarId: string) => string;
   selectedId: string | null;
   canEdit: (e: CalEvent) => boolean;
-  onMove?: (id: string, start: Date, end: Date) => void;
+  onMove?: (id: string, start: Date, end: Date, at?: { x: number; y: number }) => void; // `at`: where it was let go
   onSelect: (id: string) => void;
   onSlot: (start: Date, touch: boolean) => void; // an empty slot tapped or clicked
   onDay: (d: Date) => void; // a day's heading: that day on its own
@@ -96,7 +96,7 @@ export function TimeGrid(p: GridProps) {
     swipeLock.on = false;
     setDrag(null);
     if (!d) return;
-    if (d.moved && (d.curStart.getTime() !== d.start.getTime() || d.curEnd.getTime() !== d.end.getTime())) p.onMove?.(d.id, d.curStart, d.curEnd);
+    if (d.moved && (d.curStart.getTime() !== d.start.getTime() || d.curEnd.getTime() !== d.end.getTime())) p.onMove?.(d.id, d.curStart, d.curEnd, { x, y });
     else if (d.touch && !d.moved) {
       const ev = events.find((e) => e.id === d.id);
       if (ev) p.onMenu(ev, x, y);
@@ -184,6 +184,7 @@ export function TimeGrid(p: GridProps) {
             <div key={i} className="tg-allday-cell">
               {list.slice(0, perDay).map((e) => (
                 <button key={e.id} className={`pill-event ${p.selectedId === e.id ? 'picked' : ''} ${isPending(e) ? 'pending' : ''}`} style={{ ['--c' as string]: color(e.calendarId) }} onClick={() => p.onSelect(e.id)}>
+                  {e.rrule && <Repeat size={11} className="pe-repeat" aria-label="Repeats" />}
                   {e.title}
                 </button>
               ))}
@@ -334,7 +335,7 @@ function Block(b: {
     <div
       role="button"
       tabIndex={0}
-      aria-label={`${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}`}
+      aria-label={`${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}${ev.rrule ? ', repeats' : ''}`}
       className={cls}
       {...press}
       onPointerDown={(pe) => {
@@ -376,6 +377,7 @@ function Block(b: {
       <span className="be-title">{ev.title}</span>
       <span className="be-time">
         {b.bot && <Mic size={11} className="be-bot" aria-label="The notetaker will join" />}
+        {ev.rrule && <Repeat size={11} className="be-repeat" aria-label="Repeats" />}
         {fmtTime(s)}
         {(!short || b.dragging) && ` to ${fmtTime(e)}`}
       </span>

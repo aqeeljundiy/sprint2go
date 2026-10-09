@@ -39,6 +39,10 @@ export function clockOf(e: Pick<CalEvent, 'start' | 'timeZone'>): Clock {
     iso: (w) => (fl ? floating(w) : new Date(utcFromWall(w, tz)).toISOString()),
   };
 }
+/** A moment written the way a series writes its times: a floating series (an invite's all-day dates) on this device's clock. */
+export const timeLike = (series: Pick<CalEvent, 'start'>, d: Date) =>
+  isFloating(series.start) ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00` : d.toISOString();
+
 /** How long a date of the series is on the clock (an all-day date stays a day when the clocks change). */
 const wallLen = (e: Pick<CalEvent, 'start' | 'end' | 'timeZone'>) => {
   const c = clockOf(e);
@@ -154,7 +158,8 @@ export function expandEvents(events: CalEvent[], from: number, to: number): CalE
 export function findEvent(events: CalEvent[], id: string | null | undefined): CalEvent | null {
   if (!id) return null;
   const hit = events.find((e) => e.id === id);
-  if (hit) return hit;
+  // A series by its own id: its first date.
+  if (hit) return hit.rrule && !hit.seriesId ? occurrenceOf(hit, hit.start) : hit;
   const p = parseOccId(id);
   const s = p && events.find((e) => e.id === p.seriesId && e.rrule);
   if (!p || !s) return null;

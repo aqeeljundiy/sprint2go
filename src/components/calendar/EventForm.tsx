@@ -1,13 +1,16 @@
 import { useState, type RefObject } from 'react';
-import { AlarmClock, CalendarCheck, CalendarDays, Check, ChevronDown, Globe, MapPin, StickyNote, Sun, Video } from 'lucide-react';
+import { AlarmClock, CalendarCheck, CalendarDays, Check, ChevronDown, Globe, MapPin, Repeat, StickyNote, Sun, Video } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, User } from '../../types';
 import { deviceTz, isZone } from '../../jobTimes';
+import { addDays } from '../../calendarUtils';
+import { clockOf, dateFacts, repeatWords, ruleToSpec, specToRule } from '../../repeat';
 import { zoneOptions } from '../ui/zones';
 import { fromWall, wallIn } from './calTools';
 import { DatePicker, TimePicker } from '../ui/DatePicker';
 import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
 import { GuestPicker } from './GuestPicker';
+import { RepeatField, RepeatToken, type RepeatDraft } from './RepeatField';
 
 /** What the event editor and the phone's quick create hold while someone types. */
 export interface Draft {
@@ -24,10 +27,26 @@ export interface Draft {
   notes: string;
   remind: number | null; // minutes before the start
   tz: string | null; // the times are in this time zone (null: this device's)
+  repeat: RepeatDraft;
 }
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+/** No repeat. */
+export const NO_REPEAT: RepeatDraft = { spec: null, raw: null, touched: false };
+/** The draft's date and start on its own clock (as if UTC): what a repeat is worked out from (its weekday, its day). */
+export const draftWall = (d: Pick<Draft, 'date' | 'from' | 'allDay'>) => {
+  const [y, m, day] = d.date.split('-').map(Number);
+  return Date.UTC(y, m - 1, day, d.allDay ? 0 : toMin(d.from) / 60, d.allDay ? 0 : toMin(d.from) % 60);
+};
+/** The repeat of an event (one date of a series: the series' rule, read on that date's original day). */
+function repeatOf(e?: CalEvent): RepeatDraft {
+  if (!e?.rrule) return NO_REPEAT;
+  const clock = clockOf(e);
+  const spec = ruleToSpec(e.rrule, clock.wall(e.occurrence ?? e.start), clock);
+  return spec ? { spec, raw: null, touched: false } : { spec: null, raw: e.rrule, rawWords: repeatWords({ ...e, start: e.occurrence ?? e.start }) ?? undefined, touched: false };
+}
 
 export function draftOf(start: Date, end: Date, calendarId: string, e?: CalEvent): Draft {
   const tz = e?.timeZone && isZone(e.timeZone) && e.timeZone !== deviceTz() ? e.timeZone : null;
@@ -46,20 +65,26 @@ export function draftOf(start: Date, end: Date, calendarId: string, e?: CalEvent
     notes: e?.notes ?? '',
     remind: e?.remind ?? null,
     tz,
+    repeat: repeatOf(e),
   };
 }
 
 /** The draft's start and end (an all-day event ends the next midnight; times in another zone are read in it). */
 export function draftTimes(d: Draft) {
   const start = d.allDay ? new Date(`${d.date}T00:00`) : fromWall(d.date, d.from, d.tz);
-  const end = d.allDay ? new Date(start.getTime() + 86_400_000) : fromWall(d.date, d.to, d.tz);
+  const end = d.allDay ? addDays(start, 1) : fromWall(d.date, d.to, d.tz);
   return { start, end, ok: !isNaN(start.getTime()) && end > start };
 }
 
-/** The event fields a draft turns into (the caller adds id, owner and company). */
+/**
+ * The event fields a draft turns into (the caller adds id, owner and company). A repeating one always keeps its time
+ * zone (its dates keep that clock time); its rule goes along only when the repeat was picked in this edit ('' for none).
+ */
 export function draftEvent(d: Draft): Omit<CalEvent, 'id'> {
   const { start, end } = draftTimes(d);
   const link = d.meetUrl.trim();
+  const repeats = !!(d.repeat.spec || d.repeat.raw);
+  const tz = d.tz ?? deviceTz();
   return {
     title: d.title.trim(),
     calendarId: d.calendarId,
@@ -71,7 +96,8 @@ export function draftEvent(d: Draft): Omit<CalEvent, 'id'> {
     notes: d.notes.trim() || undefined,
     guests: d.guests.length ? d.guests : undefined,
     remind: d.remind ?? undefined,
-    timeZone: d.tz && !d.allDay ? d.tz : undefined,
+    timeZone: repeats ? tz : d.tz && !d.allDay ? d.tz : undefined,
+    ...(d.repeat.touched ? { rrule: d.repeat.spec ? specToRule(d.repeat.spec, draftWall(d), { floating: false, tz }) : (d.repeat.raw ?? '') } : {}),
   };
 }
 
@@ -89,7 +115,7 @@ const REMIND: { value: string; label: string }[] = [
 ];
 export const remindWords = (m: number) => REMIND.find((r) => r.value === String(m))?.label ?? `${m} minutes before`;
 
-type Extra = 'location' | 'meet' | 'notes' | 'remind' | 'calendar' | 'tz';
+type Extra = 'location' | 'meet' | 'notes' | 'remind' | 'calendar' | 'tz' | 'repeat';
 
 /**
  * The fields of an event: title, Event or Task, when, guests; then the optional ones as quiet words (All day, Video
@@ -125,8 +151,26 @@ export function EventForm({
 }) {
   const [opened, setOpened] = useState<Set<Extra>>(() => new Set());
   const open = (x: Extra) => setOpened((s) => new Set(s).add(x));
-  const shows = (x: Extra) => opened.has(x) || (x === 'location' && !!draft.location) || (x === 'meet' && !!draft.meetUrl) || (x === 'notes' && !!draft.notes) || (x === 'remind' && draft.remind !== null) || (x === 'tz' && !!draft.tz && !draft.allDay);
+  const shows = (x: Extra) =>
+    (x !== 'repeat' && opened.has(x)) ||
+    (x === 'location' && !!draft.location) ||
+    (x === 'meet' && !!draft.meetUrl) ||
+    (x === 'notes' && !!draft.notes) ||
+    (x === 'remind' && draft.remind !== null) ||
+    (x === 'tz' && !!draft.tz && !draft.allDay) ||
+    (x === 'repeat' && !!(draft.repeat.spec || draft.repeat.raw));
   const task = draft.kind === 'task';
+  // Custom repeat opened (its panel stays open while the choice is still one of the named ones).
+  const [custom, setCustom] = useState(false);
+  const wall = draftWall(draft);
+  /** A new date: a weekly repeat on that one weekday follows it. */
+  const moveDate = (date: string) => {
+    const r = draft.repeat;
+    const was = dateFacts(wall).wd;
+    const now = dateFacts(draftWall({ ...draft, date })).wd;
+    const follow = r.spec?.freq === 'WEEKLY' && r.spec.days?.length === 1 && r.spec.days[0] === was && now !== was;
+    set({ date, ...(follow ? { repeat: { ...r, spec: { ...r.spec!, days: [now] } } } : {}) });
+  };
   // Moving the start keeps the length (a 1 hour meeting stays 1 hour), the way calendars do.
   const moveStart = (v: string) => {
     const len = Math.max(15, toMin(draft.to) - toMin(draft.from));
@@ -135,6 +179,7 @@ export function EventForm({
   const cal = calendars.find((c) => c.id === draft.calendarId) ?? calendars[0];
   const quiet: { id: Extra | 'allday'; label: string; icon: typeof Sun; on?: boolean }[] = [
     { id: 'allday', label: 'All day', icon: Sun, on: draft.allDay },
+    ...(!task ? [{ id: 'repeat' as const, label: 'Repeat', icon: Repeat }] : []),
     ...(!task
       ? ([
           { id: 'meet', label: 'Video call', icon: Video },
@@ -172,7 +217,7 @@ export function EventForm({
         </div>
       )}
       <div className="field-row ev-when">
-        <DatePicker value={draft.date} onChange={(v) => v && set({ date: v })} clearable={false} label="Date" />
+        <DatePicker value={draft.date} onChange={(v) => v && moveDate(v)} clearable={false} label="Date" />
         {!draft.allDay && (
           <span className="ev-times">
             <TimePicker value={draft.from} onChange={moveStart} label="Starts" />
@@ -185,6 +230,19 @@ export function EventForm({
       <SmoothHeight>
         {quiet.some((q) => q.id !== 'allday' && shows(q.id as Extra)) && (
           <div className="ev-extras">
+            {!task && shows('repeat') && (
+              <RepeatField
+                value={draft.repeat}
+                startWall={wall}
+                startDay={draft.date}
+                custom={custom}
+                onCustom={setCustom}
+                onChange={(repeat) => {
+                  if (!repeat.spec && !repeat.raw) setCustom(false);
+                  set({ repeat });
+                }}
+              />
+            )}
             {!task && shows('meet') && (
               <label className="ev-extra">
                 <Video size={16} />
@@ -252,18 +310,30 @@ export function EventForm({
       ) : (
         tokens.length > 0 && (
           <div className="ev-quiet" aria-label="More details">
-            {tokens.map((q) => (
-              <button
-                key={q.id}
-                type="button"
-                className={`ev-token${q.on ? ' on' : ''}`}
-                aria-pressed={q.id === 'allday' ? !!q.on : undefined}
-                onClick={() => (q.id === 'allday' ? set({ allDay: !draft.allDay }) : open(q.id))}
-              >
-                {q.on ? <Check size={14} /> : <q.icon size={14} />}
-                {q.label}
-              </button>
-            ))}
+            {tokens.map((q) =>
+              q.id === 'repeat' ? (
+                // Repeat picks straight away: the word opens the list of repeats.
+                <RepeatToken
+                  key={q.id}
+                  startWall={wall}
+                  onPick={(spec, isCustom) => {
+                    setCustom(isCustom);
+                    set({ repeat: { spec, raw: null, touched: true } });
+                  }}
+                />
+              ) : (
+                <button
+                  key={q.id}
+                  type="button"
+                  className={`ev-token${q.on ? ' on' : ''}`}
+                  aria-pressed={q.id === 'allday' ? !!q.on : undefined}
+                  onClick={() => (q.id === 'allday' ? set({ allDay: !draft.allDay }) : open(q.id))}
+                >
+                  {q.on ? <Check size={14} /> : <q.icon size={14} />}
+                  {q.label}
+                </button>
+              ),
+            )}
           </div>
         )
       )}

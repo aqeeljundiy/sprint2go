@@ -81,6 +81,7 @@ export function joinsByRule(e: Pick<CalEvent, 'organizer' | 'inviteUid' | 'feed'
 export function botJoins(e: CalEvent, mode: JoinMode | undefined, overrides: Record<string, boolean> | undefined, mine: (email: string) => boolean) {
   const link = meetingLinkOf(e);
   if (!link || !notetakerJoins(link.kind) || e.allDay) return false;
-  const own = overrides?.[e.id];
+  // One date of a repeating event: its own switch, else the series' switch.
+  const own = overrides?.[e.id] ?? (e.seriesId ? overrides?.[e.seriesId] : undefined);
   return typeof own === 'boolean' ? own : joinsByRule(e, mode, mine);
 }

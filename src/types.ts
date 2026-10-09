@@ -63,6 +63,9 @@ export interface MailInvite {
   organizer?: Person;
   attendees: InviteGuest[];
   rrule?: string; // repeats, e.g. FREQ=WEEKLY;BYDAY=MO
+  rdates?: string[]; // extra dates (ISO)
+  exdates?: string[]; // skipped dates (ISO starts, or a whole day "2026-10-28")
+  overrides?: { recurrenceId: string; start: string; end: string; cancelled?: boolean }[]; // dates changed on their own, sent with the series
   recurrenceId?: string; // one changed occurrence of a repeating event
   cancelled?: boolean;
   you?: string; // the address of yours that was invited

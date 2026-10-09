@@ -51,12 +51,23 @@ const clockOf = (tz: string) => {
   if (!f) clocks.set(tz, (f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })));
   return f;
 };
+/**
+ * Offsets by zone and quarter hour: a zone's offset only changes on a quarter hour (UTC), so one answer holds for the
+ * whole quarter. Drawing a year of a daily repeat asks thousands of times; this keeps it quick.
+ */
+const offsets = new Map<string, number>();
 /** How far a zone is ahead of UTC at an instant, in minutes. */
 export function zoneOffset(tz: string, at: number): number {
+  const key = `${tz}|${Math.floor(at / 900_000)}`;
+  const known = offsets.get(key);
+  if (known !== undefined) return known;
   const parts = clockOf(tz).formatToParts(new Date(at));
   const n = (t: string) => Number(parts.find((p) => p.type === t)?.value);
   const asUtc = Date.UTC(n('year'), n('month') - 1, n('day'), n('hour') % 24, n('minute'), n('second'));
-  return Math.round((asUtc - Math.floor(at / 1000) * 1000) / 60_000);
+  const off = Math.round((asUtc - Math.floor(at / 1000) * 1000) / 60_000);
+  if (offsets.size > 50_000) offsets.clear();
+  offsets.set(key, off);
+  return off;
 }
 /**
  * A wall-clock time in a zone (month 0-11), as a UTC instant. As RFC 5545 asks: a time that happens twice (clocks go

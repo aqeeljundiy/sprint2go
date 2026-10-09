@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, AtSign, Bell, Check, CheckCheck, CircleCheck, Clock, FileText, Headphones, Inbox, ListChecks, Mail, MessageCircle, Play, Sunrise, Users, Video, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, AtSign, Bell, Check, CheckCheck, CircleCheck, Clock, FileText, Headphones, Inbox, ListChecks, Mail, MessageCircle, Play, Repeat, Sunrise, Users, Video, type LucideIcon } from 'lucide-react';
 import { SwipeRow, type SwipeAction } from '../ui/SwipeRow';
 import { useLeaving, SmoothHeight } from '../ui/Smooth';
 import { Select } from '../ui/Select';
@@ -184,7 +184,10 @@ export function MeetingStrip({
               <Video size={18} />
             </span>
             <button type="button" className="upn-text" onClick={() => onOpen(e.id)}>
-              <strong>{e.title}</strong>
+              <strong>
+                {e.title}
+                {e.rrule && <Repeat size={13} className="h-repeat" aria-label="Repeats" />}
+              </strong>
               <small>{x.sub}</small>
             </button>
             {onBotJoin && link ? (
@@ -342,6 +345,7 @@ export function TodayBlock({
                 <time>{fmtTime(e.start)}</time>
                 <button type="button" className="htd-ev-title" onClick={() => onOpenEvent(e.id)}>
                   {e.title}
+                  {e.rrule && <Repeat size={12} className="h-repeat" aria-label="Repeats" />}
                 </button>
                 {link && (
                   <a className="ghost-btn sm" href={link.url} target="_blank" rel="noopener noreferrer">

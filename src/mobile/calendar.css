@@ -115,8 +115,29 @@
   }
   .ev-kind > button,
   .ev-token,
+  .sel.ev-token,
   .guest-add {
     min-height: 40px;
+  }
+  /* Repeat: weekday chips and the steppers at thumb size; the days share the row. */
+  .rp-more {
+    padding-left: 0;
+  }
+  .rp-days {
+    justify-content: space-between;
+    max-width: 360px;
+  }
+  .rp-day {
+    width: var(--tap);
+    height: var(--tap);
+    font-size: 14px;
+  }
+  .rp-step .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .rp-label {
+    font-size: 14px;
   }
   .guest-chip {
     min-height: 36px;

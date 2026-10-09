@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { eventsOn, fmtTime, monthGrid, sameDay, startOfDay } from '../../calendarUtils';
 import { EventCard, type CardKit } from './EventCard';
@@ -130,6 +130,7 @@ export function MonthView({
                   {!e.allDay && <i />}
                   {!e.allDay && <span className="de-time">{fmtTime(e.start)}</span>}
                   <span className="de-title">{e.title}</span>
+                  {e.rrule && <Repeat size={11} className="de-repeat" aria-label="Repeats" />}
                 </button>
               ))}
               {extra > 0 && (

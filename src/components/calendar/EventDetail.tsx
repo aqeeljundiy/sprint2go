@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
+import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, Repeat, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef, RsvpStatus } from '../../types';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../../meetingLinks';
 import { Avatar } from '../Avatar';
@@ -8,6 +8,7 @@ import { Sheet } from '../ui/Sheet';
 import { fromWall, isPending, startsIn, wallIn, whenLine, zoneCity } from './calTools';
 import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
+import { repeatWords } from '../../repeat';
 
 export type GuestAnswer = RsvpStatus | 'needs-action' | 'delegated';
 
@@ -17,7 +18,7 @@ export interface DetailProps {
   readOnly?: boolean;
   phone: boolean;
   onClose: () => void;
-  onDelete: () => void;
+  onDelete: (at?: Element) => void; // `at`: the button (where to ask which dates of a repeating event)
   onEdit?: () => void;
   onOpenThread: (id: string) => void;
   task?: { title: string; done: boolean } | null;
@@ -29,7 +30,7 @@ export interface DetailProps {
   botWill?: boolean; // set when the notetaker joins by itself (the real one): whether it will join this event
   onBotJoin?: (join: boolean) => void;
   /** Invites: answer Yes, Maybe or No (pinned to the bottom). */
-  onRsvp?: (s: RsvpStatus) => void;
+  onRsvp?: (s: RsvpStatus, at?: Element) => void;
   /** The guests' answers, when the invite says them (by email). */
   answers?: Record<string, GuestAnswer>;
 }
@@ -59,7 +60,7 @@ export function EventDetail(p: DetailProps) {
         </button>
       )}
       {!p.readOnly && (
-        <button className="icon-btn" onClick={p.onDelete} aria-label="Delete event" title="Delete">
+        <button className="icon-btn" onClick={(e) => p.onDelete(e.currentTarget)} aria-label="Delete event" title="Delete">
           <Trash2 size={17} />
         </button>
       )}
@@ -85,7 +86,7 @@ export function EventDetail(p: DetailProps) {
   );
 }
 
-function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus) => void }) {
+function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus, at?: Element) => void }) {
   const opts: [RsvpStatus, string][] = [
     ['accepted', 'Yes'],
     ['tentative', 'Maybe'],
@@ -95,7 +96,7 @@ function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus) =
     <div className="ev-rsvp" role="group" aria-label="Going?">
       <span className="ev-rsvp-q">Going?</span>
       {opts.map(([v, l]) => (
-        <button key={v} type="button" className={`ev-rsvp-btn${value === v ? ' on' : ''}`} aria-pressed={value === v} onClick={() => onPick(v)}>
+        <button key={v} type="button" className={`ev-rsvp-btn${value === v ? ' on' : ''}`} aria-pressed={value === v} onClick={(e) => onPick(v, e.currentTarget)}>
           {value === v && <Check size={14} />}
           {l}
         </button>
@@ -141,6 +142,11 @@ function DetailBody(p: DetailProps) {
             const t = (w: { date: string; time: string }) => fromWall(w.date, w.time, null).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             return `${t(s)} to ${t(e)} in ${zoneCity(event.timeZone)}`;
           })()}
+        </Row>
+      )}
+      {event.rrule && (
+        <Row icon={<Repeat size={16} />} muted>
+          {repeatWords({ rrule: event.rrule, start: event.occurrence ?? event.start, timeZone: event.timeZone })}
         </Row>
       )}
       {link && !ended && (
