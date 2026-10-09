@@ -3,7 +3,7 @@ import { Check, ExternalLink, FileText, Mail, MessageCircle, Paperclip, Phone, P
 import type { CellValue, DataTable, FieldOption, FileRef, TableField, TableRow, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Popover } from '../ui/Popover';
-import { OPTION_COLORS, cellText, isEmpty, money, passes, rowName } from './fields';
+import { OPTION_COLORS, cellText, isEmpty, money, noteOf, passes, rowName } from './fields';
 import { uid } from '../../utils';
 import { PeopleList } from '../ui/PeopleList';
 import { uploadFile } from '../../sync';
@@ -45,7 +45,7 @@ export function ButtonCell({ f, row, ctx }: { f: TableField; row: TableRow; ctx:
       className={`tb-run${busy ? ' busy' : ''}${last && !last.ok ? ' failed' : ''}`}
       style={{ ['--c' as string]: b.color ?? OPTION_COLORS[1] }}
       disabled={busy || locked}
-      title={locked ? t('Only admins can press this') : last ? (last.ok ? t('Last run: {note}', { note: last.note }) : t('Failed: {note}', { note: last.note })) : undefined}
+      title={locked ? t('Only admins can press this') : last ? (last.ok ? t('Last run: {note}', { note: noteOf(last) }) : t('Failed: {note}', { note: noteOf(last) })) : undefined}
       onClick={(e) => (e.stopPropagation(), ctx.runButton!(row, f))}
     >
       {busy ? <span className="tb-spin" aria-hidden /> : null}

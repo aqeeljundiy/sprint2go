@@ -1,7 +1,7 @@
 import type { CalcKind, CellValue, DataTable, FieldType, FileRef, RowTemplate, TableField, TableFilter, TableFilterGroup, TableRow, TableViewDef, TableViewTweak, User } from '../../types';
 import { localDay, uid } from '../../utils';
 // The server loads this file too: the full paths, and only t/tx/mark and the format helpers (docs/i18n.md).
-import { getLang, t, tx } from '../../i18n/index';
+import { getLang, t, textOf, tx, type Msg } from '../../i18n/index';
 import { fmtDate, fmtList, fmtMoney, fmtNumber, fmtTime, toDate, weekdayName } from '../../i18n/format';
 
 /* Pure table logic, shared by the app and the server (no React, no icons). */
@@ -27,6 +27,12 @@ export const rowName = (tb: DataTable, r: TableRow | undefined) => {
   const v = r?.values[tb.fields[0]?.id];
   return (typeof v === 'string' && v.trim()) || (typeof v === 'number' ? String(v) : '') || t('Untitled');
 };
+
+/**
+ * What the server said a button or rule did, in the reader's language: its own words when it sent them (`tr`), else
+ * its fixed English looked up (older notes, a guest's "Done").
+ */
+export const noteOf = (x: { note: string; tr?: Msg }) => (x.tr ? textOf({ text: x.note, tr: x.tr }) : t(x.note));
 
 /** What cell helpers need to know: people (for names), and for links and rollups the rows and tables. */
 export interface TCtx {

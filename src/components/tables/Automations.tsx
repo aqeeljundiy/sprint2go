@@ -6,7 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, Ban, Check, ChevronRight, Copy, KeyRound, 
 import type { ButtonDef, Channel, DataTable, TableAction, TableField, TableIntake, TableRule, User } from '../../types';
 import { relative, uid } from '../../utils';
 import { TabPane } from '../ui/Smooth';
-import { OPTION_COLORS, isComputed, opsFor } from './fields';
+import { OPTION_COLORS, isComputed, noteOf, opsFor } from './fields';
 import { guessType } from './csv';
 import { brand as product } from '../../terms';
 import { deviceTz } from '../../jobTimes';
@@ -165,7 +165,7 @@ function ActionCard({ a, i, t: tb, tables, users, channels, onChange, onRemove, 
     if (a.kind !== 'webhook') return;
     setTest({ busy: true });
     const r = await fetch('/api/tables/test-hook', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tableId: tb.id, url: a.url, fields: a.fields }) }).then((x) => x.json()).catch(() => null);
-    setTest(r ? { ok: r.ok, note: textOf({ text: r.note, tr: r.tr }), payload: r.payload } : { ok: false, note: t('The server didn’t answer') });
+    setTest(r ? { ok: r.ok, note: noteOf(r), payload: r.payload } : { ok: false, note: t('The server didn’t answer') });
   };
   return (
     <div className="tb-act-card">

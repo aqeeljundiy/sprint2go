@@ -31,8 +31,8 @@ import { EditSheet } from './EditSheet';
 import { VIEW_KINDS, kindDefaults, newView, viewIcon } from './viewKinds';
 import { NARROW_PANE, clearTableLink, readTableLink, tableLink, usePaneWidth, useTweaks } from './hooks';
 import { download, rowsToCsv } from './csv';
-import { TABLE_COLORS, cellText, convertValue, filterCount, isComputed, isEmpty, opsFor, optionsFromValues, parseIncoming, rowName, sortsOf, templateValues, viewFields, visibleRows } from './fields';
-import { t, tn, tx, textOf, type Msg } from '../../i18n';
+import { TABLE_COLORS, cellText, convertValue, filterCount, isComputed, isEmpty, noteOf, opsFor, optionsFromValues, parseIncoming, rowName, sortsOf, templateValues, viewFields, visibleRows } from './fields';
+import { t, tn, tx, type Msg } from '../../i18n';
 import { fmtWeekday } from '../../i18n/format';
 
 type Setter<T> = (fn: (x: T) => T) => void;
@@ -449,7 +449,7 @@ export function TableScreen(p: ScreenProps) {
         if (x.compose) p.onCompose(x.compose);
       }
       const failed = out.results.filter((x) => !x.ok);
-      const said = (list: typeof out.results) => list.map((x) => textOf({ text: x.note, tr: x.tr })).join(' · ');
+      const said = (list: typeof out.results) => list.map(noteOf).join(' · ');
       p.toast({ text: `${f.button?.label ?? f.name}: ${failed.length ? said(failed) : said(out.results) || t('done')}` });
     } finally {
       setRunning((x) => {
