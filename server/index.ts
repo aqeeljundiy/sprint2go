@@ -885,7 +885,8 @@ function planFromApp(next: any, prev: any): { plan: any; why?: string } {
     next.cancel === true && prev && prev.tier !== 'free' ? (prev.cancelAt ?? billing.periodEnd(prev)) : next.cancel === false ? undefined : prev?.cancelAt && next.tier === prev.tier && next.track === prev.track ? prev.cancelAt : undefined;
   // How the company pays is ours to record (bank transfer until a card processor exists); the app can't invent a card.
   const { cancel: _c, ...rest } = next;
-  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt }, why: pause.why };
+  // Prorated switches are the server's (billing.adjustmentsOnSave adds a new one): the app can't add, change or drop them.
+  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt, adjustments: prev?.adjustments }, why: pause.why };
 }
 
 const routes: Record<string, (b: any) => Promise<unknown>> = {
@@ -2647,7 +2648,7 @@ createServer(async (req, res) => {
             const asked = planFromApp((d as any).plan, before.plan);
             const planChanged = JSON.stringify((d as any).plan ?? null) !== JSON.stringify(before.plan ?? null);
             if (!owner && planChanged) say('Only owners can change the plan and billing.');
-            const plan = owner ? asked.plan : before.plan;
+            const plan = owner ? { ...asked.plan, adjustments: billing.adjustmentsOnSave(before, before.plan, asked.plan) } : before.plan;
             if (owner) say(asked.why);
             // An operator looking at the app as someone can't change the company's sign-in rules.
             const sec = session?.operator ? { security: before.security, changed: null } : twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));

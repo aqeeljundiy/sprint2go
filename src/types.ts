@@ -771,6 +771,25 @@ export interface Plan {
   pauses?: { from: string; to?: string }[]; // the server's record of pauses: up to 3 months in any year
   cancelAt?: string; // cancelled: the plan moves to Free then, at the end of the period that's paid for (the server's)
   cancel?: boolean; // the app asks to cancel (true) or to keep the plan (false); the server turns it into cancelAt
+  adjustments?: PlanAdjustment[]; // the server's: prorated plan switches waiting for the next invoice
+}
+
+/**
+ * A plan switch, prorated: a charge (positive) or a credit (negative) on the next invoice. `invoiced`: the period's
+ * invoice was already made at the old price, so this is the rest of the period; otherwise the period's invoice (still
+ * to come) bills the new price in full and this puts right the days before the switch.
+ */
+export interface PlanAdjustment {
+  id: string;
+  at: string; // the (first) switch
+  period: string; // "2026-10" (a yearly plan: the month its year started)
+  invoiced: boolean;
+  from: string; // plan names, "Studio AI"
+  to: string;
+  daysBefore: number;
+  days: number;
+  amount: number; // rupiah; negative: a credit
+  text: string; // how the invoice and the billing page say it
 }
 
 export type ProviderId =

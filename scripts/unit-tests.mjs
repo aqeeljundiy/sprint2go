@@ -955,6 +955,81 @@ await test('Operator MRR: counts the people active this month, the same rule as 
   assert.equal(billingMod.activePeople(ws).active, 2, 'the invoice counts the same two');
 });
 
+/* plan switches, prorated (src/data/pricing.ts, server/billing.ts) */
+
+const pricing = await import('../src/data/pricing.ts');
+const platformMod = await import('../server/platform.ts');
+const P = (tier, extra = {}) => ({ track: 'own', tier, cycle: 'monthly', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: 'X', emails: [] }, since: '2026-01-01T00:00:00.000Z', ...extra });
+const OCT9 = new Date('2026-10-09T03:00:00Z'); // 8 days of October behind, 23 (the 9th included) ahead
+const OCT20 = new Date('2026-10-20T03:00:00Z');
+const studio = pricing.priceFor('own', 'studio', 3);
+const agency = pricing.priceFor('own', 'agency', 3);
+const business = pricing.priceFor('own', 'business', 3);
+await test('Plan switch: an upgrade charges the difference for the rest of the month, on the next invoice', () => {
+  const a = pricing.prorate(P('studio'), P('agency'), 3, OCT9, true);
+  assert.equal(a.amount, Math.round(((agency - studio) * 23) / 31));
+  assert.ok(a.amount > 0, 'a charge');
+  assert.deepEqual([a.period, a.daysBefore, a.days, a.from, a.to], ['2026-10', 8, 31, 'Studio', 'Agency']);
+  assert.equal(a.text, 'Agency instead of Studio from 9 October: the rest of October (23 of 31 days)');
+  assert.ok(!/—/.test(a.text), 'no em dashes');
+});
+await test('Plan switch: a downgrade is a credit for the rest of the month', () => {
+  const a = pricing.prorate(P('agency'), P('studio'), 3, OCT9, true);
+  assert.equal(a.amount, -Math.round(((agency - studio) * 23) / 31));
+  // Before this month's invoice was made: it bills the new plan in full, so the days before are put right instead.
+  const b = pricing.prorate(P('agency'), P('studio'), 3, OCT9, false);
+  assert.equal(b.amount, Math.round(((agency - studio) * 8) / 31), 'a charge for the 8 days on Agency, since October’s invoice bills Studio');
+  assert.equal(b.text, 'Agency instead of Studio until 8 October (8 of 31 days)');
+});
+await test('Plan switch: two switches on the same day are one line, from the first plan to the last', () => {
+  const one = pricing.prorate(P('studio'), P('agency'), 3, OCT9, true);
+  const two = pricing.prorate(P('agency'), P('business'), 3, OCT9, true);
+  const list = pricing.addAdjustment(pricing.addAdjustment(undefined, one, 'a1'), two, 'a2');
+  assert.equal(list.length, 1);
+  assert.equal(list[0].amount, one.amount + two.amount);
+  assert.ok(Math.abs(list[0].amount - ((business - studio) * 23) / 31) <= 1, 'the same as one switch from Studio to Business');
+  assert.equal(list[0].text, 'Business instead of Studio from 9 October: the rest of October (23 of 31 days)');
+});
+await test('Plan switch: switching back the same day leaves nothing; switching back later bills the days on the other plan', () => {
+  const there = pricing.prorate(P('studio'), P('agency'), 3, OCT9, true);
+  const back = pricing.prorate(P('agency'), P('studio'), 3, OCT9, true);
+  assert.equal(pricing.addAdjustment(pricing.addAdjustment(undefined, there, 'a1'), back, 'a2'), undefined, 'nothing on the invoice');
+  const later = pricing.prorate(P('agency'), P('studio'), 3, OCT20, true);
+  const list = pricing.addAdjustment(pricing.addAdjustment(undefined, there, 'a1'), later, 'a2');
+  assert.equal(list.length, 1);
+  assert.ok(Math.abs(list[0].amount - ((agency - studio) * 11) / 31) <= 1, 'Agency for 9 to 19 October: 11 days');
+  assert.equal(list[0].text, 'Agency from 9 October to 19 October, then back to Studio');
+});
+await test('Plan switch: nothing is prorated during a trial or free months, to or from Free, or when the cycle changes', () => {
+  assert.equal(pricing.prorate(P('studio', { trialEnds: '2026-10-20T00:00:00.000Z' }), P('agency'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('studio', { comp: { until: '2026-12-01T00:00:00.000Z' } }), P('agency'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('free'), P('studio'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('studio'), P('free'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('studio'), P('studio', { cycle: 'yearly' }), 3, OCT9), null);
+});
+await test('Plan switch: the server records it on the plan and the next invoice has the line; a credit bigger than the invoice carries over', async () => {
+  const adminMod = await import('../server/admin.ts');
+  const ws = { id: 'w-pro', name: 'Pro', members: [{ userId: 'bp-1', role: 'owner' }], plan: P('studio') };
+  db.writeDocs('workspaces', [ws], [], null);
+  const at = new Date();
+  const list = billingMod.adjustmentsOnSave(ws, ws.plan, P('agency'), at);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].invoiced, false, 'this month’s invoice isn’t made yet: it bills Agency, and the days on Studio are put right');
+  assert.ok(list[0].amount <= 0);
+  const withSwitch = { ...ws, plan: { ...P('agency'), adjustments: list } };
+  const lines = adminMod.invoiceLinesFor(withSwitch, at.toISOString().slice(0, 7)).lines;
+  assert.ok(lines.some((l) => l.text === list[0].text && l.amount === list[0].amount) || list[0].amount === 0, 'the line is on the invoice');
+  // Once this month's invoice exists, a switch charges the rest of the month instead.
+  platformMod.createInvoice({ workspaceId: 'w-pro', period: at.toISOString().slice(0, 7), lines: [{ text: 'Studio plan', amount: studio }], discount: 0, dueDays: 14, billTo: { company: 'Pro', emails: [] }, by: 'test' });
+  const after = billingMod.adjustmentsOnSave(ws, ws.plan, P('agency'), at);
+  assert.equal(after.find((a) => a.invoiced)?.amount > 0, true);
+  // A credit bigger than the whole invoice brings it to zero, and the rest waits for the next one.
+  const big = { ...ws, plan: { ...P('small'), adjustments: [{ id: 'x', at: at.toISOString(), period: '2026-10', invoiced: true, from: 'Business', to: 'Small', daysBefore: 8, days: 31, amount: -5_000_000, text: 'Small instead of Business from 9 October' }] } };
+  const r = adminMod.invoiceLinesFor(big, '2026-11');
+  assert.equal(r.lines.reduce((n, l) => n + l.amount, 0), 0, 'the invoice comes to zero');
+  assert.ok(r.carry < 0 && r.carry > -5_000_000, 'the rest of the credit is carried');
+});
+
 /* read tracking: reminders and Outlook.com's picture proxy (server/readTracking.ts) */
 
 const readTracking = await import('../server/readTracking.ts');

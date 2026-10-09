@@ -7,8 +7,9 @@
 //  - Boosted sending credits: bought with an invoice paid by bank transfer, added when an operator marks it paid
 import * as db from './db.ts';
 import * as platform from './platform.ts';
-import { MAIL_PACKS, PAUSE_DAYS_A_YEAR, countedMailboxes, mailboxRoom, meetHours, pauseDaysLeft, pauseDaysUsed, rp, storageGB } from '../src/data/pricing.ts';
-import type { Plan } from '../src/types.ts';
+import { randomBytes } from 'node:crypto';
+import { MAIL_PACKS, PAUSE_DAYS_A_YEAR, addAdjustment, billingPeriod, countedMailboxes, mailboxRoom, meetHours, pauseDaysLeft, pauseDaysUsed, prorate, rp, storageGB } from '../src/data/pricing.ts';
+import type { Plan, PlanAdjustment } from '../src/types.ts';
 
 const DAY = 86_400_000;
 const now = () => new Date().toISOString();
@@ -42,6 +43,25 @@ export function activePeople(ws: Ws | undefined, period = now().slice(0, 7)): { 
   const seen = platform.activeInMonth(period);
   return { active: Math.max(1, team.filter((m) => seen.has(m.userId)).length), team: Math.max(1, team.length), period };
 }
+
+/* ---------- plan switches, prorated ---------- */
+
+/** Whether a period's plan invoice was already made for this company (an invoice for Boosted credits doesn't count). */
+const periodInvoiced = (wsId: string, period: string) => platform.invoices(wsId).some((i) => i.period === period && i.status !== 'void' && !isCreditInvoice(i.id));
+/**
+ * A plan saved with another tier or track: the switch is prorated for the rest of its period (src/data/pricing.ts,
+ * prorate) and waits on the plan for the next invoice, with any earlier switch of the same period folded in. The
+ * people it's priced for are the ones active this month, like the invoice.
+ */
+export function adjustmentsOnSave(ws: Ws, prev: Plan | undefined, next: Plan, at = new Date()): PlanAdjustment[] | undefined {
+  const kept = prev?.adjustments?.length ? prev.adjustments : undefined;
+  if (!prev || !next || (prev.tier === next.tier && prev.track === next.track && prev.cycle === next.cycle)) return kept;
+  const period = billingPeriod(prev, at).key;
+  const a = prorate(prev, next, activePeople(ws, at.toISOString().slice(0, 7)).active, at, periodInvoiced(ws.id, period));
+  return a ? addAdjustment(kept, a, 'adj-' + randomBytes(5).toString('hex')) : kept;
+}
+/** The invoice lines for switches waiting on a plan (a credit is a negative amount). */
+export const adjustmentLines = (plan: Plan | undefined) => (plan?.adjustments ?? []).filter((a) => a.amount).map((a) => ({ text: a.text, amount: a.amount }));
 
 /* ---------- read-only: paused or suspended ---------- */
 

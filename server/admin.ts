@@ -17,7 +17,7 @@ import * as turn from './turn.ts';
 import * as twostep from './twostep.ts';
 import * as sandbox from './sandbox.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
-import type { Plan, Tier, Track } from '../src/types.ts';
+import type { Plan, PlanAdjustment, Tier, Track } from '../src/types.ts';
 import { isZone } from '../src/jobTimes.ts';
 
 export interface AdminCtx {
@@ -273,7 +273,7 @@ export async function checkAlerts(ctx: AdminCtx) {
  * A month's invoice: the plan for the people who were active that month (signed in or used sprint2go; the billing
  * page promises only they are billed), and the add-ons. The plan line says how many were active, and of how many.
  */
-function invoiceLinesFor(ws: any, period: string) {
+export function invoiceLinesFor(ws: any, period: string) {
   const plan: Plan = ws.plan;
   const { active: people, team } = billing.activePeople(ws, period);
   const t = monthlyTotal(plan, people);
@@ -287,13 +287,23 @@ function invoiceLinesFor(ws: any, period: string) {
   if (a.meetHours10) lines.push({ text: `${a.meetHours10 * 10} more meeting-bot hours`, amount: a.meetHours10 * ADDONS.meetHours10.price });
   if (a.branding) lines.push({ text: 'Branding add-on', amount: ADDONS.branding.price });
   if (plan.topUps) lines.push({ text: `${plan.topUps} AI top-up${plan.topUps === 1 ? '' : 's'}`, amount: plan.topUps * TOP_UP.price });
-  const subtotal = lines.reduce((n, l) => n + l.amount, 0);
+  // Plan switches since the last invoice, prorated: a charge, or a credit (negative). A credit bigger than the invoice
+  // brings it to zero and the rest waits for the next one (`carry`).
+  lines.push(...billing.adjustmentLines(plan));
+  const sum = lines.reduce((n, l) => n + l.amount, 0);
+  if (sum < 0) lines.push({ text: 'Credit left over, taken off your next invoice', amount: -sum });
+  const carry = Math.min(0, sum);
+  const subtotal = Math.max(0, sum);
   const note = plan.tier === 'free' ? undefined : `Active people are those on your team who signed in or used sprint2go in ${month}. Guests and shared inboxes are free.`;
-  return { lines, discount: discountOf(plan, subtotal), note };
+  return { lines, discount: discountOf(plan, subtotal), note, carry };
 }
+/** What waits on a plan after its invoice is made: nothing, or the credit that was bigger than the invoice. */
+const afterInvoice = (carry: number, period: string): PlanAdjustment[] | undefined =>
+  carry < 0 ? [{ id: 'adj-' + randomBytes(5).toString('hex'), at: now(), period, invoiced: true, from: '', to: '', daysBefore: 0, days: 0, amount: carry, text: 'Credit left over from your last invoice' }] : undefined;
 export function invoiceHtml(inv: platform.Invoice, wsName: string) {
   const b = platform.settings().billing;
-  const row = (l: { text: string; amount: number }) => `<tr><td>${esc(l.text)}</td><td class="r">${rp(l.amount)}</td></tr>`;
+  // A credit (a prorated switch to a cheaper plan) shows as one: −Rp 300.000.
+  const row = (l: { text: string; amount: number }) => `<tr><td>${esc(l.text)}${l.amount < 0 ? ' <span class="muted">(credit)</span>' : ''}</td><td class="r">${l.amount < 0 ? `−${rp(-l.amount)}` : rp(l.amount)}</td></tr>`;
   const st = inv.status === 'paid' ? `<span class="paid">Paid ${esc(inv.paidAt?.slice(0, 10))}</span>` : inv.status === 'void' ? '<span class="void">Void</span>' : `Due ${esc(inv.dueAt.slice(0, 10))}`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(inv.number)}</title><style>
 body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#16161d;background:#f5f6f8;margin:0;padding:24px}
@@ -542,6 +552,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     }
     if (b.billing && typeof b.billing === 'object') (changes.push('billing details'), (plan.billing = { company: String(b.billing.company ?? ws.name).slice(0, 120), npwp: String(b.billing.npwp ?? '').slice(0, 40) || undefined, address: String(b.billing.address ?? '').slice(0, 400) || undefined, emails: (Array.isArray(b.billing.emails) ? b.billing.emails : []).map(String).filter((e: string) => e.includes('@')).slice(0, 5) }));
     if (!changes.length) return (json(res, 200, { ok: true }), true);
+    if (ws.plan) plan.adjustments = billing.adjustmentsOnSave(ws, ws.plan, plan); // a tier or track switch, prorated
     saveWs({ ...ws, plan });
     platform.event('plan.changed', ws.id, null, changes.join('; '));
     log('company.plan', ws.id, changes.join('; '));
@@ -1039,6 +1050,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const custom = Array.isArray(b.lines) && b.lines.length;
     const lines = custom ? b.lines.map((l: any) => ({ text: String(l.text ?? '').slice(0, 200), amount: Math.round(Number(l.amount) || 0) })).filter((l: any) => l.text) : auto.lines;
     const inv = platform.createInvoice({ workspaceId: ws.id, period, lines, discount: 'discount' in b ? Number(b.discount) || 0 : auto.discount, dueDays: Number(b.dueDays ?? 14), billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: b.note ?? (custom ? undefined : auto.note) });
+    if (!custom && (ws.plan.adjustments?.length || auto.carry)) saveWs({ ...ws, plan: { ...ws.plan, adjustments: afterInvoice(auto.carry, period) } }); // the switches are on this invoice now
     log('invoice.create', ws.id, `${inv.number} ${rp(inv.total)}`);
     return (json(res, 200, { id: inv.id }), true);
   }
@@ -1053,7 +1065,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
       const ws = wsById(c.id);
       const auto = invoiceLinesFor(ws, period);
       platform.createInvoice({ workspaceId: c.id, period, lines: auto.lines, discount: auto.discount, dueDays: 14, billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: auto.note });
-      if (ws.plan.topUps) saveWs({ ...ws, plan: { ...ws.plan, topUps: 0 } }); // invoiced: the count starts again
+      // Invoiced: the top-up count starts again, and the prorated switches are on this invoice now.
+      if (ws.plan.topUps || ws.plan.adjustments?.length || auto.carry) saveWs({ ...ws, plan: { ...ws.plan, topUps: 0, adjustments: afterInvoice(auto.carry, period) } });
       made++;
     }
     log('invoice.generate', null, `${made} drafts for ${period}`);
