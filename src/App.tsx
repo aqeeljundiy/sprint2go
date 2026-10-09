@@ -4160,6 +4160,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               stays={staysInList}
               onMenu={() => setSidebarOpen(true)}
               empty={(() => {
+                if (view.kind === 'todos') return { title: 'Nothing to do from email', sub: 'Emails that ask you to do something show here until their to-dos are done.' };
+                if (view.kind === 'project') return { title: `No email with ${title} yet`, sub: `Email to and from ${title}’s address shows here.` };
                 const t = myAccounts.find((a) => a.id === activeAccount && a.temp);
                 return t
                   ? {

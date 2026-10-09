@@ -555,7 +555,7 @@ body.resizing-x .pane-resize::after {
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
 }
-.compose-field span {
+.compose-field > span {
   width: 52px;
   flex: none;
   color: var(--text-3);

@@ -1122,6 +1122,15 @@
 
 /* ---------- Compose: Cc and Bcc fold together; templates sit with the other tools ---------- */
 
+.compose-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.compose-body > .rich {
+  flex: 1;
+}
 .cc-rows {
   display: grid;
   animation: fadeIn 0.18s ease-out backwards;

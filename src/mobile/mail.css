@@ -205,14 +205,20 @@
   .mail-reader .thread-count {
     display: none;
   }
-  .mail-reader .th-who {
-    min-height: 32px;
-  }
-  .mail-reader .ai-sum {
+  .mail-reader .thread-labels > button,
+  .mail-reader .th-when,
+  .mail-reader .ai-sum,
+  .mail-reader .ai-chip,
+  .mail-reader .smart-replies button {
     min-height: var(--tap);
   }
-  .mail-reader .ai-chip {
-    min-height: 36px;
+  .mail-reader .thread-labels > button {
+    padding: 0 14px 0 10px;
+    font-size: 13px;
+  }
+  .mail-reader .rp-btn {
+    min-width: var(--tap);
+    justify-content: center;
   }
   /* Messages are plain sections with a line between them, not boxes inside the screen. */
   .mail-reader .messages {
@@ -264,9 +270,6 @@
   .mail-reader .smart-replies {
     margin-top: 16px;
   }
-  .mail-reader .smart-replies button {
-    min-height: 40px;
-  }
   .invite {
     flex-wrap: wrap;
   }
@@ -275,7 +278,11 @@
     justify-content: center;
   }
 
-  /* The bottom: the comment bar (team mail) over the actions; typing a comment folds the actions away. */
+  /* The bottom: the comment bar (team mail) over the actions; typing a comment folds the actions away. The footer
+     already rides above the keyboard, so the body doesn't keep the keyboard's room as well. */
+  .mail-reader .push-body {
+    padding-bottom: 0;
+  }
   .mail-reader .push-foot {
     padding: 6px 8px calc(4px + env(safe-area-inset-bottom));
   }
@@ -505,6 +512,7 @@
 
   /* Parked: a pill above the tab bar; tap it to carry on writing. */
   .compose.compose-pill {
+    flex-direction: row;
     inset: auto 16px calc(var(--bar-space) + 12px) 16px;
     width: auto;
     height: 52px;

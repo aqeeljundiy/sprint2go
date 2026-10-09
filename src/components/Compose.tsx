@@ -15,6 +15,7 @@ import { usePhone } from '../mobile/media';
 import { useLongPress } from './ui/useLongPress';
 import { SendLaterPicker } from './mail/MailPickers';
 import { TemplatesPicker } from './mail/Templates';
+import { startAtTop } from './mail/caret';
 
 export interface OutgoingFile {
   name: string;
@@ -308,7 +309,9 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
             <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="What's this about?" />
           </label>
 
-          <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder="Write something great…" onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
+          <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
+            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder="Write something great…" onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
+          </div>
 
           {files.length > 0 && (
             <div className="compose-files">

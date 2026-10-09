@@ -4,6 +4,7 @@ import type { Person } from '../../types';
 import { Sheet } from '../ui/Sheet';
 import { RichEditor, type RichEditorHandle } from '../RichEditor';
 import { TemplatesPicker } from './Templates';
+import { startAtTop } from './caret';
 import { hasOwnText, htmlToText, textToHtml } from '../../sanitize';
 
 /**
@@ -110,7 +111,7 @@ export function QuickReply({
         </div>
       }
     >
-      <div className="qr-editor">
+      <div className="qr-editor" onClick={(e) => startAtTop(e, typed)}>
         <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder="Write your reply…" onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
       </div>
       <TemplatesPicker
