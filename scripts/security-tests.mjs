@@ -13,10 +13,12 @@
 // 10. invoices bill the people who were active that month, and say so
 // 11. the company's time zone: only admins set it, only zones the clock knows
 // 12. mail: a refused send plans nothing; "Remind me if no reply" is noted when the email goes out
+// 13. two-step sign-in: "Remember this device" for 30 days, signed and bound to the person, forgotten on Forget,
+//     "Sign out everywhere" and a password change
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -387,6 +389,89 @@ try {
   const days = rem ? (Date.parse(rem.due_at) - Date.now()) / 86_400_000 : 0;
   check(sent.ok && rem?.by_user === 'u-aqeel' && rem.state === 'waiting' && days > 2.9 && days <= 3, 'a tracked email with “Remind me if no reply” is noted on the server, three days out');
 
+  /* ---------- 13. two-step sign-in: "Remember this device" ---------- */
+  {
+    // A TOTP code (RFC 6238) for a base32 secret, `ahead` 30-second steps from now.
+    const totp = (secret, ahead = 0) => {
+      const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+      let bits = '';
+      for (const ch of secret.replace(/[\s=]/g, '').toUpperCase()) bits += A.indexOf(ch).toString(2).padStart(5, '0');
+      const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+      const msg = Buffer.alloc(8);
+      msg.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000) + ahead));
+      const h = createHmac('sha1', key).update(msg).digest();
+      const o = h[h.length - 1] & 0xf;
+      return String((((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1_000_000).padStart(6, '0');
+    };
+    /** A sign-in with the password and whatever device cookie this browser has: the session, the device cookie, the answer. */
+    const login = async (email, device, password = env.SEED_PASSWORD) => {
+      const r = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json', ...(device ? { cookie: `s2g_dev=${device}` } : {}) }, body: JSON.stringify({ email, password }) });
+      const jar = Object.fromEntries(r.headers.getSetCookie().map((c) => c.split(';')[0].split('=')).map(([k, ...v]) => [k, v.join('=')]));
+      return { status: r.status, body: await r.json(), session: jar.s2g, device: jar.s2g_dev };
+    };
+    const as = (session, device) => (method, path, b) => fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', cookie: [`s2g=${session}`, ...(device ? [`s2g_dev=${device}`] : [])].join('; ') }, body: b === undefined ? undefined : JSON.stringify(b) });
+    const dewiMail = 'dewi@pixelandprofits.com';
+    const dewiId = db.prepare('SELECT user_id FROM logins WHERE email = ?').get(dewiMail).user_id;
+    // Dewi turns two-step sign-in on.
+    const first = await login(dewiMail);
+    const d1 = as(first.session);
+    const setup = await d1('POST', '/api/2fa/setup', {}).then((r) => r.json());
+    const enabled = await d1('POST', '/api/2fa/enable', { code: totp(setup.secret) });
+    check(enabled.ok, 'a member turns on two-step sign-in');
+    // Next sign-in: the code, with "Remember this device".
+    const second = await login(dewiMail);
+    check(second.body.twoStep === 'code', 'a new sign-in asks for the code');
+    const verify = await fetch(`${base}/api/2fa/verify`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: `s2g=${second.session}` }, body: JSON.stringify({ code: totp(setup.secret, 1), remember: true }) });
+    const deviceCookie = Object.fromEntries(verify.headers.getSetCookie().map((c) => c.split(';')[0].split('=')).map(([k, ...v]) => [k, v.join('=')])).s2g_dev;
+    const setCookieLine = verify.headers.getSetCookie().find((c) => c.startsWith('s2g_dev=')) ?? '';
+    check(verify.ok && !!deviceCookie && /HttpOnly/.test(setCookieLine) && /Max-Age=2592000/.test(setCookieLine), 'ticking “Remember this device” gives the browser a 30-day device cookie it can’t read from scripts');
+    const third = await login(dewiMail, deviceCookie);
+    const meThird = await as(third.session)('GET', '/api/me').then((r) => r.json());
+    check(third.status === 200 && !third.body.twoStep && !meThird.twoStep && meThird.me === dewiId, 'that device signs in with just the password');
+    const listed = await as(third.session, deviceCookie)('GET', '/api/2fa').then((r) => r.json());
+    check(listed.devices?.length === 1 && listed.devices[0].current === true && /until|\d/.test(listed.devices[0].expiresAt) && Date.parse(listed.devices[0].expiresAt) - Date.now() > 29.9 * 86_400_000, 'it’s in her remembered devices, marked as this device, for 30 days');
+    // The token is signed and bound to its person: changed, someone else's, or expired, it asks for the code. (Aditya,
+    // so neither of them meets the 10 sign-ins a quarter hour the server allows per address.)
+    const [devId, devExp] = deviceCookie.split('.');
+    const master = Buffer.from(readFileSync(join(dir, 'secret.key'), 'utf8').trim(), 'base64');
+    const sign = (id, userId, exp) => createHmac('sha256', master).update(`trusted-device:${id}:${userId}:${exp}`).digest('hex').slice(0, 40);
+    const madeDevice = (userId, days = 30) => {
+      const id = randomBytes(9).toString('hex');
+      const exp = String(Math.floor((Date.now() + days * 86_400_000) / 1000));
+      db.prepare('INSERT INTO trusted_devices (id, user_id, name, created_at, used_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, userId, 'Test browser', now(), now(), new Date(Number(exp) * 1000).toISOString());
+      return { id, token: `${id}.${exp}.${sign(id, userId, exp)}` };
+    };
+    const adiMail = 'aditya@pixelandprofits.com';
+    const adiId = db.prepare('SELECT user_id FROM logins WHERE email = ?').get(adiMail).user_id;
+    const adi = as((await login(adiMail)).session);
+    const adiSetup = await adi('POST', '/api/2fa/setup', {}).then((r) => r.json());
+    await adi('POST', '/api/2fa/enable', { code: totp(adiSetup.secret) });
+    const adiDev = madeDevice(adiId);
+    const [aId, aExp] = adiDev.token.split('.');
+    check((await login(adiMail, `${aId}.${aExp}.${'0'.repeat(40)}`)).body.twoStep === 'code', 'a changed token asks for the code');
+    check((await login(adiMail, deviceCookie)).body.twoStep === 'code', 'someone else’s device token doesn’t count');
+    check((await login(adiMail, madeDevice(adiId, -1).token)).body.twoStep === 'code', 'an expired one asks for the code');
+    check((await login(adiMail, `${deviceCookie}~${adiDev.token}`)).body.twoStep === undefined, 'a properly signed one works, next to someone else’s on the same browser');
+    // Forget: that device asks again.
+    const forgetOne = await as(third.session, deviceCookie)('POST', '/api/2fa/devices/forget', { id: devId });
+    check(forgetOne.ok && (await login(dewiMail, deviceCookie)).body.twoStep === 'code', 'Forget: that device asks for the code again');
+    // Sign out everywhere: other sessions end, every remembered device is forgotten, this session stays.
+    const devA = madeDevice(dewiId);
+    const keep = await login(dewiMail, devA.token);
+    const other = await login(dewiMail, madeDevice(dewiId).token);
+    const out = await as(keep.session)('POST', '/api/2fa/signout-everywhere', {});
+    const otherMe = await as(other.session)('GET', '/api/me');
+    const keepMe = await as(keep.session)('GET', '/api/me').then((r) => r.json());
+    const left = db.prepare('SELECT COUNT(*) AS n FROM trusted_devices WHERE user_id = ?').get(dewiId).n;
+    check(out.ok && otherMe.status === 401 && keepMe.me === dewiId && left === 0, `“Sign out everywhere” ends the other sessions and forgets every remembered device, and this one stays (${otherMe.status}, ${left} left)`);
+    check((await login(dewiMail, devA.token)).body.twoStep === 'code', 'so a device remembered before asks for the code again');
+    // A password change forgets them too.
+    const devB = madeDevice(dewiId);
+    const pw = await as(keep.session)('POST', '/api/password', { current: env.SEED_PASSWORD, next: 'a-new-password-123' });
+    check(pw.ok && db.prepare('SELECT COUNT(*) AS n FROM trusted_devices WHERE user_id = ?').get(dewiId).n === 0, 'a password change forgets every remembered device');
+    check((await login(dewiMail, devB.token, 'a-new-password-123')).body.twoStep === 'code', 'and the next sign-in there asks for the code');
+
+  }
   db.close();
 } catch (e) {
   check(false, `unexpected: ${e instanceof Error ? e.stack : e}`);

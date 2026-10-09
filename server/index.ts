@@ -587,7 +587,14 @@ async function body(req: IncomingMessage): Promise<any> {
 }
 /** The session cookie: only over https when the app is served over https (behind Dokploy's proxy). */
 const secureCookies = () => PUBLIC_URL.startsWith('https://');
-const setSession = (res: ServerResponse, token: string | null) => res.setHeader('set-cookie', `s2g=${token ?? ''}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${token ? 30 * 86400 : 0}${secureCookies() ? '; Secure' : ''}`);
+/** Adds a Set-Cookie to the answer, keeping any set before it (the session and the remembered-device cookie can go together). */
+const addCookie = (res: ServerResponse, c: string) => {
+  const had = res.getHeader('set-cookie');
+  res.setHeader('set-cookie', [...(Array.isArray(had) ? had : had ? [String(had)] : []).filter((x) => !x.startsWith(c.split('=')[0] + '=')), c]);
+};
+const setSession = (res: ServerResponse, token: string | null) => addCookie(res, `s2g=${token ?? ''}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${token ? 30 * 86400 : 0}${secureCookies() ? '; Secure' : ''}`);
+/** The browser's remembered-device tokens (server/twostep.ts), for 30 days. */
+const setDeviceCookie = (res: ServerResponse, value: string | null) => addCookie(res, `${twostep.DEVICE_COOKIE}=${value ?? ''}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${value ? twostep.DEVICE_DAYS * 86400 : 0}${secureCookies() ? '; Secure' : ''}`);
 /** Attempts per key (an address and an email) in a sliding window: sign-in and codes can't be guessed in bulk. */
 const attempts = new Map<string, number[]>();
 function tooMany(key: string, max: number, windowMs: number) {
@@ -1256,8 +1263,16 @@ createServer(async (req, res) => {
       const t = db.newSession(login.user_id);
       setSession(res, t);
       // Two-step sign-in: the session waits for its code (15 minutes), or for setting it up when a company requires it.
-      const g = twostep.gate(login.user_id, t, null, workspaces() as any);
-      if (g?.need === 'code') twostep.markWaiting(t);
+      // A device this person asked to remember (a signed token in its cookie, not forgotten, under 30 days) skips the code.
+      let g = twostep.gate(login.user_id, t, null, workspaces() as any);
+      if (g?.need === 'code') {
+        const device = twostep.trustedDevice(cookie(req, twostep.DEVICE_COOKIE), login.user_id);
+        if (device) {
+          twostep.markPassed(t);
+          twostep.deviceUsed(device.id);
+          g = null;
+        } else twostep.markWaiting(t);
+      }
       return json(res, 200, { me: login.user_id, ...(g ? { twoStep: g.need, companies: g.need === 'setup' ? g.companies : undefined } : {}) });
     }
     // Sign-up: name, email and password, then a 6-digit code sent to the email. Until real email is wired up, the code
@@ -1357,6 +1372,7 @@ createServer(async (req, res) => {
       codes.delete(`reset:${mail}`);
       await db.setLogin(login.user_id, mail, password);
       db.endSessions(login.user_id);
+      twostep.forgetDevices(login.user_id); // a new password: every remembered device asks for the code again
       const t = db.newSession(login.user_id);
       if (twostep.isOn(login.user_id)) twostep.markPassed(t);
       setSession(res, t);
@@ -1500,6 +1516,8 @@ createServer(async (req, res) => {
         body,
         workspaces: workspaces as any,
         issuer: brandNameAt(req),
+        deviceCookie: cookie(req, twostep.DEVICE_COOKIE),
+        setDeviceCookie: (v) => setDeviceCookie(res, v),
         kick,
         operator: session?.operator ?? null,
         event: (type, wsId, userId, detail) => platform.event(type, wsId, userId, detail),
@@ -2036,7 +2054,10 @@ createServer(async (req, res) => {
       if (!login || !(await db.checkPassword(String(current ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your current password is wrong.' });
       if (typeof next !== 'string' || next.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
       await db.setLogin(me, u.email!, next);
-      // Everywhere else signs out; this device gets a fresh session (still past its second step).
+      // Everywhere else signs out, and every remembered device asks for the code again; this device gets a fresh
+      // session (still past its second step).
+      twostep.forgetDevices(me);
+      setDeviceCookie(res, null);
       const passed = twostep.sessionPassed(cookie(req, 's2g'));
       db.endSessions(me);
       for (const [id, c] of clients) if (c.userId === me && c.token !== cookie(req, 's2g')) (c.res.end(), clients.delete(id));
