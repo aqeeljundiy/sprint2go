@@ -301,10 +301,11 @@
     transform: translateX(100%);
   }
 }
+/* The title has the room: a long Back label ("Pengaturan") gives way first (it shrinks ten times faster), down to the
+   arrow alone; on tiny phones the arrow is all there is (its aria-label still names the screen). */
 .push-head {
   flex: none;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: 4px;
   min-height: 52px;
@@ -313,23 +314,41 @@
   background: var(--surface);
 }
 .push-back {
+  flex: 0 10 auto;
   display: inline-flex;
   align-items: center;
   gap: 2px;
   min-width: 44px;
   min-height: 44px;
   padding: 0 8px 0 6px;
+  overflow: hidden;
   border-radius: 12px;
   color: var(--accent);
   font-size: 16px;
   font-weight: 500;
   transition: background 0.15s;
 }
+.push-back svg {
+  flex: none;
+}
+.push-back span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 359px) {
+  .push-back span {
+    display: none;
+  }
+}
 .push-back:hover,
 .push-back:active {
   background: var(--hover);
 }
 .push-title {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   font-size: 17px;
   font-weight: 700;
@@ -341,6 +360,12 @@
 .push-actions {
   display: flex;
   gap: 2px;
+}
+/* notify.css has its own .push-actions (the notifications card): none of its indent here, or the title loses 52 px. */
+.push-head > .push-actions {
+  flex: none;
+  flex-wrap: nowrap;
+  padding-left: 0;
 }
 .push-body {
   flex: 1;

@@ -3,6 +3,7 @@ import { AtSign, Bell, CheckCheck, CircleCheck, ListChecks, Mail, Users, Video, 
 import type { Notice } from '../types';
 import { relative } from '../utils';
 import { EmptyState } from './ui/EmptyState';
+import { t, textOf } from '../i18n';
 
 const ICON: Record<Notice['kind'], LucideIcon> = { task: ListChecks, mention: AtSign, meeting: Video, mail: Mail, done: CircleCheck, team: Users };
 
@@ -29,17 +30,17 @@ export function Notifications({ notices, onOpen, onReadAll, onClose }: Props) {
 
   const sorted = [...notices].sort((a, b) => b.at.localeCompare(a.at));
   return (
-    <div className="notices" ref={ref} role="dialog" aria-label="Notifications">
+    <div className="notices" ref={ref} role="dialog" aria-label={t('Notifications')}>
       <header>
-        <strong>Notifications</strong>
+        <strong>{t('Notifications')}</strong>
         {notices.some((n) => !n.read) && (
           <button className="ghost-btn sm" onClick={onReadAll}>
-            <CheckCheck size={14} /> Mark all read
+            <CheckCheck size={14} /> {t('Mark all read')}
           </button>
         )}
       </header>
       {sorted.length === 0 ? (
-        <EmptyState className="notices-empty" icon={<Bell size={20} />} title="You’re all caught up" text="New mentions, assignments and replies show up here." />
+        <EmptyState className="notices-empty" icon={<Bell size={20} />} title={t('You’re all caught up')} text={t('New mentions, assignments and replies show up here.')} />
       ) : (
         <ul>
           {sorted.map((n) => {
@@ -51,7 +52,7 @@ export function Notifications({ notices, onOpen, onReadAll, onClose }: Props) {
                     <Icon size={14} />
                   </span>
                   <span className="nt-text">
-                    {n.text}
+                    {textOf(n)}
                     <time>{relative(n.at)}</time>
                   </span>
                 </button>

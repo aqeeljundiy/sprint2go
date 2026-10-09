@@ -8,6 +8,7 @@ import { channelsFor, clientInbox, clientPeople, companyOf, filesFor, isFreemail
 import { ai } from './ai';
 import type { MeetSource } from './ai/demo';
 import { uploadFile } from './sync';
+import { msg, phrase, type Msg } from './i18n';
 
 type Set<T> = Dispatch<SetStateAction<T>>;
 
@@ -39,10 +40,11 @@ const now = () => new Date().toISOString();
 export function clientActions(c: ClientCtx) {
   const first = c.person.name.split(' ')[0];
   const who = companyOf(c.person.email, c.person.company, c.client) ?? c.client.name; // their company, for the team's notifications
-  const notice = (userId: string, text: string, link?: Notice['link']): Notice => ({ id: uid(), userId, workspaceId: c.ws.id, kind: 'task', text, at: now(), read: false, link });
-  const tell = (userIds: (string | undefined)[], text: string, link?: Notice['link']) => {
+  // The team's notices: msg() keeps the English and lets each reader see it in their own language (docs/i18n.md).
+  const notice = (userId: string, words: { text: string; tr: Msg }, link?: Notice['link']): Notice => ({ id: uid(), userId, workspaceId: c.ws.id, kind: 'task', ...words, at: now(), read: false, link });
+  const tell = (userIds: (string | undefined)[], words: { text: string; tr: Msg }, link?: Notice['link']) => {
     const ids = [...new Set(userIds.filter((x): x is string => !!x))];
-    if (ids.length) c.setNotices((ns) => [...ids.map((id) => notice(id, text, link)), ...ns]);
+    if (ids.length) c.setNotices((ns) => [...ids.map((id) => notice(id, words, link)), ...ns]);
   };
   const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
   const sharedChannel = () => channelsFor(c.person.email, c.client.id, c.channels)[0];
@@ -68,7 +70,7 @@ export function clientActions(c: ClientCtx) {
       const mid = uid();
       c.setMessages((ms) => [...ms, { id: mid, channelId, userId: 'guest', guestEmail: c.person.email, text: text.trim(), at: now(), files: pl.files, parentId: pl.parentId, alsoInChannel: pl.alsoInChannel }]);
       const mentioned = c.team.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id);
-      tell(mentioned, `${c.person.name} (${who}) mentioned you in #${ch.name}`, { app: 'chat', id: channelId, msg: mid });
+      tell(mentioned, msg('{name} ({company}) mentioned you in #{channel}', { name: c.person.name, company: who, channel: ch.name }), { app: 'chat', id: channelId, msg: mid });
     },
 
     /** Approve work, or ask for changes. */
@@ -89,7 +91,7 @@ export function clientActions(c: ClientCtx) {
       );
       const ch = sharedChannel();
       if (ch) c.setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: 'guest', guestEmail: c.person.email, text: status === 'approved' ? `✅ Approved “${t.title}”${note ? `: ${note}` : ''}` : `✏️ Asked for changes on “${t.title}”: ${note}`, at: now(), taskId }]);
-      tell([t.approval?.askedBy, ...doers(t), t.supervisorId, c.client.ownerId], `${first} (${who}) ${status === 'approved' ? 'approved' : 'asked for changes on'} “${t.title}”`, { app: 'tasks', id: taskId });
+      tell([t.approval?.askedBy, ...doers(t), t.supervisorId, c.client.ownerId], status === 'approved' ? msg('{name} ({company}) approved “{title}”', { name: first, company: who, title: t.title }) : msg('{name} ({company}) asked for changes on “{title}”', { name: first, company: who, title: t.title }), { app: 'tasks', id: taskId });
     },
 
     /** A comment the team sees, on a shared task or a request. */
@@ -97,7 +99,7 @@ export function clientActions(c: ClientCtx) {
       const t = c.todos.find((x) => x.id === taskId);
       if (!t || !text.trim()) return;
       c.setTodos((ts) => ts.map((x) => (x.id === taskId ? { ...x, history: [...(x.history ?? []), { id: uid(), at: now(), by: c.person.email, kind: 'comment', text: text.trim(), toClient: true }] } : x)));
-      tell([...doers(t), t.supervisorId, c.client.ownerId], `${first} (${who}) commented on “${t.title}”: “${text.trim().slice(0, 80)}”`, { app: 'tasks', id: taskId });
+      tell([...doers(t), t.supervisorId, c.client.ownerId], msg('{name} ({company}) commented on “{title}”: “{text}”', { name: first, company: who, title: t.title, text: text.trim().slice(0, 80) }), { app: 'tasks', id: taskId });
     },
 
     /** A request (ticket): lands in the team's queue as a task. */
@@ -134,7 +136,7 @@ export function clientActions(c: ClientCtx) {
         ],
       };
       c.setTodos((ts) => [...ts, task]);
-      tell(queue ? [queue.leadId, ...queue.members] : [c.client.ownerId], `New request from ${c.person.name} (${who}): “${task.title}”`, { app: 'tasks', id });
+      tell(queue ? [queue.leadId, ...queue.members] : [c.client.ownerId], msg('New request from {name} ({company}): “{title}”', { name: c.person.name, company: who, title: task.title }), { app: 'tasks', id });
       return id;
     },
 
@@ -146,7 +148,7 @@ export function clientActions(c: ClientCtx) {
       const kindOf = (t: string): DriveItem['kind'] => (t.startsWith('image') ? 'image' : t.startsWith('video') ? 'video' : t.includes('pdf') ? 'pdf' : 'doc');
       const items: DriveItem[] = read.map((f) => ({ id: uid(), name: f.name, kind: kindOf(f.type), parentId: folder.id, size: f.size, modified: now(), workspaceId: c.ws.id, clientId: c.client.id, url: f.url, uploadedBy: c.person.email }));
       c.setDrive((d) => [...(folder.create ? [folder.create] : []), ...items, ...d]);
-      if (!quiet) tell([c.client.ownerId], `${first} (${who}) uploaded ${items.length === 1 ? items[0].name : `${items.length} files`}`, { app: 'drive' });
+      if (!quiet) tell([c.client.ownerId], items.length === 1 ? msg('{name} ({company}) uploaded {file}', { name: first, company: who, file: items[0].name }) : msg('{name} ({company}) uploaded {n} files', { name: first, company: who, n: items.length }), { app: 'drive' });
       return items.map((i) => i.name);
     },
 
@@ -164,7 +166,7 @@ export function clientActions(c: ClientCtx) {
       const person: ClientPerson = { email, name: p.name.trim(), role: 'collaborator', status: pending ? 'pending' : 'invited', invitedBy: c.person.email, at: now(), ...(company ? { company } : {}) };
       if (pending) {
         c.setClients((cs) => cs.map((x) => (x.id === c.client.id ? { ...x, people: [...(x.people ?? []), person] } : x)));
-        tell([c.client.ownerId], `${first} (${who}) asked to give ${person.name} (${email}) access. Approve it on the ${term.one} page`, { app: 'tasks' });
+        tell([c.client.ownerId], msg('{name} ({company}) asked to give {person} ({email}) access. Approve it on the {project} page', { name: first, company: who, person: person.name, email, project: phrase(term.word === 'client' ? 'client' : 'project') }), { app: 'tasks' });
         return { ok: true, message: sameCompany ? `Sent to ${c.ws.name} to approve.` : `${email} isn’t at @${mine || 'your company'}, so ${c.ws.name} needs to approve it.` };
       }
       // Straight in: the server adds them to the people list and the shared channels (it knows if they already sign in).
@@ -174,7 +176,7 @@ export function clientActions(c: ClientCtx) {
         c.setChannels((chs) => chs.map((ch) => (ch.clientId === c.client.id && ch.category === 'shared' ? { ...ch, guests: [...(ch.guests ?? []), { email, name: person.name, status: 'invited', invitedBy: c.person.email, at: now() }] } : ch)));
       }
       const link = (await c.makeInvite?.({ name: person.name, email })) ?? null;
-      tell([c.client.ownerId], `${first} (${who}) invited ${person.name}`, { app: 'tasks' });
+      tell([c.client.ownerId], msg('{name} ({company}) invited {person}', { name: first, company: who, person: person.name }), { app: 'tasks' });
       return { ok: true, message: link ? `${person.name.split(' ')[0]} can join with the invite link.` : `${person.name.split(' ')[0]} has access now. They’ll find it under “Shared with you”.`, link };
     },
 

@@ -7,6 +7,7 @@ import { isSandbox } from '../sandbox';
 import { Popover } from './ui/Popover';
 import { Sheet } from './ui/Sheet';
 import type { TitleMenu } from '../mobile/chrome';
+import { t, tn } from '../i18n';
 
 export interface TopSettingsRow {
   id: string;
@@ -70,16 +71,16 @@ export function MobileTop({
   return (
     <header className="mobile-top">
       {back ? (
-        <button className="mt-back" onClick={back} aria-label="Back">
+        <button className="mt-back" onClick={back} aria-label={t('Back')}>
           <ChevronLeft size={24} />
         </button>
       ) : (
-        <button ref={wsBtn} className="mt-ws" onClick={() => canSwitch && setWsOpen(true)} aria-label={`Workspace: ${current.name}${elsewhere ? ', new mail in another workspace' : ''}`}>
+        <button ref={wsBtn} className="mt-ws" onClick={() => canSwitch && setWsOpen(true)} aria-label={elsewhere ? t('Workspace: {name}, new mail in another workspace', { name: current.name }) : t('Workspace: {name}', { name: current.name })}>
           <WorkspaceLogo ws={current} size={30} />
           {elsewhere && <i className="mt-ws-dot" />}
         </button>
       )}
-      <Popover anchor={wsBtn} open={wsOpen} onClose={() => setWsOpen(false)} title="Workspaces">
+      <Popover anchor={wsBtn} open={wsOpen} onClose={() => setWsOpen(false)} title={t('Workspaces')}>
         <div className="sel-pop">
           {workspaces.map((w) => (
             <button key={w.id} className="sel-opt" aria-selected={w.id === current.id} onClick={() => (onWorkspace(w.id), setWsOpen(false))}>
@@ -91,14 +92,14 @@ export function MobileTop({
                   {w.name}
                   {isSandbox(w) && (
                     <Badge tone="info" small>
-                      Demo
+                      {t('Demo')}
                     </Badge>
                   )}
                 </span>
-                <small>{isSandbox(w) ? 'Your own copy to try things in' : (w.domains[0] ?? '')}</small>
+                <small>{isSandbox(w) ? t('Your own copy to try things in') : (w.domains[0] ?? '')}</small>
               </span>
               {(unreadByWs[w.id] ?? 0) > 0 && (
-                <b className="ws-unread" aria-label={`${unreadByWs[w.id]} unread`}>
+                <b className="ws-unread" aria-label={tn(unreadByWs[w.id], '{n} unread', '{n} unread')}>
                   {unreadByWs[w.id] > 99 ? '99+' : unreadByWs[w.id]}
                 </b>
               )}
@@ -109,24 +110,24 @@ export function MobileTop({
               <span className="sel-icon ws-demo-icon">{demo.busy ? <Loader2 size={16} className="spin" /> : <FlaskConical size={16} />}</span>
               <span className="sel-label">
                 <span className="ws-name-line">
-                  {demo.busy ? 'Making your demo company…' : 'Demo company'}
+                  {demo.busy ? t('Making your demo company…') : t('Demo company')}
                   <Badge tone="info" small>
-                    Demo
+                    {t('Demo')}
                   </Badge>
                 </span>
-                <small>A sample agency to try everything in, just for you</small>
+                <small>{t('A sample agency to try everything in, just for you')}</small>
               </span>
             </button>
           )}
-          {portals.length > 0 && <div className="sel-group">Shared with you</div>}
+          {portals.length > 0 && <div className="sel-group">{t('Shared with you')}</div>}
           {onShared && (
             <button className="sel-opt" onClick={() => (onShared(), setWsOpen(false))}>
               <span className="sel-icon">
                 <LayoutGrid size={18} />
               </span>
               <span className="sel-label">
-                See everything shared with you
-                <small>{portals.length} shared spaces</small>
+                {t('See everything shared with you')}
+                <small>{tn(portals.length, '{n} shared space', '{n} shared spaces')}</small>
               </span>
             </button>
           )}
@@ -137,20 +138,20 @@ export function MobileTop({
               </span>
               <span className="sel-label">
                 {pt.ws.name}
-                <small>Shared space · {pt.client.name}</small>
+                <small>{t('Shared space · {name}', { name: pt.client.name })}</small>
               </span>
             </button>
           ))}
           {onAddWorkspace && (
             <button className="sel-opt" onClick={() => (onAddWorkspace(), setWsOpen(false))}>
-              <span className="sel-label">+ Add a workspace</span>
+              <span className="sel-label">{t('+ Add a workspace')}</span>
             </button>
           )}
         </div>
       </Popover>
 
       {switches ? (
-        <button type="button" className={`mt-title${titleOpen ? ' open' : ''}`} onClick={() => setTitleOpen(true)} aria-haspopup="dialog" aria-label={menu ? `${menu.label}: ${shownTitle}` : `${title}: settings`}>
+        <button type="button" className={`mt-title${titleOpen ? ' open' : ''}`} onClick={() => setTitleOpen(true)} aria-haspopup="dialog" aria-label={menu ? `${menu.label}: ${shownTitle}` : t('{title}: settings', { title })}>
           <span className="mt-title-text">{shownTitle}</span>
           <ChevronDown size={16} className="mt-chev" />
         </button>
@@ -160,11 +161,11 @@ export function MobileTop({
       {titleOpen && <TitleSheet title={title} menu={menu ?? null} settings={settings} onClose={() => setTitleOpen(false)} />}
 
       <span className="spacer" />
-      <button className="icon-btn mt-search" onClick={onSearch} aria-label={`Search ${title}`}>
+      <button className="icon-btn mt-search" onClick={onSearch} aria-label={t('Search {title}', { title })}>
         <Search size={21} />
       </button>
       {onBell && (
-        <button className="icon-btn mt-bell" onClick={onBell} aria-label="Notifications">
+        <button className="icon-btn mt-bell" onClick={onBell} aria-label={t('Notifications')}>
           <Bell size={20} />
           {unread > 0 && <i>{unread > 9 ? '9+' : unread}</i>}
         </button>
@@ -189,12 +190,12 @@ function TitleSheet({ title, menu, settings, onClose }: { title: string; menu: T
       {many && (
         <label className="sheet-search">
           <Search size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find…" aria-label={`Find in ${menu?.label ?? title}`} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Find…')} aria-label={t('Find in {place}', { place: menu?.label ?? title })} />
         </label>
       )}
       {menu && (
         <div className="as-list" role="listbox" aria-label={menu.label}>
-          {shown.length === 0 && <p className="sheet-empty">Nothing called “{q}”</p>}
+          {shown.length === 0 && <p className="sheet-empty">{t('Nothing called “{q}”', { q })}</p>}
           {shown.map((o) => {
             const head = o.group && o.group !== lastGroup ? o.group : null;
             lastGroup = o.group;

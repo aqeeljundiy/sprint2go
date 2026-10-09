@@ -5,6 +5,8 @@ import { Avatar } from './Avatar';
 import { Wordmark } from './Logo';
 import { brand as product, setBrandName } from '../terms';
 import { CodeField, codeReady } from './TwoStep';
+import { LANGS, rememberLang, setLang, t, type Lang } from '../i18n';
+import { useLang } from '../i18n/useLang';
 
 /** The brand at this address: an agency's (white label), or ours. Read once and shared by the sign-in screens. */
 type BrandInfo = { name?: string; logo?: string; color?: string };
@@ -26,6 +28,24 @@ function useBrandAt() {
   }, []);
   return b;
 }
+/**
+ * English or Bahasa Indonesia before anyone is signed in: it starts on the browser's language (or what the landing page
+ * picked) and is remembered on this device. Once signed in, Settings, Account takes over.
+ */
+export function LangSwitch() {
+  const lang = useLang();
+  const pick = (l: Lang) => (rememberLang(l), void setLang(l));
+  return (
+    <div className="segmented signin-lang" role="group" aria-label={t('Language')}>
+      {LANGS.map((l) => (
+        <button key={l.id} type="button" lang={l.id} className={lang === l.id ? 'on' : ''} aria-pressed={lang === l.id} onClick={() => pick(l.id)}>
+          {l.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Our wordmark, or the agency's logo and name. */
 export function BrandMark() {
   const b = useBrandAt();
@@ -73,46 +93,46 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
           <ForgotPassword email={email} onBack={() => setForgot(false)} />
         ) : adding ? (
           <>
-            <h1>Sign in to {product.name}</h1>
-            <p className="signin-sub">{sub ?? 'Use the email address your workspace gave you.'}</p>
+            <h1>{t('Sign in to {product}', { product: product.name })}</h1>
+            <p className="signin-sub">{sub ?? t('Use the email address your workspace gave you.')}</p>
             <form onSubmit={submit} className="signin-form">
               <div className="field">
-                <label>Email</label>
-                <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@business.com" autoComplete="username" />
+                <label>{t('Email')}</label>
+                <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('you@business.com')} autoComplete="username" />
               </div>
               <div className="field">
-                <label>Password</label>
+                <label>{t('Password')}</label>
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
               </div>
-              {error && <p className="signin-error">{error}</p>}
+              {error && <p className="signin-error">{t(error)}</p>}
               <button className="primary-btn signin-btn" disabled={!email.includes('@') || busy || (realPasswords && !password)}>
-                {busy ? 'Signing in…' : 'Sign in'}
+                {busy ? t('Signing in…') : t('Sign in')}
               </button>
-              {!realPasswords && <p className="signin-note">Demo: any password works here. The local server checks real passwords.</p>}
+              {!realPasswords && <p className="signin-note">{t('Demo: any password works here. The local server checks real passwords.')}</p>}
               {realPasswords && (
                 <button type="button" className="link-btn small signin-forgot" onClick={() => setForgot(true)}>
-                  Forgot your password?
+                  {t('Forgot your password?')}
                 </button>
               )}
             </form>
             {onCreate && !product.white && (
               <p className="signin-switch">
-                New to {product.name}?{' '}
+                {t('New to {product}?', { product: product.name })}{' '}
                 <button type="button" className="link-btn" onClick={onCreate}>
-                  Create an account
+                  {t('Create an account')}
                 </button>
               </p>
             )}
             {signedIn.length > 0 && (
               <button className="ghost-btn signin-back" onClick={() => setAdding(false)}>
-                <ArrowLeft size={15} /> Back to accounts
+                <ArrowLeft size={15} /> {t('Back to accounts')}
               </button>
             )}
           </>
         ) : (
           <>
-            <h1>Choose an account</h1>
-            <p className="signin-sub">Signed in on this device</p>
+            <h1>{t('Choose an account')}</h1>
+            <p className="signin-sub">{t('Signed in on this device')}</p>
             <div className="signin-list">
               {signedIn.map((u) => (
                 <div key={u.id} className="signin-user">
@@ -124,7 +144,7 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
                     </span>
                     <ChevronRight size={16} />
                   </button>
-                  <button className="icon-btn sm" title="Remove from this device" onClick={() => onForget(u.id)}>
+                  <button className="icon-btn sm" title={t('Remove from this device')} onClick={() => onForget(u.id)}>
                     <X size={14} />
                   </button>
                 </div>
@@ -133,13 +153,14 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
                 <span>
                   <UserPlus size={18} />
                 </span>
-                Use another account
+                {t('Use another account')}
               </button>
             </div>
           </>
         )}
       </div>
-      <p className="signin-foot">One app for your whole team</p>
+      <p className="signin-foot">{t('One app for your whole team')}</p>
+      <LangSwitch />
     </div>
   );
 }
@@ -163,10 +184,10 @@ export function SignUp({ onDone, onSignIn }: { onDone: () => void; onSignIn: () 
     try {
       const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const d = (await r.json().catch(() => ({}))) as { error?: string; devCode?: string };
-      if (!r.ok) setError(d.error ?? 'Something went wrong. Try again.');
+      if (!r.ok) setError(d.error ? t(d.error) : t('Something went wrong. Try again.'));
       return r.ok ? d : null;
     } catch {
-      setError(`Can’t reach ${product.name}. Check your connection.`);
+      setError(t('Can’t reach {product}. Check your connection.', { product: product.name }));
       return null;
     } finally {
       setBusy(false);
@@ -187,45 +208,45 @@ export function SignUp({ onDone, onSignIn }: { onDone: () => void; onSignIn: () 
         <BrandMark />
         {step === 'details' ? (
           <>
-            <h1>Create your account</h1>
-            <p className="signin-sub">Free for up to 5 people. No card needed.</p>
+            <h1>{t('Create your account')}</h1>
+            <p className="signin-sub">{t('Free for up to 5 people. No card needed.')}</p>
             <form onSubmit={start} className="signin-form">
               <div className="field">
-                <label>Your name</label>
-                <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoComplete="name" />
+                <label>{t('Your name')}</label>
+                <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Full name')} autoComplete="name" />
               </div>
               <div className="field">
-                <label>Work email</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" autoComplete="username" />
+                <label>{t('Work email')}</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('you@company.com')} autoComplete="username" />
               </div>
               <div className="field">
-                <label>Password</label>
-                <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 8 characters" autoComplete="new-password" />
+                <label>{t('Password')}</label>
+                <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t('At least 8 characters')} autoComplete="new-password" />
               </div>
               {error && <p className="signin-error">{error}</p>}
               <button className="primary-btn signin-btn" disabled={name.trim().length < 2 || !email.includes('@') || pw.length < 8 || busy}>
-                {busy ? 'Sending a code…' : 'Continue'}
+                {busy ? t('Sending a code…') : t('Continue')}
               </button>
             </form>
             <p className="signin-switch">
-              Already have an account?{' '}
+              {t('Already have an account?')}{' '}
               <button type="button" className="link-btn" onClick={onSignIn}>
-                Sign in
+                {t('Sign in')}
               </button>
             </p>
           </>
         ) : (
           <>
-            <h1>Check your email</h1>
-            <p className="signin-sub">We sent a 6-digit code to {email}. It works for 15 minutes.</p>
+            <h1>{t('Check your email')}</h1>
+            <p className="signin-sub">{t('We sent a 6-digit code to {email}. It works for 15 minutes.', { email })}</p>
             {devCode && (
               <p className="signin-dev">
-                Email isn’t connected yet, so here’s your code: <b>{devCode}</b>
+                {t('Email isn’t connected yet, so here’s your code:')} <b>{devCode}</b>
               </p>
             )}
             <form onSubmit={verify} className="signin-form">
               <div className="field">
-                <label>Code</label>
+                <label>{t('Code')}</label>
                 <input
                   autoFocus
                   inputMode="numeric"
@@ -238,16 +259,17 @@ export function SignUp({ onDone, onSignIn }: { onDone: () => void; onSignIn: () 
               </div>
               {error && <p className="signin-error">{error}</p>}
               <button className="primary-btn signin-btn" disabled={code.length !== 6 || busy}>
-                {busy ? 'Checking…' : 'Create account'}
+                {busy ? t('Checking…') : t('Create account')}
               </button>
             </form>
             <button className="ghost-btn signin-back" onClick={() => (setStep('details'), setCode(''), setError(null))}>
-              <ArrowLeft size={15} /> Change email
+              <ArrowLeft size={15} /> {t('Change email')}
             </button>
           </>
         )}
       </div>
-      <p className="signin-foot">One app for your whole team</p>
+      <p className="signin-foot">{t('One app for your whole team')}</p>
+      <LangSwitch />
     </div>
   );
 }
@@ -262,42 +284,46 @@ export function AcceptInvite({ token, onDone }: { token: string; onDone: () => v
   useEffect(() => {
     fetch('/api/invite/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }) })
       .then(async (r) => ((await r.json()) as { email?: string; error?: string }))
-      .then((d) => (d.email ? setEmail(d.email) : setError(d.error ?? 'This invite link does not work.')));
+      .then((d) => (d.email ? setEmail(d.email) : setError(d.error ? t(d.error) : t('This invite link does not work.'))));
   }, [token]);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pw !== pw2) return setError('The two passwords are different.');
+    if (pw !== pw2) return setError(t('The two passwords are different.'));
     setBusy(true);
     const r = await fetch('/api/invite/accept', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token, password: pw }) });
     setBusy(false);
-    if (!r.ok) return setError(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'Could not save your password.');
+    if (!r.ok) {
+      const why = ((await r.json().catch(() => null)) as { error?: string } | null)?.error;
+      return setError(why ? t(why) : t('Could not save your password.'));
+    }
     onDone();
   };
   return (
     <div className="signin">
       <div className="signin-card">
         <BrandMark />
-        <h1>Welcome to {product.name}</h1>
+        <h1>{t('Welcome to {product}', { product: product.name })}</h1>
         {email ? (
           <form onSubmit={submit} className="signin-form">
-            <p className="signin-sub">Pick a password for {email}.</p>
+            <p className="signin-sub">{t('Pick a password for {email}.', { email })}</p>
             <div className="field">
-              <label>Password</label>
-              <input autoFocus type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" placeholder="At least 8 characters" />
+              <label>{t('Password')}</label>
+              <input autoFocus type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" placeholder={t('At least 8 characters')} />
             </div>
             <div className="field">
-              <label>Same password again</label>
+              <label>{t('Same password again')}</label>
               <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
             </div>
             {error && <p className="signin-error">{error}</p>}
             <button className="primary-btn signin-btn" disabled={pw.length < 8 || !pw2 || busy}>
-              {busy ? 'Saving…' : `Set password and open ${product.name}`}
+              {busy ? t('Saving…') : t('Set password and open {product}', { product: product.name })}
             </button>
           </form>
         ) : (
-          <p className="signin-sub">{error ?? 'Checking your invite…'}</p>
+          <p className="signin-sub">{error ?? t('Checking your invite…')}</p>
         )}
       </div>
+      <LangSwitch />
     </div>
   );
 }
@@ -318,7 +344,7 @@ function ForgotPassword({ email: start, onBack }: { email: string; onBack: () =>
   const post = async (path: string, body: unknown) => {
     const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const d = (await r.json().catch(() => ({}))) as { error?: string; devCode?: string; twoStep?: string };
-    if (!r.ok) throw Object.assign(new Error(d.error ?? 'Something went wrong.'), { twoStep: d.twoStep });
+    if (!r.ok) throw Object.assign(new Error(d.error ? t(d.error) : t('Something went wrong.')), { twoStep: d.twoStep });
     return d;
   };
   const send = async (e: React.FormEvent) => {
@@ -351,40 +377,40 @@ function ForgotPassword({ email: start, onBack }: { email: string; onBack: () =>
   const secondReady = !second || codeReady(second.code, second.backup);
   return (
     <>
-      <h1>{step === 'email' ? 'Reset your password' : 'Check your email'}</h1>
-      <p className="signin-sub">{step === 'email' ? 'We send a 6-digit code to the address on your account.' : `If ${email.trim()} has an account, a code is on its way. It works for 15 minutes.`}</p>
+      <h1>{step === 'email' ? t('Reset your password') : t('Check your email')}</h1>
+      <p className="signin-sub">{step === 'email' ? t('We send a 6-digit code to the address on your account.') : t('If {email} has an account, a code is on its way. It works for 15 minutes.', { email: email.trim() })}</p>
       {step === 'email' ? (
         <form onSubmit={send} className="signin-form">
           <div className="field">
-            <label>Email</label>
+            <label>{t('Email')}</label>
             <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
           </div>
           {error && <p className="signin-error">{error}</p>}
           <button className="primary-btn signin-btn" disabled={!email.includes('@') || busy}>
-            {busy ? 'Sending…' : 'Send the code'}
+            {busy ? t('Sending…') : t('Send the code')}
           </button>
         </form>
       ) : (
         <form onSubmit={finish} className="signin-form">
           <div className="field">
-            <label>Code</label>
-            <input autoFocus inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 digits" autoComplete="one-time-code" />
-            {devCode && <small className="signin-note">No email is set up on this server, so here’s the code: {devCode}</small>}
+            <label>{t('Code')}</label>
+            <input autoFocus inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('6 digits')} autoComplete="one-time-code" />
+            {devCode && <small className="signin-note">{t('No email is set up on this server, so here’s the code: {code}', { code: devCode })}</small>}
           </div>
           <div className="field">
-            <label>New password</label>
-            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" placeholder="At least 8 characters" />
+            <label>{t('New password')}</label>
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" placeholder={t('At least 8 characters')} />
           </div>
           <div className={`fold ${second ? 'open' : ''}`}>
             <div className="fold-in">
               {second && (
                 <div className="field ts-reset-field">
-                  <label>{second.backup ? 'A backup code' : 'Code from your authenticator app'}</label>
+                  <label>{second.backup ? t('A backup code') : t('Code from your authenticator app')}</label>
                   <CodeField backup={second.backup} value={second.code} onChange={(v) => setSecond({ ...second, code: v })} autoFocus compact />
                   <small>
-                    Two-step sign-in is on for this account, so the email code alone isn’t enough.{' '}
+                    {t('Two-step sign-in is on for this account, so the email code alone isn’t enough.')}{' '}
                     <button type="button" className="link-btn small" onClick={() => setSecond({ code: '', backup: !second.backup })}>
-                      {second.backup ? 'Use the code from your app' : 'Use a backup code'}
+                      {second.backup ? t('Use the code from your app') : t('Use a backup code')}
                     </button>
                   </small>
                 </div>
@@ -393,13 +419,13 @@ function ForgotPassword({ email: start, onBack }: { email: string; onBack: () =>
           </div>
           {error && <p className="signin-error">{error}</p>}
           <button className="primary-btn signin-btn" disabled={code.replace(/\D/g, '').length !== 6 || pw.length < 8 || !secondReady || busy}>
-            {busy ? 'Saving…' : 'Set the new password'}
+            {busy ? t('Saving…') : t('Set the new password')}
           </button>
         </form>
       )}
       <p className="signin-switch">
         <button type="button" className="link-btn" onClick={onBack}>
-          Back to sign in
+          {t('Back to sign in')}
         </button>
       </p>
     </>

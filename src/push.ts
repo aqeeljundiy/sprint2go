@@ -2,6 +2,7 @@
 // address), off, and a test. The server sends them only while the person is away from the app (server/notifyPush.ts).
 import { caps } from './caps';
 import { server } from './sync';
+import { t } from './i18n';
 
 /** The Mac and Windows app (desktop/preload.cjs): it shows notifications itself while it's open. */
 export interface DesktopBridge {
@@ -80,10 +81,13 @@ export async function turnOn(): Promise<{ state: PushState; error?: string }> {
     if (sub && !sameKey(sub.options.applicationServerKey, appKey)) (await sub.unsubscribe(), (sub = null));
     sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
     const r = await post('/api/push/subscribe', { subscription: sub.toJSON(), device: deviceName() });
-    if (!r.ok) return { state: 'off', error: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t turn them on. Try again.' };
+    if (!r.ok) {
+      const why = ((await r.json().catch(() => ({}))) as { error?: string }).error;
+      return { state: 'off', error: why ? t(why) : t('Couldn’t turn them on. Try again.') };
+    }
     return { state: ((await r.json()) as { on?: boolean }).on ? 'on' : 'off' };
   } catch {
-    return { state: 'off', error: 'This browser couldn’t set up notifications. Try again, or use another browser.' };
+    return { state: 'off', error: t('This browser couldn’t set up notifications. Try again, or use another browser.') };
   }
 }
 

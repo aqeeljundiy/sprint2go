@@ -6,7 +6,8 @@ import { Select } from '../ui/Select';
 import { Avatar } from '../Avatar';
 import { peopleOptions } from '../TasksView';
 import { meetingLinkOf } from '../../meetingLinks';
-import { fmtTime } from '../../calendarUtils';
+import { fmtTime } from '../../i18n/format';
+import { mark, t, textOf, tn, tx } from '../../i18n';
 import { relative } from '../../utils';
 import { addDays } from '../../taskDates';
 import type { Need, NeedKind } from '../../needsYou';
@@ -64,59 +65,60 @@ export function NeedsList({ items, a }: { items: Need[]; a: NeedActions }) {
     if (n) a.onNotice(n);
   };
   const mine = (x: Need) => {
-    const t = task(x);
-    return !!t && (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []).includes(a.me);
+    const tk = task(x);
+    return !!tk && (tk.assignees?.length ? tk.assignees : tk.userId ? [tk.userId] : []).includes(a.me);
   };
-  // The row's one action: [label, what it does, does the row leave].
+  // The row's one action: [label, what it does, does the row leave]. The label stays English here (the swipes below
+  // compare it) and is translated where it's shown.
   const primary = (x: Need): { label: string; icon: LucideIcon; run: () => void } | null => {
     switch (x.kind) {
       case 'review':
-        return { label: 'Approve', icon: Check, run: () => (read(x), a.onDone(x.taskId!)) };
+        return { label: mark('Approve'), icon: Check, run: () => (read(x), a.onDone(x.taskId!)) };
       case 'request':
-        return { label: 'Start', icon: Play, run: () => (read(x), a.onStart(x.taskId!)) };
+        return { label: mark('Start'), icon: Play, run: () => (read(x), a.onStart(x.taskId!)) };
       case 'late':
       case 'today':
-        return { label: 'Done', icon: Check, run: () => (read(x), a.onDone(x.taskId!)) };
+        return { label: mark('Done'), icon: Check, run: () => (read(x), a.onDone(x.taskId!)) };
       case 'assigned':
-        return mine(x) ? { label: 'Done', icon: Check, run: () => (read(x), a.onDone(x.taskId!)) } : { label: 'Open', icon: ListChecks, run: () => open(x) };
+        return mine(x) ? { label: mark('Done'), icon: Check, run: () => (read(x), a.onDone(x.taskId!)) } : { label: mark('Open'), icon: ListChecks, run: () => open(x) };
       case 'brief':
-        return { label: 'Close brief', icon: CircleCheck, run: () => a.onDone(x.taskId!) };
+        return { label: mark('Close brief'), icon: CircleCheck, run: () => a.onDone(x.taskId!) };
       case 'delegated':
-        return { label: 'Remind', icon: Bell, run: () => a.onNudge(x.taskId!) };
+        return { label: mark('Remind'), icon: Bell, run: () => a.onNudge(x.taskId!) };
       case 'mention':
       case 'guest':
       case 'mail':
-        return { label: 'Reply', icon: MessageCircle, run: () => open(x) };
+        return { label: mark('Reply'), icon: MessageCircle, run: () => open(x) };
       case 'changes':
-        return { label: 'Open', icon: ListChecks, run: () => open(x) };
+        return { label: mark('Open'), icon: ListChecks, run: () => open(x) };
       default:
         return null;
     }
   };
   const swipes = (x: Need): { start: SwipeAction[]; end: SwipeAction[] } => {
     const p = primary(x);
-    const start: SwipeAction[] = p && ['Approve', 'Done', 'Close brief', 'Remind', 'Start'].includes(p.label) ? [{ id: 'act', label: p.label, icon: p.icon, tone: 'ok', removes: p.label !== 'Remind', run: p.run }] : [];
+    const start: SwipeAction[] = p && ['Approve', 'Done', 'Close brief', 'Remind', 'Start'].includes(p.label) ? [{ id: 'act', label: t(p.label), icon: p.icon, tone: 'ok', removes: p.label !== 'Remind', run: p.run }] : [];
     const end: SwipeAction[] = [];
     if ((x.kind === 'late' || x.kind === 'today' || (x.kind === 'assigned' && mine(x))) && x.taskId)
-      end.push({ id: 'tomorrow', label: 'Tomorrow', icon: Sunrise, tone: 'warn', removes: true, done: 'Moved to tomorrow', run: () => {
+      end.push({ id: 'tomorrow', label: t('Tomorrow'), icon: Sunrise, tone: 'warn', removes: true, done: t('Moved to tomorrow'), run: () => {
         const before = task(x)?.due;
         read(x);
         a.onReschedule(x.taskId!, addDays(a.today, 1));
         return () => a.onReschedule(x.taskId!, before ?? '');
       } });
-    else if (x.noticeIds.length) end.push({ id: 'seen', label: 'Seen', icon: CheckCheck, tone: 'neutral', removes: true, done: 'Marked as seen', run: () => void a.onRead(x.noticeIds) });
+    else if (x.noticeIds.length) end.push({ id: 'seen', label: t('Seen'), icon: CheckCheck, tone: 'neutral', removes: true, done: t('Marked as seen'), run: () => void a.onRead(x.noticeIds) });
     return { start, end };
   };
   const action = (x: Need): ReactNode => {
     if (x.kind === 'queue' && x.taskId) {
-      const tm = a.teams.find((t) => t.id === task(x)?.teamId);
-      return <Select value="" options={peopleOptions(a.users.filter((u) => !tm || tm.members.includes(u.id)), a.me, false)} onChange={(v) => a.onAssign(x.taskId!, v)} label="Assign" placeholder="Assign" className="sel-flat ny-assign" />;
+      const tm = a.teams.find((team) => team.id === task(x)?.teamId);
+      return <Select value="" options={peopleOptions(a.users.filter((u) => !tm || tm.members.includes(u.id)), a.me, false)} onChange={(v) => a.onAssign(x.taskId!, v)} label={t('Assign')} placeholder={t('Assign')} className="sel-flat ny-assign" />;
     }
     const p = primary(x);
     return (
       p && (
         <button type="button" className={`ny-btn${x.kind === 'review' ? ' primary' : ''}`} onClick={p.run}>
-          {p.label}
+          {t(p.label)}
         </button>
       )
     );
@@ -146,7 +148,7 @@ export function NeedsList({ items, a }: { items: Need[]; a: NeedActions }) {
       })}
       {items.length > 6 && (
         <button type="button" className="link-btn small ny-more" onClick={() => setAll((v) => !v)}>
-          {all ? 'Show fewer' : `Show ${items.length - 6} more`}
+          {all ? t('Show fewer') : tn(items.length - 6, 'Show {n} more', 'Show {n} more')}
         </button>
       )}
     </div>
@@ -179,7 +181,7 @@ export function MeetingStrip({
         const link = meetingLinkOf(e);
         const joins = botWillJoin?.(e);
         return (
-          <section key={x.key} className="upn" aria-label="Up next">
+          <section key={x.key} className="upn" aria-label={t('Up next')}>
             <span className="upn-icon">
               <Video size={18} />
             </span>
@@ -191,26 +193,26 @@ export function MeetingStrip({
               <small>{x.sub}</small>
             </button>
             {onBotJoin && link ? (
-              <button type="button" role="switch" aria-checked={!!joins} className="upn-bot" onClick={() => onBotJoin(e, !joins)} title={joins ? 'The notetaker will join' : 'The notetaker won’t join'}>
+              <button type="button" role="switch" aria-checked={!!joins} className="upn-bot" onClick={() => onBotJoin(e, !joins)} title={joins ? t('The notetaker will join') : t('The notetaker won’t join')}>
                 <span className={`switch ${joins ? 'on' : ''}`} aria-hidden="true">
                   <span />
                 </span>
-                Notetaker
+                {t('Notetaker')}
               </button>
             ) : onSendNotetaker && link && !sent?.[e.id] ? (
               <button type="button" className="ghost-btn sm upn-send" onClick={() => onSendNotetaker(e)}>
-                Send notetaker
+                {t('Send notetaker')}
               </button>
             ) : sent?.[e.id] ? (
-              <small className="upn-sent">Notetaker on the way</small>
+              <small className="upn-sent">{t('Notetaker on the way')}</small>
             ) : null}
             {link ? (
               <a className="primary-btn sm upn-join" href={link.url} target="_blank" rel="noopener noreferrer">
-                Join
+                {t('Join')}
               </a>
             ) : (
               <button type="button" className="ghost-btn sm" onClick={() => onOpen(e.id)}>
-                Open
+                {t('Open')}
               </button>
             )}
           </section>
@@ -226,14 +228,14 @@ export function LiveCalls({ calls, onJoin }: { calls: { id: string; name: string
   return (
     <>
       {calls.map((c) => (
-        <section key={c.id} className="hcall" aria-label={`Huddle in #${c.name}`}>
+        <section key={c.id} className="hcall" aria-label={t('Huddle in #{channel}', { channel: c.name })}>
           <span className="hcall-icon">
             <Headphones size={17} />
             <i className="hcall-live" aria-hidden="true" />
           </span>
           <span className="hcall-text">
-            <strong>Huddle in #{c.name}</strong>
-            <small>{c.people.length ? c.people.map((u) => u.name.split(' ')[0]).join(', ') : 'Starting'}</small>
+            <strong>{t('Huddle in #{channel}', { channel: c.name })}</strong>
+            <small>{c.people.length ? c.people.map((u) => u.name.split(' ')[0]).join(', ') : tx('huddle', 'Starting')}</small>
           </span>
           <span className="hcall-faces" aria-hidden="true">
             {c.people.slice(0, 3).map((u) => (
@@ -241,7 +243,7 @@ export function LiveCalls({ calls, onJoin }: { calls: { id: string; name: string
             ))}
           </span>
           <button type="button" className="primary-btn sm" onClick={() => onJoin(c.id)}>
-            Join
+            {t('Join')}
           </button>
         </section>
       ))}
@@ -256,30 +258,30 @@ export function Updates({ notices, onOpen, onRead, onAll }: { notices: Notice[];
   const shown = notices.slice(0, 5);
   const rows = useLeaving(shown, (n) => n.id);
   return (
-    <section className="hsec hupd" aria-label="Updates">
+    <section className="hsec hupd" aria-label={t('Updates')}>
       <h2 className="hsec-h">
-        <span>Updates</span>
+        <span>{t('Updates')}</span>
         {notices.length > 0 && (
           <button type="button" className="link-btn small" onClick={() => onRead(notices.map((n) => n.id))}>
-            Mark all read
+            {t('Mark all read')}
           </button>
         )}
       </h2>
       <SmoothHeight>
         {notices.length === 0 ? (
-          <p className="hsec-empty">Nothing new.</p>
+          <p className="hsec-empty">{t('Nothing new.')}</p>
         ) : (
           <div className="hupd-list">
             {rows.map(({ item: n, leaving }) => {
               const Icon = NOTE_ICON[n.kind] ?? Bell;
               return (
-                <SwipeRow key={n.id} leaving={leaving} end={[{ id: 'seen', label: 'Seen', icon: CheckCheck, tone: 'neutral', removes: true, run: () => onRead([n.id]) }]} className="ny-swipe">
+                <SwipeRow key={n.id} leaving={leaving} end={[{ id: 'seen', label: t('Seen'), icon: CheckCheck, tone: 'neutral', removes: true, run: () => onRead([n.id]) }]} className="ny-swipe">
                   <button type="button" className="hupd-row" onClick={() => onOpen(n)}>
                     <span className={`nt-icon k-${n.kind}`}>
                       <Icon size={14} />
                     </span>
                     <span className="hupd-text">
-                      {n.text}
+                      {textOf(n)}
                       <time>{relative(n.at)}</time>
                     </span>
                   </button>
@@ -290,7 +292,7 @@ export function Updates({ notices, onOpen, onRead, onAll }: { notices: Notice[];
         )}
       </SmoothHeight>
       <button type="button" className="hsec-all" onClick={onAll}>
-        <Bell size={16} /> All notifications
+        <Bell size={16} /> {t('All notifications')}
       </button>
     </section>
   );
@@ -318,7 +320,7 @@ export function TodayBlock({
   onOpenEvent: (id: string) => void;
   onOpenCalendar?: () => void;
 }) {
-  const rows = useLeaving(tasks, (t) => t.id);
+  const rows = useLeaving(tasks, (tk) => tk.id);
   const [ticking, setTicking] = useState<string[]>([]);
   const tick = (id: string) => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return onTick(id);
@@ -327,12 +329,12 @@ export function TodayBlock({
   };
   if (!tasks.length && !events.length) return null;
   return (
-    <section className="hsec htoday" aria-label="Today">
+    <section className="hsec htoday" aria-label={t('Today')}>
       <h2 className="hsec-h">
-        <span>Today</span>
+        <span>{t('Today')}</span>
         {onOpenCalendar && events.length > 0 && (
           <button type="button" className="link-btn small" onClick={onOpenCalendar}>
-            Calendar
+            {t('Calendar')}
           </button>
         )}
       </h2>
@@ -349,7 +351,7 @@ export function TodayBlock({
                 </button>
                 {link && (
                   <a className="ghost-btn sm" href={link.url} target="_blank" rel="noopener noreferrer">
-                    Join
+                    {t('Join')}
                   </a>
                 )}
               </div>
@@ -359,22 +361,22 @@ export function TodayBlock({
       )}
       {rows.length > 0 && (
         <div className="htd-tasks">
-          {rows.map(({ item: t, leaving }) => {
-            const c = clients.find((x) => x.id === t.clientId);
+          {rows.map(({ item: tk, leaving }) => {
+            const c = clients.find((x) => x.id === tk.clientId);
             return (
               <SwipeRow
-                key={t.id}
+                key={tk.id}
                 leaving={leaving}
                 className="ny-swipe"
-                start={[{ id: 'done', label: 'Done', icon: Check, tone: 'ok', removes: true, run: () => onTick(t.id) }]}
-                end={[{ id: 'tomorrow', label: 'Tomorrow', icon: Sunrise, tone: 'warn', removes: true, done: 'Moved to tomorrow', run: () => (onReschedule(t.id, addDays(today, 1)), () => onReschedule(t.id, today)) }]}
+                start={[{ id: 'done', label: t('Done'), icon: Check, tone: 'ok', removes: true, run: () => onTick(tk.id) }]}
+                end={[{ id: 'tomorrow', label: t('Tomorrow'), icon: Sunrise, tone: 'warn', removes: true, done: t('Moved to tomorrow'), run: () => (onReschedule(tk.id, addDays(today, 1)), () => onReschedule(tk.id, today)) }]}
               >
-                <div className={`htd-task${ticking.includes(t.id) ? ' ticking' : ''}`}>
-                  <button type="button" className={`trow-check${t.priority === 'high' ? ' p-high' : ''}${ticking.includes(t.id) ? ' on' : ''}`} onClick={() => tick(t.id)} aria-label={`Mark “${t.title}” done`}>
-                    <span className="ring">{ticking.includes(t.id) && <Check size={13} strokeWidth={3} />}</span>
+                <div className={`htd-task${ticking.includes(tk.id) ? ' ticking' : ''}`}>
+                  <button type="button" className={`trow-check${tk.priority === 'high' ? ' p-high' : ''}${ticking.includes(tk.id) ? ' on' : ''}`} onClick={() => tick(tk.id)} aria-label={t('Mark “{title}” done', { title: tk.title })}>
+                    <span className="ring">{ticking.includes(tk.id) && <Check size={13} strokeWidth={3} />}</span>
                   </button>
-                  <button type="button" className="htd-title" onClick={() => onOpenTask(t.id)}>
-                    {t.title}
+                  <button type="button" className="htd-title" onClick={() => onOpenTask(tk.id)}>
+                    {tk.title}
                     {c && (
                       <small>
                         <i style={{ background: c.color }} />
@@ -405,7 +407,7 @@ export function CustomiseList({ cards, onToggle, onMove, template, onReset }: { 
   return (
     <div className="hcust">
       <div className="hcust-tpl">{template}</div>
-      <div className="as-group">On your Home</div>
+      <div className="as-group">{t('On your Home')}</div>
       <div className="hcust-list">
         {cards.map((c) => {
           const i = shown.findIndex((x) => x.id === c.id);
@@ -422,10 +424,10 @@ export function CustomiseList({ cards, onToggle, onMove, template, onReset }: { 
               </button>
               {c.on && (
                 <span className="hcust-moves">
-                  <button type="button" className="icon-btn" onClick={() => onMove(c.id, -1)} disabled={i <= 0} aria-label={`Move ${c.name} up`}>
+                  <button type="button" className="icon-btn" onClick={() => onMove(c.id, -1)} disabled={i <= 0} aria-label={t('Move {name} up', { name: c.name })}>
                     <ArrowUp size={16} />
                   </button>
-                  <button type="button" className="icon-btn" onClick={() => onMove(c.id, 1)} disabled={i === shown.length - 1} aria-label={`Move ${c.name} down`}>
+                  <button type="button" className="icon-btn" onClick={() => onMove(c.id, 1)} disabled={i === shown.length - 1} aria-label={t('Move {name} down', { name: c.name })}>
                     <ArrowDown size={16} />
                   </button>
                 </span>
@@ -435,7 +437,7 @@ export function CustomiseList({ cards, onToggle, onMove, template, onReset }: { 
         })}
       </div>
       <button type="button" className="link-btn small hcust-reset" onClick={onReset}>
-        Back to the usual for my role
+        {t('Back to the usual for my role')}
       </button>
     </div>
   );

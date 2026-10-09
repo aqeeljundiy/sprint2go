@@ -3,6 +3,7 @@ import { Menu as MenuIcon, type LucideIcon } from 'lucide-react';
 import { useLongPress } from '../components/ui/useLongPress';
 import { ActionSheet } from '../components/ui/ActionSheet';
 import type { CreateAction } from './chrome';
+import { t, tn } from '../i18n';
 
 export interface BarApp {
   id: string;
@@ -29,13 +30,13 @@ export function BottomBar({ apps, current, moreOn, onApp, onMore, onEdit, create
   const hold = useLongPress(() => create?.more?.length && setMore(true));
   const Icon = shown?.icon;
   return (
-    <nav className={`tabbar${create ? ' has-create' : ''}`} aria-label="Apps">
+    <nav className={`tabbar${create ? ' has-create' : ''}`} aria-label={t('Apps')}>
       <div className="tabbar-pill lp" {...edit}>
         {apps.map(({ id, name, icon: AppIcon, badge }) => (
           <button key={id} type="button" className={current === id ? 'on' : ''} aria-current={current === id ? 'page' : undefined} onClick={() => onApp(id)}>
             <span className="tab-icon">
               <AppIcon size={21} />
-              {badge ? <i aria-label={`${badge} new`}>{count(badge)}</i> : null}
+              {badge ? <i aria-label={tn(badge, '{n} new', '{n} new')}>{count(badge)}</i> : null}
             </span>
             <span className="tab-label">{name}</span>
           </button>
@@ -44,7 +45,7 @@ export function BottomBar({ apps, current, moreOn, onApp, onMore, onEdit, create
           <span className="tab-icon">
             <MenuIcon size={21} />
           </span>
-          <span className="tab-label">More</span>
+          <span className="tab-label">{t('More')}</span>
         </button>
       </div>
       <button

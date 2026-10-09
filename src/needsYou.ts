@@ -1,7 +1,10 @@
 // "Needs you": what one person has to act on now, across apps, most urgent first. Home shows it (and its count is the
 // Home badge on phones); the AI connector's needs_me tool (server/mcpTools.ts) answers from the same rules, so Home and
 // Claude always agree. Pure: no React and no browser, the inputs come from the app's state or the server's lens.
+// The words come in the active language (English on the server, which is what the connector wants). The imports name
+// the file, not the folder: the server can't import a folder.
 import type { StageKind } from './types';
+import { t, tn, textOf, type Msg } from './i18n/index';
 
 export type NeedKind =
   | 'meeting' // starts within 30 minutes (or started under 5 minutes ago): Join
@@ -63,6 +66,7 @@ interface NoticeIn {
   read: boolean;
   fromGuest?: boolean;
   link?: { app: string; id?: string; msg?: string };
+  tr?: Msg; // the words to show each reader in their own language (msg() in src/i18n)
 }
 interface ThreadIn {
   id: string;
@@ -93,71 +97,84 @@ export interface NeedsInput {
   threads?: ThreadIn[]; // their mailboxes
   mine?: (email: string) => boolean; // an address of theirs
   notices?: NoticeIn[]; // their notifications here
-  dayWords?: (day: string) => string; // "Tue 6 Oct"
+  dayWords?: (day: string) => string; // "yesterday", "6 Oct": read mid-sentence ("Was due 6 Oct")
   minutes?: (iso: string) => string; // "10:30"
 }
 
-const doersOf = (t: TaskIn) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
-const lastFrom = (t: ThreadIn) => t.messages[t.messages.length - 1]?.from;
+const doersOf = (tk: TaskIn) => (tk.assignees?.length ? tk.assignees : tk.userId ? [tk.userId] : []);
+const lastFrom = (th: ThreadIn) => th.messages[th.messages.length - 1]?.from;
 
 /** Everything that needs this person, most urgent first. */
 export function needsYou(p: NeedsInput): Need[] {
   const { me, today, now } = p;
-  const work = p.tasks.filter((t) => t.kind !== 'brief');
-  const open = work.filter((t) => !t.done);
-  const late = (t: TaskIn) => !t.done && !!t.due && t.due < today;
-  const leads = p.teams.filter((t) => t.leadId === me);
-  const queue = open.filter((t) => !t.userId && !doersOf(t).length && (p.isOwner || leads.some((tm) => tm.id === t.teamId)));
+  const work = p.tasks.filter((tk) => tk.kind !== 'brief');
+  const open = work.filter((tk) => !tk.done);
+  const late = (tk: TaskIn) => !tk.done && !!tk.due && tk.due < today;
+  const leads = p.teams.filter((tm) => tm.leadId === me);
+  const queue = open.filter((tk) => !tk.userId && !doersOf(tk).length && (p.isOwner || leads.some((tm) => tm.id === tk.teamId)));
   const project = (id?: string) => p.clients.find((c) => c.id === id)?.name;
   const words = p.dayWords ?? ((d: string) => d);
   const out: Need[] = [];
-  const task = (rank: number, kind: NeedKind, group: NeedGroup, t: TaskIn, sub: string, tone?: 'warn') =>
-    out.push({ key: `${kind}:${t.id}`, rank, kind, group, text: t.title, sub, taskId: t.id, noticeIds: [], due: t.due, ...(tone ? { tone } : {}) });
+  const task = (rank: number, kind: NeedKind, group: NeedGroup, tk: TaskIn, sub: string, tone?: 'warn') =>
+    out.push({ key: `${kind}:${tk.id}`, rank, kind, group, text: tk.title, sub, taskId: tk.id, noticeIds: [], due: tk.due, ...(tone ? { tone } : {}) });
 
   for (const e of p.events ?? []) {
     const start = Date.parse(e.start);
     if (e.allDay || Date.parse(e.end) <= now || start > now + 30 * 60_000 || start < now - 5 * 60_000) continue;
     const mins = Math.round((start - now) / 60_000);
-    out.push({ key: `meeting:${e.id}`, rank: 100, kind: 'meeting', group: 'now', text: e.title, sub: mins <= 0 ? 'Happening now' : mins === 1 ? 'In 1 min' : `In ${mins} min${p.minutes ? `, at ${p.minutes(e.start)}` : ''}`, eventId: e.id, noticeIds: [] });
+    const sub = mins <= 0 ? t('Happening now') : mins === 1 || !p.minutes ? tn(mins, 'In {n} min', 'In {n} min') : tn(mins, 'In {n} min, at {time}', 'In {n} min, at {time}', { time: p.minutes(e.start) });
+    out.push({ key: `meeting:${e.id}`, rank: 100, kind: 'meeting', group: 'now', text: e.title, sub, eventId: e.id, noticeIds: [] });
   }
-  for (const t of open) {
-    const k = p.stageKind(t);
-    if (k === 'review' && t.supervisorId === me) task(90, 'review', 'needs', t, `${p.firstName(doersOf(t)[0]) || 'Someone'} finished it, waiting for your review`);
-    else if (t.approval?.status === 'changes' && doersOf(t).includes(me)) task(88, 'changes', 'needs', t, `${project(t.clientId) ?? 'The guest'} asked for changes${t.approval.note ? `: “${t.approval.note}”` : ''}`, 'warn');
-    else if (t.source === 'request' && k === 'open' && (doersOf(t).includes(me) || (!t.userId && leads.some((tm) => tm.id === t.teamId)))) task(85, 'request', 'needs', t, `New request from ${project(t.clientId) ?? 'a guest'}`);
-    else if (doersOf(t).includes(me) && late(t)) task(80, 'late', 'needs', t, `Was due ${words(t.due!)}`, 'warn');
-    else if (doersOf(t).includes(me) && t.due === today && k !== 'review') task(70, 'today', 'today', t, 'Due today');
+  for (const tk of open) {
+    const k = p.stageKind(tk);
+    const who = project(tk.clientId);
+    if (k === 'review' && tk.supervisorId === me) task(90, 'review', 'needs', tk, t('{name} finished it, waiting for your review', { name: p.firstName(doersOf(tk)[0]) || t('Someone') }));
+    else if (tk.approval?.status === 'changes' && doersOf(tk).includes(me)) {
+      const name = who ?? t('The guest');
+      task(88, 'changes', 'needs', tk, tk.approval.note ? t('{name} asked for changes: “{note}”', { name, note: tk.approval.note }) : t('{name} asked for changes', { name }), 'warn');
+    } else if (tk.source === 'request' && k === 'open' && (doersOf(tk).includes(me) || (!tk.userId && leads.some((tm) => tm.id === tk.teamId))))
+      task(85, 'request', 'needs', tk, who ? t('New request from {name}', { name: who }) : t('New request from a guest'));
+    else if (doersOf(tk).includes(me) && late(tk)) task(80, 'late', 'needs', tk, t('Was due {when}', { when: words(tk.due!) }), 'warn');
+    else if (doersOf(tk).includes(me) && tk.due === today && k !== 'review') task(70, 'today', 'today', tk, t('Due today'));
   }
-  for (const t of queue) if (!out.some((x) => x.taskId === t.id)) task(60, 'queue', 'needs', t, `${p.teams.find((x) => x.id === t.teamId)?.name ?? 'Team'} queue, nobody on it yet`);
-  for (const t of work) if (t.createdBy === me && t.userId && !doersOf(t).includes(me) && late(t)) task(50, 'delegated', 'needs', t, `Late with ${p.firstName(t.userId) || 'someone'}`, 'warn');
-  for (const t of p.threads ?? []) {
-    const from = lastFrom(t);
-    if (!from || t.location !== 'inbox' || !t.unread || p.mine?.(from.email)) continue;
+  for (const tk of queue)
+    if (!out.some((x) => x.taskId === tk.id)) {
+      const team = p.teams.find((x) => x.id === tk.teamId)?.name;
+      task(60, 'queue', 'needs', tk, team ? t('{team} queue, nobody on it yet', { team }) : t('Team queue, nobody on it yet'));
+    }
+  for (const tk of work)
+    if (tk.createdBy === me && tk.userId && !doersOf(tk).includes(me) && late(tk)) {
+      const name = p.firstName(tk.userId);
+      task(50, 'delegated', 'needs', tk, name ? t('Late with {name}', { name }) : t('Late with someone'), 'warn');
+    }
+  for (const th of p.threads ?? []) {
+    const from = lastFrom(th);
+    if (!from || th.location !== 'inbox' || !th.unread || p.mine?.(from.email)) continue;
     const mail = from.email.toLowerCase();
     if (!p.clients.some((c) => c.domain && mail.endsWith('@' + c.domain.toLowerCase()))) continue;
-    out.push({ key: `mail:${t.id}`, rank: 45, kind: 'mail', group: 'needs', text: t.subject || '(no subject)', sub: `${from.name || from.email} is waiting for a reply`, threadId: t.id, noticeIds: [] });
+    out.push({ key: `mail:${th.id}`, rank: 45, kind: 'mail', group: 'needs', text: th.subject || t('(no subject)'), sub: t('{name} is waiting for a reply', { name: from.name || from.email }), threadId: th.id, noticeIds: [] });
   }
   for (const b of p.tasks) {
     if (b.kind !== 'brief' || b.done || b.userId !== me) continue;
-    const subs = work.filter((t) => t.briefId === b.id);
-    if (subs.length && subs.every((t) => t.done)) task(30, 'brief', 'needs', b, 'Every task is done, close the brief');
+    const subs = work.filter((tk) => tk.briefId === b.id);
+    if (subs.length && subs.every((tk) => tk.done)) task(30, 'brief', 'needs', b, t('Every task is done, close the brief'));
   }
 
   // Notifications that ask something of you fold in: mentions, guests writing, and news about your own open work.
   // One that's about an item already listed joins that item (acting on it marks it read).
   for (const n of (p.notices ?? []).filter((x) => !x.read).sort((a, b) => b.at.localeCompare(a.at))) {
     const id = n.link?.id;
-    const onTask = n.link?.app === 'tasks' && id ? p.tasks.find((t) => t.id === id) : undefined;
+    const onTask = n.link?.app === 'tasks' && id ? p.tasks.find((tk) => tk.id === id) : undefined;
     const covered = out.find((x) => (onTask && x.taskId === onTask.id) || (n.link?.app === 'mail' && id && x.threadId === id));
     if (covered) {
       covered.noticeIds.push(n.id);
       continue;
     }
-    const base = { key: `notice:${n.id}`, text: n.text, noticeIds: [n.id], at: n.at, link: n.link, group: 'needs' as const };
-    if (n.kind === 'mention') out.push({ ...base, rank: 84, kind: 'mention', sub: 'Mentioned you' });
-    else if (n.fromGuest) out.push({ ...base, rank: 83, kind: 'guest', sub: 'From a guest' });
+    const base = { key: `notice:${n.id}`, text: textOf(n), noticeIds: [n.id], at: n.at, link: n.link, group: 'needs' as const };
+    if (n.kind === 'mention') out.push({ ...base, rank: 84, kind: 'mention', sub: t('Mentioned you') });
+    else if (n.fromGuest) out.push({ ...base, rank: 83, kind: 'guest', sub: t('From a guest') });
     else if (onTask && !onTask.done && (doersOf(onTask).includes(me) || onTask.supervisorId === me || (!onTask.userId && leads.some((tm) => tm.id === onTask.teamId))))
-      out.push({ ...base, rank: 82, kind: 'assigned', sub: project(onTask.clientId) ?? 'Your task', taskId: onTask.id, due: onTask.due });
+      out.push({ ...base, rank: 82, kind: 'assigned', sub: project(onTask.clientId) ?? t('Your task'), taskId: onTask.id, due: onTask.due });
   }
   return out.sort((a, b) => b.rank - a.rank || (a.due ?? '').localeCompare(b.due ?? '') || (b.at ?? '').localeCompare(a.at ?? ''));
 }

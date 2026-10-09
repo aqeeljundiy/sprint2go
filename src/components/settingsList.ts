@@ -16,9 +16,9 @@ let listNext = (() => {
 /** The next time Settings opens on a phone, it starts on the list of sections. */
 export const openSettingsList = () => void (listNext = true);
 
-/** Read once by the Settings screen as it opens: true when it should start on the list. */
-export function takeSettingsList() {
-  const l = listNext;
-  listNext = false;
-  return l;
-}
+/**
+ * Read by the Settings screen as it opens: true when it should start on the list. Reading doesn't use it up (React may
+ * render a screen more than once before showing it); `doneSettingsList` does, once the screen is on.
+ */
+export const takeSettingsList = () => listNext;
+export const doneSettingsList = () => void (listNext = false);

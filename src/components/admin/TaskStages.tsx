@@ -8,6 +8,9 @@ import { uid } from '../../utils';
 import { Popover } from '../ui/Popover';
 import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
+import { t, tn } from '../../i18n';
+import { fmtList } from '../../i18n/format';
+import { useLang } from '../../i18n/useLang';
 
 export type Move = { id: string; patch: Partial<Todo> };
 
@@ -30,9 +33,9 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
   const companyTasks = tasks.filter((t) => !projectStages(t.clientId) && !teamStages(t.teamId));
   return (
     <>
-      <h2>Task stages</h2>
-      <p className="set-intro">The columns of the task board and the choices for a task’s status, for everyone at {ws.name || 'the company'}. Call them what you like: each stage has a kind, and Home, reminders, approvals and {term.whos}’ shared spaces go by the kind. A project or a team can use its own stages instead, in its settings.</p>
-      {!canManage && <p className="modal-note">Only owners and admins can change the stages.</p>}
+      <h2>{t('Task stages')}</h2>
+      <p className="set-intro">{t('The columns of the task board and the choices for a task’s status, for everyone at {company}. Call them what you like: each stage has a kind, and Home, reminders, approvals and {whos}’ shared spaces go by the kind. A project or a team can use its own stages instead, in its settings.', { company: ws.name || t('the company'), whos: term.whos })}</p>
+      {!canManage && <p className="modal-note">{t('Only owners and admins can change the stages.')}</p>}
       <StageEditor
         stages={stages}
         save={(next) => onWorkspace({ taskStages: next })}
@@ -44,16 +47,24 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
         onMoveTasks={onMoveTasks}
         reset={
           JSON.stringify(stages) !== JSON.stringify(DEFAULT_STAGES)
-            ? { to: DEFAULT_STAGES, label: 'Back to the usual stages', title: 'Use the usual stages', text: `The board goes back to ${DEFAULT_STAGES.map((s) => stageName(s)).join(', ')}. Tasks in a stage that goes away move to the usual stage of the same kind.`, action: 'Use the usual stages', why: 'when the usual stages came back', onDone: () => onWorkspace({ taskStages: undefined }) }
+            ? {
+                to: DEFAULT_STAGES,
+                label: t('Back to the usual stages'),
+                title: t('Use the usual stages'),
+                text: t('The board goes back to {stages}. Tasks in a stage that goes away move to the usual stage of the same kind.', { stages: fmtList(DEFAULT_STAGES.map((s) => stageName(s))) }),
+                action: t('Use the usual stages'),
+                why: 'when the usual stages came back', // part of the task's history line (saved, English: see movesToList)
+                onDone: () => onWorkspace({ taskStages: undefined }),
+              }
             : undefined
         }
       />
       <div className="set-block">
-        <h3>What each kind does</h3>
+        <h3>{t('What each kind does')}</h3>
         <ul className="stage-kinds">
           {STAGE_KINDS.map((k) => (
             <li key={k}>
-              <strong>{KIND_INFO[k].name}</strong>
+              <strong>{t(KIND_INFO[k].name)}</strong>
               <span>{KIND_LONG[k]()}</span>
             </li>
           ))}
@@ -91,6 +102,7 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
   /** "Back to …": the stages it goes back to, and what the confirmation says. */
   reset?: { to: TaskStage[]; label: string; title: string; text: string; action: string; why: string; onDone: () => void };
 }) {
+  const lang = useLang(); // the name fields start again in a new language (built-in stages show their usual name)
   const [leaving, setLeaving] = useState<string | null>(null);
   const [removing, setRemoving] = useState<TaskStage | null>(null);
   const [resetting, setResetting] = useState(false);
@@ -125,7 +137,7 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
     save(next);
   };
   const add = () => {
-    const s: TaskStage = { id: `st-${uid()}`, kind: 'active', name: 'New stage' };
+    const s: TaskStage = { id: `st-${uid()}`, kind: 'active', name: t('New stage') };
     const at = stages.findIndex((x) => x.kind === 'done'); // new stages go before Done
     save(at < 0 ? [...stages, s] : [...stages.slice(0, at), s, ...stages.slice(at)]);
     setFocusId(s.id);
@@ -182,7 +194,7 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
                 >
                   <StageSwatch stage={s} disabled={!canManage} onColor={(color) => patch(s.id, { color })} />
                   <StageName
-                    key={`${s.id}:${s.name ?? ''}:${wordsKey}`}
+                    key={`${s.id}:${s.name ?? ''}:${wordsKey}:${lang}`}
                     stage={s}
                     autoFocus={focusId === s.id}
                     taken={(name) => {
@@ -193,27 +205,27 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
                     onName={(name) => patch(s.id, { name })}
                   />
                   {fixedKind ? (
-                    <span className="stage-kind-fixed" title={onlyOne ? (s.kind === 'open' ? 'At least one stage is where new tasks start' : 'At least one stage is where finished tasks go') : 'Finished tasks are in it. Move them before it means something else.'}>
-                      {KIND_INFO[s.kind].name}
+                    <span className="stage-kind-fixed" title={onlyOne ? (s.kind === 'open' ? t('At least one stage is where new tasks start') : t('At least one stage is where finished tasks go')) : t('Finished tasks are in it. Move them before it means something else.')}>
+                      {t(KIND_INFO[s.kind].name)}
                     </span>
                   ) : (
                     <Select<StageKind>
                       value={s.kind}
                       onChange={(kind) => patch(s.id, { kind, ...(fixedTone(kind) ? { color: undefined } : {}) })}
-                      label={`What “${stageName(s)}” means`}
-                      title="What this stage means"
+                      label={t('What “{stage}” means', { stage: stageName(s) })}
+                      title={t('What this stage means')}
                       className="sel-flat stage-kind"
                       disabled={!canManage}
-                      options={STAGE_KINDS.filter((k) => k !== 'done' || !busy).map((k) => ({ value: k, label: KIND_INFO[k].name, hint: KIND_INFO[k].hint }))}
+                      options={STAGE_KINDS.filter((k) => k !== 'done' || !busy).map((k) => ({ value: k, label: t(KIND_INFO[k].name), hint: t(KIND_INFO[k].hint) }))}
                     />
                   )}
                   {canManage && (
                     <>
                       <span className="stage-order">
-                        <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${stageName(s)} left on the board`} title="Earlier on the board">
+                        <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t('Move {stage} left on the board', { stage: stageName(s) })} title={t('Earlier on the board')}>
                           <ArrowUp size={14} />
                         </button>
-                        <button type="button" className="icon-btn sm" disabled={i === stages.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${stageName(s)} right on the board`} title="Later on the board">
+                        <button type="button" className="icon-btn sm" disabled={i === stages.length - 1} onClick={() => move(i, 1)} aria-label={t('Move {stage} right on the board', { stage: stageName(s) })} title={t('Later on the board')}>
                           <ArrowDown size={14} />
                         </button>
                       </span>
@@ -221,8 +233,8 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
                         type="button"
                         className="icon-btn sm"
                         disabled={onlyOne || stages.length <= 2}
-                        title={onlyOne ? (s.kind === 'open' ? 'New tasks need a stage to start in' : 'Finished tasks need a done stage') : `Remove ${stageName(s)}`}
-                        aria-label={`Remove ${stageName(s)}`}
+                        title={onlyOne ? (s.kind === 'open' ? t('New tasks need a stage to start in') : t('Finished tasks need a done stage')) : t('Remove {stage}', { stage: stageName(s) })}
+                        aria-label={t('Remove {stage}', { stage: stageName(s) })}
                         onClick={() => (inStage(s.id).length || (s.kind === 'review' && count('review') === 1 && reviewTeams.length) ? setRemoving(s) : remove(s))}
                       >
                         <Trash2 size={14} />
@@ -235,13 +247,13 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
           </div>
           <div className={`fold ${clash ? 'open' : ''}`}>
             <div className="fold-in">
-              <p className="err small stage-clash">Another stage is already called “{lastClash.current}”. Each stage needs its own name.</p>
+              <p className="err small stage-clash">{t('Another stage is already called “{name}”. Each stage needs its own name.', { name: lastClash.current })}</p>
             </div>
           </div>
           {canManage && (
             <div className="stage-foot">
               <button type="button" className="ghost-btn sm" disabled={stages.length >= 20} onClick={add}>
-                <Plus size={14} /> Add a stage
+                <Plus size={14} /> {t('Add a stage')}
               </button>
               {reset && (
                 <button type="button" className="link-btn small" onClick={() => setResetting(true)}>
@@ -269,7 +281,7 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
             <div className="modal" role="dialog" aria-label={reset.title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setResetting(false)}>
               <header className="modal-head">
                 <span>{reset.title}</span>
-                <button type="button" className="icon-btn sm" onClick={() => setResetting(false)} aria-label="Close">
+                <button type="button" className="icon-btn sm" onClick={() => setResetting(false)} aria-label={t('Close')}>
                   <X size={15} />
                 </button>
               </header>
@@ -278,7 +290,7 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
               </div>
               <footer className="modal-foot">
                 <button type="button" className="ghost-btn sm" onClick={() => setResetting(false)}>
-                  Cancel
+                  {t('Cancel')}
                 </button>
                 <button type="button" className="primary-btn sm" autoFocus onClick={doReset}>
                   {reset.action}
@@ -293,11 +305,11 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
 }
 
 const KIND_LONG: Record<StageKind, () => string> = {
-  open: () => `New tasks and ${term.whos}’ requests land in the first one.`,
-  active: () => `Someone is on it. Start moves a task to the first one, and ${term.whos} see “In progress”.`,
-  waiting: () => `The next step is the ${term.who}’s. Their shared space says “Waiting on you”, and the “Waiting on ${term.who}” filter finds it.`,
-  review: () => 'Finished, and waiting for the supervisor to approve it or send it back. In teams that check work, finished tasks go to the first one.',
-  done: () => 'Finished. Ticking a task moves it to the first one; it counts as done everywhere.',
+  open: () => t('New tasks and {whos}’ requests land in the first one.', { whos: term.whos }),
+  active: () => t('Someone is on it. Start moves a task to the first one, and {whos} see “In progress”.', { whos: term.whos }),
+  waiting: () => t('The next step is the {who}’s. Their shared space says “Waiting on you”, and the “Waiting on {who}” filter finds it.', { who: term.who }),
+  review: () => t('Finished, and waiting for the supervisor to approve it or send it back. In teams that check work, finished tasks go to the first one.'),
+  done: () => t('Finished. Ticking a task moves it to the first one; it counts as done everywhere.'),
 };
 
 /** The stage's colour, and a small picker. Waiting and done stages keep their meaning's colour. */
@@ -306,6 +318,7 @@ function StageSwatch({ stage, disabled, onColor }: { stage: TaskStage; disabled:
   const [open, setOpen] = useState(false);
   const fixed = fixedTone(stage.kind);
   const tone = toneOf(stage);
+  const colour = t(TONE_NAME[tone]); // the colours' names are Tasks' (src/stages.ts)
   return (
     <>
       <button
@@ -314,20 +327,20 @@ function StageSwatch({ stage, disabled, onColor }: { stage: TaskStage; disabled:
         className="stage-swatch"
         disabled={disabled || fixed}
         onClick={() => setOpen(true)}
-        title={fixed ? `${stage.kind === 'waiting' ? 'Waiting' : 'Done'} stages are always ${TONE_NAME[tone].toLowerCase()}` : `Colour: ${TONE_NAME[tone]}`}
-        aria-label={`Colour of ${stageName(stage)}: ${TONE_NAME[tone]}`}
+        title={fixed ? (stage.kind === 'waiting' ? t('Waiting stages are always {colour}', { colour: colour.toLowerCase() }) : t('Done stages are always {colour}', { colour: colour.toLowerCase() })) : t('Colour: {colour}', { colour })}
+        aria-label={t('Colour of {stage}: {colour}', { stage: stageName(stage), colour })}
       >
         <span className={`stage-dot k-${stage.kind} tone-${tone}`} />
       </button>
-      <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={264} title={`Colour of ${stageName(stage)}`}>
-        <div className="stage-colors" role="group" aria-label="Colours">
+      <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={264} title={t('Colour of {stage}', { stage: stageName(stage) })}>
+        <div className="stage-colors" role="group" aria-label={t('Colours')}>
           {STAGE_COLORS.map((c) => (
-            <button key={c} type="button" aria-pressed={tone === c} title={TONE_NAME[c]} aria-label={TONE_NAME[c]} onClick={() => (onColor(c), setOpen(false))}>
+            <button key={c} type="button" aria-pressed={tone === c} title={t(TONE_NAME[c])} aria-label={t(TONE_NAME[c])} onClick={() => (onColor(c), setOpen(false))}>
               <span className={`stage-dot k-${stage.kind} tone-${c}`} />
             </button>
           ))}
         </div>
-        <p className="muted small stage-colors-note">Red is kept for late work. Waiting stages are amber and done stages green, so they read the same everywhere.</p>
+        <p className="muted small stage-colors-note">{t('Red is kept for late work. Waiting stages are amber and done stages green, so they read the same everywhere.')}</p>
       </Popover>
     </>
   );
@@ -360,8 +373,8 @@ function StageName({ stage, autoFocus, taken, onName }: { stage: TaskStage; auto
         if (e.key === 'Enter') e.currentTarget.blur();
         if (e.key === 'Escape') (setV(stageName(stage)), requestAnimationFrame(() => ref.current?.blur()));
       }}
-      placeholder={builtInName(stage.id) ?? 'Stage name'}
-      aria-label="Stage name"
+      placeholder={builtInName(stage.id) ?? t('Stage name')}
+      aria-label={t('Stage name')}
     />
   );
 }
@@ -375,15 +388,14 @@ function RemoveStage({ stage, stages, tasks, reviewTeams, onRemove, onClose }: {
   const i = stages.findIndex((s) => s.id === stage.id);
   const [to, setTo] = useState((others.find((s) => s.kind === stage.kind) ?? stages[i - 1] ?? others[0]).id);
   const target = others.find((s) => s.id === to)!;
-  const n = `${tasks} task${tasks === 1 ? '' : 's'}`;
-  const change = stage.kind !== 'done' && target.kind === 'done' ? `They’ll count as done.` : stage.kind === 'done' && target.kind !== 'done' ? `They’ll be open again.` : '';
+  const change = stage.kind !== 'done' && target.kind === 'done' ? t('They’ll count as done.') : stage.kind === 'done' && target.kind !== 'done' ? t('They’ll be open again.') : '';
   return (
     <Layer>
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label={`Remove ${stageName(stage)}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal" role="dialog" aria-label={t('Remove {stage}', { stage: stageName(stage) })} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
-          <span>Remove “{stageName(stage)}”</span>
-          <button type="button" className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <span>{t('Remove “{stage}”', { stage: stageName(stage) })}</span>
+          <button type="button" className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -391,32 +403,30 @@ function RemoveStage({ stage, stages, tasks, reviewTeams, onRemove, onClose }: {
           <SmoothHeight>
             {tasks > 0 && (
               <>
-                <p className="small">
-                  {n} {tasks === 1 ? 'is' : 'are'} in this stage. Move {tasks === 1 ? 'it' : 'them'} to:
-                </p>
+                <p className="small">{tn(tasks, '{n} task is in this stage. Move it to:', '{n} tasks are in this stage. Move them to:')}</p>
                 <Select<string>
                   value={to}
                   onChange={setTo}
-                  label="Move the tasks to"
-                  title="Move the tasks to"
-                  options={others.map((s) => ({ value: s.id, label: stageName(s), hint: sameWords(stageName(s), KIND_INFO[s.kind].name) ? undefined : KIND_INFO[s.kind].name, icon: <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} /> }))}
+                  label={t('Move the tasks to')}
+                  title={t('Move the tasks to')}
+                  options={others.map((s) => ({ value: s.id, label: stageName(s), hint: sameWords(stageName(s), t(KIND_INFO[s.kind].name)) ? undefined : t(KIND_INFO[s.kind].name), icon: <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} /> }))}
                 />
                 {change && <p className="muted small">{change}</p>}
               </>
             )}
             {reviewTeams.length > 0 && (
               <p className="muted small">
-                {reviewTeams.map((t) => t.name).join(', ')} {reviewTeams.length === 1 ? 'checks' : 'check'} work before it counts as done. Without a review stage, finished work goes straight to done.
+                {tn(reviewTeams.length, '{teams} checks work before it counts as done. Without a review stage, finished work goes straight to done.', '{teams} check work before it counts as done. Without a review stage, finished work goes straight to done.', { teams: fmtList(reviewTeams.map((tm) => tm.name)) })}
               </p>
             )}
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <button type="button" className="ghost-btn sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" className="primary-btn sm" onClick={() => onRemove(target)}>
-            {tasks === 0 ? 'Remove' : `Move ${tasks === 1 ? 'it' : 'them'} and remove`}
+            {tasks === 0 ? t('Remove') : tn(tasks, 'Move it and remove', 'Move them and remove')}
           </button>
         </footer>
       </div>
@@ -445,13 +455,15 @@ export function OwnStages({ what, name, own, inherited, inheritedFrom, canManage
 }) {
   const on = !!own?.length;
   const list = on ? cleanStages(own) : inherited;
-  const whose = inheritedFrom.endsWith('s') ? `${inheritedFrom}’` : `${inheritedFrom}’s`; // "Pixel & Profits’ stages"
+  const whose = inheritedFrom.endsWith('s') ? `${inheritedFrom}’` : `${inheritedFrom}’s`; // "Pixel & Profits’ stages" (the history line, English)
+  const theirs = inheritedFrom.endsWith('s') ? t('{from}’ stages', { from: inheritedFrom }) : t('{from}’s stages', { from: inheritedFrom });
+  const followed = fmtList(inherited.map((s) => stageName(s)));
   return (
     <div className="own-stages">
       <div className="set-row toggle-row">
         <span>
-          <strong>Use {what === 'project' ? 'this project’s' : 'this team’s'} own stages</strong>
-          <small>{on ? `${name} has its own board columns. Its tasks use them everywhere.` : `Off: ${name} uses ${whose} stages: ${inherited.map((s) => stageName(s)).join(', ')}.`}</small>
+          <strong>{what === 'project' ? t('Use this project’s own stages') : t('Use this team’s own stages')}</strong>
+          <small>{on ? t('{name} has its own board columns. Its tasks use them everywhere.', { name }) : t('Off: {name} uses {stages}: {list}.', { name, stages: theirs, list: followed })}</small>
         </span>
         <button
           type="button"

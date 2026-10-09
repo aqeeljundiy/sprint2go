@@ -1,6 +1,7 @@
 // What a company calls the things it works on. "Projects" by default (any kind of work), or "Clients" for
 // agencies that prefer it (Settings, General). Inside the code they're still "clients"; only the words change.
 import { hasBranding } from './data/pricing';
+import { t } from './i18n/index'; // the full path: the server imports this file too
 
 export type TermWord = 'project' | 'client';
 
@@ -10,36 +11,38 @@ export function setTermWord(w: TermWord | undefined) {
   state.word = w ?? 'project';
 }
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
+// The words come in the person's language ("proyek", "klien", "tamu"): use them as values in whole sentences,
+// t('All {projects}', { projects: term.many }), never glued to other words (docs/i18n.md).
+const client = () => state.word === 'client';
 export const term = {
   get one() {
-    return state.word;
+    return client() ? t('client') : t('project');
   },
   get One() {
-    return cap(state.word);
+    return client() ? t('Client') : t('Project');
   },
   get many() {
-    return state.word + 's';
+    return client() ? t('clients') : t('projects');
   },
   get Many() {
-    return cap(state.word) + 's';
+    return client() ? t('Clients') : t('Projects');
   },
+  /** 'project' or 'client', for code (never shown). */
   get word() {
     return state.word;
   },
   /** The people on the other side: "client" for agencies that say clients, "guest" otherwise. */
   get who() {
-    return state.word === 'client' ? 'client' : 'guest';
+    return client() ? t('client') : t('guest');
   },
   get Who() {
-    return state.word === 'client' ? 'Client' : 'Guest';
+    return client() ? t('Client') : t('Guest');
   },
   get whos() {
-    return state.word === 'client' ? 'clients' : 'guests';
+    return client() ? t('clients') : t('guests');
   },
   get Whos() {
-    return state.word === 'client' ? 'Clients' : 'Guests';
+    return client() ? t('Clients') : t('Guests');
   },
 };
 

@@ -4,6 +4,7 @@ import type { User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Popover } from './Popover';
 import { PeopleList, type ExtraOption } from './PeopleList';
+import { t, tn } from '../../i18n';
 
 /** Pick one or more people. Shows stacked avatars; opens a searchable list with checkmarks. */
 export function PeoplePicker({
@@ -13,7 +14,7 @@ export function PeoplePicker({
   onChange,
   label,
   compact,
-  emptyText = 'Nobody yet',
+  emptyText = t('Nobody yet'),
   max = 4,
 }: {
   value: string[];
@@ -55,7 +56,7 @@ export function PeoplePicker({
         ) : (
           <span className="sel-text muted">{emptyText}</span>
         )}
-        {!compact && chosen.length > 0 && <span className="sel-text">{chosen.length === 1 ? (chosen[0].id === me ? 'You' : chosen[0].name) : `${chosen.length} people`}</span>}
+        {!compact && chosen.length > 0 && <span className="sel-text">{chosen.length === 1 ? (chosen[0].id === me ? t('You') : chosen[0].name) : tn(chosen.length, '{n} person', '{n} people')}</span>}
         {!compact && <Plus size={13} className="sel-chev" />}
       </button>
       <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={300} title={label}>
@@ -75,7 +76,7 @@ export function PersonSelect({
   me,
   onChange,
   label,
-  placeholder = 'Choose someone…',
+  placeholder = t('Choose someone…'),
   extra,
   className = '',
   width = 300,
@@ -98,7 +99,7 @@ export function PersonSelect({
     <>
       <button ref={btn} type="button" className={`sel person-sel ${open ? 'open' : ''} ${u || ex ? '' : 'empty'} ${className}`} onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={label}>
         {u ? <Avatar person={u} size={20} /> : ex?.icon}
-        <span className="sel-text">{u ? (u.id === me ? `${u.name} (me)` : u.name) : ex?.label ?? placeholder}</span>
+        <span className="sel-text">{u ? (u.id === me ? t('{name} (me)', { name: u.name }) : u.name) : ex?.label ?? placeholder}</span>
         <ChevronDown size={14} className="sel-chev" />
       </button>
       <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={width} title={label}>

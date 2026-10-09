@@ -10,6 +10,7 @@ import { uid } from '../utils';
 import { readLogo, WorkspaceLogo } from './WorkspaceLogo';
 import { brand as product } from '../terms';
 import { deviceTz } from '../jobTimes';
+import { t, tn } from '../i18n';
 
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 
@@ -25,22 +26,22 @@ export function BrandFields({
   return (
     <div className="brand-fields">
       <div className="logo-pick">
-        <button className="logo-drop" onClick={() => input.current?.click()} title="Upload logo">
+        <button className="logo-drop" onClick={() => input.current?.click()} title={t('Upload logo')}>
           <WorkspaceLogo ws={value} size={64} />
           <span className="logo-over">
             <ImagePlus size={18} />
           </span>
         </button>
         <div>
-          <strong>Logo</strong>
-          <small>PNG, JPG or SVG · square works best</small>
+          <strong>{t('Logo')}</strong>
+          <small>{t('PNG, JPG or SVG · square works best')}</small>
           <div className="logo-actions">
             <button className="ghost-btn outline sm" onClick={() => input.current?.click()}>
-              Upload
+              {t('Upload')}
             </button>
             {value.logo && (
               <button className="ghost-btn sm" onClick={() => onChange({ logo: undefined })}>
-                Remove
+                {t('Remove')}
               </button>
             )}
           </div>
@@ -58,12 +59,12 @@ export function BrandFields({
         />
       </div>
       <div className="field">
-        <label>Brand colour</label>
+        <label>{t('Brand colour')}</label>
         <div className="accent-row">
           {WORKSPACE_COLORS.map((c) => (
             <button key={c} className={`accent-swatch ${value.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => onChange({ color: c })} aria-label={c} />
           ))}
-          <label className="accent-swatch custom" title="Custom colour" style={{ background: WORKSPACE_COLORS.includes(value.color) ? undefined : value.color }}>
+          <label className="accent-swatch custom" title={t('Custom colour')} style={{ background: WORKSPACE_COLORS.includes(value.color) ? undefined : value.color }}>
             <input type="color" value={value.color} onChange={(e) => onChange({ color: e.target.value })} />
           </label>
         </div>
@@ -78,7 +79,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
       <div className="modal" role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span>{title}</span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -109,32 +110,32 @@ export function NewWorkspace({ userId, userName, onCreate, onClose }: { userId: 
     });
 
   return (
-    <Modal title="New workspace" onClose={onClose}>
+    <Modal title={t('New workspace')} onClose={onClose}>
       <div className="modal-body">
         <SmoothHeight>
-        <p className="modal-intro">A workspace is one business, with its own brand, email accounts, calendar and drive.</p>
+        <p className="modal-intro">{t('A workspace is one business, with its own brand, email accounts, calendar and drive.')}</p>
         <div className="field">
-          <label>Business name</label>
-          <input autoFocus value={ws.name} onChange={(e) => setWs({ ...ws, name: e.target.value })} placeholder="e.g. Continue" />
+          <label>{t('Business name')}</label>
+          <input autoFocus value={ws.name} onChange={(e) => setWs({ ...ws, name: e.target.value })} placeholder={t('e.g. Continue')} />
         </div>
         <BrandFields value={ws} onChange={(p) => setWs({ ...ws, ...p })} />
         <div className="field">
-          <label>Your email address there</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@business.com" onKeyDown={(e) => e.key === 'Enter' && create()} />
-          {domain && <small>People at @{domain} count as your team (never tracked).</small>}
+          <label>{t('Your email address there')}</label>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('you@business.com')} onKeyDown={(e) => e.key === 'Enter' && create()} />
+          {domain && <small>{t('People at @{domain} count as your team (never tracked).', { domain })}</small>}
         </div>
         <div className="field">
-          <label>Name people see</label>
+          <label>{t('Name people see')}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button className="primary-btn" onClick={create} disabled={!valid}>
-          Create workspace
+          {t('Create workspace')}
         </button>
       </footer>
     </Modal>
@@ -153,71 +154,71 @@ export function NewAccount({ workspace, userId, onAdd, onClose }: { workspace: W
     valid && onAdd({ id: uid(), email: email.trim().toLowerCase(), name: name.trim() || (kind === 'shared' ? workspace.name : email.split('@')[0]), kind, connected: false, users: [userId], provider });
 
   return (
-    <Modal title={`Add an account to ${workspace.name}`} onClose={onClose}>
+    <Modal title={t('Add an account to {company}', { company: workspace.name })} onClose={onClose}>
       <div className="modal-body">
         <SmoothHeight>
         <div className="kind-pick">
           <button className={kind === 'personal' ? 'on' : ''} onClick={() => setKind('personal')}>
             <UserRound size={18} />
-            <strong>Personal</strong>
-            <small>Your own address</small>
+            <strong>{t('Personal')}</strong>
+            <small>{t('Your own address')}</small>
           </button>
           <button className={kind === 'shared' ? 'on' : ''} onClick={() => setKind('shared')}>
             <Users size={18} />
-            <strong>Shared inbox</strong>
+            <strong>{t('Shared inbox')}</strong>
             <small>hello@, support@, sales@</small>
           </button>
         </div>
         <div className="field">
-          <label>Where does this mailbox live?</label>
+          <label>{t('Where does this mailbox live?')}</label>
           <div className="aw-tones wrap">
             <button className={provider === 'sprint2go' ? 'on' : ''} onClick={() => setProvider('sprint2go')}>
-              New {product.name} mailbox
+              {t('New {product} mailbox', { product: product.name })}
             </button>
             {PROVIDERS.map((p) => (
               <button key={p.id} className={provider === p.id ? 'on' : ''} onClick={() => setProvider(p.id)}>
-                Connect {p.name}
+                {t('Connect {provider}', { provider: p.name })}
               </button>
             ))}
           </div>
           <small>
             {provider === 'sprint2go'
-              ? 'We create and host this mailbox.'
-              : 'Mail stays where it is and shows here too, in sync both ways. The owner signs in to connect it.'}
+              ? t('We create and host this mailbox.')
+              : t('Mail stays where it is and shows here too, in sync both ways. The owner signs in to connect it.')}
           </small>
         </div>
         <div className="field">
-          <label>Email address</label>
+          <label>{t('Email address')}</label>
           <input
             autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onFocus={(e) => email.startsWith('@') && e.target.setSelectionRange(0, 0)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
-            placeholder="name@business.com"
+            placeholder={t('name@business.com')}
           />
-          {taken && <small className="err">That account is already added.</small>}
+          {taken && <small className="err">{t('That account is already added.')}</small>}
         </div>
         <div className="field">
-          <label>Name people see</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'shared' ? workspace.name : 'Your name'} />
+          <label>{t('Name people see')}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'shared' ? workspace.name : t('Your name')} />
         </div>
         <p className="modal-note">
           <Inbox size={14} />{' '}
           {provider !== 'sprint2go'
-            ? 'It shows as “Not connected” until it’s signed in.'
+            ? t('It shows as “Not connected” until it’s signed in.')
             : workspace.emailSetup === 'mix'
-              ? `It’s ready once mail for it arrives here, passed on by ${providerLabel(workspace.emailProvider ?? 'google')}. ${notAtProvider(workspace.emailProvider ?? 'google')}`
-              : 'It’s ready once mail for it arrives here. Settings, Email delivery shows whether it receives and sends.'}
+              ? `${t('It’s ready once mail for it arrives here, passed on by {provider}.', { provider: providerLabel(workspace.emailProvider ?? 'google') })} ${notAtProvider(workspace.emailProvider ?? 'google')}`
+              : t('It’s ready once mail for it arrives here. Settings, Email delivery shows whether it receives and sends.')}
         </p>
         </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button className="primary-btn" onClick={add} disabled={!valid}>
-          Add account
+          {t('Add account')}
         </button>
       </footer>
     </Modal>
@@ -257,11 +258,11 @@ export function InviteMember({
   };
 
   return (
-    <Modal title={`Invite someone to ${workspace.name}`} onClose={onClose}>
+    <Modal title={t('Invite someone to {company}', { company: workspace.name })} onClose={onClose}>
       <div className="modal-body">
         <SmoothHeight>
         <div className="field">
-          <label>Full name</label>
+          <label>{t('Full name')}</label>
           <input
             autoFocus
             value={name}
@@ -269,34 +270,34 @@ export function InviteMember({
               setName(e.target.value);
               if (!local || local === name.split(' ')[0].toLowerCase()) setLocal(e.target.value.split(' ')[0].toLowerCase());
             }}
-            placeholder="e.g. Dewi Lestari"
+            placeholder={t('e.g. Dewi Lestari')}
           />
         </div>
         <div className="field">
-          <label>Their email address</label>
+          <label>{t('Their email address')}</label>
           <div className="email-split">
             <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="dewi" onKeyDown={(e) => e.key === 'Enter' && invite()} />
-            <span>@{domain || 'add a domain in settings'}</span>
+            <span>@{domain || t('add a domain in settings')}</span>
           </div>
-          {exists && <small className="err">Someone already uses that address.</small>}
+          {exists && <small className="err">{t('Someone already uses that address.')}</small>}
         </div>
         <label className="check-row">
           <input type="checkbox" checked={mailbox} onChange={(e) => setMailbox(e.target.checked)} />
-          Create a {product.name} mailbox for them
+          {t('Create a {product} mailbox for them', { product: product.name })}
         </label>
         {mailbox && workspace.emailSetup === 'mix' && (
           <small className="muted">
-            Mail for {local.trim() ? email : 'their address'} comes through {providerLabel(workspace.emailProvider ?? 'google')}. {notAtProvider(workspace.emailProvider ?? 'google')}
+            {t('Mail for {address} comes through {provider}.', { address: local.trim() ? email : t('their address'), provider: providerLabel(workspace.emailProvider ?? 'google') })} {notAtProvider(workspace.emailProvider ?? 'google')}
           </small>
         )}
         <div className="field">
-          <label>Role</label>
+          <label>{t('Role')}</label>
           <div className="kind-pick three">
             {(
               [
-                ['member', UserRound, 'Member', 'Their own mail'],
-                ['admin', Shield, 'Admin', 'Manage people & settings'],
-                ['owner', Users, 'Owner', 'Everything, incl. billing'],
+                ['member', UserRound, t('Member'), t('Their own mail')],
+                ['admin', Shield, t('Admin'), t('Manage people & settings')],
+                ['owner', Users, t('Owner'), t('Everything, incl. billing')],
               ] as const
             ).map(([id, Icon, label, hint]) => (
               <button key={id} className={role === id ? 'on' : ''} onClick={() => setRole(id)}>
@@ -309,7 +310,7 @@ export function InviteMember({
         </div>
         {shared.length > 0 && (
           <div className="field">
-            <label>Shared inboxes they can open</label>
+            <label>{t('Shared inboxes they can open')}</label>
             {shared.map((a) => (
               <label key={a.id} className="check-row">
                 <input
@@ -323,16 +324,16 @@ export function InviteMember({
           </div>
         )}
         <p className="modal-note">
-          <Inbox size={14} /> Admins can manage people, but nobody can read someone else’s personal mailbox.
+          <Inbox size={14} /> {t('Admins can manage people, but nobody can read someone else’s personal mailbox.')}
         </p>
         </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button className="primary-btn" onClick={invite} disabled={!valid}>
-          Send invite
+          {t('Send invite')}
         </button>
       </footer>
     </Modal>
@@ -346,15 +347,15 @@ export function RemoveMailbox({ account, workspace, conversations, onRemove, onC
   const [busy, setBusy] = useState(false);
   const aliases = (workspace.mailAliases ?? []).filter((al) => al.to.includes(account.id));
   const hosted = !account.provider || account.provider === 'sprint2go';
-  const mail = conversations === null ? 'Its mail' : `Its ${conversations} conversation${conversations === 1 ? '' : 's'}`;
+  const mail = conversations === null ? t('Its mail') : tn(conversations, 'Its {n} conversation', 'Its {n} conversations');
   return (
-    <Modal title={`Remove ${account.email}?`} onClose={onClose}>
+    <Modal title={t('Remove {email}?', { email: account.email })} onClose={onClose}>
       <div className="modal-body">
         <SmoothHeight>
           <p className="modal-intro">
             {hosted
-              ? `New mail to ${account.email} is refused from now on, and senders get a note that it bounced.`
-              : `${account.email} stays at ${providerLabel(account.provider ?? 'google')}. It just stops showing in ${product.name}.`}
+              ? t('New mail to {email} is refused from now on, and senders get a note that it bounced.', { email: account.email })
+              : t('{email} stays at {provider}. It just stops showing in {product}.', { email: account.email, provider: providerLabel(account.provider ?? 'google'), product: product.name })}
           </p>
           {conversations !== 0 && (
             <div className="field">
@@ -362,26 +363,27 @@ export function RemoveMailbox({ account, workspace, conversations, onRemove, onC
               <Select<string>
                 value={moveTo}
                 onChange={setMoveTo}
-                label="What happens to its mail"
+                label={t('What happens to its mail')}
                 width={320}
                 options={[
-                  ...others.map((a) => ({ value: a.id, label: `Move it to ${a.email}`, hint: a.kind === 'shared' ? 'Shared inbox' : undefined })),
-                  { value: '', label: 'Delete it', hint: 'For everyone. This can’t be undone.', danger: true },
+                  ...others.map((a) => ({ value: a.id, label: t('Move it to {email}', { email: a.email }), hint: a.kind === 'shared' ? t('Shared inbox') : undefined })),
+                  { value: '', label: t('Delete it'), hint: t('For everyone. This can’t be undone.'), danger: true },
                 ]}
               />
             </div>
           )}
           {aliases.length > 0 && (
             <p className="small muted">
-              {aliases.map((al) => al.address).join(', ')} {aliases.length > 1 ? 'stop' : 'stops'} delivering here
-              {aliases.some((al) => al.to.length === 1) ? '; an address with no other mailbox is removed too' : ''}.
+              {aliases.some((al) => al.to.length === 1)
+                ? tn(aliases.length, '{addresses} stops delivering here; an address with no other mailbox is removed too.', '{addresses} stop delivering here; an address with no other mailbox is removed too.', { addresses: aliases.map((al) => al.address).join(', ') })
+                : tn(aliases.length, '{addresses} stops delivering here.', '{addresses} stop delivering here.', { addresses: aliases.map((al) => al.address).join(', ') })}
             </p>
           )}
         </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button
           className="primary-btn danger-btn"
@@ -391,7 +393,7 @@ export function RemoveMailbox({ account, workspace, conversations, onRemove, onC
             if (!(await onRemove(conversations === 0 ? null : moveTo || null))) setBusy(false);
           }}
         >
-          {moveTo && conversations !== 0 ? 'Move mail and remove' : 'Remove mailbox'}
+          {moveTo && conversations !== 0 ? t('Move mail and remove') : t('Remove mailbox')}
         </button>
       </footer>
     </Modal>
@@ -423,49 +425,49 @@ export function AliasDialog({ workspace, alias, onSave, onClose }: { workspace: 
     if (err) setError(err);
   };
   return (
-    <Modal title={alias ? `Edit ${alias.address}` : 'Add an address'} onClose={onClose}>
+    <Modal title={alias ? t('Edit {address}', { address: alias.address }) : t('Add an address')} onClose={onClose}>
       <div className="modal-body">
         <SmoothHeight>
-          <p className="modal-intro">Another address at your domain that delivers into mailboxes here, like sales@ or info@. Replies go out from the mailbox.</p>
+          <p className="modal-intro">{t('Another address at your domain that delivers into mailboxes here, like sales@ or info@. Replies go out from the mailbox.')}</p>
           <div className="field">
-            <label>Address</label>
+            <label>{t('Address')}</label>
             <div className="email-split">
               <input autoFocus value={local} onChange={(e) => (setLocal(e.target.value), setError(''))} placeholder="sales" onKeyDown={(e) => e.key === 'Enter' && void save()} />
               {domains.length > 1 ? (
-                <Select<string> value={domain} onChange={setDomain} label="Domain" className="sel-flat" width={220} options={domains.map((d) => ({ value: d, label: `@${d}` }))} />
+                <Select<string> value={domain} onChange={setDomain} label={t('Domain')} className="sel-flat" width={220} options={domains.map((d) => ({ value: d, label: `@${d}` }))} />
               ) : (
                 <span>@{domain}</span>
               )}
             </div>
-            {taken && <small className="err">{address} is already a mailbox or an address.</small>}
+            {taken && <small className="err">{t('{address} is already a mailbox or an address.', { address })}</small>}
           </div>
           <div className="field">
-            <label>Delivers to</label>
+            <label>{t('Delivers to')}</label>
             {boxes.map((b) => (
               <label key={b.id} className="check-row">
                 <input type="checkbox" checked={to.includes(b.id)} onChange={(e) => setTo((x) => (e.target.checked ? [...x, b.id] : x.filter((i) => i !== b.id)))} />
                 <span>
                   {b.email}
-                  {b.kind === 'shared' && <small className="muted"> · shared inbox</small>}
+                  {b.kind === 'shared' && <small className="muted"> · {t('shared inbox')}</small>}
                 </span>
               </label>
             ))}
-            <small>{picked.length > 1 ? 'Each of these mailboxes gets its own copy.' : picked[0]?.kind === 'shared' ? `Everyone on ${picked[0].email} sees it.` : 'Pick one mailbox, or several: each gets its own copy.'}</small>
+            <small>{picked.length > 1 ? t('Each of these mailboxes gets its own copy.') : picked[0]?.kind === 'shared' ? t('Everyone on {email} sees it.', { email: picked[0].email }) : t('Pick one mailbox, or several: each gets its own copy.')}</small>
           </div>
           {workspace.emailSetup === 'mix' && (
             <p className="modal-note">
-              <Inbox size={14} /> Mail for {local.trim() ? address : 'the address'} comes through {providerLabel(workspace.emailProvider ?? 'google')}. {notAtProvider(workspace.emailProvider ?? 'google')}
+              <Inbox size={14} /> {t('Mail for {address} comes through {provider}.', { address: local.trim() ? address : t('the address'), provider: providerLabel(workspace.emailProvider ?? 'google') })} {notAtProvider(workspace.emailProvider ?? 'google')}
             </p>
           )}
-          {error && <p className="err">{error}</p>}
+          {error && <p className="err">{t(error)}</p>}
         </SmoothHeight>
       </div>
       <footer className="modal-foot">
         <button className="ghost-btn" onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button className="primary-btn" onClick={() => void save()} disabled={!valid || busy}>
-          {alias ? 'Save' : 'Add address'}
+          {alias ? t('Save') : t('Add address')}
         </button>
       </footer>
     </Modal>

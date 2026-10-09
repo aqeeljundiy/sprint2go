@@ -2,6 +2,8 @@ import { Bell, PenSquare, Search, Sparkles, UserRound, type LucideIcon } from 'l
 import { Sheet } from '../components/ui/Sheet';
 import { SmoothHeight, TabPane } from '../components/ui/Smooth';
 import { EditBar, type EditApp } from './EditBar';
+import { term } from '../terms';
+import { t } from '../i18n';
 
 export interface MoreApp {
   id: string;
@@ -59,12 +61,12 @@ export function MoreSheet({
       onClose={onClose}
       className="more-panel"
       aboveBar
-      label={editing ? 'Edit the bar' : 'More'}
-      title={editing ? 'Edit the bar' : undefined}
+      label={editing ? t('Edit the bar') : t('More')}
+      title={editing ? t('Edit the bar') : undefined}
       head={
         editing ? (
           <button type="button" className="primary-btn sm" onClick={() => onEditing(false)}>
-            Done
+            {t('Done')}
           </button>
         ) : undefined
       }
@@ -84,12 +86,12 @@ export function MoreSheet({
             <div className="more-main">
               <button type="button" className="more-search" onClick={onSearch}>
                 <Search size={18} />
-                <span>Search or jump to an app, project or person</span>
+                <span>{t('Search or jump to an app, {project} or person', { project: term.one })}</span>
               </button>
 
               {make.length > 0 && (
-                <section className="more-new" aria-label="New">
-                  <h3 className="as-group">New</h3>
+                <section className="more-new" aria-label={t('New')}>
+                  <h3 className="as-group">{t('New')}</h3>
                   <div className="more-new-row">
                     {make.map((m) => (
                       <button key={m.id} type="button" onClick={() => (onClose(), m.run())}>
@@ -104,7 +106,7 @@ export function MoreSheet({
               )}
 
               {apps.length > 0 && (
-                <section className="more-apps2" aria-label="Apps">
+                <section className="more-apps2" aria-label={t('Apps')}>
                   {apps.map((a) => (
                     <button key={a.id} type="button" className={current === a.id ? 'on' : ''} aria-current={current === a.id ? 'page' : undefined} onClick={() => onApp(a.id)}>
                       <span className="more-app-icon">
@@ -120,8 +122,8 @@ export function MoreSheet({
               )}
 
               {recent.length > 0 && (
-                <section aria-label="Recent">
-                  <h3 className="as-group">Recent</h3>
+                <section aria-label={t('Recent')}>
+                  <h3 className="as-group">{t('Recent')}</h3>
                   <div className="as-list">
                     {recent.map((r) => (
                       <button key={r.id} type="button" className="as-item" onClick={() => (onClose(), r.run())}>
@@ -141,23 +143,23 @@ export function MoreSheet({
                 {onNotices && (
                   <button type="button" className="as-item" onClick={onNotices}>
                     <Bell size={18} className="as-icon" />
-                    <span className="as-label">Notifications</span>
+                    <span className="as-label">{t('Notifications')}</span>
                     {!!notices && <b className="more-count">{notices > 99 ? '99+' : notices}</b>}
                   </button>
                 )}
                 {onAsk && (
                   <button type="button" className="as-item" onClick={() => (onClose(), onAsk())}>
                     <Sparkles size={18} className="as-icon" />
-                    <span className="as-label">Ask AI</span>
+                    <span className="as-label">{t('Ask AI')}</span>
                   </button>
                 )}
                 <button type="button" className="as-item" onClick={() => onEditing(true)}>
                   <PenSquare size={18} className="as-icon" />
-                  <span className="as-label">Edit the bar</span>
+                  <span className="as-label">{t('Edit the bar')}</span>
                 </button>
                 <button type="button" className="as-item" onClick={onAccount}>
                   <UserRound size={18} className="as-icon" />
-                  <span className="as-label">Account and settings</span>
+                  <span className="as-label">{t('Account and settings')}</span>
                 </button>
               </div>
             </div>

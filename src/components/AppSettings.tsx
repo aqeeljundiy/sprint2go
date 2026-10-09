@@ -3,6 +3,7 @@ import { Settings } from 'lucide-react';
 import type { AppId, MemberPermissions } from '../types';
 import type { SettingsSection } from './AccountMenu';
 import { Popover } from './ui/Popover';
+import { t } from '../i18n';
 
 export type AppSettingsLink = { id: SettingsSection; name: string; hint: string };
 
@@ -15,23 +16,23 @@ export function appSettingsLinks(app: AppId | 'settings', who: { admin: boolean;
   const money = admin || who.perms.seeBilling; // Storage sits with the plan and billing
   switch (app) {
     case 'mail':
-      return [...(admin ? [{ id: 'email' as const, name: 'Email delivery', hint: 'Your domain, sending and the DNS records' }] : []), { id: 'mail', name: 'Mail & signature', hint: 'Your signature, undo send and read tracking' }];
+      return [...(admin ? [{ id: 'email' as const, name: t('Email delivery'), hint: t('Your domain, sending and the DNS records') }] : []), { id: 'mail', name: t('Mail & signature'), hint: t('Your signature, undo send and read tracking') }];
     case 'tasks':
-      return admin ? [{ id: 'stages', name: 'Task stages', hint: 'The board’s columns and what each one means' }] : [];
+      return admin ? [{ id: 'stages', name: t('Task stages'), hint: t('The board’s columns and what each one means') }] : [];
     case 'meet':
-      return admin ? [{ id: 'meetings', name: 'Meetings', hint: 'What to keep, languages and the notetaker' }] : [];
+      return admin ? [{ id: 'meetings', name: t('Meetings'), hint: t('What to keep, languages and the notetaker') }] : [];
     case 'chat':
-      return admin ? [{ id: 'apps', name: 'Apps & chat', hint: 'GIFs, celebrations, channels and history' }] : [];
+      return admin ? [{ id: 'apps', name: t('Apps & chat'), hint: t('GIFs, celebrations, channels and history') }] : [];
     case 'calendar':
-      return [{ id: 'notifications', name: 'Notifications', hint: 'Event reminders and sounds' }];
+      return [{ id: 'notifications', name: t('Notifications'), hint: t('Event reminders and sounds') }];
     case 'drive':
-      return money ? [{ id: 'storage', name: 'Storage', hint: 'Space used, and your own cloud for big files' }] : [];
+      return money ? [{ id: 'storage', name: t('Storage'), hint: t('Space used, and your own cloud for big files') }] : [];
     case 'notes':
-      return admin ? [{ id: 'permissions', name: 'Permissions', hint: 'Who can delete other people’s notes' }] : [];
+      return admin ? [{ id: 'permissions', name: t('Permissions'), hint: t('Who can delete other people’s notes') }] : [];
     case 'tables':
-      return admin ? [{ id: 'permissions', name: 'Permissions', hint: 'Who can change columns, views and automations' }] : [];
+      return admin ? [{ id: 'permissions', name: t('Permissions'), hint: t('Who can change columns, views and automations') }] : [];
     case 'teams':
-      return admin ? [{ id: 'permissions', name: 'Permissions', hint: 'Who can create teams' }] : [];
+      return admin ? [{ id: 'permissions', name: t('Permissions'), hint: t('Who can create teams') }] : [];
     default:
       return [];
   }
@@ -53,15 +54,15 @@ export function AppSettingsButton({ app, links, onOpen, className = '', big }: {
         type="button"
         className={`icon-btn ${big ? '' : 'sm'} app-settings-btn ${open ? 'on' : ''} ${className}`}
         onClick={() => (one ? onOpen(links[0].id) : setOpen(true))}
-        title={one ? `${app} settings: ${links[0].name}` : `${app} settings`}
-        aria-label={`${app} settings`}
+        title={one ? t('{app} settings: {section}', { app, section: links[0].name }) : t('{app} settings', { app })}
+        aria-label={t('{app} settings', { app })}
         aria-haspopup={one ? undefined : 'menu'}
         aria-expanded={one ? undefined : open}
       >
         <Settings size={big ? 20 : 16} />
       </button>
       {!one && (
-        <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={260} title={`${app} settings`}>
+        <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={260} title={t('{app} settings', { app })}>
           <div className="app-settings-menu" role="menu">
             {links.map((l) => (
               <button key={l.id} type="button" role="menuitem" onClick={() => (setOpen(false), onOpen(l.id))}>

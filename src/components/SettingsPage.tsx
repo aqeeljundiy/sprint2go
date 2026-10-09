@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { SmoothHeight, useLeaving } from './ui/Smooth';
 import { PushScreen } from './ui/PushScreen';
 import { usePhone } from '../mobile/media';
-import { takeSettingsList } from './settingsList';
+import { doneSettingsList, takeSettingsList } from './settingsList';
 import { term, brand as product } from '../terms';
 import { Handshake, Ban, Bell, Building2, ChevronDown, ChevronRight, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy, FolderInput } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
@@ -41,31 +41,33 @@ import { ConnectedApps } from './ConnectedApps';
 import { ImportSection } from './imports/ImportSection';
 import { BarDefaults } from '../mobile/BarDefaults';
 import { MAIL_APPS_SECTION, PhoneMailApps } from './PhoneMailApps';
+import { LANGS, getLang, mark, t, tn, type Lang, tx } from '../i18n';
+import { fmtDate, fmtTime } from '../i18n/format';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
-  { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
-  { id: 'email', name: 'Email delivery', icon: Send, group: 'Company' },
-  { id: 'permissions', name: 'Permissions', icon: KeySquare, group: 'Company' },
-  { id: 'agency', name: 'Client portal & brand', icon: Stamp, group: 'Company' },
-  { id: 'teams', name: 'Teams', icon: Users, group: 'Company' },
-  { id: 'stages', name: 'Task stages', icon: Columns3, group: 'Company' },
-  { id: 'clients', get name() { return `${term.Who} access`; }, icon: Handshake, group: 'Company' },
-  { id: 'apps', name: 'Apps & chat', icon: LayoutGrid, group: 'Company' },
-  { id: 'meetings', name: 'Meetings', icon: Video, group: 'Company' },
-  { id: 'ai', name: 'AI', icon: Sparkles, group: 'Company' },
-  { id: 'billing', name: 'Plan & billing', icon: CreditCard, group: 'Company' },
-  { id: 'storage', name: 'Storage', icon: HardDrive, group: 'Company' },
-  { id: 'security', name: 'Security & data', icon: ShieldCheck, group: 'Company' },
-  { id: 'import', name: 'Import', icon: FolderInput, group: 'Company' },
-  { id: 'account', name: 'Account', icon: UserRound, group: 'You' },
-  { id: 'appearance', name: 'Appearance', icon: Palette, group: 'You' },
-  { id: 'myapps', name: 'Your apps', icon: LayoutGrid, group: 'You' },
-  { id: 'mail', name: 'Mail & signature', icon: PenLine, group: 'You' },
+  { id: 'workspace', name: mark('General & email'), icon: Building2, group: 'Company' },
+  { id: 'email', name: mark('Email delivery'), icon: Send, group: 'Company' },
+  { id: 'permissions', name: mark('Permissions'), icon: KeySquare, group: 'Company' },
+  { id: 'agency', name: mark('Client portal & brand'), icon: Stamp, group: 'Company' },
+  { id: 'teams', name: mark('Teams'), icon: Users, group: 'Company' },
+  { id: 'stages', name: mark('Task stages'), icon: Columns3, group: 'Company' },
+  { id: 'clients', get name() { return t('{Who} access', { who: term.who }); }, icon: Handshake, group: 'Company' },
+  { id: 'apps', name: mark('Apps & chat'), icon: LayoutGrid, group: 'Company' },
+  { id: 'meetings', name: mark('Meetings'), icon: Video, group: 'Company' },
+  { id: 'ai', name: mark('AI'), icon: Sparkles, group: 'Company' },
+  { id: 'billing', name: mark('Plan & billing'), icon: CreditCard, group: 'Company' },
+  { id: 'storage', name: mark('Storage'), icon: HardDrive, group: 'Company' },
+  { id: 'security', name: mark('Security & data'), icon: ShieldCheck, group: 'Company' },
+  { id: 'import', name: mark('Import'), icon: FolderInput, group: 'Company' },
+  { id: 'account', name: mark('Account'), icon: UserRound, group: 'You' },
+  { id: 'appearance', name: mark('Appearance'), icon: Palette, group: 'You' },
+  { id: 'myapps', name: mark('Your apps'), icon: LayoutGrid, group: 'You' },
+  { id: 'mail', name: mark('Mail & signature'), icon: PenLine, group: 'You' },
   MAIL_APPS_SECTION,
-  { id: 'notifications', name: 'Notifications', icon: Bell, group: 'You' },
-  { id: 'help', name: 'Help & support', icon: LifeBuoy, group: 'You' },
-  { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard, group: 'You' },
-  { id: 'developer', name: 'Developer', icon: FlaskConical, group: 'You' },
+  { id: 'notifications', name: mark('Notifications'), icon: Bell, group: 'You' },
+  { id: 'help', name: mark('Help & support'), icon: LifeBuoy, group: 'You' },
+  { id: 'shortcuts', name: mark('Shortcuts'), icon: Keyboard, group: 'You' },
+  { id: 'developer', name: mark('Developer'), icon: FlaskConical, group: 'You' },
 ];
 
 
@@ -73,24 +75,24 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
 const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security', 'import', 'mailapps'];
 
 const SHORTCUTS: [string, string[]][] = [
-  ['Compose', ['C']],
-  ['Search', ['/']],
-  ['Next / previous conversation', ['J', 'K']],
-  ['Reply', ['R']],
-  ['Archive', ['E']],
-  ['Delete', ['#']],
-  ['Star', ['S']],
-  ['Mark unread', ['U']],
-  ['Send', ['⌘', '↵']],
-  ['Collapse sidebar', ['[']],
-  ['Switch workspace', ['⌥', '1–9']],
-  ['Search everything', ['⌘', 'K']],
-  ['Ask AI', ['⌘', 'J']],
-  ['Go to Home / Mail / Chat / Tasks', ['G', 'then H / M / C / T']],
-  ['Go to Calendar / Drive / Meet', ['G', 'then L / D / E']],
-  ['Tasks: new task', ['N']],
-  ['Calendar: today', ['T']],
-  ['Calendar: day / week / month', ['D', 'W', 'M']],
+  [mark('Compose'), ['C']],
+  [mark('Search'), ['/']],
+  [mark('Next / previous conversation'), ['J', 'K']],
+  [mark('Reply'), ['R']],
+  [mark('Archive'), ['E']],
+  [mark('Delete'), ['#']],
+  [mark('Star'), ['S']],
+  [mark('Mark unread'), ['U']],
+  [mark('Send'), ['⌘', '↵']],
+  [mark('Collapse sidebar'), ['[']],
+  [mark('Switch workspace'), ['⌥', '1–9']],
+  [mark('Search everything'), ['⌘', 'K']],
+  [mark('Ask AI'), ['⌘', 'J']],
+  [mark('Go to Home / Mail / Chat / Tasks'), ['G', mark('then H / M / C / T')]],
+  [mark('Go to Calendar / Drive / Meet'), ['G', mark('then L / D / E')]],
+  [mark('Tasks: new task'), ['N']],
+  [mark('Calendar: today'), ['T']],
+  [mark('Calendar: day / week / month'), ['D', 'W', 'M']],
 ];
 
 interface Props {
@@ -158,6 +160,9 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
+/** A role as people read it (the value stays 'member', 'admin' or 'owner'). */
+const roleName = (r: Role) => (r === 'owner' ? t('Owner') : r === 'admin' ? t('Admin') : t('Member'));
+
 /**
  * Phones: Settings is a list of sections, grouped like the desktop's (the company, then you). Each opens full screen over
  * the list with Back. Keyboard shortcuts stay a desktop thing.
@@ -170,15 +175,15 @@ function SettingsList({ sections, company, onOpen }: { sections: typeof SECTIONS
         const rows = shown.filter((x) => x.group === g);
         if (!rows.length) return null;
         return (
-          <section key={g} className="set-list-group" aria-label={g === 'Company' ? company : 'You'}>
-            <h2 className="set-list-head">{g === 'Company' ? company : 'You'}</h2>
+          <section key={g} className="set-list-group" aria-label={g === 'Company' ? company : t('You')}>
+            <h2 className="set-list-head">{g === 'Company' ? company : t('You')}</h2>
             <div className="set-list-card">
               {rows.map(({ id, name, icon: Icon }) => (
                 <button key={id} type="button" className="set-list-row" onClick={() => onOpen(id)}>
                   <span className="set-list-icon">
                     <Icon size={17} />
                   </span>
-                  <span className="set-list-name">{name}</span>
+                  <span className="set-list-name">{t(name)}</span>
                   <ChevronRight size={18} className="set-list-chev" />
                 </button>
               ))}
@@ -194,7 +199,7 @@ function SettingsList({ sections, company, onOpen }: { sections: typeof SECTIONS
 function SectionScreen({ phone, open, title, onBack, children }: { phone: boolean; open: boolean; title: string; onBack: () => void; children: ReactNode }) {
   if (!phone) return <>{children}</>;
   return open ? (
-    <PushScreen title={title} backLabel="Settings" onBack={onBack} className="settings-push">
+    <PushScreen title={title} backLabel={t('Settings')} onBack={onBack} className="settings-push">
       {children}
     </PushScreen>
   ) : null;
@@ -205,6 +210,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const onPhone = usePhone();
   const phone = onPhone && !embedded;
   const [sectionOpen, setSectionOpen] = useState(() => !embedded && !takeSettingsList());
+  useEffect(() => void (!embedded && doneSettingsList()), []); // eslint-disable-line react-hooks/exhaustive-deps
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -219,56 +225,56 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
   // The demo company has no money, keys, mail delivery or sign-in rules of its own: those are the real company's.
   const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')) && (canManage || x.id !== 'import') && !(demo?.inDemo && DEMO_OUT.includes(x.id)));
-  const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
+  const nameOf = (id: string) => (id === me ? t('You') : users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone'));
 
   return (
     <section className={`settings-pane view-enter${embedded ? ' embedded' : ''}`}>
       <header className="settings-head">
-        <button className="icon-btn menu-btn" onClick={onMenu} aria-label="Open menu">
+        <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
         </button>
-        <h1>Settings</h1>
+        <h1>{t('Settings')}</h1>
       </header>
       <div className="settings-body">
         <nav className="settings-nav">
           {sections.map(({ id, name, icon: Icon, group }, i) => (
             <span key={id} className="settings-nav-item">
-              {(i === 0 || sections[i - 1].group !== group) && <span className="settings-group">{group === 'Company' ? ws.name || 'Company' : 'You'}</span>}
+              {(i === 0 || sections[i - 1].group !== group) && <span className="settings-group">{group === 'Company' ? ws.name || t('Company') : t('You')}</span>}
               <button className={section === id ? 'on' : ''} onClick={() => onSection(id)}>
-                <Icon size={16} /> {name}
+                <Icon size={16} /> {t(name)}
               </button>
             </span>
           ))}
         </nav>
-        {phone && <SettingsList sections={sections} company={ws.name || 'Company'} onOpen={(id) => (onSection(id), setSectionOpen(true))} />}
+        {phone && <SettingsList sections={sections} company={ws.name || t('Company')} onOpen={(id) => (onSection(id), setSectionOpen(true))} />}
 
-        <SectionScreen phone={phone} open={sectionOpen} title={SECTIONS.find((x) => x.id === section)?.name ?? 'Settings'} onBack={() => setSectionOpen(false)}>
+        <SectionScreen phone={phone} open={sectionOpen} title={t(SECTIONS.find((x) => x.id === section)?.name ?? 'Settings')} onBack={() => setSectionOpen(false)}>
         <div className="settings-content" key={section}>
           {section === 'workspace' && (
             <>
-              <h2>Workspace</h2>
+              <h2>{t('Workspace')}</h2>
               <p className="set-intro">
-                {demo?.inDemo ? 'This is your demo company: change anything here, nothing leaves it. Billing, AI keys, mail delivery and security are set in your real company.' : 'Each business gets its own brand, email accounts, calendar and drive.'}
+                {demo?.inDemo ? t('This is your demo company: change anything here, nothing leaves it. Billing, AI keys, mail delivery and security are set in your real company.') : t('Each business gets its own brand, email accounts, calendar and drive.')}
               </p>
               <div className="ws-preview">
                 <WorkspaceLogo ws={ws} size={44} />
                 <div>
-                  <strong>{ws.name || 'Untitled'}</strong>
-                  <small>{ws.domains.join(', ') || 'No domain yet'}</small>
+                  <strong>{ws.name || t('Untitled')}</strong>
+                  <small>{ws.domains.join(', ') || t('No domain yet')}</small>
                 </div>
                 <span className="ws-preview-btn" style={{ background: ws.color }}>
-                  Compose
+                  {t('Compose')}
                 </span>
               </div>
-              {!canManage && <p className="modal-note">Only owners and admins can change workspace settings.</p>}
+              {!canManage && <p className="modal-note">{t('Only owners and admins can change workspace settings.')}</p>}
               <fieldset className="plain" disabled={!canManage}>
               <div className="field">
-                <label>Business name</label>
+                <label>{t('Business name')}</label>
                 <input value={ws.name} onChange={(e) => onWorkspace({ name: e.target.value })} />
               </div>
               <BrandFields value={ws} onChange={onWorkspace} />
               <div className="field">
-                <label>Email domains</label>
+                <label>{t('Email domains')}</label>
                 <input
                   defaultValue={ws.domains.join(', ')}
                   key={ws.id}
@@ -280,50 +286,62 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                         .filter(Boolean),
                     })
                   }
-                  placeholder="business.com"
+                  placeholder={t('business.com')}
                 />
-                <small>People at these domains are your team, so their email is never tracked.</small>
+                <small>{t('People at these domains are your team, so their email is never tracked.')}</small>
               </div>
               <div className="field">
-                <label>What you call your work</label>
+                <label>{t('What you call your work')}</label>
                 <Select<'project' | 'client'>
                   value={ws.terms?.word ?? 'project'}
                   onChange={(v) => onWorkspace({ terms: { word: v } })}
-                  label="What you call your work"
+                  label={t('What you call your work')}
                   options={[
-                    { value: 'project', label: 'Projects', hint: 'Any kind of work: clients, partners, internal' },
-                    { value: 'client', label: 'Clients', hint: 'For agencies that work for clients' },
+                    { value: 'project', label: t('Projects'), hint: t('Any kind of work: clients, partners, internal') },
+                    { value: 'client', label: t('Clients'), hint: t('For agencies that work for clients') },
                   ]}
                 />
-                <small>Changes the word everywhere in the app. With Projects, the people you invite are called guests.</small>
+                <small>{t('Changes the word everywhere in the app. With Projects, the people you invite are called guests.')}</small>
               </div>
               <div className="field">
-                <label>Public holidays</label>
+                <label>{t('Public holidays')}</label>
                 <Select
                   value={ws.holidays?.country ?? ''}
                   onChange={(v) => onHolidays(v || null)}
-                  label="Public holidays"
+                  label={t('Public holidays')}
                   searchable
-                  options={[{ value: '', label: 'Don’t show holidays' }, ...HOLIDAY_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))]}
+                  options={[{ value: '', label: t('Don’t show holidays') }, ...HOLIDAY_COUNTRIES.map((c) => ({ value: c.code, label: t(c.name) }))]}
                 />
                 <small>
                   {!ws.holidays
-                    ? 'Show your country’s public holidays as all-day items in everyone’s calendar here. Tasks due on a holiday get a note.'
+                    ? t('Show your country’s public holidays as all-day items in everyone’s calendar here. Tasks due on a holiday get a note.')
                     : holidayCal?.error
-                      ? `Couldn’t update them: ${holidayCal.error}${holidayCal.syncedAt ? ` The list from ${relative(holidayCal.syncedAt)} still shows.` : ''}`
+                      ? holidayCal.syncedAt
+                        ? t('Couldn’t update them: {error} The list from {when} still shows.', { error: t(holidayCal.error), when: relative(holidayCal.syncedAt) })
+                        : t('Couldn’t update them: {error}', { error: t(holidayCal.error) })
                       : holidayCal?.syncedAt
-                        ? `In everyone’s calendar, and a note on tasks due that day. Checked ${relative(holidayCal.syncedAt)}.`
-                        : 'Adding them to everyone’s calendar…'}
+                        ? t('In everyone’s calendar, and a note on tasks due that day. Checked {when}.', { when: relative(holidayCal.syncedAt) })
+                        : t('Adding them to everyone’s calendar…')}
                 </small>
               </div>
               <div className="field">
-                <label>Time zone</label>
-                <Select value={companyTz(ws)} onChange={(v) => onWorkspace({ timeZone: v })} label="Time zone" searchable options={zoneOptions(companyTz(ws))} />
-                <small>Scheduled channel summaries are written at {SUMMARY_HOUR}:00 here. Email digests use it for anyone whose own time zone isn’t known yet.</small>
+                <label>{t('Time zone')}</label>
+                <Select value={companyTz(ws)} onChange={(v) => onWorkspace({ timeZone: v })} label={t('Time zone')} searchable options={zoneOptions(companyTz(ws))} />
+                <small>{t('Scheduled channel summaries are written at {time} here. Email digests use it for anyone whose own time zone isn’t known yet.', { time: fmtTime(new Date(2000, 0, 1, SUMMARY_HOUR)) })}</small>
+              </div>
+              <div className="field">
+                <label>{t('Language')}</label>
+                <Select<'' | Lang>
+                  value={ws.language ?? ''}
+                  onChange={(v) => onWorkspace({ language: v || undefined })}
+                  label={t('Language')}
+                  options={[{ value: '', label: t('Each person’s browser') }, ...LANGS.map((l) => ({ value: l.id, label: l.name }))]}
+                />
+                <small>{t('For new members and anyone who hasn’t picked their own language in Settings, Account.')}</small>
               </div>
               </fieldset>
 
-              <h3>Members</h3>
+              <h3>{t('Members')}</h3>
               <div className="acct-list">
                 {memberRows.map(({ item: m, leaving }) => {
                   const u = users.find((x) => x.id === m.userId);
@@ -331,24 +349,24 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   const owners = ws.members.filter((x) => x.role === 'owner').length;
                   return (
                     <div key={m.userId} className={`acct-row${leaving ? ' row-leaving' : ''}`}>
-                      <PersonCell person={u} badges={m.userId === me && <Badge tone="accent">You</Badge>} />
+                      <PersonCell person={u} badges={m.userId === me && <Badge tone="accent">{t('You')}</Badge>} />
                       {canManage && m.userId !== me && !(m.role === 'owner' && owners === 1) ? (
                         <Select<Role>
                           value={m.role}
                           onChange={(v) => onRole(m.userId, v)}
-                          label="Role"
+                          label={t('Role')}
                           className="role-select"
                           options={[
-                            { value: 'member', label: 'Member', hint: 'Uses the apps' },
-                            { value: 'admin', label: 'Admin', hint: 'Manages people, apps and settings' },
-                            { value: 'owner', label: 'Owner', hint: 'Everything, including billing' },
+                            { value: 'member', label: t('Member'), hint: t('Uses the apps') },
+                            { value: 'admin', label: t('Admin'), hint: t('Manages people, apps and settings') },
+                            { value: 'owner', label: t('Owner'), hint: t('Everything, including billing') },
                           ]}
                         />
                       ) : (
-                        <span className="role-tag">{m.role[0].toUpperCase() + m.role.slice(1)}</span>
+                        <span className="role-tag">{roleName(m.role)}</span>
                       )}
                       {canManage && m.userId !== me && m.role !== 'owner' && (
-                        <button className="icon-btn sm" title="Remove from workspace" onClick={() => onRemoveMember(m.userId)}>
+                        <button className="icon-btn sm" title={t('Remove from workspace')} onClick={() => onRemoveMember(m.userId)}>
                           <Trash2 size={14} />
                         </button>
                       )}
@@ -357,40 +375,41 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 })}
                 {canManage && (
                   <button className="acct-add" onClick={onInvite}>
-                    <UserPlus size={16} /> Invite someone
+                    <UserPlus size={16} /> {t('Invite someone')}
                   </button>
                 )}
               </div>
 
               {ws.emailSetup === 'mix' && !demo?.inDemo && (
                 <>
-                  <h3>Mail routing</h3>
+                  <h3>{t('Mail routing')}</h3>
                   <div className="set-block routing-block">
                     <p className="small">
-                      {ws.domains[0] ?? 'Your domain'} stays with {providerLabel(ws.emailProvider)}, which passes mail for addresses it doesn’t know on to {product.name}.{' '}
+                      {t('{domain} stays with {provider}, which passes mail for addresses it doesn’t know on to {product}.', { domain: ws.domains[0] ?? t('Your domain'), provider: providerLabel(ws.emailProvider), product: product.name })}{' '}
                       {ws.mailRouting?.lastCheck
                         ? ws.mailRouting.lastCheck.ok
-                          ? `Last check ${relative(ws.mailRouting.lastCheck.at)}: working.`
-                          : `Last check ${relative(ws.mailRouting.lastCheck.at)}: the test didn’t arrive. Check the routing rule.`
+                          ? t('Last check {when}: working.', { when: relative(ws.mailRouting.lastCheck.at) })
+                          : t('Last check {when}: the test didn’t arrive. Check the routing rule.', { when: relative(ws.mailRouting.lastCheck.at) })
                         : ws.mailRouting?.verifiedAt
-                          ? `Checked ${relative(ws.mailRouting.verifiedAt)} during setup.`
-                          : `Not checked yet: mail to ${product.name} mailboxes may not arrive.`}
+                          ? t('Checked {when} during setup.', { when: relative(ws.mailRouting.verifiedAt) })
+                          : t('Not checked yet: mail to {product} mailboxes may not arrive.', { product: product.name })}
                     </p>
                     {/* The server sends a real test each day when it can send mail (caps.routingCheck); the demo plays it. */}
                     {(!realMail || caps.routingCheck) && (
                       <Toggle
                         on={ws.mailRouting?.dailyCheck ?? true}
                         onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
-                        label="Check every day"
+                        label={t('Check every day')}
                         hint={
                           realMail
-                            ? `Once a day we send a test to an address at ${ws.domains[0] ?? 'your domain'} that only ${product.name} knows. If two tests in a row don’t arrive, admins get a notice and an email.${ws.mailRouting?.verifiedAt ? '' : ' It starts once routing has worked.'}`
-                            : `A test email each morning. If it stops arriving, admins hear about it straight away. Runs once ${product.name} mail is live.`
+                            ? t('Once a day we send a test to an address at {domain} that only {product} knows. If two tests in a row don’t arrive, admins get a notice and an email.', { domain: ws.domains[0] ?? t('your domain'), product: product.name }) +
+                              (ws.mailRouting?.verifiedAt ? '' : ` ${t('It starts once routing has worked.')}`)
+                            : t('A test email each morning. If it stops arriving, admins hear about it straight away. Runs once {product} mail is live.', { product: product.name })
                         }
                       />
                     )}
                     <button type="button" className="link-btn small" onClick={() => setRoutingGuide((x) => !x)}>
-                      {routingGuide ? 'Hide the setup steps' : 'Show the setup steps'}
+                      {routingGuide ? t('Hide the setup steps') : t('Show the setup steps')}
                     </button>
                     <div className={`fold ${routingGuide ? 'open' : ''}`}>
                       <div className="fold-in">
@@ -411,7 +430,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 </>
               )}
 
-              <h3>Email accounts</h3>
+              <h3>{t('Email accounts')}</h3>
               <div className="acct-list">
                 {accountRows.map(({ item: a, leaving }) => (
                   <div key={a.id} className={`acct-block${leaving ? ' row-leaving' : ''}`}>
@@ -420,20 +439,20 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                     <span className="acct-info">
                       <strong>{a.email}</strong>
                       <small>
-                        {a.kind === 'shared' ? 'Shared inbox' : 'Personal'} · opened by {a.users.map(nameOf).join(', ') || 'nobody'}
+                        {a.kind === 'shared' ? t('Shared inbox') : t('Personal')} · {a.users.length ? t('opened by {names}', { names: a.users.map(nameOf).join(', ') }) : t('opened by nobody')}
                       </small>
                     </span>
-                    <Badge tone={a.connected ? 'good' : 'warn'}>{a.connected ? 'Connected' : 'Not connected'}</Badge>
+                    <Badge tone={a.connected ? 'good' : 'warn'}>{a.connected ? t('Connected') : t('Not connected')}</Badge>
                     {canManage && a.kind === 'shared' && (
                       <button
                         className={`ghost-btn outline sm access-btn ${accessOpen === a.id ? 'on' : ''}`}
                         onClick={() => setAccessOpen((x) => (x === a.id ? null : a.id))}
                       >
-                        <KeyRound size={13} /> Access <ChevronDown size={13} className="chev" />
+                        <KeyRound size={13} /> {t('Access')} <ChevronDown size={13} className="chev" />
                       </button>
                     )}
                     {canManage && ws.accounts.length > 1 && (
-                      <button className="icon-btn sm" title="Remove account" onClick={() => onRemoveAccount(a.id)}>
+                      <button className="icon-btn sm" title={t('Remove account')} onClick={() => onRemoveAccount(a.id)}>
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -441,15 +460,15 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   <SmoothHeight>
                   {accessOpen === a.id && (
                     <div className="access-panel">
-                      <small>Who can read and send from {a.email}</small>
+                      <small>{t('Who can read and send from {email}', { email: a.email })}</small>
                       {ws.members.map((m) => {
                         const u = users.find((x) => x.id === m.userId);
                         if (!u) return null;
                         const on = a.users.includes(u.id);
                         const last = on && a.users.length === 1;
                         return (
-                          <label key={u.id} className="access-row" title={last ? 'At least one person needs access' : ''}>
-                            <PersonCell person={u} sub={null} size={24} badges={u.id === me && <Badge tone="accent">You</Badge>} />
+                          <label key={u.id} className="access-row" title={last ? t('At least one person needs access') : ''}>
+                            <PersonCell person={u} sub={null} size={24} badges={u.id === me && <Badge tone="accent">{t('You')}</Badge>} />
                             <button
                               role="switch"
                               aria-checked={on}
@@ -469,7 +488,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 ))}
                 {canManage && (
                   <button className="acct-add" onClick={onAddAccount}>
-                    <Plus size={16} /> Add an email account
+                    <Plus size={16} /> {t('Add an email account')}
                   </button>
                 )}
               </div>
@@ -478,12 +497,12 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
           {section === 'account' && (
             <>
-              <h2>Account</h2>
-              <p className="set-intro">How you appear to people you email.</p>
+              <h2>{t('Account')}</h2>
+              <p className="set-intro">{t('How you appear to people you email.')}</p>
               <div className="profile-card">
                 <PhotoPicker name={s.name} email={email} color={s.avatarColor} photo={users.find((u) => u.id === me)?.photo} onChange={(ph) => onPhoto?.(ph)} />
                 <div className="avatar-colors">
-                  <small>Avatar colour</small>
+                  <small>{t('Avatar colour')}</small>
                   <div>
                     {ACCENTS.map((c) => (
                       <button
@@ -491,27 +510,32 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                         className={`swatch ${s.avatarColor === c ? 'on' : ''}`}
                         style={{ background: c }}
                         onClick={() => update({ avatarColor: c })}
-                        aria-label={`Avatar colour ${c}`}
+                        aria-label={t('Avatar colour {color}', { color: c })}
                       />
                     ))}
                   </div>
                 </div>
               </div>
               <div className="field">
-                <label>Display name</label>
+                <label>{t('Display name')}</label>
                 <input value={s.name} onChange={(e) => update({ name: e.target.value })} />
               </div>
               <div className="field">
-                <label>Title</label>
+                <label>{t('Title')}</label>
                 <input value={s.title} onChange={(e) => update({ title: e.target.value })} />
               </div>
               <div className="field">
-                <label>Email address</label>
+                <label>{t('Email address')}</label>
                 <input value={email} readOnly />
-                <small>Your address is set up by your administrator.</small>
+                <small>{t('Your address is set up by your administrator.')}</small>
+              </div>
+              <div className="field">
+                <label>{t('Language')}</label>
+                <Select<Lang> value={s.language ?? getLang()} onChange={(v) => update({ language: v })} label={t('Language')} options={LANGS.map((l) => ({ value: l.id, label: l.name }))} />
+                <small>{t('The app’s words, dates and numbers. It follows you to your other devices.')}</small>
               </div>
 
-              <h3>Security</h3>
+              <h3>{t('Security')}</h3>
               <PasswordRow />
               <TwoStepRow toast={admin.toast} />
               <ConnectedApps toast={admin.toast} />
@@ -521,20 +545,20 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
           {section === 'developer' && (
             <>
-              <h2>Developer</h2>
-              <p className="set-intro">Walk through flows that can’t run for real yet. Nothing here changes your data.</p>
+              <h2>{t('Developer')}</h2>
+              <p className="set-intro">{t('Walk through flows that can’t run for real yet. Nothing here changes your data.')}</p>
               <div className="set-row">
                 <span>
-                  <strong>Sign-up and onboarding</strong>
-                  <small>Account, company, apps, email (forward from Gmail or Outlook, or move fully) and team. Waits like Gmail’s code and the DNS check are simulated.</small>
+                  <strong>{t('Sign-up and onboarding')}</strong>
+                  <small>{t('Account, company, apps, email (forward from Gmail or Outlook, or move fully) and team. Waits like Gmail’s code and the DNS check are simulated.')}</small>
                 </span>
                 <button className="ghost-btn outline" onClick={onPreviewOnboarding}>
-                  Open preview
+                  {t('Open preview')}
                 </button>
               </div>
               <div className="set-row">
                 <span>
-                  <strong>Link to the preview</strong>
+                  <strong>{t('Link to the preview')}</strong>
                   <small className="mono">{location.origin}/?preview=onboarding</small>
                 </span>
               </div>
@@ -543,70 +567,70 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
           {section === 'appearance' && (
             <>
-              <h2>Appearance</h2>
-              <p className="set-intro">Make {product.name} feel like yours.</p>
-              <h3>Theme</h3>
+              <h2>{t('Appearance')}</h2>
+              <p className="set-intro">{t('Make {product} feel like yours.', { product: product.name })}</p>
+              <h3>{t('Theme')}</h3>
               <div className="theme-cards">
-                {(['light', 'dark', 'system'] as const).map((t) => (
-                  <button key={t} className={`theme-card ${s.theme === t ? 'on' : ''}`} onClick={() => update({ theme: t })}>
-                    <span className={`tc-preview tc-${t}`}>
+                {(['light', 'dark', 'system'] as const).map((th) => (
+                  <button key={th} className={`theme-card ${s.theme === th ? 'on' : ''}`} onClick={() => update({ theme: th })}>
+                    <span className={`tc-preview tc-${th}`}>
                       <i />
                       <i />
                       <i />
                     </span>
-                    <span>{t === 'system' ? 'Match system' : t[0].toUpperCase() + t.slice(1)}</span>
+                    <span>{th === 'system' ? t('Match system') : th === 'dark' ? t('Dark') : t('Light')}</span>
                   </button>
                 ))}
               </div>
-              <h3>Accent colour</h3>
+              <h3>{t('Accent colour')}</h3>
               <p className="set-hint" style={{ marginTop: 0 }}>
-                Comes from your workspace’s brand colour.{' '}
+                {t('Comes from your workspace’s brand colour.')}{' '}
                 <button className="link-btn" onClick={() => onSection('workspace')}>
-                  Change it in Workspace
+                  {t('Change it in Workspace')}
                 </button>
               </p>
-              <h3>Density</h3>
+              <h3>{t('Density')}</h3>
               <div className="segmented">
                 {(['comfortable', 'compact'] as const).map((d) => (
                   <button key={d} className={s.density === d ? 'on' : ''} onClick={() => update({ density: d })}>
-                    {d[0].toUpperCase() + d.slice(1)}
+                    {d === 'compact' ? t('Compact') : t('Comfortable')}
                   </button>
                 ))}
               </div>
-              <Toggle on={s.showSnippets} onChange={(v) => update({ showSnippets: v })} label="Show message previews" hint="A line of each email under the subject." />
+              <Toggle on={s.showSnippets} onChange={(v) => update({ showSnippets: v })} label={t('Show message previews')} hint={t('A line of each email under the subject.')} />
             </>
           )}
 
           {section === 'mail' && (
             <>
-              <h2>Mail & signature</h2>
-              <p className="set-intro">Added to the end of every new email and reply.</p>
+              <h2>{t('Mail & signature')}</h2>
+              <p className="set-intro">{t('Added to the end of every new email and reply.')}</p>
               <div className="signature-box">
-                <RichEditor initialHtml={s.signature} placeholder="Your signature" onChange={(html) => update({ signature: html })} />
+                <RichEditor initialHtml={s.signature} placeholder={t('Your signature')} onChange={(html) => update({ signature: html })} />
               </div>
               {mailExtras}
-              <h3>Undo send</h3>
+              <h3>{t('Undo send')}</h3>
               {/* The mail engine keeps each email this long before anything leaves (server/mailer.ts, holdSend). */}
               <div className="segmented">
                 {[0, 5, 10, 20, 30].map((n) => (
                   <button key={n} className={s.undoSend === n ? 'on' : ''} onClick={() => update({ undoSend: n })}>
-                    {n ? `${n}s` : 'Off'}
+                    {n ? t('{n}s', { n }) : tx('undo send', 'Off')}
                   </button>
                 ))}
               </div>
-              <small className="set-hint">{s.undoSend ? `Your email waits ${s.undoSend} seconds before it goes out, so Undo can take it back and nobody gets it.` : 'Your email goes out the moment you press Send.'}</small>
+              <small className="set-hint">{s.undoSend ? tn(s.undoSend, 'Your email waits {n} second before it goes out, so Undo can take it back and nobody gets it.', 'Your email waits {n} seconds before it goes out, so Undo can take it back and nobody gets it.') : t('Your email goes out the moment you press Send.')}</small>
 
-              <h3>Read tracking</h3>
+              <h3>{t('Read tracking')}</h3>
               {ws.readTracking === false ? (
                 // The company switched it off for everyone (Settings, Security & data).
                 <div className="set-row">
                   <span>
-                    <strong>Read tracking is off for {ws.name || 'your company'}</strong>
-                    <small>{canManage ? 'You can turn it back on in Security & data.' : 'An owner or admin turned it off for everyone.'}</small>
+                    <strong>{t('Read tracking is off for {company}', { company: ws.name || t('your company') })}</strong>
+                    <small>{canManage ? t('You can turn it back on in Security & data.') : t('An owner or admin turned it off for everyone.')}</small>
                   </span>
                   {canManage && (
                     <button type="button" className="ghost-btn outline sm" onClick={() => onSection('security')}>
-                      Change
+                      {t('Change')}
                     </button>
                   )}
                 </div>
@@ -615,26 +639,26 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                   <Toggle
                     on={s.trackByDefault}
                     onChange={(v) => update({ trackByDefault: v })}
-                    label="Track opens on emails to people outside the team"
-                    hint="See when they open your email and which links they click. You can switch it off per email. Apple Mail can open pictures by itself, so those opens show as maybe automatic."
+                    label={t('Track opens on emails to people outside the team')}
+                    hint={t('See when they open your email and which links they click. You can switch it off per email. Apple Mail can open pictures by itself, so those opens show as maybe automatic.')}
                   />
-                  <Toggle on={s.notifyOpens} onChange={(v) => update({ notifyOpens: v })} label="Tell me when someone opens" hint="A notification the first time each person opens it." />
+                  <Toggle on={s.notifyOpens} onChange={(v) => update({ notifyOpens: v })} label={t('Tell me when someone opens')} hint={t('A notification the first time each person opens it.')} />
                 </>
               )}
               {/* Pictures that load from elsewhere never load in mail you receive, so this is always on. */}
               <div className="set-row">
                 <span>
-                  <strong>Trackers in emails you receive are blocked</strong>
-                  <small>Senders can’t see when or where you read their email.</small>
+                  <strong>{t('Trackers in emails you receive are blocked')}</strong>
+                  <small>{t('Senders can’t see when or where you read their email.')}</small>
                 </span>
-                <Badge tone="good">Always on</Badge>
+                <Badge tone="good">{t('Always on')}</Badge>
               </div>
-              {ws.readTracking !== false && <small className="set-hint">Your team’s internal email is never tracked. If you email people in the EU, mention tracking in your privacy policy.</small>}
+              {ws.readTracking !== false && <small className="set-hint">{t('Your team’s internal email is never tracked. If you email people in the EU, mention tracking in your privacy policy.')}</small>}
 
-              <h3>Blocked senders</h3>
+              <h3>{t('Blocked senders')}</h3>
               {blocked.length === 0 ? (
                 <small className="set-hint" style={{ marginTop: 0 }}>
-                  Nobody yet. Use “Block” on any email to stop a sender for good.
+                  {t('Nobody yet. Use “Block” on any email to stop a sender for good.')}
                 </small>
               ) : (
                 <div className="acct-list">
@@ -644,11 +668,11 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                         <Ban size={15} />
                       </span>
                       <span className="acct-info">
-                        <strong>{b.kind === 'domain' ? `Everyone at @${b.value}` : b.value}</strong>
-                        <small>Blocked {new Date(b.at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })} · deleted on arrival</small>
+                        <strong>{b.kind === 'domain' ? t('Everyone at @{domain}', { domain: b.value }) : b.value}</strong>
+                        <small>{t('Blocked {date} · deleted on arrival', { date: fmtDate(b.at, { day: 'numeric', month: 'short', year: 'numeric' }) })}</small>
                       </span>
                       <button className="ghost-btn outline sm" onClick={() => onUnblock(b.id)}>
-                        Unblock
+                        {t('Unblock')}
                       </button>
                     </div>
                   ))}
@@ -662,14 +686,14 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
 
           {section === 'shortcuts' && (
             <>
-              <h2>Keyboard shortcuts</h2>
-              <p className="set-intro">Fly through your inbox without touching the mouse.</p>
+              <h2>{t('Keyboard shortcuts')}</h2>
+              <p className="set-intro">{t('Fly through your inbox without touching the mouse.')}</p>
               <div className="shortcut-list">
                 {SHORTCUTS.map(([label, keys]) => (
                   <div key={label} className="shortcut">
-                    <span>{label}</span>
+                    <span>{t(label)}</span>
                     <span>
-                      {keys.map((k) => (k.includes(' ') ? <small key={k}>{k}</small> : <kbd key={k}>{k}</kbd>))}
+                      {keys.map((k) => (k.includes(' ') ? <small key={k}>{t(k)}</small> : <kbd key={k}>{k}</kbd>))}
                     </span>
                   </div>
                 ))}
@@ -680,34 +704,34 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'storage' && sections.some((x) => x.id === 'storage') && <StorageSection ws={ws} people={admin.people} plan={plan} drive={admin.drive} byChannel={admin.byChannel} users={wsUsers} canManage={canManage} onStorage={admin.onStorage} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'clients' && (
             <>
-              <h2>{term.Who} access</h2>
-              <p className="set-intro">What your clients see and can do when they sign in to their portal. You can change any of these for one client on its client page (Portal tab).</p>
+              <h2>{t('{Who} access', { who: term.who })}</h2>
+              <p className="set-intro">{t('What your clients see and can do when they sign in to their portal. You can change any of these for one client on its client page (Portal tab).')}</p>
               <div className="access-types">
-                <span className="muted small">Settings for</span>
+                <span className="muted small">{t('Settings for')}</span>
                 {/* Phones: five choices don't fit in a row, so they're a list that opens as a sheet. */}
                 {onPhone && (
                   <Select
                     value={accessType}
                     onChange={setAccessType}
-                    label="Settings for"
+                    label={t('Settings for')}
                     className="access-type-sel"
-                    options={['', ...PROJECT_TYPES].map((tp) => ({ value: tp, label: tp || `Every ${term.one}`, hint: tp && ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? 'Changed for this type' : undefined }))}
+                    options={['', ...PROJECT_TYPES].map((tp) => ({ value: tp, label: tp ? t(tp) : t('Every {project}', { project: term.one }), hint: tp && ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? t('Changed for this type') : undefined }))}
                   />
                 )}
                 <div className="segmented sm">
                   {['', ...PROJECT_TYPES].map((tp) => (
                     <button key={tp || 'all'} type="button" className={accessType === tp ? 'on' : ''} onClick={() => setAccessType(tp)}>
-                      {tp ? `${tp}${ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? ' •' : ''}` : `Every ${term.one}`}
+                      {tp ? `${t(tp)}${ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? ' •' : ''}` : t('Every {project}', { project: term.one })}
                     </button>
                   ))}
                 </div>
               </div>
               {accessType && (
                 <p className="muted small">
-                  Changes here apply to {term.many} of the type {accessType}, on top of the settings for every {term.one}.{' '}
+                  {t('Changes here apply to {projects} of the type {type}, on top of the settings for every {project}.', { projects: term.many, type: t(accessType), project: term.one })}{' '}
                   {ws.clientAccessByType?.[accessType] && Object.keys(ws.clientAccessByType[accessType]).length > 0 && canManage && (
                     <button type="button" className="link-btn small" onClick={() => onWorkspace({ clientAccessByType: { ...ws.clientAccessByType, [accessType]: {} } })}>
-                      Use the settings for every {term.one}
+                      {t('Use the settings for every {project}', { project: term.one })}
                     </button>
                   )}
                 </p>
@@ -715,7 +739,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <ClientAccessForm
                 key={accessType || 'all'}
                 value={accessFor(ws, { type: accessType || undefined })}
-                teams={admin.teams.filter((t) => t.workspaceId === ws.id)}
+                teams={admin.teams.filter((tm) => tm.workspaceId === ws.id)}
                 canManage={canManage}
                 brandingAvailable={!!plan.addons.branding}
                 onChange={(p) =>
@@ -724,7 +748,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                     : onWorkspace({ clientAccess: { ...accessFor(ws, {}), ...p } })
                 }
               />
-              <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
+              <p className="muted small">{t('{Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {projects}. To check, open a {project}’s page and choose “View as guest”.', { whos: term.whos, projects: term.many, project: term.one })}</p>
             </>
           )}
           {section === 'help' && <HelpSection workspaceId={demo?.inDemo && demo.realWorkspaceId ? demo.realWorkspaceId : ws.id} toast={admin.toast} extra={demo && <DemoCompanyBlock d={demo} />} />}
@@ -759,7 +783,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             />
           )}
           {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}
-          {!sections.some((x) => x.id === section) && <p className="muted">{demo?.inDemo && DEMO_OUT.includes(section) ? 'The demo company has no billing, AI keys, mail delivery, brand or sign-in rules of its own: they’re set in your real company.' : 'Ask an admin about this.'}</p>}
+          {!sections.some((x) => x.id === section) && <p className="muted">{demo?.inDemo && DEMO_OUT.includes(section) ? t('The demo company has no billing, AI keys, mail delivery, brand or sign-in rules of its own: they’re set in your real company.') : t('Ask an admin about this.')}</p>}
           {section === 'ai' && sections.some((x) => x.id === 'ai') && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'billing' && sections.some((x) => x.id === 'billing') && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
           {section === 'import' && sections.some((x) => x.id === 'import') && <ImportSection ws={ws} members={wsUsers} projects={admin.projects} toast={admin.toast} />}
@@ -779,34 +803,34 @@ export function PasswordRow() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const save = async () => {
     const err = await changePassword(cur, next);
-    setMsg(err ? { ok: false, text: err } : { ok: true, text: 'Password changed.' });
+    setMsg(err ? { ok: false, text: err } : { ok: true, text: mark('Password changed.') }); // translated where it's shown, like the server's errors
     if (!err) (setOpen(false), setCur(''), setNext(''));
   };
   return (
     <>
       <div className="set-row">
         <span>
-          <strong>Password</strong>
-          <small>{server.on ? (msg?.ok ? msg.text : `Used to sign in to ${product.name}.`) : 'Passwords are checked when the local server runs.'}</small>
+          <strong>{t('Password')}</strong>
+          <small>{server.on ? (msg?.ok ? t(msg.text) : t('Used to sign in to {product}.', { product: product.name })) : t('Passwords are checked when the local server runs.')}</small>
         </span>
         <button className="ghost-btn outline" disabled={!server.on} onClick={() => (setOpen((o) => !o), setMsg(null))}>
-          Change password
+          {t('Change password')}
         </button>
       </div>
       <SmoothHeight>
       {open && (
         <div className="pw-form">
           <div className="field">
-            <label>Current password</label>
+            <label>{t('Current password')}</label>
             <input type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" />
           </div>
           <div className="field">
-            <label>New password</label>
-            <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" placeholder="At least 8 characters" />
+            <label>{t('New password')}</label>
+            <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" placeholder={t('At least 8 characters')} />
           </div>
-          {msg && !msg.ok && <p className="err">{msg.text}</p>}
+          {msg && !msg.ok && <p className="err">{t(msg.text)}</p>}
           <button className="primary-btn sm" disabled={!cur || next.length < 8} onClick={() => void save()}>
-            Save new password
+            {t('Save new password')}
           </button>
         </div>
       )}
@@ -822,12 +846,12 @@ function DeleteAccountRow() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const go = async () => {
-    if (!confirm('Delete your account? This can’t be undone. Your tasks, messages and files stay with your company.')) return;
+    if (!confirm(t('Delete your account? This can’t be undone. Your tasks, messages and files stay with your company.'))) return;
     setBusy(true);
     const r = await fetch('/api/account/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw }) });
     const d = (await r.json().catch(() => ({}))) as { error?: string };
     setBusy(false);
-    if (!r.ok) return setMsg(d.error ?? 'Couldn’t delete the account.');
+    if (!r.ok) return setMsg(d.error ?? mark('Couldn’t delete the account.')); // translated where it's shown, like the server's errors
     location.href = '/';
   };
   if (!server.on) return null;
@@ -835,19 +859,19 @@ function DeleteAccountRow() {
     <div className="danger-zone">
       <div className="set-row">
         <span>
-          <strong>Delete your account</strong>
-          <small>Your sign-in goes for good. What you made stays with the company, marked as a deleted account.</small>
+          <strong>{t('Delete your account')}</strong>
+          <small>{t('Your sign-in goes for good. What you made stays with the company, marked as a deleted account.')}</small>
         </span>
         <button type="button" className="ghost-btn sm danger" onClick={() => setOpen((x) => !x)}>
-          {open ? 'Cancel' : 'Delete…'}
+          {open ? t('Cancel') : t('Delete…')}
         </button>
       </div>
       <div className={`fold ${open ? 'open' : ''}`}>
         <div className="fold-in pw-form">
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Your password, to be sure it’s you" autoComplete="current-password" />
-          {msg && <p className="err small">{msg}</p>}
+          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t('Your password, to be sure it’s you')} autoComplete="current-password" />
+          {msg && <p className="err small">{t(msg)}</p>}
           <button type="button" className="primary-btn sm danger" disabled={!pw || busy} onClick={() => void go()}>
-            {busy ? 'Deleting…' : 'Delete my account'}
+            {busy ? t('Deleting…') : t('Delete my account')}
           </button>
         </div>
       </div>

@@ -3,13 +3,15 @@ import { usePersisted } from '../settings';
 import { TabDefaultsCtx, arrange, type TabPrefs } from './ui/TabBar';
 import { Briefcase, UsersRound, KeyRound, Table2, NotebookPen, Bell, CalendarDays, HardDrive, House, ListChecks, Mail, MessagesSquare, Search, Sparkles, Video, type LucideIcon } from 'lucide-react';
 import { term } from '../terms';
+import { t } from '../i18n';
 import type { AppId } from '../types';
 
-export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[] = [
-  { id: 'home', name: 'Home', icon: House, path: '/home' },
-  { id: 'mail', name: 'Mail', icon: Mail, path: '/mail' },
-  { id: 'chat', name: 'Chat', icon: MessagesSquare, path: '/chat' },
-  { id: 'tasks', name: 'Tasks', icon: ListChecks, path: '/tasks' },
+// Names are getters, so they're read in the person's language each time (docs/i18n.md).
+export const APPS: { id: AppId; readonly name: string; icon: LucideIcon; path: string }[] = [
+  { id: 'home', get name() { return t('Home'); }, icon: House, path: '/home' },
+  { id: 'mail', get name() { return t('Mail'); }, icon: Mail, path: '/mail' },
+  { id: 'chat', get name() { return t('Chat'); }, icon: MessagesSquare, path: '/chat' },
+  { id: 'tasks', get name() { return t('Tasks'); }, icon: ListChecks, path: '/tasks' },
   {
     id: 'projects',
     get name() {
@@ -18,14 +20,17 @@ export const APPS: { id: AppId; name: string; icon: LucideIcon; path: string }[]
     icon: Briefcase,
     path: '/projects',
   },
-  { id: 'teams', name: 'Teams', icon: UsersRound, path: '/teams' },
-  { id: 'tables', name: 'Tables', icon: Table2, path: '/tables' },
-  { id: 'calendar', name: 'Calendar', icon: CalendarDays, path: '/calendar' },
-  { id: 'notes', name: 'Notes', icon: NotebookPen, path: '/notes' },
-  { id: 'drive', name: 'Drive', icon: HardDrive, path: '/drive' },
-  { id: 'meet', name: 'Meet', icon: Video, path: '/meet' },
-  { id: 'vault', name: 'Vault', icon: KeyRound, path: '/vault' },
+  { id: 'teams', get name() { return t('Teams'); }, icon: UsersRound, path: '/teams' },
+  { id: 'tables', get name() { return t('Tables'); }, icon: Table2, path: '/tables' },
+  { id: 'calendar', get name() { return t('Calendar'); }, icon: CalendarDays, path: '/calendar' },
+  { id: 'notes', get name() { return t('Notes'); }, icon: NotebookPen, path: '/notes' },
+  { id: 'drive', get name() { return t('Drive'); }, icon: HardDrive, path: '/drive' },
+  { id: 'meet', get name() { return t('Meet'); }, icon: Video, path: '/meet' },
+  { id: 'vault', get name() { return t('Vault'); }, icon: KeyRound, path: '/vault' },
 ];
+
+/** An app's name in English, the key its words come from: for words saved now and read later in each reader's language (a notice). */
+export const appWord = (id: AppId): string => (id === 'projects' ? (term.word === 'client' ? 'Clients' : 'Projects') : (({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', teams: 'Teams', tables: 'Tables', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault' }) as Record<string, string>)[id] ?? id);
 
 interface Props {
   current: AppId | 'settings';
@@ -78,7 +83,7 @@ export function AppRail(p: Props) {
     setOver(null);
   };
   return (
-    <nav className="rail" aria-label="Apps">
+    <nav className="rail" aria-label={t('Apps')}>
       <div className="rail-ws">{p.workspace}</div>
       <div className="rail-apps">
         {apps.map(({ id, name, icon: Icon }, i) => (
@@ -111,14 +116,14 @@ export function AppRail(p: Props) {
         ))}
       </div>
       <div className="rail-foot">
-        <button className="rail-tool" onClick={p.onSearch} title="Search everything (⌘K)">
+        <button className="rail-tool" onClick={p.onSearch} title={t('Search everything (⌘K)')}>
           <Search size={18} />
         </button>
-        <button className={`rail-tool ai ${p.aiOpen ? 'on' : ''}`} onClick={p.onAskAI} title="Ask AI (⌘J)">
+        <button className={`rail-tool ai ${p.aiOpen ? 'on' : ''}`} onClick={p.onAskAI} title={t('Ask AI (⌘J)')}>
           <Sparkles size={18} />
         </button>
         <div className="rail-notices">
-          <button className={`rail-tool ${p.noticesOpen ? 'on' : ''}`} onClick={p.onNotices} title="Notifications">
+          <button className={`rail-tool ${p.noticesOpen ? 'on' : ''}`} onClick={p.onNotices} title={t('Notifications')}>
             <Bell size={18} />
             {p.unreadNotices ? <i>{p.unreadNotices}</i> : null}
           </button>

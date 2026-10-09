@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
 import { Popover } from './Popover';
 import { holidayOn } from '../../holidayDays';
+import { t } from '../../i18n';
+import { fmtDayWord, fmtMonth, weekdayName, weekdayNames } from '../../i18n/format';
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (n: number) => {
@@ -15,20 +17,17 @@ const nextWeekday = (wd: number) => {
   return iso(d);
 };
 
+/** A day (YYYY-MM-DD) as a short label: Today, Tomorrow, Yesterday, else "Thu 8 Oct" ("Kam, 8 Okt"; with the year when it isn't this one). */
 export function shortDate(v: string) {
-  const today = iso(new Date());
-  if (v === today) return 'Today';
-  if (v === addDays(1)) return 'Tomorrow';
-  if (v === addDays(-1)) return 'Yesterday';
-  return new Date(v + 'T12:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  return fmtDayWord(v);
 }
 
 /** sprint2go's date field: quick picks plus a month grid. Value is YYYY-MM-DD or '' for none. */
 export function DatePicker({
   value,
   onChange,
-  label = 'Date',
-  placeholder = 'Date',
+  label = t('Date'),
+  placeholder = t('Date'),
   clearable = true,
   compact,
   className = '',
@@ -72,11 +71,11 @@ export function DatePicker({
   };
   const today = iso(new Date());
   const quick: [string, string][] = [
-    ['Today', today],
-    ['Tomorrow', addDays(1)],
-    ['Friday', nextWeekday(5)],
-    ['Next Monday', nextWeekday(1)],
-    ['In 2 weeks', addDays(14)],
+    [t('Today'), today],
+    [t('Tomorrow'), addDays(1)],
+    [weekdayName(5), nextWeekday(5)],
+    [t('Next {weekday}', { weekday: weekdayName(1) }), nextWeekday(1)],
+    [t('In 2 weeks'), addDays(14)],
   ];
 
   return (
@@ -104,16 +103,16 @@ export function DatePicker({
             ))}
           </div>
           <div className="dp-head">
-            <button type="button" className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Previous month">
+            <button type="button" className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label={t('Previous month')}>
               <ChevronLeft size={15} />
             </button>
-            <strong>{month.toLocaleDateString([], { month: 'long', year: 'numeric' })}</strong>
-            <button type="button" className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Next month">
+            <strong>{fmtMonth(month)}</strong>
+            <button type="button" className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label={t('Next month')}>
               <ChevronRight size={15} />
             </button>
           </div>
           <div className="dp-grid">
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+            {weekdayNames('narrow').map((d, i) => (
               <span key={i} className="dp-wd">
                 {d}
               </span>
@@ -126,8 +125,8 @@ export function DatePicker({
                   key={v}
                   type="button"
                   className={`dp-day ${d.getMonth() !== month.getMonth() ? 'out' : ''} ${v === today ? 'today' : ''} ${v === value ? 'on' : ''} ${hol ? 'hol' : ''}`}
-                  title={hol ? `${hol}, a public holiday` : undefined}
-                  aria-label={hol ? `${d.getDate()}, ${hol}, public holiday` : undefined}
+                  title={hol ? t('{holiday}, a public holiday', { holiday: hol }) : undefined}
+                  aria-label={hol ? t('{day}, {holiday}, public holiday', { day: d.getDate(), holiday: hol }) : undefined}
                   onClick={() => pick(v)}
                 >
                   {d.getDate()}
@@ -135,10 +134,10 @@ export function DatePicker({
               );
             })}
           </div>
-          {value && holidayOn(value) && <p className="dp-hol">{holidayOn(value)} is a public holiday</p>}
+          {value && holidayOn(value) && <p className="dp-hol">{t('{holiday} is a public holiday', { holiday: holidayOn(value)! })}</p>}
           {clearable && value && (
             <button type="button" className="dp-clear" onClick={() => pick('')}>
-              <X size={13} /> No date
+              <X size={13} /> {t('No date')}
             </button>
           )}
         </div>
@@ -154,10 +153,10 @@ export const TIMES = Array.from({ length: 96 }, (_, i) => {
   return `${h}:${m}`;
 });
 
-/** "930", "9:30", "14", "2pm", "2.15 pm" → "09:30", "14:00", "14:15"; null when it isn't a time. */
+/** "930", "9:30", "14.30", "14", "2pm", "2.15 pm" → "09:30", "14:30", "14:00", "14:15"; null when it isn't a time. */
 export function parseTime(text: string): string | null {
-  const t = text.trim().toLowerCase().replace(/\s+/g, '');
-  const m = t.match(/^(\d{1,2})(?:[:.]?(\d{2}))?(am|pm|a|p)?$/);
+  const s = text.trim().toLowerCase().replace(/\s+/g, '');
+  const m = s.match(/^(\d{1,2})(?:[:.]?(\d{2}))?(am|pm|a|p)?$/);
   if (!m) return null;
   let h = Number(m[1]);
   const min = Number(m[2] ?? 0);
@@ -172,12 +171,12 @@ export function parseTime(text: string): string | null {
  * sprint2go's time field: type a time ("9:30", "2pm") or pick one from a list every 15 minutes that opens on the
  * current time, not at midnight. Value is HH:MM. On phones the list is a bottom sheet like every other picker.
  */
-export function TimePicker({ value, onChange, label = 'Time', className = '' }: { value: string; onChange: (v: string) => void; label?: string; className?: string }) {
+export function TimePicker({ value, onChange, label = t('Time'), className = '' }: { value: string; onChange: (v: string) => void; label?: string; className?: string }) {
   const btn = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const list = useRef<HTMLDivElement>(null);
-  const near = TIMES.reduce((best, t) => (Math.abs(mins(t) - mins(value)) < Math.abs(mins(best) - mins(value)) ? t : best), TIMES[0]);
+  const near = TIMES.reduce((best, tm) => (Math.abs(mins(tm) - mins(value)) < Math.abs(mins(best) - mins(value)) ? tm : best), TIMES[0]);
   const parsed = parseTime(typed);
   const pick = (v: string) => {
     onChange(v);
@@ -201,12 +200,12 @@ export function TimePicker({ value, onChange, label = 'Time', className = '' }: 
             onKeyDown={(e) => {
               if (e.key === 'Enter' && parsed) (e.preventDefault(), pick(parsed));
             }}
-            placeholder="Type a time, like 9:30"
-            aria-label={`Type the ${label.toLowerCase()}`}
+            placeholder={t('Type a time, like 9:30')}
+            aria-label={t('Type the {label}', { label: label.toLowerCase() })}
           />
           {typed && (
             <button type="button" className={`tp-opt typed ${parsed ? '' : 'bad'}`} disabled={!parsed} onClick={() => parsed && pick(parsed)}>
-              {parsed ?? 'Not a time'}
+              {parsed ?? t('Not a time')}
             </button>
           )}
           <div
@@ -223,9 +222,9 @@ export function TimePicker({ value, onChange, label = 'Time', className = '' }: 
               }
             }}
           >
-            {TIMES.map((t) => (
-              <button key={t} type="button" role="option" aria-selected={t === near} className={`tp-opt ${t === near ? 'on' : ''}`} onClick={() => pick(t)}>
-                {t}
+            {TIMES.map((tm) => (
+              <button key={tm} type="button" role="option" aria-selected={tm === near} className={`tp-opt ${tm === near ? 'on' : ''}`} onClick={() => pick(tm)}>
+                {tm}
               </button>
             ))}
           </div>
@@ -234,7 +233,7 @@ export function TimePicker({ value, onChange, label = 'Time', className = '' }: 
     </>
   );
 }
-const mins = (t: string) => {
-  const [h, m] = t.split(':').map(Number);
+const mins = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 };

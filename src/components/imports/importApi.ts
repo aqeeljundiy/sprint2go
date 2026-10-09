@@ -1,10 +1,13 @@
 // The app's side of imports (server/imports.ts): list, upload with progress, read, start, cancel and undo.
 import type { ImportChoices, ImportJob, ImportSource } from '../../importTypes';
+import { mark } from '../../i18n';
+
+// Errors carry the English (the server's own, or one of these marked here); the screens show them with t(message).
 
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   const r = await fetch(path, { method, headers: body === undefined ? undefined : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   const d = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(d.error ?? 'Something went wrong. Try again.');
+  if (!r.ok) throw new Error(d.error ?? mark('Something went wrong. Try again.'));
   return d;
 }
 
@@ -34,9 +37,9 @@ export function uploadImport(workspaceId: string, source: ImportSource, file: Fi
         /* not JSON: a proxy's page */
       }
       if (xhr.status >= 200 && xhr.status < 300 && d.job) resolve(d.job);
-      else reject(new Error(d.error ?? (xhr.status === 413 ? 'That file is too big to import.' : 'The upload didn’t finish. Try again.')));
+      else reject(new Error(d.error ?? (xhr.status === 413 ? mark('That file is too big to import.') : mark('The upload didn’t finish. Try again.'))));
     };
-    xhr.onerror = () => reject(new Error('The upload broke off. Check your connection and try again.'));
+    xhr.onerror = () => reject(new Error(mark('The upload broke off. Check your connection and try again.')));
     xhr.onabort = () => reject(new Error('aborted'));
     xhr.send(file);
   });

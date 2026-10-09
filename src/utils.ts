@@ -1,5 +1,7 @@
 import type { Person, Thread } from './types';
 import { isMine } from './identity';
+import { t, tn } from './i18n/index'; // the full path: the server imports this file too
+import { fmtDate, fmtTime } from './i18n/format';
 
 const AVATAR_COLORS = ['#5b5bf6', '#10b981', '#f59e0b', '#ef4444', '#0ea5e9', '#d946ef', '#14b8a6', '#f97316'];
 
@@ -14,36 +16,29 @@ export function initials(name: string) {
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
+/** A list row's date, in the person's language: the time today, "8 Oct" this year, "08/10/25" before. */
 export function listDate(iso: string) {
   const d = new Date(iso);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  if (d.getFullYear() === now.getFullYear()) {
-    return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
-  }
-  return d.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return fmtTime(d);
+  if (d.getFullYear() === now.getFullYear()) return fmtDate(d, { day: 'numeric', month: 'short' });
+  return fmtDate(d, { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
+/** "just now", "5 min ago", "3 hours ago", "12 days ago", in the person's language. */
 export function relative(iso: string) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
+  if (mins < 1) return t('just now');
+  if (mins < 60) return tn(mins, '{n} min ago', '{n} min ago');
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs} hour${hrs > 1 ? 's' : ''} ago`;
+  if (hrs < 24) return tn(hrs, '{n} hour ago', '{n} hours ago');
   const days = Math.round(hrs / 24);
-  return `${days} day${days > 1 ? 's' : ''} ago`;
+  return tn(days, '{n} day ago', '{n} days ago');
 }
 
+/** "Thu 8 Oct, 14:30" / "Kam, 8 Okt, 14.30". */
 export function fullDate(iso: string) {
-  return new Date(iso).toLocaleString([], {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return fmtDate(iso, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 export const lastMessage = (t: Thread) => t.messages[t.messages.length - 1];
@@ -51,15 +46,16 @@ export const lastMessage = (t: Thread) => t.messages[t.messages.length - 1];
 export const snippet = (body: string) => body.replace(/\s+/g, ' ').trim().slice(0, 140);
 
 /** Names shown in the list row, e.g. "Nadia Putri, me (3)". */
-export function participants(t: Thread, me: Person) {
+const ME = '\u0000me'; // you, among the names (written "me" in the person's language)
+export function participants(th: Thread, me: Person) {
   const seen: string[] = [];
-  for (const m of t.messages) {
-    const n = isMine(m.from.email) ? 'me' : m.from.name.split(' ')[0];
+  for (const m of th.messages) {
+    const n = isMine(m.from.email) ? ME : m.from.name.split(' ')[0];
     if (!seen.includes(n)) seen.push(n);
   }
-  if (seen.length === 1 && seen[0] !== 'me') return t.messages[0].from.name;
-  if (seen.length === 1) return `To: ${t.messages[0].to.map((p) => p.name.split(' ')[0]).join(', ')}`;
-  return seen.join(', ');
+  if (seen.length === 1 && seen[0] !== ME) return th.messages[0].from.name;
+  if (seen.length === 1) return t('To: {names}', { names: th.messages[0].to.map((p) => p.name.split(' ')[0]).join(', ') });
+  return seen.map((n) => (n === ME ? t('me') : n)).join(', ');
 }
 
 /** Unique-enough id. (crypto.randomUUID only exists on HTTPS/localhost pages.) */

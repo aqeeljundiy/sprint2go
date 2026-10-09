@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { setStored, store, useStored } from './store';
 import { server } from './sync';
+import type { Lang } from './i18n';
 
 export type ThemePref = 'light' | 'dark' | 'system';
 export type Density = 'comfortable' | 'compact';
@@ -25,6 +26,8 @@ export interface Settings {
   emailDigest: 'off' | 'hourly' | 'daily';
   timeZone?: string; // where they are (from their browser), for "daily at 9:00"
   holidayRegions?: string[]; // whose public holidays they see (country codes); missing: the company's country
+  /** The language they picked (Settings, Account). Missing: the company's default, else their device's (docs/i18n.md). */
+  language?: Lang;
   showSnippets: boolean;
   trackByDefault: boolean;
   notifyOpens: boolean;

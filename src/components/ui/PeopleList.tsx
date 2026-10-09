@@ -4,9 +4,10 @@ import type { Team, User } from '../../types';
 import { session, store } from '../../store';
 
 /** Teams in the workspace on screen. */
-const wsTeams = () => store.teams.filter((t) => !session.wsId || t.workspaceId === session.wsId);
+const wsTeams = () => store.teams.filter((tm) => !session.wsId || tm.workspaceId === session.wsId);
 import { Avatar } from '../Avatar';
 import { lsKey } from '../../settings';
+import { t } from '../../i18n';
 
 const RECENT_KEY = 's2g-recent-people';
 
@@ -28,7 +29,7 @@ export function noteRecent(id: string) {
 
 /** "Video editor · Video, Design": what helps tell two people apart. */
 export function personHint(u: User, teams: Team[] = wsTeams()) {
-  const theirs = teams.filter((t) => t.members.includes(u.id)).map((t) => t.name);
+  const theirs = teams.filter((tm) => tm.members.includes(u.id)).map((tm) => tm.name);
   return [u.title, theirs.join(', ')].filter(Boolean).join(' · ');
 }
 
@@ -36,7 +37,7 @@ export function personHint(u: User, teams: Team[] = wsTeams()) {
 export function matchPerson(u: User, q: string, teams: Team[] = wsTeams()) {
   const s = q.trim().toLowerCase();
   if (!s) return true;
-  const hay = [u.name, u.email, u.title, ...(u.nicknames ?? []), ...teams.filter((t) => t.members.includes(u.id)).map((t) => t.name)].join(' ').toLowerCase();
+  const hay = [u.name, u.email, u.title, ...(u.nicknames ?? []), ...teams.filter((tm) => tm.members.includes(u.id)).map((tm) => tm.name)].join(' ').toLowerCase();
   return s.split(/\s+/).every((w) => hay.includes(w));
 }
 
@@ -44,10 +45,10 @@ export function matchPerson(u: User, q: string, teams: Team[] = wsTeams()) {
 export function personOption(u: User, me?: string) {
   return {
     value: u.id,
-    label: u.id === me ? `${u.name} (me)` : u.name,
+    label: u.id === me ? t('{name} (me)', { name: u.name }) : u.name,
     hint: personHint(u),
     icon: <Avatar person={u} size={20} />,
-    keywords: [u.email, u.title, ...(u.nicknames ?? []), ...wsTeams().filter((t) => t.members.includes(u.id)).map((t) => t.name)].join(' '),
+    keywords: [u.email, u.title, ...(u.nicknames ?? []), ...wsTeams().filter((tm) => tm.members.includes(u.id)).map((tm) => tm.name)].join(' '),
   };
 }
 
@@ -69,7 +70,7 @@ export function PeopleList({
   onPick,
   extra = [],
   typed,
-  placeholder = 'Search by name, email, title or team',
+  placeholder = t('Search by name, email, title or team'),
 }: {
   users: User[];
   me?: string;
@@ -109,10 +110,10 @@ export function PeopleList({
     >
       <label className="sel-search">
         <Search size={14} />
-        <input autoFocus value={q} onChange={(e) => (setQ(e.target.value), setHi(0))} placeholder={placeholder} aria-label="Search people" />
+        <input autoFocus value={q} onChange={(e) => (setQ(e.target.value), setHi(0))} placeholder={placeholder} aria-label={t('Search people')} />
       </label>
       <ul role="listbox" aria-multiselectable={selected.length > 1 || undefined}>
-        {shown.length === 0 && <li className="sel-empty">Nobody matches “{q.trim()}”</li>}
+        {shown.length === 0 && <li className="sel-empty">{t('Nobody matches “{query}”', { query: q.trim() })}</li>}
         {shown.map((item, i) => {
           const on = item.kind === 'person' ? selected.includes(item.u.id) : selected.includes(item.o.value);
           return (
@@ -120,7 +121,7 @@ export function PeopleList({
               <button type="button" role="option" aria-selected={on} className={`sel-opt${i === hi ? ' hi' : ''}`} onMouseEnter={() => setHi(i)} onClick={() => pick(i)}>
                 <span className="sel-icon">{item.kind === 'person' ? <Avatar person={item.u} size={22} /> : item.o.icon}</span>
                 <span className="sel-label">
-                  {item.kind === 'person' ? (item.u.id === me ? `${item.u.name} (me)` : item.u.name) : item.o.label}
+                  {item.kind === 'person' ? (item.u.id === me ? t('{name} (me)', { name: item.u.name }) : item.u.name) : item.o.label}
                   {(item.kind === 'person' ? personHint(item.u, teams) : item.o.hint) && <small>{item.kind === 'person' ? personHint(item.u, teams) : item.o.hint}</small>}
                 </span>
                 {on && <Check size={14} className="sel-check" />}

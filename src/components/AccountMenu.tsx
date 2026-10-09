@@ -5,6 +5,7 @@ import type { Person, User } from '../types';
 import type { Settings, ThemePref } from '../settings';
 import { fmtSize } from '../data/drive';
 import { Avatar } from './Avatar';
+import { t } from '../i18n';
 
 export type SettingsSection = 'workspace' | 'email' | 'agency' | 'permissions' | 'teams' | 'stages' | 'clients' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'import' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'developer' | 'myapps' | 'help' | 'mailapps';
 
@@ -53,9 +54,9 @@ export function AccountMenu({ me, settings, used, quota, onSettings, onTheme, on
 
       <div className="am-theme segmented wide">
         {([
-          ['light', Sun, 'Light'],
-          ['dark', Moon, 'Dark'],
-          ['system', Monitor, 'Auto'],
+          ['light', Sun, t('Light')],
+          ['dark', Moon, t('Dark')],
+          ['system', Monitor, t('Auto')],
         ] as const).map(([id, Icon, label]) => (
           <button key={id} className={settings.theme === id ? 'on' : ''} onClick={() => onTheme(id)}>
             <Icon size={14} /> {label}
@@ -64,31 +65,29 @@ export function AccountMenu({ me, settings, used, quota, onSettings, onTheme, on
       </div>
 
       <button className="am-item" onClick={() => onSettings('account')}>
-        <UserRound size={16} /> Account
+        <UserRound size={16} /> {t('Account')}
       </button>
       <button className="am-item" onClick={() => onSettings('appearance')}>
-        <Cog size={16} /> Settings
+        <Cog size={16} /> {t('Settings')}
       </button>
       <button className="am-item" onClick={() => onSettings('help')}>
-        <LifeBuoy size={16} /> Help & support
+        <LifeBuoy size={16} /> {t('Help & support')}
       </button>
       <button className="am-item" onClick={() => onSettings('shortcuts')}>
-        <Keyboard size={16} /> Keyboard shortcuts
+        <Keyboard size={16} /> {t('Keyboard shortcuts')}
       </button>
       <button className="am-item am-storage" onClick={() => onSettings('storage')}>
         <HardDrive size={16} />
         <span>
-          Storage
+          {t('Storage')}
           <span className="bar">
             <span style={{ width: `${pct}%` }} />
           </span>
-          <small>
-            {fmtSize(used)} of {fmtSize(quota)} used
-          </small>
+          <small>{t('{used} of {total} used', { used: fmtSize(used), total: fmtSize(quota) })}</small>
         </span>
       </button>
       <div className="am-sep" />
-      <div className="am-label">Switch user</div>
+      <div className="am-label">{t('Switch user')}</div>
       {others.map((u) => (
         <button key={u.id} className="am-item am-user" onClick={() => onSwitchUser(u.id)}>
           <Avatar person={u} size={26} />
@@ -99,16 +98,16 @@ export function AccountMenu({ me, settings, used, quota, onSettings, onTheme, on
         </button>
       ))}
       <button className="am-item" onClick={onAddUser}>
-        <UserPlus size={16} /> Add another user
+        <UserPlus size={16} /> {t('Add another user')}
       </button>
       <div className="am-sep" />
       {server.operator && (
         <a className="am-item" href="/admin">
-          <ServerCog size={16} /> Operator backend
+          <ServerCog size={16} /> {t('Operator backend')}
         </a>
       )}
       <button className="am-item danger" onClick={onSignOut}>
-        <LogOut size={16} /> Sign out of {me.name.split(' ')[0]}
+        <LogOut size={16} /> {t('Sign out of {name}', { name: me.name.split(' ')[0] })}
       </button>
     </div>
   );

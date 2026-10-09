@@ -6,6 +6,8 @@ import { startSlidingTabs } from './slidingTabs';
 import { startKeyboard } from './mobile/keyboard';
 import { diagnostics, reportCrash, startDiagnostics } from './diagnostics';
 import { startTryOut, trying } from './tryOut';
+import { deviceLang, setLang, t } from './i18n';
+import { useLang } from './i18n/useLang';
 import './styles.css';
 import './calendar.css';
 import './shell.css';
@@ -48,23 +50,23 @@ class Crash extends Component<{ children: ReactNode }, { error: Error | null; se
     const e = this.state.error!;
     this.setState({ sent: 'sending' });
     void fetch('/api/support', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: 'crash', subject: `The app crashed: ${e.message.slice(0, 120)}`, body: `${e.message}\n\n${(e.stack ?? '').slice(0, 3000)}`, context: diagnostics() }) })
-      .then(async (r) => this.setState({ sent: r.ok ? `Sent as ticket #${((await r.json()) as { number: number }).number}. We’ll reply in Settings, Help & support.` : 'Couldn’t send it. Sign in, then try again.' }))
-      .catch(() => this.setState({ sent: 'Couldn’t send it. Check your connection.' }));
+      .then(async (r) => this.setState({ sent: r.ok ? t('Sent as ticket #{number}. We’ll reply in Settings, Help & support.', { number: ((await r.json()) as { number: number }).number }) : t('Couldn’t send it. Sign in, then try again.') }))
+      .catch(() => this.setState({ sent: t('Couldn’t send it. Check your connection.') }));
   };
   render() {
     if (!this.state.error) return this.props.children;
     return (
       <div className="crash">
         <div className="crash-card">
-          <h1>Something went wrong on this screen</h1>
-          <p>Your work is saved on the server. Reload to carry on; if it happens again, tell us what you were doing.</p>
+          <h1>{t('Something went wrong on this screen')}</h1>
+          <p>{t('Your work is saved on the server. Reload to carry on; if it happens again, tell us what you were doing.')}</p>
           <p className="crash-detail">{String(this.state.error.message).slice(0, 200)}</p>
           <div className="crash-actions">
             <button className="ghost-btn" disabled={!!this.state.sent} onClick={this.report}>
-              {this.state.sent === 'sending' ? 'Sending…' : 'Send a report'}
+              {this.state.sent === 'sending' ? t('Sending…') : t('Send a report')}
             </button>
             <button className="primary-btn" onClick={() => location.reload()}>
-              Reload
+              {t('Reload')}
             </button>
           </div>
           {this.state.sent && this.state.sent !== 'sending' && <p className="crash-sent">{this.state.sent}</p>}
@@ -74,12 +76,23 @@ class Crash extends Component<{ children: ReactNode }, { error: Error | null; se
   }
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+/** Re-renders the whole app when the language changes, so every t() runs again (docs/i18n.md). */
+function Speaking() {
+  useLang();
+  return (
     <Crash>
       <Root />
     </Crash>
-  </StrictMode>,
+  );
+}
+
+// The words first (only Indonesian has any to fetch), then the app: nobody sees English flash before their language.
+void setLang(deviceLang()).finally(() =>
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <Speaking />
+    </StrictMode>,
+  ),
 );
 
 // Installable on phones and desktops (Add to Home Screen). Only in the built app, so development never gets a stale worker.

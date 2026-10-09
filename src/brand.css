@@ -318,6 +318,15 @@ body {
   color: var(--accent);
   font-weight: 600;
 }
+/* English or Bahasa Indonesia, under the card (SignIn.tsx, LangSwitch). */
+.signin-lang {
+  justify-self: center;
+  margin-top: 12px;
+}
+.signin-lang > button {
+  font-size: 12px;
+  padding: 0 12px;
+}
 
 /* Inputs: softer, rounder */
 .field input,
