@@ -77,18 +77,22 @@ const toDocs = (key: CollectionKey, value: unknown): db.Doc[] =>
 
 if (db.isEmpty() && (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production')) {
   const s = seed();
-  for (const k of COLLS) db.writeDocs(k, toDocs(k, s[k]), [], null);
   const pw = process.env.SEED_PASSWORD;
   if (!pw) throw new Error('Set SEED_PASSWORD in .env (see .env.example) before the first run.');
-  for (const u of s.users) db.setLogin(u.id, u.email, pw);
   // Client people who already joined can sign in to their portal (same demo password).
   const known = new Set(s.users.map((u) => u.email.toLowerCase()));
   // People who already have a sign-in (e.g. Dimas at Elkiya) just get the portal on their existing account.
   const clientUsers = s.clients.flatMap((c) =>
     (c.people ?? []).filter((x) => x.status === 'joined' && !known.has(x.email.toLowerCase())).map((x) => ({ id: `cu-${x.email.split('@')[0]}-${c.id}`, name: x.name, email: x.email, title: c.name, color: c.color, clientOf: { workspaceId: c.workspaceId, clientId: c.id } })),
   );
+  // Every demo password is hashed before anything is written, and the server only listens after this (top-level
+  // await): a sign-in right after the first start never meets a login that isn't saved yet, and a start stopped
+  // halfway leaves an empty database that seeds again next time.
+  const people = [...s.users, ...clientUsers].map((u) => ({ id: u.id, email: u.email }));
+  const hashes = await Promise.all(people.map(() => db.hashPassword(pw)));
+  for (const k of COLLS) db.writeDocs(k, toDocs(k, s[k]), [], null);
   db.writeDocs('users', clientUsers as unknown as db.Doc[], [], null);
-  for (const u of clientUsers) db.setLogin(u.id, u.email, pw);
+  db.setLoginHashes(people.map((u, i) => ({ userId: u.id, email: u.email, hash: hashes[i] })));
   console.log(`Seeded the demo company: ${s.users.length} people and ${clientUsers.length} client people can sign in with the password in .env / .env.example.`);
 }
 

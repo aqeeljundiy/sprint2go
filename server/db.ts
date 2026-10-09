@@ -74,6 +74,18 @@ export const burnPasswordTime = (pw: string) => checkPassword(pw, DUMMY_HASH).ca
 export function setLoginHash(userId: string, email: string, hash: string) {
   db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?)').run(userId, email, hash);
 }
+/** Many sign-ins at once, already hashed (the demo seed), in one transaction. */
+export function setLoginHashes(list: { userId: string; email: string; hash: string }[]) {
+  const put = db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET email = excluded.email, pw_hash = excluded.pw_hash');
+  db.exec('BEGIN');
+  try {
+    for (const l of list) put.run(l.userId, l.email, l.hash);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
 export async function setLogin(userId: string, email: string, pw: string) {
   db.prepare('INSERT INTO logins (user_id, email, pw_hash) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET email = excluded.email, pw_hash = excluded.pw_hash').run(userId, email, await hashPassword(pw));
 }
