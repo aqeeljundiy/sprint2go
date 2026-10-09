@@ -8,6 +8,8 @@ import { useLongPress } from '../ui/useLongPress';
 import { EmojiGrid, EmojiSheet, PickSheet, WhenSheet } from './Sheets';
 import { useDraft, whenText, type ChatState } from './chatPrefs';
 import { fmtSecs, fmtSize } from './Message';
+import { mark, t, tn } from '../../i18n';
+import { fmtDay } from '../../i18n/format';
 
 /** sprint2go things the + can put in a message. */
 export interface Library {
@@ -23,17 +25,17 @@ export interface Library {
 export type Outgoing = { text: string; sendAt?: string; files?: ChatFile[]; voice?: ChatMessage['voice']; taskId?: string; ref?: ChatMessage['ref'] };
 
 const FORMATS = [
-  { id: 'bold', label: 'Bold', icon: Bold, wrap: '*' },
-  { id: 'italic', label: 'Italic', icon: Italic, wrap: '_' },
-  { id: 'strike', label: 'Strikethrough', icon: Strikethrough, wrap: '~' },
-  { id: 'code', label: 'Code', icon: Code, wrap: '`' },
-  { id: 'list', label: 'List', icon: List, line: '- ' },
-  { id: 'quote', label: 'Quote', icon: Quote, line: '> ' },
+  { id: 'bold', label: mark('Bold'), icon: Bold, wrap: '*' },
+  { id: 'italic', label: mark('Italic'), icon: Italic, wrap: '_' },
+  { id: 'strike', label: mark('Strikethrough'), icon: Strikethrough, wrap: '~' },
+  { id: 'code', label: mark('Code'), icon: Code, wrap: '`' },
+  { id: 'list', label: mark('List'), icon: List, line: '- ' },
+  { id: 'quote', label: mark('Quote'), icon: Quote, line: '> ' },
 ] as const;
 
-const rowName = (r: TableRow, t?: DataTable) => {
-  const v = t ? r.values[t.fields[0]?.id] : undefined;
-  return typeof v === 'string' && v.trim() ? v : typeof v === 'number' ? String(v) : 'Untitled row';
+const rowName = (r: TableRow, tb?: DataTable) => {
+  const v = tb ? r.values[tb.fields[0]?.id] : undefined;
+  return typeof v === 'string' && v.trim() ? v : typeof v === 'number' ? String(v) : t('Untitled row');
 };
 
 /**
@@ -107,8 +109,8 @@ export function Composer(p: {
 
   useEffect(() => {
     if (!rec) return;
-    const t = setInterval(() => setRec((r) => r && { ...r, secs: (Date.now() - r.start) / 1000 }), 250);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setRec((r) => r && { ...r, secs: (Date.now() - r.start) / 1000 }), 250);
+    return () => clearInterval(timer);
   }, [rec?.start]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const before = text.slice(0, caret);
@@ -167,20 +169,20 @@ export function Composer(p: {
   };
 
   const send = (extra: Partial<Outgoing> = {}) => {
-    const t = text.trim();
+    const typed = text.trim();
     if (p.editing) {
-      if (t && t !== p.editing.text) p.onEdit?.(p.editing.id, t);
+      if (typed && typed !== p.editing.text) p.onEdit?.(p.editing.id, typed);
       p.onCancelEdit?.();
       setText('');
       return;
     }
-    if (!t && !extra.files && !extra.voice && !extra.taskId && !extra.ref) return;
-    if (t.startsWith('/') && !extra.sendAt && p.onCommand?.(t)) {
+    if (!typed && !extra.files && !extra.voice && !extra.taskId && !extra.ref) return;
+    if (typed.startsWith('/') && !extra.sendAt && p.onCommand?.(typed)) {
       setText('');
       draft.sent();
       return;
     }
-    p.onSend({ text: t, ...extra });
+    p.onSend({ text: typed, ...extra });
     draft.sent();
     setText('');
     setFmt(false);
@@ -215,7 +217,7 @@ export function Composer(p: {
     if (!rec) return;
     const secs = Math.max(1, Math.round((Date.now() - rec.start) / 1000));
     const finish = (url?: string) => {
-      rec.stream?.getTracks().forEach((t) => t.stop());
+      rec.stream?.getTracks().forEach((tr) => tr.stop());
       if (keep) p.onSend({ text: '', voice: { seconds: secs, url } });
       setRec(null);
     };
@@ -237,14 +239,14 @@ export function Composer(p: {
     <div className={`composer${phone ? ' is-phone' : ''}${p.editing ? ' is-editing' : ''} ${p.className ?? ''}`}>
       {p.editing && (
         <div className="cmp-editing">
-          <span>Editing your message</span>
+          <span>{t('Editing your message')}</span>
           <button type="button" className="link-btn" onClick={() => (p.onCancelEdit?.(), setText(''))}>
-            Cancel
+            {t('Cancel')}
           </button>
         </div>
       )}
       {(suggestions.length > 0 || slash.length > 0) && (
-        <div className="mention-pop" role="listbox" aria-label={suggestions.length ? 'People' : 'Commands'}>
+        <div className="mention-pop" role="listbox" aria-label={suggestions.length ? t('People') : t('Commands')}>
           {suggestions.map((u) => (
             <button key={u.id} type="button" role="option" aria-selected={false} onPointerDown={keep} onClick={() => pickMention(u)}>
               <Avatar person={u} size={22} /> {u.name}
@@ -259,9 +261,9 @@ export function Composer(p: {
       )}
       <div className={`fold cmp-fmt-fold${fmt ? ' open' : ''}`} aria-hidden={!fmt}>
         <div>
-          <div className="cmp-fmt" role="toolbar" aria-label="Formatting">
+          <div className="cmp-fmt" role="toolbar" aria-label={t('Formatting')}>
             {FORMATS.map((f) => (
-              <button key={f.id} type="button" className="icon-btn" tabIndex={fmt ? 0 : -1} onPointerDown={keep} onClick={() => format(f)} aria-label={f.label} title={f.label}>
+              <button key={f.id} type="button" className="icon-btn" tabIndex={fmt ? 0 : -1} onPointerDown={keep} onClick={() => format(f)} aria-label={t(f.label)} title={t(f.label)}>
                 <f.icon size={17} />
               </button>
             ))}
@@ -271,14 +273,14 @@ export function Composer(p: {
       <div className="cmp-box">
         {rec ? (
           <div className="rec-bar">
-            <span className="rec-dot" /> Recording {fmtSecs(rec.secs)}
-            {!rec.recorder && <span className="muted small">No microphone here</span>}
+            <span className="rec-dot" /> {t('Recording {time}', { time: fmtSecs(rec.secs) })}
+            {!rec.recorder && <span className="muted small">{t('No microphone here')}</span>}
             <span className="spacer" />
             <button type="button" className="ghost-btn sm" onClick={() => stopRec(false)}>
-              Cancel
+              {t('Cancel')}
             </button>
             <button type="button" className="primary-btn sm" onClick={() => stopRec(true)}>
-              Send clip
+              {t('Send clip')}
             </button>
           </div>
         ) : (
@@ -325,39 +327,39 @@ export function Composer(p: {
         )}
         {!rec && (
           <div className="cmp-tools">
-            <button ref={plusBtn} type="button" className={`icon-btn cmp-plus${sheet === 'plus' ? ' on' : ''}`} onClick={() => setSheet('plus')} aria-label="Add: photos, files, a voice clip, or something from sprint2go" title="Add">
+            <button ref={plusBtn} type="button" className={`icon-btn cmp-plus${sheet === 'plus' ? ' on' : ''}`} onClick={() => setSheet('plus')} aria-label={t('Add: photos, files, a voice clip, or something from sprint2go')} title={t('Add')}>
               <Plus size={19} />
             </button>
-            <button type="button" className={`icon-btn${fmt ? ' on' : ''}`} onPointerDown={keep} onClick={() => setFmt((f) => !f)} aria-label="Formatting" aria-pressed={fmt} title="Formatting">
+            <button type="button" className={`icon-btn${fmt ? ' on' : ''}`} onPointerDown={keep} onClick={() => setFmt((f) => !f)} aria-label={t('Formatting')} aria-pressed={fmt} title={t('Formatting')}>
               <Type size={18} />
             </button>
-            <button ref={emojiBtn} type="button" className="icon-btn" onPointerDown={phone ? undefined : keep} onClick={() => setSheet('emoji')} aria-label="Emoji" title="Emoji">
+            <button ref={emojiBtn} type="button" className="icon-btn" onPointerDown={phone ? undefined : keep} onClick={() => setSheet('emoji')} aria-label={t('Emoji')} title={t('Emoji')}>
               <Smile size={18} />
             </button>
             {!p.guest && (
-              <button type="button" className="icon-btn" onPointerDown={keep} onClick={() => insert(text && !/\s$/.test(text.slice(0, input.current?.selectionStart ?? text.length)) ? ' @' : '@')} aria-label="Mention someone" title="Mention someone">
+              <button type="button" className="icon-btn" onPointerDown={keep} onClick={() => insert(text && !/\s$/.test(text.slice(0, input.current?.selectionStart ?? text.length)) ? ' @' : '@')} aria-label={t('Mention someone')} title={t('Mention someone')}>
                 <AtSign size={18} />
               </button>
             )}
             <span className="spacer" />
-            {busy && <span className="muted small cmp-busy">Uploading…</span>}
+            {busy && <span className="muted small cmp-busy">{t('Uploading…')}</span>}
             {p.editing ? (
-              <button ref={sendBtn} type="button" className="ai-send chat-send" onClick={() => send()} aria-label="Save the change" disabled={!can}>
+              <button ref={sendBtn} type="button" className="ai-send chat-send" onClick={() => send()} aria-label={t('Save the change')} disabled={!can}>
                 <Check size={17} />
               </button>
             ) : can || p.guest || p.also ? (
               <span className="cmp-send">
-                <button ref={sendBtn} type="button" className="ai-send chat-send lp" {...holdSend} onClick={() => send()} aria-label={p.canSchedule ? 'Send (hold to send later)' : 'Send'} title={p.canSchedule && phone ? 'Hold to send later' : 'Send'} disabled={!can}>
+                <button ref={sendBtn} type="button" className="ai-send chat-send lp" {...holdSend} onClick={() => send()} aria-label={p.canSchedule ? t('Send (hold to send later)') : t('Send')} title={p.canSchedule && phone ? t('Hold to send later') : t('Send')} disabled={!can}>
                   <ArrowUp size={17} />
                 </button>
                 {p.canSchedule && !phone && (
-                  <button type="button" className="cmp-later" onClick={() => setSheet('later')} disabled={!can} aria-label="Send later" title="Send later">
+                  <button type="button" className="cmp-later" onClick={() => setSheet('later')} disabled={!can} aria-label={t('Send later')} title={t('Send later')}>
                     <ChevronDown size={14} />
                   </button>
                 )}
               </span>
             ) : (
-              <button type="button" className="icon-btn mic-btn" onClick={startRec} aria-label="Record a voice clip" title="Record a voice clip">
+              <button type="button" className="icon-btn mic-btn" onClick={startRec} aria-label={t('Record a voice clip')} title={t('Record a voice clip')}>
                 <Mic size={18} />
               </button>
             )}
@@ -370,60 +372,60 @@ export function Composer(p: {
       <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => (void sendFiles(e.target.files), (e.target.value = ''))} />
 
       {sheet === 'plus' && (
-        <Sheet title="Add to message" onClose={() => setSheet(null)} className="plus-sheet">
+        <Sheet title={t('Add to message')} onClose={() => setSheet(null)} className="plus-sheet">
           <div className="plus-tiles">
             <button type="button" onClick={() => (setSheet(null), photos.current?.click())}>
               <ImageIcon size={22} />
-              <span>Photos</span>
+              <span>{t('Photos')}</span>
             </button>
             <button type="button" onClick={() => (setSheet(null), camera.current?.click())}>
               <Camera size={22} />
-              <span>Camera</span>
+              <span>{t('Camera')}</span>
             </button>
             <button type="button" onClick={() => (setSheet(null), files.current?.click())}>
               <Paperclip size={22} />
-              <span>File</span>
+              <span>{t('File')}</span>
             </button>
             {!p.guest && (
               <button type="button" onClick={startRec}>
                 <Mic size={22} />
-                <span>Voice clip</span>
+                <span>{t('Voice clip')}</span>
               </button>
             )}
           </div>
           {lib && !p.guest && (
             <div className="as-list">
-              <div className="as-group">From sprint2go</div>
+              <div className="as-group">{t('From sprint2go')}</div>
               <button type="button" className="as-item" onClick={() => setSheet('task')}>
                 <SquareCheck size={18} className="as-icon" />
                 <span className="as-label">
-                  A task
-                  <small>{text.trim() ? 'Make one from what you typed, or share one' : 'Share one with its stage and who’s on it'}</small>
+                  {t('A task')}
+                  <small>{text.trim() ? t('Make one from what you typed, or share one') : t('Share one with its stage and who’s on it')}</small>
                 </span>
               </button>
               <button type="button" className="as-item" onClick={() => setSheet('note')}>
                 <FileText size={18} className="as-icon" />
-                <span className="as-label">A note</span>
+                <span className="as-label">{t('A note')}</span>
               </button>
               <button type="button" className="as-item" onClick={() => (setTable(null), setSheet('table'))}>
                 <Table2 size={18} className="as-icon" />
-                <span className="as-label">A table row</span>
+                <span className="as-label">{t('A table row')}</span>
               </button>
               <button type="button" className="as-item" onClick={() => setSheet('drive')}>
                 <HardDrive size={18} className="as-icon" />
-                <span className="as-label">A Drive file</span>
+                <span className="as-label">{t('A Drive file')}</span>
               </button>
               {(p.onKudos || p.onMeetLink) && <div className="as-sep" role="separator" />}
               {p.onKudos && (
                 <button type="button" className="as-item" onClick={() => (setSheet(null), p.onKudos!())}>
                   <span className="as-icon emoji-icon">🙌</span>
-                  <span className="as-label">Give kudos</span>
+                  <span className="as-label">{t('Give kudos')}</span>
                 </button>
               )}
               {p.onMeetLink && (
                 <button type="button" className="as-item" onClick={() => (setSheet(null), p.onMeetLink!())}>
                   <Video size={18} className="as-icon" />
-                  <span className="as-label">Share the meeting link</span>
+                  <span className="as-label">{t('Share the meeting link')}</span>
                 </button>
               )}
             </div>
@@ -434,27 +436,27 @@ export function Composer(p: {
         (phone ? (
           <EmojiSheet onPick={(e) => insert(e)} onClose={() => setSheet(null)} />
         ) : (
-          <Popover anchor={emojiBtn} open onClose={() => setSheet(null)} width={320} title="Emoji">
+          <Popover anchor={emojiBtn} open onClose={() => setSheet(null)} width={320} title={t('Emoji')}>
             <EmojiGrid onPick={(e) => (setSheet(null), insert(e))} />
           </Popover>
         ))}
       {sheet === 'later' && (
         <WhenSheet
-          title="Send later"
+          title={t('Send later')}
           kind="send"
-          note={<p className="when-note">“{text.trim().slice(0, 80)}” waits until then. Only you see it before it goes; you can change it in Drafts and sent.</p>}
+          note={<p className="when-note">{t('“{text}” waits until then. Only you see it before it goes; you can change it in Drafts and sent.', { text: text.trim().slice(0, 80) })}</p>}
           onPick={(at) => send({ sendAt: at })}
           onClose={() => setSheet(null)}
         />
       )}
       {sheet === 'task' && lib && (
         <PickSheet
-          title="Share a task"
-          items={lib.tasks.filter((t) => !t.done && t.kind !== 'brief').slice(0, 200)}
-          label={(t) => t.title}
-          hint={(t) => (t.due ? `Due ${t.due}` : undefined)}
+          title={t('Share a task')}
+          items={lib.tasks.filter((task) => !task.done && task.kind !== 'brief').slice(0, 200)}
+          label={(task) => task.title}
+          hint={(task) => (task.due ? t('Due {date}', { date: fmtDay(task.due) }) : undefined)}
           icon={() => <SquareCheck size={18} className="as-icon" />}
-          empty="No open tasks to share"
+          empty={t('No open tasks to share')}
           top={
             text.trim() && lib.newTask ? (
               <button
@@ -468,30 +470,30 @@ export function Composer(p: {
               >
                 <Plus size={18} className="as-icon" />
                 <span className="as-label">
-                  New task: {text.trim().slice(0, 60)}
-                  <small>Made for you, and shared here</small>
+                  {t('New task: {title}', { title: text.trim().slice(0, 60) })}
+                  <small>{t('Made for you, and shared here')}</small>
                 </span>
               </button>
             ) : null
           }
-          onPick={(t) => send({ taskId: t.id })}
+          onPick={(task) => send({ taskId: task.id })}
           onClose={() => setSheet(null)}
         />
       )}
       {sheet === 'note' && lib && (
         <PickSheet
-          title="Share a note"
+          title={t('Share a note')}
           items={[...lib.notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))}
-          label={(n) => n.title || 'Untitled note'}
-          hint={(n) => (n.visibility === 'private' ? 'Private: only you can open it' : undefined)}
+          label={(n) => n.title || t('Untitled note')}
+          hint={(n) => (n.visibility === 'private' ? t('Private: only you can open it') : undefined)}
           icon={() => <FileText size={18} className="as-icon" />}
-          empty="No notes yet"
-          onPick={(n) => send({ ref: { kind: 'note', id: n.id, title: n.title || 'Untitled note' } })}
+          empty={t('No notes yet')}
+          onPick={(n) => send({ ref: { kind: 'note', id: n.id, title: n.title || t('Untitled note') } })}
           onClose={() => setSheet(null)}
         />
       )}
       {sheet === 'table' && lib && !table && (
-        <PickSheet title="Which table" items={lib.tables} label={(t) => t.name} icon={() => <Table2 size={18} className="as-icon" />} empty="No tables yet" onPick={(t) => setTimeout(() => (setTable(t), setSheet('table')), 0)} onClose={() => setSheet(null)} />
+        <PickSheet title={t('Which table')} items={lib.tables} label={(tb) => tb.name} icon={() => <Table2 size={18} className="as-icon" />} empty={t('No tables yet')} onPick={(tb) => setTimeout(() => (setTable(tb), setSheet('table')), 0)} onClose={() => setSheet(null)} />
       )}
       {sheet === 'table' && lib && table && (
         <PickSheet
@@ -499,19 +501,19 @@ export function Composer(p: {
           items={lib.rows.filter((r) => r.tableId === table.id)}
           label={(r) => rowName(r, table)}
           icon={() => <Table2 size={18} className="as-icon" />}
-          empty="No rows in this table yet"
+          empty={t('No rows in this table yet')}
           onPick={(r) => send({ ref: { kind: 'row', id: r.id, tableId: table.id, title: rowName(r, table) } })}
           onClose={() => (setSheet(null), setTable(null))}
         />
       )}
       {sheet === 'drive' && lib && (
         <PickSheet
-          title="Share a Drive file"
+          title={t('Share a Drive file')}
           items={lib.drive.filter((d) => d.kind !== 'folder' && !d.trashed).sort((a, b) => b.modified.localeCompare(a.modified))}
           label={(d) => d.name}
           hint={(d) => fmtSize(d.size)}
           icon={() => <HardDrive size={18} className="as-icon" />}
-          empty="Nothing in Drive yet"
+          empty={t('Nothing in Drive yet')}
           onPick={(d) => (d.url ? send({ files: [{ name: d.name, size: d.size, type: d.kind === 'image' ? 'image/*' : d.kind === 'video' ? 'video/*' : 'application/octet-stream', url: d.url, driveId: d.id }] }) : send({ ref: { kind: 'file', id: d.id, title: d.name } }))}
           onClose={() => setSheet(null)}
         />
@@ -532,10 +534,10 @@ export function ScheduledLine({ list, onSee }: { list: ChatMessage[]; onSee: () 
         {next?.sendAt && (
           <div className="sched-line" role="status">
             <span>
-              {l.length === 1 ? `1 message goes ${whenText(next.sendAt)}` : `${l.length} messages wait to be sent, the next ${whenText(next.sendAt)}`}
+              {l.length === 1 ? t('1 message goes {when}', { when: whenText(next.sendAt) }) : tn(l.length, '{n} messages wait to be sent, the next {when}', '{n} messages wait to be sent, the next {when}', { when: whenText(next.sendAt) })}
             </span>
             <button type="button" className="link-btn" tabIndex={list.length ? 0 : -1} onClick={onSee}>
-              See
+              {t('See')}
             </button>
           </div>
         )}

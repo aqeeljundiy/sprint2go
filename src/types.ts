@@ -677,6 +677,8 @@ export interface ChatMessage {
   forwarded?: { channelId: string; messageId: string; userId: string; who: string; where: string; text: string; at: string };
   /** Something from sprint2go shared in the message (from the composer's +): opens it. Tasks use taskId. */
   ref?: { kind: 'note' | 'row' | 'file'; id: string; title: string; tableId?: string };
+  /** A line sprint2go wrote (a new task, a celebration, a channel made): each reader sees it in their own language (msg() in src/i18n); `text` is the English. */
+  tr?: Msg;
 }
 
 export interface Status {

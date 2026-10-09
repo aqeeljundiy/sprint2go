@@ -10,7 +10,7 @@ import { Layer } from './ui/Layer';
 import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { Select } from './ui/Select';
-import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
+import { CATEGORY_NAME, CATEGORY_ONE, categoryText } from './ChannelDialog';
 import { Sheet } from './ui/Sheet';
 import { ActionSheet, type SheetAction } from './ui/ActionSheet';
 import { useLongPress } from './ui/useLongPress';
@@ -18,27 +18,34 @@ import { SquarePen, Search as SearchIcon } from 'lucide-react';
 import { useAppSettings, useCreateAction, useTitleMenu } from '../mobile/chrome';
 import { routeBase } from '../tryOut';
 import { toast } from '../toast';
-import { dmOther, followedThreads, isMutedValue, readFallback, shortTime, TILE_NAMES, useChatState, whenText, type ChatState, type TileId } from './chat/chatPrefs';
+import { dmOther, followedThreads, isMutedValue, readFallback, shortTime, STATUS_PRESETS, statusText, TILE_NAMES, useChatState, whenText, type ChatState, type TileId } from './chat/chatPrefs';
+export { statusText };
 import { preview } from './chat/Message';
 import { ConfirmSheet, chanName } from './chat/Sheets';
+import { mark, t, tn } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtNumber } from '../i18n/format';
 
 export type Presence = 'active' | 'away' | 'meeting';
 /** Pages of Chat besides the conversations: shown in the main area on wider screens, pushed full screen on phones. */
 export type ChatPage = 'catchup' | 'threads' | 'drafts' | 'saved';
 
-// "In a meeting" comes from the calendar on its own; people only set Focus, Away or their own words.
-const STATUS_PRESETS: Status[] = [
-  { emoji: '🎯', text: 'Focusing, slow to reply' },
-  { emoji: '🌴', text: 'Away' },
-];
+
 
 const ALL_CATS: ChannelCategory[] = ['client', 'shared', 'team', 'project', 'social'];
 /** The company layout with every built-in section present. */
 export function fullLayout(l: ChatLayout | undefined): ChatLayout {
   const base = l?.sections?.length ? l.sections : [];
-  const missing = ALL_CATS.filter((c) => !base.some((s) => s.category === c)).map((c) => ({ id: c, name: CATEGORY_NAME[c], category: c }));
+  const missing = ALL_CATS.filter((c) => !base.some((s) => s.category === c)).map((c) => ({ id: c, name: sectionDefault(c), category: c }));
   return { sections: [...base, ...missing], placement: l?.placement ?? {} };
 }
+/** A built-in section's name as the company layout saves it: English, so each reader sees it in their own language. */
+function sectionDefault(c: ChannelCategory) {
+  const clients = term.word === 'client';
+  return { client: clients ? mark('Clients') : mark('Projects'), shared: mark('Shared'), team: mark('Teams'), project: clients ? mark('Projects') : mark('Other'), social: mark('Social') }[c];
+}
+/** A section's name on screen: built-in ones in the reader's language, the company's own as they named them. */
+export const sectionTitle = (s: ChatSection) => (s.category ? categoryText(s.name) : s.name);
 /** Which section of the company layout a channel sits in. */
 export function sectionIdOf(l: ChatLayout, c: Channel) {
   const placed = l.placement[c.id];
@@ -188,55 +195,55 @@ export function ChatSidebar(p: SidebarProps) {
   const toggle = (key: string) => setCollapsed(collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key]);
 
   const viewOptions = [
-    { value: 'default', label: 'Company default', hint: 'Sections your admins set for everyone', group: 'Built in' },
-    { value: 'unread', label: 'Unread first', hint: 'What needs you on top', group: 'Built in' },
-    { value: 'recent', label: 'Recent', hint: 'Latest activity first', group: 'Built in' },
-    ...views.map((v) => ({ value: v.id, label: v.name, hint: `${v.sections.length} section${v.sections.length === 1 ? '' : 's'}`, group: 'Your views' })),
-    { value: '__new', label: 'Create a view…', hint: 'Your own sections and channels', group: 'Your views', icon: <Plus size={14} /> },
+    { value: 'default', label: t('Company default'), hint: t('Sections your admins set for everyone'), group: t('Built in') },
+    { value: 'unread', label: t('Unread first'), hint: t('What needs you on top'), group: t('Built in') },
+    { value: 'recent', label: t('Recent'), hint: t('Latest activity first'), group: t('Built in') },
+    ...views.map((v) => ({ value: v.id, label: v.name, hint: tn(v.sections.length, '{n} section', '{n} sections'), group: t('Your views') })),
+    { value: '__new', label: t('Create a view…'), hint: t('Your own sections and channels'), group: t('Your views'), icon: <Plus size={14} /> },
   ];
   const pickView = (v: string) => {
-    if (v === '__new') setEditing({ id: 'v-' + Date.now().toString(36), name: 'My view', sections: [{ id: 's1', name: 'Focus', channelIds: [] }], showRest: true });
+    if (v === '__new') setEditing({ id: 'v-' + Date.now().toString(36), name: t('My view'), sections: [{ id: 's1', name: t('Focus'), channelIds: [] }], showRest: true });
     else setViewId(v);
   };
 
   // The phone shell: New message on the create button, the view in the title switcher, status and tiles in its settings.
-  useCreateAction('chat', phone && { label: 'New message', icon: SquarePen, run: () => setNewMsg(true), more: [...(p.onNewChannel ? [{ label: 'New channel', icon: Hash, run: p.onNewChannel }] : []), ...(joinable.length ? [{ label: 'Browse channels', icon: Compass, run: () => setBrowsing(true) }] : [])] });
+  useCreateAction('chat', phone && { label: t('New message'), icon: SquarePen, run: () => setNewMsg(true), more: [...(p.onNewChannel ? [{ label: t('New channel'), icon: Hash, run: p.onNewChannel }] : []), ...(joinable.length ? [{ label: t('Browse channels'), icon: Compass, run: () => setBrowsing(true) }] : [])] });
   // On phones the title is the view: "Chat" for the company's sections.
-  useTitleMenu('chat', phone && { label: 'Chat view', value: custom ? custom.id : active, options: viewOptions.map((o) => (o.value === 'default' ? { ...o, label: 'Chat', hint: 'Your company’s sections' } : o)), onChange: pickView });
-  useAppSettings('chat', phone && { id: 'status', label: 'Your status', hint: myStatus ? `${myStatus.emoji} ${myStatus.text}` : 'Let people know if you’re focusing or away', render: () => <StatusPicker status={p.statuses[p.me]} onStatus={p.onStatus} /> });
-  useAppSettings('chat', phone && { id: 'tiles', label: 'Tiles on top', hint: 'Which ones show, and in what order', render: () => <TilesEditor me={p.me} /> });
+  useTitleMenu('chat', phone && { label: t('Chat view'), value: custom ? custom.id : active, options: viewOptions.map((o) => (o.value === 'default' ? { ...o, label: t('Chat'), hint: t('Your company’s sections') } : o)), onChange: pickView });
+  useAppSettings('chat', phone && { id: 'status', label: t('Your status'), hint: myStatus ? `${myStatus.emoji} ${statusText(myStatus)}` : t('Let people know if you’re focusing or away'), render: () => <StatusPicker status={p.statuses[p.me]} onStatus={p.onStatus} /> });
+  useAppSettings('chat', phone && { id: 'tiles', label: t('Tiles on top'), hint: t('Which ones show, and in what order'), render: () => <TilesEditor me={p.me} /> });
 
   /* ---------- tiles: what to act on, at a glance ---------- */
   const unreadConvos = mine.filter((c) => info[c.id]?.unread && !info[c.id].muted);
   const threads = useMemo(() => followedThreads(p.messages.filter((m) => mine.some((c) => c.id === m.channelId)), p.me, p.myFirst, chat), [p.messages, p.me, p.myFirst, chat.read]); // eslint-disable-line react-hooks/exhaustive-deps
-  const newReplies = threads.reduce((n, t) => n + t.unread, 0);
+  const newReplies = threads.reduce((n, th) => n + th.unread, 0);
   const draftCount = Object.keys(chat.drafts).filter((k) => mine.some((c) => k === c.id || k.startsWith(`${c.id}/`))).length;
   const scheduled = p.messages.filter((m) => m.sendAt && m.userId === p.me).length;
   const nextReminder = chat.saved.filter((s) => s.remindAt && !s.reminded).sort((a, b) => a.remindAt!.localeCompare(b.remindAt!))[0];
   const live = mine.filter((c) => c.huddle?.members.length);
   const tileState: Record<TileId, { line: string; hot: boolean; hidden?: boolean; icon: ReactNode }> = {
-    catchup: { icon: <Inbox size={18} />, line: unreadConvos.length ? `${unreadConvos.length} new` : 'Caught up', hot: unreadConvos.length > 0 },
-    threads: { icon: <MessagesSquare size={18} />, line: newReplies ? `${newReplies} new ${newReplies === 1 ? 'reply' : 'replies'}` : 'Caught up', hot: newReplies > 0 },
-    drafts: { icon: <SendHorizontal size={18} />, line: [draftCount ? `${draftCount} ${draftCount === 1 ? 'draft' : 'drafts'}` : '', scheduled ? `${scheduled} to send` : ''].filter(Boolean).join(', ') || 'Nothing waiting', hot: false },
-    saved: { icon: <Bookmark size={18} />, line: nextReminder ? `Reminder ${whenText(nextReminder.remindAt!)}` : chat.saved.length ? 'Your saved messages' : 'Nothing saved', hot: false },
-    live: { icon: <Headphones size={18} />, line: live.length ? `${chanName(live[0], p.users, p.me)}${live.length > 1 ? ` and ${live.length - 1} more` : ''}` : '', hot: true, hidden: !live.length },
+    catchup: { icon: <Inbox size={18} />, line: unreadConvos.length ? tn(unreadConvos.length, '{n} new', '{n} new') : t('Caught up'), hot: unreadConvos.length > 0 },
+    threads: { icon: <MessagesSquare size={18} />, line: newReplies ? tn(newReplies, '{n} new reply', '{n} new replies') : t('Caught up'), hot: newReplies > 0 },
+    drafts: { icon: <SendHorizontal size={18} />, line: [draftCount ? tn(draftCount, '{n} draft', '{n} drafts') : '', scheduled ? tn(scheduled, '{n} to send', '{n} to send') : ''].filter(Boolean).join(', ') || t('Nothing waiting'), hot: false },
+    saved: { icon: <Bookmark size={18} />, line: nextReminder ? t('Reminder {when}', { when: whenText(nextReminder.remindAt!) }) : chat.saved.length ? t('Your saved messages') : t('Nothing saved'), hot: false },
+    live: { icon: <Headphones size={18} />, line: live.length ? (live.length > 1 ? t('{name} and {n} more', { name: chanName(live[0], p.users, p.me), n: fmtNumber(live.length - 1) }) : chanName(live[0], p.users, p.me)) : '', hot: true, hidden: !live.length },
   };
-  const tiles = chat.tiles.order.filter((t) => !chat.tiles.hidden.includes(t) && !tileState[t].hidden);
-  const openTile = (t: TileId) => (t === 'live' ? live[0] && p.onOpen(live[0].id) : p.onPage(t));
+  const tiles = chat.tiles.order.filter((id) => !chat.tiles.hidden.includes(id) && !tileState[id].hidden);
+  const openTile = (id: TileId) => (id === 'live' ? live[0] && p.onOpen(live[0].id) : p.onPage(id));
 
   /* ---------- one conversation in the list ---------- */
   const rowActions = (c: Channel): SheetAction[] => {
     const i = info[c.id];
     const mutedTill = chat.mutedUntil(c.id);
     const list: SheetAction[] = [];
-    if (i?.unread) list.push({ label: 'Mark read', icon: CheckCheck, run: () => chat.markRead(c.id) });
-    else if (i?.last && i.last.userId !== p.me) list.push({ label: 'Mark unread', icon: MailOpen, run: () => chat.markUnread(i.last!) });
-    list.push(mutedTill ? { label: 'Unmute', icon: Bell, hint: mutedTill === 'always' ? undefined : `Muted until ${whenText(mutedTill)}`, run: () => chat.unmute(c.id) } : { label: 'Mute…', icon: BellOff, run: () => setRowSub({ kind: 'mute', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
-    list.push({ label: star.has(c.id) ? 'Remove from Starred' : 'Star', icon: Star, run: () => setStarred(star.has(c.id) ? starred.filter((x) => x !== c.id) : [...starred, c.id]) });
-    list.push({ label: 'Copy link', icon: Link2, run: () => navigator.clipboard?.writeText(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(c.workspaceId)}&id=${encodeURIComponent(c.id)}`).then(() => toast({ text: 'Link copied' }), () => toast({ text: 'Couldn’t copy here' })) });
-    if (c.kind === 'channel' && (custom || layout.sections.some((sec) => canPlace(c, sec)))) list.push({ label: 'Move to section…', icon: LayoutList, run: () => setRowSub({ kind: 'move', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
-    if (c.kind === 'channel') list.push({ label: 'Channel settings', icon: Settings, run: () => p.onSettings(c.id) });
-    if (c.kind === 'channel' && !c.teamId) list.push({ label: 'Leave', icon: LogOut, danger: true, group: 'end', run: () => setRowSub({ kind: 'leave', id: c.id }) });
+    if (i?.unread) list.push({ label: t('Mark read'), icon: CheckCheck, run: () => chat.markRead(c.id) });
+    else if (i?.last && i.last.userId !== p.me) list.push({ label: t('Mark unread'), icon: MailOpen, run: () => chat.markUnread(i.last!) });
+    list.push(mutedTill ? { label: t('Unmute'), icon: Bell, hint: mutedTill === 'always' ? undefined : t('Muted until {when}', { when: whenText(mutedTill) }), run: () => chat.unmute(c.id) } : { label: t('Mute…'), icon: BellOff, run: () => setRowSub({ kind: 'mute', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
+    list.push({ label: star.has(c.id) ? t('Remove from Starred') : t('Star'), icon: Star, run: () => setStarred(star.has(c.id) ? starred.filter((x) => x !== c.id) : [...starred, c.id]) });
+    list.push({ label: t('Copy link'), icon: Link2, run: () => navigator.clipboard?.writeText(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(c.workspaceId)}&id=${encodeURIComponent(c.id)}`).then(() => toast({ text: t('Link copied') }), () => toast({ text: t('Couldn’t copy here') })) });
+    if (c.kind === 'channel' && (custom || layout.sections.some((sec) => canPlace(c, sec)))) list.push({ label: t('Move to section…'), icon: LayoutList, run: () => setRowSub({ kind: 'move', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
+    if (c.kind === 'channel') list.push({ label: t('Channel settings'), icon: Settings, run: () => p.onSettings(c.id) });
+    if (c.kind === 'channel' && !c.teamId) list.push({ label: t('Leave'), icon: LogOut, danger: true, group: 'end', run: () => setRowSub({ kind: 'leave', id: c.id }) });
     return list;
   };
   const row = (c: Channel) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone={phone} starred={star.has(c.id)} draggable={c.kind === 'channel' && (active === 'custom' || (active === 'default' && (p.isAdmin || p.canManage(c))))} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />;
@@ -312,23 +319,23 @@ export function ChatSidebar(p: SidebarProps) {
     body = layout.sections.map((sec) =>
       section(
         sec.id,
-        sec.name,
+        sectionTitle(sec),
         restRooms.filter((c) => sectionOf(c) === sec.id),
-        !phone && !sec.category && p.isAdmin && !rooms.some((c) => sectionOf(c) === sec.id) ? <p className="muted small sec-empty sb-label">Drag channels here, or use a channel’s … menu.</p> : undefined,
+        !phone && !sec.category && p.isAdmin && !rooms.some((c) => sectionOf(c) === sec.id) ? <p className="muted small sec-empty sb-label">{t('Drag channels here, or use a channel’s … menu.')}</p> : undefined,
         (id) => placeIn(id, sec.id),
         p.isAdmin ? sec.id : undefined,
       ),
     );
   } else if (active === 'unread') {
     const list = [...restRooms].sort((a, b) => (info[b.id]?.unread ?? 0) - (info[a.id]?.unread ?? 0) || recency(b).localeCompare(recency(a)));
-    body = [section('u-unread', 'Unread', list.filter((c) => info[c.id]?.unread)), section('u-rest', 'Everything else', list.filter((c) => !info[c.id]?.unread))];
+    body = [section('u-unread', t('Unread'), list.filter((c) => info[c.id]?.unread)), section('u-rest', t('Everything else'), list.filter((c) => !info[c.id]?.unread))];
   } else if (active === 'recent') {
-    body = section('recent', 'Most recent first', [...restRooms].sort((a, b) => recency(b).localeCompare(recency(a))));
+    body = section('recent', t('Most recent first'), [...restRooms].sort((a, b) => recency(b).localeCompare(recency(a))));
   } else if (custom) {
     const used = new Set(custom.sections.flatMap((s) => s.channelIds));
     body = [
       ...custom.sections.map((s) => section(`${custom.id}:${s.id}`, s.name, restRooms.filter((c) => s.channelIds.includes(c.id)), undefined, (id) => moveInView(id, s.id))),
-      custom.showRest ? section(`${custom.id}:rest`, 'Other channels', restRooms.filter((c) => !used.has(c.id)), undefined, (id) => moveInView(id, null)) : null,
+      custom.showRest ? section(`${custom.id}:rest`, t('Other channels'), restRooms.filter((c) => !used.has(c.id)), undefined, (id) => moveInView(id, null)) : null,
     ];
   }
   const menuChannel = p.channels.find((c) => c.id === rowMenu?.id);
@@ -343,12 +350,12 @@ export function ChatSidebar(p: SidebarProps) {
         <>
           <button ref={statusBtn} className="status-btn sb-label" onClick={() => setStatusOpen(true)}>
             <span className="st-emoji big">{myStatus?.emoji ?? '🙂'}</span>
-            <span className="sb-label">{myStatus?.text ?? 'Set a status'}</span>
+            <span className="sb-label">{myStatus ? statusText(myStatus) : t('Set a status')}</span>
           </button>
-          <Popover anchor={statusBtn} open={statusOpen} onClose={() => setStatusOpen(false)} width={280} title="Your status">
+          <Popover anchor={statusBtn} open={statusOpen} onClose={() => setStatusOpen(false)} width={280} title={t('Your status')}>
             <StatusPicker status={myStatus} onStatus={(s) => (p.onStatus(s), setStatusOpen(false))} />
           </Popover>
-          <nav className="nav chat-pages" aria-label="Chat pages">
+          <nav className="nav chat-pages" aria-label={t('Chat pages')}>
             {pages.map((pg) => (
               <button key={pg.id} className={`nav-item ${p.page === pg.id ? 'active' : ''}`} onClick={() => p.onPage(pg.id)} title={pg.line}>
                 {pg.icon}
@@ -357,9 +364,9 @@ export function ChatSidebar(p: SidebarProps) {
               </button>
             ))}
             {live.map((c) => (
-              <button key={c.id} className="nav-item live-row" onClick={() => p.onOpen(c.id)} title={`Huddle in ${chanName(c, p.users, p.me)}`}>
+              <button key={c.id} className="nav-item live-row" onClick={() => p.onOpen(c.id)} title={t('Huddle in {name}', { name: chanName(c, p.users, p.me) })}>
                 <Headphones size={16} />
-                <span className="sb-label">Live in {chanName(c, p.users, p.me)}</span>
+                <span className="sb-label">{t('Live in {name}', { name: chanName(c, p.users, p.me) })}</span>
                 <span className="chat-live-dot" aria-hidden />
               </button>
             ))}
@@ -369,19 +376,19 @@ export function ChatSidebar(p: SidebarProps) {
               value={custom ? custom.id : active}
               onChange={pickView}
               options={viewOptions}
-              label="Chat view"
+              label={t('Chat view')}
               className="sel-flat"
               width={280}
               renderValue={(o) => (
                 <>
                   <LayoutList size={14} />
-                  <span className="sel-text">View: {o?.label ?? 'Default'}</span>
+                  <span className="sel-text">{t('View: {name}', { name: o?.label ?? t('Default') })}</span>
                   <ChevronDown size={13} className="sel-chev" />
                 </>
               )}
             />
             {custom && (
-              <button className="icon-btn sm" title="Edit this view" onClick={() => setEditing(custom)}>
+              <button className="icon-btn sm" title={t('Edit this view')} onClick={() => setEditing(custom)}>
                 <Pencil size={13} />
               </button>
             )}
@@ -390,19 +397,19 @@ export function ChatSidebar(p: SidebarProps) {
       )}
 
       {phone && tiles.length > 0 && (
-        <div className="chat-tiles" role="list" aria-label="At a glance">
-          {tiles.map((t) => (
-            <Tile key={t} id={t} label={TILE_NAMES[t]} icon={tileState[t].icon} line={tileState[t].line} hot={tileState[t].hot} onOpen={() => openTile(t)} onMenu={() => setTileMenu(t)} />
+        <div className="chat-tiles" role="list" aria-label={t('At a glance')}>
+          {tiles.map((id) => (
+            <Tile key={id} id={id} label={TILE_NAMES[id]} icon={tileState[id].icon} line={tileState[id].line} hot={tileState[id].hot} onOpen={() => openTile(id)} onMenu={() => setTileMenu(id)} />
           ))}
         </div>
       )}
 
-      {phone && section('top-dms', 'Unread direct messages', topDms)}
-      {phone && section('top-mentions', 'Mentions', topMentions)}
+      {phone && section('top-dms', t('Unread direct messages'), topDms)}
+      {phone && section('top-mentions', t('Mentions'), topMentions)}
       {section(
         'starred',
         <>
-          <Star size={11} /> Starred
+          <Star size={11} /> {t('Starred')}
         </>,
         starredList,
       )}
@@ -410,9 +417,9 @@ export function ChatSidebar(p: SidebarProps) {
       {!phone && (
         <nav className="nav">
           {p.onNewChannel && (
-            <button className="nav-item" onClick={p.onNewChannel} title="New channel">
+            <button className="nav-item" onClick={p.onNewChannel} title={t('New channel')}>
               <Plus size={16} />
-              <span className="sb-label">New channel</span>
+              <span className="sb-label">{t('New channel')}</span>
             </button>
           )}
           {!custom &&
@@ -425,19 +432,19 @@ export function ChatSidebar(p: SidebarProps) {
                   onChange={(e) => setNewSection({ ...newSection, name: e.target.value })}
                   onKeyDown={(e) => (e.key === 'Enter' ? createSection() : e.key === 'Escape' && setNewSection(null))}
                   onBlur={createSection}
-                  placeholder="Section name, e.g. Leadership"
+                  placeholder={t('Section name, e.g. Leadership')}
                 />
               </div>
             ) : (
-              <button className="nav-item" onClick={() => setNewSection({ name: '' })} title="New section for everyone in the company">
+              <button className="nav-item" onClick={() => setNewSection({ name: '' })} title={t('New section for everyone in the company')}>
                 <FolderPlus size={16} />
-                <span className="sb-label">New section</span>
+                <span className="sb-label">{t('New section')}</span>
               </button>
             ))}
           {joinable.length > 0 && (
-            <button className="nav-item" onClick={() => setBrowsing((b) => !b)} title="Browse channels">
+            <button className="nav-item" onClick={() => setBrowsing((b) => !b)} title={t('Browse channels')}>
               <Compass size={16} />
-              <span className="sb-label">Browse channels</span>
+              <span className="sb-label">{t('Browse channels')}</span>
             </button>
           )}
           {browsing &&
@@ -448,7 +455,7 @@ export function ChatSidebar(p: SidebarProps) {
                   <small>{c.topic}</small>
                 </span>
                 <button className="ghost-btn sm" onClick={() => (p.onJoin(c.id), setBrowsing(false))}>
-                  Join
+                  {t('Join')}
                 </button>
               </div>
             ))}
@@ -456,50 +463,50 @@ export function ChatSidebar(p: SidebarProps) {
       )}
       {phone && newSection && (
         <Sheet
-          title="New section"
+          title={t('New section')}
           onClose={() => setNewSection(null)}
           footer={
             <button className="primary-btn" disabled={!newSection.name.trim()} onClick={createSection}>
-              Add section
+              {t('Add section')}
             </button>
           }
         >
           <label className="field sheet-field">
-            <span>Name, for everyone in the company</span>
-            <input autoFocus value={newSection.name} onChange={(e) => setNewSection({ ...newSection, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && createSection()} placeholder="e.g. Leadership" />
+            <span>{t('Name, for everyone in the company')}</span>
+            <input autoFocus value={newSection.name} onChange={(e) => setNewSection({ ...newSection, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && createSection()} placeholder={t('e.g. Leadership')} />
           </label>
         </Sheet>
       )}
 
       {section(
         'dms',
-        'Direct messages',
+        t('Direct messages'),
         dms.filter((c) => !star.has(c.id) && !onTop.has(c.id)).sort((a, b) => (phone ? recency(b).localeCompare(recency(a)) : 0)),
         phone ? undefined : addingDm ? (
           <div className="add-client sb-label">
             <Select
               value={null}
-              placeholder="Message someone…"
-              label="Message someone"
+              placeholder={t('Message someone…')}
+              label={t('Message someone')}
               searchable
               onChange={(v) => (p.onNewDm(v), setAddingDm(false))}
               options={p.users.filter((u) => u.id !== p.me && !dmWith.has(u.id)).map((u) => ({ value: u.id, label: u.name, hint: u.title, icon: <Avatar person={u} size={22} /> }))}
             />
           </div>
         ) : (
-          <button className="nav-item" onClick={() => setAddingDm(true)} title="New message">
+          <button className="nav-item" onClick={() => setAddingDm(true)} title={t('New message')}>
             <Plus size={16} />
-            <span className="sb-label">New message</span>
+            <span className="sb-label">{t('New message')}</span>
           </button>
         ),
       )}
       {phone && joinable.length > 0 && (
         <button className="cl-browse" onClick={() => setBrowsing(true)}>
-          <Compass size={18} /> Browse channels you can join
+          <Compass size={18} /> {t('Browse channels you can join')}
         </button>
       )}
       {phone && browsing && (
-        <Sheet title="Browse channels" size="tall" onClose={() => setBrowsing(false)}>
+        <Sheet title={t('Browse channels')} size="tall" onClose={() => setBrowsing(false)}>
           <div className="as-list">
             {joinable.map((c) => (
               <button key={c.id} type="button" className="as-item" onClick={() => (setBrowsing(false), p.onJoin(c.id))}>
@@ -508,52 +515,52 @@ export function ChatSidebar(p: SidebarProps) {
                   {c.name}
                   {c.topic && <small>{c.topic}</small>}
                 </span>
-                <span className="as-side">Join</span>
+                <span className="as-side">{t('Join')}</span>
               </button>
             ))}
           </div>
         </Sheet>
       )}
 
-      <Popover anchor={secAnchor} open={!!secMenu} onClose={() => setSecMenu(null)} width={240} title="Section">
+      <Popover anchor={secAnchor} open={!!secMenu} onClose={() => setSecMenu(null)} width={240} title={t('Section')}>
         {secMenu && (
           <div className="sel-pop">
             <button className="sel-opt" onClick={() => (setAccessFor(secMenu), setSecMenu(null))}>
-              <Users size={14} /> People with access
+              <Users size={14} /> {t('People with access')}
               {(() => {
                 const n = sectionPeople(layout.sections.find((x) => x.id === secMenu)!, p.teams).length;
                 return n ? <span className="sel-hint">{n}</span> : null;
               })()}
             </button>
             <button className="sel-opt" onClick={() => (setRenaming({ id: secMenu, name: layout.sections.find((x) => x.id === secMenu)?.name ?? '' }), setSecMenu(null))}>
-              <Pencil size={14} /> Rename
+              <Pencil size={14} /> {t('Rename')}
             </button>
             {layout.sections.findIndex((x) => x.id === secMenu) > 0 && (
               <button className="sel-opt" onClick={() => (moveSection(secMenu, -1), setSecMenu(null))}>
-                <ChevronUp size={14} /> Move up
+                <ChevronUp size={14} /> {t('Move up')}
               </button>
             )}
             {layout.sections.findIndex((x) => x.id === secMenu) < layout.sections.length - 1 && (
               <button className="sel-opt" onClick={() => (moveSection(secMenu, 1), setSecMenu(null))}>
-                <ChevronDown size={14} /> Move down
+                <ChevronDown size={14} /> {t('Move down')}
               </button>
             )}
             {phone && !custom && (
               <button className="sel-opt" onClick={() => (setSecMenu(null), setNewSection({ name: '' }))}>
-                <FolderPlus size={14} /> New section
+                <FolderPlus size={14} /> {t('New section')}
               </button>
             )}
             {layout.sections.find((x) => x.id === secMenu)?.category ? (
-              <p className="muted small menu-note">Built-in section for {CATEGORY_ONE[layout.sections.find((x) => x.id === secMenu)!.category!].toLowerCase()} channels. You can rename and move it.</p>
+              <p className="muted small menu-note">{t('Built-in section for {kind} channels. You can rename and move it.', { kind: categoryText(CATEGORY_ONE[layout.sections.find((x) => x.id === secMenu)!.category!]).toLowerCase() })}</p>
             ) : (
               <>
                 <button className="sel-opt danger" onClick={() => (deleteSection(secMenu), setSecMenu(null))}>
-                  <Trash2 size={14} /> Delete section
+                  <Trash2 size={14} /> {t('Delete section')}
                 </button>
-                <p className="muted small menu-note">Its channels go back to their usual section.</p>
+                <p className="muted small menu-note">{t('Its channels go back to their usual section.')}</p>
               </>
             )}
-            <p className="muted small menu-note">Changes here apply to everyone in the company.</p>
+            <p className="muted small menu-note">{t('Changes here apply to everyone in the company.')}</p>
           </div>
         )}
       </Popover>
@@ -573,45 +580,45 @@ export function ChatSidebar(p: SidebarProps) {
         <ActionSheet
           open
           onClose={() => setRowSub(null)}
-          title={`Mute ${chanName(subChannel, p.users, p.me)}`}
+          title={t('Mute {name}', { name: chanName(subChannel, p.users, p.me) })}
           anchor={rowSub.anchor ? { current: rowSub.anchor } : undefined}
           at={rowSub.at ?? null}
           actions={(
             [
-              ['hour', 'For an hour'],
-              ['tomorrow', 'Until tomorrow morning'],
-              ['always', 'Until I turn it back on'],
+              ['hour', t('For an hour'), t('Muted {name} for an hour', { name: chanName(subChannel, p.users, p.me) })],
+              ['tomorrow', t('Until tomorrow morning'), t('Muted {name} until tomorrow morning', { name: chanName(subChannel, p.users, p.me) })],
+              ['always', t('Until I turn it back on'), t('Muted {name} until you turn it back on', { name: chanName(subChannel, p.users, p.me) })],
             ] as const
-          ).map(([k, l]) => ({ label: l, hint: k === 'always' ? 'Mentions of you still come through' : undefined, run: () => (chat.mute(subChannel.id, k), toast({ text: `Muted ${chanName(subChannel, p.users, p.me)} ${l.toLowerCase()}` })) }))}
+          ).map(([k, l, done]) => ({ label: l, hint: k === 'always' ? t('Mentions of you still come through') : undefined, run: () => (chat.mute(subChannel.id, k), toast({ text: done })) }))}
         />
       )}
       {rowSub?.kind === 'move' && subChannel && (
         <ActionSheet
           open
           onClose={() => setRowSub(null)}
-          title={custom ? `Move to a section of “${custom.name}”` : 'Move to (for everyone)'}
+          title={custom ? t('Move to a section of “{view}”', { view: custom.name }) : t('Move to (for everyone)')}
           anchor={rowSub.anchor ? { current: rowSub.anchor } : undefined}
           at={rowSub.at ?? null}
           actions={
             custom
               ? custom.sections.map((s) => ({ label: s.name, checked: s.channelIds.includes(subChannel.id), run: () => moveInView(subChannel.id, s.id) }))
               : [
-                  ...layout.sections.filter((sec) => canPlace(subChannel, sec)).map((sec) => ({ label: sec.name, checked: sectionOf(subChannel) === sec.id, run: () => placeIn(subChannel.id, sec.id) })),
-                  ...(p.isAdmin ? [{ label: 'New section…', icon: Plus, group: 'new', run: () => setNewSection({ name: '', channelId: subChannel.id }) }] : []),
+                  ...layout.sections.filter((sec) => canPlace(subChannel, sec)).map((sec) => ({ label: sectionTitle(sec), checked: sectionOf(subChannel) === sec.id, run: () => placeIn(subChannel.id, sec.id) })),
+                  ...(p.isAdmin ? [{ label: t('New section…'), icon: Plus, group: 'new', run: () => setNewSection({ name: '', channelId: subChannel.id }) }] : []),
                 ]
           }
         />
       )}
-      {rowSub?.kind === 'leave' && subChannel && <ConfirmSheet title={`Leave ${chanName(subChannel, p.users, p.me)}?`} text={subChannel.private ? 'It’s private: someone in it has to add you back.' : 'You can join again from Browse channels.'} yes="Leave" onYes={() => p.onLeave(subChannel.id)} onClose={() => setRowSub(null)} />}
+      {rowSub?.kind === 'leave' && subChannel && <ConfirmSheet title={t('Leave {name}?', { name: chanName(subChannel, p.users, p.me) })} text={subChannel.private ? t('It’s private: someone in it has to add you back.') : t('You can join again from Browse channels.')} yes={t('Leave')} onYes={() => p.onLeave(subChannel.id)} onClose={() => setRowSub(null)} />}
       {tileMenu && (
         <ActionSheet
           open
           onClose={() => setTileMenu(null)}
           title={TILE_NAMES[tileMenu]}
           actions={[
-            ...(chat.tiles.order.indexOf(tileMenu) > 0 ? [{ label: 'Move left', icon: ArrowLeft, run: () => moveTile(chat, tileMenu, -1) }] : []),
-            ...(chat.tiles.order.indexOf(tileMenu) < chat.tiles.order.length - 1 ? [{ label: 'Move right', icon: ArrowRight, run: () => moveTile(chat, tileMenu, 1) }] : []),
-            { label: 'Hide this tile', icon: EyeOff, run: () => (chat.setTiles({ ...chat.tiles, hidden: [...chat.tiles.hidden, tileMenu] }), toast({ text: `${TILE_NAMES[tileMenu]} hidden. Chat’s settings bring it back.`, action: { label: 'Undo', run: () => chat.setTiles({ ...chat.tiles, hidden: chat.tiles.hidden.filter((x) => x !== tileMenu) }) } })) },
+            ...(chat.tiles.order.indexOf(tileMenu) > 0 ? [{ label: t('Move left'), icon: ArrowLeft, run: () => moveTile(chat, tileMenu, -1) }] : []),
+            ...(chat.tiles.order.indexOf(tileMenu) < chat.tiles.order.length - 1 ? [{ label: t('Move right'), icon: ArrowRight, run: () => moveTile(chat, tileMenu, 1) }] : []),
+            { label: t('Hide this tile'), icon: EyeOff, run: () => (chat.setTiles({ ...chat.tiles, hidden: [...chat.tiles.hidden, tileMenu] }), toast({ text: t('{tile} hidden. Chat’s settings bring it back.', { tile: TILE_NAMES[tileMenu] }), action: { label: t('Undo'), run: () => chat.setTiles({ ...chat.tiles, hidden: chat.tiles.hidden.filter((x) => x !== tileMenu) }) } })) },
           ]}
         />
       )}
@@ -658,9 +665,9 @@ export function ChatSidebar(p: SidebarProps) {
   );
 }
 
-const moveTile = (chat: ChatState, t: TileId, by: -1 | 1) => {
+const moveTile = (chat: ChatState, id: TileId, by: -1 | 1) => {
   const order = [...chat.tiles.order];
-  const i = order.indexOf(t);
+  const i = order.indexOf(id);
   const j = i + by;
   if (i < 0 || j < 0 || j >= order.length) return;
   [order[i], order[j]] = [order[j], order[i]];
@@ -678,7 +685,7 @@ function SectionHead({ title, closed, count, onToggle, onMenu, phone }: { title:
         {count ? <span className="sec-count unread">{count}</span> : null}
       </button>
       {onMenu && !phone && (
-        <button className="nav-more sec-more" aria-label="Section options" onClick={(e) => onMenu(e.currentTarget)}>
+        <button className="nav-more sec-more" aria-label={t('Section options')} onClick={(e) => onMenu(e.currentTarget)}>
           <MoreHorizontal size={14} />
         </button>
       )}
@@ -707,17 +714,18 @@ function ConvoRow({ c, p, info, phone, starred, draggable, onDragState, onMenu }
     <Hash size={phone ? 18 : 16} />
   );
   const name = other ? other.name : c.name;
-  const guestBadge = c.category === 'shared' || c.guests?.length ? <Badge small tone="warn" title={`The ${term.whos} can see this channel`}>{term.Whos}</Badge> : null;
+  const guestBadge = c.category === 'shared' || c.guests?.length ? <Badge small tone="warn" title={t('The {whos} can see this channel', { whos: term.whos })}>{term.Whos}</Badge> : null;
   if (phone) {
     const last = info?.last;
-    const who = last ? (last.userId === p.me ? 'You' : last.guestEmail ? (c.guests?.find((g) => g.email === last.guestEmail)?.name.split(' ')[0] ?? 'Guest') : (p.users.find((u) => u.id === last.userId)?.name.split(' ')[0] ?? '')) : '';
+    const mineLast = last?.userId === p.me;
+    const who = last ? (mineLast ? t('You') : last.guestEmail ? (c.guests?.find((g) => g.email === last.guestEmail)?.name.split(' ')[0] ?? t('Guest')) : (p.users.find((u) => u.id === last.userId)?.name.split(' ')[0] ?? '')) : '';
     return (
       <button
         className={`cl-row lp${unread ? ' unread' : ''}${info?.muted ? ' muted' : ''}${p.current === c.id ? ' active' : ''}`}
         {...press}
         onClick={() => p.onOpen(c.id)}
         onContextMenu={(e) => (press.onContextMenu(e), e.preventDefault(), onMenu({ at: { x: e.clientX, y: e.clientY } }))}
-        aria-label={`${name}${unread ? `, ${info!.unread} unread` : ''}${info?.draft ? ', draft' : ''}`}
+        aria-label={[name, unread ? tn(info!.unread, '{n} unread', '{n} unread') : '', info?.draft ? t('draft') : ''].filter(Boolean).join(', ')}
       >
         <span className={`cl-icon${other ? ' is-dm' : ''}`}>{icon}</span>
         <span className="cl-main">
@@ -726,7 +734,7 @@ function ConvoRow({ c, p, info, phone, starred, draggable, onDragState, onMenu }
               {name}
               {st && <span className="st-emoji">{st.emoji}</span>}
               {guestBadge}
-              {starred && <Star size={11} className="cl-star" aria-label="Starred" />}
+              {starred && <Star size={11} className="cl-star" aria-label={t('Starred')} />}
             </span>
             {last && <time dateTime={last.at}>{shortTime(last.at)}</time>}
           </span>
@@ -735,19 +743,19 @@ function ConvoRow({ c, p, info, phone, starred, draggable, onDragState, onMenu }
               {info?.draft ? (
                 <>
                   <PenLine size={12} className="cl-draft-icon" aria-hidden />
-                  <em className="cl-draft">Draft:</em> {info.draft.replace(/\s+/g, ' ')}
+                  <em className="cl-draft">{t('Draft:')}</em> {info.draft.replace(/\s+/g, ' ')}
                 </>
               ) : last ? (
                 <>
-                  {c.kind === 'channel' || who === 'You' ? `${who}: ` : ''}
-                  {preview(last) || 'Sent something'}
+                  {c.kind === 'channel' || mineLast ? `${who}: ` : ''}
+                  {preview(last) || t('Sent something')}
                 </>
               ) : (
-                <span className="muted">No messages yet</span>
+                <span className="muted">{t('No messages yet')}</span>
               )}
             </span>
-            {live && <Headphones size={14} className="cl-live" aria-label="Huddle on now" />}
-            {info?.muted && <BellOff size={13} className="cl-muted" aria-label="Muted" />}
+            {live && <Headphones size={14} className="cl-live" aria-label={t('Huddle on now')} />}
+            {info?.muted && <BellOff size={13} className="cl-muted" aria-label={t('Muted')} />}
             {info?.mentions ? <span className="count">{info.mentions}</span> : unread && c.kind === 'dm' ? <span className="count">{info!.unread}</span> : unread ? <span className="cl-dot" aria-hidden /> : null}
           </span>
         </span>
@@ -771,17 +779,17 @@ function ConvoRow({ c, p, info, phone, starred, draggable, onDragState, onMenu }
         <span className="sb-label">
           {name}
           {st && (
-            <span className="st-emoji" title={st.text}>
+            <span className="st-emoji" title={statusText(st)}>
               {st.emoji}
             </span>
           )}
           {guestBadge}
         </span>
-        {info?.draft && p.current !== c.id ? <PenLine size={13} className="nav-draft" aria-label="Draft" /> : null}
-        {live && <Headphones size={13} className="nav-live" aria-label="Huddle on now" />}
-        {info?.muted ? <BellOff size={12} className="nav-muted" aria-label="Muted" /> : info?.mentions ? <span className="count">{info.mentions}</span> : unread && c.kind === 'dm' ? <span className="count">{info!.unread}</span> : null}
+        {info?.draft && p.current !== c.id ? <PenLine size={13} className="nav-draft" aria-label={t('Draft')} /> : null}
+        {live && <Headphones size={13} className="nav-live" aria-label={t('Huddle on now')} />}
+        {info?.muted ? <BellOff size={12} className="nav-muted" aria-label={t('Muted')} /> : info?.mentions ? <span className="count">{info.mentions}</span> : unread && c.kind === 'dm' ? <span className="count">{info!.unread}</span> : null}
       </button>
-      <button ref={more} className="nav-more" aria-label="Conversation options" onClick={() => more.current && onMenu({ anchor: more.current })}>
+      <button ref={more} className="nav-more" aria-label={t('Conversation options')} onClick={() => more.current && onMenu({ anchor: more.current })}>
         <MoreHorizontal size={14} />
       </button>
     </div>
@@ -792,19 +800,19 @@ function ConvoRow({ c, p, info, phone, starred, draggable, onDragState, onMenu }
 function Peek({ c, p, messages, read, onOpen }: { c: Channel; p: SidebarProps; messages: ChatMessage[]; read: string; onOpen: () => void }) {
   const last = messages.filter((m) => m.channelId === c.id && !m.sendAt && (!m.parentId || m.alsoInChannel)).sort((a, b) => a.at.localeCompare(b.at)).slice(-4);
   return (
-    <button type="button" className="peek" onClick={onOpen} aria-label={`Open ${chanName(c, p.users, p.me)}`}>
+    <button type="button" className="peek" onClick={onOpen} aria-label={t('Open {name}', { name: chanName(c, p.users, p.me) })}>
       <span className="peek-head">
         <strong>{chanName(c, p.users, p.me)}</strong>
-        <span className="muted small">Not marked read</span>
+        <span className="muted small">{t('Not marked read')}</span>
       </span>
       {last.length ? (
         last.map((m) => (
           <span key={m.id} className={`peek-line${m.at > read && m.userId !== p.me ? ' new' : ''}`}>
-            <b>{m.userId === p.me ? 'You' : m.guestEmail ? (c.guests?.find((g) => g.email === m.guestEmail)?.name.split(' ')[0] ?? 'Guest') : (p.users.find((u) => u.id === m.userId)?.name.split(' ')[0] ?? 'Someone')}</b> {preview(m)}
+            <b>{m.userId === p.me ? t('You') : m.guestEmail ? (c.guests?.find((g) => g.email === m.guestEmail)?.name.split(' ')[0] ?? t('Guest')) : (p.users.find((u) => u.id === m.userId)?.name.split(' ')[0] ?? t('Someone'))}</b> {preview(m)}
           </span>
         ))
       ) : (
-        <span className="peek-line muted">No messages yet</span>
+        <span className="peek-line muted">{t('No messages yet')}</span>
       )}
     </button>
   );
@@ -830,19 +838,19 @@ function StatusPicker({ status, onStatus }: { status?: Status; onStatus: (s: Sta
       {STATUS_PRESETS.map((s) => (
         <button key={s.text} className={`sel-opt${status?.text === s.text ? ' on' : ''}`} onClick={() => onStatus(s)}>
           <span className="st-emoji big">{s.emoji}</span>
-          {s.text}
+          {t(s.text)}
           {status?.text === s.text && <Check size={14} className="sel-check" />}
         </button>
       ))}
       <div className="status-custom">
-        <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Or type your own…" aria-label="Your own status" onKeyDown={(e) => e.key === 'Enter' && custom.trim() && (onStatus({ emoji: '💬', text: custom.trim() }), setCustom(''))} />
+        <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={t('Or type your own…')} aria-label={t('Your own status')} onKeyDown={(e) => e.key === 'Enter' && custom.trim() && (onStatus({ emoji: '💬', text: custom.trim() }), setCustom(''))} />
       </div>
       {status && (
         <button className="sel-opt danger" onClick={() => onStatus(null)}>
-          <X size={14} /> Clear status
+          <X size={14} /> {t('Clear status')}
         </button>
       )}
-      <p className="muted small">“In a meeting” is set for you automatically from your calendar.</p>
+      <p className="muted small">{t('“In a meeting” is set for you automatically from your calendar.')}</p>
     </div>
   );
 }
@@ -853,21 +861,21 @@ function TilesEditor({ me }: { me: string }) {
   const { order, hidden } = chat.tiles;
   return (
     <div className="tiles-editor">
-      <p className="muted small">Tiles show what to act on in Chat. Hold a tile in the list to move or hide it there too.</p>
-      {order.map((t, i) => (
-        <div key={t} className="te-tile">
+      <p className="muted small">{t('Tiles show what to act on in Chat. Hold a tile in the list to move or hide it there too.')}</p>
+      {order.map((id, i) => (
+        <div key={id} className="te-tile">
           <SlidersHorizontal size={16} className="muted" aria-hidden />
           <span className="te-name">
-            {TILE_NAMES[t]}
-            {t === 'live' && <small>Only while a huddle is on</small>}
+            {TILE_NAMES[id]}
+            {id === 'live' && <small>{t('Only while a huddle is on')}</small>}
           </span>
-          <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => moveTile(chat, t, -1)} aria-label={`Move ${TILE_NAMES[t]} up`}>
+          <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => moveTile(chat, id, -1)} aria-label={t('Move {name} up', { name: TILE_NAMES[id] })}>
             <ChevronUp size={16} />
           </button>
-          <button type="button" className="icon-btn sm" disabled={i === order.length - 1} onClick={() => moveTile(chat, t, 1)} aria-label={`Move ${TILE_NAMES[t]} down`}>
+          <button type="button" className="icon-btn sm" disabled={i === order.length - 1} onClick={() => moveTile(chat, id, 1)} aria-label={t('Move {name} down', { name: TILE_NAMES[id] })}>
             <ChevronDown size={16} />
           </button>
-          <button type="button" role="switch" aria-checked={!hidden.includes(t)} aria-label={`Show ${TILE_NAMES[t]}`} className={`switch ${hidden.includes(t) ? '' : 'on'}`} onClick={() => chat.setTiles({ order, hidden: hidden.includes(t) ? hidden.filter((x) => x !== t) : [...hidden, t] })}>
+          <button type="button" role="switch" aria-checked={!hidden.includes(id)} aria-label={t('Show {name}', { name: TILE_NAMES[id] })} className={`switch ${hidden.includes(id) ? '' : 'on'}`} onClick={() => chat.setTiles({ order, hidden: hidden.includes(id) ? hidden.filter((x) => x !== id) : [...hidden, id] })}>
             <span />
           </button>
         </div>
@@ -882,18 +890,18 @@ export function NewMessageSheet({ users, me, onPick, onNewChannel, onClose }: { 
   const s = q.trim().toLowerCase();
   const people = users.filter((u) => u.id !== me && (!s || s.split(/\s+/).every((w) => `${u.name} ${u.email} ${u.title ?? ''}`.toLowerCase().includes(w))));
   return (
-    <Sheet onClose={onClose} title="New message" size="tall">
+    <Sheet onClose={onClose} title={t('New message')} size="tall">
       <label className="sheet-search">
         <SearchIcon size={16} />
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="To: a name or email" aria-label="Who to message" />
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('To: a name or email')} aria-label={t('Who to message')} />
       </label>
       <div className="as-list">
         {onNewChannel && !s && (
           <button type="button" className="as-item" onClick={() => (onClose(), onNewChannel())}>
             <Hash size={18} className="as-icon" />
             <span className="as-label">
-              New channel
-              <small>A place for a team, a {term.one} or a topic</small>
+              {t('New channel')}
+              <small>{t('A place for a team, a {project} or a topic', { project: term.one })}</small>
             </span>
           </button>
         )}
@@ -906,7 +914,7 @@ export function NewMessageSheet({ users, me, onPick, onNewChannel, onClose }: { 
             </span>
           </button>
         ))}
-        {people.length === 0 && <p className="sheet-empty">Nobody here is called “{q}”</p>}
+        {people.length === 0 && <p className="sheet-empty">{t('Nobody here is called “{q}”', { q })}</p>}
       </div>
     </Sheet>
   );
@@ -920,51 +928,51 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
   const fromCategories = () =>
     setV({
       ...v,
-      sections: (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => ({ id: cat, name: CATEGORY_NAME[cat], channelIds: channels.filter((c) => (c.category ?? 'project') === cat).map((c) => c.id) })),
+      sections: (['client', 'shared', 'team', 'project', 'social'] as ChannelCategory[]).map((cat) => ({ id: cat, name: categoryText(CATEGORY_NAME[cat]), channelIds: channels.filter((c) => (c.category ?? 'project') === cat).map((c) => c.id) })),
     });
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal view-modal" role="dialog" aria-label="Chat view" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal view-modal" role="dialog" aria-label={t('Chat view')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <LayoutList size={15} /> {isNew ? 'Create a view' : 'Edit view'}
+            <LayoutList size={15} /> {isNew ? t('Create a view') : t('Edit view')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body connect-form">
           <SmoothHeight>
           <label className="field">
-            <span>Name</span>
-            <input autoFocus value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder={`e.g. My ${term.many}`} />
+            <span>{t('Name')}</span>
+            <input autoFocus value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder={t('e.g. My {projects}', { projects: term.many })} />
           </label>
           <div className="field">
-            <span>Sections</span>
+            <span>{t('Sections')}</span>
             <div className="ve-sections">
               {v.sections.map((s, i) => (
                 <div key={s.id} className="ve-sec">
                   <input value={s.name} onChange={(e) => setV({ ...v, sections: v.sections.map((x) => (x.id === s.id ? { ...x, name: e.target.value } : x)) })} />
-                  <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => setV({ ...v, sections: v.sections.map((x, j, arr) => (j === i - 1 ? arr[i] : j === i ? arr[i - 1] : x)) })} aria-label="Move up">
+                  <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => setV({ ...v, sections: v.sections.map((x, j, arr) => (j === i - 1 ? arr[i] : j === i ? arr[i - 1] : x)) })} aria-label={t('Move up')}>
                     <ChevronDown size={14} className="flip" />
                   </button>
-                  <button type="button" className="icon-btn sm" onClick={() => setV({ ...v, sections: v.sections.filter((x) => x.id !== s.id) })} aria-label="Remove section">
+                  <button type="button" className="icon-btn sm" onClick={() => setV({ ...v, sections: v.sections.filter((x) => x.id !== s.id) })} aria-label={t('Remove section')}>
                     <X size={14} />
                   </button>
                 </div>
               ))}
               <div className="ve-actions">
-                <button type="button" className="ghost-btn sm" onClick={() => setV({ ...v, sections: [...v.sections, { id: 's' + Date.now().toString(36), name: 'New section', channelIds: [] }] })}>
-                  <Plus size={13} /> Add section
+                <button type="button" className="ghost-btn sm" onClick={() => setV({ ...v, sections: [...v.sections, { id: 's' + Date.now().toString(36), name: t('New section'), channelIds: [] }] })}>
+                  <Plus size={13} /> {t('Add section')}
                 </button>
                 <button type="button" className="link-btn" onClick={fromCategories}>
-                  Start from the default groups
+                  {t('Start from the default groups')}
                 </button>
               </div>
             </div>
           </div>
           <div className="field">
-            <span>Where each channel goes</span>
+            <span>{t('Where each channel goes')}</span>
             <div className="ve-channels">
               {channels.map((c) => (
                 <div key={c.id} className="ve-ch">
@@ -974,9 +982,9 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
                   <Select
                     value={sectionOf(c.id)}
                     onChange={(sid) => place(c.id, sid)}
-                    label={`Section for ${c.name}`}
+                    label={t('Section for {name}', { name: c.name })}
                     className="sel-flat"
-                    options={[{ value: '', label: v.showRest ? 'Other channels' : 'Hidden in this view' }, ...v.sections.map((s) => ({ value: s.id, label: s.name || 'Untitled' }))]}
+                    options={[{ value: '', label: v.showRest ? t('Other channels') : t('Hidden in this view') }, ...v.sections.map((s) => ({ value: s.id, label: s.name || t('Untitled') }))]}
                   />
                 </div>
               ))}
@@ -984,8 +992,8 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
           </div>
           <label className="set-row toggle-row">
             <span>
-              <strong>Show the rest under “Other channels”</strong>
-              <small>Off: channels you didn’t place are hidden in this view (you can still find them with ⌘K)</small>
+              <strong>{t('Show the rest under “Other channels”')}</strong>
+              <small>{t('Off: channels you didn’t place are hidden in this view (you can still find them with ⌘K)')}</small>
             </span>
             <button type="button" role="switch" aria-checked={v.showRest} className={`switch ${v.showRest ? 'on' : ''}`} onClick={() => setV({ ...v, showRest: !v.showRest })}>
               <span />
@@ -996,15 +1004,15 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
         <footer className="modal-foot">
           {!isNew && (
             <button className="ghost-btn danger-text" onClick={onDelete}>
-              Delete view
+              {t('Delete view')}
             </button>
           )}
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" disabled={!v.name.trim()} onClick={() => onSave({ ...v, name: v.name.trim(), sections: v.sections.filter((s) => s.name.trim()) })}>
-            {isNew ? 'Create view' : 'Save'}
+            {isNew ? t('Create view') : t('Save')}
           </button>
         </footer>
       </div>
@@ -1026,49 +1034,55 @@ function SectionAccess({ section, channels, users, teams, me, onSave, onClose }:
   const priv = channels.filter((c) => c.private).length;
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal access-modal" role="dialog" aria-label="People with access" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal access-modal" role="dialog" aria-label={t('People with access')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Users size={15} /> {section.name}: people with access
+            <Users size={15} /> {t('{section}: people with access', { section: sectionTitle(section) })}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body access-body">
           <SmoothHeight>
           <p className="muted small">
-            Everyone here is in {channels.length === 1 ? 'the channel' : `all ${channels.length} channels`} in this section{priv ? (channels.length === 1 ? ' (it’s private)' : `, including ${priv} private`) : ''}, and in any channel added to it later. No need to invite them one by one.
+            {channels.length === 1
+              ? priv
+                ? t('Everyone here is in the channel in this section (it’s private), and in any channel added to it later. No need to invite them one by one.')
+                : t('Everyone here is in the channel in this section, and in any channel added to it later. No need to invite them one by one.')
+              : priv
+                ? t('Everyone here is in all {n} channels in this section, including {priv} private, and in any channel added to it later. No need to invite them one by one.', { n: fmtNumber(channels.length), priv: fmtNumber(priv) })
+                : t('Everyone here is in all {n} channels in this section, and in any channel added to it later. No need to invite them one by one.', { n: fmtNumber(channels.length) })}
           </p>
           <div className="field">
-            <span>Teams</span>
+            <span>{t('Teams')}</span>
             <div className="team-toggles">
-              {teams.map((t) => (
-                <button key={t.id} type="button" className={teamIds.includes(t.id) ? 'on' : ''} onClick={() => setTeamIds((x) => (x.includes(t.id) ? x.filter((y) => y !== t.id) : [...x, t.id]))}>
-                  <span className="team-square" style={{ background: t.color }} /> {t.name}
-                  <small>{t.members.length}</small>
+              {teams.map((tm) => (
+                <button key={tm.id} type="button" className={teamIds.includes(tm.id) ? 'on' : ''} onClick={() => setTeamIds((x) => (x.includes(tm.id) ? x.filter((y) => y !== tm.id) : [...x, tm.id]))}>
+                  <span className="team-square" style={{ background: tm.color }} /> {tm.name}
+                  <small>{tm.members.length}</small>
                 </button>
               ))}
             </div>
-            <small className="muted">New team members get access automatically.</small>
+            <small className="muted">{t('New team members get access automatically.')}</small>
           </div>
           <div className="field">
-            <span>People</span>
-            <PeoplePicker value={userIds} users={users} me={me} onChange={setUserIds} label="People with access" emptyText="Add people" max={8} />
+            <span>{t('People')}</span>
+            <PeoplePicker value={userIds} users={users} me={me} onChange={setUserIds} label={t('People with access')} emptyText={t('Add people')} max={8} />
           </div>
           <p className="small">
-            <b>{everyone.length}</b> {everyone.length === 1 ? 'person has' : 'people have'} access.
-            {removed.length > 0 && <span className="muted"> {removed.length} will leave this section’s channels (channel owners stay).</span>}
+            {everyone.length === 1 ? tj('{n} person has access.', { n: <b>{fmtNumber(1)}</b> }) : tj('{n} people have access.', { n: <b>{fmtNumber(everyone.length)}</b> })}
+            {removed.length > 0 && <span className="muted"> {tn(removed.length, '{n} will leave this section’s channels (channel owners stay).', '{n} will leave this section’s channels (channel owners stay).')}</span>}
           </p>
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" onClick={() => onSave({ userIds, teamIds })}>
-            Save
+            {t('Save')}
           </button>
         </footer>
       </div>

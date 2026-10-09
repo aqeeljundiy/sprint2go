@@ -6,17 +6,31 @@ import { Archive, Globe, Hash, Lock, Mail, Megaphone, Plus, Users, X } from 'luc
 import type { Channel, ChannelCategory, Client, Guest, Policy, Team, User } from '../types';
 import { Badge, PersonCell } from './ui/Person';
 import { Dot, Select } from './ui/Select';
+import { mark, t, tx } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtMoney } from '../i18n/format';
 
-export const CATEGORY_NAME: Record<ChannelCategory, string> = { get client() { return `${term.Many}`; }, shared: `Shared`, team: 'Teams', get project() { return term.word === 'project' ? 'Other' : 'Projects'; }, social: 'Social' };
+// The category names stay English here (mark): ChatApp saves CATEGORY_NAME into the company's chat layout, which
+// everyone reads. Show them with categoryText(CATEGORY_NAME[c]) / categoryText(CATEGORY_ONE[c]).
+export const CATEGORY_NAME: Record<ChannelCategory, string> = { get client() { return term.word === 'client' ? mark('Clients') : mark('Projects'); }, shared: mark('Shared'), team: mark('Teams'), get project() { return term.word === 'project' ? mark('Other') : mark('Projects'); }, social: mark('Social') };
 /** The name on one channel's category. */
-export const CATEGORY_ONE: Record<ChannelCategory, string> = { get client() { return `${term.One} (internal)`; }, shared: `Shared`, team: 'Team', get project() { return term.word === 'project' ? 'Other' : 'Project'; }, social: 'Social' };
-const CATEGORY_HINT: Record<ChannelCategory, string> = {
-  get client() { return `Our team about one ${term.one}. They never see it`; },
-  get shared() { return `With people from outside, invited as ${term.whos}`; },
-  team: 'A department or the whole company',
-  get project() { return term.word === 'project' ? 'Planning, hiring, anything that isn’t one project' : 'A piece of work with an end date'; },
-  social: 'Lunch, wins, weekend plans',
-};
+export const CATEGORY_ONE: Record<ChannelCategory, string> = { get client() { return term.word === 'client' ? mark('Client (internal)') : mark('Project (internal)'); }, shared: mark('Shared'), team: mark('Team'), get project() { return term.word === 'project' ? mark('Other') : mark('Project'); }, social: mark('Social') };
+/** A category's name (from CATEGORY_NAME or CATEGORY_ONE) in the reader's language. "Shared" is a kind of channel
+ *  here ("Bersama"), not "shared with" ("Dibagikan"), so it has its own key. */
+export const categoryText = (name: string) => (name === 'Shared' ? tx('category', 'Shared') : t(name));
+/** What each category is for, in the reader's language. */
+const categoryHint = (c: ChannelCategory) =>
+  c === 'client'
+    ? t('Our team about one {project}. They never see it', { project: term.one })
+    : c === 'shared'
+      ? t('With people from outside, invited as {guests}', { guests: term.whos })
+      : c === 'team'
+        ? t('A department or the whole company')
+        : c === 'project'
+          ? term.word === 'project'
+            ? t('Planning, hiring, anything that isn’t one project')
+            : t('A piece of work with an end date')
+          : t('Lunch, wins, weekend plans');
 
 export type ChannelDraft = Omit<Channel, 'id' | 'workspaceId' | 'kind'>;
 
@@ -70,10 +84,10 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
   };
   const pickTeam = (id: string) => {
     setTeamId(id);
-    const t = teams.find((x) => x.id === id);
-    if (t) {
-      if (!name) setName(slug(t.name));
-      setMembers((m) => [...new Set([...m, ...t.members])]);
+    const team = teams.find((x) => x.id === id);
+    if (team) {
+      if (!name) setName(slug(team.name));
+      setMembers((m) => [...new Set([...m, ...team.members])]);
     }
   };
   const addGuest = () => {
@@ -110,21 +124,21 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
 
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal chan-modal" role="dialog" aria-label={editing ? 'Channel settings' : 'New channel'} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal chan-modal" role="dialog" aria-label={editing ? t('Channel settings') : t('New channel')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            {priv ? <Lock size={15} /> : <Hash size={15} />} {editing ? `#${channel!.name}` : 'New channel'}
+            {priv ? <Lock size={15} /> : <Hash size={15} />} {editing ? `#${channel!.name}` : t('New channel')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="client-tabs dialog-tabs" role="tablist">
           {(
             [
-              ['about', 'About', 0],
-              ['people', 'People', members.length + guests.length],
-              ['permissions', 'Permissions', 0],
+              ['about', t('About'), 0],
+              ['people', t('People'), members.length + guests.length],
+              ['permissions', t('Permissions'), 0],
             ] as const
           ).map(([id, l, n]) => (
             <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
@@ -137,27 +151,27 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
         <div className="modal-body chan-body">
           <SmoothHeight>
           <TabPane key={tab}>
-          {readOnly && <p className="muted small">Only the channel owner and admins can change these settings.</p>}
+          {readOnly && <p className="muted small">{t('Only the channel owner and admins can change these settings.')}</p>}
           {tab === 'about' && (
             <fieldset disabled={readOnly}>
               <label className="field">
-                <span>Name</span>
+                <span>{t('Name')}</span>
                 <div className="chan-name">
                   <Hash size={15} />
-                  <input autoFocus={!editing} value={name} onChange={(e) => setName(slug(e.target.value))} placeholder="e.g. glowkind-launch" maxLength={60} />
+                  <input autoFocus={!editing} value={name} onChange={(e) => setName(slug(e.target.value))} placeholder={t('e.g. glowkind-launch')} maxLength={60} />
                 </div>
               </label>
               <label className="field">
-                <span>What’s it for?</span>
-                <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="One line people see under the name" />
+                <span>{t('What’s it for?')}</span>
+                <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={t('One line people see under the name')} />
               </label>
               <div className="field">
-                <span>Category</span>
+                <span>{t('Category')}</span>
                 <div className="cat-pick">
                   {(Object.keys(CATEGORY_NAME) as ChannelCategory[]).map((c) => (
                     <button key={c} type="button" className={category === c ? 'on' : ''} onClick={() => pickCategory(c)}>
-                      <strong>{CATEGORY_ONE[c]}</strong>
-                      <small>{CATEGORY_HINT[c]}</small>
+                      <strong>{categoryText(CATEGORY_ONE[c])}</strong>
+                      <small>{categoryHint(c)}</small>
                     </button>
                   ))}
                 </div>
@@ -170,44 +184,44 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
               )}
               {category === 'team' && (
                 <div className="field">
-                  <span>Team</span>
-                  <Select value={teamId} onChange={pickTeam} label="Team" placeholder="Pick a team (optional)" options={teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))} />
+                  <span>{t('Team')}</span>
+                  <Select value={teamId} onChange={pickTeam} label={t('Team')} placeholder={t('Pick a team (optional)')} options={teams.map((tm) => ({ value: tm.id, label: tm.name, icon: <Dot color={tm.color} /> }))} />
                 </div>
               )}
               <div className="field">
-                <span>AI summary of this channel</span>
+                <span>{t('AI summary of this channel')}</span>
                 <div className="summary-pick">
                   <Select
                     value={schedule}
                     onChange={setSchedule}
-                    label="AI summary"
+                    label={t('AI summary')}
                     width={300}
                     options={[
-                      { value: 'monthly', label: 'Monthly (default)', hint: 'On the 1st, for the month before' },
-                      { value: 'weekly', label: 'Weekly', hint: 'Every Monday, for the week before' },
-                      { value: 'daily', label: 'Daily', hint: 'Only on days with new messages. For busy channels' },
-                      { value: 'off', label: 'Off', hint: 'People can still ask for one on the Summary tab' },
+                      { value: 'monthly', label: t('Monthly (default)'), hint: t('On the 1st, for the month before') },
+                      { value: 'weekly', label: t('Weekly'), hint: t('Every Monday, for the week before') },
+                      { value: 'daily', label: t('Daily'), hint: t('Only on days with new messages. For busy channels') },
+                      { value: 'off', label: t('Off'), hint: t('People can still ask for one on the Summary tab') },
                     ]}
                   />
-                  <small className="muted">{schedule === 'off' ? 'No automatic summaries.' : `Each update uses ${summaryCost}. Skipped when nothing happened.`}</small>
+                  <small className="muted">{schedule === 'off' ? t('No automatic summaries.') : t('Each update uses {cost}. Skipped when nothing happened.', { cost: summaryCost })}</small>
                 </div>
                 {schedule !== 'off' && (
                   <label className="check-row small">
-                    <input type="checkbox" checked={postSummary} onChange={(e) => setPostSummary(e.target.checked)} /> Also post each summary in the channel
+                    <input type="checkbox" checked={postSummary} onChange={(e) => setPostSummary(e.target.checked)} /> {t('Also post each summary in the channel')}
                   </label>
                 )}
               </div>
               <div className="field">
-                <span>Who can find it</span>
+                <span>{t('Who can find it')}</span>
                 <div className="segmented wide">
                   <button type="button" className={!priv ? 'on' : ''} onClick={() => setPriv(false)}>
-                    <Globe size={14} /> Public
+                    <Globe size={14} /> {t('Public')}
                   </button>
                   <button type="button" className={priv ? 'on' : ''} onClick={() => setPriv(true)}>
-                    <Lock size={14} /> Private
+                    <Lock size={14} /> {t('Private')}
                   </button>
                 </div>
-                <small className="muted">{priv ? 'Invite only: people join when someone adds them.' : 'Anyone in the company can find it and join.'}</small>
+                <small className="muted">{priv ? t('Invite only: people join when someone adds them.') : t('Anyone in the company can find it and join.')}</small>
               </div>
             </fieldset>
           )}
@@ -216,7 +230,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
             <fieldset disabled={readOnly}>
               <label className="sel-search boxed">
                 <Users size={14} />
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find teammates…" />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Find teammates…')} />
               </label>
               <div className="people-pick">
                 {shownUsers.map((u) => {
@@ -224,18 +238,18 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                   return (
                     <label key={u.id} className={`pp-row ${on ? 'on' : ''}`}>
                       <input type="checkbox" checked={on} disabled={u.id === me} onChange={() => setMembers((m) => (on ? m.filter((x) => x !== u.id) : [...m, u.id]))} />
-                      <PersonCell person={u} size={28} sub={u.title || u.email} badges={u.id === me && <Badge tone="accent">You</Badge>} />
+                      <PersonCell person={u} size={28} sub={u.title || u.email} badges={u.id === me && <Badge tone="accent">{t('You')}</Badge>} />
                     </label>
                   );
                 })}
               </div>
               <div className="pp-actions">
                 <button type="button" className="link-btn" onClick={() => setMembers(users.map((u) => u.id))}>
-                  Add everyone
+                  {t('Add everyone')}
                 </button>
                 {teamId && (
-                  <button type="button" className="link-btn" onClick={() => setMembers((m) => [...new Set([...m, ...(teams.find((t) => t.id === teamId)?.members ?? [])])])}>
-                    Add the whole team
+                  <button type="button" className="link-btn" onClick={() => setMembers((m) => [...new Set([...m, ...(teams.find((tm) => tm.id === teamId)?.members ?? [])])])}>
+                    {t('Add the whole team')}
                   </button>
                 )}
               </div>
@@ -244,36 +258,39 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
               <div className="guest-box">
                 <div className="gb-head">
                   <Mail size={15} />
-                  <strong>Guests</strong>
-                  <span className="muted small">People outside the company. They only see channels you add them to.</span>
+                  <strong>{t('Guests')}</strong>
+                  <span className="muted small">{t('People outside the company. They only see channels you add them to.')}</span>
                 </div>
                 {guests.map((g) => (
                   <div key={g.email} className="guest-row">
                     <PersonCell person={g} size={28} />
-                    <Badge tone={g.status === 'joined' ? 'good' : 'neutral'}>{g.status === 'joined' ? 'Joined' : 'Invite sent'}</Badge>
-                    <button type="button" className="icon-btn sm" onClick={() => setGuests((x) => x.filter((y) => y.email !== g.email))} aria-label="Remove guest">
+                    <Badge tone={g.status === 'joined' ? 'good' : 'neutral'}>{g.status === 'joined' ? t('Joined') : t('Invite sent')}</Badge>
+                    <button type="button" className="icon-btn sm" onClick={() => setGuests((x) => x.filter((y) => y.email !== g.email))} aria-label={t('Remove guest')}>
                       <X size={14} />
                     </button>
                   </div>
                 ))}
                 {guestsAllowed ? (
                   <div className="guest-add">
-                    <input value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="Name" />
-                    <input value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addGuest()} placeholder={client?.domain ? `name@${client.domain}` : 'name@client.com'} />
+                    <input value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder={t('Name')} />
+                    <input value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addGuest()} placeholder={client?.domain ? t('name@{domain}', { domain: client.domain }) : t('name@client.com')} />
                     <button type="button" className="ghost-btn sm" onClick={addGuest}>
-                      <Plus size={13} /> Invite
+                      <Plus size={13} /> {t('Invite')}
                     </button>
                   </div>
                 ) : (
                   <p className="gate">
-                    Free includes 1 guest. <strong>Upgrade to Small (Rp 39.000 per person)</strong> to invite more {term.whos}.
+                    {tj('Free includes 1 guest. {upgrade} to invite more {guests}.', {
+                      upgrade: <strong>{t('Upgrade to Small ({price} per person)', { price: fmtMoney(39000) })}</strong>,
+                      guests: term.whos,
+                    })}
                   </p>
                 )}
-                {guestDomainWarn && <p className="muted small">Heads up: this address isn’t at @{client!.domain}.</p>}
+                {guestDomainWarn && <p className="muted small">{t('Heads up: this address isn’t at @{domain}.', { domain: client!.domain! })}</p>}
               </div>
               ) : (
                 <p className="muted small guest-note">
-                  {category === 'client' ? `Only your team is here. To talk with the ${term.who}, make a channel with the “Shared” category.` : `Only your team is here. Guests can only join “Shared” channels.`}
+                  {category === 'client' ? t('Only your team is here. To talk with the {guest}, make a channel with the “Shared” category.', { guest: term.who }) : t('Only your team is here. Guests can only join “Shared” channels.')}
                 </p>
               )}
             </fieldset>
@@ -282,32 +299,32 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
           {tab === 'permissions' && (
             <fieldset disabled={readOnly}>
               <div className="field">
-                <span>Who can post</span>
+                <span>{t('Who can post')}</span>
                 <Select<Policy>
                   value={postPolicy}
                   onChange={setPostPolicy}
-                  label="Who can post"
+                  label={t('Who can post')}
                   options={[
-                    { value: 'everyone', label: 'Everyone in the channel', icon: <Users size={15} /> },
-                    { value: 'admins', label: 'Only admins and the owner', hint: 'For announcements. Others can still react and reply in threads', icon: <Megaphone size={15} /> },
+                    { value: 'everyone', label: t('Everyone in the channel'), icon: <Users size={15} /> },
+                    { value: 'admins', label: t('Only admins and the owner'), hint: t('For announcements. Others can still react and reply in threads'), icon: <Megaphone size={15} /> },
                   ]}
                 />
               </div>
               <div className="field">
-                <span>Who can add people</span>
+                <span>{t('Who can add people')}</span>
                 <Select<Policy>
                   value={invitePolicy}
                   onChange={setInvitePolicy}
-                  label="Who can add people"
+                  label={t('Who can add people')}
                   options={[
-                    { value: 'everyone', label: 'Anyone in the channel' },
-                    { value: 'admins', label: 'Only admins and the owner' },
+                    { value: 'everyone', label: t('Anyone in the channel') },
+                    { value: 'admins', label: t('Only admins and the owner') },
                   ]}
                 />
               </div>
               <ul className="perm-notes">
-                <li>Guests can read and post here, react and reply. They can’t see other channels, people’s profiles or your tasks unless you share them.</li>
-                <li>{priv ? 'Private: only members see this channel and its files.' : 'Public: anyone in the company can find and join it.'}</li>
+                <li>{t('Guests can read and post here, react and reply. They can’t see other channels, people’s profiles or your tasks unless you share them.')}</li>
+                <li>{priv ? t('Private: only members see this channel and its files.') : t('Public: anyone in the company can find and join it.')}</li>
               </ul>
             </fieldset>
           )}
@@ -318,16 +335,16 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
         <footer className="modal-foot">
           {editing && onArchive && canManage && (
             <button className="ghost-btn danger-text" onClick={onArchive}>
-              <Archive size={14} /> Archive channel
+              <Archive size={14} /> {t('Archive channel')}
             </button>
           )}
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            {readOnly ? 'Close' : 'Cancel'}
+            {readOnly ? t('Close') : t('Cancel')}
           </button>
           {!readOnly && (
             <button className="primary-btn" onClick={save} disabled={!name.trim() || ((category === 'client' || category === 'shared') && !clientId)}>
-              {editing ? 'Save' : 'Create channel'}
+              {editing ? t('Save') : t('Create channel')}
             </button>
           )}
         </footer>

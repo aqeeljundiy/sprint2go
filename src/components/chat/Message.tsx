@@ -7,9 +7,13 @@ import { stageName, stageOf } from '../../stages';
 import { Avatar } from '../Avatar';
 import { Badge } from '../ui/Person';
 import { useLongPress } from '../ui/useLongPress';
-import { whenText, type SavedItem } from './chatPrefs';
+import { statusText, whenText, type SavedItem } from './chatPrefs';
+import { t, textOf, tn } from '../../i18n';
+import { fmtDate, fmtMonth, fmtNumber, fmtWeekdayLong } from '../../i18n/format';
 
-export const fmtSize = (b: number) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+const one = (n: number) => fmtNumber(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** "1.5 MB" / "1,5 MB". */
+export const fmtSize = (b: number) => (b > 1e9 ? `${one(b / 1e9)} GB` : b > 1e6 ? `${one(b / 1e6)} MB` : `${fmtNumber(Math.max(1, Math.round(b / 1e3)))} KB`);
 export const fmtSecs = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 const esc = (s: string) => s.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
 
@@ -85,13 +89,19 @@ export function Text({ text, users }: { text: string; users: User[] }) {
   );
 }
 
+/**
+ * What a message says, in the reader's language when sprint2go wrote it (a new task, a celebration: saved with msg()),
+ * as written otherwise. A line someone edited afterwards reads as they left it.
+ */
+export const msgText = (m: ChatMessage) => (m.tr && !m.edited ? textOf(m) : m.text);
+
 /** A plain one-line version of a message, for lists and previews. */
-const plain = (t: string) => t.replace(/\s+/g, ' ').replace(/(^|\s)[*_~`]+|[*_~`]+(?=\s|$|[.,!?])/g, '$1').trim();
+const plain = (s: string) => s.replace(/\s+/g, ' ').replace(/(^|\s)[*_~`]+|[*_~`]+(?=\s|$|[.,!?])/g, '$1').trim();
 export function preview(m: ChatMessage) {
-  if (m.text) return plain(m.text);
-  if (m.voice) return 'Voice note';
-  if (m.files?.length) return m.files.length === 1 ? m.files[0].name : `${m.files.length} files`;
-  if (m.taskId) return 'Shared a task';
+  if (m.text) return plain(msgText(m));
+  if (m.voice) return t('Voice note');
+  if (m.files?.length) return m.files.length === 1 ? m.files[0].name : tn(m.files.length, '{n} file', '{n} files');
+  if (m.taskId) return t('Shared a task');
   if (m.ref) return m.ref.title;
   if (m.poll) return m.poll.question;
   if (m.forwarded) return plain(m.forwarded.text);
@@ -132,13 +142,13 @@ export function authorOf(m: ChatMessage, ctx: Pick<MsgCtx, 'me' | 'users' | 'cha
   }
   const u = ctx.users.find((x) => x.id === m.userId);
   if (!u && m.authorName) return { name: m.authorName, first: m.authorName.split(' ')[0], guest: false, former: true, person: { name: m.authorName, email: m.authorName } as { name: string; email: string; color?: string } };
-  return { name: m.userId === ctx.me ? 'You' : (u?.name ?? 'Someone'), first: m.userId === ctx.me ? 'You' : (u?.name.split(' ')[0] ?? 'Someone'), guest: false, former: false, person: u as { name: string; email: string; color?: string } | undefined };
+  return { name: m.userId === ctx.me ? t('You') : (u?.name ?? t('Someone')), first: m.userId === ctx.me ? t('You') : (u?.name.split(' ')[0] ?? t('Someone')), guest: false, former: false, person: u as { name: string; email: string; color?: string } | undefined };
 }
 
 function ReactionPill({ m, emoji, who, ctx }: { m: ChatMessage; emoji: string; who: string[]; ctx: MsgCtx }) {
   // Long-press shows who reacted (a tap adds or takes away your own).
   const press = useLongPress(() => ctx.onWhoReacted(m, emoji));
-  const names = who.map((w) => (w === ctx.me ? 'You' : (ctx.users.find((u) => u.id === w)?.name.split(' ')[0] ?? 'Someone'))).join(', ');
+  const names = who.map((w) => (w === ctx.me ? t('You') : (ctx.users.find((u) => u.id === w)?.name.split(' ')[0] ?? t('Someone')))).join(', ');
   return (
     <button className={`reaction lp ${who.includes(ctx.me) ? 'on' : ''}`} {...press} onClick={() => ctx.onReact(m.id, emoji)} title={names} aria-label={`${emoji} ${who.length}: ${names}`}>
       {emoji} <b>{who.length}</b>
@@ -155,7 +165,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
   if (m.kind === 'celebration')
     return (
       <div className="chat-celebration">
-        <span>🎉 {m.text}</span>
+        <span>🎉 {msgText(m)}</span>
         <time>{relative(m.at)}</time>
       </div>
     );
@@ -163,7 +173,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
     return (
       <div data-msg={m.id} className="chat-summary">
         <div className="chat-summary-head">
-          <Sparkles size={13} aria-hidden /> Summary{m.summaryOf ? `, ${m.summaryOf}` : ''}
+          <Sparkles size={13} aria-hidden /> {m.summaryOf ? t('Summary, {period}', { period: periodWords(m.summaryOf, m.at) }) : t('Summary')}
           <time>{relative(m.at)}</time>
         </div>
         <p>{m.text}</p>
@@ -172,13 +182,11 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
   if (m.kind === 'system')
     return (
       <div className="chat-celebration system">
-        <span>
-          {a.name} {m.text}
-        </span>
+        <span>{m.tr ? textOf({ text: m.text, tr: { ...m.tr, vars: { ...m.tr.vars, name: a.name } } }) : `${a.name} ${m.text}`}</span>
         <time>{relative(m.at)}</time>
       </div>
     );
-  const task = m.taskId ? ctx.tasks.find((t) => t.id === m.taskId) : undefined;
+  const task = m.taskId ? ctx.tasks.find((x) => x.id === m.taskId) : undefined;
   const reps = inThread ? [] : ctx.replies(m.id);
   const draft = !inThread && ctx.threadDraft(m.id);
   const st = !a.guest ? ctx.statuses[m.userId] : undefined;
@@ -207,16 +215,16 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
       <div className="cm-body">
         {saved && (
           <div className="cm-saved">
-            <Bookmark size={12} aria-hidden /> {saved.remindAt && !saved.reminded ? `Saved, reminder ${whenText(saved.remindAt)}` : 'Saved'}
+            <Bookmark size={12} aria-hidden /> {saved.remindAt && !saved.reminded ? t('Saved, reminder {when}', { when: whenText(saved.remindAt) }) : t('Saved')}
           </div>
         )}
         {!grouped && (
           <div className="cm-head">
             <strong>{a.name}</strong>
-            {a.former && <Badge small>{m.userId.startsWith('former:bot:') ? 'App' : 'Former member'}</Badge>}
+            {a.former && <Badge small>{m.userId.startsWith('former:bot:') ? t('App') : t('Former member')}</Badge>}
             {a.guest && (
               <Badge small tone="warn">
-                Guest
+                {t('Guest')}
                 {(() => {
                   const co = companyOf(a.person?.email ?? '', client?.people?.find((x) => x.email === a.person?.email)?.company, client);
                   return co ? ` · ${co}` : '';
@@ -224,18 +232,18 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
               </Badge>
             )}
             {st && (
-              <span className="st-emoji" title={st.text}>
+              <span className="st-emoji" title={statusText(st)}>
                 {st.emoji}
               </span>
             )}
             <time dateTime={m.at}>{relative(m.at)}</time>
-            {m.parentId && m.alsoInChannel && !inThread && <span className="muted small">replied in a thread</span>}
+            {m.parentId && m.alsoInChannel && !inThread && <span className="muted small">{t('replied in a thread')}</span>}
           </div>
         )}
         {m.forwarded && (
           <div className="cm-fwd">
             <span className="cm-fwd-head">
-              <Forward size={12} aria-hidden /> {m.forwarded.userId === ctx.me ? 'You' : m.forwarded.who} in {m.forwarded.where}
+              <Forward size={12} aria-hidden /> {t('{who} in {where}', { who: m.forwarded.userId === ctx.me ? t('You') : t(m.forwarded.who), where: m.forwarded.where })}
             </span>
             <Text text={m.forwarded.text} users={ctx.users} />
           </div>
@@ -244,15 +252,15 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
           <div className="kudos-card">
             <span className="kudos-emoji">🙌</span>
             <span>
-              <strong>Kudos to {m.kudosFor === ctx.me ? 'you' : person(m.kudosFor ?? '')?.name}</strong>
+              <strong>{m.kudosFor === ctx.me ? t('Kudos to you') : t('Kudos to {name}', { name: person(m.kudosFor ?? '')?.name ?? '' })}</strong>
               {m.text && <span> {m.text}</span>}
             </span>
           </div>
         ) : (
           m.text && (
             <div className="cm-text">
-              <Text text={m.text} users={ctx.users} />
-              {m.edited && <span className="cm-edited"> (edited)</span>}
+              <Text text={msgText(m)} users={ctx.users} />
+              {m.edited && <span className="cm-edited"> {t('(edited)')}</span>}
             </div>
           )
         )}
@@ -284,7 +292,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
               <strong>{f.name}</strong>
               <small>
                 {fmtSize(f.size)}
-                {f.missing ? ` · ${f.missing}` : f.url && !f.driveId ? '' : client ? ` · saved to Drive › ${client.name}` : ' · saved to Drive'}
+                {f.missing ? ` · ${t(f.missing)}` : f.url && !f.driveId ? '' : client ? ` · ${t('saved to Drive › {name}', { name: client.name })}` : ` · ${t('saved to Drive')}`}
               </small>
             </span>
           </a>
@@ -294,7 +302,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
             <SquareCheck size={14} />
             <span>{task.title}</span>
             <em>
-              {stageName(stageOf(task))} · {person(task.userId)?.name.split(' ')[0] ?? 'team queue'}
+              {stageName(stageOf(task))} · {person(task.userId)?.name.split(' ')[0] ?? t('team queue')}
             </em>
           </button>
         )}
@@ -302,7 +310,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
           <button className="cm-task cm-ref" onClick={() => ctx.onOpenRef(m.ref!)}>
             {m.ref.kind === 'note' ? <FileText size={14} /> : m.ref.kind === 'row' ? <Table2 size={14} /> : <ImageIcon size={14} />}
             <span>{m.ref.title}</span>
-            <em>{m.ref.kind === 'note' ? 'Note' : m.ref.kind === 'row' ? 'Table row' : 'Drive file'}</em>
+            <em>{m.ref.kind === 'note' ? t('Note') : m.ref.kind === 'row' ? t('Table row') : t('Drive file')}</em>
           </button>
         )}
         {m.reactions && Object.keys(m.reactions).some((k) => m.reactions![k].length) && (
@@ -313,7 +321,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
                 <ReactionPill key={emoji} m={m} emoji={emoji} who={who} ctx={ctx} />
               ))}
             {!ctx.guest && (
-              <button className="reaction add" onClick={(e) => ctx.onReactPick(m, e.currentTarget)} aria-label="Add reaction">
+              <button className="reaction add" onClick={(e) => ctx.onReactPick(m, e.currentTarget)} aria-label={t('Add reaction')}>
                 <SmilePlus size={13} />
               </button>
             )}
@@ -324,28 +332,26 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
             {reps.length > 0 ? (
               <>
                 <span className="tl-avs">{[...new Set(reps.map((r) => r.userId))].slice(0, 3).map((u) => person(u) && <Avatar key={u} person={person(u)!} size={18} />)}</span>
-                <b>
-                  {reps.length} repl{reps.length === 1 ? 'y' : 'ies'}
-                </b>
-                <span className="muted">Last reply {relative(reps[reps.length - 1].at)}</span>
+                <b>{tn(reps.length, '{n} reply', '{n} replies')}</b>
+                <span className="muted">{t('Last reply {when}', { when: relative(reps[reps.length - 1].at) })}</span>
               </>
             ) : (
-              <b>Reply in thread</b>
+              <b>{t('Reply in thread')}</b>
             )}
-            {draft && <span className="draft-pill">Draft</span>}
+            {draft && <span className="draft-pill">{t('Draft')}</span>}
           </button>
         )}
         {pending && (
           <div className={`cm-state${ctx.unsent.failed ? ' failed' : ''}`} role="status">
             {ctx.unsent.failed ? (
               <>
-                Not sent yet. It goes when you’re back online.
+                {t('Not sent yet. It goes when you’re back online.')}
                 <button type="button" className="link-btn" onClick={ctx.onRetry}>
-                  <RotateCw size={12} /> Try now
+                  <RotateCw size={12} /> {t('Try now')}
                 </button>
               </>
             ) : (
-              'Sending…'
+              t('Sending…')
             )}
           </div>
         )}
@@ -353,26 +359,26 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
       {!ctx.phone && (
         <div className="cm-tools">
           {!ctx.guest && (
-            <button title="React" aria-label="React" onClick={(e) => ctx.onReactPick(m, e.currentTarget)}>
+            <button title={t('React')} aria-label={t('React')} onClick={(e) => ctx.onReactPick(m, e.currentTarget)}>
               <SmilePlus size={15} />
             </button>
           )}
           {!inThread && (
-            <button title="Reply in thread" aria-label="Reply in thread" onClick={() => ctx.onOpenThread(m.id)}>
+            <button title={t('Reply in thread')} aria-label={t('Reply in thread')} onClick={() => ctx.onOpenThread(m.id)}>
               <MessageSquareReply size={15} />
             </button>
           )}
           {!ctx.guest && !task && m.kind !== 'kudos' && m.text && (
-            <button title="Make a task" aria-label="Make a task" onClick={() => ctx.onMakeTask(m)}>
+            <button title={t('Make a task')} aria-label={t('Make a task')} onClick={() => ctx.onMakeTask(m)}>
               <ListChecks size={15} />
             </button>
           )}
           {!ctx.guest && (
-            <button title={saved ? 'Saved' : 'Save'} aria-label={saved ? 'Remove from saved' : 'Save'} className={saved ? 'on' : ''} onClick={() => ctx.onSave(m)}>
+            <button title={saved ? t('Saved') : t('Save')} aria-label={saved ? t('Remove from saved') : t('Save')} className={saved ? 'on' : ''} onClick={() => ctx.onSave(m)}>
               <Bookmark size={15} />
             </button>
           )}
-          <button ref={more} title="More" aria-label="More actions" onClick={() => more.current && ctx.onMenu(m, { anchor: more.current })}>
+          <button ref={more} title={t('More')} aria-label={t('More actions')} onClick={() => more.current && ctx.onMenu(m, { anchor: more.current })}>
             <MoreHorizontal size={15} />
           </button>
         </div>
@@ -401,7 +407,7 @@ export function VoiceNote({ voice }: { voice: NonNullable<ChatMessage['voice']> 
   };
   return (
     <div className="voice">
-      <button className="voice-play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
+      <button className="voice-play" onClick={toggle} aria-label={playing ? t('Pause') : t('Play')}>
         {playing ? <Pause size={14} /> : <Play size={14} />}
       </button>
       <span className={`voice-wave ${playing ? 'playing' : ''}`}>
@@ -412,23 +418,23 @@ export function VoiceNote({ voice }: { voice: NonNullable<ChatMessage['voice']> 
       <span className="voice-len">{fmtSecs(voice.seconds)}</span>
       {text ? (
         <button className="link-btn small" onClick={() => setShowText((s) => !s)}>
-          {showText ? 'Hide text' : 'Show text'}
+          {showText ? t('Hide text') : t('Show text')}
         </button>
       ) : (
         <button
           className="link-btn small"
           disabled={transcribing}
-          title="Turns speech into text with the AI your company picked. Only when someone asks"
+          title={t('Turns speech into text with the AI your company picked. Only when someone asks')}
           onClick={() => {
             setTranscribing(true);
             setTimeout(() => {
-              setText('Demo transcript: once an AI provider is connected, the real words of this voice note appear here.');
+              setText(t('Demo transcript: once an AI provider is connected, the real words of this voice note appear here.'));
               setShowText(true);
               setTranscribing(false);
             }, 1200);
           }}
         >
-          <Sparkles size={11} /> {transcribing ? 'Transcribing…' : 'Transcribe'}
+          <Sparkles size={11} /> {transcribing ? t('Transcribing…') : t('Transcribe')}
         </button>
       )}
       {showText && text && <p className="voice-text">{text}</p>}
@@ -440,7 +446,7 @@ export function VoiceNote({ voice }: { voice: NonNullable<ChatMessage['voice']> 
 export function DayLine({ at }: { at: string }) {
   return (
     <div className="chat-day">
-      <span>{new Date(at).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+      <span>{fmtWeekdayLong(at)}</span>
     </div>
   );
 }
@@ -449,7 +455,41 @@ export function DayLine({ at }: { at: string }) {
 export function NewLine({ children }: { children?: ReactNode }) {
   return (
     <div className="chat-new" role="separator">
-      <span>{children ?? 'New'}</span>
+      <span>{children ?? t('New')}</span>
     </div>
   );
+}
+
+/** English month names, for periods saved in English (summaries). */
+export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/**
+ * A summary's period in the reader's language. The server writes it in English (src/jobTimes.ts): "Thursday 8 October",
+ * "Week of 28 September" or "September 2026". Anything else shows as it was written.
+ */
+export function periodWords(label: string, at: string) {
+  // Summaries asked for in the app (Conversation's summarize): "Today", "This week", "October 2026 so far".
+  if (label === 'Today') return t('Today');
+  if (label === 'This week') return t('This week');
+  const far = /^(\w+) (\d{4}) so far$/.exec(label);
+  if (far && MONTHS.includes(far[1])) return t('{month} so far', { month: fmtMonth(new Date(Number(far[2]), MONTHS.indexOf(far[1]), 15, 12)) });
+  const posted = new Date(at);
+  const dayOf = (d: string, month: string) => {
+    const mi = MONTHS.indexOf(month);
+    if (mi < 0) return null;
+    const year = mi > posted.getMonth() ? posted.getFullYear() - 1 : posted.getFullYear(); // a period before the summary
+    return new Date(year, mi, Number(d), 12);
+  };
+  let m = /^Week of (\d{1,2}) (\w+)$/.exec(label);
+  if (m) {
+    const d = dayOf(m[1], m[2]);
+    return d ? t('Week of {day}', { day: fmtDate(d, { day: 'numeric', month: 'long' }) }) : label;
+  }
+  m = /^\w+day (\d{1,2}) (\w+)$/.exec(label);
+  if (m) {
+    const d = dayOf(m[1], m[2]);
+    return d ? fmtWeekdayLong(d) : label;
+  }
+  m = /^(\w+) (\d{4})$/.exec(label);
+  if (m && MONTHS.includes(m[1])) return fmtMonth(new Date(Number(m[2]), MONTHS.indexOf(m[1]), 15, 12));
+  return label;
 }
