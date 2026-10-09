@@ -289,6 +289,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .ctb-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .ctb-sub {
     display: flex;
     align-items: center;
@@ -378,6 +383,19 @@
   }
   .chat-push .thread-link {
     min-height: 36px;
+  }
+  .chat-push .thread-link {
+    flex-wrap: nowrap;
+    max-width: 100%;
+  }
+  .chat-push .thread-link .muted {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-push .thread-link b {
+    white-space: nowrap;
   }
 
   /* In a conversation the bottom belongs to the message box: toasts sit just above it. */

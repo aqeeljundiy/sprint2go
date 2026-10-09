@@ -8,6 +8,7 @@ import { DatePicker } from '../ui/DatePicker';
 import { TimePicker } from '../ui/DatePicker';
 import { localDay } from '../../utils';
 import { whenText } from './chatPrefs';
+import { preview } from './Message';
 import { dmOther } from './chatPrefs';
 
 /* Small sheets chat uses in several places: emoji, a time (Send later, Remind me), forwarding, who reacted, asking first. */
@@ -164,7 +165,7 @@ export function ForwardSheet({ m, channels, users, me, onForward, onClose }: { m
         </>
       }
     >
-      <blockquote className="fwd-preview">{m.text || 'A file'}</blockquote>
+      <blockquote className="fwd-preview">{preview(m) || 'A file'}</blockquote>
       <label className="sheet-search">
         <SearchIcon size={16} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="A channel or a person" aria-label="Where to forward" />

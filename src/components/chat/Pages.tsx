@@ -48,6 +48,7 @@ export function ChatPages(p: PagesProps) {
     );
   return (
     <section className={`chat-pane chat-page view-enter page-${p.page}`}>
+      <div className="chat-main">
       <header className="chat-head">
         <div className="th-text">
           <h1>{title}</h1>
@@ -58,6 +59,7 @@ export function ChatPages(p: PagesProps) {
         </button>
       </header>
       <div className="chat-page-body">{body}</div>
+      </div>
     </section>
   );
 }

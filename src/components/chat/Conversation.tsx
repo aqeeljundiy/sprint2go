@@ -399,7 +399,7 @@ export function ChatView(p: ViewProps) {
       list.push({ label: 'Remind me', icon: Clock, hint: saved?.remindAt && !saved.reminded ? `Set for ${whenText(saved.remindAt)}` : undefined, run: () => setSub({ kind: 'remind', m }) });
     }
     if (!mine) list.push({ label: 'Mark unread', icon: MailOpen, run: () => markUnread(m) });
-    list.push({ label: 'Copy link', icon: Link2, run: () => copy(linkTo(m), 'Link copied') });
+    if (!guest) list.push({ label: 'Copy link', icon: Link2, run: () => copy(linkTo(m), 'Link copied') });
     if (m.text) list.push({ label: 'Copy text', icon: Copy, run: () => copy(m.text, 'Text copied') });
     if (!guest && p.onForward && p.channels) list.push({ label: 'Forward', icon: Forward, run: () => setSub({ kind: 'forward', m }) });
     if (!guest && channel.kind === 'channel' && !m.parentId) list.push({ label: m.pinned ? 'Unpin' : 'Pin to the channel', icon: Pin, group: 'end', run: () => p.onPin(m.id) });
@@ -657,7 +657,7 @@ export function ChatView(p: ViewProps) {
 
   /* ---------- Phones: one header row, the messages, the box; details and threads push over it ---------- */
   if (phone && p.onBack) {
-    const subtitle = other ? (p.statuses[other.id] ? `${p.statuses[other.id].emoji} ${p.statuses[other.id].text}` : (other.title ?? '')) : `${members} ${members === 1 ? 'member' : 'members'}`;
+    const subtitle = other ? (p.statuses[other.id] ? `${p.statuses[other.id].emoji} ${p.statuses[other.id].text}` : (other.title ?? '')) : guest ? (channel.topic ?? '') : `${members} ${members === 1 ? 'member' : 'members'}`;
     const detailRows: { id: Exclude<Tab, 'messages'> | 'people'; label: string; hint?: string }[] = [
       ...(other ? [] : [{ id: 'people' as const, label: 'People', hint: channel.guests?.length ? `${channel.members.length} on the team, ${channel.guests.length} ${channel.guests.length === 1 ? 'guest' : 'guests'}` : undefined }]),
       { id: 'materials', label: 'Files and links' },
@@ -670,7 +670,6 @@ export function ChatView(p: ViewProps) {
     return (
       <PushScreen
         className="chat-push"
-        backLabel="Chat"
         onBack={p.onBack}
         title={
           <button type="button" className="chan-title-btn" onClick={() => !guest && setDetails('menu')} aria-label={guest ? title : `${title}: details`} disabled={!!guest}>
@@ -683,7 +682,7 @@ export function ChatView(p: ViewProps) {
             <span className="ctb-text">
               <span className="ctb-name">
                 {channel.category === 'shared' && !other ? <Handshake size={15} /> : channel.private && !other ? <Lock size={14} /> : null}
-                {title}
+                <span className="ctb-label">{title}</span>
                 {muted && <BellOff size={13} className="ctb-muted" aria-label="Muted" />}
               </span>
               <span className="ctb-sub">
@@ -718,7 +717,7 @@ export function ChatView(p: ViewProps) {
         <div className="huddle-dock" ref={dockRef} />
         {list}
         {details && !guest && (
-          <PushScreen title={other ? other.name : title} backLabel={title.length > 14 ? 'Back' : title} onBack={() => setDetails(null)} className="chat-details">
+          <PushScreen title="Details" backLabel={title.length > 14 ? 'Back' : title} onBack={() => setDetails(null)} className="chat-details">
             <div className="cd-hero">
               {other ? <Avatar person={other} size={56} /> : <span className="cd-icon">{channel.private ? <Lock size={24} /> : channel.category === 'shared' ? <Handshake size={24} /> : <Hash size={24} />}</span>}
               <strong>{other ? other.name : title}</strong>

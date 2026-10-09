@@ -67,7 +67,7 @@ import type { DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
 import { ChatPages } from './components/chat/Pages';
 import { useDockRef } from './components/chat/huddleDock';
-import { isMutedValue } from './components/chat/chatPrefs';
+import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
 import { chanName } from './components/chat/Sheets';
 import { preview as msgPreview } from './components/chat/Message';
 import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
@@ -2225,7 +2225,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const target = to.channelId ?? (to.userId ? dmWith(to.userId) : null);
     const from = channels.find((c) => c.id === m.channelId);
     if (!target || !from) return;
-    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'A guest') : m.userId === user.id ? 'You' : (allUsers.find((u) => u.id === m.userId)?.name ?? 'Someone');
+    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'A guest') : (allUsers.find((u) => u.id === m.userId)?.name ?? m.authorName ?? 'Someone');
     // Next tick: a brand-new DM has to exist before its first message.
     setTimeout(() => {
       sendChatTo(target, { text: note, forwarded: { channelId: m.channelId, messageId: m.id, userId: m.userId, who, where: chanName(from, allUsers, user.id), text: m.text || msgPreview(m), at: m.at } });
@@ -4829,6 +4829,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {sharedPreview && meetings.some((m) => m.id === sharedPreview) && (
         <SharedPage m={meetings.find((m) => m.id === sharedPreview)!} brand={ws.name} tasks={wsTasks.filter((t) => t.meetingId === sharedPreview)} users={members} onClose={() => setSharedPreview(null)} />
       )}
+      <ChatPrefsHost me={user.id} />
       {huddleChannel?.huddle?.members.includes(user.id) && <Huddle key={huddleChannel.id} channel={huddleChannel} users={allUsers} me={user.id} onLeave={leaveHuddle} onOpenChannel={() => openChannel(huddleChannel.id)} />}
       {askScope && (
         <Assistant

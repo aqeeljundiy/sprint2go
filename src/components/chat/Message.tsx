@@ -86,14 +86,15 @@ export function Text({ text, users }: { text: string; users: User[] }) {
 }
 
 /** A plain one-line version of a message, for lists and previews. */
+const plain = (t: string) => t.replace(/\s+/g, ' ').replace(/(^|\s)[*_~`]+|[*_~`]+(?=\s|$|[.,!?])/g, '$1').trim();
 export function preview(m: ChatMessage) {
-  if (m.text) return m.text.replace(/\s+/g, ' ').replace(/[*_~`]/g, '').trim();
+  if (m.text) return plain(m.text);
   if (m.voice) return 'Voice note';
   if (m.files?.length) return m.files.length === 1 ? m.files[0].name : `${m.files.length} files`;
   if (m.taskId) return 'Shared a task';
   if (m.ref) return m.ref.title;
   if (m.poll) return m.poll.question;
-  if (m.forwarded) return m.forwarded.text;
+  if (m.forwarded) return plain(m.forwarded.text);
   return '';
 }
 
@@ -234,7 +235,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
         {m.forwarded && (
           <div className="cm-fwd">
             <span className="cm-fwd-head">
-              <Forward size={12} aria-hidden /> {m.forwarded.who} in {m.forwarded.where}
+              <Forward size={12} aria-hidden /> {m.forwarded.userId === ctx.me ? 'You' : m.forwarded.who} in {m.forwarded.where}
             </span>
             <Text text={m.forwarded.text} users={ctx.users} />
           </div>

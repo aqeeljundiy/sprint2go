@@ -515,6 +515,10 @@
 .nav-live {
   color: var(--ok, #0f9d6b);
 }
+/* A folded sidebar shows icons only. */
+.sidebar.collapsed :is(.nav-draft, .nav-live, .nav-muted, .chat-live-dot) {
+  display: none;
+}
 .nav-row.muted .nav-item {
   color: var(--text-3);
 }
@@ -657,11 +661,6 @@
 
 /* ---------- Pages: Catch up, Threads, Drafts and sent, Saved ---------- */
 
-.chat-pane.chat-page {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
 .chat-page .chat-head {
   display: flex;
   align-items: center;

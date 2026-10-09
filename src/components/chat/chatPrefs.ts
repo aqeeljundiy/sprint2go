@@ -60,12 +60,46 @@ export function shortTime(iso: string) {
   return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
 }
 
+type Setters = {
+  setRead: (f: (r: Record<string, string>) => Record<string, string>) => void;
+  setDrafts: (f: (d: Record<string, Draft>) => Record<string, Draft>) => void;
+  setSaved: (f: (s: SavedItem[]) => SavedItem[]) => void;
+  setMuted: (f: (m: Record<string, string>) => Record<string, string>) => void;
+  setTiles: (t: Tiles) => void;
+};
+/** The setters of the one instance that's always mounted (ChatPrefsHost), by person. */
+const hosts = new Map<string, Setters>();
+
+/**
+ * Keeps each person's chat state saved even when the screen that changed it is closing: a draft put away as you go
+ * back, a conversation marked unread on the way out. (A setting is saved by the component holding it, so one that
+ * closes in the same moment would lose the change.) App.tsx mounts it once.
+ */
+export function ChatPrefsHost({ me }: { me: string }) {
+  const [, setRead] = usePersisted<Record<string, string>>(`s2g-read:${me}`, {});
+  const [, setDrafts] = usePersisted<Record<string, Draft>>(`s2g-chat-typed:${me}`, {});
+  const [, setSaved] = usePersisted<SavedItem[]>(`s2g-chat-saved:${me}`, []);
+  const [, setMuted] = usePersisted<Record<string, string>>(`s2g-chat-muted:${me}`, {});
+  const [, setTiles] = usePersisted<Tiles>(`s2g-chat-tiles:${me}`, DEFAULT_TILES);
+  useEffect(() => {
+    hosts.set(me, { setRead, setDrafts, setSaved, setMuted, setTiles });
+    return () => void hosts.delete(me);
+  }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 export function useChatState(me: string) {
-  const [read, setRead] = usePersisted<Record<string, string>>(`s2g-read:${me}`, {});
-  const [drafts, setDrafts] = usePersisted<Record<string, Draft>>(`s2g-chat-typed:${me}`, {});
-  const [saved, setSaved] = usePersisted<SavedItem[]>(`s2g-chat-saved:${me}`, []);
-  const [muted, setMuted] = usePersisted<Record<string, string>>(`s2g-chat-muted:${me}`, {});
-  const [tilesRaw, setTiles] = usePersisted<Tiles>(`s2g-chat-tiles:${me}`, DEFAULT_TILES);
+  const [read, ownRead] = usePersisted<Record<string, string>>(`s2g-read:${me}`, {});
+  const [drafts, ownDrafts] = usePersisted<Record<string, Draft>>(`s2g-chat-typed:${me}`, {});
+  const [saved, ownSaved] = usePersisted<SavedItem[]>(`s2g-chat-saved:${me}`, []);
+  const [muted, ownMuted] = usePersisted<Record<string, string>>(`s2g-chat-muted:${me}`, {});
+  const [tilesRaw, ownTiles] = usePersisted<Tiles>(`s2g-chat-tiles:${me}`, DEFAULT_TILES);
+  const host = () => hosts.get(me);
+  const setRead: Setters['setRead'] = (f) => (host()?.setRead ?? ownRead)(f);
+  const setDrafts: Setters['setDrafts'] = (f) => (host()?.setDrafts ?? ownDrafts)(f);
+  const setSaved: Setters['setSaved'] = (f) => (host()?.setSaved ?? ownSaved)(f);
+  const setMuted: Setters['setMuted'] = (f) => (host()?.setMuted ?? ownMuted)(f);
+  const setTiles = (t: Tiles) => (host()?.setTiles ?? ownTiles)(t);
   // Tiles added later show up for people who saved an order before them.
   const tiles: Tiles = { order: [...tilesRaw.order.filter((t) => t in TILE_NAMES), ...DEFAULT_TILES.order.filter((t) => !tilesRaw.order.includes(t))], hidden: tilesRaw.hidden ?? [] };
   return {
