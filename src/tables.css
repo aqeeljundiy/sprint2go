@@ -94,6 +94,15 @@
   color: var(--accent);
   background: var(--accent-soft);
 }
+/* A middling pane: the quieter tools keep their icons and lose their words (they say them on hover). */
+@container (max-width: 1080px) {
+  .tb-bar .tb-quiet .lbl {
+    display: none;
+  }
+  .tb-search input {
+    width: 110px;
+  }
+}
 @container (max-width: 767px) {
   .tb-bar .ghost-btn .lbl {
     display: none;
@@ -302,6 +311,7 @@
   grid-area: 1 / 1;
 }
 .tb-sel .tb-n {
+  pointer-events: none; /* it sits over the checkbox; the click is the checkbox's */
   color: var(--text-3);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
@@ -1063,10 +1073,10 @@
 
 /* ---------- table cards (Tables home, a project's Tables tab) ---------- */
 
-.tb-group + .tb-group {
+.tb-home-group + .tb-home-group {
   margin-top: 22px;
 }
-.tb-group-head {
+.tb-home-group-head {
   margin: 0 0 10px;
   font-size: 12px;
   font-weight: 600;
@@ -1121,23 +1131,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-@media (max-width: 767px) {
-  .tb-bar {
-    padding: 0 12px 10px;
-  }
-  .tb-board {
-    padding: 12px;
-    scroll-snap-type: x mandatory;
-  }
-  .tb-col {
-    width: min(300px, 82vw);
-    scroll-snap-align: start;
-  }
-  .tb-rd-line {
-    grid-template-columns: 1fr;
-    gap: 2px;
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .tb-tr,
@@ -1184,25 +1177,6 @@
   min-height: 32px;
 }
 
-/* Phones: the table keeps its name in the header, with a back arrow to the list of tables. */
-.tb-back {
-  display: none !important;
-}
-@media (max-width: 767px) {
-  .tasks-head.tb-head-bar .th-text {
-    display: flex !important;
-    flex: 1;
-  }
-  .tb-head-bar .tb-badge {
-    display: none;
-  }
-  .tb-back {
-    display: grid !important;
-  }
-  .tb-title {
-    font-size: 17px;
-  }
-}
 .tb-home-head .th-text {
   display: block !important;
 }
@@ -1642,12 +1616,6 @@
 .tb-imp-sum {
   margin-right: 8px;
 }
-@media (max-width: 767px) {
-  .tb-imap-row {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
-}
 
 /* ---------- sharing with guests ---------- */
 
@@ -1722,14 +1690,6 @@
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 2px 8px;
   font-size: 13px;
-}
-@media (max-width: 767px) {
-  .tb-act-row {
-    flex-wrap: wrap;
-  }
-  .tb-act-row .tb-native {
-    min-width: 120px;
-  }
 }
 
 /* Data coming in, as steps: address, test, match, turn on. The current step stands out; done ones get a tick. */
@@ -1855,25 +1815,6 @@
 }
 .tb-older {
   margin-top: 4px;
-}
-@media (max-width: 600px) {
-  .tb-maptable-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    row-gap: 2px;
-    padding: 8px 0;
-  }
-  .tb-maptable-row.head {
-    display: none;
-  }
-  .tb-maptable-row .tb-map-sample {
-    grid-column: 1;
-    grid-row: 2;
-    font-size: 12px;
-  }
-  .tb-maptable-row > span:last-child {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-  }
 }
 .tb-on-dot {
   width: 8px;
@@ -2495,16 +2436,6 @@
   align-content: start;
   gap: 14px;
 }
-@media (max-width: 600px) {
-  .tb-gallery {
-    padding: 12px 16px 20px;
-    gap: 10px;
-  }
-  .tb-gadd {
-    min-height: 64px;
-    grid-auto-flow: column;
-  }
-}
 .tb-gcard {
   display: grid;
   align-content: start;
@@ -2582,14 +2513,6 @@
 }
 .tb-cal-note {
   white-space: nowrap;
-}
-@media (max-width: 600px) {
-  .tb-cal-head .spacer {
-    display: none;
-  }
-  .tb-cal-note {
-    flex-basis: 100%;
-  }
 }
 .tb-cal-head strong {
   min-width: 150px;
@@ -2690,35 +2613,6 @@
 }
 .tb-cal-more {
   padding: 0 6px;
-}
-@media (max-width: 767px) {
-  .tb-cal-day {
-    min-height: 64px;
-    padding: 4px;
-  }
-  .tb-cal-item {
-    font-size: 10.5px;
-    padding: 2px 4px;
-  }
-  .tb-list-row {
-    flex-wrap: wrap;
-    gap: 4px 12px;
-  }
-  .tb-list-row > strong {
-    flex-basis: 100%;
-  }
-  .drawer.tb-drawer.full {
-    width: 100% !important;
-    height: 100%;
-    margin: 0;
-    border-radius: 0;
-  }
-  .drawer.tb-drawer.full .drawer-body {
-    padding: 16px;
-  }
-  .tb-rd-full {
-    display: none !important; /* a phone's panel already fills the screen */
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .tb-list-row,
@@ -2827,11 +2721,6 @@
 .tb-card-empty {
   grid-column: 1 / -1;
 }
-@media (max-width: 600px) {
-  .tb-board {
-    padding: 12px 16px 16px;
-  }
-}
 
 /* ---------- the row page: arrange fields like Notion ---------- */
 
@@ -2913,14 +2802,6 @@
   flex-wrap: wrap;
   padding-top: 8px;
 }
-@media (max-width: 767px) {
-  .tb-rd-grip {
-    display: none;
-  }
-  .tb-rd-folded > .link-btn {
-    margin-left: 0;
-  }
-}
 
 /* A linked row is a link: it reads as one on hover. */
 .tb-chip.linked.go {
@@ -2971,4 +2852,966 @@
   background: var(--surface);
   box-shadow: 0 0 0 1.5px var(--accent);
   outline: none;
+}
+
+/* ===================== Round 3: views as tabs, own filters, colours, templates, timeline ===================== */
+
+/* View tabs: as many as fit, the rest under "N more". */
+.tb-viewtabs {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tb-viewtabs > .tb-views {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+.tb-views-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  white-space: nowrap;
+  height: 0;
+  overflow: hidden;
+}
+.tb-vtab-m,
+.tb-views > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.tb-vtab-chev {
+  margin-left: -2px;
+  opacity: 0.6;
+}
+.tb-vmore {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--tab-h, 32px);
+  padding: 0 10px;
+  border-radius: 9999px;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tb-vmore:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.tb-viewtabs > .tb-add-view {
+  flex: none;
+  color: var(--text-3);
+}
+/* A view's menu: show it as another kind, in one row of small tiles. */
+.tb-view-kinds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+.tb-menu .tb-view-kinds > button {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.tb-menu .tb-view-kinds > button.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* New row, with templates under the ▾. */
+.tb-split {
+  display: inline-flex;
+  flex: none;
+}
+.tb-split > .tb-add-row:has(+ .tb-add-more) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.tb-split > .tb-add-more {
+  padding: 0 8px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: 1px;
+}
+
+/* "Just for you until you save them for everyone." */
+.tb-mine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 20px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+.tb-mine > span {
+  flex: 1 1 auto;
+}
+.link-btn.strong {
+  font-weight: 650;
+}
+
+/* The filter: quick values with counts, then conditions with groups. */
+.tb-quick {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line, var(--border));
+}
+.tb-quick-sec {
+  display: grid;
+  gap: 6px;
+}
+.tb-quick-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.tb-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tb-qchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+.tb-qchip:hover {
+  background: var(--hover);
+}
+.tb-qchip small {
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.tb-qchip.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.tb-qchip.on small {
+  color: inherit;
+}
+.tb-cond-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  margin-top: 4px;
+}
+.tb-cond-head .tb-filter-mode {
+  margin: 0;
+}
+.tb-fgroup {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 6px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.tb-fgroup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tb-fgroup-head .tb-filter-lead {
+  min-width: 52px;
+}
+.tb-fgroup-head .icon-btn {
+  margin-left: auto;
+}
+.tb-fgroup .tb-filter {
+  background: transparent;
+}
+.tb-fgroup-add {
+  justify-self: start;
+}
+.tb-filters-foot .tb-clear-all {
+  margin-left: auto;
+}
+
+/* Group, then group again. */
+.tb-group-edit {
+  display: grid;
+  gap: 10px;
+  padding: 4px 2px 6px;
+}
+.tb-ge-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.tb-group-edit > p {
+  margin: 0;
+}
+
+/* Colour rules. */
+.tb-crule {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line, var(--border));
+}
+.tb-crule-look {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding-left: 64px;
+}
+/* Tints from colour rules: a soft wash, the same in light and dark. */
+.tb-tr.tinted,
+.tb-tr.tinted .tb-sel,
+.tb-tr.tinted .tb-first,
+.tb-tr.tinted .tb-pin-wrap.tb-pinned {
+  background: color-mix(in srgb, var(--tint) 11%, var(--surface));
+}
+.tb-tr.tinted:hover,
+.tb-tr.tinted:hover .tb-sel,
+.tb-tr.tinted:hover .tb-first {
+  background: color-mix(in srgb, var(--tint) 17%, var(--surface));
+}
+.tb-tr.tinted .tb-first {
+  box-shadow: inset 3px 0 0 var(--tint);
+}
+.tb-cell.tinted {
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+}
+[data-tinted] {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+}
+.tb-card.tinted,
+.tb-list-row.tinted {
+  box-shadow: inset 3px 0 0 var(--tint), 0 0 0 1px var(--border);
+  background: color-mix(in srgb, var(--tint) 7%, var(--surface));
+}
+.tb-list-row.tinted {
+  box-shadow: inset 3px 0 0 var(--tint);
+}
+
+/* A column's description: an ⓘ by its name (the words show on hover and in its menu). */
+.tb-th-info {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-3);
+  cursor: help;
+}
+
+/* Sub-groups: a second heading, set in under the first. */
+.tb-group-row.sub {
+  padding: 6px 8px 2px 30px;
+}
+.tb-group-row.sub .tb-group-toggle {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.tb-group-toggle.sub {
+  margin-left: 22px;
+  font-size: 12.5px;
+}
+.tb-list-sub + .tb-list-sub {
+  margin-top: 2px;
+}
+
+/* Board: swimlanes, one under the other, each with the columns. */
+.tb-board-wrap.laned {
+  overflow: auto;
+}
+.tb-lanes {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 8px 0 20px;
+}
+.tb-lane-head {
+  position: sticky;
+  left: 12px;
+  margin: 6px 12px 0;
+}
+.tb-board-wrap.laned .tb-board {
+  overflow: visible;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.tb-card-wrap {
+  display: grid;
+}
+.tb-card.on {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.tb-card-pill {
+  justify-self: start;
+  cursor: pointer;
+}
+.tb-col-plus {
+  color: var(--text-3);
+}
+
+/* The row page: the rows before and after, pinned fields, sections, a field's description. */
+.tb-rd-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+.tb-rd-nav small {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.tb-rd-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.tb-rd-labelcell {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+}
+.tb-rd-desc {
+  display: block;
+  padding: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+.tb-rd-pinned {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.tb-rd-main {
+  margin: 0 0 12px;
+}
+.tb-rd-main .tb-run {
+  padding: 8px 14px;
+  font-size: 13.5px;
+}
+.tb-rd-section {
+  margin-top: 14px;
+}
+.tb-rd-section h4,
+.tb-set-h {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.tb-set-h {
+  margin-top: 14px;
+}
+.tb-set-h:first-child {
+  margin-top: 0;
+}
+
+/* Row templates. */
+.tb-tpl-modal,
+.tb-layout-modal {
+  width: min(640px, calc(100vw - 32px));
+}
+.tb-tpl {
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--border);
+  margin-bottom: 10px;
+  transition: box-shadow 0.15s ease;
+}
+.tb-tpl.open {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.tb-tpl-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 14px;
+  text-align: left;
+  border-radius: 12px;
+}
+.tb-tpl-head small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.tb-tpl-body {
+  display: grid;
+  gap: 10px;
+  padding: 2px 14px 14px;
+}
+.tb-tpl-val {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.tb-repeat {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.tb-repeat .segmented {
+  justify-self: start;
+}
+.tb-repeat-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.tb-repeat p {
+  margin: 0;
+}
+.tb-tpl-actions {
+  display: flex;
+  gap: 14px;
+}
+.tb-tpl-add {
+  justify-self: start;
+}
+
+/* Row page layout. */
+.tb-sec-edit {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.tb-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tb-lay-sec {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+.tb-lay-sec > p,
+.tb-lay-sec > .tb-set-h {
+  margin: 0;
+}
+.tb-lay-sec > .tab-edit-list:empty {
+  display: none;
+}
+.tb-lay-sec > .link-btn {
+  justify-self: start;
+}
+.modal-body .tb-sec-head input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--text);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.modal-body .tb-sec-head input:hover {
+  background: var(--hover);
+}
+.modal-body .tb-sec-head input:focus {
+  outline: none;
+  background: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.tb-sec-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.tb-sec-fields .tb-chip button {
+  display: inline-grid;
+  place-items: center;
+  margin-left: 2px;
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* Picking several rows: a bar that floats over the bottom of the table. */
+.tb-pane {
+  position: relative;
+}
+.tb-bulkbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 6px 8px 6px 6px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--border);
+  transform: translateX(-50%);
+  animation: tb-bulk-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes tb-bulk-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+}
+.tb-bulk-n {
+  padding: 0 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tb-bulkbar .spacer {
+  flex: 0 0 8px;
+}
+
+/* Editors in a sheet (phones), and the same sheet as a panel on a computer (changing many rows at once). */
+.tb-sheet-field {
+  display: grid;
+  gap: 6px;
+  padding: 2px 8px 8px;
+}
+.tb-sheet-field input,
+.tb-sheet-text {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.tb-sheet-text {
+  margin: 2px 8px 8px;
+  width: calc(100% - 16px);
+  min-height: 180px;
+  resize: vertical;
+  line-height: 1.45;
+}
+.tb-sheet-field input:focus,
+.tb-sheet-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.tb-sheet-field small {
+  padding-left: 4px;
+}
+.tb-choice .tb-chip {
+  font-size: 14px;
+  padding: 3px 10px;
+}
+.tb-date-hidden {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.tb-stars-big {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 8px 16px;
+}
+.tb-stars-big button {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  color: var(--text-3);
+  transition: color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+.tb-stars-big button.on {
+  color: #f59e0b;
+}
+.tb-stars-big button.on svg {
+  fill: currentColor;
+}
+.tb-stars-big button:active {
+  transform: scale(0.92);
+}
+.tb-file-row-lg {
+  min-height: 52px;
+  padding: 4px 12px;
+}
+.tb-file-row-lg img {
+  width: 40px;
+  height: 40px;
+}
+.tb-pick-empty {
+  padding: 8px 12px;
+  margin: 0;
+}
+
+/* Timeline: names on the left, bars on a line of days. */
+.tb-tl-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tb-tl-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+}
+.tb-tl {
+  --tl-name: 220px;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-size: 13px;
+}
+.tb-tl-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: var(--tl-name) calc(var(--dw) * var(--days));
+  width: max-content;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.tb-tl-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px 8px 20px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-2);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.tb-tl-months {
+  position: relative;
+  height: 24px;
+}
+.tb-tl-months span {
+  position: absolute;
+  top: 0;
+  height: 24px;
+  padding-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  border-left: 1px solid var(--border);
+  white-space: nowrap;
+}
+/* The month's name stays in view at the left while its days scroll by. */
+.tb-tl-months b {
+  position: sticky;
+  left: calc(var(--tl-name) + 8px);
+  display: inline-block;
+  padding: 0 8px;
+  font-weight: 600;
+}
+.tb-tl-days {
+  display: grid;
+  grid-template-columns: repeat(var(--days), var(--dw));
+  height: 22px;
+}
+.tb-tl-days span {
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.tb-tl-days span.wkend {
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+.tb-tl-days span.today {
+  color: #fff;
+  font-weight: 700;
+  background: var(--accent);
+  border-radius: 6px;
+}
+.tb-tl-body {
+  position: relative;
+  width: max-content;
+  padding-bottom: 24px;
+}
+.tb-tl-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+.tb-tl-row {
+  display: grid;
+  grid-template-columns: var(--tl-name) calc(var(--dw) * var(--days));
+  height: 40px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  animation: tb-row-in 0.22s ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 12ms);
+}
+.tb-tl-row:hover {
+  background: var(--surface-2);
+}
+.tb-tl-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 20px;
+  font-weight: 550;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  transition: color 0.15s ease;
+}
+.tb-tl-row:hover .tb-tl-name {
+  background: var(--surface-2);
+}
+.tb-tl-name:hover {
+  color: var(--accent);
+}
+.tb-tl-track {
+  position: relative;
+  cursor: copy;
+}
+.tb-tl-track:has(.tb-tl-bar) {
+  cursor: default;
+}
+.tb-tl-bar {
+  --c: var(--accent);
+  position: absolute;
+  top: 7px;
+  height: 26px;
+  min-width: 10px;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--c) 22%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent);
+  color: var(--text);
+  cursor: grab;
+  touch-action: none;
+  transition: box-shadow 0.15s ease, background 0.15s ease;
+  user-select: none;
+}
+.tb-tl-bar:hover {
+  background: color-mix(in srgb, var(--c) 30%, var(--surface));
+}
+.tb-tl-bar.dragging {
+  cursor: grabbing;
+  box-shadow: inset 0 0 0 1.5px var(--c), 0 6px 18px -8px rgba(0, 0, 0, 0.35);
+}
+.tb-tl-label {
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A bar too short for its name: the name sits just after it. */
+.tb-tl-bar.short .tb-tl-label {
+  position: absolute;
+  left: calc(100% + 6px);
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.tb-tl-grip {
+  flex: none;
+  align-self: stretch;
+  width: 8px;
+  cursor: ew-resize;
+  border-radius: 8px;
+}
+.tb-tl-grip:hover {
+  background: color-mix(in srgb, var(--c) 40%, transparent);
+}
+.tb-tl-add {
+  position: sticky;
+  left: 0;
+}
+
+/* The list of tables: each group's name over its cards (not in a narrow column beside them). */
+.tb-home-group {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-bulkbar,
+  .tb-tl-row {
+    animation: none;
+  }
+}
+
+/* Long filters and colour rules scroll inside their popover instead of running off the screen. */
+.pop:not(.pop-sheet) > .tb-filters {
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Template and layout dialogs: the body scrolls, Save stays in view; values inside a card are plain fields. */
+.modal.tb-tpl-modal,
+.modal.tb-layout-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tb-tpl-modal > .modal-body,
+.tb-layout-modal > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tb-tpl-body .tb-rd-input,
+.tb-tpl-body .tb-rd-text {
+  border-color: transparent;
+  background: transparent;
+  padding: 4px 8px;
+  margin-left: -8px;
+}
+.tb-tpl-body .tb-rd-input:hover,
+.tb-tpl-body .tb-rd-text:hover {
+  background: var(--hover);
+}
+.tb-tpl-body .tb-rd-input:focus,
+.tb-tpl-body .tb-rd-text:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+.tb-tpl-body .tb-rd-line {
+  min-height: 36px;
+}
+.tb-repeat-row .pick-select,
+.tb-repeat-row .sel {
+  width: auto;
+  flex: none;
+}
+.tb-tpl-actions {
+  justify-content: flex-start;
+}
+.tb-tpl-actions > * {
+  flex: none;
+}
+.tb-tpl-modal .tb-tpl-body input.tb-rd-input,
+.tb-tpl-modal .tb-tpl-body textarea.tb-rd-text {
+  border-color: transparent;
+  background: transparent;
+}
+.tb-tpl-modal .tb-tpl-body input.tb-rd-input:hover,
+.tb-tpl-modal .tb-tpl-body textarea.tb-rd-text:hover {
+  background: var(--hover);
+}
+.tb-tpl-modal .tb-tpl-body input.tb-rd-input:focus,
+.tb-tpl-modal .tb-tpl-body textarea.tb-rd-text:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+.tb-repeat-row > * {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+.tb-tpl-actions > .link-btn {
+  margin: 0;
+}
+
+/* One toolbar row on a computer too: the view tabs take what's left (the rest go under "N more"). */
+.tb-bar {
+  flex-wrap: nowrap;
+}
+.tb-bar > :not(.tb-viewtabs) {
+  flex: none;
+}
+.tb-bar > .tb-viewtabs {
+  flex: 1 1 0;
+  min-width: 120px;
+}
+/* A narrower pane still: every tool down to its icon, so the view tabs keep their room. */
+@container (max-width: 900px) {
+  .tb-bar .ghost-btn .lbl,
+  .tb-bar .tb-add-row .lbl {
+    display: none;
+  }
+  .tb-bar .tb-search input {
+    width: 84px;
+  }
+}
+/* While rows are picked, the last ones can still scroll clear of the floating bar. */
+.tb-pane:has(> .tb-bulkbar:not(.phone)) .tb-grid,
+.tb-pane:has(> .tb-bulkbar:not(.phone)) .tb-crd-scroll,
+.tb-pane:has(> .tb-bulkbar:not(.phone)) .tb-list {
+  padding-bottom: 88px;
 }

@@ -1337,12 +1337,14 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       return { ...before, members, requests } as db.Doc;
     }
     if (coll === 'tables' && before && !p.editTables && before.createdBy !== me) {
-      // Rows and new choices yes; the columns themselves, automations and sharing stay as they were.
+      // Rows and new choices yes; the columns themselves, the views everyone sees (their filters and sorts too: each
+      // person's own are kept in their prefs), the row page's layout, row templates, automations and sharing stay as
+      // they were.
       const fields = (before.fields ?? []).map((bf: any) => {
         const nf = ((d as any).fields ?? []).find((x: any) => x.id === bf.id);
         return nf && nf.type === bf.type ? { ...bf, options: nf.options ?? bf.options } : bf;
       });
-      return { ...d, fields, rules: before.rules, intake: before.intake, signingSecret: before.signingSecret, share: before.share } as db.Doc;
+      return { ...d, fields, views: before.views, page: before.page, templates: before.templates, rules: before.rules, intake: before.intake, signingSecret: before.signingSecret, share: before.share } as db.Doc;
     }
     return d;
   };
@@ -1526,7 +1528,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       const d = ok[i] as any;
       // listening: once a test arrives the server switches it off; an older copy can't switch it back on unless it asks afresh.
       const listening = !!d.intake?.listening && String(d.intake?.listenFrom ?? '') > String(before.intake?.testAt ?? '');
-      ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
+      ok[i] = { ...d, log: before.log, ruleRuns: before.ruleRuns, templateRuns: before.templateRuns, turns: before.turns, intake: d.intake ? { ...d.intake, sample: before.intake?.sample, testAt: before.intake?.testAt, listening, mapping: { ...(before.intake?.mapping ?? {}), ...(d.intake.mapping ?? {}) } } : d.intake } as db.Doc;
     }
   const leavers = coll === 'workspaces' ? leftCompany(ok) : [];
   // Public holidays switched on, off or to another country.

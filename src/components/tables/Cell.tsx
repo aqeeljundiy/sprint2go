@@ -199,7 +199,7 @@ export function RatingInput({ v, max, onSave }: { v: CellValue | undefined; max:
 
 const MAX_FILE = 3 * 1024 * 1024;
 /** A picked file as a small stored copy: pictures shrunk to 1600px, anything else up to 3 MB. */
-async function toRef(file: File): Promise<FileRef> {
+export async function toRef(file: File): Promise<FileRef> {
   // Pictures are shrunk to 1600px first; everything then goes to the server (a data URL in the demo).
   let blob: Blob = file;
   let type = file.type || 'application/octet-stream';
@@ -329,7 +329,7 @@ export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className,
       type={f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text'}
       inputMode={f.type === 'number' || f.type === 'money' ? 'decimal' : f.type === 'phone' ? 'tel' : undefined}
       value={shown}
-      placeholder={f.type === 'money' ? (f.currency ?? 'IDR') : undefined}
+      placeholder={f.type === 'money' ? (autoFocus ? (f.currency ?? 'IDR') : 'Empty') : undefined}
       onChange={(e) => setText(e.target.value)}
       onFocus={() => ((finished.current = false), setFocused(true))}
       onBlur={() => (setFocused(false), commit())}
