@@ -43,3 +43,146 @@
     background: var(--accent-soft);
   }
 }
+
+/* ---------- Onboarding (Onboarding.tsx) ---------- */
+
+/* The finished preview: a short column from the top with a normal button, not a stretched one in the middle. */
+.ob-done {
+  align-content: start;
+}
+.ob-done .primary-btn {
+  align-self: start;
+}
+
+@media (max-width: 767px) {
+  .onboard {
+    padding: 0;
+  }
+  .onboard-card {
+    max-height: 100dvh;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+  .onboard-body {
+    padding: 18px 16px 24px;
+  }
+  .ob-done {
+    padding-top: 56px;
+  }
+
+  /* The steps: numbers, with only the current step named, then Close at the end of the same row. The preview note
+     goes on its own line under them, so nothing sits on top of anything. */
+  .onboard-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    row-gap: 4px;
+    padding: max(8px, env(safe-area-inset-top)) 6px 8px 16px;
+  }
+  .ob-steps {
+    grid-column: 1;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .ob-steps > span {
+    flex: none;
+    gap: 6px;
+  }
+  .ob-steps > span:not(.on) .ob-step-name {
+    display: none;
+  }
+  .ob-steps > span.on {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 14px;
+  }
+  .ob-steps .on .ob-step-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ob-steps b {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+  .onboard-head > .ob-close {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .ob-preview-tag {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+    margin: 0;
+  }
+
+  /* Brand colours (here and in Settings): one row of nine, no lonely swatch on a second line. */
+  .accent-row {
+    gap: 6px;
+  }
+
+  /* Invite your team: email on top with Remove beside it, then name and role. */
+  .ob-person {
+    grid-template-columns: minmax(0, 1fr) auto var(--tap);
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .ob-person > input:nth-child(2) {
+    grid-column: 1 / 3;
+    grid-row: 1;
+  }
+  .ob-person > .icon-btn {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .ob-person > input:nth-child(1) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .ob-person > .sel:nth-child(3) {
+    grid-column: 2 / 4;
+    grid-row: 2;
+  }
+  .ob-person > .sel:nth-child(4) {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  /* Choice chips (the email provider here and in Settings, out of office): big enough to tap. */
+  .aw-tones > button {
+    min-height: 40px;
+  }
+
+  /* The email setup guide's steps (here and in Settings, Email delivery): numbers, and the current step by name. */
+  .esg-steps {
+    overflow: visible;
+  }
+  .esg-steps button {
+    flex: none;
+    min-height: var(--tap);
+    padding: 0 12px;
+  }
+  .esg-steps button:not(.on) {
+    width: var(--tap);
+    padding: 0;
+    justify-content: center;
+  }
+  .esg-steps button:not(.on) span {
+    display: none;
+  }
+  .esg-steps button.on {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .esg-steps button.on span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

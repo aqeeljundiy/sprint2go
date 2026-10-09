@@ -586,21 +586,6 @@ h4,
   .access-types .segmented > button {
     flex: none;
   }
-  /* Onboarding: the steps stay one row; the preview note goes under them instead of breaking the row in three. */
-  .onboard-head {
-    flex-wrap: wrap;
-    row-gap: 8px;
-  }
-  .ob-steps {
-    flex: 1;
-    min-width: 0;
-    flex-wrap: nowrap;
-    gap: 8px;
-  }
-  .ob-preview-tag {
-    order: 3;
-    margin: 0;
-  }
   /* A setting with a dropdown: the words get the full width, the dropdown goes under them (not a squeezed column). */
   .set-row:has(> .sel) {
     flex-direction: column;

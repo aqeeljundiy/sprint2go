@@ -189,10 +189,7 @@
     flex-wrap: wrap;
   }
 
-  /* Choice chips (Email delivery's provider, out of office) and the text links between paragraphs: big enough to tap. */
-  .settings-content .aw-tones > button {
-    min-height: 40px;
-  }
+  /* The text links between paragraphs: big enough to tap. */
   .settings-content .link-btn {
     position: relative;
   }
