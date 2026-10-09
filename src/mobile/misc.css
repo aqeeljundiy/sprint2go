@@ -356,4 +356,7 @@
   .is-leaving.toast.quiet {
     animation: none !important;
   }
+  .client-app .view-as-pill {
+    animation: none;
+  }
 }
