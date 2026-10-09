@@ -221,6 +221,16 @@ const ticketFiles = (list: unknown, userId: string) =>
     .filter((a: any) => a && typeof a.url === 'string' && db.fileInfo(/^\/api\/files\/([a-f0-9]{32})$/.exec(a.url)?.[1] ?? '')?.by === userId)
     .slice(0, 10)
     .map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: String(a.url), size: a.size ? String(a.size).slice(0, 20) : undefined }));
+/**
+ * Who may open which file, kept for two minutes once it was yes: a video seeks with many requests, and each check
+ * looks through the documents that link the file. A no is never kept, so a file shared a moment ago opens at once.
+ */
+const fileOk = new Map<string, number>();
+const fileOkFresh = (key: string) => (fileOk.get(key) ?? 0) > Date.now() - 2 * 60_000;
+const fileOkNote = (key: string) => {
+  fileOk.set(key, Date.now());
+  if (fileOk.size > 5000) for (const [k, at] of fileOk) if (at < Date.now() - 2 * 60_000) fileOk.delete(k);
+};
 /** An operator opening the same ticket file again within ten minutes (a video seeking, a second tab) is one audit entry. */
 const fileOpens = new Map<string, number>();
 const firstOpenInAWhile = (key: string) => {
@@ -2228,9 +2238,11 @@ createServer(async (req, res) => {
       const usedOn = () => db.db.prepare("SELECT coll, data FROM docs WHERE data LIKE ? ESCAPE '\\' LIMIT 500").all(`%/api/files/${f.id}%`) as { coll: string; data: string }[];
       // A teammate opens their own uploads, files on something they can see, and files not on anything yet. A file in
       // a project they can't see (or a private channel, someone's mailbox) stays closed, even with the address.
+      const seen = `${me}:${f.id}`;
       const team =
         memberOf(me).some((w) => w.id === f.workspaceId) &&
         (f.by === me ||
+          fileOkFresh(seen) ||
           (() => {
             const rows = usedOn();
             if (!rows.length) return true;
@@ -2255,6 +2267,7 @@ createServer(async (req, res) => {
       const myEmail = String(meDoc?.email ?? '').toLowerCase();
       const requester = !supportOp && f.workspaceId === 'platform' && tickets.some((t) => t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail));
       if (!team && !guest && !supportOp && !requester) return json(res, 404, { error: 'No such file.' });
+      if (team && f.by !== me) fileOkNote(seen);
       if (supportOp && !/^bytes=[1-9]/.test(String(req.headers.range ?? '')) && firstOpenInAWhile(`${me}:${f.id}`)) db.audit(opRecord!.email, 'ticket.file-open', tickets[0].ticketId, `#${tickets[0].number}: ${String(f.name).slice(0, 120)}`);
       const path = db.filePath(f.id);
       if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });

@@ -7,15 +7,21 @@
  */
 export const COMPANY_TZ = 'Asia/Jakarta';
 
-/** Whether this is a time zone the clock here knows (an IANA name like "Asia/Jakarta"). */
+/** Whether this is a time zone the clock here knows (an IANA name like "Asia/Jakarta"). Answers are kept. */
+const zoneChecks = new Map<string, boolean>();
 export function isZone(tz: unknown): tz is string {
   if (typeof tz !== 'string' || !tz || tz.length > 64) return false;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
-  } catch {
-    return false;
+  let ok = zoneChecks.get(tz);
+  if (ok === undefined) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: tz });
+      ok = true;
+    } catch {
+      ok = false;
+    }
+    if (zoneChecks.size < 1000) zoneChecks.set(tz, ok);
   }
+  return ok;
 }
 /** A company's time zone for its scheduled jobs (summaries, the fallback for digests and table rules). */
 export const companyTz = (ws: { timeZone?: string } | null | undefined) => (isZone(ws?.timeZone) ? ws!.timeZone! : COMPANY_TZ);
