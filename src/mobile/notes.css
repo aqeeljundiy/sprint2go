@@ -216,12 +216,13 @@
   .note-doc {
     padding: 14px 18px 56px;
   }
-  .note-title {
-    font-size: 24px;
+  /* The title stays a title: the phone's 16px floor for fields (shell.css) is a minimum, and this is bigger. */
+  .note-screen .note-title {
+    font-size: 24px !important;
   }
-  /* 17px: big enough that the phone never zooms into the text while typing. */
+  /* 16px reading and writing alike, so the text doesn't change size when the caret goes in. */
   .note-text {
-    font-size: 17px;
+    font-size: 16px;
     min-height: 50vh;
   }
   .note-text.reading {
