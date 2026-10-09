@@ -55,6 +55,7 @@ import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
 import * as connector from './connector.ts';
 import { eventReminders, reminderText } from './eventReminders.ts';
+import * as notesTrash from './notesTrash.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -1120,7 +1121,7 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
     const wl = branded.whiteLabel;
     const icon = wl.logo ?? branded.logo;
     res.setHeader('content-type', 'application/manifest+json');
-    return res.end(JSON.stringify({ name: wl.name, short_name: wl.name.slice(0, 12), id: '/', start_url: '/?source=app', scope: '/', display: 'standalone', background_color: '#f5f6f8', theme_color: wl.color ?? branded.color, icons: icon ? [{ src: '/brand-icon', sizes: '512x512', type: String(icon).slice(5, String(icon).indexOf(';')) || 'image/png', purpose: 'any' }] : [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }));
+    return res.end(JSON.stringify({ name: wl.name, short_name: wl.name.slice(0, 12), id: '/', start_url: '/?source=app', scope: '/', display: 'standalone', background_color: '#f5f6f8', theme_color: wl.color ?? branded.color, share_target: { action: '/notes/new', method: 'GET', params: { title: 'title', text: 'text', url: 'url' } }, icons: icon ? [{ src: '/brand-icon', sizes: '512x512', type: String(icon).slice(5, String(icon).indexOf(';')) || 'image/png', purpose: 'any' }] : [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }));
   }
   if (path === '/brand-icon' && branded) {
     const icon: string | undefined = branded.whiteLabel.logo ?? branded.logo;
@@ -1448,6 +1449,12 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
     // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
     if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
+    // Notes: view-only ones stay as their owner left them; sharing and Recently deleted follow who may (notesTrash.ts).
+    if (coll === 'notes' && before) {
+      const r = notesTrash.guardNote(d, before, me, mayDelete(before));
+      say(r.why);
+      return r.doc;
+    }
     if (before) return d;
     // New things carry who made them.
     if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
@@ -3606,3 +3613,13 @@ setInterval(() => {
     broadcast('notices', notices, []);
   }
 }, 30_000);
+
+// Notes in Recently deleted for more than 30 days are deleted for good.
+const purgeNotes = () => {
+  const gone = notesTrash.expiredNotes(db.allDocs('notes') as any[]);
+  if (!gone.length) return;
+  db.writeDocs('notes', [], gone.map((n) => n.id), null);
+  broadcast('notes', [], gone.map((n) => n.id), undefined, gone);
+};
+setTimeout(purgeNotes, 20_000);
+setInterval(purgeNotes, 6 * 3_600_000);

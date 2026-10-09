@@ -1,9 +1,10 @@
 import { TabDefaultsCtx } from './components/ui/TabBar';
-import { Assistant, BlockDialog, BrainDump, CalendarView, ClientApp, ConnectCalendar, DriveView, EndClientDialog, EventEditor, MeetSidebar, MeetView, NewTeamDialog, NoteEditor, NotesList, Onboarding, SendBotDialog, SettingsPage, ShareDialog, SharedHome, SharedPage, TableScreen, TeamPage, TeamsHome, TeamsSidebar, TemplateDialog, TrackingDashboard, VaultSidebar, VaultView } from './lazy';
+import { Assistant, BlockDialog, BrainDump, CalendarView, ClientApp, ConnectCalendar, DriveView, EndClientDialog, EventEditor, MeetSidebar, MeetView, NewTeamDialog, NoteEditor, NotesList, QuickNote, Onboarding, SendBotDialog, SettingsPage, ShareDialog, SharedHome, SharedPage, TableScreen, TeamPage, TeamsHome, TeamsSidebar, TemplateDialog, TrackingDashboard, VaultSidebar, VaultView } from './lazy';
 import { NewTableDialog, TablesHome, TablesSidebar, makeTable } from './components/tables/TablesApp';
 import type { TeamActions } from './components/teams/TeamsApp';
 import type { TemplateId } from './components/tables/fields';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { term, setTermWord, brand as product, setBrandName, brandOf, portalOrigin } from './terms';
 import { setPhotos } from './photos';
 import { TempAddressDialog, lifeLeft } from './components/TempAddress';
@@ -24,6 +25,7 @@ import { fmtTime } from './calendarUtils';
 import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { templatesFor, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
+import type { NotesApi } from './components/notes/useNoteMenu';
 import type { VaultItem } from './components/VaultApp';
 import { eventsOn } from './calendarUtils';
 import { botJoins, callKey, meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
@@ -167,7 +169,7 @@ function PushedSettings({ push, onBack, children }: { push: { label: string } | 
   );
 }
 
-type Toast = { id: number; text: string; action?: { label: string; run: () => void }; ms?: number };
+type Toast = { id: number; text: string; action?: { label: string; run: () => void }; more?: { label: string; run: () => void }; ms?: number };
 type ComposeState = { key: number; draftId?: string; initial?: Outgoing };
 
 interface AppProps {
@@ -491,6 +493,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [vaultEditing, setVaultEditing] = useState<VaultItem | 'new' | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
   const [notesFilter, setNotesFilter] = useState<NotesFilter>('all');
+  const [noteOpenAt, setNoteOpenAt] = useState<{ find?: string; fresh?: boolean }>({}); // open a note at a search match, or new
+  // Quick capture: a note from anywhere (More's New row), or text and links shared from another app (/notes/new).
+  const [quickNote, setQuickNote] = useState<{ shared?: { title?: string; text?: string; url?: string } } | null>(() => {
+    if (!/^\/notes\/new\/?$/.test(location.pathname)) return null;
+    const q = new URLSearchParams(location.search);
+    const shared = { title: q.get('title') ?? undefined, text: q.get('text') ?? undefined, url: q.get('url') ?? undefined };
+    return { shared: shared.title || shared.text || shared.url ? shared : undefined };
+  });
   const [askSeed, setAskSeed] = useState(''); // a question handed to Ask AI from search
   const [focusMsg, setFocusMsg] = useState<string | null>(null); // a notification lands on this chat message
   const [viewAs, setViewAs] = useState<{ clientId: string; email: string } | null>(null); // "View as client"
@@ -1570,6 +1580,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       threadId?: string;
       checklist?: Todo['checklist'];
       repeat?: Todo['repeat'];
+      noteId?: string;
     },
     tell: { chat?: boolean; email?: boolean } = {},
   ) => {
@@ -1595,10 +1606,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       threadId: t.threadId,
       checklist: t.checklist,
       repeat: t.repeat,
+      noteId: t.noteId,
       createdAt: nowIso(),
       assignees: t.userId ? [t.userId] : [],
       supervisorId: user.id, // whoever assigns it supervises it, unless someone changes it
-      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting', request: ' from a request', import: ' from an import' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
+      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${t.noteId ? ' from a note' : ''}${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting', request: ' from a request', import: ' from an import' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
     };
     setTodos((ts) => [...ts, task]);
     // Not assigned yet: tell the team lead it's waiting in their queue.
@@ -2015,23 +2027,74 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setNewTableFor(null);
     openTable(t.id);
   };
-  const wsNotes = useMemo(() => notes.filter((n) => n.workspaceId === ws.id && (n.visibility === 'team' || n.ownerId === user.id)), [notes, ws.id, user.id]);
+  // The company's notes this person sees (Recently deleted too, for its list), and the ones that aren't deleted.
+  const wsNotesAll = useMemo(() => notes.filter((n) => n.workspaceId === ws.id && (n.visibility === 'team' || n.ownerId === user.id)), [notes, ws.id, user.id]);
+  const wsNotes = useMemo(() => wsNotesAll.filter((n) => !n.deletedAt), [wsNotesAll]);
   const patchNote = (id: string, patch: Partial<Note>) => setNotes((ns) => ns.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: nowIso(), updatedBy: user.id } : n)));
-  const newNote = (title = '', clientId?: string) => {
-    const n: Note = { id: uid(), workspaceId: ws.id, title, html: '', ownerId: user.id, visibility: clientId ? 'team' : 'private', clientId, createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id };
-    setNotes((ns) => [n, ...ns]);
-    setNoteId(n.id);
-    go('notes');
-    setTimeout(() => (document.querySelector(title ? '.note-body [contenteditable]' : '.note-title') as HTMLElement | null)?.focus(), 150);
+  /** A new note, open with its title ready to type (the keyboard comes up within the tap that asked for it). */
+  const newNote = (title = '', clientId?: string, html = '') => {
+    const n: Note = { id: uid(), workspaceId: ws.id, title, html, ownerId: user.id, visibility: clientId ? 'team' : 'private', clientId, createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id };
+    flushSync(() => {
+      setNotes((ns) => [n, ...ns]);
+      setNoteId(n.id);
+      setNoteOpenAt({ fresh: !title });
+      go('notes');
+    });
+    const focus = () => (document.querySelector(title ? '.note-text' : '.note-title') as HTMLElement | null)?.focus();
+    focus();
+    setTimeout(focus, 150); // the editor's code was still loading
+    return n;
   };
+  /** To Recently deleted (30 days), with Undo. */
   const deleteNote = (id: string) => {
     const n = notes.find((x) => x.id === id);
     if (!n) return;
-    setNotes((ns) => ns.filter((x) => x.id !== id));
-    setNoteId(null);
-    showToast({ text: `“${n.title || 'Untitled'}” deleted`, action: { label: 'Undo', run: () => (setNotes((ns) => [n, ...ns]), setNoteId(n.id)) } });
+    setNotes((ns) => ns.map((x) => (x.id === id ? { ...x, deletedAt: nowIso(), deletedBy: user.id } : x)));
+    if (noteId === id) setNoteId(null);
+    showToast({ text: `“${n.title || 'Untitled'}” is in Recently deleted`, action: { label: 'Undo', run: () => setNotes((ns) => ns.map((x) => (x.id === id ? { ...x, deletedAt: undefined, deletedBy: undefined } : x))) } });
   };
-  const openNote = (id: string) => (setNoteId(id), go('notes'));
+  const restoreNote = (id: string) => {
+    const n = notes.find((x) => x.id === id);
+    if (!n) return;
+    setNotes((ns) => ns.map((x) => (x.id === id ? { ...x, deletedAt: undefined, deletedBy: undefined } : x)));
+    showToast({ text: `“${n.title || 'Untitled'}” is back`, action: { label: 'Open', run: () => openNote(id) } });
+  };
+  const purgeNote = (id: string) => {
+    const n = notes.find((x) => x.id === id);
+    if (!n) return;
+    setNotes((ns) => ns.filter((x) => x.id !== id));
+    if (noteId === id) setNoteId(null);
+    showToast({ text: `“${n.title || 'Untitled'}” deleted for good`, action: { label: 'Undo', run: () => setNotes((ns) => [n, ...ns]) } });
+  };
+  const duplicateNote = (id: string) => {
+    const n = notes.find((x) => x.id === id);
+    if (!n) return;
+    const copy: Note = { ...n, id: uid(), title: n.title ? `${n.title} (copy)` : '', ownerId: user.id, visibility: n.visibility, pinned: false, html: n.html.replace(/<span class="note-task"[^>]*><\/span>/g, ''), createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id, deletedAt: undefined, deletedBy: undefined };
+    setNotes((ns) => [copy, ...ns]);
+    showToast({ text: 'Copy made', more: { label: 'Open', run: () => openNote(copy.id) }, action: { label: 'Undo', run: () => setNotes((ns) => ns.filter((x) => x.id !== copy.id)) } });
+  };
+  const openNote = (id: string, find?: string) => (setNoteId(id), setNoteOpenAt({ find }), go('notes'));
+  const notesApi: NotesApi = {
+    me: user.id,
+    company: ws.name,
+    clients: wsClientsAll,
+    users: members,
+    canDeleteOthers: isAdmin || !!perms.deleteThings,
+    byId: (id) => notes.find((n) => n.id === id),
+    patch: patchNote,
+    remove: deleteNote,
+    restore: restoreNote,
+    purge: purgeNote,
+    duplicate: duplicateNote,
+  };
+  // A link to a note (/notes/<id>) opens it; something shared from another app (/notes/new) is in quick capture.
+  useEffect(() => {
+    const m = location.pathname.match(/^\/notes\/([^/]+)\/?$/);
+    if (!m) return;
+    if (m[1] === 'new') return void history.replaceState(null, '', '/notes');
+    const id = decodeURIComponent(m[1]);
+    if (notes.some((n) => n.id === id)) openNote(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Tells the client people who should know (the requester, or everyone at the client for shared work). */
   const tellClient = (t: Todo, text: string) => {
@@ -2440,6 +2503,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (n.link.app === 'tables' && n.link.id) return openTable(n.link.id, n.link.msg);
     if (n.link.app === 'teams') return (setTeamId(n.link.id ?? null), go('teams'));
     if (n.link.app === 'settings') return (setSettingsSection((n.link.id ?? 'account') as SettingsSection), go('settings'));
+    if (n.link.app === 'notes' && n.link.id) return openNote(n.link.id);
     if (n.link.app === 'calendar' && n.link.id) {
       const ev = events.find((e) => e.id === n.link!.id);
       if (ev) (setCalCursor(new Date(ev.start)), setSelectedEventId(ev.id));
@@ -3305,7 +3369,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...(enabled.has('chat') ? [{ id: 'message', label: 'Message', icon: MessagesSquare, run: () => setNewMessage(true) }] : []),
     ...(enabled.has('tasks') ? [{ id: 'task', label: 'Task', icon: ListChecks, run: () => (openTasks({ kind: 'mine' }), setTaskAdd((n) => n + 1)) }] : []),
     ...(enabled.has('calendar') ? [{ id: 'event', label: 'Event', icon: CalendarPlus, run: () => (go('calendar'), openNewEvent()) }] : []),
-    ...(enabled.has('notes') ? [{ id: 'note', label: 'Note', icon: FileText, run: () => newNote() }] : []),
+    ...(enabled.has('notes') ? [{ id: 'note', label: 'Note', icon: FileText, run: () => setQuickNote({}) }] : []),
     ...(enabled.has('drive') ? [{ id: 'upload', label: 'Upload', icon: Upload, run: () => (go('drive'), fileInput.current?.click()) }] : []),
   ];
   const meetLive = wsMeetings.some((m) => m.status === 'joining' || m.status === 'waiting_room' || m.status === 'recording');
@@ -3663,7 +3727,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           ) : appMode === 'tables' ? (
             <TablesSidebar tables={wsTables} clients={wsClientsAll} current={currentTable?.id ?? null} onOpen={(id) => (openTable(id), setSidebarOpen(false))} onNew={() => setNewTableFor({})} />
           ) : appMode === 'notes' ? (
-            <NotesList notes={wsNotes} clients={wsClientsAll} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={(id) => (setNoteId(id), setSidebarOpen(false))} onNew={() => newNote()} />
+            <NotesList notes={wsNotesAll} api={notesApi} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={(id, find) => (openNote(id, find), setSidebarOpen(false))} onNew={() => newNote()} phone={false} />
           ) : null
         }
         accounts={myAccounts}
@@ -4404,26 +4468,29 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         )}
         {newTableFor && <NewTableDialog clients={wsClients} clientId={newTableFor.clientId} onCreate={createTable} onClose={() => setNewTableFor(null)} />}
 
-        {mode === 'notes' &&
-          (mobile && !noteId ? (
-            <section className="mobile-list view-enter">
-              <NotesList notes={wsNotes} clients={wsClientsAll} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={setNoteId} onNew={() => newNote()} />
-            </section>
-          ) : (
-            <NoteEditor
-              note={wsNotes.find((n) => n.id === noteId)}
-              users={members}
-              clients={wsClientsAll}
-              me={user.id}
-              onPatch={patchNote}
-              onDelete={deleteNote}
-              onTask={(text, n) => {
-                const t = createTask({ title: text.length > 120 ? text.slice(0, 117) + '…' : text, clientId: n.clientId, userId: user.id, source: 'manual' });
-                showToast({ text: `Task made: “${t.title}”`, action: { label: 'Open', run: () => openTask(t.id) } });
-              }}
-              onBack={mobile ? () => setNoteId(null) : undefined}
-            />
-          ))}
+        {mode === 'notes' && (
+          <>
+            {mobile && <NotesList notes={wsNotesAll} api={notesApi} current={noteId} filter={notesFilter} onFilter={setNotesFilter} onOpen={(id, find) => openNote(id, find)} onNew={() => newNote()} phone />}
+            {(!mobile || noteId) && (
+              <NoteEditor
+                note={wsNotesAll.find((n) => n.id === noteId)}
+                notes={wsNotes}
+                todos={wsTasks}
+                api={notesApi}
+                phone={mobile}
+                find={noteOpenAt.find}
+                fresh={noteOpenAt.fresh}
+                onBack={mobile ? () => setNoteId(null) : undefined}
+                onTask={(text, n) => createTask({ title: text.length > 120 ? text.slice(0, 117) + '…' : text, clientId: n.clientId, userId: user.id, source: 'manual', noteId: n.id })}
+                onUndoTask={(id) => setTodos((ts) => ts.filter((t) => t.id !== id))}
+                onOpenTask={(id) => setTaskOpen(id)}
+                onOpenNote={(id) => openNote(id)}
+                onMention={(uid, n) => uid !== user.id && notify(uid, 'mention', `${myFirst} mentioned you in the note “${n.title || 'Untitled'}”`, { app: 'notes', id: n.id })}
+                onUpload={(f) => uploadFile(f, ws.id)}
+              />
+            )}
+          </>
+        )}
 
         {mode === 'drive' && (
           <DriveView
@@ -4744,6 +4811,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onClose={() => setEditEventId(null)}
         />
       )}
+      {quickNote && (
+        <QuickNote
+          shared={quickNote.shared}
+          clients={wsClientsAll}
+          onClose={() => setQuickNote(null)}
+          onSave={(q) => {
+            const n: Note = { id: uid(), workspaceId: ws.id, title: q.title, html: q.html, ownerId: user.id, visibility: q.clientId ? 'team' : 'private', clientId: q.clientId, createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id };
+            setNotes((ns) => [n, ...ns]);
+            setQuickNote(null);
+            showToast({ text: q.clientId ? `Note saved in ${wsClientsAll.find((c) => c.id === q.clientId)?.name}` : 'Note saved', action: { label: 'Open', run: () => openNote(n.id) } });
+          }}
+        />
+      )}
       {scheduling && <ScheduleTask title={scheduling.title} events={myEvents} onPick={(start, mins) => blockTask(scheduling, start, mins)} onClose={() => setScheduling(null)} />}
       {connectCal && (
         <ConnectCalendar
@@ -4990,6 +5070,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {toast && (
         <div className="toast" role="status" key={toast.id}>
           <span>{toast.text}</span>
+          {toast.more && (
+            <button
+              onClick={() => {
+                toast.more!.run();
+                setToast(null);
+              }}
+            >
+              {toast.more.label}
+            </button>
+          )}
           {toast.action && (
             <button
               onClick={() => {

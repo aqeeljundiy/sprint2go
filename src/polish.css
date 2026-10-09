@@ -1083,7 +1083,6 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .client-notes-card { margin-bottom: 14px; }
 .client-notes-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; }
 .client-notes-card h3 .link-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 13px; }
-@media (max-width: 767px) { .note-body { padding: 14px 16px 30px; } .note-title { font-size: 22px; } }
 
 /* ---------- Vault ---------- */
 .vault-note { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; line-height: 1.4; }

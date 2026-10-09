@@ -25,6 +25,7 @@ export const EventEditor = split(() => import('./components/EventEditor').then((
 export const ConnectCalendar = split(() => import('./components/ConnectCalendar').then((m) => m.ConnectCalendar));
 export const NoteEditor = split(() => import('./components/NotesApp').then((m) => m.NoteEditor));
 export const NotesList = split(() => import('./components/NotesApp').then((m) => m.NotesList));
+export const QuickNote = split(() => import('./components/NotesApp').then((m) => m.QuickNote));
 export const VaultSidebar = split(() => import('./components/VaultApp').then((m) => m.VaultSidebar));
 export const VaultView = split(() => import('./components/VaultApp').then((m) => m.VaultView));
 export const MeetSidebar = split(() => import('./components/MeetApp').then((m) => m.MeetSidebar));

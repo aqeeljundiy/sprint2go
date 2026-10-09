@@ -425,6 +425,7 @@ export interface Todo {
   status?: TaskStatus; // board column; kept in step with `done`
   priority: 'high' | 'normal';
   threadId?: string; // the email it came from
+  noteId?: string; // made from a line of this note
   source: 'ai' | 'manual' | 'braindump' | 'chat' | 'meeting' | 'request' | 'import'; // import: brought over from another app (Settings, Import)
   requestedBy?: string; // a client person's email (requests from the portal)
   userId: string; // first person doing it ('' = waiting in a team queue); kept for older code
@@ -738,11 +739,14 @@ export interface Note {
   html: string;
   ownerId: string;
   visibility: 'private' | 'team';
+  teamCan?: 'edit' | 'view'; // shared notes: whether the others can change it (edit when missing)
   clientId?: string;
   pinned?: boolean;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  deletedAt?: string; // in Recently deleted (for 30 days, then the server deletes it for good)
+  deletedBy?: string;
 }
 
 /** Where a mailbox actually lives. */
