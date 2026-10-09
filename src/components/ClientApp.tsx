@@ -3,6 +3,7 @@ import { SmoothHeight } from './ui/Smooth';
 import { setTermWord, term, brand as product } from '../terms';
 import {
   ArrowRight,
+  BadgeCheck,
   Bell,
   CheckCircle2,
   Clock,
@@ -86,7 +87,8 @@ interface Props {
   onSignOut?: () => void;
   /** Someone with their own workspace (or several portals): the workspace switcher, in place of the logo. */
   switcher?: React.ReactNode;
-  mobileSwitch?: { workspaces: Workspace[]; onWorkspace: (id: string) => void };
+  /** Phones: the logo's switcher, with every space shared with this person (the current one ticked). */
+  mobileSwitch?: { workspaces: Workspace[]; onWorkspace: (id: string) => void; portals?: { key: string; ws: Workspace; client: Client; unread?: number }[]; current?: string; onPortal?: (key: string) => void; onShared?: () => void; onAdd?: () => void };
   /** Their own account: profile, photo, password and light or dark. Not in "View as guest". */
   account?: { me: User; theme: ThemePref; onTheme: (t: ThemePref) => void; onProfile: (patch: Partial<User>) => void };
 }
@@ -188,17 +190,37 @@ export function ClientApp(p: Props) {
   const MODES: [Mode, string, LucideIcon, number?][] = [
     ['home', 'Home', House],
     ...(access.requests ? ([['requests', 'Requests', Inbox, waitingOnMe.length]] as [Mode, string, LucideIcon, number][]) : []),
-    ['chat', 'Chat', MessagesSquare],
+    ['chat', 'Messages', MessagesSquare],
     ['work', 'Work', ListChecks, approvals.length],
     ['files', 'Files', HardDrive],
     ['meet', 'Meetings', Video],
     ...(sharedTables.length ? ([['tables', 'Tables', Table2]] as [Mode, string, LucideIcon][]) : []),
   ];
+  // Phones: a short fixed bar of only what's shared with them, in this order, with More only when it can't fit.
+  const BAR: [Mode, string, LucideIcon, number?][] = [
+    ['home', 'Home', House],
+    ...(v.channels.length ? ([['chat', 'Messages', MessagesSquare]] as [Mode, string, LucideIcon][]) : []),
+    ...(shared.length ? ([['work', 'Approvals', BadgeCheck, approvals.length]] as [Mode, string, LucideIcon, number][]) : []),
+    ...(v.files.length || access.uploads ? ([['files', 'Files', HardDrive]] as [Mode, string, LucideIcon][]) : []),
+    ...MODES.filter(([id]) => id === 'requests'),
+  ];
+  // Meetings and tables, when shared, are on Home and in the account sheet; the bar only grows a More past five.
+  const extra = MODES.filter(([id]) => (id === 'meet' && v.meetings.length) || id === 'tables');
+  // Phones: the screen's main job sits at the end of the bar, like the team app's create button.
+  const uploader = useUploader(actions, say);
+  const create = mode === 'requests' && access.requests && can(person, 'request') && client.status !== 'ended' ? { label: 'New request', icon: Plus, run: () => setNewRequest(true) } : mode === 'files' && access.uploads && can(person, 'upload') && client.status !== 'ended' ? { label: 'Upload', icon: Upload, run: uploader.pick } : null;
+  const lastCreate = useRef(create); // drawn while the button scales away, so its icon doesn't vanish first
+  if (create) lastCreate.current = create;
+  const CreateIcon = lastCreate.current?.icon;
+  const barFits = BAR.length <= 5;
+  const barItems = barFits ? BAR : BAR.slice(0, 4);
+  const barMore = [...(barFits ? [] : BAR.slice(4)), ...extra];
   const go = (m: Mode, s = '') => {
     setMode(m);
     setSub(s);
     setOpenTask(null);
-    if (m === 'chat' && mobile) setChanId(null);
+    // Phones: one conversation opens straight away; several show their list first.
+    if (m === 'chat' && mobile) setChanId(v.channels.length === 1 ? v.channels[0].id : null);
   };
   const title = MODES.find((x) => x[0] === mode)?.[1] ?? '';
   const hasSidebar = mode !== 'home';
@@ -669,7 +691,7 @@ export function ClientApp(p: Props) {
           onOpenMail={() => {}}
           onSettings={() => {}}
           onMenu={() => {}}
-          onBack={mobile ? () => setChanId(null) : undefined}
+          onBack={mobile && v.channels.length > 1 ? () => setChanId(null) : undefined}
           guest={{ canPost: can(person, 'comment') }}
         />
       ) : (
@@ -754,35 +776,52 @@ export function ClientApp(p: Props) {
                       ? { value: sub || v.meetings[0].meeting.id, label: 'Which meeting', onChange: setSub, options: v.meetings.map((x) => ({ value: x.meeting.id, label: x.meeting.title })) }
                       : undefined
             }
-            workspaces={p.mobileSwitch?.workspaces ?? [ws]}
+            workspaces={p.mobileSwitch?.workspaces ?? []}
             current={ws}
             unread={unread}
             onWorkspace={p.mobileSwitch?.onWorkspace ?? (() => {})}
-            onAddWorkspace={() => {}}
+            portals={p.mobileSwitch?.portals}
+            currentPortal={p.mobileSwitch?.current}
+            onPortal={p.mobileSwitch?.onPortal}
+            onShared={p.mobileSwitch?.onShared}
+            onAddWorkspace={p.mobileSwitch?.onAdd}
             onSearch={() => (access.ai ? setAskOpen(true) : go('home'))}
             onBell={() => (setNoticesOpen(true), p.onReadNotices())}
+            account={
+              <button type="button" className="icon-btn mt-account" onClick={() => setMeOpen(true)} aria-label="Your account">
+                <Avatar person={{ name: p.account?.me.name ?? person.name, email: person.email, color: p.account?.me.color ?? client.color }} size={28} />
+              </button>
+            }
           />
         )}
         {content}
       </main>
 
       {mobile && (
-        <nav className="tabbar guest-bar">
-          {MODES.slice(0, 5).map(([id, label, Icon, n]) => (
-            <button key={id} className={mode === id ? 'on' : ''} onClick={() => go(id)}>
-              <span className="tab-icon">
-                <Icon size={21} />
-                {n ? <i>{n}</i> : null}
-              </span>
-              {label}
-            </button>
-          ))}
-          <button className={meOpen ? 'on' : ''} onClick={() => setMeOpen(true)}>
-            <span className="tab-icon">
-              <MenuIcon size={21} />
-            </span>
-            More
+        <nav className={`tabbar guest-bar${create ? ' has-create' : ''}`} aria-label={client.name}>
+          <div className="tabbar-pill">
+            {barItems.map(([id, label, Icon, n]) => (
+              <button key={id} type="button" className={mode === id ? 'on' : ''} aria-current={mode === id ? 'page' : undefined} onClick={() => (id === 'work' && mode !== 'work' && approvals.length ? go('work', 'approve') : go(id))}>
+                <span className="tab-icon">
+                  <Icon size={21} />
+                  {n ? <i aria-label={`${n} waiting`}>{n > 99 ? '99+' : n}</i> : null}
+                </span>
+                <span className="tab-label">{label}</span>
+              </button>
+            ))}
+            {!barFits && (
+              <button type="button" className={meOpen || barMore.some(([id]) => id === mode) ? 'on' : ''} onClick={() => setMeOpen(true)} aria-haspopup="dialog">
+                <span className="tab-icon">
+                  <MenuIcon size={21} />
+                </span>
+                <span className="tab-label">More</span>
+              </button>
+            )}
+          </div>
+          <button type="button" className="tabbar-create" onClick={() => create?.run()} aria-label={create?.label} title={create?.label} tabIndex={create ? 0 : -1} aria-hidden={!create}>
+            {CreateIcon && <CreateIcon size={22} />}
           </button>
+          {uploader.input}
         </nav>
       )}
 
@@ -827,7 +866,7 @@ export function ClientApp(p: Props) {
         />
       )}
       <Popover anchor={meBtn} open={meOpen} onClose={() => setMeOpen(false)} width={300} title="Account">
-        <PersonMenu p={p} close={() => setMeOpen(false)} mobileModes={mobile ? MODES.slice(5) : []} go={go} say={say} onProfile={() => setProfileOpen(true)} />
+        <PersonMenu p={p} close={() => setMeOpen(false)} mobileModes={mobile ? barMore : []} go={go} say={say} onProfile={() => setProfileOpen(true)} />
       </Popover>
       {profileOpen && p.account && <ProfileDialog me={p.account.me} email={person.email} onSave={(patch) => (p.account!.onProfile(patch), say('Profile saved'))} onClose={() => setProfileOpen(false)} />}
       {p.preview && (
@@ -851,27 +890,36 @@ export function ClientApp(p: Props) {
 
 /* ---------------- pieces ---------------- */
 
-function UploadButton({ actions, say, compact }: { actions: ClientActions; say: (t: string) => void; compact?: boolean }) {
+/** A hidden file field and a way to open it: the sidebar's Upload button and the phone's create button share it. */
+function useUploader(actions: ClientActions, say: (t: string) => void) {
   const ref = useRef<HTMLInputElement>(null);
+  const input = (
+    <input
+      ref={ref}
+      type="file"
+      multiple
+      hidden
+      onChange={async (e) => {
+        const fs = [...(e.target.files ?? [])];
+        e.target.value = '';
+        const big = fs.filter((f) => f.size > 8_000_000).length;
+        const done = await actions.upload(fs);
+        say(big ? `${done.length} uploaded. Files over 8 MB: share a link instead.` : `${done.length} file${done.length === 1 ? '' : 's'} uploaded.`);
+      }}
+    />
+  );
+  return { input, pick: () => ref.current?.click() };
+}
+
+function UploadButton({ actions, say, compact }: { actions: ClientActions; say: (t: string) => void; compact?: boolean }) {
+  const up = useUploader(actions, say);
   return (
     <>
-      <button className={compact ? 'primary-btn sm' : 'compose-btn'} onClick={() => ref.current?.click()}>
+      <button className={compact ? 'primary-btn sm' : 'compose-btn'} onClick={up.pick}>
         <Upload size={16} />
         <span className="sb-label">Upload</span>
       </button>
-      <input
-        ref={ref}
-        type="file"
-        multiple
-        hidden
-        onChange={async (e) => {
-          const fs = [...(e.target.files ?? [])];
-          e.target.value = '';
-          const big = fs.filter((f) => f.size > 8_000_000).length;
-          const done = await actions.upload(fs);
-          say(big ? `${done.length} uploaded. Files over 8 MB: share a link instead.` : `${done.length} file${done.length === 1 ? '' : 's'} uploaded.`);
-        }}
-      />
+      {up.input}
     </>
   );
 }

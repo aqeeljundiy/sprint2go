@@ -3367,6 +3367,11 @@ p.trial-note > svg:first-child {
   font-size: 12px;
   color: var(--text-2);
 }
+.delivery-note > svg {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+}
 .delivery-note.failed {
   color: #b91c1c;
 }

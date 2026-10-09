@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Download, Mail, Star, Trash2, X } from 'lucide-react';
 import type { DriveItem } from '../types';
 import { fmtSize } from '../data/drive';
@@ -15,7 +15,7 @@ interface Props {
   onOpenThread: (threadId: string) => void;
 }
 
-/** Full-screen preview with ←/→ to flip through the folder. */
+/** Full-screen preview with ←/→ (or a sideways swipe on phones) to flip through the folder. */
 export function DrivePreview({ item, list, onNav, onClose, onStar, onTrash, onOpenThread }: Props) {
   const idx = list.findIndex((i) => i.id === item.id);
   const prev = idx > 0 ? list[idx - 1] : null;
@@ -33,8 +33,26 @@ export function DrivePreview({ item, list, onNav, onClose, onStar, onTrash, onOp
     return () => removeEventListener('keydown', key);
   }, [prev, next, onNav, onClose]);
 
+  // A sideways swipe flips to the next or previous file; anything more up-and-down than sideways is left alone.
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  const swipe = {
+    onTouchStart: (e: React.TouchEvent) => {
+      touch.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+    },
+    onTouchEnd: (e: React.TouchEvent) => {
+      const t = touch.current;
+      touch.current = null;
+      if (!t) return;
+      const dx = e.changedTouches[0].clientX - t.x;
+      const dy = e.changedTouches[0].clientY - t.y;
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (dx < 0 && next) onNav(next);
+      if (dx > 0 && prev) onNav(prev);
+    },
+  };
+
   return (
-    <div className="lightbox" onClick={onClose}>
+    <div className="lightbox" onClick={onClose} {...swipe}>
       <header className="lb-bar" onClick={(e) => e.stopPropagation()}>
         <FileIcon kind={item.kind} size={14} />
         <div className="lb-title">

@@ -107,6 +107,39 @@ export const boostedAvailable = () => mailConfigured();
 /* ---------- DKIM keys, one per domain (kept with who holds the domain, in server/domains.ts) ---------- */
 
 export const dkimRecord = (domain: string, workspaceId: string) => `v=DKIM1; k=rsa; p=${domainKey(domain, workspaceId).publicKey}`;
+/**
+ * The key mail from a domain is signed with: the company's own for its domain, the platform's for this server's name
+ * (addresses at MAIL_HOST belong to no company's DNS, so sprint2go publishes that one).
+ */
+const signingKey = (domain: string, workspaceId: string) => domainKey(domain, domain === MAIL_HOST ? 'platform' : workspaceId);
+/** A message signed with DKIM for the domain it's from (relaxed/relaxed), ready to go out. */
+export async function signFor(raw: Buffer, domain: string, workspaceId: string): Promise<Buffer> {
+  const key = signingKey(domain, workspaceId);
+  const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
+  if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
+  return Buffer.concat([Buffer.from(signatures), raw]);
+}
+
+/**
+ * The DKIM records for our own names, and whether DNS has them: this server's name (mail from addresses at MAIL_HOST)
+ * and the support domain (sign-up codes, alerts, invoices). Shown in the operator console, Platform, Mail.
+ */
+export async function platformDkim() {
+  const support = SUPPORT_EMAIL.split('@')[1] || MAIL_HOST;
+  const names = Array.from(new Set([MAIL_HOST, support]));
+  return Promise.all(
+    names.map(async (domain) => {
+      const key = signingKey(domain, 'platform');
+      const host = `${key.selector}._domainkey.${domain}`;
+      const value = `v=DKIM1; k=rsa; p=${key.publicKey}`;
+      const use = `Signs mail from ${[domain === MAIL_HOST && `mailboxes at ${domain}`, domain === support && `${NOREPLY} and ${SUPPORT_EMAIL}`].filter(Boolean).join(', ')}`;
+      if (!realDomain(domain)) return { domain, host, value, use, state: 'local' as const, found: '' };
+      const found = (await txt(host)).find((t) => t.includes('p=')) ?? '';
+      const state = !found ? ('missing' as const) : found.replace(/\s/g, '').includes(`p=${key.publicKey}`) ? ('ok' as const) : ('different' as const);
+      return { domain, host, value, use, state, found };
+    }),
+  );
+}
 
 /* ---------- the DNS records a company needs, and whether they're there ---------- */
 
@@ -488,8 +521,25 @@ const fileBuffer = (url: string, workspaceId: string): Buffer | null => {
 /** Why a company can't send right now: paused or suspended (read-only), or null. */
 const cantSend = (ws: any) => (ws?.suspended ? `${ws.name} is read-only for now, so mail can’t go out.` : ws?.plan?.paused ? `${ws.name} is paused, so mail can’t go out. An owner can resume the plan in Settings, Plan & billing.` : null);
 
+/**
+ * Whether mail our own engine would send to outside addresses stays on this computer: outside production it never
+ * reaches real people unless a relay is set (MAIL_RELAY_URL) or MAIL_ENABLED=1, the same rule as the app's own notes
+ * (systemMailPath). Our own mailboxes on this server still get their copies.
+ */
+export const keepsMailLocal = () => process.env.NODE_ENV !== 'production' && !process.env.MAIL_RELAY_URL && process.env.MAIL_ENABLED !== '1';
+/** What a message held on this computer says, in the app and on its outbox rows. */
+export const LOCAL_ONLY = 'Held on this computer: a local sprint2go doesn’t send mail to outside addresses. Set MAIL_RELAY_URL or MAIL_ENABLED=1 to send for real.';
+/** The outside addresses of an email that would be held on this computer (none on a live server, or with a relay). */
+export function heldLocally(o: Pick<Outgoing, 'workspaceId' | 'to' | 'cc'>): string[] {
+  if (!keepsMailLocal()) return [];
+  const ws = workspaces().find((w) => w.id === o.workspaceId);
+  if (ws?.mailRoute === 'boosted' && boostedAvailable() && (ws.mailCredits ?? 0) > 0) return []; // Amazon sends it, not our engine
+  const mine = localAccounts();
+  return Array.from(new Set([...o.to, ...o.cc].map((p) => lower(p.email)).filter((e) => e && !mine.has(e))));
+}
+
 /** Builds the message, signs it and queues one delivery per outside recipient; our own mailboxes get it at once. */
-export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: number; local: number; route: 'own' | 'boosted' }> {
+export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: number; local: number; route: 'own' | 'boosted'; held?: string[] }> {
   const ws = workspaces().find((w) => w.id === o.workspaceId);
   if (!ws) throw new Error('No such company');
   const acct = (ws.accounts ?? []).find((a) => a.id === o.accountId) as (Account & { sendPaused?: { reason: string } }) | undefined;
@@ -541,14 +591,9 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   };
   /** Builds the message with this HTML and signs it: every copy that leaves is signed on its own. */
   const build = async (html: string | undefined) => {
-    let raw: Buffer = await new MailComposer({ ...message, html }).compile().build();
-    if (route === 'own' && domain && domain !== MAIL_HOST) {
-      const key = domainKey(domain, ws.id);
-      const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
-      if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
-      raw = Buffer.concat([Buffer.from(signatures), raw]);
-    }
-    return raw;
+    const raw: Buffer = await new MailComposer({ ...message, html }).compile().build();
+    // Every copy our own engine sends is signed: a company domain with its key, our own name with the platform's.
+    return route === 'own' && domain ? signFor(raw, domain, ws.id) : raw;
   };
   const raw = await build(o.html);
   // Our own mailboxes get a copy straight away (an alias: each of its mailboxes), here or in other companies; never the
@@ -571,12 +616,21 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     // A colleague away gets to answer too (their answer carries Auto-Submitted, so it never answers back).
     if (!shared) void maybeAnswer({ workspaceId: hit.ws.id, account: hit.account, canSend: !!(hit.ws as any).mailReady?.mailboxes?.[hit.account.id]?.send, parsed, envelopeFrom: o.from.email, mid, refs: o.references ?? [], spam: false, send: queueSend, log: deps.log });
   }
+  // On a local server, our own engine keeps outside mail here (see keepsMailLocal): marked held, never retried.
+  const holdLocal = route === 'own' && remote.length > 0 && keepsMailLocal();
   // Read tracking: each tracked outside recipient gets a copy of their own (their picture, their links); everyone else,
-  // teammates included, gets the plain one.
-  const tracked = o.tracking ? track.prepare({ ws, accountId: o.accountId, threadId: o.threadId, messageId: o.messageId, by: o.tracking.by, html: o.html, recipients: remote.map((p) => p.email), opens: o.tracking.opens, clicks: o.tracking.clicks, notify: o.tracking.notify }) : null;
+  // teammates included, gets the plain one. Nothing to track when nobody outside gets it.
+  const tracked = o.tracking && !holdLocal ? track.prepare({ ws, accountId: o.accountId, threadId: o.threadId, messageId: o.messageId, by: o.tracking.by, html: o.html, recipients: remote.map((p) => p.email), opens: o.tracking.opens, clicks: o.tracking.clicks, notify: o.tracking.notify }) : null;
   const copies = new Map<string, Buffer>();
   for (const [email, html] of tracked ?? []) copies.set(email, await build(html));
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
+  if (holdLocal) {
+    const keep = db.db.prepare("INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, x'', 0, ?, 'local', ?, ?)");
+    for (const p of remote) keep.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, now(), LOCAL_ONLY, now());
+    markDelivery(o.threadId, o.messageId, mid, 'local', undefined, undefined, remote.map((p) => p.email));
+    deps?.log(`[mail] held on this computer (not production, no relay): ${remote.map((p) => p.email).join(', ')}`);
+    return { mid, queued: 0, local: localCount, route, held: remote.map((p) => p.email) };
+  }
   for (const p of remote) ins.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, copies.get(p.email) ?? raw, now(), 'queued', now());
   if (route === 'boosted' && remote.length) {
     db.writeDocs('workspaces', [{ ...(ws as any), mailCredits: Math.max(0, (ws.mailCredits ?? 0) - remote.length) }], [], null);
@@ -623,16 +677,20 @@ function echoSoon(threadId: string) {
   }, 0);
 }
 
-/** Writes the delivery state on the message inside its thread, so the app can show "sending", "sent" or "failed". */
-function markDelivery(threadId: string, messageId: string, mid: string | null, state: 'held' | 'sending' | 'sent' | 'failed', error?: string, until?: string) {
+/**
+ * Writes the delivery state on the message inside its thread, so the app can show "sending", "sent" or "failed".
+ * 'local': kept on this computer (a local server, no relay), with `kept` the outside addresses that didn't get it.
+ */
+function markDelivery(threadId: string, messageId: string, mid: string | null, state: 'held' | 'sending' | 'sent' | 'failed' | 'local', error?: string, until?: string, kept?: string[]) {
+  const delivery = { state, at: now(), ...(error ? { error } : {}), ...(until ? { until } : {}), ...(kept?.length ? { kept } : {}) };
   const t = db.getDoc('threads', threadId) as any;
   if (!t || !(t.messages ?? []).some((m: any) => m.id === messageId)) {
     const k = `${threadId} ${messageId}`;
-    early.set(k, { mid: mid ?? early.get(k)?.mid ?? null, delivery: { state, at: now(), ...(error ? { error } : {}), ...(until ? { until } : {}) }, at: Date.now() });
+    early.set(k, { mid: mid ?? early.get(k)?.mid ?? null, delivery, at: Date.now() });
     for (const [x, v] of early) if (Date.now() - v.at > 30 * 60_000) early.delete(x);
     return;
   }
-  const messages = (t.messages ?? []).map((m: any) => (m.id === messageId ? { ...m, mid: mid ?? m.mid, delivery: { state, at: now(), ...(error ? { error } : {}), ...(until ? { until } : {}) } } : m));
+  const messages = (t.messages ?? []).map((m: any) => (m.id === messageId ? { ...m, mid: mid ?? m.mid, delivery } : m));
   const next = { ...t, messages };
   db.writeDocs('threads', [next], [], null);
   deps?.broadcast('threads', [next], []);
@@ -757,6 +815,13 @@ export async function pump() {
   try {
     const due = db.db.prepare("SELECT * FROM outbox WHERE state = 'queued' AND next_at <= ? ORDER BY created_at LIMIT 20").all(now()) as any[];
     for (const row of due) {
+      // A local server (not production, no relay) never hands our own engine's mail to the world: it's kept here, once.
+      if (row.route === 'own' && keepsMailLocal()) {
+        db.db.prepare("UPDATE outbox SET state = 'local', error = ?, raw = x'' WHERE id = ? AND state = 'queued'").run(LOCAL_ONLY, row.id);
+        deps.log(`[mail] held on this computer (not production, no relay): ${row.to_addr}`);
+        settle(row);
+        continue;
+      }
       try {
         if (row.route === 'boosted') await sendRaw([row.to_addr], row.raw as Buffer, row.from_addr);
         else await deliverDirect(row.from_addr, row.to_addr, row.raw as Buffer);
@@ -790,6 +855,8 @@ function settle(row: any, error?: string) {
   const open = db.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'queued'").get(row.thread_id, row.message_id) as { n: number };
   if (open.n) return;
   const failed = db.db.prepare("SELECT to_addr, error FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'failed'").all(row.thread_id, row.message_id) as { to_addr: string; error: string }[];
+  const kept = (db.db.prepare("SELECT to_addr FROM outbox WHERE thread_id = ? AND message_id = ? AND state = 'local'").all(row.thread_id, row.message_id) as { to_addr: string }[]).map((r) => r.to_addr);
+  if (!failed.length && kept.length) return markDelivery(row.thread_id, row.message_id, null, 'local', undefined, undefined, kept);
   markDelivery(row.thread_id, row.message_id, null, failed.length ? 'failed' : 'sent', failed.length ? `${failed.map((f) => f.to_addr).join(', ')}: ${failed[0].error}` : undefined);
   if (failed.length || error) {
     const ws = workspaces().find((w) => w.id === row.workspace_id);
@@ -847,12 +914,7 @@ export async function queueSystemMail(m: SystemMail) {
   const composer = new MailComposer({ from: { name: m.fromName, address: from }, to: m.to, subject: m.subject, text: m.text, html: m.html, messageId: mid, inReplyTo: m.inReplyTo, references: m.references, attachments: m.attachments, headers: { 'X-Mailer': 'sprint2go' } });
   let raw: Buffer = await composer.compile().build();
   const route: 'own' | 'boosted' = mailConfigured() ? 'boosted' : 'own';
-  if (route === 'own') {
-    const key = domainKey(domain, 'platform');
-    const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
-    if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
-    raw = Buffer.concat([Buffer.from(signatures), raw]);
-  }
+  if (route === 'own') raw = await signFor(raw, domain, 'platform');
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
   const ids = m.to.map((to) => {
     const id = randomBytes(8).toString('hex');
@@ -862,8 +924,8 @@ export async function queueSystemMail(m: SystemMail) {
   void pump();
   return { mid, ids };
 }
-/** Where an outbox row stands: still trying, delivered, or given up (with the receiving server's last answer). */
-export const outboxState = (id: string) => db.db.prepare('SELECT state, error, attempts FROM outbox WHERE id = ?').get(id) as { state: 'queued' | 'sent' | 'failed'; error: string | null; attempts: number } | undefined;
+/** Where an outbox row stands: still trying, delivered, given up (with the receiving server's last answer), or kept on this computer. */
+export const outboxState = (id: string) => db.db.prepare('SELECT state, error, attempts FROM outbox WHERE id = ?').get(id) as { state: 'queued' | 'sent' | 'failed' | 'local'; error: string | null; attempts: number } | undefined;
 
 /* ---------- the app's own notes (sign-up codes, guest notices): Amazon SES when set up, else our own engine ---------- */
 

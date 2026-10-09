@@ -18,6 +18,7 @@ import {
   FileText,
   Forward,
   HardDriveUpload,
+  Laptop,
   Inbox,
   ListChecks,
   ListPlus,
@@ -364,8 +365,18 @@ export function Reader(props: Props) {
         </button>
         {open && m.delivery && (
           <div className={`delivery-note ${m.delivery.state}`}>
-            {m.delivery.state === 'held' ? <Clock size={14} /> : m.delivery.state === 'sending' ? <Loader2 size={14} className="spin" /> : m.delivery.state === 'sent' ? <Check size={14} /> : <AlertTriangle size={14} />}{' '}
-            {m.delivery.state === 'held' ? 'Goes out in a few seconds (Undo is still possible)' : m.delivery.state === 'sending' ? 'Sending…' : m.delivery.state === 'sent' ? `Delivered ${relative(m.delivery.at)}` : `Could not be delivered: ${m.delivery.error ?? 'the receiving server refused it'}`}
+            {m.delivery.state === 'held' ? <Clock size={14} /> : m.delivery.state === 'sending' ? <Loader2 size={14} className="spin" /> : m.delivery.state === 'sent' ? <Check size={14} /> : m.delivery.state === 'local' ? <Laptop size={14} /> : <AlertTriangle size={14} />}{' '}
+            <span>
+              {m.delivery.state === 'held'
+                ? 'Goes out in a few seconds (Undo is still possible)'
+                : m.delivery.state === 'sending'
+                  ? 'Sending…'
+                  : m.delivery.state === 'sent'
+                    ? `Delivered ${relative(m.delivery.at)}`
+                    : m.delivery.state === 'local'
+                      ? `Held on this computer: a local sprint2go doesn’t send mail to outside addresses${m.delivery.kept?.length ? ` (${m.delivery.kept.join(', ')})` : ''}.`
+                      : `Could not be delivered: ${m.delivery.error ?? 'the receiving server refused it'}`}
+            </span>
           </div>
         )}
         {open && props.blockTrackers && m.trackersBlocked ? (
