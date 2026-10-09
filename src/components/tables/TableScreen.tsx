@@ -1,26 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpDown, CalendarDays, Columns3, Copy, CopyPlus, Download, Eye, EyeOff, FileUp, Filter, GalleryHorizontalEnd, GripVertical, Group, LayoutGrid, List, Maximize2, Menu, MoreHorizontal, PanelRight, Plus, Search, Trash2, Undo2, Users, X, Zap } from 'lucide-react';
-import type { CellValue, Channel, Client, DataTable, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
+import { ArrowLeft, ArrowRightLeft, ArrowUpDown, CheckSquare, ChevronDown, Copy, CopyPlus, Download, EyeOff, FileUp, Filter, Group, LayoutTemplate, Link2, Maximize2, Menu, MoreHorizontal, Palette, PanelRight, Plus, Search, SlidersHorizontal, Table2, Trash2, Undo2, Users, X, Zap } from 'lucide-react';
+import type { CellValue, Channel, Client, DataTable, RowTemplate, TableField, TableRow, TableViewDef, TableViewTweak, User } from '../../types';
 import { term, brand as product } from '../../terms';
 import { uid } from '../../utils';
 import { usePersisted } from '../../settings';
 import { Popover } from '../ui/Popover';
 import { TabPane } from '../ui/Smooth';
-import { TabBar } from '../ui/TabBar';
-import { DatePicker } from '../ui/DatePicker';
 import { PickSelect } from '../ui/PickSelect';
 import { ProjectPicker } from '../ProjectPicker';
+import { usePhone } from '../../mobile/media';
+import { useCreateAction, useTitleMenu } from '../../mobile/chrome';
+import type { SheetAction } from '../ui/ActionSheet';
 import { newOption, type CellCtx } from './Cell';
 import { GridView } from './GridView';
 import { BoardTools, BoardView, newChoiceField } from './BoardView';
 import { CalendarView, GalleryView, ListView } from './Views';
+import { TimelineView } from './TimelineView';
+import { CardList, statusFieldOf } from './CardList';
 import { FieldLine, RecordDrawer } from './RecordDrawer';
 import { AutomationsPanel } from './Automations';
 import { ButtonDialog, ButtonSetupCtx } from './ButtonDialog';
-import { PersonSelect } from '../ui/PeoplePicker';
 import { ImportDialog, type ImportPlan } from './ImportDialog';
+import { TemplatesDialog } from './Templates';
+import { PageLayoutDialog } from './PageLayout';
+import { ViewTabs } from './ViewTabs';
+import { ColorRulesEditor, FieldsEditor, FilterPanel, GroupEditor, SortEditor } from './ViewTools';
+import { BulkBar, BulkEditSheet, FilterLine, FilterSheet, QuickCreate, SettingsSheet, ViewsSheet, openWithFocus, type SettingsActions } from './PhoneBits';
+import { EditSheet } from './EditSheet';
+import { VIEW_KINDS, kindDefaults, newView, viewIcon } from './viewKinds';
+import { NARROW_PANE, clearTableLink, readTableLink, tableLink, usePaneWidth, useTweaks } from './hooks';
 import { download, rowsToCsv } from './csv';
-import { TABLE_COLORS, cellText, convertValue, fieldIcon, isComputed, isEmpty, opsFor, optionsFromValues, parseIncoming, rowName, sortWords, sortsOf, viewFields, visibleRows } from './fields';
+import { TABLE_COLORS, cellText, convertValue, filterCount, isComputed, isEmpty, opsFor, optionsFromValues, parseIncoming, rowName, sortsOf, templateValues, viewFields, visibleRows } from './fields';
 
 type Setter<T> = (fn: (x: T) => T) => void;
 
@@ -50,23 +60,32 @@ interface ScreenProps {
   guest?: { canEdit: (fieldId: string) => boolean; add: boolean; download: boolean };
 }
 
-const VIEW_KINDS: { kind: TableViewDef['kind']; name: string; icon: typeof LayoutGrid; hint: string }[] = [
-  { kind: 'grid', name: 'Table', icon: LayoutGrid, hint: 'Rows and columns, like a spreadsheet' },
-  { kind: 'board', name: 'Board', icon: Columns3, hint: 'Cards in columns by a choice, like Status' },
-  { kind: 'list', name: 'List', icon: List, hint: 'A compact list, a few fields per row' },
-  { kind: 'gallery', name: 'Gallery', icon: GalleryHorizontalEnd, hint: 'Cards with a picture' },
-  { kind: 'calendar', name: 'Calendar', icon: CalendarDays, hint: 'Rows on their dates' },
-];
-const viewIcon = (k: TableViewDef['kind']) => VIEW_KINDS.find((x) => x.kind === k)?.icon ?? LayoutGrid;
+/** View settings that are each person's own (until saved for everyone): what's filtered, how it's sorted, what's folded. */
+const PERSONAL = new Set(['filters', 'filterMode', 'filterGroups', 'sorts', 'sort', 'collapsed']);
 
 export function TableScreen(p: ScreenProps) {
   const t = p.table;
+  const g = p.guest;
+  const paneRef = useRef<HTMLElement>(null);
+  const paneW = usePaneWidth(paneRef);
+  const phone = usePhone();
+  const narrow = paneW < NARROW_PANE; // the phone layout: cards, one toolbar row, sheets (also in a narrow pane)
   const [viewId, setViewId] = usePersisted<string>(`s2g-table-view:${t.id}`, t.views[0]?.id ?? '');
-  const view = t.views.find((v) => v.id === viewId) ?? t.views[0];
+  const base = t.views.find((v) => v.id === viewId) ?? t.views[0];
+  const tweaks = useTweaks(t.id);
+  const view = base ? tweaks.effective(base) : undefined;
+  const differs = base ? tweaks.differs(base) : false;
+  const [cardsOn, setCardsOn] = usePersisted<Record<string, boolean>>('s2g-tb-cards', {}); // per view, on this device
+  const cards = narrow && !!view && (view.kind === 'grid' || view.kind === 'list') && (cardsOn[view.id] ?? true);
   const [q, setQ] = useState('');
+  const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [pop, setPop] = useState<null | 'filter' | 'sort' | 'fields' | 'group' | 'view' | 'more' | 'addView'>(null);
-  const refs = { filter: useRef<HTMLButtonElement>(null), sort: useRef<HTMLButtonElement>(null), fields: useRef<HTMLButtonElement>(null), group: useRef<HTMLButtonElement>(null), view: useRef<HTMLButtonElement>(null), more: useRef<HTMLButtonElement>(null), addView: useRef<HTMLButtonElement>(null) };
+  const [selecting, setSelecting] = useState(false); // narrow screens: picking several rows
+  const [pop, setPop] = useState<null | 'filter' | 'sort' | 'fields' | 'group' | 'colors' | 'view' | 'more' | 'addView' | 'newRow'>(null);
+  const [sheet, setSheet] = useState<null | 'views' | 'filter' | 'settings' | 'bulk'>(null);
+  const refs = { filter: useRef<HTMLButtonElement>(null), sort: useRef<HTMLButtonElement>(null), fields: useRef<HTMLButtonElement>(null), group: useRef<HTMLButtonElement>(null), colors: useRef<HTMLButtonElement>(null), more: useRef<HTMLButtonElement>(null), newRow: useRef<HTMLButtonElement>(null) };
+  const tabAnchor = useRef<HTMLElement | null>(null);
+  const addViewAnchor = useRef<HTMLElement | null>(null);
   const [name, setName] = useState(t.name);
   const [renamingView, setRenamingView] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
@@ -74,16 +93,31 @@ export function TableScreen(p: ScreenProps) {
   const [freshRow, setFreshRow] = useState<string | null>(null); // just added in the grid: shown and ready to type
   const [importing, setImporting] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [templating, setTemplating] = useState(false);
+  const [laying, setLaying] = useState(false);
   const [full, setFull] = useState(false);
   const [rowMenu, setRowMenu] = useState<{ rowId: string; x: number; y: number } | null>(null);
+  const [editCell, setEditCell] = useState<{ rowId: string; fieldId: string; title?: string } | null>(null);
+  const [quick, setQuick] = useState<{ values: Record<string, CellValue>; label?: string } | null>(null);
+  const quickInput = useRef<HTMLInputElement>(null);
   const rowMenuAnchor = useRef<HTMLSpanElement>(null);
   const [tip, setTip] = usePersisted('s2g-tables-tip', true);
-  const g = p.guest;
   // Columns, views and automations: admins, whoever made the table, and Members when the company allows it.
   const structure = !g && (p.isAdmin || p.canEditTables !== false || t.createdBy === p.me);
+  const canDeleteTable = !g && (p.isAdmin || !!p.canDeleteThings || t.createdBy === p.me);
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [asking, setAsking] = useState<{ row: TableRow; f: TableField } | null>(null);
   useEffect(() => setName(t.name), [t.name]);
+
+  // A link to a view or a row (/tables?t=…&v=…&r=…): open what it points at.
+  useEffect(() => {
+    const l = readTableLink();
+    if (!l) return;
+    if (l.t !== t.id) return void p.onOpenTable(l.t, l.r);
+    if (l.v && t.views.some((v) => v.id === l.v)) setViewId(l.v);
+    if (l.r) p.setOpenRow(l.r);
+    clearTableLink();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mine = useMemo(() => p.rows.filter((r) => r.tableId === t.id), [p.rows, t.id]);
   const rowNameOf = (id: string) => {
@@ -91,8 +125,8 @@ export function TableScreen(p: ScreenProps) {
     const tt = r && p.tables.find((x) => x.id === r.tableId);
     return tt ? rowName(tt, r) : '';
   };
-  const textCtx = { users: p.users, rowName: rowNameOf, rows: p.rows, tables: p.tables };
-  const shown = useMemo(() => (view ? visibleRows(t, view, mine, q, textCtx) : mine), [t, view, mine, q, p.users, p.rows, p.tables]); // eslint-disable-line react-hooks/exhaustive-deps
+  const textCtx = { users: p.users, rowName: rowNameOf, rows: p.rows, tables: p.tables, me: p.me };
+  const shown = useMemo(() => (view ? visibleRows(t, view, mine, q, textCtx) : mine), [t, view, mine, q, p.users, p.rows, p.tables, p.me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* undo: what this table and its rows were before each change made here (Cmd/Ctrl+Z) */
   const undo = useRef<{ rows: TableRow[]; table: DataTable; what: string }[]>([]);
@@ -111,8 +145,10 @@ export function TableScreen(p: ScreenProps) {
     if (g) return;
     const key = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
+      if (document.querySelector('.modal-scrim, .pop:not(.is-leaving), .sheet-scrim:not(.is-leaving)')) return;
+      // Escape lets go of the rows picked.
+      if (e.key === 'Escape' && (selected.size || selecting) && !p.openRow) return void (setSelected(new Set()), setSelecting(false));
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z' || e.shiftKey || el.closest('input, textarea, [contenteditable=true]')) return;
-      if (document.querySelector('.modal-scrim, .pop:not(.is-leaving)')) return;
       e.preventDefault();
       undoLast();
     };
@@ -122,7 +158,31 @@ export function TableScreen(p: ScreenProps) {
 
   /* table changes */
   const patchTable = (patch: Partial<DataTable>) => p.setTables((ts) => ts.map((x) => (x.id === t.id ? { ...x, ...patch } : x)));
-  const patchView = (patch: Partial<TableViewDef>) => view && patchTable({ views: t.views.map((v) => (v.id === view.id ? { ...v, ...patch } : v)) });
+  const patchShared = (patch: Partial<TableViewDef>) => base && structure && patchTable({ views: t.views.map((v) => (v.id === base.id ? { ...v, ...patch } : v)) });
+  /** A change to the view: filters, sorts and folded groups are this person's own; the rest is the view everyone sees. */
+  const patchView = (patch: Partial<TableViewDef>) => {
+    if (!base) return;
+    const own: TableViewTweak = {};
+    const shared: Partial<TableViewDef> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === 'sort') continue; // older views' single sort: sorts replace it
+      if (PERSONAL.has(k)) (own as Record<string, unknown>)[k] = v;
+      else (shared as Record<string, unknown>)[k] = v;
+    }
+    if (Object.keys(own).length) tweaks.set(base.id, own);
+    if (Object.keys(shared).length) patchShared(shared);
+  };
+  const saveForEveryone = () => {
+    const tw = base && tweaks.of(base.id);
+    if (!base || !tw || !structure) return;
+    patchTable({
+      views: t.views.map((v) =>
+        v.id !== base.id ? v : { ...v, ...(tw.filters ? { filters: tw.filters } : {}), ...(tw.filterMode ? { filterMode: tw.filterMode } : {}), ...(tw.filterGroups ? { filterGroups: tw.filterGroups } : {}), ...(tw.sorts ? { sorts: tw.sorts, sort: undefined } : {}) },
+      ),
+    });
+    tweaks.reset(base.id);
+    p.toast({ text: `“${base.name}” now shows these filters and sorts for everyone` });
+  };
   const addOption = (fieldId: string, label: string) => {
     const f = t.fields.find((x) => x.id === fieldId)!;
     const o = newOption(f, label);
@@ -134,8 +194,8 @@ export function TableScreen(p: ScreenProps) {
     const before = t.fields.find((x) => x.id === f.id);
     remember(before ? `change to ${before.name}` : `new column ${f.name}`);
     if (!before) {
-      const views = at === undefined || !view ? t.views : t.views.map((v) => {
-        if (v.id !== view.id) return v;
+      const views = at === undefined || !base ? t.views : t.views.map((v) => {
+        if (v.id !== base.id) return v;
         const vis = viewFields(t, v).map((x) => x.id);
         const rest = viewFields(t, v, true).map((x) => x.id);
         const anchorId = vis[at];
@@ -143,7 +203,8 @@ export function TableScreen(p: ScreenProps) {
         rest.splice(idx < 0 ? rest.length : idx, 0, f.id);
         return { ...v, order: rest };
       });
-      return patchTable({ fields: [...t.fields, f], views });
+      // Read the latest table: two new fields in a row (a timeline's Start and End) both land.
+      return p.setTables((ts) => ts.map((x) => (x.id === t.id ? { ...x, fields: [...x.fields, f], views: at === undefined ? x.views : views } : x)));
     }
     let next = f;
     if (before.type !== f.type) {
@@ -169,19 +230,23 @@ export function TableScreen(p: ScreenProps) {
   const deleteField = (id: string) => {
     const f = t.fields.find((x) => x.id === id);
     remember(`delete column ${f?.name ?? ''}`);
+    const strip = <V extends TableViewTweak>(v: V): V => ({ ...v, filters: v.filters?.filter((x) => x.fieldId !== id), filterGroups: v.filterGroups?.map((gr) => ({ ...gr, filters: gr.filters.filter((x) => x.fieldId !== id) })), sorts: v.sorts?.filter((x) => x.fieldId !== id) });
     patchTable({
       fields: t.fields.filter((x) => x.id !== id),
       views: t.views.map((v) => ({
-        ...v,
+        ...strip(v),
         hidden: v.hidden?.filter((x) => x !== id),
         order: v.order?.filter((x) => x !== id),
         wrap: v.wrap?.filter((x) => x !== id),
-        filters: v.filters?.filter((x) => x.fieldId !== id),
+        colors: v.colors?.filter((x) => x.when.fieldId !== id),
         sort: v.sort?.fieldId === id ? undefined : v.sort,
-        sorts: v.sorts?.filter((x) => x.fieldId !== id),
         groupBy: v.groupBy === id ? undefined : v.groupBy,
+        subGroupBy: v.subGroupBy === id ? undefined : v.subGroupBy,
+        endField: v.endField === id ? undefined : v.endField,
         calcs: v.calcs ? Object.fromEntries(Object.entries(v.calcs).filter(([k]) => k !== id)) : v.calcs,
       })),
+      page: t.page ? { ...t.page, pinned: t.page.pinned?.filter((x) => x !== id), main: t.page.main === id ? undefined : t.page.main, sections: t.page.sections?.map((s) => ({ ...s, fields: s.fields.filter((x) => x !== id) })) } : t.page,
+      templates: t.templates?.map((x) => ({ ...x, values: Object.fromEntries(Object.entries(x.values).filter(([k]) => k !== id)) })),
     });
     p.setRows((rs) => rs.map((r) => (r.tableId === t.id && id in r.values ? { ...r, values: Object.fromEntries(Object.entries(r.values).filter(([k]) => k !== id)) } : r)));
     p.toast({ text: `Deleted the ${f?.name ?? ''} column`, action: { label: 'Undo', run: undoLast } });
@@ -191,9 +256,9 @@ export function TableScreen(p: ScreenProps) {
     if (!f) return;
     remember(`copy of ${f.name}`);
     const copy: TableField = { ...structuredClone(f), id: uid(), name: `${f.name} copy` };
-    const rest = view ? viewFields(t, view, true).map((x) => x.id) : [];
+    const rest = base ? viewFields(t, base, true).map((x) => x.id) : [];
     rest.splice(rest.indexOf(id) + 1, 0, copy.id);
-    patchTable({ fields: [...t.fields, copy], views: t.views.map((v) => (v.id === view?.id ? { ...v, order: rest } : v)) });
+    patchTable({ fields: [...t.fields, copy], views: t.views.map((v) => (v.id === base?.id ? { ...v, order: rest } : v)) });
     if (!isComputed(f)) p.setRows((rs) => rs.map((r) => (r.tableId === t.id && !isEmpty(r.values[id]) ? { ...r, values: { ...r.values, [copy.id]: r.values[id] } } : r)));
   };
 
@@ -208,6 +273,10 @@ export function TableScreen(p: ScreenProps) {
     remember('edit');
     p.setRows((rs) => rs.map((r) => (r.id === rowId ? withValue(r, fieldId, v) : r)));
   };
+  const setValues = (rowId: string, values: Record<string, CellValue>) => {
+    remember('edit');
+    p.setRows((rs) => rs.map((r) => (r.id === rowId ? Object.entries(values).reduce((acc, [k, v]) => withValue(acc, k, v), r) : r)));
+  };
   const orderNear = (targetId?: string, after = true) => {
     const list = [...mine].sort((a, b) => a.order - b.order);
     if (!targetId) return Math.max(0, ...list.map((x) => x.order)) + 1;
@@ -216,9 +285,12 @@ export function TableScreen(p: ScreenProps) {
     const there = after ? list[i + 1]?.order : list[i - 1]?.order;
     return there === undefined ? here + (after ? 1 : -1) : (here + there) / 2;
   };
-  const addRow = (values: Record<string, CellValue> = {}, near?: { rowId: string; after: boolean }) => {
+  const defaultTpl = t.templates?.find((x) => x.isDefault);
+  /** A new row: the template's values (the default one unless told otherwise; null for a blank row), then these. */
+  const addRow = (values: Record<string, CellValue> = {}, near?: { rowId: string; after: boolean }, tpl?: RowTemplate | null) => {
     remember('new row');
-    const r: TableRow = { id: uid(), workspaceId: t.workspaceId, tableId: t.id, values, order: orderNear(near?.rowId, near?.after), createdBy: p.me, createdAt: now(), updatedAt: now() };
+    const from = g ? {} : templateValues(t, tpl === null ? undefined : (tpl ?? defaultTpl), p.me);
+    const r: TableRow = { id: uid(), workspaceId: t.workspaceId, tableId: t.id, values: { ...from, ...values }, order: orderNear(near?.rowId, near?.after), createdBy: p.me, createdAt: now(), updatedAt: now() };
     p.setRows((rs) => [...rs, r]);
     return r.id;
   };
@@ -227,14 +299,30 @@ export function TableScreen(p: ScreenProps) {
     const gone = p.rows.filter((r) => ids.includes(r.id));
     p.setRows((rs) => rs.filter((r) => !ids.includes(r.id)));
     setSelected(new Set());
+    setSelecting(false);
     if (p.openRow && ids.includes(p.openRow)) p.setOpenRow(null);
     p.toast({ text: ids.length === 1 ? `Deleted “${rowName(t, gone[0])}”` : `Deleted ${ids.length} rows`, action: { label: 'Undo', run: undoLast } });
   };
   const duplicate = (id: string) => {
     const r = mine.find((x) => x.id === id);
     if (!r) return;
-    const nid = addRow({ ...r.values, [t.fields[0].id]: `${rowName(t, r)} (copy)` }, { rowId: id, after: true });
-    return nid;
+    return addRow({ ...r.values, [t.fields[0].id]: `${rowName(t, r)} (copy)` }, { rowId: id, after: true }, null);
+  };
+  const duplicateMany = (ids: string[]) => {
+    remember(`copy ${ids.length} rows`);
+    let order = Math.max(0, ...mine.map((x) => x.order));
+    const made = mine.filter((r) => ids.includes(r.id)).map((r) => ({ ...r, id: uid(), order: ++order, values: { ...r.values, [t.fields[0].id]: `${rowName(t, r)} (copy)` }, comments: undefined, history: undefined, runs: undefined, createdBy: p.me, createdAt: now(), updatedAt: now() }));
+    p.setRows((rs) => [...rs, ...made]);
+    setSelected(new Set());
+    setSelecting(false);
+    p.toast({ text: `Copied ${made.length} ${made.length === 1 ? 'row' : 'rows'}`, action: { label: 'Undo', run: undoLast } });
+  };
+  /** One field changed on several rows at once. */
+  const bulkSet = (ids: string[], fieldId: string, v: CellValue) => {
+    const f = t.fields.find((x) => x.id === fieldId);
+    remember(`change ${f?.name ?? 'a field'} on ${ids.length} rows`);
+    p.setRows((rs) => rs.map((r) => (ids.includes(r.id) ? withValue(r, fieldId, v) : r)));
+    p.toast({ text: `${f?.name ?? 'Field'} changed on ${ids.length} ${ids.length === 1 ? 'row' : 'rows'}`, action: { label: 'Undo', run: undoLast } });
   };
   const comment = (id: string, text: string) => p.setRows((rs) => rs.map((r) => (r.id === id ? { ...r, comments: [...(r.comments ?? []), { id: uid(), by: p.me, at: now(), text }] } : r)));
   const moveRow = (id: string, targetId: string, after: boolean, grp?: { fieldId: string; value: CellValue }) => {
@@ -286,30 +374,34 @@ export function TableScreen(p: ScreenProps) {
 
   /* views */
   const addView = (kind: TableViewDef['kind']) => {
-    const v: TableViewDef = {
-      id: uid(),
-      name: VIEW_KINDS.find((x) => x.kind === kind)!.name,
-      kind,
-      groupBy: kind === 'board' ? t.fields.find((f) => f.type === 'select')?.id : undefined,
-      dateField: kind === 'calendar' ? (t.fields.find((f) => f.type === 'date') ?? t.fields.find((f) => f.type === 'created'))?.id : undefined,
-      cover: kind === 'gallery' ? t.fields.find((f) => f.type === 'files')?.id : undefined,
-    };
+    const v = newView(t, kind);
     patchTable({ views: [...t.views, v] });
     setViewId(v.id);
     setPop(null);
   };
   const duplicateView = () => {
-    if (!view) return;
-    const v = { ...structuredClone(view), id: uid(), name: `${view.name} copy` };
+    if (!base) return;
+    const v = { ...structuredClone(base), id: uid(), name: `${base.name} copy` };
     patchTable({ views: [...t.views, v] });
     setViewId(v.id);
     setPop(null);
   };
   const deleteView = () => {
-    if (!view || t.views.length < 2) return;
-    patchTable({ views: t.views.filter((v) => v.id !== view.id) });
-    setViewId(t.views.find((v) => v.id !== view.id)!.id);
+    if (!base || t.views.length < 2) return;
+    remember(`delete view ${base.name}`);
+    patchTable({ views: t.views.filter((v) => v.id !== base.id) });
+    setViewId(t.views.find((v) => v.id !== base.id)!.id);
     setPop(null);
+    p.toast({ text: `Deleted the “${base.name}” view`, action: { label: 'Undo', run: undoLast } });
+  };
+  /** The same view shown another way: what the new way needs comes from the table (a choice field, dates). */
+  const changeKind = (kind: TableViewDef['kind']) => {
+    if (!base || base.kind === kind) return;
+    const d = kindDefaults(t, kind);
+    patchShared({ kind, groupBy: base.groupBy && (kind !== 'board' || t.fields.find((f) => f.id === base.groupBy)?.type === 'select') ? base.groupBy : d.groupBy, dateField: base.dateField ?? d.dateField, endField: base.endField ?? d.endField, cover: base.cover ?? d.cover });
+  };
+  const copyLink = (rowId?: string) => {
+    void navigator.clipboard?.writeText(tableLink(t.id, base?.id, rowId)).then(() => p.toast({ text: rowId ? 'Link to the row copied' : 'Link to the view copied' }));
   };
   const deleteTable = () => {
     if (!confirm(`Delete “${t.name}” and its ${mine.length} row${mine.length === 1 ? '' : 's'}? This can’t be undone.`)) return;
@@ -372,9 +464,9 @@ export function TableScreen(p: ScreenProps) {
 
   const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, rowName: rowNameOf, addOption, runButton, running, isAdmin: p.isAdmin || !!g, canEdit: g?.canEdit, openLinked: g ? undefined : (tableId, rowId) => p.onOpenTable(tableId, rowId) };
   const filters = view?.filters ?? [];
-  const activeFilters = filters.filter((f) => f.op === 'empty' || f.op === 'filled' || (f.value ?? '') !== '');
+  const nFilters = view ? filterCount(t, view) : 0;
   const sorts = view ? sortsOf(view) : [];
-  const setFilters = (fs: TableFilter[]) => patchView({ filters: fs });
+  const setFilters = (fs: typeof filters) => patchView({ filters: fs });
   const openRow = p.openRow ? mine.find((r) => r.id === p.openRow) : undefined;
   const fieldsHidden = view?.hidden?.length ?? 0;
   const groupField = view?.groupBy ? t.fields.find((f) => f.id === view.groupBy) : undefined;
@@ -382,217 +474,413 @@ export function TableScreen(p: ScreenProps) {
   const filterBy = (fieldId: string) => {
     const f = t.fields.find((x) => x.id === fieldId)!;
     setFilters([...filters, { fieldId, op: opsFor(f.type)[0].op }]);
-    setPop('filter');
+    if (narrow) setSheet('filter');
+    else setPop('filter');
   };
   const menuRow = rowMenu ? mine.find((r) => r.id === rowMenu.rowId) : undefined;
   const canAdd = !g || g.add;
+  const canEditField = (f: TableField) => !isComputed(f) && f.type !== 'button' && (!g || g.canEdit(f.id));
+  // The row before and after the open one, in the order shown (J and K, the arrows, or the phone's footer).
+  const navIndex = openRow ? shown.findIndex((r) => r.id === openRow.id) : -1;
+  const nav = openRow && navIndex >= 0 ? { index: navIndex, count: shown.length, prev: navIndex > 0 ? () => p.setOpenRow(shown[navIndex - 1].id) : undefined, next: navIndex < shown.length - 1 ? () => p.setOpenRow(shown[navIndex + 1].id) : undefined } : undefined;
+
+  /** New row from the toolbar: the grid makes it in place, ready to type; elsewhere its page opens. */
+  const newRowHere = (tpl?: RowTemplate | null) => {
+    const id = addRow({}, undefined, tpl);
+    if (view?.kind === 'grid' || !view) setFreshRow(id);
+    else openRowFull(id);
+  };
+  /** Quick create (phones and narrow panes): a sheet that asks for the name, with the keyboard up. */
+  const openQuick = (values: Record<string, CellValue> = {}, label?: string) => openWithFocus(() => setQuick({ values, label }), quickInput);
+  const quickMade = (nm: string, tpl: RowTemplate | undefined, again: boolean) => {
+    if (!quick) return;
+    const first = t.fields[0];
+    const id = addRow({ ...quick.values, ...(nm ? { [first.id]: nm } : {}) }, undefined, tpl ?? null);
+    if (!again) setQuick(null);
+    p.toast({ text: nm ? `Added “${nm}”` : 'Added a row', action: { label: 'Open', run: () => (setQuick(null), p.setOpenRow(id)) } });
+  };
+
+  // Phones: the create button adds a row (templates on a long-press); the title switches between tables.
+  const templates = t.templates ?? [];
+  useCreateAction('tables', !g && canAdd && !!view && { label: 'New row', icon: Plus, run: () => openQuick(), more: templates.map((x) => ({ label: `New “${x.name}”`, icon: LayoutTemplate, run: () => openQuick(templateValues(t, x, p.me), x.name) })) });
+  const projectName = (id?: string) => (id ? (p.clients.find((c) => c.id === id)?.name ?? term.One) : 'Company');
+  useTitleMenu(
+    'tables',
+    !g && {
+      label: 'Tables',
+      value: t.id,
+      options: [{ value: '__all', label: 'All tables', icon: <Table2 size={16} /> }, ...p.tables.filter((x) => x.workspaceId === t.workspaceId).map((x) => ({ value: x.id, label: x.name, group: projectName(x.clientId), icon: <i className="tb-dot" style={{ background: x.color }} /> }))],
+      onChange: (v) => (v === '__all' ? p.onMenu() : p.onOpenTable(v)),
+    },
+  );
+
+  // Picking several rows: the long-press menu's "Select", or the grid's checkboxes on a computer.
+  const pickedRows = mine.filter((r) => selected.has(r.id));
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  useEffect(() => {
+    if (selecting && !selected.size) setSelecting(false);
+  }, [selected.size, selecting]);
+  const status = view ? (view.kind === 'board' ? t.fields.find((f) => f.id === view.groupBy && f.type === 'select') ?? t.fields.find((f) => f.type === 'select') : statusFieldOf(t, view)) : undefined;
+  const rowActions = (row: TableRow): SheetAction[] => [
+    ...(canAdd || !g ? [{ label: 'Select', icon: CheckSquare, run: () => (setSelecting(true), setSelected(new Set([row.id]))) }] : []),
+    { label: 'Open', icon: PanelRight, run: () => openRowFull(row.id) },
+    ...(status && canEditField(status) ? [{ label: view?.kind === 'board' ? 'Move to' : `Change ${status.name.toLowerCase()}`, icon: ArrowRightLeft, run: () => setEditCell({ rowId: row.id, fieldId: status.id, title: view?.kind === 'board' ? `Move “${rowName(t, row)}” to` : undefined }) }] : []),
+    ...(canAdd ? [{ label: 'Duplicate', icon: CopyPlus, run: () => duplicate(row.id) }] : []),
+    ...(!g ? [{ label: 'Copy link', icon: Link2, run: () => copyLink(row.id) }] : []),
+    { label: 'Copy as text', icon: Copy, run: () => copyText(row) },
+    ...(!g ? [{ label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => deleteRows([row.id]) }] : []),
+  ];
+  const copyText = (row: TableRow) => {
+    const text = viewFields(t, view ?? t.views[0]).map((f) => `${f.name}: ${cellText(f, row.values[f.id] ?? null, textCtx)}`).filter((l) => !l.endsWith(': ')).join('\n');
+    void navigator.clipboard?.writeText(text);
+    p.toast({ text: 'Row copied as text' });
+  };
+  const touchCell = (rowId: string, fieldId: string) => {
+    const f = t.fields.find((x) => x.id === fieldId);
+    const row = mine.find((r) => r.id === rowId);
+    if (!f || !row) return;
+    if (f.type === 'button') return runButton(row, f);
+    if (!canEditField(f)) return openRowFull(rowId);
+    setEditCell({ rowId, fieldId });
+  };
+  const collapsedSet = new Set(view?.collapsed ?? []);
+  const foldGroup = (key: string) => patchView({ collapsed: collapsedSet.has(key) ? [...collapsedSet].filter((x) => x !== key) : [...collapsedSet, key] });
+  const editRow = editCell ? mine.find((r) => r.id === editCell.rowId) : undefined;
+  const editField = editCell ? t.fields.find((f) => f.id === editCell.fieldId) : undefined;
+  const dateField = view ? t.fields.find((f) => f.id === view.dateField) ?? t.fields.find((f) => f.type === 'date') : undefined;
+
+  const settingsActions: SettingsActions = {
+    structure,
+    canDelete: canDeleteTable,
+    onView: patchShared,
+    onMine: (x) => patchView(x),
+    onPatchTable: patchTable,
+    onDuplicateView: duplicateView,
+    onDeleteView: deleteView,
+    onKind: changeKind,
+    onShare: structure && t.clientId ? () => setSharing(true) : undefined,
+    onAutomations: () => (setSheet(null), setAutoOpen(true)),
+    onTemplates: () => setTemplating(true),
+    onImport: structure ? () => (setSheet(null), setImporting(true)) : undefined,
+    onDownload: !g || g.download ? exportCsv : undefined,
+    onDeleteTable: deleteTable,
+    onNewField: (f) => saveField(f),
+    layout: view && (view.kind === 'grid' || view.kind === 'list') ? { cards, set: (on) => setCardsOn((x) => ({ ...x, [view.id]: on })) } : undefined,
+    clients: p.clients,
+    toast: (text) => p.toast({ text }),
+  };
 
   const buttonField = buttonFor ? t.fields.find((f) => f.id === buttonFor && f.type === 'button') : undefined;
+  const ViewIcon = view ? viewIcon(view.kind) : Table2;
+  const showPlus = canAdd && !!view && (!phone || !!g);
   return (
     <ButtonSetupCtx.Provider value={setButtonFor}>
-    <section className="tasks-pane tb-pane view-enter">
-      <header className="tracking-head tasks-head tb-head-bar">
-        <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
-          <Menu size={18} />
-        </button>
-        <button className="icon-btn tb-back" onClick={p.onMenu} aria-label="All tables">
-          <ArrowLeft size={18} />
-        </button>
-        <button type="button" className="client-badge tb-badge" style={{ background: t.color }} title={g ? t.name : 'Change colour'} disabled={!!g} onClick={() => patchTable({ color: TABLE_COLORS[(TABLE_COLORS.indexOf(t.color) + 1) % TABLE_COLORS.length] })}>
-          {t.name.charAt(0).toUpperCase()}
-        </button>
-        <div className="th-text">
-          <input className="tb-title" value={name} readOnly={!!g} aria-label="Table name" onChange={(e) => setName(e.target.value)} onBlur={() => (name.trim() ? name.trim() !== t.name && patchTable({ name: name.trim() }) : setName(t.name))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
-          {g ? t.description && <span className="muted small">{t.description}</span> : <ProjectPicker value={t.clientId ?? ''} onChange={(v) => patchTable({ clientId: v || undefined })} projects={p.clients} none="Whole company" label="Belongs to" className="sel-flat" />}
-        </div>
-        {!g && (
-          <button className="icon-btn" onClick={undoLast} title="Undo (Cmd/Ctrl+Z)" aria-label="Undo">
-            <Undo2 size={16} />
+    <section ref={paneRef} className={`tasks-pane tb-pane view-enter${narrow ? ' tb-narrow' : ''}${phone ? ' tb-phone' : ''}`}>
+      {(!phone || g) && (
+        <header className="tracking-head tasks-head tb-head-bar">
+          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
+            <Menu size={18} />
           </button>
-        )}
-        {!g && t.clientId && (
-          <button className={`ghost-btn sm tb-share-btn${t.share?.enabled ? ' on' : ''}`} onClick={() => setSharing(true)} title={`What the ${term.one}’s guests see`}>
-            <Users size={13} /> <span className="lbl">{t.share?.enabled ? 'Shared' : 'Share'}</span>
+          <button className="icon-btn tb-back" onClick={p.onMenu} aria-label="All tables">
+            <ArrowLeft size={18} />
           </button>
-        )}
-        {structure && (
-          <button className={`ghost-btn sm tb-auto-btn${t.intake?.enabled || t.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title="Data coming in, rules, webhooks">
-            <Zap size={13} /> <span className="lbl">Automations</span>
+          <button type="button" className="client-badge tb-badge" style={{ background: t.color }} title={g || !structure ? t.name : 'Change colour'} disabled={!!g || !structure} onClick={() => patchTable({ color: TABLE_COLORS[(TABLE_COLORS.indexOf(t.color) + 1) % TABLE_COLORS.length] })}>
+            {t.name.charAt(0).toUpperCase()}
           </button>
-        )}
-        {g ? (
-          g.download && (
-            <button className="icon-btn" onClick={exportCsv} aria-label="Download CSV" title="Download CSV">
-              <Download size={16} />
-            </button>
-          )
-        ) : (
-          <button ref={refs.more} className="icon-btn" onClick={() => setPop('more')} aria-label="Table options">
-            <MoreHorizontal size={17} />
-          </button>
-        )}
-        <Popover anchor={refs.more} open={pop === 'more'} onClose={() => setPop(null)} width={240} align="end" title="Table">
-          <div className="tb-menu">
-            <label className="tb-menu-desc">
-              <span className="muted small">Description</span>
-              <textarea rows={2} defaultValue={t.description ?? ''} placeholder="What this table is for" onBlur={(e) => e.target.value.trim() !== (t.description ?? '') && patchTable({ description: e.target.value.trim() || undefined })} />
-            </label>
-            <button type="button" onClick={() => (setPop(null), setImporting(true))}>
-              <FileUp size={14} /> Import CSV
-            </button>
-            <button type="button" onClick={() => (setPop(null), exportCsv())}>
-              <Download size={14} /> Download CSV{view && shown.length !== mine.length ? ` (${shown.length} shown)` : ''}
-            </button>
-            {(p.isAdmin || p.canDeleteThings || t.createdBy === p.me) && (
-              <button type="button" className="danger" onClick={() => (setPop(null), deleteTable())}>
-                <Trash2 size={14} /> Delete table
-              </button>
-            )}
+          <div className="th-text">
+            <input className="tb-title" value={name} readOnly={!!g || !structure} aria-label="Table name" onChange={(e) => setName(e.target.value)} onBlur={() => (name.trim() ? name.trim() !== t.name && patchTable({ name: name.trim() }) : setName(t.name))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+            {g || !structure ? t.description && <span className="muted small tb-desc">{t.description}</span> : <ProjectPicker value={t.clientId ?? ''} onChange={(v) => patchTable({ clientId: v || undefined })} projects={p.clients} none="Whole company" label="Belongs to" className="sel-flat" />}
           </div>
-        </Popover>
-      </header>
-
-      <div className="tb-bar">
-        <TabBar
-          storageKey={`table-views:${t.id}`}
-          className="client-tabs tb-views"
-          value={view?.id ?? ''}
-          canHide={false}
-          order={{ order: t.views.map((v) => v.id), hidden: [] }}
-          onOrder={!structure ? undefined : (o) => patchTable({ views: o.order.map((id) => t.views.find((v) => v.id === id)!).filter(Boolean) })}
-          onSelect={(id) => {
-            if (id !== view?.id) return (setViewId(id), setSelected(new Set()));
-            if (!structure) return;
-            // Clicking the open view: its settings, under its tab.
-            refs.view.current = document.querySelector<HTMLButtonElement>(`.tb-views [role=tab].on`);
-            setRenamingView(view.name);
-            setPop('view');
-          }}
-          items={t.views.map((v) => {
-            const I = viewIcon(v.kind);
-            return { id: v.id, name: v.name, title: v.id === view?.id && structure ? 'View settings' : undefined, label: <><I size={13} /> {v.name}</> };
-          })}
-          extra={
-            structure && (
-              <button ref={refs.addView} className="tb-add-view" onClick={() => setPop('addView')} title="Add a view">
-                <Plus size={14} />
+          {!g && !narrow && (
+            <button className="icon-btn" onClick={undoLast} title="Undo (Cmd/Ctrl+Z)" aria-label="Undo">
+              <Undo2 size={16} />
+            </button>
+          )}
+          {!g && !narrow && structure && t.clientId && (
+            <button className={`ghost-btn sm tb-share-btn${t.share?.enabled ? ' on' : ''}`} onClick={() => setSharing(true)} title={`What the ${term.one}’s guests see`}>
+              <Users size={13} /> <span className="lbl">{t.share?.enabled ? 'Shared' : 'Share'}</span>
+            </button>
+          )}
+          {structure && !narrow && (
+            <button className={`ghost-btn sm tb-auto-btn${t.intake?.enabled || t.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title="Data coming in, rules, webhooks">
+              <Zap size={13} /> <span className="lbl">Automations</span>
+            </button>
+          )}
+          {g ? (
+            g.download && (
+              <button className="icon-btn" onClick={exportCsv} aria-label="Download CSV" title="Download CSV">
+                <Download size={16} />
               </button>
             )
-          }
-        />
-        <Popover anchor={refs.addView} open={pop === 'addView'} onClose={() => setPop(null)} width={260} title="Add a view">
-          <div className="tb-menu">
-            {VIEW_KINDS.map(({ kind, name: n, icon: I, hint }) => (
-              <button key={kind} type="button" onClick={() => addView(kind)} className="tb-menu-2line">
-                <I size={15} />
-                <span>
-                  {n}
-                  <small className="muted">{hint}</small>
-                </span>
+          ) : (
+            !narrow && (
+              <button ref={refs.more} className="icon-btn" onClick={() => setPop('more')} aria-label="Table options">
+                <MoreHorizontal size={17} />
               </button>
-            ))}
-          </div>
-        </Popover>
-        {view && (
-          <Popover anchor={refs.view} open={pop === 'view'} onClose={() => (renamingView.trim() && renamingView.trim() !== view.name && patchView({ name: renamingView.trim() }), setPop(null))} width={280} title="View">
+            )
+          )}
+          <Popover anchor={refs.more} open={pop === 'more'} onClose={() => setPop(null)} width={260} align="end" title="Table">
             <div className="tb-menu">
-              <input className="tb-fm-name" autoFocus value={renamingView} onChange={(e) => setRenamingView(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (renamingView.trim() && patchView({ name: renamingView.trim() }), setPop(null))} aria-label="View name" />
-              <ViewSettings t={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} />
-              <button type="button" onClick={duplicateView}>
-                <CopyPlus size={14} /> Duplicate view
+              {structure && (
+                <label className="tb-menu-desc">
+                  <span className="muted small">Description</span>
+                  <textarea rows={2} defaultValue={t.description ?? ''} placeholder="What this table is for" onBlur={(e) => e.target.value.trim() !== (t.description ?? '') && patchTable({ description: e.target.value.trim() || undefined })} />
+                </label>
+              )}
+              {structure && (
+                <button type="button" onClick={() => (setPop(null), setTemplating(true))}>
+                  <LayoutTemplate size={14} /> Row templates{templates.length ? ` (${templates.length})` : ''}
+                </button>
+              )}
+              {structure && (
+                <button type="button" onClick={() => (setPop(null), setLaying(true))}>
+                  <PanelRight size={14} /> Row page layout
+                </button>
+              )}
+              {structure && (
+                <button type="button" onClick={() => (setPop(null), setImporting(true))}>
+                  <FileUp size={14} /> Import CSV
+                </button>
+              )}
+              <button type="button" onClick={() => (setPop(null), exportCsv())}>
+                <Download size={14} /> Download CSV{view && shown.length !== mine.length ? ` (${shown.length} shown)` : ''}
               </button>
-              {t.views.length > 1 && (
-                <button type="button" className="danger" onClick={deleteView}>
-                  <Trash2 size={14} /> Delete view
+              {canDeleteTable && (
+                <button type="button" className="danger" onClick={() => (setPop(null), deleteTable())}>
+                  <Trash2 size={14} /> Delete table
                 </button>
               )}
             </div>
           </Popover>
-        )}
+        </header>
+      )}
 
-        <span className="spacer" />
-        <label className="tb-search">
-          <Search size={14} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search rows" />
-        </label>
-        {!g && view && (
-          <>
-            <button ref={refs.filter} className={`ghost-btn sm${activeFilters.length ? ' on' : ''}`} onClick={() => setPop('filter')}>
-              <Filter size={13} /> <span className="lbl">{activeFilters.length ? `${activeFilters.length} filter${activeFilters.length === 1 ? '' : 's'}` : 'Filter'}</span>
-            </button>
-            {view.kind !== 'calendar' && (
-              <button ref={refs.sort} className={`ghost-btn sm${sorts.length ? ' on' : ''}`} onClick={() => setPop('sort')}>
-                <ArrowUpDown size={13} /> <span className="lbl">{sorts.length ? `Sorted${sorts.length > 1 ? ` (${sorts.length})` : `: ${t.fields.find((f) => f.id === sorts[0].fieldId)?.name}`}` : 'Sort'}</span>
+      {narrow ? (
+        <div className={`tb-phonebar${searching ? ' searching' : ''}`}>
+          {searching ? (
+            <label className="tb-psearch">
+              <Search size={16} />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${t.name}`} aria-label="Search rows" enterKeyHint="search" />
+              <button type="button" className="icon-btn" onClick={() => (setQ(''), setSearching(false))} aria-label="Stop searching">
+                <X size={18} />
               </button>
-            )}
-            {(view.kind === 'grid' || view.kind === 'list') && (
-              <button ref={refs.group} className={`ghost-btn sm${groupField ? ' on' : ''}`} onClick={() => setPop('group')}>
-                <Group size={13} /> <span className="lbl">{groupField ? `By ${groupField.name}` : 'Group'}</span>
+            </label>
+          ) : (
+            <>
+              <button type="button" className="tb-vpill" onClick={() => setSheet('views')} aria-haspopup="dialog" aria-label={`View: ${view?.name ?? ''}. Switch views`}>
+                <ViewIcon size={16} />
+                <span>{view?.name ?? 'Views'}</span>
+                <ChevronDown size={15} className="muted" />
               </button>
-            )}
-            {/* A board's "Cards" is what its fields menu would be (what each card shows): one button, not two. */}
-            {view.kind === 'board' ? (
-              <BoardTools table={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} />
-            ) : (
-              <button ref={refs.fields} className={`ghost-btn sm${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')}>
-                <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
+              <span className="spacer" />
+              <button type="button" className={`icon-btn tb-pbtn${q ? ' on' : ''}`} onClick={() => setSearching(true)} aria-label="Search rows">
+                <Search size={19} />
               </button>
-            )}
-          </>
-        )}
-        {!!g && view?.kind === 'board' && <BoardTools table={t} view={view} onView={patchView} onNewField={(f) => saveField(f)} readOnly />}
-        {canAdd && (
-          <button className="primary-btn sm tb-add-row" aria-label="New row" onClick={() => (view?.kind === 'grid' || !view ? setFreshRow(addRow()) : openRowFull(addRow()))}>
-            <Plus size={14} /> <span className="lbl">New row</span>
-          </button>
-        )}
-
-        {view && (
-          <>
-            <Popover anchor={refs.filter} open={pop === 'filter'} onClose={() => setPop(null)} width={460} title="Filter">
-              <FilterEditor table={t} filters={filters} mode={view.filterMode ?? 'and'} users={p.users} onChange={setFilters} onMode={(m) => patchView({ filterMode: m })} />
-            </Popover>
-            <Popover anchor={refs.sort} open={pop === 'sort'} onClose={() => setPop(null)} width={400} title="Sort">
-              <SortEditor table={t} sorts={sorts} onChange={(s) => patchView({ sorts: s, sort: undefined })} />
-            </Popover>
-            <Popover anchor={refs.group} open={pop === 'group'} onClose={() => setPop(null)} width={260} title="Group by">
-              <div className="tb-menu">
-                <p className="muted small tb-menu-note">Rows gather under a heading for each value, with a count, and fold open and shut.</p>
-                <button type="button" className={!view.groupBy ? 'on' : ''} onClick={() => (patchView({ groupBy: undefined }), setPop(null))}>
-                  No grouping
+              {view && (
+                <button type="button" className={`icon-btn tb-pbtn${nFilters ? ' on' : ''}`} onClick={() => setSheet('filter')} aria-label={nFilters ? `Filter, ${nFilters} on` : 'Filter'}>
+                  <Filter size={19} />
+                  {nFilters > 0 && <b className="tb-pbadge">{nFilters}</b>}
                 </button>
-                {t.fields.filter((f) => !['button', 'files', 'longtext', 'link'].includes(f.type)).map((f) => {
-                  const I = fieldIcon(f.type);
-                  return (
-                    <button key={f.id} type="button" className={view.groupBy === f.id ? 'on' : ''} onClick={() => (patchView({ groupBy: f.id, collapsed: [] }), setPop(null))}>
-                      <I size={14} /> {f.name}
-                    </button>
-                  );
-                })}
+              )}
+              {view && (
+                <button type="button" className="icon-btn tb-pbtn" onClick={() => setSheet('settings')} aria-label="View and table settings">
+                  <SlidersHorizontal size={19} />
+                </button>
+              )}
+              {showPlus && (
+                <button type="button" className="primary-btn tb-pplus" onClick={() => openQuick()} aria-label="New row">
+                  <Plus size={18} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="tb-bar">
+          <ViewTabs
+            views={t.views}
+            current={base?.id ?? ''}
+            canEdit={structure}
+            onSelect={(id) => id !== base?.id && (setViewId(id), setSelected(new Set()))}
+            onMenu={(id, el) => {
+              tabAnchor.current = el;
+              setViewId(id);
+              setRenamingView(t.views.find((v) => v.id === id)?.name ?? '');
+              setPop('view');
+            }}
+            onReorder={structure ? (ids) => patchTable({ views: ids.map((id) => t.views.find((v) => v.id === id)!).filter(Boolean) }) : undefined}
+            onAdd={structure ? (el) => ((addViewAnchor.current = el), setPop('addView')) : undefined}
+          />
+          <Popover anchor={addViewAnchor} open={pop === 'addView'} onClose={() => setPop(null)} width={280} title="Add a view">
+            <div className="tb-menu">
+              {VIEW_KINDS.map(({ kind, name: n, icon: I, hint }) => (
+                <button key={kind} type="button" onClick={() => addView(kind)} className="tb-menu-2line">
+                  <I size={15} />
+                  <span>
+                    {n}
+                    <small className="muted">{hint}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Popover>
+          {base && (
+            <Popover anchor={tabAnchor} open={pop === 'view'} onClose={() => (renamingView.trim() && renamingView.trim() !== base.name && patchShared({ name: renamingView.trim() }), setPop(null))} width={300} title="View">
+              <div className="tb-menu">
+                {structure && <input className="tb-fm-name" autoFocus value={renamingView} onChange={(e) => setRenamingView(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (renamingView.trim() && patchShared({ name: renamingView.trim() }), setPop(null))} aria-label="View name" />}
+                {structure && (
+                  <div className="tb-view-kinds" role="group" aria-label="Show as">
+                    {VIEW_KINDS.map(({ kind, name: n, icon: I }) => (
+                      <button key={kind} type="button" className={base.kind === kind ? 'on' : ''} aria-pressed={base.kind === kind} title={n} onClick={() => changeKind(kind)}>
+                        <I size={15} />
+                        <span>{n}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {structure && <ViewSettings t={t} view={base} onView={patchShared} onNewField={(f) => saveField(f)} />}
+                <button type="button" onClick={() => (copyLink(), setPop(null))}>
+                  <Link2 size={14} /> Copy a link to this view
+                </button>
+                {structure && (
+                  <button type="button" onClick={duplicateView}>
+                    <CopyPlus size={14} /> Duplicate view
+                  </button>
+                )}
+                {structure && t.views.length > 1 && (
+                  <button type="button" className="danger" onClick={deleteView}>
+                    <Trash2 size={14} /> Delete view
+                  </button>
+                )}
               </div>
             </Popover>
-            <Popover anchor={refs.fields} open={pop === 'fields'} onClose={() => setPop(null)} width={280} title="Fields in this view">
-              <FieldsEditor t={t} view={view} onView={patchView} />
-            </Popover>
-          </>
-        )}
-      </div>
+          )}
 
-      <div className={`fold ${selected.size ? 'open' : ''}`}>
-        <div className="fold-in">
-          <div className="tb-bulk">
-            <strong>{selected.size} selected</strong>
-            <button className="ghost-btn sm" onClick={() => setSelected(new Set())}>
-              Clear
-            </button>
-            <button className="ghost-btn sm danger" onClick={() => confirm(`Delete ${selected.size} row${selected.size === 1 ? '' : 's'}?`) && deleteRows([...selected])}>
-              <Trash2 size={13} /> Delete
-            </button>
-          </div>
+          <label className="tb-search">
+            <Search size={14} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search rows" />
+          </label>
+          {view && (
+            <>
+              <button ref={refs.filter} className={`ghost-btn sm${nFilters ? ' on' : ''}`} onClick={() => setPop('filter')}>
+                <Filter size={13} /> <span className="lbl">{nFilters ? `${nFilters} filter${nFilters === 1 ? '' : 's'}` : 'Filter'}</span>
+              </button>
+              {view.kind !== 'calendar' && (
+                <button ref={refs.sort} className={`ghost-btn sm${sorts.length ? ' on' : ''}`} onClick={() => setPop('sort')}>
+                  <ArrowUpDown size={13} /> <span className="lbl">{sorts.length ? `Sorted${sorts.length > 1 ? ` (${sorts.length})` : `: ${t.fields.find((f) => f.id === sorts[0].fieldId)?.name}`}` : 'Sort'}</span>
+                </button>
+              )}
+              {structure && (view.kind === 'grid' || view.kind === 'list') && (
+                <button ref={refs.group} className={`ghost-btn sm${groupField ? ' on' : ''}`} onClick={() => setPop('group')}>
+                  <Group size={13} /> <span className="lbl">{groupField ? `By ${groupField.name}${view.subGroupBy ? ', then more' : ''}` : 'Group'}</span>
+                </button>
+              )}
+              {/* A board's "Cards" is what its fields menu would be (what each card shows): one button, not two. */}
+              {view.kind === 'board' ? (
+                <BoardTools table={t} view={view} onView={patchShared} onNewField={(f) => saveField(f)} readOnly={!structure} />
+              ) : (
+                structure &&
+                view.kind !== 'calendar' &&
+                view.kind !== 'timeline' && (
+                  <button ref={refs.fields} className={`ghost-btn sm${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')}>
+                    <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
+                  </button>
+                )
+              )}
+              {structure && view.kind !== 'calendar' && view.kind !== 'timeline' && (
+                <button ref={refs.colors} className={`ghost-btn sm${view.colors?.length ? ' on' : ''}`} onClick={() => setPop('colors')}>
+                  <Palette size={13} /> <span className="lbl">{view.colors?.length ? `Colours (${view.colors.length})` : 'Colours'}</span>
+                </button>
+              )}
+            </>
+          )}
+          {canAdd && view && (
+            <span className="tb-split">
+              <button className="primary-btn sm tb-add-row" aria-label="New row" onClick={() => newRowHere()}>
+                <Plus size={14} /> <span className="lbl">New row</span>
+              </button>
+              {!g && (templates.length > 0 || structure) && (
+                <button ref={refs.newRow} className="primary-btn sm tb-add-more" aria-label="New row from a template" onClick={() => setPop('newRow')}>
+                  <ChevronDown size={14} />
+                </button>
+              )}
+            </span>
+          )}
+          <Popover anchor={refs.newRow} open={pop === 'newRow'} onClose={() => setPop(null)} width={260} align="end" title="New row">
+            <div className="tb-menu">
+              <button type="button" onClick={() => (setPop(null), newRowHere(null))}>
+                <Plus size={14} /> Blank row
+              </button>
+              {templates.map((x) => (
+                <button key={x.id} type="button" className="tb-menu-2line" onClick={() => (setPop(null), newRowHere(x))}>
+                  <LayoutTemplate size={14} />
+                  <span>
+                    {x.name}
+                    {(x.isDefault || x.repeat) && <small className="muted">{[x.isDefault ? 'New rows start from it' : '', x.repeat ? 'Also adds itself on a schedule' : ''].filter(Boolean).join(' · ')}</small>}
+                  </span>
+                </button>
+              ))}
+              {structure && (
+                <>
+                  <div className="tb-colmenu-sep" />
+                  <button type="button" onClick={() => (setPop(null), setTemplating(true))}>
+                    <SlidersHorizontal size={14} /> {templates.length ? 'Edit templates' : 'Make a template'}
+                  </button>
+                </>
+              )}
+            </div>
+          </Popover>
+
+          {view && (
+            <>
+              <Popover anchor={refs.filter} open={pop === 'filter'} onClose={() => setPop(null)} width={520} title="Filter">
+                <FilterPanel table={t} view={view} rows={mine} ctx={textCtx} onChange={patchView} />
+              </Popover>
+              <Popover anchor={refs.sort} open={pop === 'sort'} onClose={() => setPop(null)} width={420} title="Sort">
+                <SortEditor table={t} sorts={sorts} onChange={(s) => patchView({ sorts: s })} />
+              </Popover>
+              <Popover anchor={refs.group} open={pop === 'group'} onClose={() => setPop(null)} width={320} title={view.kind === 'board' ? 'Columns and swimlanes' : 'Group by'}>
+                <GroupEditor t={t} view={view} onView={patchShared} board={view.kind === 'board'} />
+              </Popover>
+              <Popover anchor={refs.fields} open={pop === 'fields'} onClose={() => setPop(null)} width={300} title="Fields in this view">
+                <FieldsEditor t={t} view={view} onView={patchShared} all={viewFields(t, view, true)} />
+              </Popover>
+              <Popover anchor={refs.colors} open={pop === 'colors'} onClose={() => setPop(null)} width={520} title="Colours">
+                <ColorRulesEditor table={t} view={view} users={p.users} me={p.me} onView={patchShared} />
+              </Popover>
+            </>
+          )}
         </div>
-      </div>
+      )}
 
-      {!g && tip && view?.kind === 'grid' && (
+      {view &&
+        (narrow ? (
+          <FilterLine table={t} view={view} base={base!} differs={differs} canSave={structure} onClear={() => patchView({ filters: [], filterGroups: [] })} onReset={() => base && tweaks.reset(base.id)} onSave={saveForEveryone} onOpen={() => setSheet('filter')} />
+        ) : (
+          <div className={`fold ${differs ? 'open' : ''}`}>
+            <div className="fold-in">
+              <div className="tb-mine" aria-live="polite">
+                <span>{structure ? 'These filters and sorts are just for you until you save them for everyone.' : 'These filters and sorts are just for you.'}</span>
+                <button type="button" className="link-btn small" onClick={() => base && tweaks.reset(base.id)}>
+                  Reset
+                </button>
+                {structure && (
+                  <button type="button" className="link-btn small strong" onClick={saveForEveryone}>
+                    Save for everyone
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+
+      {!g && !narrow && tip && view?.kind === 'grid' && (
         <div className="tb-tip">
           <span>Click a column’s name to rename it, change its type, sort, filter or hide it. Drag columns and rows to move them. Click a cell once to choose it, again to edit; copy and paste blocks of cells, even from a spreadsheet.</span>
           <button className="icon-btn sm" onClick={() => setTip(false)} aria-label="Got it">
@@ -602,15 +890,58 @@ export function TableScreen(p: ScreenProps) {
       )}
 
       <div className="tb-body">
-        <TabPane key={view?.id ?? 'none'}>
+        <TabPane key={`${view?.id ?? 'none'}:${view?.kind}:${cards ? 'c' : 'g'}`}>
           {!view ? null : view.kind === 'board' ? (
-            <BoardView table={t} view={view} rows={shown} ctx={ctx} onCell={setCell} onOpenRow={(id) => openRowFull(id)} onAddRow={(v) => openRowFull(addRow(v))} onView={patchView} onNewField={(f) => saveField(f)} onSaveField={(f) => saveField(f)} canEditColumns={structure} readOnly={!!g && !g.add && !t.fields.some((f) => g.canEdit(f.id))} canAdd={canAdd} />
+            <BoardView
+              table={t}
+              view={view}
+              rows={shown}
+              ctx={ctx}
+              onCell={setCell}
+              onOpenRow={(id) => openRowFull(id)}
+              onAddRow={(v, label) => (narrow ? openQuick(v, label) : openRowFull(addRow(v)))}
+              onView={patchView}
+              onNewField={(f) => saveField(f)}
+              onSaveField={(f) => saveField(f)}
+              canEditColumns={structure}
+              readOnly={!!g && !g.add && !t.fields.some((f) => g.canEdit(f.id))}
+              canAdd={canAdd}
+              phone={narrow ? { actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id, title: `Move “${rowName(t, r)}” to` }), selecting, selected, onToggle: toggle } : undefined}
+            />
+          ) : cards ? (
+            <CardList
+              t={t}
+              view={view}
+              rows={shown}
+              ctx={ctx}
+              selecting={selecting}
+              selected={selected}
+              collapsed={collapsedSet}
+              onCollapse={foldGroup}
+              canAdd={canAdd}
+              h={{ onOpen: (id) => openRowFull(id), onToggle: toggle, actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id }), onAdd: (v, label) => openQuick(v, label) }}
+            />
           ) : view.kind === 'list' ? (
             <ListView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onView={patchView} />
           ) : view.kind === 'gallery' ? (
-            <GalleryView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onAddRow={canAdd ? () => openRowFull(addRow()) : undefined} />
+            <GalleryView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onAddRow={canAdd ? () => (narrow ? openQuick() : openRowFull(addRow())) : undefined} />
           ) : view.kind === 'calendar' ? (
-            <CalendarView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onCell={setCell} onAddRow={canAdd ? (values) => openRowFull(addRow(values)) : undefined} onView={patchView} onNewField={(f) => saveField(f)} readOnly={!!g} />
+            <CalendarView
+              table={t}
+              view={view}
+              rows={shown}
+              ctx={ctx}
+              onOpenRow={(id) => openRowFull(id)}
+              onCell={setCell}
+              onAddRow={canAdd ? (values) => (narrow ? openQuick(values) : openRowFull(addRow(values))) : undefined}
+              onView={patchShared}
+              onNewField={(f) => saveField(f)}
+              readOnly={!!g || !structure}
+              narrow={narrow}
+              onLongPressDay={canAdd && dateField ? (day) => openQuick({ [dateField.id]: day }, new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })) : undefined}
+            />
+          ) : view.kind === 'timeline' ? (
+            <TimelineView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onValues={setValues} onView={patchShared} onNewField={(f) => saveField(f)} readOnly={!!g && !(dateField && g.canEdit(dateField.id))} narrow={narrow} canAdd={canAdd} onAddRow={(values) => (narrow ? openQuick(values) : openRowFull(addRow(values)))} />
           ) : (
             <GridView
               locked={!!g}
@@ -626,7 +957,7 @@ export function TableScreen(p: ScreenProps) {
               onSelect={setSelected}
               onCell={setCell}
               onOpenRow={(id, f) => openRowFull(id, f)}
-              onAddRow={(v) => setFreshRow(addRow(v))}
+              onAddRow={(v) => (phone ? openQuick(v) : setFreshRow(addRow(v)))}
               focusRowId={freshRow}
               onFocused={() => setFreshRow(null)}
               onSaveField={saveField}
@@ -647,24 +978,41 @@ export function TableScreen(p: ScreenProps) {
               onPaste={paste}
               onClear={clearCells}
               toast={(text) => p.toast({ text })}
+              touch={phone}
+              onTouchCell={touchCell}
             />
           )}
-          {view && !shown.length && (mine.length ? <p className="muted small tb-none">No rows match {q.trim() ? 'the search' : 'the filters'}.</p> : view.kind === 'board' || view.kind === 'calendar' ? null : <p className="muted small tb-none">No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.</p>)}
+          {view && !shown.length && (mine.length ? <p className="muted small tb-none">No rows match {q.trim() ? 'the search' : 'the filters'}.</p> : view.kind === 'board' || view.kind === 'calendar' || view.kind === 'timeline' ? null : <p className="muted small tb-none">{narrow ? 'No rows yet.' : 'No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.'}</p>)}
         </TabPane>
       </div>
 
-      {/* The row menu: right-click a row, or its ⋯. */}
+      {(narrow ? selecting : selected.size > 0) && (
+        <BulkBar
+          count={selected.size}
+          phone={phone}
+          canDelete={!g}
+          onEdit={() => setSheet('bulk')}
+          onDuplicate={canAdd ? () => duplicateMany([...selected]) : undefined}
+          onDelete={() => confirm(`Delete ${selected.size} row${selected.size === 1 ? '' : 's'}?`) && deleteRows([...selected])}
+          onAll={narrow && selected.size < shown.length ? () => setSelected(new Set(shown.map((r) => r.id))) : undefined}
+          onCancel={() => (setSelected(new Set()), setSelecting(false))}
+        />
+      )}
+
+      {/* The row menu: right-click a row, its ⋯, or a long-press in the phone's grid. */}
       <span ref={rowMenuAnchor} className="tb-menu-anchor" style={rowMenu ? { left: rowMenu.x, top: rowMenu.y } : undefined} aria-hidden />
-      <Popover anchor={rowMenuAnchor} open={!!menuRow} onClose={() => setRowMenu(null)} width={220} title={menuRow ? rowName(t, menuRow) : 'Row'}>
+      <Popover anchor={rowMenuAnchor} open={!!menuRow} onClose={() => setRowMenu(null)} width={230} title={menuRow ? rowName(t, menuRow) : 'Row'}>
         {menuRow && (
           <div className="tb-menu">
             <button type="button" onClick={() => (setRowMenu(null), openRowFull(menuRow.id))}>
               <PanelRight size={14} /> Open
             </button>
-            <button type="button" onClick={() => (setRowMenu(null), openRowFull(menuRow.id, true))}>
-              <Maximize2 size={14} /> Open as a page
-            </button>
-            {canAdd && (
+            {!narrow && (
+              <button type="button" onClick={() => (setRowMenu(null), openRowFull(menuRow.id, true))}>
+                <Maximize2 size={14} /> Open as a page
+              </button>
+            )}
+            {canAdd && !phone && (
               <>
                 <button type="button" onClick={() => (setRowMenu(null), addRow({}, { rowId: menuRow.id, after: false }))}>
                   <Plus size={14} /> Insert a row above
@@ -672,20 +1020,19 @@ export function TableScreen(p: ScreenProps) {
                 <button type="button" onClick={() => (setRowMenu(null), addRow({}, { rowId: menuRow.id, after: true }))}>
                   <Plus size={14} /> Insert a row below
                 </button>
-                <button type="button" onClick={() => (setRowMenu(null), duplicate(menuRow.id))}>
-                  <CopyPlus size={14} /> Duplicate
-                </button>
               </>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                const text = viewFields(t, view!).map((f) => `${f.name}: ${cellText(f, menuRow.values[f.id] ?? null, textCtx)}`).filter((l) => !l.endsWith(': ')).join('\n');
-                void navigator.clipboard?.writeText(text);
-                setRowMenu(null);
-                p.toast({ text: 'Row copied as text' });
-              }}
-            >
+            {canAdd && (
+              <button type="button" onClick={() => (setRowMenu(null), duplicate(menuRow.id))}>
+                <CopyPlus size={14} /> Duplicate
+              </button>
+            )}
+            {!g && (
+              <button type="button" onClick={() => (setRowMenu(null), copyLink(menuRow.id))}>
+                <Link2 size={14} /> Copy link
+              </button>
+            )}
+            <button type="button" onClick={() => (setRowMenu(null), copyText(menuRow))}>
               <Copy size={14} /> Copy as text
             </button>
             {!g && (
@@ -697,8 +1044,17 @@ export function TableScreen(p: ScreenProps) {
         )}
       </Popover>
 
+      {sheet === 'views' && <ViewsSheet table={t} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
+      {sheet === 'filter' && view && <FilterSheet table={t} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
+      {sheet === 'settings' && view && <SettingsSheet table={t} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
+      {sheet === 'bulk' && <BulkEditSheet table={t} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}
+      {quick && <QuickCreate table={t} where={quick.label} inputRef={quickInput} onCreate={quickMade} onClose={() => setQuick(null)} />}
+      {editRow && editField && <EditSheet table={t} field={editField} row={editRow} ctx={ctx} title={editCell?.title} onSave={(v) => setCell(editRow.id, editField.id, v)} onClose={() => setEditCell(null)} canCreate={!g} />}
+
       {importing && <ImportDialog table={t} rows={mine} users={p.users} onImport={importPlan} onClose={() => setImporting(false)} />}
       {sharing && <ShareTableDialog t={t} onSave={(share) => (patchTable({ share }), setSharing(false), p.toast({ text: share.enabled ? 'Shared with the project’s guests' : 'No longer shared' }))} onClose={() => setSharing(false)} />}
+      {templating && <TemplatesDialog t={t} ctx={ctx} onSave={(list) => (patchTable({ templates: list }), p.toast({ text: 'Templates saved' }))} onClose={() => setTemplating(false)} />}
+      {laying && <PageLayoutDialog t={t} onSave={(page) => (patchTable({ page }), p.toast({ text: 'Row page layout saved' }))} onClose={() => setLaying(false)} />}
       {autoOpen && <AutomationsPanel t={t} tables={p.tables} users={p.users} channels={p.channels} onPatch={patchTable} onClose={() => setAutoOpen(false)} toast={(text) => p.toast({ text })} />}
       {buttonField && <ButtonDialog key={buttonField.id} field={buttonField} t={t} tables={p.tables} users={p.users} channels={p.channels} onSave={(button) => saveField({ ...buttonField, button })} onClose={() => setButtonFor(null)} />}
       {asking && (
@@ -721,6 +1077,8 @@ export function TableScreen(p: ScreenProps) {
           row={openRow}
           ctx={ctx}
           me={p.me}
+          phone={phone}
+          nav={nav}
           full={full}
           onToggleFull={() => setFull((x) => !x)}
           onCell={(fieldId, v) => setCell(openRow.id, fieldId, v)}
@@ -730,11 +1088,13 @@ export function TableScreen(p: ScreenProps) {
             const id = duplicate(openRow.id);
             if (id) p.setOpenRow(id);
           }}
+          onCopyLink={g ? undefined : () => copyLink(openRow.id)}
           onClose={() => (p.setOpenRow(null), setFull(false))}
           onOpenRow={(tableId, rowId) => p.onOpenTable(tableId, rowId)}
           guest={!!g}
           edit={structure ? { tables: p.tables, channels: p.channels, onSave: (f) => saveField(f), onDelete: deleteField, onHide: (id) => patchTable({ page: { ...t.page, hidden: [...new Set([...(t.page?.hidden ?? []), id])] } }) } : undefined}
           onPage={structure ? (page) => patchTable({ page }) : undefined}
+          onLayout={structure ? () => setLaying(true) : undefined}
           onNewField={structure ? (f) => saveField(f) : undefined}
         />
       )}
@@ -742,6 +1102,7 @@ export function TableScreen(p: ScreenProps) {
     </ButtonSetupCtx.Provider>
   );
 }
+
 
 /* ---------- the view's own settings (under its tab) ---------- */
 
@@ -763,11 +1124,11 @@ function ViewSettings({ t, view, onView, onNewField }: { t: DataTable; view: Tab
       </div>
     );
   }
-  if (view.kind === 'calendar') {
+  if (view.kind === 'calendar' || view.kind === 'timeline') {
     const dates = t.fields.filter((f) => f.type === 'date' || f.type === 'created' || f.type === 'edited');
     return (
       <div className="tb-view-set">
-        <span className="tb-fm-label">Dates from</span>
+        <span className="tb-fm-label">{view.kind === 'timeline' ? 'Bars start at' : 'Dates from'}</span>
         <PickSelect value={view.dateField ?? dates[0]?.id ?? ''} aria-label="Dates from" onChange={(e) => onView({ dateField: e.target.value })}>
           {dates.map((f) => (
             <option key={f.id} value={f.id}>
@@ -775,6 +1136,21 @@ function ViewSettings({ t, view, onView, onNewField }: { t: DataTable; view: Tab
             </option>
           ))}
         </PickSelect>
+        {view.kind === 'timeline' && (
+          <>
+            <span className="tb-fm-label">and end at</span>
+            <PickSelect value={view.endField ?? ''} aria-label="Bars end at" onChange={(e) => onView({ endField: e.target.value || undefined })}>
+              <option value="">The same day</option>
+              {dates
+                .filter((f) => f.type === 'date' && f.id !== view.dateField)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </PickSelect>
+          </>
+        )}
       </div>
     );
   }
@@ -795,203 +1171,6 @@ function ViewSettings({ t, view, onView, onNewField }: { t: DataTable; view: Tab
     );
   }
   return null;
-}
-
-/* ---------- toolbar editors ---------- */
-
-/** Sort by a field, then by another: each with words that fit it (A to Z, low to high, oldest first). */
-function SortEditor({ table, sorts, onChange }: { table: DataTable; sorts: { fieldId: string; dir: 'asc' | 'desc' }[]; onChange: (s: { fieldId: string; dir: 'asc' | 'desc' }[]) => void }) {
-  const sortable = table.fields.filter((f) => f.type !== 'button' && f.type !== 'files');
-  const set = (i: number, p: Partial<{ fieldId: string; dir: 'asc' | 'desc' }>) => onChange(sorts.map((s, j) => (j === i ? { ...s, ...p } : s)));
-  return (
-    <div className="tb-filters">
-      {!sorts.length && <p className="muted small">Rows are in your own order (drag them in the table). Sort to order them by a field instead.</p>}
-      {sorts.map((s, i) => {
-        const f = table.fields.find((x) => x.id === s.fieldId) ?? sortable[0];
-        const [asc, desc] = sortWords(f.type);
-        return (
-          <div key={i} className="tb-filter tb-sort">
-            <span className="tb-filter-lead">{i === 0 ? 'Sort by' : 'then by'}</span>
-            <PickSelect value={f.id} aria-label="Field" onChange={(e) => set(i, { fieldId: e.target.value })}>
-              {sortable.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.name}
-                </option>
-              ))}
-            </PickSelect>
-            <PickSelect value={s.dir} aria-label="Direction" onChange={(e) => set(i, { dir: e.target.value as 'asc' | 'desc' })}>
-              <option value="asc">{asc}</option>
-              <option value="desc">{desc}</option>
-            </PickSelect>
-            <button type="button" className="icon-btn sm" aria-label="Remove sort" onClick={() => onChange(sorts.filter((_, j) => j !== i))}>
-              <X size={13} />
-            </button>
-          </div>
-        );
-      })}
-      <div className="tb-filters-foot">
-        <button type="button" className="link-btn small" onClick={() => onChange([...sorts, { fieldId: (sortable.find((f) => !sorts.some((s) => s.fieldId === f.id)) ?? sortable[0]).id, dir: 'asc' }])}>
-          <Plus size={13} /> {sorts.length ? 'Then by…' : 'Add a sort'}
-        </button>
-        {sorts.length > 0 && (
-          <button type="button" className="link-btn small" onClick={() => onChange([])}>
-            Back to your own order
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Where [field] [is] [value]: all of these, or any of them. Values come from the field's own choices and people. */
-function FilterEditor({ table, filters, mode, users, onChange, onMode }: { table: DataTable; filters: TableFilter[]; mode: 'and' | 'or'; users: User[]; onChange: (f: TableFilter[]) => void; onMode: (m: 'and' | 'or') => void }) {
-  const usable = table.fields.filter((f) => f.type !== 'button');
-  const set = (i: number, p: Partial<TableFilter>) => onChange(filters.map((f, j) => (j === i ? { ...f, ...p } : f)));
-  const add = () => {
-    const f = usable.find((x) => x.type === 'select') ?? usable[0];
-    onChange([...filters, { fieldId: f.id, op: opsFor(f.type)[0].op }]);
-  };
-  return (
-    <div className="tb-filters">
-      {!filters.length && <p className="muted small">Show only the rows you want: Status is New, Follow-up before today, Owner is you.</p>}
-      {filters.length > 1 && (
-        <div className="segmented sm tb-filter-mode">
-          <button type="button" className={mode === 'and' ? 'on' : ''} onClick={() => onMode('and')}>
-            All of these
-          </button>
-          <button type="button" className={mode === 'or' ? 'on' : ''} onClick={() => onMode('or')}>
-            Any of these
-          </button>
-        </div>
-      )}
-      {filters.map((flt, i) => {
-        const f = table.fields.find((x) => x.id === flt.fieldId) ?? usable[0];
-        const needsValue = flt.op !== 'empty' && flt.op !== 'filled';
-        const isDate = f.type === 'date' || f.type === 'created' || f.type === 'edited';
-        return (
-          <div key={i} className="tb-filter">
-            <span className="tb-filter-lead">{i === 0 ? 'Where' : mode === 'and' ? 'and' : 'or'}</span>
-            <PickSelect
-              value={f.id}
-              aria-label="Field"
-              onChange={(e) => {
-                const nf = table.fields.find((x) => x.id === e.target.value)!;
-                set(i, { fieldId: nf.id, op: opsFor(nf.type)[0].op, value: undefined });
-              }}
-            >
-              {usable.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.name}
-                </option>
-              ))}
-            </PickSelect>
-            <PickSelect value={flt.op} aria-label="Test" onChange={(e) => set(i, { op: e.target.value as TableFilter['op'] })}>
-              {opsFor(f.type).map((o) => (
-                <option key={o.op} value={o.op}>
-                  {o.label}
-                </option>
-              ))}
-            </PickSelect>
-            {needsValue &&
-              (f.type === 'select' || f.type === 'multi' ? (
-                <PickSelect value={flt.value ?? ''} aria-label="Value" onChange={(e) => set(i, { value: e.target.value })}>
-                  <option value="">Choose…</option>
-                  {(f.options ?? []).map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </PickSelect>
-              ) : f.type === 'person' || f.type === 'creator' ? (
-                <PersonSelect value={flt.value ?? ''} users={users} label="Person" onChange={(v) => set(i, { value: v })} />
-              ) : f.type === 'checkbox' ? (
-                <PickSelect value={flt.value ?? 'yes'} aria-label="Value" onChange={(e) => set(i, { value: e.target.value })}>
-                  <option value="yes">Checked</option>
-                  <option value="no">Not checked</option>
-                </PickSelect>
-              ) : isDate ? (
-                <span className="tb-filter-date">
-                  <button type="button" className={`tb-chip linked${flt.value === '@today' ? ' on' : ''}`} onClick={() => set(i, { value: '@today' })}>
-                    Today
-                  </button>
-                  <DatePicker value={flt.value && flt.value !== '@today' ? flt.value : ''} onChange={(d) => set(i, { value: d })} label="Date" placeholder="A date" className="sel-flat" />
-                </span>
-              ) : (
-                <input className="tb-native" type={['number', 'money', 'rating', 'rollup'].includes(f.type) ? 'number' : 'text'} value={flt.value ?? ''} placeholder="Value" aria-label="Value" onChange={(e) => set(i, { value: e.target.value })} />
-              ))}
-            <button type="button" className="icon-btn sm tb-filter-x" aria-label="Remove filter" onClick={() => onChange(filters.filter((_, j) => j !== i))}>
-              <X size={13} />
-            </button>
-          </div>
-        );
-      })}
-      <div className="tb-filters-foot">
-        <button type="button" className="link-btn small" onClick={add}>
-          <Plus size={13} /> Add a condition
-        </button>
-        {filters.length > 0 && (
-          <button type="button" className="link-btn small" onClick={() => onChange([])}>
-            Clear all
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Fields in this view: show or hide each, and drag them into the order you want. */
-function FieldsEditor({ t, view, onView }: { t: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void }) {
-  const all = viewFields(t, view, true);
-  const hidden = new Set(view.hidden ?? []);
-  const [drag, setDrag] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
-  const drop = (target: string) => {
-    if (!drag || drag === target) return (setDrag(null), setOver(null));
-    const rest = all.map((f) => f.id).filter((x) => x !== drag);
-    rest.splice(Math.max(0, rest.indexOf(target)), 0, drag);
-    onView({ order: rest });
-    setDrag(null);
-    setOver(null);
-  };
-  return (
-    <div className="tab-edit-list">
-      <p className="muted small">What this view shows, in this order. Drag to reorder.</p>
-      {all.map((f) => {
-        const isName = f.id === t.fields[0].id;
-        const I = fieldIcon(f.type);
-        return (
-          <div
-            key={f.id}
-            className={`tab-edit-row${hidden.has(f.id) ? ' off' : ''}${over === f.id && drag !== f.id ? ' drop-line' : ''}`}
-            draggable
-            onDragStart={() => setDrag(f.id)}
-            onDragOver={(e) => (e.preventDefault(), setOver(f.id))}
-            onDrop={() => drop(f.id)}
-            onDragEnd={() => (setDrag(null), setOver(null))}
-          >
-            <GripVertical size={14} className="muted tb-drag" />
-            <I size={13} className="muted" />
-            <span className="tab-edit-name">{f.name}</span>
-            {!isName ? (
-              <button type="button" className="icon-btn sm" onClick={() => onView({ hidden: hidden.has(f.id) ? [...hidden].filter((x) => x !== f.id) : [...hidden, f.id] })} aria-label={hidden.has(f.id) ? `Show ${f.name}` : `Hide ${f.name}`}>
-                {hidden.has(f.id) ? <EyeOff size={13} /> : <Eye size={13} />}
-              </button>
-            ) : (
-              <small className="muted">row name</small>
-            )}
-          </div>
-        );
-      })}
-      <div className="tab-edit-foot">
-        <button type="button" className="link-btn small" onClick={() => onView({ hidden: [] })}>
-          Show all
-        </button>
-        <button type="button" className="link-btn small" onClick={() => onView({ hidden: all.filter((f) => f.id !== t.fields[0].id).map((f) => f.id) })}>
-          Hide all
-        </button>
-      </div>
-    </div>
-  );
 }
 
 /* ---------- dialogs ---------- */

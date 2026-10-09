@@ -247,7 +247,7 @@ try {
   await dewi.sync('rows', [{ ...someRow, values: { ...someRow.values, [first]: 'Changed by Dewi' } }]);
   await test('…while her changes to rows still save', async () => assert.equal((await aqeel.state()).rows.find((r) => r.id === someRow.id).values[first], 'Changed by Dewi'));
 
-  const key = `s2g-table-mine:${t0.id}`;
+  const key = `s2g-table-view:mine:${t0.id}`;
   const mine = { [before.views[0].id]: { filters: [{ fieldId: first, op: 'filled' }] } };
   await dewi.sync('prefs', [{ id: 'u-dewi', value: { [key]: mine } }]);
   await test('her own filters are kept in her prefs, for her only', async () => {
@@ -293,8 +293,8 @@ try {
   });
   await nadia.sync('tables', [{ ...g, views: [{ ...g.views[0], filters: [{ fieldId: 'k-status', op: 'empty' }] }] }]);
   await test('…and her changes to the table itself are refused', async () => assert.deepEqual((await tableOf(aqeel, 'tb-kopi')).views[0].filters, kopi.views[0].filters));
-  await nadia.sync('prefs', [{ id: 'cu-nadia-c-kopikita', value: { 's2g-table-mine:tb-kopi': { kv: { filters: [{ fieldId: 'k-status', op: 'empty' }] } } } }]);
-  await test('…while her own filters save in her own prefs', async () => assert.ok((await nadia.state()).prefs.find((p) => p.id === 'cu-nadia-c-kopikita')?.value?.['s2g-table-mine:tb-kopi']));
+  await nadia.sync('prefs', [{ id: 'cu-nadia-c-kopikita', value: { 's2g-table-view:mine:tb-kopi': { kv: { filters: [{ fieldId: 'k-status', op: 'empty' }] } } } }]);
+  await test('…while her own filters save in her own prefs', async () => assert.ok((await nadia.state()).prefs.find((p) => p.id === 'cu-nadia-c-kopikita')?.value?.['s2g-table-view:mine:tb-kopi']));
 } catch (e) {
   failed++;
   console.log('FAIL', e);

@@ -994,7 +994,6 @@ export interface TableViewDef {
   filterGroups?: TableFilterGroup[]; // groups of conditions, joined to the others by filterMode
   colors?: TableColorRule[]; // rows or cells tinted by a rule
   endField?: string; // timeline: where each bar ends (a date field); starts at dateField
-  phoneLayout?: 'cards' | 'grid'; // a grid view on a narrow screen: cards (the default) or the grid itself
   hidden?: string[]; // field ids not shown in this view
   order?: string[]; // field order in this view (others follow in the table's order)
   widths?: Record<string, number>; // grid column widths

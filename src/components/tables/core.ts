@@ -1,4 +1,4 @@
-import type { CalcKind, CellValue, DataTable, FieldType, FileRef, RowTemplate, TableField, TableFilter, TableRow, TableViewDef, TableViewTweak, User } from '../../types';
+import type { CalcKind, CellValue, DataTable, FieldType, FileRef, RowTemplate, TableField, TableFilter, TableFilterGroup, TableRow, TableViewDef, TableViewTweak, User } from '../../types';
 import { localDay, uid } from '../../utils';
 
 /* Pure table logic, shared by the app and the server (no React, no icons). */
@@ -236,6 +236,16 @@ export function filterTest(t: DataTable, view: Pick<TableViewDef, 'filters' | 'f
   return view.filterMode === 'or' ? (r) => items.some((x) => x(r)) : (r) => items.every((x) => x(r));
 }
 
+/**
+ * The single choice that reads as a row's status: the view's grouping choice, else the one a board of this table makes
+ * columns from, else one called Status or Stage, else the first single choice. Cards show it as a pill.
+ */
+export function statusField(t: DataTable, view?: Pick<TableViewDef, 'groupBy'>) {
+  const selects = t.fields.filter((f) => f.type === 'select');
+  const board = t.views.find((v) => v.kind === 'board' && selects.some((f) => f.id === v.groupBy))?.groupBy;
+  return selects.find((f) => f.id === view?.groupBy) ?? selects.find((f) => f.id === board) ?? selects.find((f) => /^(status|stage|state)$/i.test(f.name.trim())) ?? selects[0];
+}
+
 /** A view with this person's own filters and sorts on top (what they see until they save it for everyone). */
 export function withTweak(view: TableViewDef, tw: TableViewTweak | null | undefined): TableViewDef {
   if (!tw) return view;
@@ -252,11 +262,14 @@ export function withTweak(view: TableViewDef, tw: TableViewTweak | null | undefi
 export function tweakDiffers(view: TableViewDef, tw: TableViewTweak | null | undefined) {
   if (!tw) return false;
   const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-  const norm = (x: TableFilter[] | undefined) => (x ?? []).map((f) => ({ fieldId: f.fieldId, op: f.op, value: f.value ?? '' }));
+  // Only conditions that do something count: one still being set up (no value yet) changes nothing.
+  const norm = (x: TableFilter[] | undefined) => (x ?? []).filter((f) => f.op === 'empty' || f.op === 'filled' || (f.value ?? '') !== '').map((f) => ({ fieldId: f.fieldId, op: f.op, value: f.value ?? '' }));
+  const groups = (x: TableFilterGroup[] | undefined) => (x ?? []).map((g) => ({ mode: g.mode, f: norm(g.filters) })).filter((g) => g.f.length);
+  const mode = (m: string | undefined, fs: TableFilter[] | undefined, gs: TableFilterGroup[] | undefined) => (norm(fs).length + groups(gs).length > 1 ? (m ?? 'and') : 'and');
   return (
     (!!tw.filters && !same(norm(tw.filters), norm(view.filters))) ||
-    (!!tw.filterMode && tw.filterMode !== (view.filterMode ?? 'and')) ||
-    (!!tw.filterGroups && !same(tw.filterGroups.map((g) => ({ mode: g.mode, f: norm(g.filters) })), (view.filterGroups ?? []).map((g) => ({ mode: g.mode, f: norm(g.filters) })))) ||
+    (!!tw.filterMode && mode(tw.filterMode, tw.filters ?? view.filters, tw.filterGroups ?? view.filterGroups) !== mode(view.filterMode, view.filters, view.filterGroups)) ||
+    (!!tw.filterGroups && !same(groups(tw.filterGroups), groups(view.filterGroups))) ||
     (!!tw.sorts && !same(tw.sorts, sortsOf(view)))
   );
 }
@@ -280,7 +293,7 @@ export function rowColors(t: DataTable, view: TableViewDef, r: TableRow, ctx: TC
  */
 export function quickFilters(t: DataTable, view: TableViewDef, rows: TableRow[], ctx: TCtx): { field: TableField; items: { label: string; filter: TableFilter; count: number; color?: string; on: boolean }[] }[] {
   const fields = [
-    t.fields.find((f) => f.id === view.groupBy && f.type === 'select') ?? t.fields.find((f) => f.type === 'select'),
+    statusField(t, view),
     t.fields.find((f) => f.type === 'person'),
     t.fields.find((f) => f.type === 'date'),
   ].filter(Boolean) as TableField[];

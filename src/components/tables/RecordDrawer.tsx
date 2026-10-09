@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, Copy, GripVertical, Maximize2, Minimize2, Plus, Send, Trash2, X } from 'lucide-react';
-import type { CellValue, Channel, DataTable, TableField, TableRow, User } from '../../types';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Copy, CopyPlus, GripVertical, LayoutTemplate, Link2, Maximize2, Minimize2, MoreHorizontal, Plus, Send, Trash2, X } from 'lucide-react';
+import type { CellValue, Channel, DataTable, TableField, TablePage, TableRow, User } from '../../types';
 import { FieldMenu } from './FieldMenu';
 import { Avatar } from '../Avatar';
 import { relative } from '../../utils';
 import { ButtonCell, CellView, ContactActions, FilesPopover, InlineInput, PickPopover, RatingInput, typesInline, type CellCtx } from './Cell';
 import { DatePicker } from '../ui/DatePicker';
-import { cellText, fieldIcon, isComputed, isEmpty, rowName, valueOf } from './fields';
+import { PushScreen } from '../ui/PushScreen';
+import { TabPane } from '../ui/Smooth';
+import { useActionMenu } from '../ui/ActionSheet';
+import { cellText, fieldIcon, isComputed, isEmpty, passes, rowName, statusField, valueOf } from './fields';
 import { useOnePanel } from '../../onePanel';
 import { useFocusedScreen } from '../../mobile/chrome';
+import { EditSheet } from './EditSheet';
 
-/** One field on the row page: label on the left, the value (editable in place) on the right. */
 /** What the row page can do with its fields' settings (people who may change the table's columns). */
 export interface PageEdit {
   tables: DataTable[];
@@ -20,6 +23,7 @@ export interface PageEdit {
   onHide: (id: string) => void;
 }
 
+/** One field on the desktop row page: label on the left, the value (editable in place) on the right. */
 export function FieldLine({ f, row, ctx, onCell, readOnly, table, edit, dragProps }: { f: TableField; row: TableRow; ctx: CellCtx; onCell: (fieldId: string, v: CellValue) => void; readOnly?: boolean; table?: DataTable; edit?: PageEdit; dragProps?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean } }) {
   const ref = useRef<HTMLButtonElement>(null);
   const labelRef = useRef<HTMLButtonElement>(null);
@@ -65,19 +69,22 @@ export function FieldLine({ f, row, ctx, onCell, readOnly, table, edit, dragProp
     );
   return (
     <div className="tb-rd-line" {...dragProps}>
-      {edit && t ? (
-        <>
-          <button ref={labelRef} type="button" className="tb-rd-label editable" title={f.description || 'Rename, change type, hide or delete'} onClick={() => setSettings((x) => !x)}>
-            {dragProps?.draggable && <GripVertical size={13} className="tb-rd-grip" />}
-            <Icon size={13} /> <span>{f.name}</span>
-          </button>
-          <FieldMenu anchor={labelRef} open={settings} onClose={() => setSettings(false)} field={f} table={t} tables={edit.tables} onSave={edit.onSave} onDelete={() => edit.onDelete(f.id)} onHide={() => edit.onHide(f.id)} hideLabel="Hide on the row page" users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />
-        </>
-      ) : (
-        <span className="tb-rd-label" title={f.description}>
-          <Icon size={13} /> {f.name}
-        </span>
-      )}
+      <span className="tb-rd-labelcell">
+        {edit && t ? (
+          <>
+            <button ref={labelRef} type="button" className="tb-rd-label editable" title={f.description || 'Rename, change type, hide or delete'} onClick={() => setSettings((x) => !x)}>
+              {dragProps?.draggable && <GripVertical size={13} className="tb-rd-grip" />}
+              <Icon size={13} /> <span>{f.name}</span>
+            </button>
+            <FieldMenu anchor={labelRef} open={settings} onClose={() => setSettings(false)} field={f} table={t} tables={edit.tables} onSave={edit.onSave} onDelete={() => edit.onDelete(f.id)} onHide={() => edit.onHide(f.id)} hideLabel="Hide on the row page" users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />
+          </>
+        ) : (
+          <span className="tb-rd-label" title={f.description}>
+            <Icon size={13} /> {f.name}
+          </span>
+        )}
+        {f.description && <small className="tb-rd-desc">{f.description}</small>}
+      </span>
       {editor}
     </div>
   );
@@ -90,28 +97,18 @@ function LongText({ v, onSave, label }: { v: CellValue | undefined; onSave: (v: 
   return <textarea className="tb-rd-text" rows={1} value={text} aria-label={label} placeholder="Empty" onChange={(e) => setText(e.target.value)} onBlur={() => text.trim() !== start && onSave(text.trim() || null)} />;
 }
 
-/** The row page: every field, the rows that link here, comments and what changed. */
-export function RecordDrawer({
-  table,
-  row,
-  ctx,
-  me,
-  onCell,
-  onComment,
-  onDelete,
-  onDuplicate,
-  onClose,
-  onOpenRow,
-  readOnly,
-  guest,
-  full,
-  onToggleFull,
-  edit,
-  onPage,
-  onNewField,
-}: {
+/** Where a row sits among the rows shown, with the way to the one before and after. */
+export interface RowNav {
+  index: number; // 0-based
+  count: number;
+  prev?: () => void;
+  next?: () => void;
+}
+
+export interface RecordProps {
   edit?: PageEdit; // set when this person may change the table's columns
-  onPage?: (p: NonNullable<DataTable['page']>) => void; // field order and what's shown on every row's page
+  onPage?: (p: TablePage) => void; // field order and what's shown on every row's page
+  onLayout?: () => void; // opens the row page layout (pinned fields, sections, main button)
   onNewField?: (f: TableField) => void;
   full?: boolean; // shown as a page instead of a side panel
   onToggleFull?: () => void;
@@ -120,32 +117,228 @@ export function RecordDrawer({
   row: TableRow;
   ctx: CellCtx;
   me: string;
+  phone?: boolean; // a page of its own (pushed over the table), with editors in sheets
+  nav?: RowNav;
   onCell: (fieldId: string, v: CellValue) => void;
   onComment: (text: string) => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  onCopyLink?: () => void;
   onClose: () => void;
   onOpenRow: (tableId: string, rowId: string) => void;
   readOnly?: boolean;
-}) {
-  useOnePanel(onClose);
-  useFocusedScreen(); // a record is a page of its own on phones: the tab bar steps aside
-  const [title, setTitle] = useState(String(row.values[table.fields[0].id] ?? ''));
-  const [comment, setComment] = useState('');
-  useEffect(() => setTitle(String(row.values[table.fields[0].id] ?? '')), [row.id, row.values, table.fields]);
-  const first = table.fields[0];
+}
+
+/** How the page lays out a row's fields: pinned ones, the rest in order, named sections, and what's folded away. */
+function layoutOf(table: DataTable, row: TableRow, ctx: CellCtx, foldEmpty: boolean, autoPin = false) {
   const page = table.page ?? {};
   const pos = new Map((page.order ?? []).map((id, i) => [id, i]));
   const rest = table.fields.slice(1).sort((a, b) => (pos.get(a.id) ?? 1e6 + table.fields.indexOf(a)) - (pos.get(b.id) ?? 1e6 + table.fields.indexOf(b)));
   const hiddenIds = new Set(page.hidden ?? []);
   const emptyHere = (f: TableField) => f.type !== 'button' && isEmpty(valueOf(table, f, row, ctx));
-  const main = rest.filter((f) => !hiddenIds.has(f.id) && !(page.hideEmpty && emptyHere(f)));
-  const folded = rest.filter((f) => !main.includes(f));
+  const exists = new Set(table.fields.map((f) => f.id));
+  // Phones pin a few key fields by themselves when the table hasn't chosen: the status, a person, a date, an amount.
+  const auto = () => {
+    const status = statusField(table);
+    return [status, ...(['person', 'date', 'money'] as const).map((k) => table.fields.slice(1).find((f) => f.type === k))].filter((f): f is TableField => !!f).map((f) => f.id);
+  };
+  const pinIds = page.pinned ?? (autoPin ? auto() : []);
+  const pinned = pinIds.filter((id) => exists.has(id)).map((id) => table.fields.find((f) => f.id === id)!).slice(0, 5);
+  const pinnedIds = new Set(pinned.map((f) => f.id));
+  const main = page.main ? table.fields.find((f) => f.id === page.main && f.type === 'button') : undefined;
+  const sectionOf = new Map<string, string>();
+  for (const s of page.sections ?? []) for (const id of s.fields) if (!sectionOf.has(id)) sectionOf.set(id, s.id);
+  const shown = (f: TableField) => !hiddenIds.has(f.id) && !pinnedIds.has(f.id) && f.id !== main?.id && !((page.hideEmpty || foldEmpty) && emptyHere(f));
+  const body = rest.filter((f) => shown(f) && !sectionOf.has(f.id));
+  const sections = (page.sections ?? []).map((s) => ({ ...s, list: s.fields.map((id) => rest.find((f) => f.id === id)).filter((f): f is TableField => !!f && shown(f) && sectionOf.get(f.id) === s.id) })).filter((s) => s.list.length);
+  const folded = rest.filter((f) => !pinnedIds.has(f.id) && f.id !== main?.id && !shown(f));
+  return { page, rest, hiddenIds, pinned, main, body, sections, folded };
+}
+
+/** The row page: every field, the rows that link here, comments and what changed. A side panel, or a page on phones. */
+export function RecordDrawer(p: RecordProps) {
+  if (p.phone) return <RecordPage {...p} />;
+  return <RecordPanel {...p} />;
+}
+
+function linkedFromOf(table: DataTable, row: TableRow, ctx: CellCtx) {
+  return ctx.tables.flatMap((t) =>
+    t.fields
+      .filter((f) => f.type === 'link' && f.linkTable === table.id)
+      .flatMap((f) => ctx.rows.filter((r) => r.tableId === t.id && Array.isArray(r.values[f.id]) && (r.values[f.id] as string[]).includes(row.id)).map((r) => ({ t, f, r }))),
+  );
+}
+
+function useRowKeys(nav: RowNav | undefined, onClose?: () => void) {
+  const ref = useRef(nav);
+  ref.current = nav;
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      // Escape closes the panel wherever the focus is (a menu, a sheet or a dialog on top takes it first).
+      if (e.key === 'Escape' && close.current && !e.defaultPrevented && !document.querySelector('.pop:not(.is-leaving), .modal-scrim:not(.is-leaving), .sheet-scrim:not(.is-leaving)') && !el.closest('.tb-drawer')) return void close.current();
+      if (el.closest('input, textarea, [contenteditable=true], .pop') || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const n = ref.current;
+      // J and K (with or without Ctrl/Cmd+Shift, as in Notion): the next and the previous row.
+      if (k === 'j' && (!e.metaKey && !e.ctrlKey ? !e.shiftKey : e.shiftKey) && n?.next) (e.preventDefault(), n.next());
+      else if (k === 'k' && (!e.metaKey && !e.ctrlKey ? !e.shiftKey : e.shiftKey) && n?.prev) (e.preventDefault(), n.prev());
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, []);
+}
+
+function Comments({ row, ctx, me, onComment }: { row: TableRow; ctx: CellCtx; me: string; onComment: (t: string) => void }) {
+  const [comment, setComment] = useState('');
+  const userOf = (id: string): User | undefined => ctx.users.find((u) => u.id === id);
+  return (
+    <div className="tb-rd-sec">
+      <h4>Comments</h4>
+      {(row.comments ?? []).map((c) => {
+        const u = userOf(c.by);
+        return (
+          <div key={c.id} className="tb-comment">
+            {u && <Avatar person={u} size={24} />}
+            <div>
+              <strong>{u?.name.split(' ')[0] ?? 'Someone'}</strong> <small className="muted">{relative(c.at)}</small>
+              <p>{c.text}</p>
+            </div>
+          </div>
+        );
+      })}
+      <form
+        className="tb-comment-new"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!comment.trim()) return;
+          onComment(comment.trim());
+          setComment('');
+        }}
+      >
+        {userOf(me) && <Avatar person={userOf(me)!} size={24} />}
+        <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Write a comment" aria-label="Write a comment" enterKeyHint="send" />
+        <button type="submit" className="icon-btn sm" disabled={!comment.trim()} aria-label="Send comment">
+          <Send size={15} />
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function History({ table, row, ctx }: { table: DataTable; row: TableRow; ctx: CellCtx }) {
+  const [all, setAll] = useState(false);
+  if (!row.history?.length) return null;
+  const byName = (id: string) => (id === 'webhook' ? 'A webhook' : id === 'rule' ? 'A rule' : (ctx.users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone'));
+  const fieldName = (id: string) => table.fields.find((f) => f.id === id)?.name ?? 'a field';
+  const show = (id: string, v: CellValue) => {
+    const f = table.fields.find((x) => x.id === id);
+    return f ? cellText(f, v, { users: ctx.users, rowName: (rid) => rowName(ctx.tables.find((t) => t.id === f.linkTable) ?? table, ctx.rows.find((r) => r.id === rid)) }) || 'empty' : '';
+  };
+  const list = [...row.history].reverse();
+  return (
+    <div className="tb-rd-sec">
+      <h4>History</h4>
+      <ul className="tb-history">
+        {list.slice(0, all ? 50 : 5).map((h, i) => (
+          <li key={i}>
+            <strong>{byName(h.by)}</strong> changed {fieldName(h.fieldId)}: <span className="muted">{show(h.fieldId, h.from)}</span> → {show(h.fieldId, h.to)} <small className="muted">· {relative(h.at)}</small>
+          </li>
+        ))}
+      </ul>
+      {list.length > 5 && (
+        <button type="button" className="link-btn small" onClick={() => setAll((x) => !x)}>
+          {all ? 'Show less' : `Show ${list.length - 5} older`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Extras({ row, linkedFrom, onOpenRow }: { row: TableRow; linkedFrom: ReturnType<typeof linkedFromOf>; onOpenRow: (t: string, r: string) => void }) {
+  return (
+    <>
+      {row.extra && Object.keys(row.extra).length > 0 && (
+        <div className="tb-rd-sec">
+          <h4>Also received</h4>
+          <p className="muted small">Came in with the data but isn’t in a field. Map it in Automations to give it one.</p>
+          <dl className="tb-extra">
+            {Object.entries(row.extra).map(([k, v]) => (
+              <div key={k}>
+                <dt>{k}</dt>
+                <dd>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+      {linkedFrom.length > 0 && (
+        <div className="tb-rd-sec">
+          <h4>Linked here</h4>
+          {linkedFrom.map(({ t, f, r }) => (
+            <button key={`${f.id}:${r.id}`} type="button" className="tb-rd-link" onClick={() => onOpenRow(t.id, r.id)}>
+              <i className="tb-dot" style={{ background: t.color }} />
+              <span>{rowName(t, r)}</span>
+              <small className="muted">
+                {t.name} · {f.name}
+              </small>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function TitleField({ table, row, readOnly, onCell, className }: { table: DataTable; row: TableRow; readOnly?: boolean; onCell: RecordProps['onCell']; className: string }) {
+  const first = table.fields[0];
+  const [title, setTitle] = useState(String(row.values[first.id] ?? ''));
+  useEffect(() => setTitle(String(row.values[first.id] ?? '')), [row.id, row.values, first.id]);
+  return (
+    <textarea
+      className={className}
+      rows={1}
+      value={title}
+      readOnly={readOnly}
+      placeholder={first.name}
+      aria-label={first.name}
+      onChange={(e) => setTitle(e.target.value)}
+      onBlur={() => title.trim() !== String(row.values[first.id] ?? '') && onCell(first.id, title.trim() || null)}
+      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), (e.target as HTMLTextAreaElement).blur())}
+    />
+  );
+}
+
+function Meta({ row, ctx }: { row: TableRow; ctx: CellCtx }) {
+  const u = ctx.users.find((x) => x.id === row.createdBy);
+  return (
+    <p className="muted small tb-rd-meta">
+      Added {relative(row.createdAt)}
+      {row.createdBy === 'webhook' ? ' from a webhook' : u ? ` by ${u.name.split(' ')[0]}` : ''}
+      {row.updatedAt !== row.createdAt ? ` · changed ${relative(row.updatedAt)}` : ''}
+    </p>
+  );
+}
+
+/* ---------- desktop: the side panel (or a page) ---------- */
+
+function RecordPanel({ table, row, ctx, me, onCell, onComment, onDelete, onDuplicate, onCopyLink, onClose, onOpenRow, readOnly, guest, full, onToggleFull, edit, onPage, onLayout, onNewField, nav }: RecordProps) {
+  useOnePanel(onClose);
+  useFocusedScreen();
+  useRowKeys(nav, onClose);
+  const { page, rest, hiddenIds, pinned, main, body, sections, folded } = layoutOf(table, row, ctx, false);
   const [showFolded, setShowFolded] = useState(false);
   const [drag, setDrag] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const [adding, setAdding] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: 0 }); // (newer browsers return a promise from scrollTo: never hand it to React)
+  }, [row.id]);
+  const ro = (f: TableField) => readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id));
   const dropOn = (target: string) => {
     if (drag && drag !== target && onPage) {
       const ids = rest.map((f) => f.id).filter((x) => x !== drag);
@@ -164,7 +357,7 @@ export function RecordDrawer({
       table={table}
       onCell={onCell}
       edit={edit}
-      readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id))}
+      readOnly={ro(f)}
       dragProps={
         draggable && onPage
           ? {
@@ -179,19 +372,6 @@ export function RecordDrawer({
       }
     />
   );
-  const userOf = (id: string): User | undefined => ctx.users.find((u) => u.id === id);
-  const byName = (id: string) => (id === 'webhook' ? 'A webhook' : id === 'rule' ? 'A rule' : (userOf(id)?.name.split(' ')[0] ?? 'Someone'));
-  // Rows in other tables whose link fields point here.
-  const linkedFrom = ctx.tables.flatMap((t) =>
-    t.fields
-      .filter((f) => f.type === 'link' && f.linkTable === table.id)
-      .flatMap((f) => ctx.rows.filter((r) => r.tableId === t.id && Array.isArray(r.values[f.id]) && (r.values[f.id] as string[]).includes(row.id)).map((r) => ({ t, f, r }))),
-  );
-  const fieldName = (id: string) => table.fields.find((f) => f.id === id)?.name ?? 'a field';
-  const show = (id: string, v: CellValue) => {
-    const f = table.fields.find((x) => x.id === id);
-    return f ? cellText(f, v, { users: ctx.users, rowName: (rid) => rowName(ctx.tables.find((t) => t.id === f.linkTable) ?? table, ctx.rows.find((r) => r.id === rid)) }) || 'empty' : '';
-  };
   return (
     <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <aside className={`drawer tb-drawer${full ? ' full' : ''}`} role="dialog" aria-label={rowName(table, row)} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
@@ -199,48 +379,64 @@ export function RecordDrawer({
           <span className="drawer-kind">
             <i className="tb-dot" style={{ background: table.color }} /> {table.name}
           </span>
+          {nav && nav.count > 1 && (
+            <span className="tb-rd-nav">
+              <button type="button" className="icon-btn sm" disabled={!nav.prev} onClick={nav.prev} title="Previous row (K)" aria-label="Previous row">
+                <ChevronUp size={16} />
+              </button>
+              <button type="button" className="icon-btn sm" disabled={!nav.next} onClick={nav.next} title="Next row (J)" aria-label="Next row">
+                <ChevronDown size={16} />
+              </button>
+              <small className="muted">
+                {nav.index + 1} of {nav.count}
+              </small>
+            </span>
+          )}
           <span className="spacer" />
+          {onCopyLink && (
+            <button type="button" className="icon-btn sm" title="Copy a link to this row" aria-label="Copy link" onClick={onCopyLink}>
+              <Link2 size={15} />
+            </button>
+          )}
           {onToggleFull && (
-            <button type="button" className="icon-btn sm tb-rd-full" title={full ? 'Open as a side panel' : 'Open as a page'} onClick={onToggleFull}>
+            <button type="button" className="icon-btn sm tb-rd-full" title={full ? 'Open as a side panel' : 'Open as a page'} aria-label={full ? 'Open as a side panel' : 'Open as a page'} onClick={onToggleFull}>
               {full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
           )}
           {!readOnly && !guest && (
             <>
-              <button type="button" className="icon-btn sm" title="Duplicate row" onClick={onDuplicate}>
+              <button type="button" className="icon-btn sm" title="Duplicate row" aria-label="Duplicate row" onClick={onDuplicate}>
                 <Copy size={15} />
               </button>
-              <button type="button" className="icon-btn sm" title="Delete row" onClick={() => confirm(`Delete “${rowName(table, row)}”?`) && onDelete()}>
+              <span className="tb-rd-sep" aria-hidden />
+              <button type="button" className="icon-btn sm" title="Delete row" aria-label="Delete row" onClick={() => confirm(`Delete “${rowName(table, row)}”?`) && onDelete()}>
                 <Trash2 size={15} />
               </button>
             </>
           )}
-          <button type="button" className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-btn sm" onClick={onClose} aria-label="Close" title="Close (Esc)">
             <X size={16} />
           </button>
         </header>
-        <div className="drawer-body">
-          <textarea
-            className="drawer-title"
-            rows={1}
-            value={title}
-            readOnly={readOnly || (!!ctx.canEdit && !ctx.canEdit(first.id))}
-            placeholder={first.name}
-            aria-label={first.name}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => title.trim() !== String(row.values[first.id] ?? '') && onCell(first.id, title.trim() || null)}
-            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), (e.target as HTMLTextAreaElement).blur())}
-          />
-          <p className="muted small tb-rd-meta">
-            Added {relative(row.createdAt)}
-            {row.createdBy === 'webhook' ? ' from a webhook' : userOf(row.createdBy) ? ` by ${userOf(row.createdBy)!.name.split(' ')[0]}` : ''}
-            {row.updatedAt !== row.createdAt ? ` · changed ${relative(row.updatedAt)}` : ''}
-          </p>
-
-          <div className="tb-rd-fields">{main.map((f) => line(f, true))}</div>
+        <div className="drawer-body" ref={bodyRef}>
+          <TitleField table={table} row={row} readOnly={ro(table.fields[0])} onCell={onCell} className="drawer-title" />
+          <Meta row={row} ctx={ctx} />
+          {pinned.length > 0 && <div className="tb-rd-fields tb-rd-pinned">{pinned.map((f) => line(f, false))}</div>}
+          {main && (
+            <div className="tb-rd-main">
+              <ButtonCell f={main} row={row} ctx={ctx} />
+            </div>
+          )}
+          <div className="tb-rd-fields">{body.map((f) => line(f, true))}</div>
+          {sections.map((s) => (
+            <div key={s.id} className="tb-rd-section">
+              <h4>{s.name}</h4>
+              <div className="tb-rd-fields">{s.list.map((f) => line(f, false))}</div>
+            </div>
+          ))}
           {folded.length > 0 && (
             <>
-              <button type="button" className="link-btn small tb-rd-more" onClick={() => setShowFolded((x) => !x)}>
+              <button type="button" className="link-btn small tb-rd-more" onClick={() => setShowFolded((x) => !x)} aria-expanded={showFolded}>
                 <ChevronRight size={13} className={`rot-chev ${showFolded ? 'open' : ''}`} />
                 {showFolded ? 'Hide' : 'Show'} {folded.length} {page.hideEmpty && folded.every((f) => !hiddenIds.has(f.id)) ? 'empty' : 'more'} {folded.length === 1 ? 'field' : 'fields'}
               </button>
@@ -272,87 +468,216 @@ export function RecordDrawer({
                   {edit && <FieldMenu anchor={addRef} open={adding} onClose={() => setAdding(false)} field={null} table={table} tables={edit.tables} onSave={onNewField} users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />}
                 </>
               )}
+              {onLayout && (
+                <button type="button" className="link-btn small" onClick={onLayout}>
+                  <LayoutTemplate size={13} /> Page layout
+                </button>
+              )}
               <label className="check-row small">
                 <input type="checkbox" checked={!!page.hideEmpty} onChange={(e) => onPage({ ...page, hideEmpty: e.target.checked })} /> Fold empty fields away
               </label>
             </div>
           )}
-
-          {row.extra && Object.keys(row.extra).length > 0 && (
-            <div className="tb-rd-sec">
-              <h4>Also received</h4>
-              <p className="muted small">Came in with the data but isn’t in a field. Map it in Automations to give it one.</p>
-              <dl className="tb-extra">
-                {Object.entries(row.extra).map(([k, v]) => (
-                  <div key={k}>
-                    <dt>{k}</dt>
-                    <dd>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          )}
-
-          {linkedFrom.length > 0 && (
-            <div className="tb-rd-sec">
-              <h4>Linked here</h4>
-              {linkedFrom.map(({ t, f, r }) => (
-                <button key={`${f.id}:${r.id}`} type="button" className="tb-rd-link" onClick={() => onOpenRow(t.id, r.id)}>
-                  <i className="tb-dot" style={{ background: t.color }} />
-                  <span>{rowName(t, r)}</span>
-                  <small className="muted">
-                    {t.name} · {f.name}
-                  </small>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {!guest && <div className="tb-rd-sec">
-            <h4>Comments</h4>
-            {(row.comments ?? []).map((c) => {
-              const u = userOf(c.by);
-              return (
-                <div key={c.id} className="tb-comment">
-                  {u && <Avatar person={u} size={24} />}
-                  <div>
-                    <strong>{u?.name.split(' ')[0] ?? 'Someone'}</strong> <small className="muted">{relative(c.at)}</small>
-                    <p>{c.text}</p>
-                  </div>
-                </div>
-              );
-            })}
-            <form
-              className="tb-comment-new"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!comment.trim()) return;
-                onComment(comment.trim());
-                setComment('');
-              }}
-            >
-              {userOf(me) && <Avatar person={userOf(me)!} size={24} />}
-              <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Write a comment" />
-              <button type="submit" className="icon-btn sm" disabled={!comment.trim()} aria-label="Send comment">
-                <Send size={14} />
-              </button>
-            </form>
-          </div>}
-
-          {(row.history?.length ?? 0) > 0 && (
-            <div className="tb-rd-sec">
-              <h4>History</h4>
-              <ul className="tb-history">
-                {[...row.history!].reverse().slice(0, 15).map((h, i) => (
-                  <li key={i}>
-                    <strong>{byName(h.by)}</strong> changed {fieldName(h.fieldId)}: <span className="muted">{show(h.fieldId, h.from)}</span> → {show(h.fieldId, h.to)} <small className="muted">· {relative(h.at)}</small>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <Extras row={row} linkedFrom={linkedFromOf(table, row, ctx)} onOpenRow={onOpenRow} />
+          {!guest && <Comments row={row} ctx={ctx} me={me} onComment={onComment} />}
+          <History table={table} row={row} ctx={ctx} />
         </div>
       </aside>
     </div>
+  );
+}
+
+/* ---------- phones: a page of its own ---------- */
+
+/** The value of one field on the phone page: tap to change it in a sheet (a checkbox flips, a button runs). */
+function PhoneField({ f, table, row, ctx, readOnly, onEdit, onCell }: { f: TableField; table: DataTable; row: TableRow; ctx: CellCtx; readOnly: boolean; onEdit: (f: TableField) => void; onCell: RecordProps['onCell'] }) {
+  const v = valueOf(table, f, row, ctx);
+  const Icon = fieldIcon(f.type);
+  const ro = readOnly || isComputed(f);
+  const label = (
+    <span className="tb-pf-label">
+      <Icon size={13} /> {f.name}
+    </span>
+  );
+  if (f.type === 'button')
+    return (
+      <div className="tb-pf">
+        {label}
+        <span className="tb-pf-val">
+          <ButtonCell f={f} row={row} ctx={ctx} />
+        </span>
+      </div>
+    );
+  if (f.type === 'checkbox')
+    return (
+      <div className="tb-pf tb-pf-check">
+        {label}
+        <button type="button" role="switch" aria-checked={!!v} aria-label={f.name} disabled={ro} className={`switch ${v ? 'on' : ''}`} onClick={() => onCell(f.id, !v)}>
+          <span />
+        </button>
+      </div>
+    );
+  return (
+    <div className={`tb-pf${ro ? ' ro' : ''}`}>
+      <button type="button" className="tb-pf-tap" disabled={ro} onClick={() => onEdit(f)} aria-label={`${f.name}: ${cellText(f, v, ctx) || 'empty'}${ro ? '' : ', change'}`}>
+        {label}
+        {f.description && <small className="tb-rd-desc">{f.description}</small>}
+        <span className="tb-pf-val">{isEmpty(v) ? <span className="muted">{ro ? 'Empty' : `Add ${f.name.toLowerCase()}`}</span> : <CellView f={f} v={v} ctx={ctx} wrap />}</span>
+      </button>
+      {!isEmpty(v) && <ContactActions f={f} v={v} />}
+    </div>
+  );
+}
+
+/**
+ * A row on a phone: its own page. The name, the key fields pinned as chips under it, every field label above value,
+ * empty ones folded away, tabs when it's long, and the row's main button pinned at the bottom with the rows before
+ * and after on either side.
+ */
+function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplicate, onCopyLink, onClose, onOpenRow, readOnly, guest, nav }: RecordProps) {
+  const { pinned, main: mainField, body, sections, folded } = layoutOf(table, row, ctx, true, true);
+  const [showFolded, setShowFolded] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [tab, setTab] = useState<'fields' | 'activity' | 'files'>('fields');
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    document.querySelector('.tb-page .push-body')?.scrollTo({ top: 0 });
+    setShowFolded(false);
+  }, [row.id]);
+  const ro = (f: TableField) => !!readOnly || (!!ctx.canEdit && !ctx.canEdit(f.id));
+  const editField = editing ? table.fields.find((f) => f.id === editing) : undefined;
+  // The main button: the one the layout names, else the first button that applies to this row.
+  const applies = (f: TableField) => !f.button?.showWhen || (() => {
+    const sf = table.fields.find((x) => x.id === f.button!.showWhen!.fieldId);
+    return !sf || passes(f.button!.showWhen!, sf, row.values[sf.id], { users: ctx.users, rowName: () => '' });
+  })();
+  const main = mainField ?? (ctx.runButton ? table.fields.find((f) => f.type === 'button' && f.button && applies(f)) : undefined);
+  const fileFields = table.fields.filter((f) => f.type === 'files');
+  const activity = (row.comments?.length ?? 0) + (row.history?.length ?? 0);
+  const long = body.length + sections.reduce((n, s) => n + s.list.length, 0) > 8 || (!guest && activity > 0) || fileFields.some((f) => !isEmpty(row.values[f.id]));
+  const linkedFrom = linkedFromOf(table, row, ctx);
+  const field = (f: TableField) => <PhoneField key={f.id} f={f} table={table} row={row} ctx={ctx} readOnly={ro(f)} onEdit={(x) => setEditing(x.id)} onCell={onCell} />;
+  const more = useActionMenu(
+    () => [
+      ...(onCopyLink ? [{ label: 'Copy link', icon: Link2, run: onCopyLink }] : []),
+      ...(!readOnly && !guest ? [{ label: 'Duplicate', icon: CopyPlus, run: onDuplicate }, { label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => confirm(`Delete “${rowName(table, row)}”?`) && onDelete() }] : []),
+    ],
+    { title: rowName(table, row) },
+  );
+  const moreBtn = useRef<HTMLButtonElement>(null);
+  const fields: ReactNode = (
+    <>
+      <div className="tb-pf-list">{body.map(field)}</div>
+      {sections.map((s) => (
+        <div key={s.id} className="tb-pf-section">
+          <h4>{s.name}</h4>
+          <div className="tb-pf-list">{s.list.map(field)}</div>
+        </div>
+      ))}
+      {folded.length > 0 && (
+        <>
+          <button type="button" className="tb-pf-more" onClick={() => setShowFolded((x) => !x)} aria-expanded={showFolded}>
+            <ChevronRight size={15} className={`rot-chev ${showFolded ? 'open' : ''}`} />
+            {showFolded ? 'Fewer fields' : `${folded.length} more ${folded.length === 1 ? 'field' : 'fields'}`}
+          </button>
+          <div className={`fold ${showFolded ? 'open' : ''}`}>
+            <div className="fold-in">
+              <div className="tb-pf-list">{folded.map(field)}</div>
+            </div>
+          </div>
+        </>
+      )}
+      <Extras row={row} linkedFrom={linkedFrom} onOpenRow={onOpenRow} />
+    </>
+  );
+  const activityPane = (
+    <>
+      {!guest && <Comments row={row} ctx={ctx} me={me} onComment={onComment} />}
+      <History table={table} row={row} ctx={ctx} />
+      {guest && !row.history?.length && <p className="muted small tb-pf-none">No changes yet.</p>}
+    </>
+  );
+  const filesPane = <div className="tb-pf-list">{fileFields.map(field)}</div>;
+  const footer =
+    main || (nav && nav.count > 1) ? (
+      <div className="tb-page-foot">
+        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.prev} onClick={nav?.prev} aria-label="Previous row">
+          <ChevronLeft size={22} />
+        </button>
+        {main ? (
+          <span className="tb-page-main">
+            <ButtonCell f={main} row={row} ctx={ctx} />
+          </span>
+        ) : (
+          <small className="muted tb-page-pos">{nav ? `${nav.index + 1} of ${nav.count}` : ''}</small>
+        )}
+        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.next} onClick={nav?.next} aria-label="Next row">
+          <ChevronRight size={22} />
+        </button>
+      </div>
+    ) : undefined;
+  return (
+    <PushScreen
+      title={table.name}
+      onBack={onClose}
+      className="tb-page"
+      actions={
+        more.open || (!readOnly && !guest) || onCopyLink ? (
+          <button ref={moreBtn} type="button" className="icon-btn" aria-label="Row options" onClick={() => more.openFrom(moreBtn)}>
+            <MoreHorizontal size={20} />
+          </button>
+        ) : undefined
+      }
+      footer={footer}
+    >
+      <div className="tb-page-body" ref={bodyRef}>
+        {ro(table.fields[0]) ? (
+          <h2 className="tb-page-title">{rowName(table, row)}</h2>
+        ) : (
+          <button type="button" className="tb-page-title" onClick={() => setEditing(table.fields[0].id)} aria-label={`${table.fields[0].name}: ${rowName(table, row)}, change`}>
+            {rowName(table, row)}
+          </button>
+        )}
+        <Meta row={row} ctx={ctx} />
+        {pinned.length > 0 && (
+          <div className="tb-pins">
+            {pinned.map((f) => {
+              const v = valueOf(table, f, row, ctx);
+              return (
+                <button key={f.id} type="button" className="tb-pin" disabled={ro(f) || isComputed(f)} onClick={() => (f.type === 'checkbox' ? onCell(f.id, !v) : setEditing(f.id))}>
+                  <small>{f.name}</small>
+                  <span>{isEmpty(v) ? <span className="muted">Empty</span> : <CellView f={f} v={v} ctx={ctx} />}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {long ? (
+          <>
+            <div className="segmented tb-page-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={tab === 'fields'} className={tab === 'fields' ? 'on' : ''} onClick={() => setTab('fields')}>
+                Fields
+              </button>
+              <button type="button" role="tab" aria-selected={tab === 'activity'} className={tab === 'activity' ? 'on' : ''} onClick={() => setTab('activity')}>
+                Activity
+              </button>
+              {fileFields.length > 0 && (
+                <button type="button" role="tab" aria-selected={tab === 'files'} className={tab === 'files' ? 'on' : ''} onClick={() => setTab('files')}>
+                  Files
+                </button>
+              )}
+            </div>
+            <TabPane key={tab}>{tab === 'fields' ? fields : tab === 'activity' ? activityPane : filesPane}</TabPane>
+          </>
+        ) : (
+          <>
+            {fields}
+            {activityPane}
+          </>
+        )}
+      </div>
+      {more.menu}
+      {editField && <EditSheet table={table} field={editField} row={row} ctx={ctx} onSave={(v) => onCell(editField.id, v)} onClose={() => setEditing(null)} canCreate={!guest} />}
+    </PushScreen>
   );
 }
