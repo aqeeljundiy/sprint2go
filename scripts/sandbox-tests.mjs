@@ -220,6 +220,9 @@ try {
   await carol.post('/api/sandbox', { tz: 'Europe/Amsterdam' });
   const c1 = await carol.state();
   check(c1.workspaces.length === 1 && c1.workspaces[0].id === 'demo-u-carol' && demoDocs(await alice.state()).every((x) => !x.includes('u-carol')), 'she gets her own, apart from Alice’s');
+  const pc = await carol.sync('prefs', [{ id: 'u-carol', value: { 'pm-settings:u-carol': { theme: 'dark' } } }]);
+  const pb = await bob.sync('prefs', [{ id: 'u-carol', value: { 'pm-settings:u-carol': { theme: 'light' } } }]);
+  check(pc.saved === 1 && pb.saved === 0 && (await carol.state()).prefs.find((x) => x.id === 'u-carol')?.value['pm-settings:u-carol'].theme === 'dark', 'with no company yet her own settings are kept (and only she changes them)');
 
   /* ---------- 6. operators ---------- */
   db.prepare('UPDATE operators SET totp_on = 1 WHERE email = ?').run('op@s2g-check.test');

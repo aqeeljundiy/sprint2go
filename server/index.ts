@@ -255,8 +255,9 @@ function lens(userId: string): (coll: string, d: any) => any | null {
   const me = personOf(userId);
   const portals = portalsOf(userId).map((pt) => clientLens({ ...me!, clientOf: pt }));
   const team = teamLens(userId);
-  // Everyone sees their own profile, even a new account with no company and nothing shared yet.
-  const self = (coll: string, d: any) => (coll === 'users' && d.id === userId ? d : null);
+  // Everyone sees their own profile and settings, even a new account with no company and nothing shared yet (only
+  // their demo company, say).
+  const self = (coll: string, d: any) => ((coll === 'users' || coll === 'prefs' || coll === 'statuses') && d.id === userId ? d : null);
   if (!portals.length) return (coll, d) => team(coll, d) ?? self(coll, d);
   return (coll, d) => team(coll, d) ?? portals.map((l) => l(coll, d)).find(Boolean) ?? self(coll, d);
 }
@@ -2482,11 +2483,13 @@ createServer(async (req, res) => {
         const vk = dk && typeof dk === 'object' && typeof dk.wrapped === 'string' && typeof dk.salt === 'string' && typeof dk.iv === 'string' && dk.pub && typeof dk.pub === 'object' ? { pub: dk.pub, wrapped: String(dk.wrapped).slice(0, 4000), salt: String(dk.salt).slice(0, 64), iv: String(dk.iv).slice(0, 64) } : before.vaultKey;
         return { ...before, name: String(d.name ?? before.name).slice(0, 80) || before.name, title: String(d.title ?? '').slice(0, 80), color: typeof d.color === 'string' ? d.color.slice(0, 20) : before.color, photo, hiddenApps, vaultKey: vk };
       };
+      // Your own settings and status, whoever you are (someone with only a demo company has no company to write into).
+      const ownRecord = (d: db.Doc) => (coll === 'prefs' || coll === 'statuses') && d.id === me;
       // Client changes (in a company where they're a client): only their own kinds, merged into what's stored.
       const ok = (upserts as db.Doc[])
         // Ids that start like a demo company's are the demo's own (src/sandbox.ts): never made as real documents.
         .filter((d) => d && typeof d.id === 'string' && !(isSandboxId(d.id) && !db.getDoc(coll, d.id)))
-        .map((d) => ownProfile(d) ?? (asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
+        .map((d) => ownProfile(d) ?? (ownRecord(d) || asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
         .filter(Boolean)
         .map((d) => {
           // A project's picture: a small image only (like profile photos).
@@ -2689,10 +2692,11 @@ createServer(async (req, res) => {
         if (g) ok[i] = g;
         else ok.splice(i, 1);
       }
-      const dels = mine.size
+      const dels = mine.size || ((coll === 'prefs' || coll === 'statuses') && (deletes as string[]).includes(me))
         ? (deletes as string[]).filter((id) => {
             const before = db.getDoc(coll, id) as any;
             if (!before) return true;
+            if ((coll === 'prefs' || coll === 'statuses') && id === me) return true; // your own
             // Nothing in a read-only company is deleted either.
             const ro = billing.readOnlyWhy(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
             if (ro) return (say(ro), false);
