@@ -342,3 +342,116 @@ test('calendar links: an endless rule is capped, and junk is not a calendar', ()
   assert.throws(() => parseCalendar('hello, not a calendar'), /not-ics/);
   assert.equal(parseIcs('hello'), null);
 });
+
+/* ---------- rare repeat rules (RFC 5545's own examples where it has one), the same through invites and calendar links ---------- */
+
+/**
+ * A rule's dates as local days in its zone, read twice: as a calendar link (expand) and as an invite (occurrences).
+ * Both must agree, since both use this one parser.
+ */
+function ruleDays(dtstart: string, rrule: string, opts: { tz?: string; extra?: string[]; to?: string } = {}) {
+  const tz = opts.tz ?? 'America/New_York';
+  const ics = ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:r', `DTSTART;TZID=${tz}:${dtstart}`, ...(rrule ? [`RRULE:${rrule}`] : []), ...(opts.extra ?? []), 'SUMMARY:x', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const to = Date.parse(opts.to ?? '2031-01-01');
+  const local = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+  const feed = expand(parseCalendar(ics), Date.parse('1990-01-01'), to, 1000);
+  const inv = parseInvite(ics.replace('BEGIN:VCALENDAR', 'BEGIN:VCALENDAR\r\nMETHOD:REQUEST'))!;
+  const viaInvite = occurrences(inv, 0, to, 1000)!;
+  assert.deepEqual(viaInvite.map((o) => o.start), feed.map((o) => o.start), 'an invite and a calendar link read the rule the same way');
+  return { days: feed.map((o) => local(o.start)), starts: feed.map((o) => o.start) };
+}
+
+test('BYSETPOS: the n-th of a set, from the start or the end, with COUNT', () => {
+  // RFC 5545: the third instance into the month of one of Tuesday, Wednesday or Thursday, for the next 3 months.
+  assert.deepEqual(ruleDays('19970904T090000', 'FREQ=MONTHLY;COUNT=3;BYDAY=TU,WE,TH;BYSETPOS=3').days, ['1997-09-04', '1997-10-07', '1997-11-06']);
+  // RFC 5545: the second-to-last weekday of the month.
+  assert.deepEqual(ruleDays('19970929T090000', 'FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-2', { to: '1998-04-01' }).days, ['1997-09-29', '1997-10-30', '1997-11-27', '1997-12-30', '1998-01-29', '1998-02-26', '1998-03-30']);
+  // The last working day of each month, and the first and last of the week.
+  assert.deepEqual(ruleDays('20261030T170000', 'FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;COUNT=4', { tz: 'Asia/Jakarta' }).days, ['2026-10-30', '2026-11-30', '2026-12-31', '2027-01-29']);
+  assert.deepEqual(ruleDays('20261026T090000', 'FREQ=WEEKLY;BYDAY=MO,WE,FR;BYSETPOS=1,-1;COUNT=4', { tz: 'Asia/Jakarta' }).days, ['2026-10-26', '2026-10-30', '2026-11-02', '2026-11-06']);
+  // Yearly: the last weekday of the year.
+  assert.deepEqual(ruleDays('20261231T090000', 'FREQ=YEARLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;COUNT=3', { tz: 'Asia/Jakarta' }).days, ['2026-12-31', '2027-12-31', '2028-12-29']);
+});
+
+test('negative BYMONTHDAY: days counted from the end of the month', () => {
+  // RFC 5545: monthly on the third-to-the-last day of the month.
+  assert.deepEqual(ruleDays('19970928T090000', 'FREQ=MONTHLY;BYMONTHDAY=-3', { to: '1998-03-01' }).days, ['1997-09-28', '1997-10-29', '1997-11-28', '1997-12-29', '1998-01-29', '1998-02-26']);
+  // RFC 5545: the first and last day of the month for 10 occurrences.
+  assert.deepEqual(ruleDays('19970930T090000', 'FREQ=MONTHLY;COUNT=10;BYMONTHDAY=1,-1').days, ['1997-09-30', '1997-10-01', '1997-10-31', '1997-11-01', '1997-11-30', '1997-12-01', '1997-12-31', '1998-01-01', '1998-01-31', '1998-02-01']);
+  // The last day of February, leap years too; and the last day of every month, read by a daily rule.
+  assert.deepEqual(ruleDays('20270228T090000', 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1;COUNT=3').days, ['2027-02-28', '2028-02-29', '2029-02-28']);
+  assert.deepEqual(ruleDays('20261031T090000', 'FREQ=DAILY;BYMONTHDAY=-1;COUNT=3').days, ['2026-10-31', '2026-11-30', '2026-12-31']);
+  // RFC 5545: an invalid date (30 February) is skipped, not moved.
+  assert.deepEqual(ruleDays('20070115T090000', 'FREQ=MONTHLY;BYMONTHDAY=15,30;COUNT=5').days, ['2007-01-15', '2007-01-30', '2007-02-15', '2007-03-15', '2007-03-30']);
+  // Yearly with BYMONTHDAY and no BYMONTH: that day of every month.
+  assert.deepEqual(ruleDays('20261001T090000', 'FREQ=YEARLY;BYMONTHDAY=1;COUNT=3').days, ['2026-10-01', '2026-11-01', '2026-12-01']);
+});
+
+test('negative BYDAY offsets: the last or second-to-last weekday of a month or a year', () => {
+  // RFC 5545: monthly on the second-to-last Monday of the month for 6 months.
+  assert.deepEqual(ruleDays('19970922T090000', 'FREQ=MONTHLY;COUNT=6;BYDAY=-2MO').days, ['1997-09-22', '1997-10-20', '1997-11-17', '1997-12-22', '1998-01-19', '1998-02-16']);
+  // RFC 5545: every other month on the first and last Sunday of the month for 10 occurrences.
+  assert.deepEqual(ruleDays('19970907T090000', 'FREQ=MONTHLY;INTERVAL=2;COUNT=10;BYDAY=1SU,-1SU').days, ['1997-09-07', '1997-09-28', '1997-11-02', '1997-11-30', '1998-01-04', '1998-01-25', '1998-03-01', '1998-03-29', '1998-05-03', '1998-05-31']);
+  // The last Sunday of October (the European clock change), and the last Monday of the year.
+  assert.deepEqual(ruleDays('20261025T090000', 'FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU;COUNT=3', { tz: 'Europe/Amsterdam' }).days, ['2026-10-25', '2027-10-31', '2028-10-29']);
+  assert.deepEqual(ruleDays('20261228T090000', 'FREQ=YEARLY;BYDAY=-1MO;COUNT=3').days, ['2026-12-28', '2027-12-27', '2028-12-25']);
+  // RFC 5545: every 20th Monday of the year.
+  assert.deepEqual(ruleDays('19970519T090000', 'FREQ=YEARLY;BYDAY=20MO', { to: '2000-01-01' }).days, ['1997-05-19', '1998-05-18', '1999-05-17']);
+  // RFC 5545: every Thursday in March (no ordinal: every one).
+  assert.deepEqual(ruleDays('19970313T090000', 'FREQ=YEARLY;BYMONTH=3;BYDAY=TH', { to: '1999-01-01' }).days, ['1997-03-13', '1997-03-20', '1997-03-27', '1998-03-05', '1998-03-12', '1998-03-19', '1998-03-26']);
+});
+
+test('BYWEEKNO: weeks of the year, from the start or the end, as WKST says', () => {
+  // RFC 5545: Monday of week number 20.
+  assert.deepEqual(ruleDays('19970512T090000', 'FREQ=YEARLY;BYWEEKNO=20;BYDAY=MO', { to: '2000-01-01' }).days, ['1997-05-12', '1998-05-11', '1999-05-17']);
+  // Week 1 has at least 4 days in its year: it starts on 4 January 2027, 3 January 2028 and 1 January 2029.
+  assert.deepEqual(ruleDays('20270104T090000', 'FREQ=YEARLY;BYWEEKNO=1;BYDAY=MO;COUNT=3').days, ['2027-01-04', '2028-01-03', '2029-01-01']);
+  // The last week: 2026 has 53, 2027 and 2028 have 52.
+  assert.deepEqual(ruleDays('20261231T090000', 'FREQ=YEARLY;BYWEEKNO=-1;BYDAY=TH;COUNT=3').days, ['2026-12-31', '2027-12-30', '2028-12-28']);
+  // WKST changes which week is week 1.
+  assert.deepEqual(ruleDays('20261231T090000', 'FREQ=YEARLY;BYWEEKNO=1;BYDAY=SU;WKST=SU;COUNT=2').days, ['2026-12-31', '2027-01-03']);
+  assert.deepEqual(ruleDays('20261231T090000', 'FREQ=YEARLY;BYWEEKNO=1;BYDAY=SU;WKST=MO;COUNT=2').days, ['2026-12-31', '2027-01-10']);
+  // Without BYDAY, every day of that week.
+  assert.deepEqual(ruleDays('20270104T090000', 'FREQ=YEARLY;BYWEEKNO=1;COUNT=7').days, ['2027-01-04', '2027-01-05', '2027-01-06', '2027-01-07', '2027-01-08', '2027-01-09', '2027-01-10']);
+});
+
+test('BYYEARDAY: days of the year, from the start or the end', () => {
+  // RFC 5545: every third year on the 1st, 100th and 200th day for 10 occurrences.
+  assert.deepEqual(ruleDays('19970101T090000', 'FREQ=YEARLY;INTERVAL=3;COUNT=10;BYYEARDAY=1,100,200').days, ['1997-01-01', '1997-04-10', '1997-07-19', '2000-01-01', '2000-04-09', '2000-07-18', '2003-01-01', '2003-04-10', '2003-07-19', '2006-01-01']);
+  // The last day of the year, and the 306th from the end (1 March, leap year or not).
+  assert.deepEqual(ruleDays('20261231T090000', 'FREQ=YEARLY;BYYEARDAY=-1;COUNT=3').days, ['2026-12-31', '2027-12-31', '2028-12-31']);
+  assert.deepEqual(ruleDays('20270301T090000', 'FREQ=YEARLY;BYYEARDAY=-306;COUNT=3').days, ['2027-03-01', '2028-03-01', '2029-03-01']);
+});
+
+test('EXDATE and RDATE in other time zones, as dates, and as periods', () => {
+  const r = ruleDays('20261026T090000', 'FREQ=WEEKLY;BYDAY=MO;COUNT=4', {
+    extra: [
+      'EXDATE;TZID=Europe/London:20261102T140000', // 09:00 in New York on 2 November
+      'EXDATE;VALUE=DATE:20261109', // the whole day
+      'RDATE;TZID=Asia/Tokyo:20261105T230000', // 09:00 in New York on 5 November
+      'RDATE;VALUE=PERIOD:20261120T140000Z/PT1H', // a period: its start counts
+    ],
+  });
+  assert.deepEqual(r.days, ['2026-10-26', '2026-11-05', '2026-11-16', '2026-11-20']);
+  assert.deepEqual(r.starts, ['2026-10-26T13:00:00.000Z', '2026-11-05T14:00:00.000Z', '2026-11-16T14:00:00.000Z', '2026-11-20T14:00:00.000Z'], '09:00 in New York each time, summer time or not');
+  // RFC 5545: every Friday the 13th, leaving out DTSTART itself.
+  assert.deepEqual(ruleDays('19970902T090000', 'FREQ=MONTHLY;BYDAY=FR;BYMONTHDAY=13', { extra: ['EXDATE;TZID=America/New_York:19970902T090000'], to: '2001-01-01' }).days, ['1998-02-13', '1998-03-13', '1998-11-13', '1999-08-13', '2000-10-13']);
+  // RDATE alone (no RRULE): the first date and the extra ones.
+  assert.deepEqual(ruleDays('20261015T140000', '', { tz: 'Asia/Jakarta', extra: ['RDATE;TZID=Asia/Jakarta:20261016T140000,20261020T140000'] }).days, ['2026-10-15', '2026-10-16', '2026-10-20']);
+});
+
+test('COUNT and UNTIL with the rare parts, and both at once', () => {
+  // Both (RFC 5545 says not to, some calendars do): whichever ends it first.
+  assert.deepEqual(ruleDays('19970902T090000', 'FREQ=DAILY;COUNT=10;UNTIL=19970905T000000Z').days, ['1997-09-02', '1997-09-03', '1997-09-04']);
+  assert.deepEqual(ruleDays('19970902T090000', 'FREQ=DAILY;COUNT=2;UNTIL=19971224T000000Z').days, ['1997-09-02', '1997-09-03']);
+  // UNTIL with BYWEEKNO and with BYYEARDAY; COUNT with BYSETPOS is above.
+  assert.deepEqual(ruleDays('19970512T090000', 'FREQ=YEARLY;BYWEEKNO=20;BYDAY=MO;UNTIL=19990101T000000Z').days, ['1997-05-12', '1998-05-11']);
+  assert.deepEqual(ruleDays('20260101T090000', 'FREQ=YEARLY;BYYEARDAY=1,-1;UNTIL=20280101T235959Z').days, ['2026-01-01', '2026-12-31', '2027-01-01', '2027-12-31', '2028-01-01']);
+  // RFC 5545: U.S. Presidential Election day (BYMONTH, BYDAY and BYMONTHDAY together), every 4 years.
+  assert.deepEqual(ruleDays('19961105T090000', 'FREQ=YEARLY;INTERVAL=4;BYMONTH=11;BYDAY=TU;BYMONTHDAY=2,3,4,5,6,7,8', { to: '2005-01-01' }).days, ['1996-11-05', '2000-11-07', '2004-11-02']);
+});
+
+test('WKST decides which week a day belongs to (RFC 5545 example)', () => {
+  assert.deepEqual(ruleDays('19970805T090000', 'FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=MO').days, ['1997-08-05', '1997-08-10', '1997-08-19', '1997-08-24']);
+  assert.deepEqual(ruleDays('19970805T090000', 'FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=SU').days, ['1997-08-05', '1997-08-17', '1997-08-19', '1997-08-31']);
+});

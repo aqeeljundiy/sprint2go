@@ -7,8 +7,9 @@
 //    writes the REPLY that answers it.
 // What it reads: folded lines (split multi-byte characters too), escaped text, all-day, UTC, floating and TZID times
 // (IANA names, Outlook's Windows names, path-style names, the file's own VTIMEZONE, "(UTC+07:00)" names), DTEND or
-// DURATION, RRULE (daily, weekly, monthly, yearly with INTERVAL, COUNT, UNTIL, BYDAY with ordinals, BYMONTHDAY, BYMONTH,
-// BYSETPOS, WKST), RDATE, EXDATE, moved or cancelled single occurrences (RECURRENCE-ID) and cancelled events.
+// DURATION, RRULE (daily, weekly, monthly, yearly with INTERVAL, COUNT, UNTIL, BYDAY with ordinals counted from the
+// start or the end, BYMONTHDAY from the start or the end, BYMONTH, BYWEEKNO, BYYEARDAY, BYSETPOS, WKST), RDATE and EXDATE
+// in any zone (or as dates, or periods), moved or cancelled single occurrences (RECURRENCE-ID) and cancelled events.
 // No dependencies; ics.test.ts pins it down.
 
 /* ---------- reading the file ---------- */
@@ -367,9 +368,11 @@ export interface RRule {
   interval: number;
   count?: number;
   until?: ICalTime;
-  byDay?: { n: number; wd: number }[]; // n = 0: every such weekday
-  byMonthDay?: number[];
+  byDay?: { n: number; wd: number }[]; // n = 0: every such weekday; -1: the last one
+  byMonthDay?: number[]; // -1: the last day of the month
   byMonth?: number[];
+  byWeekNo?: number[]; // weeks of the year (week 1 has at least 4 of its days in the year, weeks start on WKST); -1: the last
+  byYearDay?: number[]; // days of the year; -1: 31 December
   bySetPos?: number[];
   wkst: number;
 }
@@ -385,7 +388,10 @@ export function parseRRule(v: string): RRule | null {
   );
   const freq = parts.FREQ?.toUpperCase();
   if (!['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(freq)) return null;
-  const nums = (s?: string) => (s ? s.split(',').map(Number).filter((n) => Number.isInteger(n) && n !== 0) : undefined);
+  const nums = (s?: string, max = 366) => {
+    const list = s ? s.split(',').map(Number).filter((n) => Number.isInteger(n) && n !== 0 && Math.abs(n) <= max) : [];
+    return list.length ? list : undefined;
+  };
   const byDay = parts.BYDAY
     ? parts.BYDAY.split(',')
         .map((x: string) => x.trim().toUpperCase().match(/^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/))
@@ -398,34 +404,103 @@ export function parseRRule(v: string): RRule | null {
     count: parts.COUNT ? Math.max(1, +parts.COUNT || 1) : undefined,
     until: parts.UNTIL ? parseTime(parts.UNTIL) ?? undefined : undefined,
     byDay: byDay?.length ? byDay : undefined,
-    byMonthDay: nums(parts.BYMONTHDAY),
-    byMonth: nums(parts.BYMONTH)?.filter((n) => n >= 1 && n <= 12),
-    bySetPos: nums(parts.BYSETPOS),
+    byMonthDay: nums(parts.BYMONTHDAY, 31),
+    byMonth: nums(parts.BYMONTH, 12)?.filter((n) => n >= 1),
+    byWeekNo: nums(parts.BYWEEKNO, 53),
+    byYearDay: nums(parts.BYYEARDAY, 366),
+    bySetPos: nums(parts.BYSETPOS, 366),
     wkst: Math.max(0, WEEKDAYS.indexOf(String(parts.WKST ?? 'MO').toUpperCase())),
   };
 }
 
 const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate(); // m: 1-12
 const weekday = (wall: number) => new Date(wall).getUTCDay();
+const monthOf = (wall: number) => new Date(wall).getUTCMonth() + 1;
+const dayOfMonth = (wall: number) => new Date(wall).getUTCDate();
+const yearLength = (y: number) => (Date.UTC(y + 1, 0, 1) - Date.UTC(y, 0, 1)) / DAY;
+/** A position counted from the start (1) or the end (-1), as a 1-based position in a list of `n`. */
+const fromEnd = (x: number, n: number) => (x > 0 ? x : n + x + 1);
+
+/**
+ * The days of `list` (wall ms at midnight, in order) that BYDAY picks. With ordinals, "2TU" is the second Tuesday of the
+ * list and "-1FR" its last Friday (the list is a month or a year); without, every such weekday.
+ */
+function byDayIn(list: number[], byDay: { n: number; wd: number }[], ordinals = true) {
+  const per: number[][] = [[], [], [], [], [], [], []];
+  for (const d of list) per[weekday(d)].push(d);
+  return list.filter((d) => {
+    const same = per[weekday(d)];
+    return byDay.some((b) => b.wd === weekday(d) && (!ordinals || b.n === 0 || same[fromEnd(b.n, same.length) - 1] === d));
+  });
+}
+/** Where week 1 of a year starts: the first week (from WKST) with at least four of its days in that year. */
+function weekOneStart(y: number, wkst: number) {
+  const jan1 = Date.UTC(y, 0, 1);
+  const off = (weekday(jan1) - wkst + 7) % 7;
+  return off <= 3 ? jan1 - off * DAY : jan1 + (7 - off) * DAY;
+}
+/** A day's week number (in the year its week belongs to, which can be the year before or after) and that year's weeks. */
+function weekNumber(d: number, wkst: number) {
+  const y = new Date(d).getUTCFullYear();
+  let wy = y;
+  if (d < weekOneStart(y, wkst)) wy = y - 1;
+  else if (d >= weekOneStart(y + 1, wkst)) wy = y + 1;
+  const s = weekOneStart(wy, wkst);
+  return { no: Math.floor((d - s) / (7 * DAY)) + 1, weeks: (weekOneStart(wy + 1, wkst) - s) / (7 * DAY) };
+}
+const inMonthDays = (d: number, list: number[]) => list.some((x) => fromEnd(x, daysInMonth(new Date(d).getUTCFullYear(), monthOf(d))) === dayOfMonth(d));
+const inYearDays = (d: number, list: number[]) => {
+  const y = new Date(d).getUTCFullYear();
+  const doy = (d - Date.UTC(y, 0, 1)) / DAY + 1;
+  return list.some((x) => fromEnd(x, yearLength(y)) === doy);
+};
+const inWeeks = (d: number, list: number[], wkst: number) => {
+  const w = weekNumber(d, wkst);
+  return list.some((x) => fromEnd(x, w.weeks) === w.no);
+};
 
 /** Days (wall ms at midnight) of one month that the rule picks, before BYSETPOS. */
 function monthDays(y: number, m: number, r: RRule, dflt: number): number[] {
   const n = daysInMonth(y, m);
   const all = Array.from({ length: n }, (_, i) => Date.UTC(y, m - 1, i + 1));
-  let days: number[];
-  if (r.byMonthDay) days = r.byMonthDay.map((d) => (d > 0 ? d : n + d + 1)).filter((d) => d >= 1 && d <= n).map((d) => Date.UTC(y, m - 1, d));
-  else if (r.byDay) days = all;
-  else days = dflt <= n ? [Date.UTC(y, m - 1, dflt)] : [];
-  if (r.byDay) days = days.filter((day) => r.byDay!.some((b) => b.wd === weekday(day) && (b.n === 0 || nthInList(all, day, b.n))));
-  return [...new Set(days)].sort((a, b) => a - b);
+  if (!r.byMonthDay && !r.byDay && !r.byYearDay) return dflt <= n ? [Date.UTC(y, m - 1, dflt)] : []; // 30 February doesn't happen
+  let days = all;
+  if (r.byMonthDay) days = days.filter((d) => inMonthDays(d, r.byMonthDay!));
+  if (r.byYearDay) days = days.filter((d) => inYearDays(d, r.byYearDay!));
+  if (r.byDay) {
+    const picked = new Set(byDayIn(all, r.byDay)); // ordinals count within the month
+    days = days.filter((d) => picked.has(d));
+  }
+  return days;
 }
-/** Is `day` the n-th (or n-th from the end) of its weekday in `list`? */
-function nthInList(list: number[], day: number, n: number) {
-  const same = list.filter((d) => weekday(d) === weekday(day));
-  const i = same.indexOf(day);
-  return n > 0 ? i === n - 1 : i === same.length + n;
+
+/**
+ * Days (wall ms at midnight) of one year that a YEARLY rule picks, before BYSETPOS (RFC 5545, 3.3.10): BYMONTH,
+ * BYWEEKNO, BYYEARDAY and BYMONTHDAY narrow the year's days; BYDAY then picks weekdays, its ordinals counted within
+ * each month when BYMONTH is there, within the year when nothing else is, and ignored next to BYWEEKNO, BYYEARDAY or
+ * BYMONTHDAY. With none of them, DTSTART's month and day (in BYMONTH's months when given).
+ */
+function yearDays(y: number, r: RRule, start: ICalTime): number[] {
+  if (!r.byWeekNo && !r.byYearDay && !r.byMonthDay && !r.byDay) {
+    return (r.byMonth ?? [start.m]).filter((m) => start.d <= daysInMonth(y, m)).map((m) => Date.UTC(y, m - 1, start.d));
+  }
+  const first = Date.UTC(y, 0, 1);
+  const all = Array.from({ length: yearLength(y) }, (_, k) => first + k * DAY);
+  let days = all;
+  if (r.byMonth) days = days.filter((d) => r.byMonth!.includes(monthOf(d)));
+  if (r.byWeekNo) days = days.filter((d) => inWeeks(d, r.byWeekNo!, r.wkst));
+  if (r.byYearDay) days = days.filter((d) => inYearDays(d, r.byYearDay!));
+  if (r.byMonthDay) days = days.filter((d) => inMonthDays(d, r.byMonthDay!));
+  if (r.byDay) {
+    let picked: Set<number>;
+    if (r.byWeekNo || r.byYearDay || r.byMonthDay) picked = new Set(byDayIn(days, r.byDay, false));
+    else if (r.byMonth) picked = new Set(r.byMonth.flatMap((m) => byDayIn(all.filter((d) => monthOf(d) === m), r.byDay!)));
+    else picked = new Set(byDayIn(all, r.byDay));
+    days = days.filter((d) => picked.has(d));
+  }
+  return days;
 }
-const setPos = (list: number[], pos?: number[]) => (pos ? [...new Set(pos.map((p) => (p > 0 ? list[p - 1] : list[list.length + p])).filter((x) => x !== undefined))].sort((a, b) => a - b) : list);
+const setPos = (list: number[], pos?: number[]) => (pos ? [...new Set(pos.map((p) => list[fromEnd(p, list.length) - 1]).filter((x) => x !== undefined))].sort((a, b) => a - b) : list);
 
 /**
  * Starts (wall ms) of a rule's occurrences between `from` and `to` (wall ms). DTSTART always counts as the first one
@@ -454,14 +529,15 @@ export function wallOccurrences(start: ICalTime, r: RRule, from: number, to: num
     }
     return true;
   };
-  const inMonth = (t: number) => !r.byMonth || r.byMonth.includes(new Date(t).getUTCMonth() + 1);
+  const inMonth = (t: number) => !r.byMonth || r.byMonth.includes(monthOf(t));
   for (let i = 1, guard = 0; guard < 200_000; i++, guard++) {
     let days: number[] = [];
     let periodStart: number;
     if (r.freq === 'DAILY') {
       const d = Date.UTC(start.y, start.m - 1, start.d) + (i - 1) * r.interval * DAY;
       periodStart = d;
-      if (inMonth(d) && (!r.byMonthDay || r.byMonthDay.some((x) => (x > 0 ? x : daysInMonth(new Date(d).getUTCFullYear(), new Date(d).getUTCMonth() + 1) + x + 1) === new Date(d).getUTCDate())) && (!r.byDay || r.byDay.some((b) => b.wd === weekday(d)))) days = [d];
+      // Every BY part only narrows a daily rule (BYDAY's ordinals mean nothing here).
+      if (inMonth(d) && (!r.byMonthDay || inMonthDays(d, r.byMonthDay)) && (!r.byYearDay || inYearDays(d, r.byYearDay)) && (!r.byDay || r.byDay.some((b) => b.wd === weekday(d)))) days = setPos([d], r.bySetPos);
     } else if (r.freq === 'WEEKLY') {
       const first = Date.UTC(start.y, start.m - 1, start.d);
       const weekStart = first - ((weekday(first) - r.wkst + 7) % 7) * DAY + (i - 1) * r.interval * 7 * DAY;
@@ -478,15 +554,7 @@ export function wallOccurrences(start: ICalTime, r: RRule, from: number, to: num
     } else {
       const y = start.y + (i - 1) * r.interval;
       periodStart = Date.UTC(y, 0, 1);
-      if (!r.byMonth && r.byDay && !r.byMonthDay) {
-        // e.g. BYDAY=20MO: the 20th Monday of the year.
-        const all = Array.from({ length: (Date.UTC(y + 1, 0, 1) - periodStart) / DAY }, (_, k) => periodStart + k * DAY);
-        days = all.filter((d) => r.byDay!.some((b) => b.wd === weekday(d) && (b.n === 0 || nthInList(all, d, b.n))));
-      } else {
-        const months = r.byMonth ?? [start.m];
-        days = months.flatMap((m) => monthDays(y, m, r, start.d));
-      }
-      days = setPos([...new Set(days)].sort((a, b) => a - b), r.bySetPos);
+      days = setPos(yearDays(y, r, start), r.bySetPos);
     }
     if (periodStart > to + 32 * DAY || periodStart > end) break;
     if (!pick(days)) break;
@@ -535,7 +603,9 @@ const attendeeOf = (p: Prop | undefined): ICalAttendee | undefined => {
   const email = p.value.replace(/^mailto:/i, '').trim().toLowerCase();
   return email.includes('@') ? { email, name: p.params.CN ? unescapeText(p.params.CN) : undefined, status: p.params.PARTSTAT?.toUpperCase() } : undefined;
 };
-const times = (c: Component, name: string) => c.props.filter((p) => p.name === name).flatMap((p) => p.value.split(',').map((v) => parseTime(v, p.params)).filter(Boolean) as ICalTime[]);
+/** RDATE and EXDATE values: one or more times (a PERIOD, start/end or start/duration, counts from its start). */
+const listValues = (p: Prop) => p.value.split(',').map((v) => v.split('/')[0].trim()).filter(Boolean);
+const times = (c: Component, name: string) => c.props.filter((p) => p.name === name).flatMap((p) => listValues(p).map((v) => parseTime(v, p.params)).filter(Boolean) as ICalTime[]);
 
 /** Reads a calendar file. Throws Error('not-ics') when it isn't one. */
 export function parseCalendar(input: string | Uint8Array): ICalendar {
@@ -668,8 +738,9 @@ export function expand(cal: ICalendar, from: number, to: number, max = 4000): Oc
       untilWall = u.date ? wallOf(u) + DAY - 1 : u.utc ? utcToWall(wallOf(u), zone) : wallOf(u);
     }
     const starts = new Set<number>(e.rrule ? wallOccurrences(e.start, e.rrule, wFrom, wTo, untilWall, max * 2) : [wallOf(e.start)]);
+    // RDATE: a date gets the event's own time; a time in UTC or another zone is moved to the event's wall clock.
     for (const r of e.rdates) {
-      const w = r.date && !e.start.date ? Date.UTC(r.y, r.m - 1, r.d) + (wallOf(e.start) - Date.UTC(e.start.y, e.start.m - 1, e.start.d)) : r.utc ? utcToWall(wallOf(r), zone) : wallOf(r);
+      const w = r.date && !e.start.date ? Date.UTC(r.y, r.m - 1, r.d) + (wallOf(e.start) - Date.UTC(e.start.y, e.start.m - 1, e.start.d)) : r.utc || (r.tz && r.tz !== e.start.tz) ? utcToWall(instant(r), zone) : wallOf(r);
       if (w >= wFrom && w <= wTo) starts.add(w);
     }
     const ex = new Set(e.exdates.map((x) => (x.date ? `d${x.y}${pad(x.m)}${pad(x.d)}` : `t${instant(x)}`)));
@@ -723,7 +794,8 @@ export interface IcsEvent {
   organizer?: IcsPerson;
   attendees: IcsAttendee[];
   rrule?: string; // e.g. FREQ=WEEKLY;BYDAY=MO
-  exdates?: string[]; // ISO starts of skipped occurrences
+  rdates?: string[]; // ISO starts of extra occurrences (RDATE, in whatever zone it was written)
+  exdates?: string[]; // ISO starts of skipped occurrences, or a date ("2026-10-28") that skips that day in the event's zone
   recurrenceId?: string; // ISO original start, when this is one changed occurrence of a series
   overrides?: { recurrenceId: string; start: string; end: string; cancelled?: boolean }[]; // changed occurrences sent along with the series
   cancelled?: boolean; // STATUS:CANCELLED
@@ -792,7 +864,23 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
   const url = conference ?? findMeetingLink(location) ?? findMeetingLink(description);
   const org = prop(main, 'ORGANIZER');
   const recId = at(prop(main, 'RECURRENCE-ID'));
-  const exdates = props(main, 'EXDATE').flatMap((p) => p.value.split(',').map((v) => at({ ...p, value: v })).filter(Boolean).map((x) => iso(x!.at)));
+  // Skipped and extra dates, in whatever zone each was written. A date-only EXDATE on a timed event skips that day; a
+  // date-only RDATE adds that day at the event's own time.
+  const firstStart = prop(main, 'DTSTART');
+  const first = firstStart && parseTime(firstStart.value, firstStart.params);
+  const eachValue = (name: string) => props(main, name).flatMap((p) => listValues(p).map((v) => ({ ...p, value: v })));
+  const exdates = eachValue('EXDATE').flatMap((p) => {
+    const x = parseTime(p.value, p.params);
+    if (x?.date && !t.allDay) return [`${x.y}-${pad(x.m)}-${pad(x.d)}`];
+    const i = at(p);
+    return i ? [iso(i.at)] : [];
+  });
+  const rdates = eachValue('RDATE').flatMap((p) => {
+    const x = parseTime(p.value, p.params);
+    if (x?.date && !t.allDay && first && !first.date) return [iso(inviteInstant({ ...firstStart!, value: `${x.y}${pad(x.m)}${pad(x.d)}T${pad(first.h)}${pad(first.mi)}${pad(first.s)}${first.utc ? 'Z' : ''}` }, zones, defaultTz)!.at)];
+    const i = at(p);
+    return i ? [iso(i.at)] : [];
+  });
   const overrides = events
     .filter((v) => v !== main && prop(v, 'RECURRENCE-ID') && prop(v, 'UID')?.value.trim() === uid)
     .map((v) => {
@@ -819,6 +907,7 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
       .filter((a) => a.email.includes('@'))
       .slice(0, 200),
     ...(prop(main, 'RRULE') ? { rrule: prop(main, 'RRULE')!.value.trim() } : {}),
+    ...(rdates.length ? { rdates } : {}),
     ...(exdates.length ? { exdates } : {}),
     ...(recId ? { recurrenceId: iso(recId.at) } : {}),
     ...(overrides.length ? { overrides } : {}),
@@ -831,11 +920,11 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
  * daylight saving, with skipped dates left out and moved ones moved. Null when the repeat isn't one calendars use for
  * events (hourly and finer): the caller keeps only the first occurrence.
  */
-export function occurrences(ev: Pick<IcsEvent, 'start' | 'end' | 'rrule' | 'exdates' | 'overrides' | 'tz' | 'allDay'>, from: number, until: number, max = 60): { start: string; end: string; recurrenceId?: string }[] | null {
+export function occurrences(ev: Pick<IcsEvent, 'start' | 'end' | 'rrule' | 'rdates' | 'exdates' | 'overrides' | 'tz' | 'allDay'>, from: number, until: number, max = 60): { start: string; end: string; recurrenceId?: string }[] | null {
   const start = Date.parse(ev.start);
   const len = Date.parse(ev.end) - start;
-  if (!ev.rrule) return start + len >= from && start <= until ? [{ start: ev.start, end: ev.end }] : [];
-  const r = parseRRule(ev.rrule);
+  if (!ev.rrule && !ev.rdates?.length) return start + len >= from && start <= until ? [{ start: ev.start, end: ev.end }] : [];
+  const r = ev.rrule ? parseRRule(ev.rrule) : { freq: 'DAILY' as const, interval: 1, count: 1, wkst: 1 }; // RDATE alone: the first date, plus those
   if (!r) return null;
   const zone: Zone = ev.allDay || !ev.tz || !isZone(ev.tz) ? null : { iana: ev.tz };
   const w0 = utcToWall(start, zone);
@@ -843,15 +932,22 @@ export function occurrences(ev: Pick<IcsEvent, 'start' | 'end' | 'rrule' | 'exda
   const first: ICalTime = { y: d0.getUTCFullYear(), m: d0.getUTCMonth() + 1, d: d0.getUTCDate(), h: d0.getUTCHours(), mi: d0.getUTCMinutes(), s: d0.getUTCSeconds(), date: false, utc: false };
   let untilWall: number | undefined;
   if (r.until) untilWall = r.until.date ? wallOf(r.until) + DAY - 1 : r.until.utc ? utcToWall(wallOf(r.until), zone) : wallOf(r.until);
-  const skip = new Set((ev.exdates ?? []).map((x) => Date.parse(x)));
+  const skip = new Set((ev.exdates ?? []).filter((x) => x.length > 10).map((x) => Date.parse(x)));
+  const skipDays = new Set((ev.exdates ?? []).filter((x) => x.length === 10)); // a whole day, in the event's own zone
   const moved = new Map((ev.overrides ?? []).map((o) => [Date.parse(o.recurrenceId), o]));
   const wFrom = Number.isFinite(from) ? utcToWall(from, zone) - len - DAY : -Infinity;
   const wTo = Number.isFinite(until) ? utcToWall(until, zone) + DAY : Infinity;
-  const walls = wallOccurrences(first, r, wFrom, wTo, untilWall, max + skip.size + moved.size);
+  const walls = wallOccurrences(first, r, wFrom, wTo, untilWall, max + skip.size + skipDays.size + moved.size);
+  // RDATE: extra dates on top of the rule (each already an instant, whatever zone it was written in).
+  for (const x of ev.rdates ?? []) {
+    const w = utcToWall(Date.parse(x), zone);
+    if (Number.isFinite(w) && w >= wFrom && w <= wTo && !walls.includes(w)) walls.push(w);
+  }
+  walls.sort((a, b) => a - b);
   const out: { start: string; end: string; recurrenceId?: string }[] = [];
   for (const w of walls) {
     const at = wallToUtc(w, zone);
-    if (skip.has(at)) continue;
+    if (skip.has(at) || skipDays.has(floating(w).slice(0, 10))) continue;
     const o = moved.get(at);
     if (o?.cancelled) continue;
     const s = o ? Date.parse(o.start) : at;
