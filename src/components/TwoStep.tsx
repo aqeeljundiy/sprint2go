@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Copy, Download, ShieldCheck, X } from 'lucide-react';
-import { SmoothHeight, TabPane } from './ui/Smooth';
+import { SmoothHeight, TabPane, useLeaving } from './ui/Smooth';
 import { brand as product } from '../terms';
 import { server, signOut } from '../sync';
 import { BrandMark } from './SignIn';
@@ -21,6 +21,16 @@ export interface TwoStepStatus {
   since: string | null;
   backupLeft: number;
   required: { from: string; companies: string[] } | null;
+  devices?: RememberedDevice[];
+}
+/** A browser that signs in without the code for 30 days ("Remember this device"). */
+export interface RememberedDevice {
+  id: string;
+  name: string;
+  createdAt: string;
+  usedAt: string;
+  expiresAt: string;
+  current: boolean; // this browser
 }
 
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
@@ -259,17 +269,33 @@ export function TwoStepGate({ need, email, companies }: { need: 'code' | 'setup'
   );
 }
 
+/** "Remember this device for 30 days": our own tick box (a button that says whether it's ticked). */
+function RememberBox({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={on} className="ts-remember" onClick={() => onChange(!on)}>
+      <span className={`ms-box ${on ? 'on' : ''}`} aria-hidden="true">
+        <Check size={11} strokeWidth={3} />
+      </span>
+      <span>
+        Remember this device for 30 days
+        <small>Only on a device that’s yours. You can forget it in Settings, Account.</small>
+      </span>
+    </button>
+  );
+}
+
 function CodeGate({ email }: { email?: string }) {
   const [backup, setBackup] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restart, setRestart] = useState(false);
+  const [remember, setRemember] = useState(false);
   const submit = (c = code) => {
     if (!codeReady(c, backup) || busy) return;
     setBusy(true);
     setError(null);
-    post('/api/2fa/verify', { code: c })
+    post('/api/2fa/verify', { code: c, remember })
       .then(() => location.reload())
       .catch((e: Error & { restart?: boolean }) => (setError(e.message), setRestart(!!e.restart), setCode(''), setBusy(false)));
   };
@@ -294,6 +320,7 @@ function CodeGate({ email }: { email?: string }) {
         >
           <CodeField backup={backup} value={code} onChange={setCode} onComplete={submit} autoFocus />
           {error && <p className="signin-error">{error}</p>}
+          <RememberBox on={remember} onChange={setRemember} />
           <button className="primary-btn signin-btn" disabled={!codeReady(code, backup) || busy}>
             {busy ? 'Checking…' : 'Continue'}
           </button>
@@ -412,6 +439,7 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
                 Set up again
               </button>
             </div>
+            <RememberedDevices devices={s?.devices ?? []} onChanged={(text) => (load(), text && toast?.(text))} />
             <div className="ts-manage-row">
               <span>
                 <strong>Turn off</strong>
@@ -424,6 +452,7 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
           </div>
         </div>
       </div>
+      <SignOutEverywhere hasDevices={!!s?.devices?.length} onDone={(text) => (load(), toast?.(text))} />
       {dialog && (
         <TwoStepDialog
           mode={dialog}
@@ -435,6 +464,88 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
         />
       )}
     </>
+  );
+}
+
+/** Browsers that sign in without the code for 30 days: which, since when, last used, and Forget. */
+function RememberedDevices({ devices, onChanged }: { devices: RememberedDevice[]; onChanged: (toast?: string) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const rows = useLeaving(devices, (d) => d.id); // a forgotten device folds away
+  const [error, setError] = useState<string | null>(null);
+  const forget = (id: string | 'all') => {
+    setBusy(id);
+    setError(null);
+    post('/api/2fa/devices/forget', id === 'all' ? { all: true } : { id })
+      .then(() => onChanged(id === 'all' ? 'Every remembered device asks for the code again' : 'That device asks for the code again'))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(null));
+  };
+  return (
+    <div className="ts-manage-row ts-devices">
+      <span>
+        <strong>Remembered devices</strong>
+        <small>{devices.length ? 'These sign in with just your password until the date shown. Forget any you don’t use.' : 'None. Tick “Remember this device” when you enter a code to skip it for 30 days on that device.'}</small>
+        {rows.length > 0 && (
+          <ul className="ts-device-list">
+            {rows.map(({ item: d, leaving }) => (
+              <li key={d.id} className={leaving ? 'row-leaving' : ''}>
+                <span>
+                  <strong>
+                    {d.name} {d.current && <Badge tone="info">This device</Badge>}
+                  </strong>
+                  <small>
+                    Since {day(d.createdAt)} · last used {day(d.usedAt)} · until {day(d.expiresAt)}
+                  </small>
+                </span>
+                <button type="button" className="ghost-btn sm" disabled={!!busy} onClick={() => forget(d.id)}>
+                  Forget
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {error && <small className="signin-error">{error}</small>}
+      </span>
+      {devices.length > 1 && (
+        <button type="button" className="ghost-btn sm" disabled={!!busy} onClick={() => forget('all')}>
+          Forget all
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Sign out everywhere else: every other session ends and every remembered device asks for the code again. */
+function SignOutEverywhere({ hasDevices, onDone }: { hasDevices: boolean; onDone: (toast: string) => void }) {
+  const [sure, setSure] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const go = () => {
+    setBusy(true);
+    setError(null);
+    post('/api/2fa/signout-everywhere')
+      .then(() => (setSure(false), onDone('Signed out everywhere else. You’re still signed in here.')))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="set-row ts-row">
+      <span>
+        <strong>Sign out everywhere</strong>
+        <small>{sure ? `Every other phone, computer and browser signed in as you signs out${hasDevices ? ', and remembered devices ask for the code again' : ''}. You stay signed in here.` : 'Lost a phone, or signed in on a computer that isn’t yours? End every other session.'}</small>
+        {error && <small className="signin-error">{error}</small>}
+      </span>
+      <span className="ts-sure">
+        {sure && (
+          <button type="button" className="ghost-btn sm" onClick={() => setSure(false)} disabled={busy}>
+            Cancel
+          </button>
+        )}
+        <button type="button" className={`ghost-btn ${sure ? 'sm danger' : 'outline'}`} onClick={() => (sure ? go() : setSure(true))} disabled={busy}>
+          {busy ? 'Signing out…' : sure ? 'Sign out everywhere else' : 'Sign out everywhere'}
+        </button>
+      </span>
+    </div>
   );
 }
 

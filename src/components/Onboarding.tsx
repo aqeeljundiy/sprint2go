@@ -1,6 +1,6 @@
 import { LanguagePicker } from './LanguagePicker';
 import { MEETING_LANGUAGES } from '../data/languages';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { term, brand as product } from '../terms';
 import { Check, Cloud, MailX, Server, Shuffle, X, type LucideIcon, Zap } from 'lucide-react';
 import { INDUSTRIES, type Industry } from '../types';
@@ -56,6 +56,15 @@ const COLORS = ['#10b981', '#f59e0b', '#0ea5e9', '#d946ef', '#ef4444', '#14b8a6'
 /** New company: brand → apps → email setup → team. */
 export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: Props) {
   const [step, setStep] = useState(preview ? -1 : 0); // -1: the sign-up screen, shown in the preview only
+  // One free trial per person and per company domain: the server says whether this company gets one, and why not.
+  const [noTrial, setNoTrial] = useState<string | null>(null);
+  useEffect(() => {
+    if (preview || !server.on) return;
+    void fetch('/api/trial')
+      .then((r) => (r.ok ? (r.json() as Promise<{ available: boolean; why?: string }>) : null))
+      .then((d) => d && !d.available && setNoTrial(d.why ?? 'You’ve already had a free trial.'))
+      .catch(() => {});
+  }, [preview]);
   const [previewDone, setPreviewDone] = useState(false);
   const [brand, setBrand] = useState<Pick<Workspace, 'name' | 'logo' | 'color'>>({ name: '', color: WORKSPACE_COLORS[0] });
   // A work address (not gmail and the like) already tells us the company's domain.
@@ -141,14 +150,14 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
             {(preview ? ['Account', ...steps] : steps).map((s, j) => {
               const i = preview ? j - 1 : j;
               return (
-                <span key={s} className={i === step ? 'on' : i < step ? 'done' : ''}>
-                  <b>{i < step ? <Check size={12} /> : j + 1}</b> {s}
+                <span key={s} className={i === step ? 'on' : i < step ? 'done' : ''} aria-current={i === step ? 'step' : undefined}>
+                  <b>{i < step ? <Check size={12} /> : j + 1}</b> <span className="ob-step-name">{s}</span>
                 </span>
               );
             })}
           </div>
           {preview && <span className="ob-preview-tag">Preview · nothing is saved</span>}
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm ob-close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
         </header>
@@ -281,7 +290,15 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                 </div>
               </div>
               <p className="trial-note">
-                Your first 14 days are on Studio AI with everything switched on. After that you stay on <b>Free</b> (up to 5 people) unless you pick a plan. No card, no surprise charges.
+                {noTrial ? (
+                  <>
+                    This company starts on <b>Free</b> (up to 5 people, your own AI keys). {noTrial}
+                  </>
+                ) : (
+                  <>
+                    Your first 14 days are on Studio AI with everything switched on. After that you stay on <b>Free</b> (up to 5 people) unless you pick a plan. No card, no surprise charges.
+                  </>
+                )}
               </p>
             </>
           )}
@@ -422,8 +439,8 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
                   return (
                     <p className="trial-note">
                       {n <= 5
-                        ? `${n} ${n === 1 ? 'person' : 'people'}: free after the trial. Up to 5 people never pay.`
-                        : `${n} people: after the 14-day trial, about ${rp(price?.price ?? 0)} a month on ${TIER_NAME[price?.tier ?? 'small']}, with your own AI keys. You choose before anything is charged.`}
+                        ? `${n} ${n === 1 ? 'person' : 'people'}: ${noTrial ? 'free' : 'free after the trial'}. Up to 5 people never pay.`
+                        : `${n} people: ${noTrial ? 'more than Free covers, so pick a plan after you start:' : 'after the 14-day trial,'} about ${rp(price?.price ?? 0)} a month on ${TIER_NAME[price?.tier ?? 'small']}, with your own AI keys. You choose before anything is charged.`}
                     </p>
                   );
                 })()}

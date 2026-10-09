@@ -1,4 +1,4 @@
-import type { Plan, Tier, Track } from '../types';
+import type { Plan, PlanAdjustment, Tier, Track } from '../types';
 
 /** Rupiah prices from PLAN.md. Per month; yearly = 10 months. */
 export const PRICES: Record<Track, Record<Exclude<Tier, 'free'>, { base: number; included: number; extra: number; perPerson?: boolean }>> = {
@@ -143,3 +143,80 @@ export const PLAN_FEATURES: Record<Tier, string[]> = {
   agency: ['30 people included', '1 TB shared storage', 'Permissions and retention rules'],
   business: ['80 people included', '3 TB shared storage', 'SSO, audit log, priority support', 'Unlimited meeting bot'],
 };
+
+
+/* ---------- plan switches, prorated (the server records them; the billing page and the toast say the same) ---------- */
+
+const DAY_MS = 86_400_000;
+/** The period a plan's invoice covers at a moment: the calendar month, or (yearly) the year from its start date. */
+export function billingPeriod(plan: Pick<Plan, 'cycle' | 'since'>, at = new Date()) {
+  if (plan.cycle === 'yearly' && plan.since) {
+    const s = new Date(plan.since);
+    let y = at.getUTCFullYear();
+    let start = Date.UTC(y, s.getUTCMonth(), s.getUTCDate());
+    if (start > at.getTime()) start = Date.UTC(--y, s.getUTCMonth(), s.getUTCDate());
+    return { start, end: Date.UTC(y + 1, s.getUTCMonth(), s.getUTCDate()), key: new Date(start).toISOString().slice(0, 7) };
+  }
+  const start = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1);
+  return { start, end: Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1), key: new Date(start).toISOString().slice(0, 7) };
+}
+/** What a plan costs for one whole period (the plan itself; add-ons are their own lines). */
+const periodPrice = (plan: Pick<Plan, 'track' | 'tier' | 'cycle'>, people: number) => (priceFor(plan.track, plan.tier, people) ?? 0) * (plan.cycle === 'yearly' ? 10 : 1);
+const dayMonth = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+const monthName = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+
+/**
+ * A plan switch prorated for the period it happens in, or null when nothing is: the old or the new plan is Free (a
+ * cancellation waits for the period's end instead), the cycle changes (the new one starts with the next invoice), or
+ * nothing was being paid (a trial, free months, a pause). The day of the switch counts as a day of the new plan.
+ * `invoiced`: the period's invoice was already made at the old price.
+ */
+export function prorate(prev: Plan, next: Pick<Plan, 'track' | 'tier' | 'cycle'>, people: number, at = new Date(), invoiced = true): Omit<PlanAdjustment, 'id'> | null {
+  const iso = at.toISOString();
+  if (prev.tier === 'free' || next.tier === 'free' || prev.cycle !== next.cycle) return null;
+  if (prev.tier === next.tier && prev.track === next.track) return null;
+  if ((prev.trialEnds && prev.trialEnds > iso) || (prev.comp?.until && prev.comp.until > iso) || prev.paused) return null;
+  const p = billingPeriod(prev, at);
+  const days = Math.round((p.end - p.start) / DAY_MS);
+  const daysBefore = Math.min(days, Math.max(0, Math.floor((at.getTime() - p.start) / DAY_MS)));
+  const diff = periodPrice(next, people) - periodPrice(prev, people);
+  const amount = Math.round(invoiced ? (diff * (days - daysBefore)) / days : (-diff * daysBefore) / days);
+  const from = planName(prev);
+  const to = planName(next);
+  return { at: iso, period: p.key, invoiced, from, to, daysBefore, days, amount, text: adjustmentText({ invoiced, from, to, daysBefore, days, start: p.start, at: at.getTime(), yearly: prev.cycle === 'yearly' }) };
+}
+/** How a prorated switch reads on the invoice and the billing page. */
+export function adjustmentText(a: { invoiced: boolean; from: string; to: string; daysBefore: number; days: number; start: number; at: number; yearly?: boolean }) {
+  const left = a.days - a.daysBefore;
+  const span = a.yearly ? 'the rest of the year' : `the rest of ${monthName(a.start)}`;
+  if (a.from === a.to) return `Plan changes on ${dayMonth(a.at)}, back to ${a.to}`;
+  if (a.invoiced) return `${a.to} instead of ${a.from} from ${dayMonth(a.at)}: ${span} (${left} of ${a.days} days)`;
+  return a.daysBefore ? `${a.from} instead of ${a.to} until ${dayMonth(a.at - DAY_MS)} (${a.daysBefore} of ${a.days} days)` : `${a.to} from the start of the period`;
+}
+/**
+ * Adds a switch to the ones waiting for the next invoice. Switches of the same period and kind become one line (a
+ * same-day switch from Studio to Agency to Business is one switch from Studio to Business); one that ends where it
+ * began on the same day leaves nothing.
+ */
+export function addAdjustment(list: PlanAdjustment[] | undefined, a: Omit<PlanAdjustment, 'id'>, id: string): PlanAdjustment[] | undefined {
+  const all = list ?? [];
+  const same = all.find((x) => x.period === a.period && x.invoiced === a.invoiced);
+  if (!same) return a.amount ? [...all, { ...a, id }] : all.length ? all : undefined;
+  const amount = same.amount + a.amount;
+  const sameDay = same.at.slice(0, 10) === a.at.slice(0, 10);
+  const rest = all.filter((x) => x !== same);
+  if (same.from === a.to && (sameDay || !amount)) return rest.length ? rest : undefined; // switched back: nothing to bill
+  const merged: PlanAdjustment = {
+    ...same,
+    to: a.to,
+    amount,
+    // Several switches in one period: one line that says what happened, with the total.
+    text: sameDay
+      ? adjustmentText({ ...a, from: same.from, start: Date.parse(`${a.period}-01T00:00:00Z`), at: Date.parse(same.at) })
+      : same.from === a.to
+        ? `${same.to} from ${dayMonth(Date.parse(same.at))} to ${dayMonth(Date.parse(a.at) - DAY_MS)}, then back to ${a.to}`
+        : `${same.from} to ${same.to} on ${dayMonth(Date.parse(same.at))}, then ${a.to} on ${dayMonth(Date.parse(a.at))}, prorated by the days on each`,
+  };
+  if (sameDay) merged.daysBefore = same.daysBefore;
+  return [...rest, merged];
+}

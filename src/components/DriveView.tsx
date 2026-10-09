@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ChevronRight, LayoutGrid, List, Mail, Menu, Play, RotateCcw, Search, Star, Trash2, Upload, X } from 'lucide-react';
+import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { ChevronRight, Eye, LayoutGrid, List, Mail, Menu, MoreHorizontal, PenLine, Play, RotateCcw, Search, Star, Trash2, Upload, X } from 'lucide-react';
 import type { DriveItem, DriveSection } from '../types';
 import { fmtSize } from '../data/drive';
 import { relative } from '../utils';
@@ -8,6 +8,7 @@ import { DRIVE_SECTIONS } from './DriveSidebar';
 import { FileIcon } from './FileIcon';
 import { EmptyState } from './ui/EmptyState';
 import { useCreateAction } from '../mobile/chrome';
+import { useActionMenu, type SheetAction } from './ui/ActionSheet';
 
 interface Props {
   items: DriveItem[]; // everything, including attachments from email
@@ -107,6 +108,25 @@ export function DriveView(props: Props) {
         </button>
       </>
     );
+
+  // The same actions as a list, for long-press, right-click and "…".
+  const menuFor = (i: DriveItem) => (): SheetAction[] =>
+    section === 'trash'
+      ? [
+          { label: 'Restore', icon: RotateCcw, run: () => props.onRestore(i.id) },
+          { label: 'Delete forever', icon: X, danger: true, group: 'end', run: () => props.onDeleteForever(i.id) },
+        ]
+      : i.id.startsWith('att:')
+        ? [
+            { label: 'Open', icon: Eye, run: () => open(i) },
+            { label: 'Open the email', icon: Mail, run: () => props.onOpenThread(i.threadId!) },
+          ]
+        : [
+            { label: 'Open', icon: Eye, run: () => open(i) },
+            { label: i.starred ? 'Unstar' : 'Star', icon: Star, run: () => props.onStar(i.id) },
+            { label: 'Rename', icon: PenLine, run: () => props.onStartRename(i.id) },
+            { label: 'Move to trash', icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(i.id) },
+          ];
 
   const name = (i: DriveItem) =>
     props.renamingId === i.id ? (
@@ -238,7 +258,7 @@ export function DriveView(props: Props) {
               <span />
             </div>
             {shown.map((i, n) => (
-              <div key={i.id} className="d-tr" style={{ ['--i' as string]: Math.min(n, 12) }} onClick={() => open(i)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), open(i))}>
+              <DriveItemCard key={i.id} className="d-tr" style={{ ['--i' as string]: Math.min(n, 12) }} label={i.name} actions={menuFor(i)} onOpen={() => open(i)}>
                 <span className="d-cell-name">
                   {i.thumb ? <img className="mini-thumb" src={i.thumb} alt="" /> : <FileIcon kind={i.kind} size={14} />}
                   {name(i)}
@@ -249,7 +269,7 @@ export function DriveView(props: Props) {
                 <span className="d-actions" onClick={(e) => e.stopPropagation()}>
                   {actions(i)}
                 </span>
-              </div>
+              </DriveItemCard>
             ))}
           </div>
         ) : (
@@ -259,7 +279,7 @@ export function DriveView(props: Props) {
                 <div className="d-heading">Folders</div>
                 <div className="folder-grid">
                   {folders.map((f, n) => (
-                    <div key={f.id} className="folder-card" style={{ ['--i' as string]: n }} onClick={() => open(f)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), open(f))}>
+                    <DriveItemCard key={f.id} className="folder-card" style={{ ['--i' as string]: n }} label={f.name} actions={menuFor(f)} onOpen={() => open(f)}>
                       <FileIcon kind="folder" size={16} />
                       <span className="fc-text">
                         {name(f)}
@@ -268,7 +288,7 @@ export function DriveView(props: Props) {
                       <span className="d-actions" onClick={(e) => e.stopPropagation()}>
                         {actions(f)}
                       </span>
-                    </div>
+                    </DriveItemCard>
                   ))}
                 </div>
               </>
@@ -278,7 +298,7 @@ export function DriveView(props: Props) {
                 {folders.length > 0 && <div className="d-heading">Files</div>}
                 <div className={section === 'media' && !q ? 'media-grid' : 'file-grid'}>
                   {files.map((f, n) => (
-                    <div key={f.id} className="file-card" style={{ ['--i' as string]: Math.min(n, 16) }} onClick={() => open(f)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), open(f))}>
+                    <DriveItemCard key={f.id} className="file-card" style={{ ['--i' as string]: Math.min(n, 16) }} label={f.name} actions={menuFor(f)} onOpen={() => open(f)}>
                       {thumb(f)}
                       {section !== 'media' || q ? (
                         <span className="fc-text">
@@ -289,7 +309,7 @@ export function DriveView(props: Props) {
                       <span className="d-actions" onClick={(e) => e.stopPropagation()}>
                         {actions(f)}
                       </span>
-                    </div>
+                    </DriveItemCard>
                   ))}
                 </div>
               </>
@@ -306,5 +326,35 @@ export function DriveView(props: Props) {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * A file, folder or row you can act on: tap opens it; long-press (phones), right-click or the "…" button (always there
+ * on phones) open the same list of actions. The menu renders next to the card, not inside it, so a tap in the menu
+ * never reaches the card.
+ */
+function DriveItemCard({ className, style, label, actions, onOpen, children }: { className: string; style?: CSSProperties; label: string; actions: () => SheetAction[]; onOpen: () => void; children: ReactNode }) {
+  const menu = useActionMenu(actions, { title: label });
+  const dots = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <div className={`${className} lp`} style={style} onClick={onOpen} role="button" tabIndex={0} aria-label={label} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), onOpen())} {...menu.bind}>
+        {children}
+        <button
+          ref={dots}
+          type="button"
+          className="icon-btn d-more"
+          aria-label={`More for ${label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            menu.openFrom(dots);
+          }}
+        >
+          <MoreHorizontal size={18} />
+        </button>
+      </div>
+      {menu.menu}
+    </>
   );
 }

@@ -892,7 +892,8 @@
   color: var(--text-3);
   font-weight: 600;
 }
-.connect-form .link-err {
+.connect-form .link-err,
+.connect-form .link-dup {
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -900,12 +901,51 @@
   line-height: 1.4;
   animation: fadeIn 0.18s ease-out backwards;
 }
-.connect-form .link-err svg {
+.connect-form .link-dup {
+  color: var(--text-2);
+}
+.connect-form .link-err svg,
+.connect-form .link-dup svg {
   flex: none;
   margin-top: 2px;
 }
+@media (prefers-reduced-motion: reduce) {
+  .connect-form .link-err,
+  .connect-form .link-dup {
+    animation: none;
+  }
+}
 .connect-form .field > input[aria-invalid='true'] {
   border-color: var(--danger);
+}
+
+/* Sidebar: "Countries you see" under Public holidays (a multi-select of countries, just for this person) */
+.nav-item.hol-countries {
+  width: 100%;
+  color: var(--text-3);
+}
+.nav-item.hol-countries:hover,
+.nav-item.hol-countries[aria-expanded='true'] {
+  color: var(--text-2);
+}
+.nav-item.hol-countries svg {
+  flex: none;
+  margin: 0 1px;
+}
+.nav-item.hol-countries .sb-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+.nav-item.hol-countries small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-3);
 }
 
 /* Sidebar: a calendar that stopped updating */

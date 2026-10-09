@@ -652,6 +652,131 @@ await test('Undo send: a refused email is marked failed on the message', async (
   db.writeDocs('workspaces', [w], [], null);
 });
 
+await test('Local mail: outside addresses are held on this computer (marked, never retried); teammates still get it', async () => {
+  const relay = process.env.MAIL_RELAY_URL;
+  delete process.env.MAIL_RELAY_URL;
+  assert.equal(mailer.keepsMailLocal(), true, 'not production, no relay');
+  db.writeDocs('threads', [{ ...db.getDoc('threads', 't-undo'), messages: [...db.getDoc('threads', 't-undo').messages, { id: 'msg-4', from: {}, to: [], date: '', body: 'x' }] }], [], null);
+  const before = inMoBox();
+  const email = { ...outgoing('msg-4'), to: [{ name: 'Mo', email: `mo.undo@${mailer.MAIL_HOST}` }, { name: 'Budi', email: 'budi@client.example' }] };
+  assert.deepEqual(mailer.heldLocally(email), ['budi@client.example']);
+  const r = await mailer.queueSend(email);
+  assert.deepEqual(r.held, ['budi@client.example']);
+  assert.equal(r.queued, 0, 'nothing waits to go out');
+  assert.equal(inMoBox(), before + 1, 'the colleague on this server got it');
+  const rows = db.db.prepare('SELECT state, error, attempts FROM outbox WHERE thread_id = ? AND message_id = ?').all('t-undo', 'msg-4');
+  assert.deepEqual(rows.map((x) => x.state), ['local']);
+  assert.match(rows[0].error, /Held on this computer/);
+  const m = db.getDoc('threads', 't-undo').messages.find((x) => x.id === 'msg-4');
+  assert.equal(m.delivery.state, 'local');
+  assert.deepEqual(m.delivery.kept, ['budi@client.example']);
+  // An older row still queued for the world (from before) is held by the pump, once, without a try.
+  db.db.prepare("INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES ('old-q', 'w-undo', 'ub-ana', 't-undo', 'msg-4', 'own', 'a@x', 'old@client.example', x'00', 0, ?, 'queued', NULL, ?)").run(new Date(0).toISOString(), new Date().toISOString());
+  await mailer.pump();
+  assert.deepEqual({ ...db.db.prepare("SELECT state, attempts FROM outbox WHERE id = 'old-q'").get() }, { state: 'local', attempts: 0 });
+  assert.deepEqual(db.getDoc('threads', 't-undo').messages.find((x) => x.id === 'msg-4').delivery.kept.sort(), ['budi@client.example', 'old@client.example']);
+  // A relay, MAIL_ENABLED=1 or production lets it out.
+  process.env.MAIL_RELAY_URL = 'smtp://127.0.0.1:1';
+  assert.equal(mailer.keepsMailLocal(), false);
+  assert.deepEqual(mailer.heldLocally(email), []);
+  delete process.env.MAIL_RELAY_URL;
+  process.env.MAIL_ENABLED = '1';
+  assert.equal(mailer.keepsMailLocal(), false);
+  process.env.MAIL_ENABLED = '0';
+  const env = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  assert.equal(mailer.keepsMailLocal(), false);
+  if (env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = env;
+  process.env.MAIL_RELAY_URL = relay;
+});
+
+await test('DKIM: mail from an address at our own mail name is signed with the platform key the console shows, and verifies', async () => {
+  const { authenticate } = await import('mailauth');
+  const records = await mailer.platformDkim();
+  const host = records.find((r) => r.domain === mailer.MAIL_HOST);
+  assert.ok(host, 'the console lists our own mail name');
+  assert.equal(host.host, `s2g._domainkey.${mailer.MAIL_HOST}`);
+  assert.match(host.value, /^v=DKIM1; k=rsa; p=[A-Za-z0-9+/=]{300,}$/);
+  assert.ok(records.some((r) => r.domain === 'example-s2g.com' && /no-reply@example-s2g\.com/.test(r.use)), 'and the support domain of system mail');
+  const relay = process.env.MAIL_RELAY_URL; // a closed port: queued with its signature, nothing leaves
+  db.writeDocs('threads', [{ ...db.getDoc('threads', 't-undo'), messages: [...db.getDoc('threads', 't-undo').messages, { id: 'msg-5', from: {}, to: [], date: '', body: 'x' }] }], [], null);
+  await mailer.queueSend({ ...outgoing('msg-5'), to: [{ name: 'Out', email: 'out@client.example' }] });
+  const row = db.db.prepare('SELECT id, raw FROM outbox WHERE thread_id = ? AND message_id = ?').get('t-undo', 'msg-5');
+  const raw = Buffer.from(row.raw);
+  assert.match(raw.toString('utf8', 0, 600), new RegExp(`DKIM-Signature:[^]*d=${mailer.MAIL_HOST.replace(/\./g, '\\.')};[^]*s=s2g;`));
+  const resolver = async (name, type) => {
+    if (type === 'TXT' && name === host.host) return [[host.value]];
+    throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
+  };
+  const r = await authenticate(raw, { ip: '127.0.0.1', helo: 'test', sender: `ana.undo@${mailer.MAIL_HOST}`, mta: 'test', resolver });
+  assert.equal(r.dkim.results[0]?.status?.result, 'pass', 'the signature checks out against the record the console shows');
+  db.db.prepare('DELETE FROM outbox WHERE id = ?').run(row.id);
+  assert.equal(process.env.MAIL_RELAY_URL, relay);
+});
+
+const supportMod = await import('../server/support.ts');
+await test('Tickets: an attachment counts only when it was sent with its ticket (before 9 Oct a ticket could point at any file)', () => {
+  const at = '2026-10-09T10:00:00.000Z';
+  const fits = (f, who = 'u-req') => supportMod.fileFitsTicket(f, who, at);
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-10-09T09:58:00.000Z' }), true, 'their own upload, made while they wrote it');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-other', at: '2026-10-09T09:58:00.000Z' }), false, 'someone else’s file');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-09-01T09:00:00.000Z' }), false, 'their own, but an old file from elsewhere');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-10-10T10:00:00.000Z' }), false, 'uploaded after the message');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-10-09T09:58:00.000Z' }, null), false, 'no requester to match');
+  assert.equal(fits({ workspaceId: 'platform', by: 'mail', at: '2026-10-09T10:00:01.000Z' }), true, 'what came with the email to support');
+  assert.equal(fits({ workspaceId: 'platform', by: 'mail', at: '2026-10-01T10:00:00.000Z' }), false, 'another email’s attachment');
+  assert.equal(fits({ workspaceId: 'acme', by: 'mail', at: at }), false, 'a company mailbox’s attachment');
+  assert.equal(fits(null), false, 'a file that’s gone');
+  assert.equal(supportMod.OLD_ATTACHMENT, 'Attachment from before 9 Oct, ask the person to send it again');
+});
+
+await test('Invites: an all-day invite goes on the calendar as floating dates, so no zone moves its day', async () => {
+  const invites = await import('../server/invites.ts');
+  const { parseInvite } = await import('../server/ics.ts');
+  const inv = parseInvite('BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:allday-1\nDTSTART;VALUE=DATE:20261020\nDTEND;VALUE=DATE:20261022\nSUMMARY:Offsite\nEND:VEVENT\nEND:VCALENDAR');
+  const { docs } = invites.eventsFor(inv, { userId: 'aj-ana', workspaceId: 'w-aj', threadId: 't-x', rsvp: 'accepted', mine: ['ana@aj.example'] });
+  assert.equal(docs.length, 1);
+  assert.deepEqual([docs[0].start, docs[0].end, docs[0].allDay], ['2026-10-20T00:00:00', '2026-10-22T00:00:00', true]);
+  assert.equal(docs[0].occurrence, '2026-10-20T12:00:00.000Z', 'its date as the invite writes it, for later updates and cancellations');
+  const timed = parseInvite('BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:timed-1\nDTSTART:20261020T020000Z\nDTEND:20261020T030000Z\nSUMMARY:Call\nEND:VEVENT\nEND:VCALENDAR');
+  const t = invites.eventsFor(timed, { userId: 'aj-ana', workspaceId: 'w-aj', threadId: 't-y', rsvp: 'accepted', mine: ['ana@aj.example'] }).docs[0];
+  assert.deepEqual([t.start, t.end, t.occurrence], ['2026-10-20T02:00:00.000Z', '2026-10-20T03:00:00.000Z', undefined], 'timed invites keep their instants');
+});
+
+await test('Calendar links: the same link written another way is the same calendar', async () => {
+  const { calendarLinkKey } = await import('../src/calendarLink.ts');
+  const base = calendarLinkKey('https://calendar.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1&b=2');
+  for (const same of [
+    'webcal://calendar.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?b=2&a=1',
+    'webcals://CALENDAR.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1&b=2#top',
+    'http://calendar.google.com:80/calendar/ical/abc%40group/private-XyZ/basic.ics/?a=1&b=2',
+    '  https://calendar.google.com:443/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1&b=2  ',
+  ])
+    assert.equal(calendarLinkKey(same), base, same);
+  assert.notEqual(calendarLinkKey('https://calendar.google.com/calendar/ical/abc%40group/private-xyz/basic.ics?a=1&b=2'), base, 'a secret address is case-sensitive');
+  assert.notEqual(calendarLinkKey('https://calendar.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1'), base, 'a different query is another calendar');
+  assert.equal(calendarLinkKey('ftp://x.example/cal.ics'), null);
+  assert.equal(calendarLinkKey('not a link'), null);
+  // The server says so instead of adding it again (before it reads anything from the link).
+  const feeds = await import('../server/calendarFeeds.ts');
+  db.writeDocs('calendars', [{ id: 'link-dup', name: 'Bookings', source: 'ics', ownerId: 'aj-ana', readOnly: true, url: 'https://cal.example.com/feeds/ana.ics?token=a&v=2', share: 'busy' }], [], null);
+  await assert.rejects(feeds.addLink('aj-ana', { url: 'webcal://CAL.example.com/feeds/ana.ics/?v=2&token=a' }), /already added this calendar, as “Bookings”/);
+  db.writeDocs('calendars', [], ['link-dup'], null);
+});
+
+await test('Holidays: each person sees the countries they chose, the company’s until they choose', async () => {
+  const { regionsOf, regionsToSave } = await import('../src/holidayRegions.ts');
+  assert.deepEqual(regionsOf(undefined, 'ID'), ['ID'], 'nothing chosen: the company’s country');
+  assert.deepEqual(regionsOf(undefined, undefined), [], 'a company without holidays: none');
+  assert.deepEqual(regionsOf(['SG', 'XX', 'NL'], 'ID'), ['SG', 'NL'], 'their own choice, without the company’s, and only countries we have');
+  assert.deepEqual(regionsOf([], 'ID'), [], 'none at all is a choice too');
+  assert.equal(regionsToSave(['ID'], 'ID'), undefined, 'just the company’s country: no choice of their own, so a new company country follows');
+  assert.deepEqual(regionsToSave(['NL', 'ID', 'SG'], 'ID'), ['ID', 'SG', 'NL'], 'kept in the list’s order');
+  assert.deepEqual(regionsToSave([], 'ID'), [], 'none');
+  const feeds = await import('../server/calendarFeeds.ts');
+  await assert.rejects(feeds.holidaysForPerson('XX'), /aren’t available/);
+});
+
 /* email for teammates who are away (server/digest.ts) */
 
 const digest = await import('../server/digest.ts');
@@ -813,6 +938,182 @@ await test('Billing: a month bills the people on the team who signed in or used 
   for (const [u, d] of [['bp-1', '2026-09-03'], ['bp-1', '2026-09-20'], ['bp-2', '2026-09-30'], ['bp-3', '2026-08-31'], ['bp-3', '2026-10-01'], ['bp-gone', '2026-09-10']]) day.run(u, d);
   assert.deepEqual(billingMod.activePeople(ws, '2026-09'), { active: 2, team: 3, period: '2026-09' }, 'September: One and Two; Three was only around in August and October');
   assert.deepEqual(billingMod.activePeople(ws, '2026-07'), { active: 1, team: 3, period: '2026-07' }, 'nobody around: the plan still bills one');
+});
+
+await test('Operator MRR: counts the people active this month, the same rule as the invoice', async () => {
+  const adminMod = await import('../server/admin.ts');
+  const ws = { id: 'w-mrr', name: 'MRR', members: ['bp-1', 'bp-2', 'bp-3'].map((userId, i) => ({ userId, role: i ? 'member' : 'owner' })), plan: { track: 'own', tier: 'small', cycle: 'monthly', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: 'MRR', emails: [] } } };
+  const month = new Date().toISOString().slice(0, 7);
+  db.db.prepare('DELETE FROM activity_days WHERE user_id IN (?, ?, ?) AND day >= ?').run('bp-1', 'bp-2', 'bp-3', `${month}-01`);
+  const day = db.db.prepare('INSERT OR IGNORE INTO activity_days (user_id, day) VALUES (?, ?)');
+  day.run('bp-1', `${month}-01`);
+  day.run('bp-2', `${month}-01`);
+  const m = adminMod.mrrNow(ws);
+  assert.equal(m.state, 'paying');
+  assert.equal(m.mrr, adminMod.mrrOf(ws, 2).mrr, 'two of the three were active this month');
+  assert.ok(m.mrr < adminMod.mrrOf(ws, 3).mrr, 'the third, not around this month, isn’t counted');
+  assert.equal(billingMod.activePeople(ws).active, 2, 'the invoice counts the same two');
+});
+
+/* plan switches, prorated (src/data/pricing.ts, server/billing.ts) */
+
+const pricing = await import('../src/data/pricing.ts');
+const platformMod = await import('../server/platform.ts');
+const P = (tier, extra = {}) => ({ track: 'own', tier, cycle: 'monthly', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: 'X', emails: [] }, since: '2026-01-01T00:00:00.000Z', ...extra });
+const OCT9 = new Date('2026-10-09T03:00:00Z'); // 8 days of October behind, 23 (the 9th included) ahead
+const OCT20 = new Date('2026-10-20T03:00:00Z');
+const studio = pricing.priceFor('own', 'studio', 3);
+const agency = pricing.priceFor('own', 'agency', 3);
+const business = pricing.priceFor('own', 'business', 3);
+await test('Plan switch: an upgrade charges the difference for the rest of the month, on the next invoice', () => {
+  const a = pricing.prorate(P('studio'), P('agency'), 3, OCT9, true);
+  assert.equal(a.amount, Math.round(((agency - studio) * 23) / 31));
+  assert.ok(a.amount > 0, 'a charge');
+  assert.deepEqual([a.period, a.daysBefore, a.days, a.from, a.to], ['2026-10', 8, 31, 'Studio', 'Agency']);
+  assert.equal(a.text, 'Agency instead of Studio from 9 October: the rest of October (23 of 31 days)');
+  assert.ok(!/—/.test(a.text), 'no em dashes');
+});
+await test('Plan switch: a downgrade is a credit for the rest of the month', () => {
+  const a = pricing.prorate(P('agency'), P('studio'), 3, OCT9, true);
+  assert.equal(a.amount, -Math.round(((agency - studio) * 23) / 31));
+  // Before this month's invoice was made: it bills the new plan in full, so the days before are put right instead.
+  const b = pricing.prorate(P('agency'), P('studio'), 3, OCT9, false);
+  assert.equal(b.amount, Math.round(((agency - studio) * 8) / 31), 'a charge for the 8 days on Agency, since October’s invoice bills Studio');
+  assert.equal(b.text, 'Agency instead of Studio until 8 October (8 of 31 days)');
+});
+await test('Plan switch: two switches on the same day are one line, from the first plan to the last', () => {
+  const one = pricing.prorate(P('studio'), P('agency'), 3, OCT9, true);
+  const two = pricing.prorate(P('agency'), P('business'), 3, OCT9, true);
+  const list = pricing.addAdjustment(pricing.addAdjustment(undefined, one, 'a1'), two, 'a2');
+  assert.equal(list.length, 1);
+  assert.equal(list[0].amount, one.amount + two.amount);
+  assert.ok(Math.abs(list[0].amount - ((business - studio) * 23) / 31) <= 1, 'the same as one switch from Studio to Business');
+  assert.equal(list[0].text, 'Business instead of Studio from 9 October: the rest of October (23 of 31 days)');
+});
+await test('Plan switch: switching back the same day leaves nothing; switching back later bills the days on the other plan', () => {
+  const there = pricing.prorate(P('studio'), P('agency'), 3, OCT9, true);
+  const back = pricing.prorate(P('agency'), P('studio'), 3, OCT9, true);
+  assert.equal(pricing.addAdjustment(pricing.addAdjustment(undefined, there, 'a1'), back, 'a2'), undefined, 'nothing on the invoice');
+  const later = pricing.prorate(P('agency'), P('studio'), 3, OCT20, true);
+  const list = pricing.addAdjustment(pricing.addAdjustment(undefined, there, 'a1'), later, 'a2');
+  assert.equal(list.length, 1);
+  assert.ok(Math.abs(list[0].amount - ((agency - studio) * 11) / 31) <= 1, 'Agency for 9 to 19 October: 11 days');
+  assert.equal(list[0].text, 'Agency from 9 October to 19 October, then back to Studio');
+});
+await test('Plan switch: nothing is prorated during a trial or free months, to or from Free, or when the cycle changes', () => {
+  assert.equal(pricing.prorate(P('studio', { trialEnds: '2026-10-20T00:00:00.000Z' }), P('agency'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('studio', { comp: { until: '2026-12-01T00:00:00.000Z' } }), P('agency'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('free'), P('studio'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('studio'), P('free'), 3, OCT9), null);
+  assert.equal(pricing.prorate(P('studio'), P('studio', { cycle: 'yearly' }), 3, OCT9), null);
+});
+await test('Plan switch: the server records it on the plan and the next invoice has the line; a credit bigger than the invoice carries over', async () => {
+  const adminMod = await import('../server/admin.ts');
+  const ws = { id: 'w-pro', name: 'Pro', members: [{ userId: 'bp-1', role: 'owner' }], plan: P('studio') };
+  db.writeDocs('workspaces', [ws], [], null);
+  const at = new Date();
+  const list = billingMod.adjustmentsOnSave(ws, ws.plan, P('agency'), at);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].invoiced, false, 'this month’s invoice isn’t made yet: it bills Agency, and the days on Studio are put right');
+  assert.ok(list[0].amount <= 0);
+  const withSwitch = { ...ws, plan: { ...P('agency'), adjustments: list } };
+  const lines = adminMod.invoiceLinesFor(withSwitch, at.toISOString().slice(0, 7)).lines;
+  assert.ok(lines.some((l) => l.text === list[0].text && l.amount === list[0].amount) || list[0].amount === 0, 'the line is on the invoice');
+  // Once this month's invoice exists, a switch charges the rest of the month instead.
+  platformMod.createInvoice({ workspaceId: 'w-pro', period: at.toISOString().slice(0, 7), lines: [{ text: 'Studio plan', amount: studio }], discount: 0, dueDays: 14, billTo: { company: 'Pro', emails: [] }, by: 'test' });
+  const after = billingMod.adjustmentsOnSave(ws, ws.plan, P('agency'), at);
+  assert.equal(after.find((a) => a.invoiced)?.amount > 0, true);
+  // A credit bigger than the whole invoice brings it to zero, and the rest waits for the next one.
+  const big = { ...ws, plan: { ...P('small'), adjustments: [{ id: 'x', at: at.toISOString(), period: '2026-10', invoiced: true, from: 'Business', to: 'Small', daysBefore: 8, days: 31, amount: -5_000_000, text: 'Small instead of Business from 9 October' }] } };
+  const r = adminMod.invoiceLinesFor(big, '2026-11');
+  assert.equal(r.lines.reduce((n, l) => n + l.amount, 0), 0, 'the invoice comes to zero');
+  assert.ok(r.carry < 0 && r.carry > -5_000_000, 'the rest of the credit is carried');
+});
+
+await test('Trials: one per person and per company domain; an operator can allow one more', async () => {
+  await import('../server/domains.ts'); // the proven-domain table
+  const trialPlanOf = () => ({ ...P('studio'), track: 'ai', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString() });
+  const first = billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr1', name: 'Trial One' });
+  assert.ok(first.plan.trialEnds && !first.why, 'the first company gets the trial');
+  const again = billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr2', name: 'Trial Two' });
+  assert.equal(again.plan.tier, 'free');
+  assert.equal(again.plan.trialEnds, undefined);
+  assert.match(again.why, /^You’ve already had a free trial, with Trial One from \d+ \w+ \d{4}\. Pick a plan any time, or ask us about another trial in Settings, Help\.$/);
+  assert.equal(again.plan.trialRefused, again.why, 'the billing page can say why');
+  // Another login at the same company domain: no second trial either.
+  const colleague = billingMod.trialCheck('tr-bo', 'bo@trial-co.example');
+  assert.equal(colleague.ok, false);
+  assert.match(colleague.why, /^trial-co\.example already had a free trial, with Trial One/);
+  // A shared mail service says nothing about the company: someone else at gmail.com still gets theirs.
+  billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-gm1', email: 'one@gmail.com' }, { id: 'w-tr3', name: 'Gmail One' });
+  assert.equal(billingMod.trialCheck('tr-gm2', 'two@gmail.com').ok, true);
+  // A domain another company with a trial has proven in its DNS counts too.
+  db.db.prepare("INSERT OR REPLACE INTO mail_domains (domain, workspace_id, selector, private_key, public_key, created_at, verified_at, verified_how) VALUES ('proven-co.example', 'w-tr1', 's2g', 'x', 'y', ?, ?, 'txt')").run(new Date().toISOString(), new Date().toISOString());
+  assert.match(billingMod.trialCheck('tr-new', 'new@gmail.com', ['proven-co.example']).why, /proven-co\.example belongs to Trial One, which already had a free trial/);
+  // An operator allows one more: the next company gets it, and the allowance is used up.
+  billingMod.grantTrial('tr-ana', 'ops@example.com');
+  assert.ok(billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr4', name: 'Trial Four' }).plan.trialEnds);
+  assert.equal(billingMod.trialCheck('tr-ana', 'ana@trial-co.example').ok, false);
+  assert.deepEqual(billingMod.trialsOf('tr-ana').trials.map((t) => [t.company, t.how]), [['Trial One', 'self'], ['Trial Four', 'granted']]);
+  // A plan without a trial (Free, or a paid plan) is left as it is.
+  assert.equal(billingMod.trialOnCreate(P('free'), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr5', name: 'X' }).why, undefined);
+});
+
+await test('BIMI: a logo passes only with the SVG Tiny PS basics, and the record points at its stable address', async () => {
+  const bimi = await import('../server/bimi.ts');
+  const good = '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 100 100"><title>Pixel and Profits</title><rect width="100" height="100" fill="#5b5bf6"/><path d="M20 20h60v60H20z" fill="url(#g)"/></svg>';
+  assert.deepEqual(bimi.svgProblems(good), []);
+  const has = (svg, re) => bimi.svgProblems(svg).some((p) => re.test(p));
+  assert.ok(has(good.replace(' baseProfile="tiny-ps"', ''), /baseProfile="tiny-ps"/), 'the profile');
+  assert.ok(has(good.replace('version="1.2"', 'version="1.1"'), /version="1\.2"/), 'the version');
+  assert.ok(has(good.replace('0 0 100 100', '0 0 120 80'), /isn’t square: its viewBox is 120 by 80/), 'square');
+  assert.ok(has(good.replace('<title>Pixel and Profits</title>', ''), /<title>/), 'a title');
+  assert.ok(has(good.replace('<rect', '<script>alert(1)</script><rect'), /script/), 'no scripts');
+  assert.ok(has(good.replace('<rect', '<rect onclick="x()"'), /event handlers/), 'no handlers');
+  assert.ok(has(good.replace('<rect', '<image href="https://evil.example/x.png"/><rect'), /embedded picture/), 'no pictures');
+  assert.ok(has(good.replace('url(#g)', 'url(https://evil.example/f.svg#g)'), /outside the file/), 'no outside references');
+  assert.ok(has(good.replace('<rect', '<use xlink:href="other.svg#a"/><rect'), /outside the file/), 'no outside use');
+  assert.ok(has(good.replace('<rect', '<animate attributeName="x"/><rect'), /animated/), 'still');
+  assert.ok(has('<!DOCTYPE svg [<!ENTITY x "y">]>' + good.replace('<?xml version="1.0" encoding="UTF-8"?>', ''), /DOCTYPE/), 'no entities');
+  assert.ok(has(good.replace('<svg ', '<svg x="0" '), /x or y/), 'no x or y on the root');
+  assert.ok(has(good + ' '.repeat(33 * 1024), /32 KB/), 'small');
+  assert.deepEqual(bimi.svgProblems('<html></html>'), ['It isn’t an SVG file: it should start with an <svg> element.']);
+  const url = bimi.logoUrl('https://app.sprint2go.com', 'pnp');
+  assert.equal(url, 'https://app.sprint2go.com/bimi/pnp.svg');
+  assert.equal(bimi.bimiRecord(url), 'v=BIMI1; l=https://app.sprint2go.com/bimi/pnp.svg; a=;');
+});
+
+await test('Task stages: a task follows its project’s own stages, else its team’s, else the company’s; moving maps it', async () => {
+  const st = await import('../src/stages.ts');
+  const company = [{ id: 'todo', kind: 'open' }, { id: 'doing', kind: 'active' }, { id: 'done', kind: 'done' }];
+  const proj = [{ id: 'todo', kind: 'open' }, { id: 'st-design', kind: 'active', name: 'Design' }, { id: 'st-build', kind: 'active', name: 'Build' }, { id: 'st-shipped', kind: 'done', name: 'Shipped' }];
+  const team = [{ id: 'st-queue', kind: 'open', name: 'Queue' }, { id: 'st-edit', kind: 'active', name: 'Design' }, { id: 'done', kind: 'done' }];
+  st.registerStages([{ id: 'w-st', taskStages: company }], 'w-st', { clients: [{ id: 'c-own', taskStages: proj }, { id: 'c-plain' }], teams: [{ id: 't-own', taskStages: team }] });
+  const t = (x) => ({ workspaceId: 'w-st', done: false, ...x });
+  assert.equal(st.stagesForTask(t({ clientId: 'c-own', teamId: 't-own' })), st.projectStages('c-own'), 'the project’s own first');
+  assert.deepEqual(st.stagesForTask(t({ clientId: 'c-plain', teamId: 't-own' })).map((x) => x.id), ['st-queue', 'st-edit', 'done'], 'then the team’s own');
+  assert.deepEqual(st.stagesForTask(t({ clientId: 'c-plain' })).map((x) => x.id), ['todo', 'doing', 'done'], 'then the company’s');
+  // Ticking and starting use the task's own stages.
+  assert.equal(st.stageIdFor(t({ clientId: 'c-own' }), 'done'), 'st-shipped');
+  assert.equal(st.stageIdFor(t({ clientId: 'c-own' }), 'active'), 'st-design');
+  assert.equal(st.kindOf(t({ clientId: 'c-own', status: 'st-build' })), 'active');
+  // On a board of the company's columns (My tasks), a task of other stages sits in the column of its kind; dropped on
+  // a column, it goes to its own first stage of that kind.
+  assert.equal(st.columnOf(t({ clientId: 'c-own', status: 'st-build' }), company).id, 'doing');
+  assert.equal(st.ownStageForColumn(t({ clientId: 'c-own' }), company[2]).id, 'st-shipped');
+  // Moving to another project or team: the stage of the same name, else the first one (a finished task stays finished).
+  const moved = st.stageAfterMove(t({ clientId: 'c-own', status: 'st-design' }), t({ clientId: 'c-plain', teamId: 't-own' }));
+  assert.deepEqual([moved.stage.id, moved.kept], ['st-edit', true], 'Design is Design there too');
+  const firstOne = st.stageAfterMove(t({ clientId: 'c-own', status: 'st-build' }), t({ clientId: 'c-plain' }));
+  assert.deepEqual([firstOne.stage.id, firstOne.kept, firstOne.from.id], ['todo', false, 'st-build'], 'no Build there: the first stage');
+  const finished = st.stageAfterMove(t({ clientId: 'c-own', status: 'st-shipped', done: true }), t({ clientId: 'c-plain' }));
+  assert.equal(finished.stage.id, 'done', 'a finished task stays finished');
+  assert.equal(st.stageAfterMove(t({ clientId: 'c-plain' }), t({ clientId: undefined })), null, 'the same stages: nothing to map');
+  // The server reads them from the documents (no registry).
+  assert.deepEqual(st.stagesFrom({ client: { taskStages: proj }, team: { taskStages: team }, workspace: { taskStages: company } }).map((x) => x.id), proj.map((x) => x.id));
+  assert.deepEqual(st.stagesFrom({ client: { taskStages: [{ id: 'x', kind: 'active' }] }, workspace: { taskStages: company } }).map((x) => x.id), ['todo', 'doing', 'done'], 'an unusable own list (no open or done stage) follows the company');
+  st.registerStages([], undefined, { clients: [], teams: [] });
+  assert.equal(st.projectStages('c-own'), null, 'a project that stopped having its own stages follows the company again');
 });
 
 /* read tracking: reminders and Outlook.com's picture proxy (server/readTracking.ts) */

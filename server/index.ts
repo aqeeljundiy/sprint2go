@@ -41,10 +41,11 @@ import { FetchError } from './safeFetch.ts';
 import * as twostep from './twostep.ts';
 import * as whatsapp from './whatsapp.ts';
 import * as billing from './billing.ts';
+import * as bimi from './bimi.ts';
 import * as aiLimits from './aiLimits.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
-import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
+import { DEFAULT_STAGES, cleanStages, stageIdFor, stagesFrom } from '../src/stages.ts';
 import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
 import * as chatLater from './chatLater.ts';
@@ -72,6 +73,9 @@ const BUILD = (() => {
 /** Sign-ups waiting for their email code (in memory: a restart just means starting again). */
 const signups = new Map<string, { name: string; hash: string; code: string; tries: number; until: number }>();
 
+/** The task stages a task follows (src/stages.ts): its project's own, else its team's own, else its company's. */
+const taskStagesOf = (t: any, w?: any) => stagesFrom({ client: t?.clientId ? (db.getDoc('clients', t.clientId) as any) : null, team: t?.teamId ? (db.getDoc('teams', t.teamId) as any) : null, workspace: w ?? (t?.workspaceId ? db.getDoc('workspaces', t.workspaceId) : null) });
+
 /* ---------- first run: copy the demo company into the database ---------- */
 
 const COLLS = Object.keys(seed()) as CollectionKey[];
@@ -80,18 +84,22 @@ const toDocs = (key: CollectionKey, value: unknown): db.Doc[] =>
 
 if (db.isEmpty() && (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production')) {
   const s = seed();
-  for (const k of COLLS) db.writeDocs(k, toDocs(k, s[k]), [], null);
   const pw = process.env.SEED_PASSWORD;
   if (!pw) throw new Error('Set SEED_PASSWORD in .env (see .env.example) before the first run.');
-  for (const u of s.users) db.setLogin(u.id, u.email, pw);
   // Client people who already joined can sign in to their portal (same demo password).
   const known = new Set(s.users.map((u) => u.email.toLowerCase()));
   // People who already have a sign-in (e.g. Dimas at Elkiya) just get the portal on their existing account.
   const clientUsers = s.clients.flatMap((c) =>
     (c.people ?? []).filter((x) => x.status === 'joined' && !known.has(x.email.toLowerCase())).map((x) => ({ id: `cu-${x.email.split('@')[0]}-${c.id}`, name: x.name, email: x.email, title: c.name, color: c.color, clientOf: { workspaceId: c.workspaceId, clientId: c.id } })),
   );
+  // Every demo password is hashed before anything is written, and the server only listens after this (top-level
+  // await): a sign-in right after the first start never meets a login that isn't saved yet, and a start stopped
+  // halfway leaves an empty database that seeds again next time.
+  const people = [...s.users, ...clientUsers].map((u) => ({ id: u.id, email: u.email }));
+  const hashes = await Promise.all(people.map(() => db.hashPassword(pw)));
+  for (const k of COLLS) db.writeDocs(k, toDocs(k, s[k]), [], null);
   db.writeDocs('users', clientUsers as unknown as db.Doc[], [], null);
-  for (const u of clientUsers) db.setLogin(u.id, u.email, pw);
+  db.setLoginHashes(people.map((u, i) => ({ userId: u.id, email: u.email, hash: hashes[i] })));
   console.log(`Seeded the demo company: ${s.users.length} people and ${clientUsers.length} client people can sign in with the password in .env / .env.example.`);
 }
 
@@ -110,6 +118,7 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 
 platform.bootstrapOperators();
 admin.loadPricing();
+billing.rememberExistingTrials(); // trials companies had before "one per person" count too
 // Companies that had "Require two-step sign-in" on before it did anything: their days start now, and people hear.
 const clocksStarted = twostep.startClocks();
 if (clocksStarted.length) setTimeout(() => clocksStarted.forEach((id) => tellTwoStepRequired(id, null)), 5_000);
@@ -225,7 +234,7 @@ function portalsOf(userId: string): { workspaceId: string; clientId: string }[] 
  */
 const ticketFiles = (list: unknown, userId: string) =>
   (Array.isArray(list) ? list : [])
-    .filter((a: any) => a && typeof a.url === 'string' && db.fileInfo(/^\/api\/files\/([a-f0-9]{32})$/.exec(a.url)?.[1] ?? '')?.by === userId)
+    .filter((a: any) => a && typeof a.url === 'string' && support.fileFitsTicket(db.fileInfo(/^\/api\/files\/([a-f0-9]{32})$/.exec(a.url)?.[1] ?? ''), userId, new Date().toISOString()))
     .slice(0, 10)
     .map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: String(a.url), size: a.size ? String(a.size).slice(0, 20) : undefined }));
 /**
@@ -425,9 +434,10 @@ function clientLens(me: Person) {
         if (access.teamNames === 'hide') return { id: d.id, name: `${w.name} team`, color: w.color, email: '' };
         return { id: d.id, name: access.teamNames === 'first' ? String(d.name ?? '').split(' ')[0] : d.name, color: d.color, title: d.title, photo: d.photo, email: '' };
       case 'clients':
-        return d.id === clientId ? d : null;
+        // A project's own task stages: ids and kinds only, like the company's.
+        return d.id === clientId ? { ...d, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined } : null;
       case 'teams':
-        return d.workspaceId === workspaceId ? { id: d.id, workspaceId: d.workspaceId, name: d.name, color: d.color, leadId: d.leadId, members: d.members } : null;
+        return d.workspaceId === workspaceId ? { id: d.id, workspaceId: d.workspaceId, name: d.name, color: d.color, leadId: d.leadId, members: d.members, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined } : null;
       case 'channels':
         return myChannels.has(d.id) ? { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests, materials: d.materials, bookmarks: d.bookmarks } : null;
       case 'messages':
@@ -523,7 +533,7 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       const added = (d.history ?? []).filter((h: any) => !known.has(h.id) && String(h.by).toLowerCase() === email && (h.kind === 'comment' || h.kind === 'review') && can(person, 'comment'));
       const approval = can(person, 'approve') && before.approval?.status === 'waiting' && d.approval && d.approval.status !== 'waiting' ? { ...before.approval, status: d.approval.status, by: email, at: new Date().toISOString(), note: d.approval.note } : before.approval;
       // Changes asked on finished work: it goes back to the company's first "in progress" stage (by kind, whatever it's called).
-      const reopen = approval !== before.approval && approval?.status === 'changes' && before.done ? { done: false, status: stageIdFor(before, 'active', cleanStages(w.taskStages)), doneAt: undefined, doneBy: undefined } : {};
+      const reopen = approval !== before.approval && approval?.status === 'changes' && before.done ? { done: false, status: stageIdFor(before, 'active', taskStagesOf(before, w)), doneAt: undefined, doneBy: undefined } : {};
       return { ...before, ...reopen, approval, history: [...(before.history ?? []), ...added.map((h: any) => ({ ...h, toClient: true }))] };
     }
     case 'quotes': {
@@ -587,7 +597,14 @@ async function body(req: IncomingMessage): Promise<any> {
 }
 /** The session cookie: only over https when the app is served over https (behind Dokploy's proxy). */
 const secureCookies = () => PUBLIC_URL.startsWith('https://');
-const setSession = (res: ServerResponse, token: string | null) => res.setHeader('set-cookie', `s2g=${token ?? ''}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${token ? 30 * 86400 : 0}${secureCookies() ? '; Secure' : ''}`);
+/** Adds a Set-Cookie to the answer, keeping any set before it (the session and the remembered-device cookie can go together). */
+const addCookie = (res: ServerResponse, c: string) => {
+  const had = res.getHeader('set-cookie');
+  res.setHeader('set-cookie', [...(Array.isArray(had) ? had : had ? [String(had)] : []).filter((x) => !x.startsWith(c.split('=')[0] + '=')), c]);
+};
+const setSession = (res: ServerResponse, token: string | null) => addCookie(res, `s2g=${token ?? ''}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${token ? 30 * 86400 : 0}${secureCookies() ? '; Secure' : ''}`);
+/** The browser's remembered-device tokens (server/twostep.ts), for 30 days. */
+const setDeviceCookie = (res: ServerResponse, value: string | null) => addCookie(res, `${twostep.DEVICE_COOKIE}=${value ?? ''}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${value ? twostep.DEVICE_DAYS * 86400 : 0}${secureCookies() ? '; Secure' : ''}`);
 /** Attempts per key (an address and an email) in a sliding window: sign-in and codes can't be guessed in bulk. */
 const attempts = new Map<string, number[]>();
 function tooMany(key: string, max: number, windowMs: number) {
@@ -878,7 +895,8 @@ function planFromApp(next: any, prev: any): { plan: any; why?: string } {
     next.cancel === true && prev && prev.tier !== 'free' ? (prev.cancelAt ?? billing.periodEnd(prev)) : next.cancel === false ? undefined : prev?.cancelAt && next.tier === prev.tier && next.track === prev.track ? prev.cancelAt : undefined;
   // How the company pays is ours to record (bank transfer until a card processor exists); the app can't invent a card.
   const { cancel: _c, ...rest } = next;
-  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt }, why: pause.why };
+  // Prorated switches are the server's (billing.adjustmentsOnSave adds a new one): the app can't add, change or drop them.
+  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt, adjustments: prev?.adjustments, trialRefused: next.tier === 'free' ? prev?.trialRefused : undefined }, why: pause.why };
 }
 
 const routes: Record<string, (b: any) => Promise<unknown>> = {
@@ -1383,7 +1401,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         // the routing checks' results (the admins only switch the daily check on or off), the company's own address
         // with its state (changed through /api/white-label/domain only), the mail aliases (set through the server)
         // and WhatsApp (connected through the server: its number decides whose messages arrive here).
-        const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+        const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, bimi: before.bimi, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
         // Boosted sending only where this server has it.
         if ((d as any).mailRoute === 'boosted' && before.mailRoute !== 'boosted' && !mailer.boostedAvailable()) (d as any).mailRoute = before.mailRoute;
         // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
@@ -1393,7 +1411,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         const asked = planFromApp((d as any).plan, before.plan);
         const planChanged = JSON.stringify((d as any).plan ?? null) !== JSON.stringify(before.plan ?? null);
         if (!owner && planChanged) say('Only owners can change the plan and billing.');
-        const plan = owner ? asked.plan : before.plan;
+        // A switch of tier or track is prorated (server/billing.ts); a company without a plan keeps having none.
+        const plan = owner ? (asked.plan ? { ...asked.plan, adjustments: billing.adjustmentsOnSave(before, before.plan, asked.plan) } : asked.plan) : before.plan;
         if (owner) say(asked.why);
         // An operator looking at the app as someone can't change the company's sign-in rules.
         const sec = session?.operator ? { security: before.security, changed: null } : twostep.securityOnSave(before.security, (d as any).security, owner, twostep.isOn(me));
@@ -1413,9 +1432,12 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         const timeZone = isZone((d as any).timeZone) ? (d as any).timeZone : before.timeZone;
         return { ...d, ...own, timeZone, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
       }
-      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...fresh } = d as any;
+      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, bimi: _bimi, ...fresh } = d as any;
       if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
-      const plan = planFromApp(fresh.plan, undefined).plan;
+      // One free trial per person and per company domain, as for /api/workspace.
+      const trial = billing.trialOnCreate(planFromApp(fresh.plan, undefined).plan, { id: me, email: String(person.email ?? '') }, { id: String(fresh.id), name: String(fresh.name ?? ''), domains: fresh.domains });
+      if (trial.why) say(`${fresh.name ?? 'The new company'} starts on Free. ${trial.why}`);
+      const plan = trial.plan;
       if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
       const chat = retention.chatOnSave(fresh.chat, undefined);
       if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
@@ -1444,6 +1466,16 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       if (!admin && mine.size) return null; // new people come in through invites, which admins send
       const { clientOf: _c, vaultKey: _v, ...rest } = d as any;
       return rest as db.Doc;
+    }
+    // A project's or team's own task stages: only a list the app can work with, set by those who run it (admins, the
+    // project's owner or leads, the team's lead). Anyone else's save keeps what was there.
+    if ((coll === 'clients' || coll === 'teams') && JSON.stringify((d as any).taskStages ?? null) !== JSON.stringify(before?.taskStages ?? null)) {
+      const runs = isAdminOf(me, wsId) || (coll === 'clients' ? (before?.ownerId ?? (d as any).ownerId) === me || ((before ?? d) as any).members?.some((m: any) => m.userId === me && m.role === 'lead') : (before?.leadId ?? (d as any).leadId) === me);
+      const asked = (d as any).taskStages;
+      const clean = Array.isArray(asked) && asked.length ? cleanStages(asked) : null;
+      const taskStages = !runs ? before?.taskStages : asked == null || (Array.isArray(asked) && !asked.length) ? undefined : clean && clean !== DEFAULT_STAGES ? clean : before?.taskStages;
+      if (!runs) say(coll === 'clients' ? 'Only admins and the project’s owner can change its stages.' : 'Only admins and the team’s lead can change its stages.');
+      d = { ...d, taskStages } as db.Doc;
     }
     // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts).
     if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
@@ -1600,6 +1632,16 @@ createServer(async (req, res) => {
   if (p.startsWith('/t/') && readTracking.serveTracking(req, res, url, ipOf(req), tooMany(`track:${ipOf(req)}`, 600, 60_000))) return;
   // Connected AI apps: /mcp and the sign-in addresses they expect (OAuth and /.well-known). /oauth/authorize is a page.
   if ((p === '/mcp' || p.startsWith('/oauth/') || p.startsWith('/.well-known/oauth-') || p === '/.well-known/openid-configuration') && (await connector.handlePublic(req, res, url))) return;
+  // A company's BIMI logo (server/bimi.ts): public, at the same address for as long as it has one, never anything else.
+  const bimiLogo = p.match(/^\/bimi\/([\w-]{1,64})\.svg$/);
+  if (bimiLogo && (req.method === 'GET' || req.method === 'HEAD')) {
+    const w = db.getDoc('workspaces', bimiLogo[1]) as any;
+    const f = w?.bimi?.fileId ? db.fileInfo(w.bimi.fileId) : null;
+    const data = f && f.workspaceId === w.id ? db.fileData(f.id) : null;
+    if (!data) return (res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }), res.end('No logo here.'));
+    res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'access-control-allow-origin': '*' });
+    return res.end(req.method === 'HEAD' ? undefined : data);
+  }
   if (!p.startsWith('/api/')) return serveStatic(req, res, !!SITE_HOST && String(req.headers.host ?? '').toLowerCase() === SITE_HOST);
   if (p === '/api/health') return json(res, 200, { ok: true, at: new Date().toISOString(), build: BUILD });
   if (p === '/api/pricing' && req.method === 'GET') return json(res, 200, { pricing: platform.settings().pricing ?? null });
@@ -1653,8 +1695,16 @@ createServer(async (req, res) => {
       const t = db.newSession(login.user_id);
       setSession(res, t);
       // Two-step sign-in: the session waits for its code (15 minutes), or for setting it up when a company requires it.
-      const g = twostep.gate(login.user_id, t, null, workspaces() as any);
-      if (g?.need === 'code') twostep.markWaiting(t);
+      // A device this person asked to remember (a signed token in its cookie, not forgotten, under 30 days) skips the code.
+      let g = twostep.gate(login.user_id, t, null, workspaces() as any);
+      if (g?.need === 'code') {
+        const device = twostep.trustedDevice(cookie(req, twostep.DEVICE_COOKIE), login.user_id);
+        if (device) {
+          twostep.markPassed(t);
+          twostep.deviceUsed(device.id);
+          g = null;
+        } else twostep.markWaiting(t);
+      }
       return json(res, 200, { me: login.user_id, ...(g ? { twoStep: g.need, companies: g.need === 'setup' ? g.companies : undefined } : {}) });
     }
     // Sign-up: name, email and password, then a 6-digit code sent to the email. Until real email is wired up, the code
@@ -1755,6 +1805,7 @@ createServer(async (req, res) => {
       await db.setLogin(login.user_id, mail, password);
       db.endSessions(login.user_id);
       connector.endAll(login.user_id, 'password reset'); // connected AI apps too: they connect again with the new password
+      twostep.forgetDevices(login.user_id); // a new password: every remembered device asks for the code again
       const t = db.newSession(login.user_id);
       if (twostep.isOn(login.user_id)) twostep.markPassed(t);
       setSession(res, t);
@@ -1898,6 +1949,8 @@ createServer(async (req, res) => {
         body,
         workspaces: workspaces as any,
         issuer: brandNameAt(req),
+        deviceCookie: cookie(req, twostep.DEVICE_COOKIE),
+        setDeviceCookie: (v) => setDeviceCookie(res, v),
         kick,
         operator: session?.operator ?? null,
         event: (type, wsId, userId, detail) => platform.event(type, wsId, userId, detail),
@@ -2238,11 +2291,14 @@ createServer(async (req, res) => {
         };
         // Undo send (Settings, Mail): the email waits here for the sender's window before anything leaves.
         const undo = Math.min(mailer.MAX_UNDO_SECONDS, Math.max(0, Math.round(Number(b.undoSeconds) || 0)));
+        // A local server keeps mail for outside addresses on this computer; the toast says so instead of "sent".
+        const kept = mailer.heldLocally(email);
+        const note = kept.length ? `Held on this computer: a local sprint2go doesn’t send to ${kept.length === 1 ? kept[0] : 'outside addresses'}` : undefined;
         if (undo) {
           const held = mailer.holdSend(email, { userId: me, releaseAt: Date.now() + undo * 1000 });
-          return json(res, 200, { held: true, until: held.until, undoMs: undo * 1000 });
+          return json(res, 200, { held: true, until: held.until, undoMs: undo * 1000, note });
         }
-        return json(res, 200, await mailer.queueSend(email));
+        return json(res, 200, { ...(await mailer.queueSend(email)), note });
       } catch (e) {
         return json(res, 400, { error: e instanceof Error ? e.message : 'Could not send.' });
       }
@@ -2364,6 +2420,31 @@ createServer(async (req, res) => {
       broadcast('workspaces', [nextWs], []);
       return json(res, 200, { away: saved });
     }
+    // BIMI (Settings, Email delivery): the logo, its record and what DNS says. Admins only; the logo is checked here.
+    if (p === '/api/mail/bimi') {
+      const b = req.method === 'GET' ? { workspaceId: url.searchParams.get('ws') } : await body(req);
+      const ws = (memberOf(me) as any[]).find((w) => w.id === b.workspaceId);
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: 'Only admins can change the company’s logo in inboxes.' });
+      const domain = mailer.mailDomainOf(ws);
+      if (domain === mailer.MAIL_HOST) return json(res, 409, { error: 'A logo in inboxes needs your own mail domain. Add it under General first.' });
+      if (req.method === 'GET') return json(res, 200, await bimi.bimiState(ws, domain, PUBLIC_URL));
+      const ro = billing.readOnlyWhy(ws);
+      if (ro) return json(res, 403, { error: ro });
+      let next: any;
+      if (req.method === 'DELETE') next = { ...ws, bimi: undefined };
+      else if (req.method === 'POST') {
+        const svg = String(b.svg ?? '');
+        const problems = bimi.svgProblems(svg);
+        if (problems.length) return json(res, 400, { error: 'This logo can’t be used for BIMI yet.', problems });
+        const id = randomBytes(16).toString('hex');
+        db.saveFile({ id, workspaceId: ws.id, by: me, name: String(b.name ?? 'logo.svg').slice(0, 120), type: 'image/svg+xml', size: Buffer.byteLength(svg) }, Buffer.from(svg));
+        next = { ...ws, bimi: { fileId: id, name: String(b.name ?? 'logo.svg').slice(0, 120), at: new Date().toISOString(), by: me } };
+      } else return json(res, 405, {});
+      db.writeDocs('workspaces', [next], [], me);
+      broadcast('workspaces', [next], []);
+      platform.event(next.bimi ? 'mail.bimi-logo' : 'mail.bimi-removed', ws.id, me);
+      return json(res, 200, await bimi.bimiState(next, domain, PUBLIC_URL));
+    }
     if (p === '/api/mail/aliases' && req.method === 'POST') {
       // Extra addresses that deliver into mailboxes here. Checked here: at the company's own domain, not anyone's
       // mailbox already, and pointing at mailboxes hosted here.
@@ -2433,7 +2514,10 @@ createServer(async (req, res) => {
       if (!login || !(await db.checkPassword(String(current ?? ''), login.pw_hash))) return json(res, 400, { error: 'Your current password is wrong.' });
       if (typeof next !== 'string' || next.length < 8) return json(res, 400, { error: 'Use at least 8 characters.' });
       await db.setLogin(me, u.email!, next);
-      // Everywhere else signs out; this device gets a fresh session (still past its second step).
+      // Everywhere else signs out, and every remembered device asks for the code again; this device gets a fresh
+      // session (still past its second step).
+      twostep.forgetDevices(me);
+      setDeviceCookie(res, null);
       const passed = twostep.sessionPassed(cookie(req, 's2g'));
       db.endSessions(me);
       connector.endAll(me, 'password changed');
@@ -2532,10 +2616,12 @@ createServer(async (req, res) => {
       const ids = new Set(people.map((u) => u.id));
       const members = [{ userId: me, role: 'owner' }, ...((w.members ?? []) as any[]).filter((m) => ids.has(m.userId) && ['admin', 'member'].includes(m.role))];
       const accounts = ((w.accounts ?? []) as any[]).filter((a) => a && typeof a.email === 'string').map((a) => ({ id: String(a.id ?? randomBytes(6).toString('hex')), email: String(a.email).toLowerCase().slice(0, 200), name: String(a.name ?? '').slice(0, 80), kind: a.kind === 'shared' ? 'shared' : 'personal', connected: false, users: ((a.users ?? []) as any[]).filter((x) => x === me || ids.has(x)), provider: typeof a.provider === 'string' ? a.provider.slice(0, 20) : undefined }));
-      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...wClean } = w as any;
+      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, bimi: _bimi, ...wClean } = w as any;
       if (!DEMO) wClean.mailRouting = serverRouting(wClean.mailRouting, undefined);
       if (wClean.mailRoute === 'boosted' && !mailer.boostedAvailable()) wClean.mailRoute = 'own';
-      const draft = { ...wClean, plan: planFromApp(wClean.plan, undefined).plan, whiteLabel: ownAddress(wClean.whiteLabel, undefined), security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
+      // One free trial per person and per company domain (server/billing.ts): otherwise the company starts on Free.
+      const trial = billing.trialOnCreate(planFromApp(wClean.plan, undefined).plan, { id: me, email: String((db.getDoc('users', me) as any)?.email ?? '') }, { id: wClean.id, name: String(w.name).trim(), domains: wClean.domains });
+      const draft = { ...wClean, plan: trial.plan, whiteLabel: ownAddress(wClean.whiteLabel, undefined), security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
       // Hosted mailboxes beyond what the plan has room for aren't made (the trial has room for everyone it starts with).
       const ws = { ...draft, accounts: billing.mailboxesOnSave(draft, undefined).accounts ?? [] };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
@@ -2544,12 +2630,16 @@ createServer(async (req, res) => {
       db.writeDocs('workspaces', [ws], [], me);
       db.writeDocs('channels', [general], [], me);
       platform.event('company.created', ws.id, me);
+      if (trial.why) {
+        platform.event('trial.refused', ws.id, me, trial.why.slice(0, 200));
+        notifyUsers([me], `${ws.name} starts on Free. ${trial.why}`, '/settings/billing', ws.id);
+      }
       soonReadiness(ws.id);
       if (people.length) platform.event('team.invited', ws.id, me, `${people.length} at creation`);
       broadcast('users', people, []);
       broadcast('workspaces', [ws], []);
       broadcast('channels', [general], []);
-      return json(res, 200, { id: ws.id });
+      return json(res, 200, { id: ws.id, ...(trial.why ? { trialRefused: trial.why } : {}) });
     }
 
     // An admin invites someone: they get a link to set their own password.
@@ -2796,7 +2886,8 @@ createServer(async (req, res) => {
       // Support tickets: the operators who work tickets (the support permission, past the console's two-step sign-in)
       // open what customers attached (their own uploads, or what came with their email), and each opening is in the
       // audit log. Whoever wrote in by email opens what they sent, in Help (those files belong to no company).
-      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.kind = 'customer' AND m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; number: number; requesterUser: string | null; requesterEmail: string }[]) : [];
+      // Only a file sent with its ticket counts: tickets from before 9 Oct could point at any file (support.fileFitsTicket).
+      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, m.at, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.kind = 'customer' AND m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; at: string; number: number; requesterUser: string | null; requesterEmail: string }[]).filter((t) => support.fileFitsTicket(f, t.requesterUser, t.at)) : [];
       const supportOp = !!tickets.length && !!opRecord && opRecord.totpOn && platform.permsOf(opRecord.role).includes('support') && platform.sessionVerified(token);
       const myEmail = String(meDoc?.email ?? '').toLowerCase();
       const requester = !supportOp && f.workspaceId === 'platform' && tickets.some((t) => t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail));
@@ -2852,6 +2943,23 @@ createServer(async (req, res) => {
       if (tooMany(`callink:${me}`, 12, 10 * 60_000)) return json(res, 429, { error: 'That’s a lot of links in a few minutes. Try again shortly.' });
       try {
         return json(res, 200, await feeds.addLink(me, await body(req)));
+      } catch (e) {
+        if (e instanceof FetchError) return json(res, 400, { error: e.message });
+        throw e;
+      }
+    }
+    // Whether a new company of this person gets the free trial (Onboarding says so before it's made).
+    if (p === '/api/trial' && req.method === 'GET') {
+      const c = billing.trialCheck(me, String(meDoc?.email ?? ''), [url.searchParams.get('domain') ?? ''].filter(Boolean));
+      return json(res, 200, c.ok ? { available: true } : { available: false, why: c.why });
+    }
+    // A country's public holidays for someone who chose to see them (Calendar, Public holidays, "Countries you see").
+    const holidayReq = p.match(/^\/api\/holidays\/([A-Z]{2})$/);
+    if (holidayReq && req.method === 'GET') {
+      if (!memberOf(me).length) return json(res, 403, { error: 'Calendars are for people in a company.' });
+      try {
+        res.setHeader('cache-control', 'private, max-age=3600');
+        return json(res, 200, await feeds.holidaysForPerson(holidayReq[1]));
       } catch (e) {
         if (e instanceof FetchError) return json(res, 400, { error: e.message });
         throw e;
