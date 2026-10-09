@@ -33,8 +33,8 @@ export function stepOf(view: CalView, cursor: Date, dir: 1 | -1) {
   return addDays(cursor, dir * (view === 'week' ? 7 : view === '3day' ? 3 : view === 'schedule' ? 7 : 1));
 }
 
-/** An invite waiting for an answer (from mail, not on the calendar yet): drawn dashed, with Yes / Maybe / No. */
-export const isPending = (e: CalEvent) => e.id.startsWith('inv:');
+/** An invite waiting for an answer (from mail, not on the calendar yet, or a date of a repeating invite I answered only some dates of): drawn dashed, with Yes / Maybe / No. */
+export const isPending = (e: CalEvent) => e.id.startsWith('inv:') || (!!e.inviteUid && !e.rsvp && !e.feed && !e.calendarId.startsWith('mate-'));
 /** Answered "maybe": drawn with a dashed edge. */
 export const isMaybe = (e: CalEvent) => e.rsvp === 'tentative';
 export const isPast = (e: CalEvent, now = Date.now()) => new Date(e.end).getTime() < now;

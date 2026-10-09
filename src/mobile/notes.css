@@ -263,6 +263,10 @@
   .qn textarea {
     min-height: 140px;
   }
+  .sel.qn-dest {
+    min-height: var(--tap);
+    font-size: 15px;
+  }
 }
 
 /* Tiny phones: the create button floats at the bottom right, so the search makes room for it. */

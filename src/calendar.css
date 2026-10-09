@@ -1203,7 +1203,7 @@ a.ghost-btn {
   color: var(--accent-text, var(--accent));
 }
 .cu-title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1212,6 +1212,7 @@ a.ghost-btn {
 }
 .cu-bot {
   flex: none;
+  margin-left: auto;
   color: var(--text-3);
 }
 .cu-bot.on {
@@ -1485,6 +1486,14 @@ a.ghost-btn {
   background: var(--surface);
   border: 1.5px dashed var(--c);
   border-left-width: 3px;
+}
+/* An invite waiting for an answer, opened: still dashed, its words still readable. */
+.block-event.pending.picked {
+  background: color-mix(in srgb, var(--c) 16%, var(--surface));
+  color: var(--text);
+}
+.block-event.pending.picked .be-time {
+  color: var(--text-2);
 }
 .block-event.is-task {
   padding-left: 26px;
@@ -1952,6 +1961,139 @@ a.ghost-btn {
   gap: 4px;
 }
 
+/* Repeat: the quiet word is a dropdown that looks like the other words; opened, the repeat with its days and Custom. */
+.sel.ev-token {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: none;
+  color: var(--text-3);
+  font-size: 13.5px;
+  font-weight: 500;
+  gap: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.sel.ev-token svg {
+  flex: none;
+}
+.sel.ev-token.open {
+  background: var(--hover);
+  color: var(--text);
+  box-shadow: none;
+}
+@media (hover: hover) {
+  .sel.ev-token:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+}
+.rp {
+  display: grid;
+  gap: 8px;
+}
+.rp-more {
+  display: grid;
+  gap: 10px;
+  padding: 2px 0 2px 36px;
+  animation: fade 0.18s ease-out backwards;
+}
+.rp-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.rp-label {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.rp-days {
+  display: flex;
+  gap: 4px;
+}
+.rp-day {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--hover);
+  transition: background 0.15s, color 0.15s;
+}
+@media (hover: hover) {
+  .rp-day:not(.on):hover {
+    color: var(--text);
+    background: var(--border);
+  }
+}
+.rp-day.on {
+  background: var(--accent);
+  color: #fff;
+}
+.rp-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.ev-form .rp-step input {
+  width: 48px;
+  padding: 6px 4px;
+  text-align: center;
+}
+.sel.rp-unit {
+  min-width: 96px;
+}
+/* Email the invite to guests: a plain row with its switch (no box of its own inside the form). */
+.ev-invite {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  animation: fade 0.18s ease-out backwards;
+}
+/* Which dates a change is for (the menu by the button on desktop; phones get a sheet with its title). */
+.scope-head {
+  padding: 6px 10px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+/* The repeat mark: a small arrow loop next to the time or title, the colour of the text around it. */
+.ev-repeat,
+.be-repeat,
+.pe-repeat,
+.de-repeat,
+.cu-repeat,
+.h-repeat {
+  flex: none;
+  vertical-align: -1px;
+  opacity: 0.75;
+}
+.ev-repeat {
+  margin-left: 6px;
+}
+.be-repeat {
+  margin-right: 4px;
+}
+.pe-repeat {
+  margin-right: 4px;
+}
+.de-repeat {
+  margin-left: 2px;
+}
+.h-repeat {
+  margin-left: 6px;
+  color: var(--text-3);
+}
+
 /* Quick create (phones): the sheet leaves the grid above it live, so the block can be moved and stretched. */
 .sheet-scrim:has(> .quick-sheet) {
   background: none;
@@ -2070,6 +2212,8 @@ a.ghost-btn {
   .ghost-block,
   .guest-chip,
   .ev-extra,
+  .rp-more,
+  .ev-invite,
   .sched-own,
   .mg-list {
     animation: none;
