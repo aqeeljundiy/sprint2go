@@ -243,6 +243,15 @@ try {
     setTimeout(() => (s.destroy(), res(got)), 800);
   });
   check(/a1 OK/.test(injected) && !/a2 /.test(injected), 'commands sent right after STARTTLS (before the handshake) are ignored');
+  // Before signing in, nobody gets to send us megabytes.
+  const big = await new Promise((res) => {
+    const s = tlsConnect({ host: '127.0.0.1', port: imapsPort, rejectUnauthorized: false });
+    let got = '';
+    s.once('data', () => s.write('a1 LOGIN {200000}\r\n'));
+    s.on('data', (d) => (got += d));
+    setTimeout(() => (s.destroy(), res(got)), 800);
+  });
+  check(/a1 NO \[TOOBIG\]/.test(big) && !/\+ Ready/.test(big), 'a big literal before signing in is refused without being read');
 
   /* ---------- 2. folders ---------- */
   const folders = await a1.list();

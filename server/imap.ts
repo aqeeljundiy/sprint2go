@@ -28,6 +28,9 @@ let deps: ImapDeps;
 const MAX_LINE = 64 * 1024;
 export const APPEND_LIMIT = 25 * 1024 * 1024;
 const MAX_LITERAL = APPEND_LIMIT + 1024;
+/** Before signing in, a literal can only be a user name or a password: nobody unknown gets to fill our memory. */
+const PREAUTH_LITERAL = 8 * 1024;
+const PREAUTH_PER_IP = 20;
 const IDLE_LOGOUT = 31 * 60_000; // RFC 3501: at least 30 minutes
 const PREAUTH_LOGOUT = 60_000;
 const MAX_PER_USER = 40;
@@ -276,6 +279,7 @@ class Session {
   buf: Buffer = Buffer.alloc(0);
   text = '';
   lits: Buffer[] = [];
+  litBytes = 0;
   need: { n: number; skip: boolean } | null = null;
   tooBig = false;
   queue: Command[] = [];
@@ -355,6 +359,12 @@ class Session {
   read() {
     while (!this.halted && !this.closed) {
       if (this.need) {
+        // A literal too big to keep is thrown away as it arrives.
+        if (this.need.skip && this.buf.length < this.need.n) {
+          this.need.n -= this.buf.length;
+          this.buf = Buffer.alloc(0);
+          return;
+        }
         if (this.buf.length < this.need.n) return;
         const lit = this.buf.subarray(0, this.need.n);
         this.buf = this.buf.subarray(this.need.n);
@@ -387,13 +397,14 @@ class Session {
         const n = Number(lit[1]);
         const sync = !lit[2];
         this.text += lineText.slice(0, lit.index);
-        if (n > MAX_LITERAL || this.text.length > MAX_LINE) {
+        if (n > (this.userId ? MAX_LITERAL : PREAUTH_LITERAL) || this.litBytes + n > MAX_LITERAL || this.text.length > MAX_LINE) {
           this.tooBig = true;
           if (sync) {
             // The mail app waits for our go-ahead, so it never sends it: answer now and forget the command.
             const tag = this.text.split(' ')[0] || '*';
             this.text = '';
             this.lits = [];
+            this.litBytes = 0;
             this.tooBig = false;
             void this.line(`${tag} NO [TOOBIG] That's too big`);
             continue;
@@ -401,6 +412,7 @@ class Session {
           this.need = { n, skip: true };
           continue;
         }
+        this.litBytes += n;
         if (sync) void this.write('+ Ready for literal data\r\n');
         this.need = { n, skip: false };
         continue;
@@ -410,6 +422,7 @@ class Session {
       const lits = this.lits;
       this.text = '';
       this.lits = [];
+      this.litBytes = 0;
       if (this.tooBig) {
         this.tooBig = false;
         void this.line(`${text.split(' ')[0] || '*'} NO [TOOBIG] That's too big`);
@@ -1192,6 +1205,8 @@ export function start(d: ImapDeps, ports: { imap: number; imaps: number }, host 
   deps = d;
   const accept = (secure: boolean) => (socket: Socket) => {
     if (sessions.size >= MAX_TOTAL) return void socket.end('* BYE Too busy, try again shortly\r\n');
+    const ip = String(socket.remoteAddress ?? '').replace(/^::ffff:/, '');
+    if ([...sessions].filter((x) => !x.userId && x.ip === ip).length >= PREAUTH_PER_IP) return void socket.end('* BYE Too many connections from here\r\n');
     socket.setNoDelay(true);
     socket.setKeepAlive(true, 60_000);
     const s = new Session(socket, secure);
