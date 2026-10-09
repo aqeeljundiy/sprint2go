@@ -402,3 +402,30 @@
   background: var(--hover);
   color: var(--text);
 }
+
+/* A project's or team's own task stages: the switch, then the editor folding open under it */
+.stages-modal {
+  width: min(620px, 100%);
+}
+.own-stages > .set-row {
+  padding-top: 0;
+}
+.own-stages > .set-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+.own-stages .fold-in > fieldset {
+  margin-top: 4px;
+}
+.team-field.team-stages {
+  align-items: start;
+}
+.team-field.team-stages > span:first-child {
+  padding-top: 2px;
+}
+@media (max-width: 600px) {
+  .team-field.team-stages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

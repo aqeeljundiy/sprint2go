@@ -72,7 +72,7 @@ import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
-import { firstOf as firstStage, kindOf as stageKind, registerStages, stageIdFor, stageName, stageOf, stagesFor } from './stages';
+import { firstOf as firstStage, kindOf as stageKind, registerStages, stageAfterMove, stageIdFor, stageName, stageOf, stagesForTask } from './stages';
 import { celebrate } from './components/ui/confetti';
 import type { AskScope, MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS, trialPlan } from './data/workspaces';
@@ -455,6 +455,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
   const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal' | undefined>(undefined);
   const [teams, setTeams] = useStored('teams');
+  registerStages([], undefined, { clients, teams }); // projects and teams with stages of their own
   const [statuses, setStatuses] = useStored('statuses');
   const [savedTemplates, setSavedTemplates] = useStored('templates');
   const [tplOpen, setTplOpen] = useState<{ clientId?: string } | null>(null);
@@ -1106,7 +1107,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const have = new Set(todosRef.current.filter((x) => x.threadId === t.id && (shared || x.userId === user.id)).map((x) => x.title.toLowerCase()));
         const next = found
           .filter((f) => !have.has(f.title.toLowerCase()))
-          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: stageIdFor({ workspaceId: ws.id }, 'open'), threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
+          .map<Todo>((f) => ({ id: uid(), title: f.title, due: f.due ?? undefined, priority: f.priority, done: false, status: stageIdFor({ workspaceId: ws.id, clientId: clientForThread(t)?.id }, 'open'), threadId: t.id, source: 'ai', userId: user.id, createdBy: user.id, workspaceId: ws.id, clientId: clientForThread(t)?.id, createdAt: new Date().toISOString() }));
         // Remember it on the email itself, so no reload or other device reads it again.
         const mark = `${user.id}:${last.id}`;
         setThreads((ts) => ts.map((x) => (x.id === t.id && !x.scannedFor?.includes(mark) ? { ...x, scannedFor: [...(x.scannedFor ?? []), mark].slice(-20) } : x)));
@@ -1594,8 +1595,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   function setTaskStatus(id: string, requested: TaskStatus, quiet = false) {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    // Stages are the company's own; what happens depends on the kind of stage, not on its name.
-    const list = stagesFor(t.workspaceId);
+    // The task's own stages (its project's or team's, else the company's); what happens depends on the kind, not the name.
+    const list = stagesForTask(t);
     const target = list.find((s) => s.id === requested);
     if (!target) return;
     const from = stageOf(t, list);
@@ -1690,8 +1691,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // Keep userId (first person doing it) and assignees in step.
     if (patch.userId !== undefined && patch.assignees === undefined && t) patch = { ...patch, assignees: patch.userId ? [patch.userId, ...doersOf(t).filter((x) => x !== patch.userId && x !== t.userId)] : [] };
     if (patch.assignees && patch.userId === undefined) patch = { ...patch, userId: patch.assignees[0] ?? '' };
+    // Moving to a project or team with stages of its own: the stage of the same name there, else its first stage.
+    const moved = t && !('status' in patch) && (('clientId' in patch && patch.clientId !== t.clientId) || ('teamId' in patch && patch.teamId !== t.teamId)) ? stageAfterMove(t, { ...t, ...patch }) : null;
+    if (moved) patch = { ...patch, status: moved.stage.id, done: moved.stage.kind === 'done', ...(moved.stage.kind === 'done' ? {} : { doneAt: undefined, doneBy: undefined }) };
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     if (!t) return;
+    if (moved) {
+      const where = 'clientId' in patch && patch.clientId !== t.clientId ? (clients.find((c) => c.id === patch.clientId)?.name ?? 'no project') : (teams.find((x) => x.id === patch.teamId)?.name ?? 'no team');
+      logTask(id, 'status', moved.kept ? `kept it in ${stageName(moved.stage)} when it moved to ${where}` : `moved it to ${stageName(moved.stage)} when it moved to ${where}, which has no ${stageName(moved.from)} stage`);
+      showToast({ text: moved.kept ? `Moved to ${where}, still in “${stageName(moved.stage)}”.` : `Moved to ${where}, which has no “${stageName(moved.from)}” stage, so the task is in “${stageName(moved.stage)}” now.`, ms: moved.kept ? undefined : 7000 });
+    }
     const before = doersOf(t);
     if (patch.assignees) {
       const added = patch.assignees.filter((x) => !before.includes(x));
@@ -4159,6 +4168,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 onHomeTemplate={(v) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [team.id]: v } })}
                 onOpenTask={openTask}
                 onBack={() => setTeamId(null)}
+                companyName={ws.name}
+                wordsKey={ws.terms?.word ?? ''}
+                onMoveTasks={(moves) => {
+                  const by = new Map(moves.map((m) => [m.id, m.patch]));
+                  setTodos((ts) => ts.map((x) => (by.has(x.id) ? { ...x, ...by.get(x.id) } : x)));
+                  if (moves.length) showToast({ text: `Moved ${moves.length} task${moves.length === 1 ? '' : 's'}` });
+                }}
               />
             ) : (
               <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} />

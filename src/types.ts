@@ -489,6 +489,7 @@ export interface Team {
   about?: string; // what the team does, one line
   join?: 'open' | 'lead'; // open: anyone can join; lead (default): the lead or an admin adds people, others ask
   requests?: { userId: string; at: string }[]; // people who asked to join
+  taskStages?: TaskStage[]; // the team's own task stages (its queue's tasks), instead of the company's; missing: the company's
 }
 
 export type HomeTemplateId = 'founder' | 'lead' | 'maker' | 'account' | 'finance';
@@ -505,6 +506,7 @@ export interface Client {
   endedAt?: string; // when the work ended (status 'ended')
   endReason?: string;
   portalAfterEnd?: 'readonly' | 'off'; // what their people keep after the end
+  taskStages?: TaskStage[]; // the project's own task stages, instead of its team's or the company's; missing: theirs
   archivedOnEnd?: string[]; // channels archived when ending (unarchived if they come back)
   ownerId: string;
   photo?: string; // a small square picture or logo (data URL); otherwise the first letter on its colour

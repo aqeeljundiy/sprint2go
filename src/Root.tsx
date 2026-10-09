@@ -377,7 +377,7 @@ function ClientRoot({ me }: { me: User }) {
   const [notices, setNotices] = useStored('notices');
   // Someone can be a client of more than one company: one portal at a time, with a switcher.
   const portals = portalsFor(me.email, [], workspaces, clients, channels);
-  registerStages(workspaces); // each company's task stages (kinds only for guests): what "In progress" or "Waiting on you" means
+  registerStages(workspaces, undefined, { clients, teams }); // each company's task stages (kinds only for guests), and a project's or team's own: what "In progress" or "Waiting on you" means
   const [key, setKey] = usePersisted(`s2g-portal:${me.id}`, '');
   const [starting, setStarting] = useState(false);
   // More than one project shared with them: start on "Shared with you" (grouped by company), unless one is open.

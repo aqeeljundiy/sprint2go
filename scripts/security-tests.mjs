@@ -17,6 +17,7 @@
 //     "Sign out everywhere" and a password change
 // 14. free trials: one per person and per company domain, the reason on the plan, and one more when an operator allows it
 // 15. BIMI: the logo is checked for SVG Tiny PS basics, served from a stable address in a sandbox, admins only
+// 16. a project's or team's own task stages: who sets them, only lists that work, guests' approvals use them
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -514,6 +515,40 @@ try {
     check((await fetch(`${base}/bimi/elk.svg`)).status === 404, 'a company without a logo has nothing there');
     await aqeel.sync('workspaces', [{ ...doc('workspaces', 'pnp'), bimi: { fileId: secretFile.url.split('/').pop(), name: 'x', at: now(), by: 'u-aqeel' } }]);
     check(!!doc('workspaces', 'pnp').bimi?.fileId && doc('workspaces', 'pnp').bimi.fileId !== secretFile.url.split('/').pop(), 'the app can’t point the logo at another file');
+  }
+
+  /* ---------- 16. a project's or team's own task stages: who sets them, only lists that work, approvals use them ---------- */
+  {
+    const own = [{ id: 'todo', kind: 'open' }, { id: 'st-design', kind: 'active', name: 'Design' }, { id: 'st-check', kind: 'review', name: 'Check' }, { id: 'done', kind: 'done' }];
+    const nanda = await signIn('nanda@pixelandprofits.com'); // a member, not on this project's lead list
+    const proj = doc('clients', 'c-lumina');
+    await nanda.sync('clients', [{ ...proj, taskStages: own }]);
+    check(!doc('clients', 'c-lumina').taskStages, 'a member can’t give a project its own stages');
+    await aqeel.sync('clients', [{ ...doc('clients', 'c-lumina'), taskStages: own }]);
+    check(JSON.stringify(doc('clients', 'c-lumina').taskStages) === JSON.stringify(own), 'an admin can');
+    await aqeel.sync('clients', [{ ...doc('clients', 'c-lumina'), taskStages: [{ id: 'st-x', kind: 'active' }] }]);
+    check(doc('clients', 'c-lumina').taskStages?.length === 4, 'a list without a start and a done stage isn’t kept');
+    await aqeel.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'cut', kind: 'active', name: 'Cutting' }, { id: 'done', kind: 'done' }] }]);
+    check(doc('teams', 't-perf').taskStages?.length === 3, 'a team gets its own stages from an admin');
+    await nanda.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: undefined }]);
+    check(doc('teams', 't-perf').taskStages?.length === 3, 'not from a member who doesn’t lead it');
+    await nanda.sync('teams', [{ ...doc('teams', 't-video'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'done', kind: 'done' }] }]);
+    check(doc('teams', 't-video').taskStages?.length === 2, 'its lead can');
+    // A guest asks for changes on finished work in that project: it goes back to the project's own first "in progress".
+    const sarahTask = { id: 'td-own-stage', workspaceId: 'pnp', clientId: 'c-lumina', title: 'Hero banner', userId: 'u-aqeel', assignees: ['u-aqeel'], done: true, status: 'done', visibleToClient: true, approval: { status: 'waiting', at: now() }, source: 'manual', createdBy: 'u-aqeel', createdAt: now(), priority: 'normal' };
+    put('todos', sarahTask);
+    // Sarah approves work for Lumina (the approver role), so she can ask for changes.
+    const lumina = doc('clients', 'c-lumina');
+    put('clients', { ...lumina, people: (lumina.people ?? []).map((x) => (x.email === 'sarah@luminaskin.sg' ? { ...x, role: 'approver' } : x)) });
+    const sarah = await signIn('sarah@luminaskin.sg');
+    if (sarah.ok) {
+      await sarah.sync('todos', [{ ...sarahTask, approval: { status: 'changes', note: 'Bigger logo' } }]);
+      const after = doc('todos', 'td-own-stage');
+      check(after.done === false && after.status === 'st-design', `changes asked: back to the project’s own first in-progress stage (${after.status})`);
+    } else check(true, 'the guest can’t sign in here (no seed password for guests): approvals checked in unit tests');
+    // Guests see a project's own stages as ids and kinds only.
+    const nadiaState = await nadia.state();
+    check(!JSON.stringify(nadiaState.clients ?? []).includes('"name":"Design"'), 'guests never see the names of a project’s own stages');
   }
 
   db.close();

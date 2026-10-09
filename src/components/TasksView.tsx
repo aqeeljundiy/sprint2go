@@ -8,7 +8,9 @@ import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
 import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronDown, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
-import { firstOf, kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
+import { columnOf, firstOf, kindOf, ownStageForColumn, stageBadge, stageIdFor, stageName, stageOf, stagesFor, stagesForScope, stagesForTask, toneOf } from '../stages';
+import { OwnStages } from './admin/TaskStages';
+import { Layer } from './ui/Layer';
 import { ProjectTables } from './tables/TablesApp';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { PastClients } from './PastClients';
@@ -52,7 +54,7 @@ export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }>
 /** A task's stage id (one of its company's stages; see src/stages.ts). */
 export const statusOf = (t: Todo): TaskStatus => stageOf(t).id;
 /** A stage's colour dot: filled when done, hollow when not started. */
-export const StageDot = ({ t, className = '' }: { t: Pick<Todo, 'status' | 'done' | 'workspaceId'>; className?: string }) => {
+export const StageDot = ({ t, className = '' }: { t: Pick<Todo, 'status' | 'done' | 'workspaceId'> & Partial<Pick<Todo, 'clientId' | 'teamId'>>; className?: string }) => {
   const s = stageOf(t);
   return <span className={`stage-dot k-${s.kind} tone-${toneOf(s)} ${className}`} />;
 };
@@ -175,6 +177,7 @@ export function TasksView(p: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'workload' | 'quotes' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal'>('overview');
   const [writingOv, setWritingOv] = useState(false);
+  const [stagesOpen, setStagesOpen] = useState(false); // the project's own task stages (a dialog from its header)
   const scopeId = 'id' in p.scope ? p.scope.id : '';
   useEffect(() => {
     if (p.scope.kind === 'client') setClientTab(p.scope.teamId ? 'tasks' : (p.clientTab ?? 'overview'));
@@ -187,12 +190,12 @@ export function TasksView(p: Props) {
   const [inviteEmail, setInviteEmail] = useState('');
 
   const scope = p.scope;
-  // The company's own stages: board columns, grouping, the Start button and what each row says.
-  const stages = stagesFor(p.workspace.id);
-  const activeStage = firstOf('active', stages);
-  const waitingStages = stages.filter((s) => s.kind === 'waiting');
   const client = scope.kind === 'client' ? p.clients.find((c) => c.id === scope.id) : undefined;
   const team = scope.kind === 'team' ? p.teams.find((t) => t.id === scope.id) : undefined;
+  // The board's columns and stage groups: the project's or team's own stages on its page, else the company's. Each
+  // task's own row (its stage, Start, Approve) follows its own stages (src/stages.ts, stagesForTask).
+  const stages = stagesForScope(p.workspace.id, { clientId: client?.id, teamId: team?.id ?? (scope.kind === 'client' ? scope.teamId : undefined) });
+  const waitingStages = stages.filter((s) => s.kind === 'waiting');
   const cellTeam = scope.kind === 'client' && scope.teamId ? p.teams.find((t) => t.id === scope.teamId) : undefined;
   const person = (id?: string) => p.users.find((u) => u.id === id);
   const clientOf = (id?: string) => p.clients.find((c) => c.id === id);
@@ -336,7 +339,7 @@ export function TasksView(p: Props) {
   const groups: { key: string; label: React.ReactNode; items: Todo[]; extra?: React.ReactNode }[] = useMemo(() => {
     if (groupBy === 'none') return [{ key: 'all', label: null, items: shown }];
     const map = new Map<string, Todo[]>();
-    const keyOf = (t: Todo) => (groupBy === 'client' ? (t.clientId ?? '') : groupBy === 'team' ? (t.teamId ?? '') : groupBy === 'stage' ? stageOf(t, stages).id : t.userId);
+    const keyOf = (t: Todo) => (groupBy === 'client' ? (t.clientId ?? '') : groupBy === 'team' ? (t.teamId ?? '') : groupBy === 'stage' ? columnOf(t, stages).id : t.userId);
     for (const t of shown) map.set(keyOf(t), [...(map.get(keyOf(t)) ?? []), t]);
     const out = [...map.entries()].map(([k, items]) => {
       if (groupBy === 'client') {
@@ -398,7 +401,8 @@ export function TasksView(p: Props) {
   };
   const row = (t: Todo) => {
     const d = t.due ? dueLabel(t.due) : null;
-    const st = stageOf(t, stages);
+    const st = stageOf(t); // its own stages (its project's or team's, when they have their own)
+    const activeStage = firstOf('active', stagesForTask(t));
     const src = SOURCE[t.source];
     const c = clientOf(t.clientId);
     const tm = teamOf(t.teamId);
@@ -474,7 +478,7 @@ export function TasksView(p: Props) {
           if (t.done) return null;
           if (st.kind === 'review' && t.supervisorId === p.me)
             return (
-              <button className="row-act primary" onClick={() => p.onStatus(t.id, stageIdFor(t, 'done', stages))}>
+              <button className="row-act primary" onClick={() => p.onStatus(t.id, stageIdFor(t, 'done'))}>
                 Approve
               </button>
             );
@@ -497,8 +501,8 @@ export function TasksView(p: Props) {
           {!t.done && activeStage && (st.kind === 'open' || st.kind === 'active') && (
             <button
               className="icon-btn sm"
-              title={st.kind === 'active' ? `Move back to ${stageName(firstOf('open', stages)!)}` : `Start (${stageName(activeStage)})`}
-              onClick={() => p.onStatus(t.id, st.kind === 'active' ? stageIdFor(t, 'open', stages) : activeStage.id)}
+              title={st.kind === 'active' ? `Move back to ${stageName(stageOf({ ...t, status: stageIdFor(t, 'open'), done: false }))}` : `Start (${stageName(activeStage)})`}
+              onClick={() => p.onStatus(t.id, st.kind === 'active' ? stageIdFor(t, 'open') : activeStage.id)}
             >
               <Columns3 size={15} />
             </button>
@@ -763,12 +767,52 @@ export function TasksView(p: Props) {
                     { value: 'paused', label: 'Paused', hint: 'On hold for now' },
                   ]}
                 />
+                <button className="ghost-btn sm" onClick={() => setStagesOpen(true)} title="This project’s task stages: the company’s, or its own">
+                  <Columns3 size={13} /> Stages
+                </button>
                 <button className="ghost-btn sm" onClick={() => p.onEndClient(client.id)}>
                   End work
                 </button>
               </span>
             )
           ))}
+        {client && stagesOpen && (
+          <Layer>
+            <div className="modal-scrim" onMouseDown={() => setStagesOpen(false)}>
+              <div className="modal stages-modal" role="dialog" aria-label={`Task stages for ${client.name}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop, .modal-scrim + .modal-scrim') && setStagesOpen(false)}>
+                <header className="modal-head">
+                  <span className="dump-title">
+                    <Columns3 size={15} /> Task stages for {client.name}
+                  </span>
+                  <button type="button" className="icon-btn sm" onClick={() => setStagesOpen(false)} aria-label="Close">
+                    <X size={15} />
+                  </button>
+                </header>
+                <div className="modal-body">
+                  <OwnStages
+                    what="project"
+                    name={client.name}
+                    own={client.taskStages}
+                    inherited={stagesFor(p.workspace.id)}
+                    inheritedFrom={p.workspace.name || 'the company'}
+                    canManage={projectManage}
+                    tasks={p.tasks.filter((t) => t.clientId === client.id)}
+                    teams={p.teams}
+                    me={p.me}
+                    wordsKey={p.workspace.terms?.word ?? ''}
+                    onStages={(taskStages) => p.onPatchClient(client.id, { taskStages })}
+                    onMoveTasks={(moves) => moves.forEach((m) => p.onPatch(m.id, m.patch))}
+                  />
+                </div>
+                <footer className="modal-foot">
+                  <button type="button" className="primary-btn sm" onClick={() => setStagesOpen(false)}>
+                    Done
+                  </button>
+                </footer>
+              </div>
+            </div>
+          </Layer>
+        )}
         {client && <ProjectPeople client={client} users={p.users} me={p.me} canEdit={projectManage} canInvite={projectManage || !!p.canInviteGuests} onPatch={(x) => p.onPatchClient(client.id, x)} onGuests={() => setClientTab('portal')} />}
         <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
           <LayoutTemplate size={14} /> <span>Template</span>
@@ -1060,14 +1104,16 @@ export function TasksView(p: Props) {
             {layout === 'board' ? (
               <div className="board" style={{ ['--cols' as string]: stages.length }}>
                 {stages.map((col) => {
-                  const items = inScope.filter((t) => stageOf(t, stages).id === col.id).sort(byDue);
+                  const items = inScope.filter((t) => columnOf(t, stages).id === col.id).sort(byDue);
                   return (
                     <div
                       key={col.id}
                       className={`board-col ${dragging ? 'droppable' : ''}`}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={() => {
-                        if (dragging) p.onStatus(dragging, col.id);
+                        // A task with stages of its own (another project's, on My tasks) goes to its own stage of this kind.
+                        const t = dragging ? p.tasks.find((x) => x.id === dragging) : undefined;
+                        if (t) p.onStatus(t.id, ownStageForColumn(t, col).id);
                         setDragging(null);
                       }}
                     >
@@ -1178,7 +1224,7 @@ export function TasksView(p: Props) {
               const today = localDay();
               const items: { key: string; text: string; sub: string; run: () => void; tone?: string }[] = [
                 ...open.filter((t) => t.due && t.due < today).map((t) => ({ key: 'l' + t.id, text: t.title, sub: `Late, ${person(t.userId)?.name.split(' ')[0] ?? 'nobody'} on it`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
-                ...open.filter((t) => t.source === 'request' && kindOf(t, stages) === 'open').map((t) => ({ key: 'r' + t.id, text: t.title, sub: `New request from the ${term.who}`, run: () => p.onOpenTask(t.id) })),
+                ...open.filter((t) => t.source === 'request' && kindOf(t) === 'open').map((t) => ({ key: 'r' + t.id, text: t.title, sub: `New request from the ${term.who}`, run: () => p.onOpenTask(t.id) })),
                 ...open.filter((t) => t.approval?.status === 'changes').map((t) => ({ key: 'c' + t.id, text: t.title, sub: `${term.Who} asked for changes${t.approval?.note ? `: “${t.approval.note}”` : ''}`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
                 ...open.filter((t) => !t.userId).map((t) => ({ key: 'u' + t.id, text: t.title, sub: 'Nobody on it yet', run: () => p.onOpenTask(t.id) })),
                 ...clientThreads.filter((t) => t.unread).map((t) => ({ key: 'm' + t.id, text: t.subject, sub: 'Unread email', run: () => p.onOpenThread(t.id) })),

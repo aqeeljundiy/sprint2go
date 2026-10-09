@@ -1083,6 +1083,39 @@ await test('BIMI: a logo passes only with the SVG Tiny PS basics, and the record
   assert.equal(bimi.bimiRecord(url), 'v=BIMI1; l=https://app.sprint2go.com/bimi/pnp.svg; a=;');
 });
 
+await test('Task stages: a task follows its project’s own stages, else its team’s, else the company’s; moving maps it', async () => {
+  const st = await import('../src/stages.ts');
+  const company = [{ id: 'todo', kind: 'open' }, { id: 'doing', kind: 'active' }, { id: 'done', kind: 'done' }];
+  const proj = [{ id: 'todo', kind: 'open' }, { id: 'st-design', kind: 'active', name: 'Design' }, { id: 'st-build', kind: 'active', name: 'Build' }, { id: 'st-shipped', kind: 'done', name: 'Shipped' }];
+  const team = [{ id: 'st-queue', kind: 'open', name: 'Queue' }, { id: 'st-edit', kind: 'active', name: 'Design' }, { id: 'done', kind: 'done' }];
+  st.registerStages([{ id: 'w-st', taskStages: company }], 'w-st', { clients: [{ id: 'c-own', taskStages: proj }, { id: 'c-plain' }], teams: [{ id: 't-own', taskStages: team }] });
+  const t = (x) => ({ workspaceId: 'w-st', done: false, ...x });
+  assert.equal(st.stagesForTask(t({ clientId: 'c-own', teamId: 't-own' })), st.projectStages('c-own'), 'the project’s own first');
+  assert.deepEqual(st.stagesForTask(t({ clientId: 'c-plain', teamId: 't-own' })).map((x) => x.id), ['st-queue', 'st-edit', 'done'], 'then the team’s own');
+  assert.deepEqual(st.stagesForTask(t({ clientId: 'c-plain' })).map((x) => x.id), ['todo', 'doing', 'done'], 'then the company’s');
+  // Ticking and starting use the task's own stages.
+  assert.equal(st.stageIdFor(t({ clientId: 'c-own' }), 'done'), 'st-shipped');
+  assert.equal(st.stageIdFor(t({ clientId: 'c-own' }), 'active'), 'st-design');
+  assert.equal(st.kindOf(t({ clientId: 'c-own', status: 'st-build' })), 'active');
+  // On a board of the company's columns (My tasks), a task of other stages sits in the column of its kind; dropped on
+  // a column, it goes to its own first stage of that kind.
+  assert.equal(st.columnOf(t({ clientId: 'c-own', status: 'st-build' }), company).id, 'doing');
+  assert.equal(st.ownStageForColumn(t({ clientId: 'c-own' }), company[2]).id, 'st-shipped');
+  // Moving to another project or team: the stage of the same name, else the first one (a finished task stays finished).
+  const moved = st.stageAfterMove(t({ clientId: 'c-own', status: 'st-design' }), t({ clientId: 'c-plain', teamId: 't-own' }));
+  assert.deepEqual([moved.stage.id, moved.kept], ['st-edit', true], 'Design is Design there too');
+  const firstOne = st.stageAfterMove(t({ clientId: 'c-own', status: 'st-build' }), t({ clientId: 'c-plain' }));
+  assert.deepEqual([firstOne.stage.id, firstOne.kept, firstOne.from.id], ['todo', false, 'st-build'], 'no Build there: the first stage');
+  const finished = st.stageAfterMove(t({ clientId: 'c-own', status: 'st-shipped', done: true }), t({ clientId: 'c-plain' }));
+  assert.equal(finished.stage.id, 'done', 'a finished task stays finished');
+  assert.equal(st.stageAfterMove(t({ clientId: 'c-plain' }), t({ clientId: undefined })), null, 'the same stages: nothing to map');
+  // The server reads them from the documents (no registry).
+  assert.deepEqual(st.stagesFrom({ client: { taskStages: proj }, team: { taskStages: team }, workspace: { taskStages: company } }).map((x) => x.id), proj.map((x) => x.id));
+  assert.deepEqual(st.stagesFrom({ client: { taskStages: [{ id: 'x', kind: 'active' }] }, workspace: { taskStages: company } }).map((x) => x.id), ['todo', 'doing', 'done'], 'an unusable own list (no open or done stage) follows the company');
+  st.registerStages([], undefined, { clients: [], teams: [] });
+  assert.equal(st.projectStages('c-own'), null, 'a project that stopped having its own stages follows the company again');
+});
+
 /* read tracking: reminders and Outlook.com's picture proxy (server/readTracking.ts) */
 
 const readTracking = await import('../server/readTracking.ts');

@@ -45,7 +45,7 @@ import * as bimi from './bimi.ts';
 import * as aiLimits from './aiLimits.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
-import { DEFAULT_STAGES, cleanStages, stageIdFor } from '../src/stages.ts';
+import { DEFAULT_STAGES, cleanStages, stageIdFor, stagesFrom } from '../src/stages.ts';
 import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
 import * as digest from './digest.ts';
@@ -69,6 +69,9 @@ const BUILD = (() => {
 })();
 /** Sign-ups waiting for their email code (in memory: a restart just means starting again). */
 const signups = new Map<string, { name: string; hash: string; code: string; tries: number; until: number }>();
+
+/** The task stages a task follows (src/stages.ts): its project's own, else its team's own, else its company's. */
+const taskStagesOf = (t: any, w?: any) => stagesFrom({ client: t?.clientId ? (db.getDoc('clients', t.clientId) as any) : null, team: t?.teamId ? (db.getDoc('teams', t.teamId) as any) : null, workspace: w ?? (t?.workspaceId ? db.getDoc('workspaces', t.workspaceId) : null) });
 
 /* ---------- first run: copy the demo company into the database ---------- */
 
@@ -427,9 +430,10 @@ function clientLens(me: Person) {
         if (access.teamNames === 'hide') return { id: d.id, name: `${w.name} team`, color: w.color, email: '' };
         return { id: d.id, name: access.teamNames === 'first' ? String(d.name ?? '').split(' ')[0] : d.name, color: d.color, title: d.title, photo: d.photo, email: '' };
       case 'clients':
-        return d.id === clientId ? d : null;
+        // A project's own task stages: ids and kinds only, like the company's.
+        return d.id === clientId ? { ...d, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined } : null;
       case 'teams':
-        return d.workspaceId === workspaceId ? { id: d.id, workspaceId: d.workspaceId, name: d.name, color: d.color, leadId: d.leadId, members: d.members } : null;
+        return d.workspaceId === workspaceId ? { id: d.id, workspaceId: d.workspaceId, name: d.name, color: d.color, leadId: d.leadId, members: d.members, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined } : null;
       case 'channels':
         return myChannels.has(d.id) ? { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests, materials: d.materials, bookmarks: d.bookmarks } : null;
       case 'messages':
@@ -525,7 +529,7 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       const added = (d.history ?? []).filter((h: any) => !known.has(h.id) && String(h.by).toLowerCase() === email && (h.kind === 'comment' || h.kind === 'review') && can(person, 'comment'));
       const approval = can(person, 'approve') && before.approval?.status === 'waiting' && d.approval && d.approval.status !== 'waiting' ? { ...before.approval, status: d.approval.status, by: email, at: new Date().toISOString(), note: d.approval.note } : before.approval;
       // Changes asked on finished work: it goes back to the company's first "in progress" stage (by kind, whatever it's called).
-      const reopen = approval !== before.approval && approval?.status === 'changes' && before.done ? { done: false, status: stageIdFor(before, 'active', cleanStages(w.taskStages)), doneAt: undefined, doneBy: undefined } : {};
+      const reopen = approval !== before.approval && approval?.status === 'changes' && before.done ? { done: false, status: stageIdFor(before, 'active', taskStagesOf(before, w)), doneAt: undefined, doneBy: undefined } : {};
       return { ...before, ...reopen, approval, history: [...(before.history ?? []), ...added.map((h: any) => ({ ...h, toClient: true }))] };
     }
     case 'quotes': {
@@ -2745,6 +2749,16 @@ createServer(async (req, res) => {
           if (!admin && mine.size) return null; // new people come in through invites, which admins send
           const { clientOf: _c, vaultKey: _v, ...rest } = d as any;
           return rest as db.Doc;
+        }
+        // A project's or team's own task stages: only a list the app can work with, set by those who run it (admins, the
+        // project's owner or leads, the team's lead). Anyone else's save keeps what was there.
+        if ((coll === 'clients' || coll === 'teams') && JSON.stringify((d as any).taskStages ?? null) !== JSON.stringify(before?.taskStages ?? null)) {
+          const runs = isAdminOf(me, wsId) || (coll === 'clients' ? (before?.ownerId ?? (d as any).ownerId) === me || ((before ?? d) as any).members?.some((m: any) => m.userId === me && m.role === 'lead') : (before?.leadId ?? (d as any).leadId) === me);
+          const asked = (d as any).taskStages;
+          const clean = Array.isArray(asked) && asked.length ? cleanStages(asked) : null;
+          const taskStages = !runs ? before?.taskStages : asked == null || (Array.isArray(asked) && !asked.length) ? undefined : clean && clean !== DEFAULT_STAGES ? clean : before?.taskStages;
+          if (!runs) say(coll === 'clients' ? 'Only admins and the project’s owner can change its stages.' : 'Only admins and the team’s lead can change its stages.');
+          d = { ...d, taskStages } as db.Doc;
         }
         // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts).
         if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
