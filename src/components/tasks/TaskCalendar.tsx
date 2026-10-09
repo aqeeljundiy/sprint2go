@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Sheet } from '../ui/Sheet';
 import { useLongPress } from '../ui/useLongPress';
-import { MONTHS, WD_SHORT, addDays, dayDate, dayHeading, weekStart } from '../../taskDates';
+import { addDays, dayDate, dayHeading, weekStart } from '../../taskDates';
 import type { Todo } from '../../types';
 import { MonthGrid } from './MonthGrid';
+import { t, tn } from '../../i18n';
+import { fmtDate, fmtWeekdayLong } from '../../i18n/format';
 
 /**
  * Upcoming (and the Calendar layout of any task view): a week strip with a dot on busy days, then one continuous list
@@ -95,18 +97,17 @@ export function TaskCalendar({
       <div className="ucal-top">
         <div className="ucal-bar">
           <button type="button" className="ucal-month" onClick={() => setMonths(true)} aria-haspopup="dialog">
-            {MONTHS[m.getMonth()]}
-            {m.getFullYear() !== dayDate(today).getFullYear() ? ` ${m.getFullYear()}` : ''}
+            {fmtDate(m, m.getFullYear() !== dayDate(today).getFullYear() ? { month: 'long', year: 'numeric' } : { month: 'long' })}
             <ChevronDown size={16} />
           </button>
           <span className="spacer" />
-          <button type="button" className="icon-btn hide-phone" onClick={() => shift(-1)} disabled={week <= weekStart(today)} aria-label="Previous week">
+          <button type="button" className="icon-btn hide-phone" onClick={() => shift(-1)} disabled={week <= weekStart(today)} aria-label={t('Previous week')}>
             <ChevronLeft size={18} />
           </button>
           <button type="button" className="ghost-btn sm" onClick={() => (setDir(today < week ? 'prev' : ''), go(today))} disabled={selected === today && week === weekStart(today)}>
-            Today
+            {t('Today')}
           </button>
-          <button type="button" className="icon-btn hide-phone" onClick={() => shift(1)} aria-label="Next week">
+          <button type="button" className="icon-btn hide-phone" onClick={() => shift(1)} aria-label={t('Next week')}>
             <ChevronRight size={18} />
           </button>
         </div>
@@ -138,18 +139,18 @@ export function TaskCalendar({
               <h3 className="t-heading">{dayHeading(d, today)}</h3>
               {items.map(row)}
               <button type="button" className="ucal-add" onClick={() => onAdd(d)}>
-                <Plus size={16} /> Add task
+                <Plus size={16} /> {t('Add task')}
               </button>
             </section>
           );
         })}
         <button type="button" className="ghost-btn ucal-more" onClick={() => setEnd(addDays(end, 28))}>
-          Show the next four weeks{later ? ` (${later} task${later === 1 ? '' : 's'} later)` : ''}
+          {later ? tn(later, 'Show the next four weeks ({n} task later)', 'Show the next four weeks ({n} tasks later)') : t('Show the next four weeks')}
         </button>
       </div>
       {undated}
       {months && (
-        <Sheet onClose={() => setMonths(false)} title="Go to a day" className="task-sheet">
+        <Sheet onClose={() => setMonths(false)} title={t('Go to a day')} className="task-sheet">
           <MonthGrid value={selected} today={today} busy={busy} min={today} onPick={(d) => (setMonths(false), go(d))} />
         </Sheet>
       )}
@@ -167,11 +168,11 @@ function DayCell({ day, today, selected, busy, onPick, onHold }: { day: string; 
       className={`ucal-cell lp${day === today ? ' today' : ''}${day === selected ? ' on' : ''}${past ? ' past' : ''}`}
       onClick={() => onPick(day)}
       disabled={past}
-      aria-label={`${d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}${busy ? ', has tasks' : ''}. Hold to add a task`}
+      aria-label={busy ? t('{day}, has tasks. Hold to add a task', { day: fmtWeekdayLong(d) }) : t('{day}. Hold to add a task', { day: fmtWeekdayLong(d) })}
       aria-current={day === selected ? 'date' : undefined}
       {...press}
     >
-      <small>{WD_SHORT[d.getDay()]}</small>
+      <small>{fmtDate(d, { weekday: 'short' })}</small>
       <b>{d.getDate()}</b>
       <i className={busy ? 'dot on' : 'dot'} />
     </button>

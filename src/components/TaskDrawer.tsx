@@ -9,11 +9,14 @@ import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { holidayOn } from '../holidayDays';
-import { SOURCE, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
+import { SOURCE, doers, dueLabel, historyText, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
 import { kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesForTask, toneOf } from '../stages';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { useOnePanel } from '../onePanel';
 import { TaskDetail } from './tasks/TaskDetail';
+import { t } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtDateTime, fmtTime } from '../i18n/format';
 
 interface Props {
   task: Todo;
@@ -27,8 +30,8 @@ interface Props {
   onPatch: (id: string, p: Partial<Todo>) => void;
   onStatus: (id: string, s: TaskStatus) => void;
   onDelete: (id: string) => void;
-  onToCalendar: (t: Todo) => void;
-  onAddSubtask: (briefId: string, t: { title: string; userId: string; teamId?: string; due?: string }) => void;
+  onToCalendar: (task: Todo) => void;
+  onAddSubtask: (briefId: string, task: { title: string; userId: string; teamId?: string; due?: string }) => void;
   onOpenThread: (id: string) => void;
   onOpenChannel?: (clientId: string) => void;
   onAskApproval: (id: string) => void;
@@ -36,16 +39,16 @@ interface Props {
   clientNames?: Record<string, string>; // client people by email (for their comments)
   onSendBack: (id: string, note: string) => void;
   onSaveTemplate?: (briefId: string) => void;
-  onDuplicate?: (t: Todo) => void;
+  onDuplicate?: (task: Todo) => void;
 }
 
 /** A task or brief, opened. A brief shows its context and its tasks; a task shows the brief it belongs to and who's in charge. */
 export function TaskDrawer(p: Props) {
   useOnePanel(p.onClose);
-  const t = p.task;
-  const brief = isBrief(t);
-  const parent = t.briefId ? p.tasks.find((x) => x.id === t.briefId) : undefined;
-  const subs = brief ? p.tasks.filter((x) => x.briefId === t.id) : [];
+  const task = p.task;
+  const brief = isBrief(task);
+  const parent = task.briefId ? p.tasks.find((x) => x.id === task.briefId) : undefined;
+  const subs = brief ? p.tasks.filter((x) => x.briefId === task.id) : [];
   const person = (id?: string) => p.users.find((u) => u.id === id);
   const teamOf = (id?: string) => p.teams.find((x) => x.id === id);
   const [subTitle, setSubTitle] = useState('');
@@ -54,11 +57,11 @@ export function TaskDrawer(p: Props) {
   const [subDue, setSubDue] = useState('');
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const [comment, setComment] = useState('');
-  const clientCanSee = !!t.clientId && (!!t.visibleToClient || t.source === 'request');
+  const clientCanSee = !!task.clientId && (!!task.visibleToClient || task.source === 'request');
   const [toClient, setToClient] = useState(false);
   const [sendingBack, setSendingBack] = useState(false);
   const [backNote, setBackNote] = useState('');
-  const src = SOURCE[t.source];
+  const src = SOURCE[task.source];
 
   useEffect(() => {
     const el = titleRef.current;
@@ -66,7 +69,7 @@ export function TaskDrawer(p: Props) {
       el.style.height = 'auto';
       el.style.height = el.scrollHeight + 'px';
     }
-  }, [t.title, t.id]);
+  }, [task.title, task.id]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.pop') && p.onClose();
@@ -76,17 +79,17 @@ export function TaskDrawer(p: Props) {
 
   const addSub = () => {
     if (!subTitle.trim()) return;
-    p.onAddSubtask(t.id, { title: subTitle.trim(), userId: subWho, teamId: subTeam || undefined, due: subDue || undefined });
+    p.onAddSubtask(task.id, { title: subTitle.trim(), userId: subWho, teamId: subTeam || undefined, due: subDue || undefined });
     setSubTitle('');
     setSubDue('');
   };
 
   const doneN = subs.filter((s) => s.done).length;
   const [checkText, setCheckText] = useState('');
-  const checklist = t.checklist ?? [];
+  const checklist = task.checklist ?? [];
   const addCheck = () => {
     if (!checkText.trim()) return;
-    p.onPatch(t.id, { checklist: [...checklist, { id: Math.random().toString(36).slice(2), text: checkText.trim(), done: false }] });
+    p.onPatch(task.id, { checklist: [...checklist, { id: Math.random().toString(36).slice(2), text: checkText.trim(), done: false }] });
     setCheckText('');
   };
   const at9 = (day: string) => new Date(day + 'T09:00:00').toISOString();
@@ -95,117 +98,118 @@ export function TaskDrawer(p: Props) {
     d.setDate(d.getDate() - 1);
     return d.toISOString();
   };
+  const nine = fmtTime(new Date(2026, 0, 1, 9, 0));
   const remindChoices: [string, string][] = [
-    ['In 1 hour', new Date(Date.now() + 3_600_000).toISOString()],
-    ['Tomorrow 9:00', (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d.toISOString(); })()],
-    ...(t.due ? ([['Day before it’s due, 9:00', dayBefore(t.due)], ['On the due date, 9:00', at9(t.due)]] as [string, string][]) : []),
+    [t('In 1 hour'), new Date(Date.now() + 3_600_000).toISOString()],
+    [t('Tomorrow, {time}', { time: nine }), (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d.toISOString(); })()],
+    ...(task.due ? ([[t('The day before, {time}', { time: nine }), dayBefore(task.due)], [t('On the day, {time}', { time: nine }), at9(task.due)]] as [string, string][]) : []),
   ].filter(([, v]) => v > new Date().toISOString()) as [string, string][];
-  const remindLabel = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const remindLabel = (iso: string) => fmtDateTime(iso);
 
   const fieldsBlock = (
           <dl className="fields">
-            <dt>Status</dt>
+            <dt>{t('Status')}</dt>
             <dd>
               <Select<TaskStatus>
-                value={statusOf(t)}
-                onChange={(v) => p.onStatus(t.id, v)}
-                label="Status"
-                options={stagesForTask(t).map((s) => ({
+                value={statusOf(task)}
+                onChange={(v) => p.onStatus(task.id, v)}
+                label={t('Status')}
+                options={stagesForTask(task).map((s) => ({
                   value: s.id,
                   label: stageName(s),
-                  hint: s.kind === 'waiting' ? `The next step is the ${term.who}’s` : s.kind === 'review' ? 'The supervisor checks it' : undefined,
+                  hint: s.kind === 'waiting' ? t('The next step is the {who}’s', { who: term.who }) : s.kind === 'review' ? t('The supervisor checks it') : undefined,
                   icon: <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} />,
                 }))}
               />
             </dd>
             {brief ? (
               <>
-                <dt>In charge</dt>
+                <dt>{t('In charge')}</dt>
                 <dd>
-                  <Select value={t.userId} options={peopleOptions(p.users, p.me, false)} onChange={(v) => p.onPatch(t.id, { userId: v })} label="In charge" />
+                  <Select value={task.userId} options={peopleOptions(p.users, p.me, false)} onChange={(v) => p.onPatch(task.id, { userId: v })} label={t('In charge')} />
                 </dd>
               </>
             ) : (
               <>
-                <dt>Doing it</dt>
+                <dt>{t('Doing it')}</dt>
                 <dd>
-                  <PeoplePicker value={doers(t)} users={p.users} me={p.me} label="Doing it" emptyText="Waiting in the team queue" onChange={(ids) => p.onPatch(t.id, { assignees: ids })} />
+                  <PeoplePicker value={doers(task)} users={p.users} me={p.me} label={t('Doing it')} emptyText={t('Waiting in the team queue')} onChange={(ids) => p.onPatch(task.id, { assignees: ids })} />
                 </dd>
-                <dt>Supervisor</dt>
+                <dt>{t('Supervisor')}</dt>
                 <dd>
                   <Select
-                    value={t.supervisorId ?? ''}
-                    options={[{ value: '', label: 'Nobody' }, ...peopleOptions(p.users, p.me, false)]}
-                    onChange={(v) => p.onPatch(t.id, { supervisorId: v || undefined })}
-                    label="Supervisor"
+                    value={task.supervisorId ?? ''}
+                    options={[{ value: '', label: t('Nobody') }, ...peopleOptions(p.users, p.me, false)]}
+                    onChange={(v) => p.onPatch(task.id, { supervisorId: v || undefined })}
+                    label={t('Supervisor')}
                   />
                 </dd>
-                <dt>Followers</dt>
+                <dt>{t('Followers')}</dt>
                 <dd>
-                  <PeoplePicker value={t.followers ?? []} users={p.users} me={p.me} label="Followers" emptyText="Add people to keep informed" onChange={(ids) => p.onPatch(t.id, { followers: ids })} />
+                  <PeoplePicker value={task.followers ?? []} users={p.users} me={p.me} label={t('Followers')} emptyText={t('Add people to keep informed')} onChange={(ids) => p.onPatch(task.id, { followers: ids })} />
                 </dd>
               </>
             )}
             {!brief && (
               <>
-                <dt>Team</dt>
+                <dt>{t('Team')}</dt>
                 <dd>
-                  <Select value={t.teamId ?? ''} options={teamOptions(p.teams)} onChange={(v) => p.onPatch(t.id, { teamId: v || undefined })} label="Team" />
+                  <Select value={task.teamId ?? ''} options={teamOptions(p.teams)} onChange={(v) => p.onPatch(task.id, { teamId: v || undefined })} label={t('Team')} />
                 </dd>
               </>
             )}
             <dt>{term.One}</dt>
             <dd>
-              <ProjectPicker value={t.clientId ?? ''} projects={p.clients} none={`No ${term.one}`} onChange={(v) => p.onPatch(t.id, { clientId: v || undefined })} />
+              <ProjectPicker value={task.clientId ?? ''} projects={p.clients} none={t('No {project}', { project: term.one })} onChange={(v) => p.onPatch(task.id, { clientId: v || undefined })} />
             </dd>
-            <dt>Due</dt>
+            <dt>{t('Due')}</dt>
             <dd>
-              <DatePicker value={t.due ?? ''} onChange={(v) => p.onPatch(t.id, { due: v || undefined })} label="Due date" placeholder="No date" />
-              {t.due && !t.done && dueLabel(t.due).cls && <span className={`due ${dueLabel(t.due).cls}`}>{dueLabel(t.due).text}</span>}
-              {t.due && !t.done && dueLabel(t.due).cls !== 'overdue' && holidayOn(t.due) && <span className="hol-hint">{holidayOn(t.due)} is a public holiday</span>}
+              <DatePicker value={task.due ?? ''} onChange={(v) => p.onPatch(task.id, { due: v || undefined })} label={t('Due date')} placeholder={t('No date')} />
+              {task.due && !task.done && dueLabel(task.due).cls && <span className={`due ${dueLabel(task.due).cls}`}>{dueLabel(task.due).text}</span>}
+              {task.due && !task.done && dueLabel(task.due).cls !== 'overdue' && holidayOn(task.due) && <span className="hol-hint">{t('{holiday} is a public holiday', { holiday: holidayOn(task.due) ?? '' })}</span>}
             </dd>
             {!brief && (
               <>
-                <dt>Repeats</dt>
+                <dt>{t('Repeats')}</dt>
                 <dd>
                   <Select<Repeat | ''>
-                    value={t.repeat ?? ''}
-                    onChange={(v) => p.onPatch(t.id, { repeat: v || undefined, ...(v && !t.due ? { due: localDay() } : {}) })}
-                    label="Repeats"
+                    value={task.repeat ?? ''}
+                    onChange={(v) => p.onPatch(task.id, { repeat: v || undefined, ...(v && !task.due ? { due: localDay() } : {}) })}
+                    label={t('Repeats')}
                     options={[
-                      { value: '', label: 'Never' },
-                      { value: 'daily', label: 'Every day', icon: <RepeatIcon size={14} /> },
-                      { value: 'weekdays', label: 'Every weekday', icon: <RepeatIcon size={14} /> },
-                      { value: 'weekly', label: 'Every week', icon: <RepeatIcon size={14} /> },
-                      { value: 'monthly', label: 'Every month', icon: <RepeatIcon size={14} /> },
+                      { value: '', label: t('Never') },
+                      { value: 'daily', label: t('Every day'), icon: <RepeatIcon size={14} /> },
+                      { value: 'weekdays', label: t('Every weekday'), icon: <RepeatIcon size={14} /> },
+                      { value: 'weekly', label: t('Every week'), icon: <RepeatIcon size={14} /> },
+                      { value: 'monthly', label: t('Every month'), icon: <RepeatIcon size={14} /> },
                     ]}
                   />
-                  {t.repeat && <span className="muted small">When it’s done, the next one appears</span>}
+                  {task.repeat && <span className="muted small">{t('When it’s done, the next one appears')}</span>}
                 </dd>
-                <dt>Reminder</dt>
+                <dt>{t('Reminder')}</dt>
                 <dd>
                   <Select
-                    value={t.remindAt && !t.reminded ? t.remindAt : ''}
-                    onChange={(v) => p.onPatch(t.id, { remindAt: v || undefined, reminded: false })}
-                    label="Reminder"
+                    value={task.remindAt && !task.reminded ? task.remindAt : ''}
+                    onChange={(v) => p.onPatch(task.id, { remindAt: v || undefined, reminded: false })}
+                    label={t('Reminder')}
                     options={[
-                      { value: '', label: 'No reminder' },
-                      ...(t.remindAt && !t.reminded && !remindChoices.some(([, v]) => v === t.remindAt) ? [{ value: t.remindAt, label: remindLabel(t.remindAt), icon: <Bell size={14} /> }] : []),
+                      { value: '', label: t('No reminder') },
+                      ...(task.remindAt && !task.reminded && !remindChoices.some(([, v]) => v === task.remindAt) ? [{ value: task.remindAt, label: remindLabel(task.remindAt), icon: <Bell size={14} /> }] : []),
                       ...remindChoices.map(([l, v]) => ({ value: v, label: l, hint: remindLabel(v), icon: <Bell size={14} /> })),
                     ]}
                   />
                 </dd>
               </>
             )}
-            <dt>Priority</dt>
+            <dt>{t('Priority')}</dt>
             <dd>
               <Select<'normal' | 'high'>
-                value={t.priority}
-                onChange={(v) => p.onPatch(t.id, { priority: v })}
-                label="Priority"
+                value={task.priority}
+                onChange={(v) => p.onPatch(task.id, { priority: v })}
+                label={t('Priority')}
                 options={[
-                  { value: 'normal', label: 'Normal' },
-                  { value: 'high', label: 'High', icon: <span className="st-dot st-high" /> },
+                  { value: 'normal', label: t('Normal') },
+                  { value: 'high', label: t('High'), icon: <span className="st-dot st-high" /> },
                 ]}
               />
             </dd>
@@ -216,16 +220,16 @@ export function TaskDrawer(p: Props) {
             <span>
               <src.icon size={12} /> {src.label}
             </span>
-            {t.createdBy && <span>Created by {t.createdBy === p.me ? 'you' : (person(t.createdBy)?.name ?? 'someone')} {relative(t.createdAt)}</span>}
-            {t.done && t.doneAt && <span>Done by {t.doneBy === p.me ? 'you' : (person(t.doneBy)?.name ?? 'someone')} {relative(t.doneAt)}</span>}
-            {t.threadId && (
-              <button className="link-btn" onClick={() => p.onOpenThread(t.threadId!)}>
-                Open the email
+            {task.createdBy && <span>{t('Created by {name} {when}', { name: task.createdBy === p.me ? t('you') : (person(task.createdBy)?.name ?? t('someone')), when: relative(task.createdAt) })}</span>}
+            {task.done && task.doneAt && <span>{t('Done by {name} {when}', { name: task.doneBy === p.me ? t('you') : (person(task.doneBy)?.name ?? t('someone')), when: relative(task.doneAt) })}</span>}
+            {task.threadId && (
+              <button className="link-btn" onClick={() => p.onOpenThread(task.threadId!)}>
+                {t('Open the email')}
               </button>
             )}
-            {t.clientId && p.onOpenChannel && (
-              <button className="link-btn" onClick={() => p.onOpenChannel!(t.clientId!)}>
-                <Hash size={12} /> {term.One} channel
+            {task.clientId && p.onOpenChannel && (
+              <button className="link-btn" onClick={() => p.onOpenChannel!(task.clientId!)}>
+                <Hash size={12} /> {t('{Project} channel', { project: term.one })}
               </button>
             )}
           </div>
@@ -236,79 +240,86 @@ export function TaskDrawer(p: Props) {
           {parent && (
             <button className="parent-brief" onClick={() => p.onOpen(parent.id)}>
               <span className="pb-head">
-                <FileText size={13} /> Part of <strong>{parent.title}</strong>
+                <FileText size={13} /> {tj('Part of {title}', { title: <strong>{parent.title}</strong> })}
               </span>
               <span className="pb-owner">
                 {person(parent.userId) && <Avatar person={person(parent.userId)!} size={18} />}
-                {parent.userId === p.me ? 'You are' : `${person(parent.userId)?.name ?? 'Someone'} is`} in charge
+                {parent.userId === p.me ? t('You’re in charge') : t('{name} in charge', { name: person(parent.userId)?.name ?? t('Someone') })}
               </span>
               {parent.context && <span className="pb-context">{parent.context.slice(0, 260)}{parent.context.length > 260 ? '…' : ''}</span>}
-              <span className="pb-open">Open the brief</span>
+              <span className="pb-open">{t('Open the brief')}</span>
             </button>
           )}
 
-          {t.clientId && (
-            <div className={`client-vis ${t.visibleToClient ? 'on' : ''}`}>
-              <button className="cv-toggle" onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })}>
-                {t.visibleToClient ? <Eye size={15} /> : <EyeOff size={15} />}
+          {task.clientId && (
+            <div className={`client-vis ${task.visibleToClient ? 'on' : ''}`}>
+              <button className="cv-toggle" onClick={() => p.onPatch(task.id, { visibleToClient: !task.visibleToClient })}>
+                {task.visibleToClient ? <Eye size={15} /> : <EyeOff size={15} />}
                 <span>
-                  <strong>{t.visibleToClient ? `Visible to ${term.whos}` : 'Internal only'}</strong>
-                  <small>{t.visibleToClient ? `${p.clients.find((c) => c.id === t.clientId)?.name} can see this in their shared space` : 'Only your team can see this'}</small>
+                  <strong>{task.visibleToClient ? t('Visible to {whos}', { whos: term.whos }) : t('Internal only')}</strong>
+                  <small>{task.visibleToClient ? t('{name} can see this in their shared space', { name: p.clients.find((c) => c.id === task.clientId)?.name ?? term.One }) : t('Only your team can see this')}</small>
                 </span>
               </button>
               {!brief &&
-                (t.approval ? (
-                  <span className={`ap-tag ${t.approval.status}`}>
-                    {t.approval.status === 'waiting' ? (
+                (task.approval ? (
+                  <span className={`ap-tag ${task.approval.status}`}>
+                    {task.approval.status === 'waiting' ? (
                       <>
-                        <Clock size={12} /> Waiting for {term.who} approval
+                        <Clock size={12} /> {t('Waiting for {who} approval', { who: term.who })}
                       </>
-                    ) : t.approval.status === 'approved' ? (
+                    ) : task.approval.status === 'approved' ? (
                       <>
-                        <CheckCircle2 size={12} /> Approved {t.approval.at ? relative(t.approval.at) : ''}
+                        <CheckCircle2 size={12} /> {task.approval.at ? t('Approved {when}', { when: relative(task.approval.at) }) : t('Approved')}
                       </>
                     ) : (
                       <>
-                        <RotateCcw size={12} /> Changes asked: “{t.approval.note}”
+                        <RotateCcw size={12} /> {t('Changes asked: “{note}”', { note: task.approval.note ?? '' })}
                       </>
                     )}
                   </span>
                 ) : (
-                  <button className="ghost-btn sm" onClick={() => p.onAskApproval(t.id)}>
-                    <CheckCircle2 size={13} /> Ask {term.who} to approve
+                  <button className="ghost-btn sm" onClick={() => p.onAskApproval(task.id)}>
+                    <CheckCircle2 size={13} /> {t('Ask {who} to approve', { who: term.who })}
                   </button>
                 ))}
-              {t.approval && t.approval.status !== 'waiting' && (
-                <button className="link-btn small" onClick={() => p.onAskApproval(t.id)}>
-                  Ask again
+              {task.approval && task.approval.status !== 'waiting' && (
+                <button className="link-btn small" onClick={() => p.onAskApproval(task.id)}>
+                  {t('Ask again')}
                 </button>
               )}
             </div>
           )}
 
           <SmoothHeight>
-          {kindOf(t) === 'review' && (
+          {kindOf(task) === 'review' && (
             <div className="review-banner">
               <span>
-                <strong>{stageBadge(stageOf(t))}</strong>
-                <small>{t.supervisorId === p.me ? 'You supervise this. Approve it, or send it back with a note.' : `${p.users.find((u) => u.id === t.supervisorId)?.name.split(' ')[0] ?? 'The supervisor'} checks it before it counts as done.`}</small>
+                <strong>{stageBadge(stageOf(task))}</strong>
+                <small>
+                  {task.supervisorId === p.me
+                    ? t('You supervise this. Approve it, or send it back with a note.')
+                    : (() => {
+                        const who = p.users.find((u) => u.id === task.supervisorId)?.name.split(' ')[0];
+                        return who ? t('{name} checks it before it counts as done.', { name: who }) : t('The supervisor checks it before it counts as done.');
+                      })()}
+                </small>
               </span>
-              {t.supervisorId === p.me && (
+              {task.supervisorId === p.me && (
                 <span className="rb-actions">
                   {sendingBack ? (
                     <>
-                      <input autoFocus value={backNote} onChange={(e) => setBackNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && backNote.trim() && (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))} placeholder="What needs to change?" />
-                      <button className="primary-btn sm" disabled={!backNote.trim()} onClick={() => (p.onSendBack(t.id, backNote.trim()), setSendingBack(false), setBackNote(''))}>
-                        Send back
+                      <input autoFocus value={backNote} onChange={(e) => setBackNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && backNote.trim() && (p.onSendBack(task.id, backNote.trim()), setSendingBack(false), setBackNote(''))} placeholder={t('What needs to change?')} />
+                      <button className="primary-btn sm" disabled={!backNote.trim()} onClick={() => (p.onSendBack(task.id, backNote.trim()), setSendingBack(false), setBackNote(''))}>
+                        {t('Send back')}
                       </button>
                     </>
                   ) : (
                     <>
                       <button className="ghost-btn sm" onClick={() => setSendingBack(true)}>
-                        Send back
+                        {t('Send back')}
                       </button>
-                      <button className="primary-btn sm" onClick={() => p.onStatus(t.id, stageIdFor(t, 'done'))}>
-                        Approve
+                      <button className="primary-btn sm" onClick={() => p.onStatus(task.id, stageIdFor(task, 'done'))}>
+                        {t('Approve')}
                       </button>
                     </>
                   )}
@@ -321,10 +332,10 @@ export function TaskDrawer(p: Props) {
   );
   const historyBlock = (
           <ol className="history">
-            {(t.history ?? []).map((h) => {
+            {(task.history ?? []).map((h) => {
               const who = p.users.find((u) => u.id === h.by);
               const fromClient = h.by.includes('@');
-              const name = fromClient ? (p.clientNames?.[h.by.toLowerCase()] ?? h.by) : who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : (h.byName ?? 'Someone');
+              const name = fromClient ? (p.clientNames?.[h.by.toLowerCase()] ?? h.by) : who ? (who.id === p.me ? t('You') : who.name.split(' ')[0]) : (h.byName ?? t('Someone'));
               return (
                 <li key={h.id} className={`h-${h.kind} ${fromClient ? 'h-client' : ''}`}>
                   {who ? <Avatar person={who} size={22} /> : fromClient ? <span className="avatar-empty sm client">{name.charAt(0)}</span> : h.byName ? <Avatar person={{ name: h.byName, email: h.byName }} size={22} /> : <span className="avatar-empty sm">?</span>}
@@ -334,13 +345,13 @@ export function TaskDrawer(p: Props) {
                         <b>
                           {name}
                           {fromClient && <em className="h-tag client">{term.One}</em>}
-                          {!fromClient && h.toClient && <em className="h-tag">To {term.who}</em>}
+                          {!fromClient && h.toClient && <em className="h-tag">{t('To {who}', { who: term.who })}</em>}
                         </b>
                         <span className="h-comment">{h.text}</span>
                       </>
                     ) : (
                       <span>
-                        <b>{name}</b> {h.text}
+                        <b>{name}</b> {historyText(h)}
                       </span>
                     )}
                     <time>{relative(h.at)}</time>
@@ -355,8 +366,8 @@ export function TaskDrawer(p: Props) {
   if (!brief)
     return (
       <TaskDetail
-        t={t}
-        wsId={t.workspaceId ?? ''}
+        t={task}
+        wsId={task.workspaceId ?? ''}
         users={p.users}
         me={p.me}
         clients={p.clients}
@@ -379,30 +390,30 @@ export function TaskDrawer(p: Props) {
   const Shell = brief ? 'div' : 'aside';
   return (
     <div className={brief ? 'modal-scrim' : 'drawer-scrim'} onMouseDown={(e) => e.target === e.currentTarget && p.onClose()}>
-      <Shell className={brief ? 'modal big-modal brief-modal' : 'drawer'} role="dialog" aria-label={brief ? 'Brief' : 'Task'}>
+      <Shell className={brief ? 'modal big-modal brief-modal' : 'drawer'} role="dialog" aria-label={brief ? t('Brief') : t('Task')}>
         <header className="drawer-head">
           {brief ? (
             <span className="brief-badge">
-              <FileText size={12} /> Brief
+              <FileText size={12} /> {t('Brief')}
             </span>
           ) : (
-            <span className="drawer-kind">Task</span>
+            <span className="drawer-kind">{t('Task')}</span>
           )}
           <span className="spacer" />
           {brief && p.onSaveTemplate && (
-            <button className="icon-btn sm" title="Save as a template" onClick={() => p.onSaveTemplate!(t.id)}>
+            <button className="icon-btn sm" title={t('Save as a template')} aria-label={t('Save as a template')} onClick={() => p.onSaveTemplate!(task.id)}>
               <LayoutTemplate size={16} />
             </button>
           )}
-          {!brief && !t.done && (
-            <button className="icon-btn sm" title="Add to calendar" onClick={() => p.onToCalendar(t)}>
+          {!brief && !task.done && (
+            <button className="icon-btn sm" title={t('Add to calendar')} aria-label={t('Add to calendar')} onClick={() => p.onToCalendar(task)}>
               <CalendarPlus size={16} />
             </button>
           )}
-          <button className="icon-btn sm" title="Delete" onClick={() => (p.onDelete(t.id), p.onClose())}>
+          <button className="icon-btn sm" title={t('Delete')} aria-label={t('Delete')} onClick={() => (p.onDelete(task.id), p.onClose())}>
             <Trash2 size={16} />
           </button>
-          <button className="icon-btn sm" onClick={p.onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close')}>
             <X size={18} />
           </button>
         </header>
@@ -411,11 +422,11 @@ export function TaskDrawer(p: Props) {
           <div className={brief ? 'bf-main' : 'bf-flat'}>
           <div className="drawer-title-row">
             {!brief && (
-              <button className={`todo-check big ${t.done ? 'on' : ''}`} onClick={() => p.onStatus(t.id, stageIdFor(t, t.done ? 'open' : 'done'))} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
-                {t.done && <span>✓</span>}
+              <button className={`todo-check big ${task.done ? 'on' : ''}`} onClick={() => p.onStatus(task.id, stageIdFor(task, task.done ? 'open' : 'done'))} aria-label={task.done ? t('Mark not done') : t('Mark done')}>
+                {task.done && <span>✓</span>}
               </button>
             )}
-            <textarea ref={titleRef} className="drawer-title" rows={1} value={t.title} onChange={(e) => p.onPatch(t.id, { title: e.target.value })} aria-label="Title" />
+            <textarea ref={titleRef} className="drawer-title" rows={1} value={task.title} onChange={(e) => p.onPatch(task.id, { title: e.target.value })} aria-label={t('Title')} />
           </div>
 
           {aboveBlock}
@@ -424,15 +435,15 @@ export function TaskDrawer(p: Props) {
 
           {brief ? (
             <>
-              <label className="drawer-label">Context</label>
+              <label className="drawer-label">{t('Context')}</label>
               <textarea
                 className="drawer-notes tall"
-                value={t.context ?? ''}
-                onChange={(e) => p.onPatch(t.id, { context: e.target.value })}
-                placeholder="Goal, background, what to deliver, deadlines, links to files…"
+                value={task.context ?? ''}
+                onChange={(e) => p.onPatch(task.id, { context: e.target.value })}
+                placeholder={t('Goal, background, what to deliver, deadlines, links to files…')}
               />
               <div className="drawer-label label-row">
-                Tasks in this brief
+                {t('Tasks in this brief')}
                 <span className="bc-progress">
                   <span className="bar">
                     <span style={{ width: `${subs.length ? (doneN / subs.length) * 100 : 0}%` }} />
@@ -446,7 +457,7 @@ export function TaskDrawer(p: Props) {
                   const tm = teamOf(s.teamId);
                   return (
                     <div key={s.id} className={`sub ${s.done ? 'done' : ''}`}>
-                      <button className="todo-check" onClick={() => p.onStatus(s.id, stageIdFor(s, s.done ? 'open' : 'done'))} aria-label="Toggle done">
+                      <button className="todo-check" onClick={() => p.onStatus(s.id, stageIdFor(s, s.done ? 'open' : 'done'))} aria-label={s.done ? t('Mark not done') : t('Mark done')}>
                         {s.done && <span>✓</span>}
                       </button>
                       <button className="sub-title" onClick={() => p.onOpen(s.id)}>
@@ -464,22 +475,22 @@ export function TaskDrawer(p: Props) {
                 })}
                 <div className="sub sub-add">
                   <Plus size={15} />
-                  <input value={subTitle} onChange={(e) => setSubTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addSub()} placeholder="Add a task to this brief…" />
-                  <Select value={subWho} options={peopleOptions(p.users, p.me)} onChange={setSubWho} label="Assign to" compact renderValue={() => (person(subWho) ? <Avatar person={person(subWho)!} size={22} /> : <span className="avatar-empty sm">?</span>)} />
-                  <Select value={subTeam} options={teamOptions(p.teams)} onChange={setSubTeam} label="Team" className="sel-flat" />
-                  <DatePicker value={subDue} onChange={setSubDue} compact label="Due" className="sel-flat" />
+                  <input value={subTitle} onChange={(e) => setSubTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addSub()} placeholder={t('Add a task to this brief…')} />
+                  <Select value={subWho} options={peopleOptions(p.users, p.me)} onChange={setSubWho} label={t('Assign to')} compact renderValue={() => (person(subWho) ? <Avatar person={person(subWho)!} size={22} /> : <span className="avatar-empty sm">?</span>)} />
+                  <Select value={subTeam} options={teamOptions(p.teams)} onChange={setSubTeam} label={t('Team')} className="sel-flat" />
+                  <DatePicker value={subDue} onChange={setSubDue} compact label={t('Due')} className="sel-flat" />
                   <button className="primary-btn sm" onClick={addSub} disabled={!subTitle.trim()}>
-                    Add
+                    {t('Add')}
                   </button>
                 </div>
               </div>
             </>
           ) : (
             <>
-              <label className="drawer-label">Notes</label>
-              <textarea className="drawer-notes" value={t.notes ?? ''} onChange={(e) => p.onPatch(t.id, { notes: e.target.value })} placeholder="Details, links, what done looks like…" />
+              <label className="drawer-label">{t('Notes')}</label>
+              <textarea className="drawer-notes" value={task.notes ?? ''} onChange={(e) => p.onPatch(task.id, { notes: e.target.value })} placeholder={t('Details, links, what done looks like…')} />
               <div className="drawer-label label-row">
-                Checklist
+                {t('Checklist')}
                 {checklist.length > 0 && (
                   <span className="bc-progress">
                     {checklist.filter((c) => c.done).length}/{checklist.length}
@@ -490,34 +501,34 @@ export function TaskDrawer(p: Props) {
                 {checklist.map((c) => (
                   <li key={c.id} className={c.done ? 'done' : ''}>
                     <label>
-                      <input type="checkbox" checked={c.done} onChange={() => p.onPatch(t.id, { checklist: checklist.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)) })} />
+                      <input type="checkbox" checked={c.done} onChange={() => p.onPatch(task.id, { checklist: checklist.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)) })} />
                       <span>{c.text}</span>
                     </label>
-                    <button className="icon-btn sm" aria-label="Remove" onClick={() => p.onPatch(t.id, { checklist: checklist.filter((x) => x.id !== c.id) })}>
+                    <button className="icon-btn sm" aria-label={t('Remove {step}', { step: c.text })} onClick={() => p.onPatch(task.id, { checklist: checklist.filter((x) => x.id !== c.id) })}>
                       <X size={13} />
                     </button>
                   </li>
                 ))}
                 <li className="check-add">
                   <Plus size={14} />
-                  <input value={checkText} onChange={(e) => setCheckText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCheck()} placeholder="Add a step…" />
+                  <input value={checkText} onChange={(e) => setCheckText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCheck()} placeholder={t('Add a step…')} />
                 </li>
               </ul>
             </>
           )}
 
-          <label className="drawer-label">History</label>
+          <label className="drawer-label">{t('History')}</label>
           {historyBlock}
           <div className={`comment-box ${toClient ? 'to-client' : ''}`}>
-            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(t.id, comment.trim(), toClient), setComment(''))} placeholder={toClient ? `Reply to the ${term.who}… they will see this` : 'Internal comment… @mention someone'} />
+            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(task.id, comment.trim(), toClient), setComment(''))} placeholder={toClient ? t('Reply to the {who}… they will see this', { who: term.who }) : t('Internal comment… @mention someone')} />
             <div className="cb-foot">
               {clientCanSee && (
                 <label className="cb-toggle">
-                  <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> {term.Who} can see this
+                  <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> {t('{Who} can see this', { who: term.who })}
                 </label>
               )}
-              <button className="primary-btn sm" disabled={!comment.trim()} onClick={() => (p.onComment(t.id, comment.trim(), toClient), setComment(''))}>
-                {toClient ? `Send to ${term.who}` : 'Comment'}
+              <button className="primary-btn sm" disabled={!comment.trim()} onClick={() => (p.onComment(task.id, comment.trim(), toClient), setComment(''))}>
+                {toClient ? t('Send to {who}', { who: term.who }) : t('Comment')}
               </button>
             </div>
           </div>

@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import type { StageColor, StageKind, TaskStage, Team, Todo, Workspace } from '../../types';
-import { DEFAULT_STAGES, KIND_INFO, STAGE_COLORS, STAGE_KINDS, TONE_NAME, builtInName, cleanStages, fixedTone, projectStages, stageName, stageOf, teamStages, toneOf } from '../../stages';
+import { DEFAULT_STAGES, KIND_INFO, STAGE_COLORS, STAGE_KINDS, TONE_NAME, builtInName, cleanStages, fixedTone, projectStages, stageName, stageOf, stagePhrase, teamStages, toneOf } from '../../stages';
 import { Layer } from '../ui/Layer';
 import { term } from '../../terms';
 import { uid } from '../../utils';
 import { Popover } from '../ui/Popover';
 import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
-import { t, tn } from '../../i18n';
+import { msg, phrase, t, tn, type Msg } from '../../i18n';
 import { fmtList } from '../../i18n/format';
 import { useLang } from '../../i18n/useLang';
 
@@ -53,7 +53,7 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
                 title: t('Use the usual stages'),
                 text: t('The board goes back to {stages}. Tasks in a stage that goes away move to the usual stage of the same kind.', { stages: fmtList(DEFAULT_STAGES.map((s) => stageName(s))) }),
                 action: t('Use the usual stages'),
-                why: 'when the usual stages came back', // part of the task's history line (saved, English: see movesToList)
+                why: phrase('when the usual stages came back'), // part of the task's history line (see movesToList)
                 onDone: () => onWorkspace({ taskStages: undefined }),
               }
             : undefined
@@ -75,14 +75,14 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
 }
 
 /** Where tasks go when their stages give way to others: the stage of the same name, else the first of the same kind. */
-export function movesToList(tasks: Todo[], from: TaskStage[], to: TaskStage[], me: string, why: string): Move[] {
+export function movesToList(tasks: Todo[], from: TaskStage[], to: TaskStage[], me: string, why: Msg): Move[] {
   const at = new Date().toISOString();
   return tasks.flatMap((t) => {
     const s = stageOf(t, from);
     if (to.some((x) => x.id === s.id && x.kind === s.kind)) return [];
     const target = to.find((x) => stageName(x).toLowerCase() === stageName(s).toLowerCase() && (x.kind === 'done') === (s.kind === 'done')) ?? to.find((x) => x.kind === s.kind) ?? to.find((x) => x.kind === (s.kind === 'done' ? 'done' : 'open')) ?? to[0];
     const done = target.kind === 'done';
-    return [{ id: t.id, patch: { status: target.id, done, doneAt: done ? (t.done ? t.doneAt : at) : undefined, doneBy: done ? (t.done ? t.doneBy : me) : undefined, history: [...(t.history ?? []), { id: uid(), at, by: me, kind: 'status' as const, text: `moved it to ${stageName(target)} ${why}` }] } }];
+    return [{ id: t.id, patch: { status: target.id, done, doneAt: done ? (t.done ? t.doneAt : at) : undefined, doneBy: done ? (t.done ? t.doneBy : me) : undefined, history: [...(t.history ?? []), { id: uid(), at, by: me, kind: 'status' as const, ...msg('moved it to {stage} {why}', { stage: stagePhrase(target), why }) }] } }];
   });
 }
 
@@ -100,7 +100,7 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
   wordsKey: string; // the company's word for the work: built-in names follow it
   onMoveTasks: (moves: Move[]) => void;
   /** "Back to …": the stages it goes back to, and what the confirmation says. */
-  reset?: { to: TaskStage[]; label: string; title: string; text: string; action: string; why: string; onDone: () => void };
+  reset?: { to: TaskStage[]; label: string; title: string; text: string; action: string; why: Msg; onDone: () => void };
 }) {
   const lang = useLang(); // the name fields start again in a new language (built-in stages show their usual name)
   const [leaving, setLeaving] = useState<string | null>(null);
@@ -149,18 +149,18 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
     setRemoving(null);
     setLeaving(s.id);
     setTimeout(() => {
-      if (to) onMoveTasks(movesTo(inStage(s.id), to, `moved it to ${stageName(to)} when the stage “${stageName(s)}” was removed`));
+      if (to) onMoveTasks(movesTo(inStage(s.id), to, msg('moved it to {stage} when the stage “{from}” was removed', { stage: stagePhrase(to), from: stagePhrase(s) })));
       save(stages.filter((x) => x.id !== s.id));
       setLeaving(null);
     }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
   };
   /** Moving tasks to another stage keeps "done" in step with the stage's kind. */
-  const movesTo = (list: Todo[], to: TaskStage, text: string): Move[] => {
+  const movesTo = (list: Todo[], to: TaskStage, line: { text: string; tr: Msg }): Move[] => {
     const at = new Date().toISOString();
     const done = to.kind === 'done';
     return list.map((t) => ({
       id: t.id,
-      patch: { status: to.id, done, doneAt: done ? (t.done ? t.doneAt : at) : undefined, doneBy: done ? (t.done ? t.doneBy : me) : undefined, history: [...(t.history ?? []), { id: uid(), at, by: me, kind: 'status', text }] },
+      patch: { status: to.id, done, doneAt: done ? (t.done ? t.doneAt : at) : undefined, doneBy: done ? (t.done ? t.doneBy : me) : undefined, history: [...(t.history ?? []), { id: uid(), at, by: me, kind: 'status', ...line }] },
     }));
   };
   const doReset = () => {
@@ -455,7 +455,7 @@ export function OwnStages({ what, name, own, inherited, inheritedFrom, canManage
 }) {
   const on = !!own?.length;
   const list = on ? cleanStages(own) : inherited;
-  const whose = inheritedFrom.endsWith('s') ? `${inheritedFrom}’` : `${inheritedFrom}’s`; // "Pixel & Profits’ stages" (the history line, English)
+  const whose = phrase(inheritedFrom.endsWith('s') ? '{from}’ stages' : '{from}’s stages', { from: inheritedFrom }); // "Pixel & Profits’ stages" (the history line)
   const theirs = inheritedFrom.endsWith('s') ? t('{from}’ stages', { from: inheritedFrom }) : t('{from}’s stages', { from: inheritedFrom });
   const followed = fmtList(inherited.map((s) => stageName(s)));
   return (
@@ -473,7 +473,7 @@ export function OwnStages({ what, name, own, inherited, inheritedFrom, canManage
           disabled={!canManage}
           onClick={() => {
             if (!on) return onStages(inherited.map((s) => ({ ...s }))); // a copy to start from: same ids, so no task moves
-            const moves = movesToList(tasks, list, inherited, me, `when ${name} went back to ${whose} stages`);
+            const moves = movesToList(tasks, list, inherited, me, phrase('when {name} went back to {stages}', { name, stages: whose }));
             if (moves.length) onMoveTasks(moves);
             onStages(undefined);
           }}

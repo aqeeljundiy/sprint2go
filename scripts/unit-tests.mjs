@@ -1553,6 +1553,62 @@ await test('Quick Add: repeats, reminders, and words that only look like tokens'
   assert.equal(p('Plan next friday', next.tokens[0].keys).due, undefined, '"friday" inside "next friday" stays words too');
   assert.equal(p('Plan next friday, then call', next.tokens[0].keys).due, undefined, 'still off after typing more');
 });
+await test('Quick Add: reads Indonesian too (besok, lusa, hari ini, minggu depan, Senin to Minggu, jam 3 sore, setiap Senin)', () => {
+  const p = (t) => qa.parseQuickAdd(t, qctx);
+  const full = p('Kirim invoice besok jam 3 sore #kopi +dewi p1');
+  assert.equal(full.title, 'Kirim invoice');
+  assert.equal(full.due, '2026-10-10');
+  assert.equal(full.time, '15:00', 'jam 3 sore is 15:00');
+  assert.equal(full.clientId, 'c-kopi');
+  assert.deepEqual(full.assignees, ['u-dewi']);
+  assert.equal(full.tokens[0].text, 'besok jam 3 sore', 'the day and its time are one highlight');
+  assert.equal(p('Rapat lusa').due, '2026-10-11', 'lusa is the day after tomorrow');
+  assert.equal(p('Laporan hari ini').due, TODAY);
+  assert.equal(p('Laporan hari ini').title, 'Laporan');
+  assert.equal(p('Review minggu depan').due, '2026-10-12', 'minggu depan is next week (its Monday)');
+  assert.equal(p('Review pekan depan').due, '2026-10-12');
+  assert.equal(p('Telepon Dimas Jumat depan').due, '2026-10-16', 'Jumat depan is the Friday of next week');
+  assert.equal(p('Kirim Senin').due, '2026-10-12');
+  assert.equal(p('Telepon hari Minggu').due, '2026-10-11', 'hari Minggu is Sunday');
+  assert.equal(p("Rapat Jum'at").due, TODAY, 'Jum’at with an apostrophe, today being a Friday');
+  assert.equal(p('Kirim laporan minggu ini').title, 'Kirim laporan minggu ini', 'minggu ini is this week, not Sunday: left as words');
+  assert.equal(p('Cek iklan 3 hari lagi').due, '2026-10-12');
+  assert.equal(p('Cek iklan dalam seminggu').due, '2026-10-16');
+  assert.equal(p('Kirim tgl 13 Okt').due, '2026-10-13');
+  assert.equal(p('Kirim tgl 13 Okt').title, 'Kirim');
+  assert.equal(p('Telepon 1 Mei').due, '2027-05-01');
+  assert.equal(p('Rapat pukul 15.30').time, '15:30');
+  assert.equal(p('Rapat jam 9 pagi').time, '09:00');
+  assert.equal(p('Rapat jam 9 pagi').due, '2026-10-10', '09:00 has gone today (it is 10:00): tomorrow');
+  assert.equal(p('Makan jam 7 malam').time, '19:00');
+  assert.equal(p('Makan jam 1 siang').time, '13:00');
+  assert.equal(p('Rapat jam 3').time, '15:00', 'without a part of the day, working hours');
+  const mon = p('Bayar sewa setiap Senin');
+  assert.equal(mon.repeat, 'weekly');
+  assert.equal(mon.due, '2026-10-12', 'the first one on Monday');
+  assert.equal(mon.title, 'Bayar sewa');
+  assert.equal(p('Standup tiap hari kerja').repeat, 'weekdays');
+  assert.equal(p('Cek kas setiap hari').repeat, 'daily');
+  assert.equal(p('Laporan bulanan').repeat, 'monthly');
+  assert.equal(p('Bayar setiap hari Minggu').due, '2026-10-11');
+  assert.equal(p('Rapat tim setiap minggu').repeat, 'weekly', 'setiap minggu is every week');
+  assert.equal(new Date(p('Cek iklan !2jam').remindAt).getHours(), 12);
+  assert.equal(new Date(p('Cek iklan !1hari').remindAt).getDate(), 10, 'hari is a day, not an hour');
+});
+await test('Quick Add: its chips speak the person’s language', async () => {
+  const i18n = await import('../src/i18n/index.ts');
+  await i18n.setLang('id');
+  try {
+    const r = qa.parseQuickAdd('Kirim invoice besok jam 3 sore setiap Senin !1hari', qctx);
+    assert.deepEqual(r.tokens.map((t) => t.label), ['Besok 15.00', 'Setiap Senin', 'Besok, 10.00']);
+    assert.equal(qa.parseQuickAdd('Send it on Friday', qctx).tokens[0].label, 'Hari ini', 'English still works');
+    assert.equal(td.dueText('2026-10-12', TODAY), 'Senin');
+    assert.equal(td.dayHeading('2026-10-10', TODAY), 'Besok · Sab, 10 Okt');
+  } finally {
+    await i18n.setLang('en');
+  }
+  assert.equal(td.dueText('2026-10-12', TODAY), 'Monday', 'back in English');
+});
 await test('Quick Add: suggestions follow the word being typed', () => {
   assert.deepEqual(qa.triggerAt('Send #ko', 8), { char: '#', query: 'ko', start: 5 });
   assert.deepEqual(qa.triggerAt('Ask +', 5), { char: '+', query: '', start: 4 });

@@ -11,6 +11,7 @@ import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { peopleOptions, teamOptions } from './TasksView';
 import { personOption } from './ui/PeopleList';
+import { t, tn } from '../i18n';
 
 export interface DumpResult {
   tasks: { title: string; clientId?: string; teamId?: string; userId: string; due?: string; priority: 'high' | 'normal' }[];
@@ -41,7 +42,7 @@ const EXAMPLES = [
 ];
 
 /** Speech-to-text where the browser supports it (Chrome, Edge, Safari). */
-function useDictation(onText: (t: string) => void, lang?: string) {
+function useDictation(onText: (said: string) => void, lang?: string) {
   const rec = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [on, setOn] = useState(false);
   const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -87,7 +88,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
   const [error, setError] = useState<string | null>(null);
   const [learned, setLearned] = useState<Record<string, string>>({});
   const [inviting, setInviting] = useState<{ key: number; name: string; email: string } | null>(null);
-  const dict = useDictation((t) => setText((x) => (x ? x.replace(/\s*$/, ' ') : '') + t.trim()), MEETING_LANGUAGES.find((l) => l.code === language)?.speech);
+  const dict = useDictation((said) => setText((x) => (x ? x.replace(/\s*$/, ' ') : '') + said.trim()), MEETING_LANGUAGES.find((l) => l.code === language)?.speech);
 
   const plan = async () => {
     if (!text.trim()) return;
@@ -96,9 +97,9 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
     try {
       const out = await ai.braindump({
         text,
-        people: users.map((u) => ({ id: u.id, name: u.name, nicknames: u.nicknames, teamIds: teams.filter((t) => t.members.includes(u.id)).map((t) => t.id) })),
+        people: users.map((u) => ({ id: u.id, name: u.name, nicknames: u.nicknames, teamIds: teams.filter((tm) => tm.members.includes(u.id)).map((tm) => tm.id) })),
         clients: clients.map((c) => ({ id: c.id, name: c.name })),
-        teams: teams.map((t) => ({ id: t.id, name: t.name, keywords: t.keywords })),
+        teams: teams.map((tm) => ({ id: tm.id, name: tm.name, keywords: tm.keywords })),
         meId: me,
         aliases: { ...aliases, ...learned },
       });
@@ -107,7 +108,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
       setAsBrief(!!out.brief);
       setStep('review');
     } catch (e) {
-      setError((e as Error).message || 'Could not read that. Try again.');
+      setError((e as Error).message ? t((e as Error).message) : t('Could not read that. Try again.'));
       setStep('write');
     }
   };
@@ -145,7 +146,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
       text,
       learned,
       notify: { chat, email },
-      brief: asBrief && brief ? { title: brief.title.trim() || 'New brief', context: brief.context, clientId: brief.clientId ?? undefined, userId: brief.ownerId, due: brief.due ?? undefined } : undefined,
+      brief: asBrief && brief ? { title: brief.title.trim() || t('New brief'), context: brief.context, clientId: brief.clientId ?? undefined, userId: brief.ownerId, due: brief.due ?? undefined } : undefined,
       tasks: rows
         .filter((r) => r.title.trim())
         .map((r) => ({
@@ -159,19 +160,19 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
     });
 
   const nameOptions = (name: string) => [
-    ...users.map((u) => ({ ...personOption(u), label: `${name} is ${u.name}`, hint: u.title, icon: <Avatar person={u} size={22} />, group: 'A teammate' })),
-    { value: '__contact', label: `${name} is a ${term.who} contact`, hint: 'Not on our team. The task stays with you', icon: <span className="avatar-empty sm">C</span>, group: 'Someone else' },
-    { value: '__invite', label: `Invite ${name} to the team`, hint: 'Sends an invite by email', icon: <UserPlus size={16} />, group: 'Someone else' },
+    ...users.map((u) => ({ ...personOption(u), label: t('{name} is {person}', { name, person: u.name }), hint: u.title, icon: <Avatar person={u} size={22} />, group: t('A teammate') })),
+    { value: '__contact', label: t('{name} is a {who} contact', { name, who: term.who }), hint: t('Not on our team. The task stays with you'), icon: <span className="avatar-empty sm">C</span>, group: t('Someone else') },
+    { value: '__invite', label: t('Invite {name} to the team', { name }), hint: t('Sends an invite by email'), icon: <UserPlus size={16} />, group: t('Someone else') },
   ];
 
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal dump-modal" role="dialog" aria-label="Brain dump" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal dump-modal" role="dialog" aria-label={t('Brain dump')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Sparkles size={15} /> Brain dump {!aiLive() && <span className="demo-tag">Demo AI</span>}
+            <Sparkles size={15} /> {t('Brain dump')} {!aiLive() && <span className="demo-tag">{t('Demo AI')}</span>}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -179,7 +180,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
         {step !== 'review' ? (
           <div className="modal-body">
             <SmoothHeight>
-            <p className="modal-intro">Say or type everything on your mind: {term.many}, who should do what, by when. You’ll check the plan before anything is sent.</p>
+            <p className="modal-intro">{t('Say or type everything on your mind: {projects}, who should do what, by when. You’ll check the plan before anything is sent.', { projects: term.many })}</p>
             <div className="dump-input">
               <textarea
                 id="dump-text"
@@ -191,10 +192,10 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) plan();
                 }}
-                placeholder="KopiKita wants the Q4 concepts by Thursday. Rizky, do the ad structure…"
+                placeholder={t('KopiKita wants the Q4 concepts by Thursday. Rizky, do the ad structure…')}
               />
               {dict.supported && (
-                <button className={`mic ${dict.on ? 'on' : ''}`} onClick={dict.on ? dict.stop : dict.start} title={dict.on ? 'Stop dictation' : 'Dictate'}>
+                <button className={`mic ${dict.on ? 'on' : ''}`} onClick={dict.on ? dict.stop : dict.start} title={dict.on ? t('Stop dictation') : t('Dictate')} aria-label={dict.on ? t('Stop dictation') : t('Dictate')}>
                   {dict.on ? <MicOff size={18} /> : <Mic size={18} />}
                 </button>
               )}
@@ -202,10 +203,10 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
             {!text && (
               <div className="dump-examples">
                 <button className="link-btn dump-example" onClick={() => setText(EXAMPLES[0])}>
-                  Try: quick tasks
+                  {t('Try: quick tasks')}
                 </button>
                 <button className="link-btn dump-example" onClick={() => setText(EXAMPLES[1])}>
-                  Try: a campaign brief
+                  {t('Try: a campaign brief')}
                 </button>
               </div>
             )}
@@ -218,92 +219,92 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
             <div className="dump-mode">
               <div className="segmented">
                 <button className={!asBrief ? 'on' : ''} onClick={() => setAsBrief(false)}>
-                  <ListChecks size={14} /> Separate tasks
+                  <ListChecks size={14} /> {t('Separate tasks')}
                 </button>
                 <button className={asBrief ? 'on' : ''} onClick={() => setAsBrief(true)}>
-                  <FileText size={14} /> Brief with tasks
+                  <FileText size={14} /> {t('Brief with tasks')}
                 </button>
               </div>
               <span className="muted small">
-                {asBrief ? 'One person in charge, the context in one place, tasks for each person.' : `${rows.length} task${rows.length === 1 ? '' : 's'} found. Check names, teams and dates.`}
+                {asBrief ? t('One person in charge, the context in one place, tasks for each person.') : tn(rows.length, '{n} task found. Check names, teams and dates.', '{n} tasks found. Check names, teams and dates.')}
               </span>
             </div>
 
             {asBrief && brief && (
               <div className="dump-brief">
-                <input className="dr-title" value={brief.title} onChange={(e) => setBrief({ ...brief, title: e.target.value })} placeholder="Brief title, e.g. Glowkind launch campaign" aria-label="Brief title" />
+                <input className="dr-title" value={brief.title} onChange={(e) => setBrief({ ...brief, title: e.target.value })} placeholder={t('Brief title, e.g. Glowkind launch campaign')} aria-label={t('Brief title')} />
                 <div className="dr-fields">
-                  <Select value={brief.ownerId} options={peopleOptions(users, me, false)} onChange={(v) => setBrief({ ...brief, ownerId: v })} label="In charge" renderValue={(o) => <>{o?.icon}<span className="sel-text">{o ? `${o.label.replace(' (me)', '')} in charge` : 'Who is in charge?'}</span></>} />
-                  <ProjectPicker value={brief.clientId ?? ''} projects={clients} none={`No ${term.one}`} onChange={(v) => setBrief({ ...brief, clientId: v || null })} />
-                  <DatePicker value={brief.due ?? ''} onChange={(v) => setBrief({ ...brief, due: v || null })} label="Brief due" placeholder="Due" />
+                  <Select value={brief.ownerId} options={peopleOptions(users, me, false)} onChange={(v) => setBrief({ ...brief, ownerId: v })} label={t('In charge')} renderValue={(o) => <>{o?.icon}<span className="sel-text">{o ? t('{name} in charge', { name: users.find((u) => u.id === o.value)?.name ?? '' }) : t('Who is in charge?')}</span></>} />
+                  <ProjectPicker value={brief.clientId ?? ''} projects={clients} none={t('No {project}', { project: term.one })} onChange={(v) => setBrief({ ...brief, clientId: v || null })} />
+                  <DatePicker value={brief.due ?? ''} onChange={(v) => setBrief({ ...brief, due: v || null })} label={t('Brief due')} placeholder={t('Due')} />
                 </div>
-                <textarea className="drawer-notes" value={brief.context} onChange={(e) => setBrief({ ...brief, context: e.target.value })} placeholder="Goal, background, deliverables, links…" aria-label="Context" />
+                <textarea className="drawer-notes" value={brief.context} onChange={(e) => setBrief({ ...brief, context: e.target.value })} placeholder={t('Goal, background, deliverables, links…')} aria-label={t('Context')} />
               </div>
             )}
 
             {asking.length > 0 && (
               <p className="dump-ask">
-                {asking.length === 1 ? `I don’t know who “${asking[0].unknownName}” is.` : `I don’t know ${asking.length} names.`} Tell me once and I’ll remember it.
+                {asking.length === 1 ? t('I don’t know who “{name}” is. Tell me once and I’ll remember it.', { name: asking[0].unknownName ?? '' }) : tn(asking.length, 'I don’t know {n} name. Tell me once and I’ll remember it.', 'I don’t know {n} names. Tell me once and I’ll remember it.')}
               </p>
             )}
 
             <div className="dump-rows">
               {rows.map((r) => (
                 <div key={r.key} className={`dump-row ${r.unknownName && !r.resolved ? 'asking' : ''}`}>
-                  <input className="dr-title" value={r.title} onChange={(e) => patch(r.key, { title: e.target.value })} aria-label="Task" />
+                  <input className="dr-title" value={r.title} onChange={(e) => patch(r.key, { title: e.target.value })} aria-label={t('Task')} />
                   {r.unknownName && !r.resolved && (
                     <div className="who-is">
-                      <span className="who-q">Who is “{r.unknownName}”?</span>
-                      <Select value={null} options={nameOptions(r.unknownName)} onChange={(v) => resolve(r.unknownName!, v)} placeholder="Choose…" label={`Who is ${r.unknownName}?`} width={300} searchable />
+                      <span className="who-q">{t('Who is “{name}”?', { name: r.unknownName })}</span>
+                      <Select value={null} options={nameOptions(r.unknownName)} onChange={(v) => resolve(r.unknownName!, v)} placeholder={t('Choose…')} label={t('Who is {name}?', { name: r.unknownName })} width={300} searchable />
                       {inviting?.key === r.key && (
                         <span className="who-invite">
-                          <input autoFocus value={inviting.email} onChange={(e) => setInviting({ ...inviting, email: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && sendInvite()} placeholder={`${r.unknownName.toLowerCase()}@company.com`} />
+                          <input autoFocus value={inviting.email} onChange={(e) => setInviting({ ...inviting, email: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && sendInvite()} placeholder={t('{name}@company.com', { name: r.unknownName.toLowerCase() })} />
                           <button className="primary-btn sm" onClick={sendInvite}>
-                            Invite
+                            {t('Invite')}
                           </button>
                         </span>
                       )}
                     </div>
                   )}
-                  {r.contact && (r.resolved === 'contact' || !r.unknownName) && <span className="contact-note">{term.Who} contact: {r.contact}</span>}
+                  {r.contact && (r.resolved === 'contact' || !r.unknownName) && <span className="contact-note">{t('{Who} contact: {name}', { who: term.who, name: r.contact })}</span>}
                   <div className="dr-fields">
-                    {!asBrief && <ProjectPicker value={r.clientId ?? ''} projects={clients} none={`No ${term.one}`} onChange={(v) => patch(r.key, { clientId: v || null })} />}
-                    <Select value={r.teamId ?? ''} options={teamOptions(teams)} onChange={(v) => patch(r.key, { teamId: v || null })} label="Team" />
+                    {!asBrief && <ProjectPicker value={r.clientId ?? ''} projects={clients} none={t('No {project}', { project: term.one })} onChange={(v) => patch(r.key, { clientId: v || null })} />}
+                    <Select value={r.teamId ?? ''} options={teamOptions(teams)} onChange={(v) => patch(r.key, { teamId: v || null })} label={t('Team')} />
                     <Select
                       value={r.assigneeId ?? ''}
                       options={peopleOptions(users, me, !!r.teamId)}
                       onChange={(v) => patch(r.key, { assigneeId: v || null, resolved: r.unknownName ? 'person' : r.resolved })}
-                      label="Assignee"
-                      placeholder={r.teamId ? 'Team queue' : 'Me'}
+                      label={t('Assignee')}
+                      placeholder={r.teamId ? t('Team queue') : t('Me')}
                       className={!r.assigneeId && !r.teamId ? 'missing' : ''}
                     />
-                    <DatePicker value={r.due ?? ''} onChange={(v) => patch(r.key, { due: v || null })} label="Due" placeholder="Due" />
-                    <button className="icon-btn sm" title="Remove" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
+                    <DatePicker value={r.due ?? ''} onChange={(v) => patch(r.key, { due: v || null })} label={t('Due')} placeholder={t('Due')} />
+                    <button className="icon-btn sm" title={t('Remove')} aria-label={t('Remove')} onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
                       <X size={14} />
                     </button>
                   </div>
                 </div>
               ))}
               <button className="ghost-btn sm" onClick={() => setRows((rs) => [...rs, { key: Date.now(), title: '', clientId: brief?.clientId ?? null, teamId: null, assigneeId: null, due: null, priority: 'normal' }])}>
-                <Plus size={13} /> Add a task
+                <Plus size={13} /> {t('Add a task')}
               </button>
             </div>
-            {queued > 0 && <p className="muted small">{queued} task{queued === 1 ? '' : 's'} without a person go to the team’s queue, and the team lead is told.</p>}
+            {queued > 0 && <p className="muted small">{tn(queued, '{n} task without a person goes to the team’s queue, and the team lead is told.', '{n} tasks without a person go to the team’s queue, and the team lead is told.')}</p>}
             {others > 0 && (
               <div className="dump-notify">
                 <span>
-                  <Bell size={14} /> Tell the {others === 1 ? 'person' : `${others} people`} you assigned:
+                  <Bell size={14} /> {tn(others, 'Tell the person you assigned:', 'Tell the {n} people you assigned:')}
                 </span>
                 <label className="check-row">
-                  <input type="checkbox" checked disabled /> In {product.name}
+                  <input type="checkbox" checked disabled /> {t('In {product}', { product: product.name })}
                 </label>
                 <label className="check-row">
                   <input type="checkbox" checked={chat} onChange={(e) => setChat(e.target.checked)} />
-                  <MessagesSquare size={13} /> Chat message from you
+                  <MessagesSquare size={13} /> {t('Chat message from you')}
                 </label>
                 <label className="check-row">
                   <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} />
-                  <Mail size={13} /> Email
+                  <Mail size={13} /> {t('Email')}
                 </label>
               </div>
             )}
@@ -315,19 +316,19 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
           {step === 'review' ? (
             <>
               <button className="ghost-btn" onClick={() => setStep('write')}>
-                <ArrowLeft size={14} /> Edit text
+                <ArrowLeft size={14} /> {t('Edit text')}
               </button>
-              <button className="primary-btn" onClick={create} disabled={!rows.some((r) => r.title.trim()) || asking.length > 0} title={asking.length ? 'Tell me who the unknown names are first' : undefined}>
-                {asking.length ? `${asking.length} name${asking.length > 1 ? 's' : ''} to check` : asBrief ? `Create brief + ${rows.length} task${rows.length === 1 ? '' : 's'}` : `Create ${rows.length} task${rows.length === 1 ? '' : 's'}`}
+              <button className="primary-btn" onClick={create} disabled={!rows.some((r) => r.title.trim()) || asking.length > 0} title={asking.length ? t('Tell me who the unknown names are first') : undefined}>
+                {asking.length ? tn(asking.length, '{n} name to check', '{n} names to check') : asBrief ? tn(rows.length, 'Create brief + {n} task', 'Create brief + {n} tasks') : tn(rows.length, 'Create {n} task', 'Create {n} tasks')}
               </button>
             </>
           ) : (
             <>
               <button className="ghost-btn" onClick={onClose}>
-                Cancel
+                {t('Cancel')}
               </button>
               <button className="primary-btn" onClick={plan} disabled={!text.trim() || step === 'thinking'}>
-                {step === 'thinking' ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />} {step === 'thinking' ? 'Reading…' : 'Turn into tasks'}
+                {step === 'thinking' ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />} {step === 'thinking' ? t('Reading…') : t('Turn into tasks')}
               </button>
             </>
           )}

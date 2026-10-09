@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Camera } from 'lucide-react';
 import type { Client } from '../types';
 import { squarePhoto } from '../photos';
+import { t } from '../i18n';
 
 /** A project's picture: its photo or logo when it has one, otherwise its first letter on its colour. */
 export function ProjectBadge({ p, kind = 'client-dot', className = '' }: { p: Pick<Client, 'name' | 'color' | 'photo'>; kind?: 'client-dot' | 'client-dot sm' | 'client-badge'; className?: string }) {
@@ -19,7 +20,7 @@ export function ProjectPhotoButton({ p, onChange, disabled }: { p: Pick<Client, 
   if (disabled) return <ProjectBadge p={p} kind="client-badge" />;
   return (
     <>
-      <button type="button" className="proj-photo-btn" onClick={() => input.current?.click()} title={err || (p.photo ? 'Change picture (right-click to remove)' : 'Add a picture or logo')} onContextMenu={(e) => p.photo && (e.preventDefault(), confirm('Remove this picture?') && onChange(undefined))}>
+      <button type="button" className="proj-photo-btn" onClick={() => input.current?.click()} title={err || (p.photo ? t('Change picture (right-click to remove)') : t('Add a picture or logo'))} aria-label={p.photo ? t('Change picture (right-click to remove)') : t('Add a picture or logo')} onContextMenu={(e) => p.photo && (e.preventDefault(), confirm(t('Remove this picture?')) && onChange(undefined))}>
         <ProjectBadge p={p} kind="client-badge" />
         <span className="pp-over">
           <Camera size={13} />
@@ -38,7 +39,7 @@ export function ProjectPhotoButton({ p, onChange, disabled }: { p: Pick<Client, 
             setErr('');
             onChange(await squarePhoto(f));
           } catch (x) {
-            setErr((x as Error).message);
+            setErr(t((x as Error).message));
           }
         }}
       />

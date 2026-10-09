@@ -3,6 +3,7 @@ import { createContext, useContext } from 'react';
 import type { Client } from '../types';
 import { term } from '../terms';
 import { Dot, Select } from './ui/Select';
+import { t, tx } from '../i18n';
 
 /** Lets any project picker create a project on the spot. The team app provides it; guests don't get it. */
 export const ProjectsCtx = createContext<{ create?: (name: string) => Client }>({});
@@ -38,7 +39,7 @@ export function ProjectPicker({
       .map((c) => ({
         value: c.id,
         label: c.name,
-        hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? `Past ${term.one}` : c.type,
+        hint: c.status === 'lead' ? tx('status', 'Lead') : c.status === 'ended' ? t('Past {project}', { project: term.one }) : c.type ? t(c.type) : undefined,
         icon: c.photo ? <ProjectBadge p={c} kind="client-dot sm" className="pick-badge" /> : <Dot color={c.color} />,
       })),
   ];
@@ -50,9 +51,9 @@ export function ProjectPicker({
       label={label ?? term.One}
       className={className}
       width={width ?? 260}
-      placeholder={placeholder ?? `Pick a ${term.one}`}
+      placeholder={placeholder ?? t('Pick a {project}', { project: term.one })}
       searchable
-      create={create ? { label: `New ${term.one}`, placeholder: `${term.One} name`, make: (name) => create(name).id } : undefined}
+      create={create ? { label: t('New {project}', { project: term.one }), placeholder: t('{Project} name', { project: term.one }), make: (name) => create(name).id } : undefined}
     />
   );
 }

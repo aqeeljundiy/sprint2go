@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { CalendarDays, Check, PartyPopper, SkipForward, Sun, Sunrise } from 'lucide-react';
 import { Sheet } from '../ui/Sheet';
 import { SmoothHeight, TabPane } from '../ui/Smooth';
-import { addDays, dueText } from '../../taskDates';
+import { addDays } from '../../taskDates';
 import { stageIdFor } from '../../stages';
 import type { Todo } from '../../types';
-import { DayPicker } from './TaskSheets';
+import { DayPicker, dayWords } from './TaskSheets';
 import type { TaskOps } from './taskOps';
+import { t, tn } from '../../i18n';
 
 type Step = { id: string; did: 'today' | 'moved' | 'done' | 'skipped'; before?: string };
 
@@ -16,11 +17,11 @@ type Step = { id: string; did: 'today' | 'moved' | 'done' | 'skipped'; before?: 
  */
 export function PlanMyDay({ ops, tasks, onClose }: { ops: TaskOps; tasks: Todo[]; onClose: () => void }) {
   // The list is fixed when it opens, so moving one doesn't reshuffle the rest.
-  const [queue] = useState(() => tasks.map((t) => t.id));
+  const [queue] = useState(() => tasks.map((task) => task.id));
   const [steps, setSteps] = useState<Step[]>([]);
   const [picking, setPicking] = useState(false);
   const i = steps.length;
-  const t = ops.tasks.find((x) => x.id === queue[i]);
+  const task = ops.tasks.find((x) => x.id === queue[i]);
   const total = queue.length;
   const tally = useMemo(() => {
     const n = (k: Step['did']) => steps.filter((s) => s.did === k).length;
@@ -28,11 +29,11 @@ export function PlanMyDay({ ops, tasks, onClose }: { ops: TaskOps; tasks: Todo[]
   }, [steps]);
 
   const act = (did: Step['did'], day?: string) => {
-    if (!t) return;
-    const step: Step = { id: t.id, did, before: t.due };
-    if (did === 'today' && t.due !== ops.today) ops.patch(t.id, { due: ops.today });
-    if (did === 'moved' && day !== undefined) ops.patch(t.id, { due: day || undefined });
-    if (did === 'done') ops.status(t.id, stageIdFor(t, 'done'), true);
+    if (!task) return;
+    const step: Step = { id: task.id, did, before: task.due };
+    if (did === 'today' && task.due !== ops.today) ops.patch(task.id, { due: ops.today });
+    if (did === 'moved' && day !== undefined) ops.patch(task.id, { due: day || undefined });
+    if (did === 'done') ops.status(task.id, stageIdFor(task, 'done'), true);
     setPicking(false);
     setSteps((s) => [...s, step]);
   };
@@ -45,56 +46,56 @@ export function PlanMyDay({ ops, tasks, onClose }: { ops: TaskOps; tasks: Todo[]
     setSteps((s) => s.slice(0, -1));
   };
 
-  const c = t ? ops.clients.find((x) => x.id === t.clientId) : undefined;
-  const late = t?.due && t.due < ops.today;
+  const c = task ? ops.clients.find((x) => x.id === task.clientId) : undefined;
+  const late = task?.due && task.due < ops.today;
   return (
     <Sheet
       onClose={onClose}
-      title="Plan my day"
+      title={t('Plan my day')}
       className="pmd-sheet"
       head={
         i > 0 ? (
           <button type="button" className="ghost-btn sm" onClick={back}>
-            Back
+            {t('Back')}
           </button>
         ) : undefined
       }
     >
       <SmoothHeight>
-        <TabPane key={t ? `${t.id}:${picking}` : 'end'}>
-          {t ? (
+        <TabPane key={task ? `${task.id}:${picking}` : 'end'}>
+          {task ? (
             <div className="pmd-step">
               <p className="pmd-count">
-                {i + 1} of {total}
+                {t('{n} of {total}', { n: i + 1, total })}
                 <span className="pmd-bar" aria-hidden="true">
                   <span style={{ width: `${(i / total) * 100}%` }} />
                 </span>
               </p>
               <div className="pmd-card">
-                <strong>{t.title}</strong>
+                <strong>{task.title}</strong>
                 <span className={late ? 'due-overdue' : 'due-today'}>
-                  {late ? `Was due ${dueText(t.due!, ops.today).replace(/^Yesterday$/, 'yesterday')}` : 'Due today'}
+                  {late ? t('Was due {day}', { day: dayWords(task.due!, ops.today) }) : t('Due today')}
                   {c ? ` · ${c.name}` : ''}
                 </span>
               </div>
               {picking ? (
-                <DayPicker today={ops.today} value={t.due} onPick={(d) => act('moved', d)} />
+                <DayPicker today={ops.today} value={task.due} onPick={(d) => act('moved', d)} />
               ) : (
                 <div className="pmd-acts">
                   <button type="button" className="pmd-act primary" onClick={() => act('today')}>
-                    <Sun size={18} /> Today
+                    <Sun size={18} /> {t('Today')}
                   </button>
                   <button type="button" className="pmd-act" onClick={() => act('moved', addDays(ops.today, 1))}>
-                    <Sunrise size={18} /> Tomorrow
+                    <Sunrise size={18} /> {t('Tomorrow')}
                   </button>
                   <button type="button" className="pmd-act" onClick={() => setPicking(true)}>
-                    <CalendarDays size={18} /> Pick a date
+                    <CalendarDays size={18} /> {t('Pick a date')}
                   </button>
                   <button type="button" className="pmd-act ok" onClick={() => act('done')}>
-                    <Check size={18} /> Done
+                    <Check size={18} /> {t('Done')}
                   </button>
                   <button type="button" className="pmd-act quiet" onClick={() => act('skipped')}>
-                    <SkipForward size={18} /> Skip
+                    <SkipForward size={18} /> {t('Skip')}
                   </button>
                 </div>
               )}
@@ -102,14 +103,14 @@ export function PlanMyDay({ ops, tasks, onClose }: { ops: TaskOps; tasks: Todo[]
           ) : (
             <div className="pmd-end">
               <PartyPopper size={28} />
-              <strong>{total ? 'Your day is planned' : 'Nothing to plan'}</strong>
+              <strong>{total ? t('Your day is planned') : t('Nothing to plan')}</strong>
               <p className="muted">
                 {total
-                  ? [tally.today && `${tally.today} for today`, tally.moved && `${tally.moved} moved`, tally.done && `${tally.done} done`, tally.skipped && `${tally.skipped} skipped`].filter(Boolean).join(', ') + '.'
-                  : 'Nothing is overdue or due today.'}
+                  ? [tally.today && tn(tally.today, '{n} for today', '{n} for today'), tally.moved && tn(tally.moved, '{n} moved', '{n} moved'), tally.done && tn(tally.done, '{n} done', '{n} done'), tally.skipped && tn(tally.skipped, '{n} skipped', '{n} skipped')].filter(Boolean).join(', ') + '.'
+                  : t('Nothing is overdue or due today.')}
               </p>
               <button type="button" className="primary-btn" onClick={onClose}>
-                Close
+                {t('Close')}
               </button>
             </div>
           )}

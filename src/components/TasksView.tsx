@@ -27,6 +27,10 @@ import { TaskViews, type SavedTaskView } from './tasks/TaskViews';
 import type { NewTask, TaskOps } from './tasks/taskOps';
 import { saveDisplay } from './tasks/display';
 import { projectTabs, ProjectSections, useProjectPhone } from './ProjectPhone';
+import { t, textOf, tn, tx } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtDate, fmtDay, fmtNumber, fmtWeekday } from '../i18n/format';
+import type { TaskEvent } from '../types';
 
 export type TaskScope =
   | { kind: 'mine' }
@@ -45,17 +49,43 @@ export type TaskScope =
   | { kind: 'past' } // past clients and clients over time
   | { kind: 'projects' }; // every project (the Projects app's home)
 
-export const ROLE_NAME: Record<ClientPerson['role'], string> = { viewer: 'Viewer', collaborator: 'Collaborator', approver: 'Approver' };
-export const ROLE_HINT: Record<ClientPerson['role'], string> = { viewer: 'Reads only', collaborator: 'Comments, uploads, sends requests', approver: 'Also approves work' };
-export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }> = {
-  ai: { icon: Mail, label: 'From email' },
-  manual: { icon: Plus, label: 'Added by hand' },
-  braindump: { icon: Brain, label: 'From a brain dump' },
-  chat: { icon: MessagesSquare, label: 'From chat' },
-  meeting: { icon: Video, label: 'From a meeting' },
-  request: { icon: Inbox, get label() { return `${term.Who} request`; } },
-  import: { icon: FolderInput, label: 'Imported' },
+// A guest's role and what it allows, in the reader's language.
+export const ROLE_NAME: Record<ClientPerson['role'], string> = {
+  get viewer() {
+    return t('Viewer');
+  },
+  get collaborator() {
+    return t('Collaborator');
+  },
+  get approver() {
+    return t('Approver');
+  },
 };
+export const ROLE_HINT: Record<ClientPerson['role'], string> = {
+  get viewer() {
+    return t('Reads only');
+  },
+  get collaborator() {
+    return t('Comments, uploads, sends requests');
+  },
+  get approver() {
+    return t('Also approves work');
+  },
+};
+export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }> = {
+  ai: { icon: Mail, get label() { return t('From email'); } },
+  manual: { icon: Plus, get label() { return t('Added by hand'); } },
+  braindump: { icon: Brain, get label() { return t('From a brain dump'); } },
+  chat: { icon: MessagesSquare, get label() { return t('From chat'); } },
+  meeting: { icon: Video, get label() { return t('From a meeting'); } },
+  request: { icon: Inbox, get label() { return t('{Who} request', { who: term.who }); } },
+  import: { icon: FolderInput, get label() { return t('Imported'); } },
+};
+/**
+ * A line of a task's history in the reader's language: what the app wrote since it keeps a `tr` (msg()); older lines
+ * as saved, translated when they're one of the app's fixed words ("marked it done"). Comments are what people typed.
+ */
+export const historyText = (h: Pick<TaskEvent, 'kind' | 'text' | 'tr'>) => (h.kind === 'comment' ? h.text : h.tr ? textOf(h) : t(h.text));
 /** A task's stage id (one of its company's stages; see src/stages.ts). */
 export const statusOf = (t: Todo): TaskStatus => stageOf(t).id;
 /** A stage's colour dot: filled when done, hollow when not started. */
@@ -68,13 +98,15 @@ export const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId 
 export const isBrief = (t: Todo) => t.kind === 'brief';
 
 const dayStr = (d: Date) => localDay(d);
+const enDay = (due: string) => new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(due + 'T12:00'));
+/** A due date's words and colour class. `text` is in the reader's language; `en` is the English, for words saved in a msg(). */
 export function dueLabel(due: string) {
   const today = dayStr(new Date());
   const tomorrow = dayStr(new Date(Date.now() + 86_400_000));
-  if (due < today) return { text: 'Overdue', cls: 'overdue' };
-  if (due === today) return { text: 'Today', cls: 'today' };
-  if (due === tomorrow) return { text: 'Tomorrow', cls: 'soon' };
-  return { text: new Date(due + 'T12:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }), cls: '' };
+  if (due < today) return { text: tx('due', 'Overdue'), en: 'Overdue', cls: 'overdue' };
+  if (due === today) return { text: t('Today'), en: 'Today', cls: 'today' };
+  if (due === tomorrow) return { text: t('Tomorrow'), en: 'Tomorrow', cls: 'soon' };
+  return { text: fmtWeekday(due), en: enDay(due), cls: '' };
 }
 const late = (t: Todo) => !t.done && !!t.due && t.due < dayStr(new Date());
 const byDue = (a: Todo, b: Todo) => (a.due ?? '9999').localeCompare(b.due ?? '9999') || (a.priority === 'high' ? -1 : 0) - (b.priority === 'high' ? -1 : 0);
@@ -82,15 +114,15 @@ const byDue = (a: Todo, b: Todo) => (a.due ?? '9999').localeCompare(b.due ?? '99
 /** Options for "who": teammates, plus "Not assigned" (the team's queue). */
 export function peopleOptions(users: User[], me: string, unassigned = true): Option[] {
   return [
-    ...(unassigned ? [{ value: '', label: 'Not assigned', hint: 'Waits in the team’s queue', icon: <span className="avatar-empty sm">?</span> }] : []),
-    ...users.map((u) => ({ ...personOption(u), label: u.id === me ? `${u.name} (me)` : u.name, hint: u.title, icon: <Avatar person={u} size={22} /> })),
+    ...(unassigned ? [{ value: '', label: t('Not assigned'), hint: t('Waits in the team’s queue'), icon: <span className="avatar-empty sm">?</span> }] : []),
+    ...users.map((u) => ({ ...personOption(u), label: u.id === me ? t('{name} (me)', { name: u.name }) : u.name, hint: u.title, icon: <Avatar person={u} size={22} /> })),
   ];
 }
-export const teamOptions = (teams: Team[]): Option[] => [{ value: '', label: 'No team', icon: <Dot color="var(--text-3)" /> }, ...teams.map((t) => ({ value: t.id, label: t.name, icon: <Dot color={t.color} /> }))];
+export const teamOptions = (teams: Team[]): Option[] => [{ value: '', label: t('No team'), icon: <Dot color="var(--text-3)" /> }, ...teams.map((tm) => ({ value: tm.id, label: tm.name, icon: <Dot color={tm.color} /> }))];
 /** Clients to pick from: past clients only when it's the one already set. */
 export const clientOptions = (clients: Client[], current?: string): Option[] => [
-  { value: '', label: `No ${term.one}`, icon: <Dot color="var(--text-3)" /> },
-  ...clients.filter((c) => c.status !== 'ended' || c.id === current).map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? `Past ${term.one}` : undefined, icon: <Dot color={c.color} /> })),
+  { value: '', label: t('No {project}', { project: term.one }), icon: <Dot color="var(--text-3)" /> },
+  ...clients.filter((c) => c.status !== 'ended' || c.id === current).map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? tx('status', 'Lead') : c.status === 'ended' ? t('Past {project}', { project: term.one }) : undefined, icon: <Dot color={c.color} /> })),
 ];
 
 
@@ -250,27 +282,27 @@ export function TasksView(p: Props) {
   const myProjects = p.clients.filter((c) => c.status !== 'ended' && (p.canManage || p.myClientIds.includes(c.id)));
   const scopeValue = scope.kind === 'team' || scope.kind === 'project' || scope.kind === 'client' ? `${scope.kind}:${scope.id}` : scope.kind;
   useTitleMenu('tasks', {
-    label: 'Which tasks',
+    label: t('Which tasks'),
     value: scopeValue,
     options: [
-      { value: 'mine', label: 'My tasks', hint: lateMine ? `${lateMine} late` : undefined, group: 'Tasks' },
-      { value: 'today', label: 'Today', hint: todayMine + lateMine ? `${todayMine + lateMine} to do` : undefined, group: 'Tasks' },
-      { value: 'upcoming', label: 'Upcoming', group: 'Tasks' },
-      { value: 'supervising', label: 'Supervising', hint: toReview ? `${toReview} to review` : undefined, group: 'Tasks' },
-      { value: 'delegated', label: 'Assigned by me', group: 'Tasks' },
-      { value: 'briefs', label: 'Briefs', group: 'Tasks' },
-      ...(p.canManage ? [{ value: 'all', label: 'Everything', group: 'Tasks' }] : []),
+      { value: 'mine', label: t('My tasks'), hint: lateMine ? tn(lateMine, '{n} late', '{n} late') : undefined, group: t('Tasks') },
+      { value: 'today', label: t('Today'), hint: todayMine + lateMine ? tn(todayMine + lateMine, '{n} to do', '{n} to do') : undefined, group: t('Tasks') },
+      { value: 'upcoming', label: t('Upcoming'), group: t('Tasks') },
+      { value: 'supervising', label: t('Supervising'), hint: toReview ? tn(toReview, '{n} to review', '{n} to review') : undefined, group: t('Tasks') },
+      { value: 'delegated', label: t('Assigned by me'), group: t('Tasks') },
+      { value: 'briefs', label: t('Briefs'), group: t('Tasks') },
+      ...(p.canManage ? [{ value: 'all', label: t('Everything'), group: t('Tasks') }] : []),
       ...myTeams.map((tm) => {
-        const n = workAll.filter((t) => t.teamId === tm.id && !doers(t).length).length;
-        return { value: `team:${tm.id}`, label: tm.name, hint: n ? `${n} not assigned` : undefined, icon: <span className="ts-dot"><Dot color={tm.color} /></span>, group: 'Team queues' };
+        const n = workAll.filter((x) => x.teamId === tm.id && !doers(x).length).length;
+        return { value: `team:${tm.id}`, label: tm.name, hint: n ? tn(n, '{n} not assigned', '{n} not assigned') : undefined, icon: <span className="ts-dot"><Dot color={tm.color} /></span>, group: t('Team queues') };
       }),
       ...myProjects.map((c) => {
-        const n = workAll.filter((t) => t.clientId === c.id && late(t)).length;
-        return { value: `project:${c.id}`, label: c.name, hint: n ? `${n} late` : undefined, icon: <span className="ts-dot"><Dot color={c.color} /></span>, group: term.Many };
+        const n = workAll.filter((x) => x.clientId === c.id && late(x)).length;
+        return { value: `project:${c.id}`, label: c.name, hint: n ? tn(n, '{n} late', '{n} late') : undefined, icon: <span className="ts-dot"><Dot color={c.color} /></span>, group: term.Many };
       }),
-      { value: 'dump', label: 'Brain dump', hint: 'Turn notes into tasks', group: 'More' },
-      ...(p.onPastProjects ? [{ value: 'past', label: `Past ${term.many}`, group: 'More' }] : []),
-      ...views.map((v) => ({ value: `view:${v.id}`, label: v.name, group: 'Your views' })),
+      { value: 'dump', label: t('Brain dump'), hint: t('Turn notes into tasks'), group: t('More') },
+      ...(p.onPastProjects ? [{ value: 'past', label: t('Past {projects}', { projects: term.many }), group: t('More') }] : []),
+      ...views.map((v) => ({ value: `view:${v.id}`, label: v.name, group: t('Your views') })),
     ],
     onChange: (v) => {
       if (v === 'dump') return p.onBrainDump();
@@ -288,34 +320,34 @@ export function TasksView(p: Props) {
 
   const heading =
     scope.kind === 'today'
-      ? 'Today'
+      ? t('Today')
       : scope.kind === 'upcoming'
-        ? 'Upcoming'
+        ? t('Upcoming')
         : scope.kind === 'project'
           ? (project?.name ?? term.One)
           : scope.kind === 'supervising'
-      ? 'Supervising'
+      ? t('Supervising')
       : scope.kind === 'myteams'
-        ? 'My teams'
+        ? t('My teams')
         : scope.kind === 'myclients'
-          ? `My ${term.many}`
+          ? t('My {projects}', { projects: term.many })
           : scope.kind === 'mine'
-      ? 'My tasks'
+      ? t('My tasks')
       : scope.kind === 'delegated'
-        ? 'Assigned by me'
+        ? t('Assigned by me')
         : scope.kind === 'all'
-          ? 'All tasks'
+          ? t('All tasks')
           : scope.kind === 'briefs'
-            ? 'Briefs'
+            ? t('Briefs')
             : scope.kind === 'grid'
-              ? `${term.Many} × teams`
+              ? t('{Projects} × teams', { projects: term.many })
               : scope.kind === 'team'
-                ? (team?.name ?? 'Team')
-                : `${client?.name ?? 'Client'}${cellTeam ? ` · ${cellTeam.name}` : ''}`;
+                ? (team?.name ?? t('Team'))
+                : `${client?.name ?? term.One}${cellTeam ? ` · ${cellTeam.name}` : ''}`;
 
   const briefCard = (b: Todo) => {
-    const subs = p.tasks.filter((t) => t.briefId === b.id);
-    const doneN = subs.filter((t) => t.done).length;
+    const subs = p.tasks.filter((x) => x.briefId === b.id);
+    const doneN = subs.filter((x) => x.done).length;
     const owner = person(b.userId);
     const c = clientOf(b.clientId);
     const pct = subs.length ? Math.round((doneN / subs.length) * 100) : 0;
@@ -324,7 +356,7 @@ export function TasksView(p: Props) {
       <button key={b.id} className={`brief-card ${b.done ? 'done' : ''}`} onClick={() => p.onOpenTask(b.id)}>
         <div className="bc-top">
           <span className="brief-badge">
-            <FileText size={12} /> Brief
+            <FileText size={12} /> {t('Brief')}
           </span>
           {c && scope.kind !== 'client' && (
             <span className="client-chip" style={{ ['--c' as string]: c.color }}>
@@ -338,7 +370,7 @@ export function TasksView(p: Props) {
         <div className="bc-foot">
           {owner && (
             <span className="bc-owner">
-              <Avatar person={owner} size={20} /> {owner.id === p.me ? 'You' : owner.name.split(' ')[0]} in charge
+              <Avatar person={owner} size={20} /> {owner.id === p.me ? t('You’re in charge') : t('{name} in charge', { name: owner.name.split(' ')[0] })}
             </span>
           )}
           <span className="bc-teams">
@@ -361,9 +393,9 @@ export function TasksView(p: Props) {
 
   // A brief in a task list: one line (title, project, what's next, progress); the full card lives on the Briefs page.
   const briefRow = (b: Todo) => {
-    const subs = p.tasks.filter((t) => t.briefId === b.id);
-    const doneN = subs.filter((t) => t.done).length;
-    const next = subs.filter((t) => !t.done).sort((a, c) => (a.due ?? '9').localeCompare(c.due ?? '9'))[0];
+    const subs = p.tasks.filter((x) => x.briefId === b.id);
+    const doneN = subs.filter((x) => x.done).length;
+    const next = subs.filter((x) => !x.done).sort((a, c) => (a.due ?? '9').localeCompare(c.due ?? '9'))[0];
     const c = clientOf(b.clientId);
     const owner = person(b.userId);
     return (
@@ -372,7 +404,7 @@ export function TasksView(p: Props) {
         <span className="br-text">
           <strong>{b.title}</strong>
           <small className="muted">
-            {[c && scope.kind !== 'client' ? c.name : '', next ? `Next: ${next.title}${next.due ? ` · ${dueLabel(next.due).text}` : ''}` : subs.length ? 'All tasks done' : 'No tasks yet'].filter(Boolean).join(' · ')}
+            {[c && scope.kind !== 'client' ? c.name : '', next ? (next.due ? t('Next: {title} · {due}', { title: next.title, due: dueLabel(next.due).text }) : t('Next: {title}', { title: next.title })) : subs.length ? t('All tasks done') : t('No tasks yet')].filter(Boolean).join(' · ')}
           </small>
         </span>
         <span className="bc-progress">
@@ -418,7 +450,7 @@ export function TasksView(p: Props) {
                       {tm.name}
                     </button>
                   ) : (
-                    <span className="muted">No team</span>
+                    <span className="muted">{t('No team')}</span>
                   )}
                 </th>
               ))}
@@ -437,7 +469,7 @@ export function TasksView(p: Props) {
                         {c.name}
                       </button>
                     ) : (
-                      <span className="muted">Internal</span>
+                      <span className="muted">{t('Internal')}</span>
                     )}
                   </th>
                   {cols.map((tm) => {
@@ -447,8 +479,8 @@ export function TasksView(p: Props) {
                       <td key={tm?.id ?? 'none'}>
                         {items.length ? (
                           <button className={`cell ${l ? 'has-late' : ''}`} onClick={() => c && p.onScope({ kind: 'client', id: c.id, teamId: tm?.id })} disabled={!c}>
-                            <b>{items.length}</b> open
-                            {l ? <em>{l} late</em> : null}
+                            {tj('{n} open', { n: <b>{fmtNumber(items.length)}</b> })}
+                            {l ? <em>{tn(l, '{n} late', '{n} late')}</em> : null}
                           </button>
                         ) : (
                           <span className="cell empty">·</span>
@@ -500,15 +532,23 @@ export function TasksView(p: Props) {
           : scope.kind === 'today'
             ? { due: today }
             : {};
+  const nobodyOn = open.filter((x) => !x.userId).length;
+  const dueToday = open.filter((x) => x.due === localDay()).length;
   const subtitle = client
-    ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : client.status === 'ended' ? `Past ${term.one}${client.endReason ? ` · ${client.endReason}` : ''}` : 'Active'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
+    ? [
+        client.status === 'lead' ? tx('status', 'Lead') : client.status === 'paused' ? t('Paused') : client.status === 'ended' ? [t('Past {project}', { project: term.one }), client.endReason ? t(client.endReason) : ''].filter(Boolean).join(' · ') : t('Active'),
+        client.domain ? `@${client.domain}` : '',
+        t('owner {name}', { name: person(client.ownerId)?.name ?? t('not set') }),
+      ]
+        .filter(Boolean)
+        .join(' · ')
     : team
-      ? [`Lead: ${person(team.leadId)?.name ?? 'not set'}`, overdue ? `${overdue} late` : '', open.filter((t) => !t.userId).length ? `${open.filter((t) => !t.userId).length} nobody on it yet` : ''].filter(Boolean).join(' · ')
+      ? [t('Lead: {name}', { name: person(team.leadId)?.name ?? t('not set') }), overdue ? tn(overdue, '{n} late', '{n} late') : '', nobodyOn ? tn(nobodyOn, '{n} nobody on it yet', '{n} nobody on it yet') : ''].filter(Boolean).join(' · ')
       : scope.kind === 'grid'
-        ? `Open work for every ${term.one}, split by team. Click a cell to open it.`
+        ? t('Open work for every {project}, split by team. Click a cell to open it.', { project: term.one })
         : scope.kind === 'briefs'
-          ? 'Bigger pieces of work with one person in charge and tasks for others'
-          : [overdue ? `${overdue} late` : '', open.filter((t) => t.due === localDay()).length ? `${open.filter((t) => t.due === localDay()).length} due today` : ''].filter(Boolean).join(' · ') || (open.length ? 'Nothing late or due today' : 'Nothing open');
+          ? t('Bigger pieces of work with one person in charge and tasks for others')
+          : [overdue ? tn(overdue, '{n} late', '{n} late') : '', dueToday ? tn(dueToday, '{n} due today', '{n} due today') : ''].filter(Boolean).join(' · ') || (open.length ? t('Nothing late or due today') : t('Nothing open'));
 
   // A project's parts: tabs on desktop; on phones a list on its home and the title switcher (ProjectPhone.tsx).
   const tabItems = projectTabs({ late: overdue, unreadMail: clientThreads.filter((t) => t.unread).length, quotes: !!p.onQuote, quoteWaiting: !!client && (p.quotes ?? []).some((q) => q.clientId === client.id && q.status === 'sent'), tables: !!p.onOpenTable });
@@ -522,7 +562,7 @@ export function TasksView(p: Props) {
   return (
     <section className={`tasks-pane view-enter scope-${scope.kind}${client ? ' project-pane' : ''}`}>
       <header className="tracking-head tasks-head">
-        <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
+        <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
         </button>
         {client && <ProjectPhotoButton p={client} onChange={(photo) => p.onPatchClient(client.id, { photo })} />}
@@ -543,12 +583,12 @@ export function TasksView(p: Props) {
               <Select<string>
                 value={client.type ?? ''}
                 onChange={(v) => p.onPatchClient(client.id, { type: v || undefined })}
-                label="Type"
+                label={t('Type')}
                 className="sel-flat type-sel"
-                options={[{ value: '', label: 'No type', hint: 'A label to filter by' }, ...PROJECT_TYPES.map((t) => ({ value: t, label: t }))]}
+                options={[{ value: '', label: t('No type'), hint: t('A label to filter by') }, ...PROJECT_TYPES.map((ty) => ({ value: ty, label: t(ty) }))]}
               />
             ) : (
-              client?.type && <em className="type-tag">{client.type}</em>
+              client?.type && <em className="type-tag">{t(client.type)}</em>
             )}
             {subtitle}
           </p>
@@ -557,11 +597,11 @@ export function TasksView(p: Props) {
           (client.status === 'ended' ? (
             <span className="client-ended">
               <span className="ended-chip">
-                <Archive size={12} /> Ended{client.endedAt ? ` ${new Date(client.endedAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                <Archive size={12} /> {client.endedAt ? t('Ended {date}', { date: fmtDate(client.endedAt, { day: 'numeric', month: 'short', year: 'numeric' }) }) : t('Ended')}
               </span>
               {projectManage && (
                 <button className="ghost-btn sm" onClick={() => p.onReactivateClient(client.id)}>
-                  <RotateCcw size={13} /> Work with them again
+                  <RotateCcw size={13} /> {t('Work with them again')}
                 </button>
               )}
             </span>
@@ -571,19 +611,19 @@ export function TasksView(p: Props) {
                 <Select<'lead' | 'active' | 'paused'>
                   value={client.status as 'lead' | 'active' | 'paused'}
                   onChange={(v) => p.onPatchClient(client.id, { status: v, ...(v === 'active' && !client.since ? { since: new Date().toISOString() } : {}) })}
-                  label="Status"
+                  label={t('Status')}
                   className="sel-flat"
                   options={[
-                    { value: 'lead', label: 'Lead', hint: 'Not working together yet' },
-                    { value: 'active', label: 'Active', hint: 'Working together' },
-                    { value: 'paused', label: 'Paused', hint: 'On hold for now' },
+                    { value: 'lead', label: tx('status', 'Lead'), hint: t('Not working together yet') },
+                    { value: 'active', label: t('Active'), hint: t('Working together') },
+                    { value: 'paused', label: t('Paused'), hint: t('On hold for now') },
                   ]}
                 />
-                <button className="ghost-btn sm" onClick={() => setStagesOpen(true)} title="This project’s task stages: the company’s, or its own">
-                  <Columns3 size={13} /> Stages
+                <button className="ghost-btn sm" onClick={() => setStagesOpen(true)} title={t('This {project}’s task stages: the company’s, or its own', { project: term.one })}>
+                  <Columns3 size={13} /> {t('Stages')}
                 </button>
                 <button className="ghost-btn sm" onClick={() => p.onEndClient(client.id)}>
-                  End work
+                  {t('End work')}
                 </button>
               </span>
             )
@@ -591,12 +631,12 @@ export function TasksView(p: Props) {
         {client && stagesOpen && (
           <Layer>
             <div className="modal-scrim" onMouseDown={() => setStagesOpen(false)}>
-              <div className="modal stages-modal" role="dialog" aria-label={`Task stages for ${client.name}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop, .modal-scrim + .modal-scrim') && setStagesOpen(false)}>
+              <div className="modal stages-modal" role="dialog" aria-label={t('Task stages for {name}', { name: client.name })} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop, .modal-scrim + .modal-scrim') && setStagesOpen(false)}>
                 <header className="modal-head">
                   <span className="dump-title">
-                    <Columns3 size={15} /> Task stages for {client.name}
+                    <Columns3 size={15} /> {t('Task stages for {name}', { name: client.name })}
                   </span>
-                  <button type="button" className="icon-btn sm" onClick={() => setStagesOpen(false)} aria-label="Close">
+                  <button type="button" className="icon-btn sm" onClick={() => setStagesOpen(false)} aria-label={t('Close')}>
                     <X size={15} />
                   </button>
                 </header>
@@ -606,9 +646,9 @@ export function TasksView(p: Props) {
                     name={client.name}
                     own={client.taskStages}
                     inherited={stagesFor(p.workspace.id)}
-                    inheritedFrom={p.workspace.name || 'the company'}
+                    inheritedFrom={p.workspace.name || t('the company')}
                     canManage={projectManage}
-                    tasks={p.tasks.filter((t) => t.clientId === client.id)}
+                    tasks={p.tasks.filter((x) => x.clientId === client.id)}
                     teams={p.teams}
                     me={p.me}
                     wordsKey={p.workspace.terms?.word ?? ''}
@@ -618,7 +658,7 @@ export function TasksView(p: Props) {
                 </div>
                 <footer className="modal-foot">
                   <button type="button" className="primary-btn sm" onClick={() => setStagesOpen(false)}>
-                    Done
+                    {t('Done')}
                   </button>
                 </footer>
               </div>
@@ -626,17 +666,17 @@ export function TasksView(p: Props) {
           </Layer>
         )}
         {client && <ProjectPeople client={client} users={p.users} me={p.me} canEdit={projectManage} canInvite={projectManage || !!p.canInviteGuests} onPatch={(x) => p.onPatchClient(client.id, x)} onGuests={() => setClientTab('portal')} />}
-        <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title="Start from a template">
-          <LayoutTemplate size={14} /> <span>Template</span>
+        <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title={t('Start from a template')}>
+          <LayoutTemplate size={14} /> <span>{t('Template')}</span>
         </button>
         {!p.dumpInSidebar && (
           <button className={`${showTaskList ? 'ghost-btn' : 'primary-btn'} sm brain-btn`} onClick={p.onBrainDump}>
-            <Sparkles size={14} /> Brain dump
+            <Sparkles size={14} /> {t('Brain dump')}
           </button>
         )}
         {project && p.onOpenProject && (
           <button className="ghost-btn sm" onClick={() => p.onOpenProject!(project.id)}>
-            Open the {term.one} <ChevronRight size={14} />
+            {t('Open the {project}', { project: term.one })} <ChevronRight size={14} />
           </button>
         )}
       </header>
@@ -652,7 +692,7 @@ export function TasksView(p: Props) {
           extra={
             cellTeam && (
               <button className="on soft" onClick={() => p.onScope({ kind: 'client', id: client.id })}>
-                {cellTeam.name} only · show all teams
+                {t('{team} only · show all teams', { team: cellTeam.name })}
               </button>
             )
           }
@@ -667,15 +707,13 @@ export function TasksView(p: Props) {
                 <Avatar person={w.u} size={28} />
                 <span className="wl-text">
                   <strong>
-                    {w.u.id === p.me ? 'You' : w.u.name.split(' ')[0]}
-                    {w.u.id === team.leadId && <em> lead</em>}
+                    {w.u.id === p.me ? t('You') : w.u.name.split(' ')[0]}
+                    {w.u.id === team.leadId && <em> {t('lead')}</em>}
                   </strong>
                   <span className="bar">
                     <span style={{ width: `${(w.open / maxLoad) * 100}%` }} className={w.late ? 'warn' : ''} />
                   </span>
-                  <small>
-                    {w.open} open · {w.week} this week{w.late ? ` · ${w.late} late` : ''}
-                  </small>
+                  <small>{[tn(w.open, '{n} open', '{n} open'), tn(w.week, '{n} this week', '{n} this week'), w.late ? tn(w.late, '{n} late', '{n} late') : ''].filter(Boolean).join(' · ')}</small>
                 </span>
               </button>
             ))}
@@ -694,7 +732,7 @@ export function TasksView(p: Props) {
           <div className="brief-rows">
             <button type="button" className="brief-rows-head" onClick={() => setBriefsOpen((x) => !x)} aria-expanded={briefsOpen}>
               <ChevronRight size={14} className={`rot-chev ${briefsOpen ? 'open' : ''}`} />
-              Briefs <span className="muted">{briefs.length}</span>
+              {t('Briefs')} <span className="muted">{briefs.length}</span>
             </button>
             <div className={`fold ${briefsOpen ? 'open' : ''}`}>
               <div className="fold-in">{briefs.map(briefRow)}</div>
@@ -704,8 +742,8 @@ export function TasksView(p: Props) {
         {scope.kind === 'briefs' && briefs.length === 0 && (
           <EmptyState
             icon={<FileText size={22} />}
-            title="No briefs yet"
-            text="In a brain dump, choose “Brief” to turn a bigger job into a brief with tasks for each person."
+            title={t('No briefs yet')}
+            text={t('In a brain dump, choose “Brief” to turn a bigger job into a brief with tasks for each person.')}
           />
         )}
 
@@ -715,7 +753,7 @@ export function TasksView(p: Props) {
             kind={scope.kind}
             scopeId={'id' in scope ? scope.id : undefined}
             tasks={scoped}
-            label={scope.kind === 'team' ? `${team?.name ?? 'Team'} queue` : heading}
+            label={scope.kind === 'team' ? t('{team} queue', { team: team?.name ?? t('Team') }) : heading}
             canAdd
             addDefaults={addDefaults}
             addKey={p.addKey}
@@ -727,7 +765,7 @@ export function TasksView(p: Props) {
             barStart={
               project && p.onOpenProject ? (
                 <button type="button" className="ghost-btn sm phone-only tq-open" onClick={() => p.onOpenProject!(project.id)}>
-                  Open the {term.one} <ChevronRight size={14} />
+                  {t('Open the {project}', { project: term.one })} <ChevronRight size={14} />
                 </button>
               ) : undefined
             }
@@ -741,15 +779,18 @@ export function TasksView(p: Props) {
               // What needs doing for this client, not how much there is.
               const today = localDay();
               const items: { key: string; text: string; sub: string; run: () => void; tone?: string }[] = [
-                ...open.filter((t) => t.due && t.due < today).map((t) => ({ key: 'l' + t.id, text: t.title, sub: `Late, ${person(t.userId)?.name.split(' ')[0] ?? 'nobody'} on it`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
-                ...open.filter((t) => t.source === 'request' && kindOf(t) === 'open').map((t) => ({ key: 'r' + t.id, text: t.title, sub: `New request from the ${term.who}`, run: () => p.onOpenTask(t.id) })),
-                ...open.filter((t) => t.approval?.status === 'changes').map((t) => ({ key: 'c' + t.id, text: t.title, sub: `${term.Who} asked for changes${t.approval?.note ? `: “${t.approval.note}”` : ''}`, run: () => p.onOpenTask(t.id), tone: 'warn' })),
-                ...open.filter((t) => !t.userId).map((t) => ({ key: 'u' + t.id, text: t.title, sub: 'Nobody on it yet', run: () => p.onOpenTask(t.id) })),
-                ...clientThreads.filter((t) => t.unread).map((t) => ({ key: 'm' + t.id, text: t.subject, sub: 'Unread email', run: () => p.onOpenThread(t.id) })),
+                ...open.filter((x) => x.due && x.due < today).map((x) => {
+                  const who = person(x.userId)?.name.split(' ')[0];
+                  return { key: 'l' + x.id, text: x.title, sub: who ? t('Late, {name} on it', { name: who }) : t('Late, nobody on it'), run: () => p.onOpenTask(x.id), tone: 'warn' };
+                }),
+                ...open.filter((x) => x.source === 'request' && kindOf(x) === 'open').map((x) => ({ key: 'r' + x.id, text: x.title, sub: t('New request from the {who}', { who: term.who }), run: () => p.onOpenTask(x.id) })),
+                ...open.filter((x) => x.approval?.status === 'changes').map((x) => ({ key: 'c' + x.id, text: x.title, sub: x.approval?.note ? t('{Who} asked for changes: “{note}”', { who: term.who, note: x.approval.note }) : t('{Who} asked for changes', { who: term.who }), run: () => p.onOpenTask(x.id), tone: 'warn' })),
+                ...open.filter((x) => !x.userId).map((x) => ({ key: 'u' + x.id, text: x.title, sub: t('Nobody on it yet'), run: () => p.onOpenTask(x.id) })),
+                ...clientThreads.filter((th) => th.unread).map((th) => ({ key: 'm' + th.id, text: th.subject, sub: t('Unread email'), run: () => p.onOpenThread(th.id) })),
               ];
               return (
                 <div className="side-card needs-card">
-                  <h3>Needs attention</h3>
+                  <h3>{t('Needs attention')}</h3>
                   {items.length ? (
                     <ul className="home-list">
                       {items.slice(0, 6).map((x) => (
@@ -762,17 +803,17 @@ export function TasksView(p: Props) {
                       ))}
                     </ul>
                   ) : (
-                    <EmptyState compact text={<>Nothing needs you for {client.name}.{clientMeetings[0] ? ` Last meeting ${relative(clientMeetings[0].at)}.` : ''}</>} />
+                    <EmptyState compact text={[t('Nothing needs you for {name}.', { name: client.name }), clientMeetings[0] ? t('Last meeting {when}.', { when: relative(clientMeetings[0].at) }) : ''].filter(Boolean).join(' ')} />
                   )}
                 </div>
               );
             })()}
-            <ProjectSections items={tabItems} onTab={setClientTab} actions={client.status === 'ended' ? [] : [{ id: 'template', label: 'Start from a template', run: p.onTemplate }, ...(projectManage ? [{ id: 'end', label: 'End work', danger: true, run: () => p.onEndClient(client.id) }] : [])]} />
+            <ProjectSections items={tabItems} onTab={setClientTab} actions={client.status === 'ended' ? [] : [{ id: 'template', label: t('Start from a template'), run: p.onTemplate }, ...(projectManage ? [{ id: 'end', label: t('End work'), danger: true, run: () => p.onEndClient(client.id) }] : [])]} />
             <div className="side-card client-notes-card">
               <h3>
-                Notes
+                {t('Notes')}
                 <button className="ghost-btn sm" onClick={() => p.onNewNote(client.id)}>
-                  <Plus size={13} /> New note
+                  <Plus size={13} /> {t('New note')}
                 </button>
               </h3>
               {p.notes.filter((n) => n.clientId === client.id).length ? (
@@ -783,36 +824,36 @@ export function TasksView(p: Props) {
                     .map((n) => (
                       <li key={n.id}>
                         <button className="home-notice" onClick={() => p.onOpenNote(n.id)}>
-                          <span>{n.title || 'Untitled'}</span>
+                          <span>{n.title || t('Untitled')}</span>
                           <time>{relative(n.updatedAt)}</time>
                         </button>
                       </li>
                     ))}
                 </ul>
               ) : (
-                <EmptyState compact text={<>No notes for {client.name} yet. Meeting prep, preferences, who’s who: write it once, the whole team sees it here.</>} />
+                <EmptyState compact text={t('No notes for {name} yet. Meeting prep, preferences, who’s who: write it once, the whole team sees it here.', { name: client.name })} />
               )}
             </div>
             <div className="side-card overview-card">
               <h3>
-                {client.overview?.headline ?? 'Where things stand'}
+                {client.overview?.headline ?? t('Where things stand')}
                 <button className="ghost-btn sm" disabled={writingOv || (!clientMeetings.length && !open.length)} onClick={async () => (setWritingOv(true), await p.onWriteOverview(client.id), setWritingOv(false))}>
-                  <Sparkles size={13} /> {writingOv ? 'Writing…' : client.overview ? 'Refresh' : 'Write overview'}
+                  <Sparkles size={13} /> {writingOv ? t('Writing…') : client.overview ? t('Refresh') : t('Write overview')}
                 </button>
               </h3>
               {client.overview ? (
                 <>
-                  <p className="muted small">Written by AI from {client.overview.from} meeting{client.overview.from === 1 ? '' : 's'} · {relative(client.overview.at)}</p>
+                  <p className="muted small">{tn(client.overview.from, 'Written by AI from {n} meeting · {when}', 'Written by AI from {n} meetings · {when}', { when: relative(client.overview.at) })}</p>
                   <p>{client.overview.summary}</p>
                   <p>
-                    <b>Progress:</b> {client.overview.progress}
+                    <b>{t('Progress:')}</b> {client.overview.progress}
                   </p>
                   <div className="ov-cols">
                     {(
                       [
-                        ['Wins', client.overview.wins, 'Nothing yet'],
-                        ['Risks', client.overview.risks, 'None flagged'],
-                        ['Next steps', client.overview.next, 'None'],
+                        [t('Wins'), client.overview.wins, t('Nothing yet')],
+                        [t('Risks'), client.overview.risks, t('None flagged')],
+                        [t('Next steps'), client.overview.next, t('None')],
                       ] as const
                     ).map(([h, l, e]) => (
                       <div key={h}>
@@ -831,31 +872,31 @@ export function TasksView(p: Props) {
                   </div>
                 </>
               ) : (
-                <p className="muted small">AI writes a one-page view of this {term.one} from its meetings, tasks and emails. Only when you click.</p>
+                <p className="muted small">{t('AI writes a one-page view of this {project} from its meetings, tasks and emails. Only when you click.', { project: term.one })}</p>
               )}
             </div>
             <div className="hub-two">
               <div className="side-card">
-                <h3>Next up</h3>
+                <h3>{t('Next up')}</h3>
                 <ul className="home-list">
-                  {open.slice(0, 5).map((t) => (
-                    <li key={t.id}>
-                      <button className="home-notice" onClick={() => p.onOpenTask(t.id)}>
-                        <span>{t.title}</span>
-                        <time>{t.due ? dueLabel(t.due).text : ''}</time>
+                  {open.slice(0, 5).map((x) => (
+                    <li key={x.id}>
+                      <button className="home-notice" onClick={() => p.onOpenTask(x.id)}>
+                        <span>{x.title}</span>
+                        <time>{x.due ? dueLabel(x.due).text : ''}</time>
                       </button>
                     </li>
                   ))}
-                  {!open.length && <EmptyState compact text="Nothing open. Add a task on the Tasks tab, or start a brief from a template." />}
+                  {!open.length && <EmptyState compact text={t('Nothing open. Add a task on the Tasks tab, or start a brief from a template.')} />}
                 </ul>
               </div>
               <div className="side-card">
-                <h3>Recent</h3>
+                <h3>{t('Recent')}</h3>
                 <ul className="home-list">
                   {[
-                    ...clientThreads.slice(0, 3).map((t) => ({ k: 'e' + t.id, text: `Email: ${t.subject}`, at: t.messages[t.messages.length - 1].date, run: () => p.onOpenThread(t.id) })),
-                    ...clientMeetings.slice(0, 2).map((m) => ({ k: 'm' + m.id, text: `Meeting: ${m.title}`, at: m.at, run: () => p.onOpenMeeting(m.id) })),
-                    ...clientMsgs.slice(-3).map((m) => ({ k: 'c' + m.id, text: `Chat: ${m.text.slice(0, 70)}`, at: m.at, run: () => clientChannel && p.onOpenChannel(clientChannel.id) })),
+                    ...clientThreads.slice(0, 3).map((th) => ({ k: 'e' + th.id, text: t('Email: {subject}', { subject: th.subject }), at: th.messages[th.messages.length - 1].date, run: () => p.onOpenThread(th.id) })),
+                    ...clientMeetings.slice(0, 2).map((m) => ({ k: 'm' + m.id, text: t('Meeting: {title}', { title: m.title }), at: m.at, run: () => p.onOpenMeeting(m.id) })),
+                    ...clientMsgs.slice(-3).map((m) => ({ k: 'c' + m.id, text: t('Chat: {text}', { text: m.text.slice(0, 70) }), at: m.at, run: () => clientChannel && p.onOpenChannel(clientChannel.id) })),
                   ]
                     .sort((a, b) => b.at.localeCompare(a.at))
                     .slice(0, 6)
@@ -873,7 +914,7 @@ export function TasksView(p: Props) {
           </div>
         )}
 
-        {client && clientTab === 'workload' && <ProjectWorkload tasks={p.tasks.filter((t) => t.clientId === client.id && !isBrief(t))} people={[...new Set([client.ownerId, ...(client.members ?? []).map((m) => m.userId)].filter(Boolean) as string[])]} users={p.users} me={p.me} onOpenTask={p.onOpenTask} />}
+        {client && clientTab === 'workload' && <ProjectWorkload tasks={p.tasks.filter((x) => x.clientId === client.id && !isBrief(x))} people={[...new Set([client.ownerId, ...(client.members ?? []).map((m) => m.userId)].filter(Boolean) as string[])]} users={p.users} me={p.me} onOpenTask={p.onOpenTask} />}
         {client && clientTab === 'chat' && (
           <div className="hub-chat">
             {clientChannel ? (
@@ -882,7 +923,7 @@ export function TasksView(p: Props) {
                   {clientMsgs.slice(-12).map((m) => {
                     const g = m.guestEmail ? clientChannel.guests?.find((x) => x.email === m.guestEmail) : undefined;
                     const u = m.guestEmail ? undefined : person(m.userId);
-                    const who = g ? { name: g.name, email: g.email } : u ? u : { name: 'Someone', email: '' };
+                    const who = g ? { name: g.name, email: g.email } : u ? u : { name: t('Someone'), email: '' };
                     return (
                       <div key={m.id} className="hub-msg">
                         <Avatar person={who} size={28} />
@@ -892,21 +933,21 @@ export function TasksView(p: Props) {
                             {g && <Badge small tone="warn">{term.Who}</Badge>}
                             <time>{relative(m.at)}</time>
                           </div>
-                          <p>{m.text || (m.voice ? 'Voice note' : m.files ? m.files.map((f) => f.name).join(', ') : '')}</p>
+                          <p>{m.text || (m.voice ? t('Voice note') : m.files ? m.files.map((f) => f.name).join(', ') : '')}</p>
                         </div>
                       </div>
                     );
                   })}
                 </div>
                 <footer className="hub-chat-foot">
-                  <span className="muted small">#{clientChannel.name} · latest messages</span>
+                  <span className="muted small">{t('#{channel} · latest messages', { channel: clientChannel.name })}</span>
                   <button className="primary-btn sm" onClick={() => p.onOpenChannel(clientChannel.id)}>
-                    <Hash size={13} /> Open the channel
+                    <Hash size={13} /> {t('Open the channel')}
                   </button>
                 </footer>
               </>
             ) : (
-              <EmptyState compact text={<>{client.name} has no channel yet. Create one in Chat and pick “{term.One} (internal)” or “Shared”.</>} />
+              <EmptyState compact text={t('{name} has no channel yet. Create one in Chat and pick “{project} (internal)” or “Shared”.', { name: client.name, project: term.One })} />
             )}
           </div>
         )}
@@ -918,32 +959,29 @@ export function TasksView(p: Props) {
                 <span className="cf-icon">{f.kind === 'video' ? <Video size={16} /> : <FileText size={16} />}</span>
                 <span className="cf-text">
                   <strong>{f.name}</strong>
-                  <small>
-                    {(f.size / 1e6).toFixed(1)} MB · {relative(f.modified)}
-                    {f.sharedWithClient ? ` · visible to ${term.whos}` : ''}
-                  </small>
+                  <small>{[`${fmtNumber(f.size / 1e6, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`, relative(f.modified), f.sharedWithClient ? t('visible to {whos}', { whos: term.whos }) : ''].filter(Boolean).join(' · ')}</small>
                 </span>
               </div>
             ))}
-            {!clientFiles.length && <EmptyState compact text={<>No files for {client.name} yet. Files shared in its channel and saved in its Drive folder show here.</>} />}
+            {!clientFiles.length && <EmptyState compact text={t('No files for {name} yet. Files shared in its channel and saved in its Drive folder show here.', { name: client.name })} />}
           </div>
         )}
 
         {client && clientTab === 'emails' && (
           <div className="te-list">
-            {clientThreads.length === 0 && <EmptyState compact text={<>{client.domain ? `No emails with @${client.domain} yet. They show up here as soon as someone there writes.` : `Add ${client.name}’s email domain to see their emails here.`}</>} />}
-            {clientThreads.map((t) => {
-              const last = t.messages[t.messages.length - 1];
+            {clientThreads.length === 0 && <EmptyState compact text={client.domain ? t('No emails with @{domain} yet. They show up here as soon as someone there writes.', { domain: client.domain }) : t('Add {name}’s email domain to see their emails here.', { name: client.name })} />}
+            {clientThreads.map((th) => {
+              const last = th.messages[th.messages.length - 1];
               return (
-                <button key={t.id} className="te-row simple" onClick={() => p.onOpenThread(t.id)}>
+                <button key={th.id} className="te-row simple" onClick={() => p.onOpenThread(th.id)}>
                   <Avatar person={last.from} size={30} />
                   <div className="te-main">
-                    <strong>{t.subject}</strong>
+                    <strong>{th.subject}</strong>
                     <small>
                       {last.from.name} · {relative(last.date)}
                     </small>
                   </div>
-                  {t.unread && <span className="te-status seen">New</span>}
+                  {th.unread && <span className="te-status seen">{t('New')}</span>}
                 </button>
               );
             })}
@@ -952,7 +990,7 @@ export function TasksView(p: Props) {
 
         {client && clientTab === 'meetings' && (
           <div className="te-list">
-            {clientMeetings.length === 0 && <EmptyState compact text={<>No recorded meetings with {client.name} yet. Send the notetaker to your next call with them (Meet, Send bot).</>} />}
+            {clientMeetings.length === 0 && <EmptyState compact text={t('No recorded meetings with {name} yet. Send the notetaker to your next call with them (Meet, Send bot).', { name: client.name })} />}
             {clientMeetings.map((m) => (
               <button key={m.id} className="te-row simple" onClick={() => p.onOpenMeeting(m.id)}>
                 <span className="kpi-icon">
@@ -960,9 +998,7 @@ export function TasksView(p: Props) {
                 </span>
                 <div className="te-main">
                   <strong>{m.title}</strong>
-                  <small>
-                    {relative(m.at)} · {m.minutes} min · {m.actions.length} action items
-                  </small>
+                  <small>{[relative(m.at), tn(m.minutes, '{n} min', '{n} min'), tn(m.actions.length, '{n} action item', '{n} action items')].join(' · ')}</small>
                 </div>
               </button>
             ))}
@@ -971,9 +1007,9 @@ export function TasksView(p: Props) {
         {client && clientTab === 'notes' && (
           <div className="tracking-scroll proj-tab">
             <div className="proj-tab-head">
-              <p className="muted small">Prep, preferences, who’s who: notes linked to {client.name}. Private notes stay yours.</p>
+              <p className="muted small">{t('Prep, preferences, who’s who: notes linked to {name}. Private notes stay yours.', { name: client.name })}</p>
               <button className="primary-btn sm" onClick={() => p.onNewNote(client.id)}>
-                <Plus size={14} /> New note
+                <Plus size={14} /> {t('New note')}
               </button>
             </div>
             {p.notes.filter((n) => n.clientId === client.id).length ? (
@@ -984,17 +1020,14 @@ export function TasksView(p: Props) {
                   .map((n) => (
                     <li key={n.id}>
                       <button onClick={() => p.onOpenNote(n.id)}>
-                        <strong>{n.title || 'Untitled'}</strong>
-                        <small>
-                          {n.visibility === 'private' ? 'Only you · ' : ''}
-                          {relative(n.updatedAt)}
-                        </small>
+                        <strong>{n.title || t('Untitled')}</strong>
+                        <small>{n.visibility === 'private' ? t('Only you · {when}', { when: relative(n.updatedAt) }) : relative(n.updatedAt)}</small>
                       </button>
                     </li>
                   ))}
               </ul>
             ) : (
-              <EmptyState compact text={<>No notes for {client.name} yet.</>} />
+              <EmptyState compact text={t('No notes for {name} yet.', { name: client.name })} />
             )}
           </div>
         )}
@@ -1005,15 +1038,15 @@ export function TasksView(p: Props) {
         )}
         {client && clientTab === 'tables' && (
           <div className="tracking-scroll proj-tab">
-            <ProjectTables tables={(p.tables ?? []).filter((t) => t.clientId === client.id)} rows={p.tableRows ?? []} onOpen={(id) => p.onOpenTable?.(id)} onNew={() => p.onNewTable?.(client.id)} />
+            <ProjectTables tables={(p.tables ?? []).filter((tb) => tb.clientId === client.id)} rows={p.tableRows ?? []} onOpen={(id) => p.onOpenTable?.(id)} onNew={() => p.onNewTable?.(client.id)} />
           </div>
         )}
         {client && clientTab === 'logins' && (
           <div className="tracking-scroll proj-tab">
             <div className="proj-tab-head">
-              <p className="muted small">Shared passwords and 2FA codes for {client.name}. You only see the ones you were given; every reveal is logged.</p>
+              <p className="muted small">{t('Shared passwords and 2FA codes for {name}. You only see the ones you were given; every reveal is logged.', { name: client.name })}</p>
               <button className="primary-btn sm" onClick={() => p.onNewLogin?.(client.id)}>
-                <Plus size={14} /> New login
+                <Plus size={14} /> {t('New login')}
               </button>
             </div>
             {(p.logins ?? []).filter((l) => l.clientId === client.id).length ? (
@@ -1025,14 +1058,14 @@ export function TasksView(p: Props) {
                       <button onClick={() => p.onOpenLogins?.(client.id)}>
                         <strong>{l.title}</strong>
                         <small>
-                          {[l.username, l.url?.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], l.hasTotp ? '2FA' : ''].filter(Boolean).join(' · ') || 'Login'}
+                          {[l.username, l.url?.replace(/^https?:\/\/(www\.)?/, '').split('/')[0], l.hasTotp ? '2FA' : ''].filter(Boolean).join(' · ') || t('Login')}
                         </small>
                       </button>
                     </li>
                   ))}
               </ul>
             ) : (
-              <EmptyState compact text={<>No logins for {client.name} yet. Add the ad accounts, social logins and tools you share with the team.</>} />
+              <EmptyState compact text={t('No logins for {name} yet. Add the ad accounts, social logins and tools you share with the team.', { name: client.name })} />
             )}
           </div>
         )}
@@ -1040,20 +1073,21 @@ export function TasksView(p: Props) {
           const access = accessFor(p.workspace, client);
           const company = accessFor(p.workspace, { type: client.type }); // what this project would have without its own changes
           const people = clientPeople(client, p.channels);
-          const visible = p.tasks.filter((t) => t.clientId === client.id && (t.visibleToClient || t.source === 'request'));
-          const waiting = visible.filter((t) => t.approval?.status === 'waiting');
+          const visible = p.tasks.filter((x) => x.clientId === client.id && (x.visibleToClient || x.source === 'request'));
+          const waiting = visible.filter((x) => x.approval?.status === 'waiting');
           const files = p.files.filter((f) => (f.clientId === client.id || (f.parentId && p.files.find((x) => x.id === f.parentId)?.clientId === client.id)) && f.kind !== 'folder' && !f.trashed);
           const mts = p.meetings.filter((m) => m.clientId === client.id);
-          const candidates = p.tasks.filter((t) => t.clientId === client.id && !t.done && t.source !== 'request').slice(0, 12);
+          const candidates = p.tasks.filter((x) => x.clientId === client.id && !x.done && x.source !== 'request').slice(0, 12);
           const setPeople = (list: ClientPerson[]) => p.onPatchClient(client.id, { people: list });
           const viewAs = previewAs && people.some((x) => x.email === previewAs) ? previewAs : people.find((x) => x.status !== 'pending')?.email;
           return (
             <div className="portal-admin">
               <div className="pa-hero">
                 <div>
-                  <h3>What {client.name} sees</h3>
+                  <h3>{t('What {name} sees', { name: client.name })}</h3>
                   <p className="muted">
-                    Hidden until you share it. {visible.length} item{visible.length === 1 ? '' : 's'} shared, {waiting.length} waiting for approval, {people.filter((x) => x.status !== 'pending').length} people with access.
+                    {t('Hidden until you share it.')}{' '}
+                    {[tn(visible.length, '{n} item shared', '{n} items shared'), tn(waiting.length, '{n} waiting for approval', '{n} waiting for approval'), tn(people.filter((x) => x.status !== 'pending').length, '{n} person with access', '{n} people with access')].join(', ')}.
                   </p>
                 </div>
                 <div className="pa-preview">
@@ -1061,89 +1095,97 @@ export function TasksView(p: Props) {
                     <Select
                       value={viewAs ?? ''}
                       onChange={setPreviewAs}
-                      label="View as"
+                      label={t('View as')}
                       options={people.filter((x) => x.status !== 'pending').map((g) => ({ value: g.email, label: g.name, hint: ROLE_NAME[g.role] }))}
                     />
                   )}
                   <button className="primary-btn sm" disabled={!viewAs} onClick={() => viewAs && p.onViewAs(client.id, viewAs)}>
-                    <Eye size={14} /> View as guest
+                    <Eye size={14} /> {t('View as {who}', { who: term.who })}
                   </button>
                 </div>
               </div>
 
               <div className="pa-grid">
                 <section>
-                  <h4>Tasks and briefs</h4>
-                  {candidates.length === 0 && <p className="muted small">No open tasks for {client.name}.</p>}
-                  {candidates.map((t) => (
-                    <div key={t.id} className="pa-row">
-                      <button className={`eye ${t.visibleToClient ? 'on' : ''}`} onClick={() => p.onPatch(t.id, { visibleToClient: !t.visibleToClient })} title={t.visibleToClient ? `Visible to ${term.whos}` : 'Internal only'}>
-                        {t.visibleToClient ? <Eye size={14} /> : <EyeOff size={14} />}
+                  <h4>{t('Tasks and briefs')}</h4>
+                  {candidates.length === 0 && <p className="muted small">{t('No open tasks for {name}.', { name: client.name })}</p>}
+                  {candidates.map((tk) => (
+                    <div key={tk.id} className="pa-row">
+                      <button className={`eye ${tk.visibleToClient ? 'on' : ''}`} onClick={() => p.onPatch(tk.id, { visibleToClient: !tk.visibleToClient })} title={tk.visibleToClient ? t('Visible to {whos}', { whos: term.whos }) : t('Internal only')}>
+                        {tk.visibleToClient ? <Eye size={14} /> : <EyeOff size={14} />}
                       </button>
-                      <button className="pa-title" onClick={() => p.onOpenTask(t.id)}>
-                        {isBrief(t) && <FileText size={12} />} {t.title}
+                      <button className="pa-title" onClick={() => p.onOpenTask(tk.id)}>
+                        {isBrief(tk) && <FileText size={12} />} {tk.title}
                       </button>
-                      {t.approval?.status === 'waiting' && (
+                      {tk.approval?.status === 'waiting' && (
                         <span className="ap-tag waiting">
-                          <Clock size={11} /> Waiting
+                          <Clock size={11} /> {t('Waiting')}
                         </span>
                       )}
-                      {t.approval?.status === 'approved' && (
+                      {tk.approval?.status === 'approved' && (
                         <span className="ap-tag approved">
-                          <CheckCircle2 size={11} /> Approved
+                          <CheckCircle2 size={11} /> {t('Approved')}
                         </span>
                       )}
                     </div>
                   ))}
-                  <h4>Files</h4>
-                  {files.length === 0 && <p className="muted small">No files for {client.name} in Drive yet.</p>}
+                  <h4>{t('Files')}</h4>
+                  {files.length === 0 && <p className="muted small">{t('No files for {name} in Drive yet.', { name: client.name })}</p>}
                   {files.map((f) => (
                     <div key={f.id} className="pa-row">
-                      <button className={`eye ${f.sharedWithClient || f.uploadedBy ? 'on' : ''}`} disabled={!!f.uploadedBy} onClick={() => p.onShareFile(f.id, !f.sharedWithClient)} title={f.uploadedBy ? `Uploaded by the ${term.who}` : f.sharedWithClient ? `Visible to ${term.whos}` : 'Internal only'}>
+                      <button className={`eye ${f.sharedWithClient || f.uploadedBy ? 'on' : ''}`} disabled={!!f.uploadedBy} onClick={() => p.onShareFile(f.id, !f.sharedWithClient)} title={f.uploadedBy ? t('Uploaded by the {who}', { who: term.who }) : f.sharedWithClient ? t('Visible to {whos}', { whos: term.whos }) : t('Internal only')}>
                         {f.sharedWithClient || f.uploadedBy ? <Eye size={14} /> : <EyeOff size={14} />}
                       </button>
                       <span className="pa-title">
                         {f.name}
-                        {f.uploadedBy && <small className="muted"> from {people.find((x) => x.email === f.uploadedBy)?.name.split(' ')[0] ?? `the ${term.who}`}</small>}
+                        {f.uploadedBy && (
+                          <small className="muted">
+                            {' '}
+                            {(() => {
+                              const from = people.find((x) => x.email === f.uploadedBy)?.name.split(' ')[0];
+                              return from ? t('from {name}', { name: from }) : t('from the {who}', { who: term.who });
+                            })()}
+                          </small>
+                        )}
                       </span>
                     </div>
                   ))}
-                  <h4>Meeting notes</h4>
-                  {access.meetingNotes === 'auto' && <p className="muted small">Notes of meetings {client.name} attended are shared automatically. Share others here.</p>}
-                  {mts.length === 0 && <p className="muted small">No meetings with {client.name} yet.</p>}
+                  <h4>{t('Meeting notes')}</h4>
+                  {access.meetingNotes === 'auto' && <p className="muted small">{t('Notes of meetings {name} attended are shared automatically. Share others here.', { name: client.name })}</p>}
+                  {mts.length === 0 && <p className="muted small">{t('No meetings with {name} yet.', { name: client.name })}</p>}
                   {mts.map((m) => {
                     const auto = access.meetingNotes === 'auto' && people.some((x) => m.attendees.some((a) => a.toLowerCase() === x.name.toLowerCase() || a.split(' ')[0].toLowerCase() === x.name.split(' ')[0].toLowerCase()));
                     const on = auto || !!m.sharedWithClient;
                     return (
                       <div key={m.id} className="pa-row">
-                        <button className={`eye ${on ? 'on' : ''}`} disabled={auto} onClick={() => p.onShareMeeting(m.id, !m.sharedWithClient)} title={auto ? 'Shared automatically: they attended' : on ? `Visible to ${term.whos}` : 'Internal only'}>
+                        <button className={`eye ${on ? 'on' : ''}`} disabled={auto} onClick={() => p.onShareMeeting(m.id, !m.sharedWithClient)} title={auto ? t('Shared automatically: they attended') : on ? t('Visible to {whos}', { whos: term.whos }) : t('Internal only')}>
                           {on ? <Eye size={14} /> : <EyeOff size={14} />}
                         </button>
                         <span className="pa-title">
                           {m.title}
-                          {auto && <small className="muted"> they attended</small>}
+                          {auto && <small className="muted"> {t('they attended')}</small>}
                         </span>
                       </div>
                     );
                   })}
                 </section>
                 <section>
-                  <h4>Guests</h4>
-                  {people.length === 0 && <p className="muted small">Nobody yet. Invite the people you work with on {client.name}. They get a free account.</p>}
+                  <h4>{t('Guests')}</h4>
+                  {people.length === 0 && <p className="muted small">{t('Nobody yet. Invite the people you work with on {name}. They get a free account.', { name: client.name })}</p>}
                   {people.map((g) => (
                     <div key={g.email} className="pa-row person-row">
                       <PersonCell person={{ name: g.name, email: g.email, color: client.color }} sub={[companyOf(g.email, g.company, client), g.email].filter(Boolean).join(' · ')} />
                       {g.status === 'pending' ? (
                         <>
-                          <Badge tone="warn">Asked to join</Badge>
+                          <Badge tone="warn">{t('Asked to join')}</Badge>
                           {projectManage && (
                             <button className="primary-btn sm" onClick={() => p.onApproveClientPerson(client.id, g.email)}>
-                              Approve
+                              {t('Approve')}
                             </button>
                           )}
                         </>
                       ) : (
-                        <Badge tone={g.status === 'joined' ? 'good' : 'neutral'}>{g.status === 'joined' ? 'Joined' : 'Invited'}</Badge>
+                        <Badge tone={g.status === 'joined' ? 'good' : 'neutral'}>{g.status === 'joined' ? t('Joined') : t('Invited')}</Badge>
                       )}
                       {p.workspace.whatsapp?.connected && g.phone && (
                         <button type="button" className="icon-btn sm wa-btn" title={`WhatsApp ${g.phone}`} aria-label={`WhatsApp ${g.name}`} onClick={() => setWaTo(g)}>
@@ -1153,13 +1195,13 @@ export function TasksView(p: Props) {
                       <Select<ClientPerson['role']>
                         value={g.role}
                         onChange={(role) => setPeople(people.map((x) => (x.email === g.email ? { ...x, role } : x)))}
-                        label="Role"
+                        label={t('Role')}
                         className="sel-flat"
                         disabled={!projectManage}
                         options={(['viewer', 'collaborator', 'approver'] as const).map((r) => ({ value: r, label: ROLE_NAME[r], hint: ROLE_HINT[r] }))}
                       />
                       {projectManage && (
-                        <button className="icon-btn sm" aria-label="Remove access" title="Remove access" onClick={() => setPeople(people.filter((x) => x.email !== g.email))}>
+                        <button className="icon-btn sm" aria-label={t('Remove access')} title={t('Remove access')} onClick={() => setPeople(people.filter((x) => x.email !== g.email))}>
                           <X size={14} />
                         </button>
                       )}
@@ -1167,10 +1209,10 @@ export function TasksView(p: Props) {
                   ))}
                   {(projectManage || p.canInviteGuests) ? (
                   <div className="pa-invite">
-                    <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Name" />
-                    <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={client.domain ? `name@${client.domain}` : 'name@company.com'} />
-                    <input value={inviteCompany} onChange={(e) => setInviteCompany(e.target.value)} placeholder={companyOf(inviteEmail.trim(), undefined, client) ?? 'Company (optional)'} />
-                    {p.workspace.whatsapp?.connected && <input value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} placeholder="WhatsApp, e.g. +62 812…" />}
+                    <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder={t('Name')} />
+                    <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={client.domain ? t('name@{domain}', { domain: client.domain }) : t('name@company.com')} />
+                    <input value={inviteCompany} onChange={(e) => setInviteCompany(e.target.value)} placeholder={companyOf(inviteEmail.trim(), undefined, client) ?? t('Company (optional)')} />
+                    {p.workspace.whatsapp?.connected && <input value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} placeholder={t('WhatsApp, e.g. +62 812…')} />}
                     <button
                       className="ghost-btn sm"
                       disabled={!inviteName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim()) || people.some((x) => x.email.toLowerCase() === inviteEmail.trim().toLowerCase())}
@@ -1182,15 +1224,15 @@ export function TasksView(p: Props) {
                         setInviteEmail('');
                       }}
                     >
-                      <Plus size={13} /> Invite
+                      <Plus size={13} /> {t('Invite')}
                     </button>
                   </div>
                   ) : (
-                    <p className="muted small">Only this {term.one}’s Lead or an admin can invite guests.</p>
+                    <p className="muted small">{t('Only this {project}’s lead or an admin can invite {whos}.', { project: term.one, whos: term.whos })}</p>
                   )}
 
                   {waTo && <WhatsAppDialog to={waTo} workspaceId={p.workspace.id} channelId={p.channels.find((c) => c.clientId === client.id && c.category === 'shared' && !c.archived)?.id} onClose={() => setWaTo(null)} />}
-                  <h4>Settings for {client.name}</h4>
+                  <h4>{t('Settings for {name}', { name: client.name })}</h4>
                   <ClientAccessForm
                     value={access}
                     company={company}
@@ -1221,38 +1263,38 @@ function ProjectWorkload({ tasks, people, users, me, onOpenTask }: { tasks: Todo
   const [openId, setOpenId] = useState<string | null>(null);
   const today = dayStr(new Date());
   const week = dayStr(new Date(Date.now() + 7 * 86_400_000));
-  const open = tasks.filter((t) => !t.done);
-  const doers = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
+  const open = tasks.filter((x) => !x.done);
+  const doers = (x: Todo) => (x.assignees?.length ? x.assignees : x.userId ? [x.userId] : []);
   const ids = [...new Set([...people, ...open.flatMap(doers)])];
   const rows = ids
     .map((id) => users.find((u) => u.id === id))
     .filter(Boolean)
     .map((u) => {
-      const mine = open.filter((t) => doers(t).includes(u!.id)).sort((a, b) => (a.due ?? '9').localeCompare(b.due ?? '9'));
-      return { u: u!, mine, late: mine.filter((t) => t.due && t.due < today).length, soon: mine.filter((t) => t.due && t.due >= today && t.due <= week).length };
+      const mine = open.filter((x) => doers(x).includes(u!.id)).sort((a, b) => (a.due ?? '9').localeCompare(b.due ?? '9'));
+      return { u: u!, mine, late: mine.filter((x) => x.due && x.due < today).length, soon: mine.filter((x) => x.due && x.due >= today && x.due <= week).length };
     })
     .sort((a, b) => b.late - a.late || b.mine.length - a.mine.length);
-  const nobody = open.filter((t) => !doers(t).length);
+  const nobody = open.filter((x) => !doers(x).length);
   const most = Math.max(1, ...rows.map((r) => r.mine.length));
   const list = (items: Todo[]) => (
     <div className="team-load-list">
-      {items.length === 0 && <p className="muted small">Nothing open.</p>}
-      {items.map((t) => (
-        <button key={t.id} type="button" className="team-mini" onClick={() => onOpenTask(t.id)}>
-          <span>{t.title}</span>
-          {t.due && <small className={t.due < today ? 'bad' : 'muted'}>{new Date(`${t.due}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</small>}
+      {items.length === 0 && <p className="muted small">{t('Nothing open.')}</p>}
+      {items.map((x) => (
+        <button key={x.id} type="button" className="team-mini" onClick={() => onOpenTask(x.id)}>
+          <span>{x.title}</span>
+          {x.due && <small className={x.due < today ? 'bad' : 'muted'}>{fmtDay(x.due)}</small>}
         </button>
       ))}
     </div>
   );
   return (
     <div className="team-sec proj-workload">
-      <p className="muted small">This project’s open work, per person. Late work first; open someone to see their list.</p>
+      <p className="muted small">{t('This {project}’s open work, per person. Late work first; open someone to see their list.', { project: term.one })}</p>
       <div className="team-block">
         {rows.map(({ u, mine, late, soon }) => (
           <div key={u.id} className="team-load">
             <button type="button" className="team-row" onClick={() => setOpenId(openId === u.id ? null : u.id)} aria-expanded={openId === u.id}>
-              <PersonCell person={u} badges={u.id === me && <Badge tone="accent">You</Badge>} sub={[late && `${late} late`, soon && `${soon} due this week`, !mine.length && 'Nothing open here'].filter(Boolean).join(' · ') || `${mine.length} open`} />
+              <PersonCell person={u} badges={u.id === me && <Badge tone="accent">{t('You')}</Badge>} sub={[late && tn(late, '{n} late', '{n} late'), soon && tn(soon, '{n} due this week', '{n} due this week'), !mine.length && t('Nothing open here')].filter(Boolean).join(' · ') || tn(mine.length, '{n} open', '{n} open')} />
               <span className="team-bar" aria-hidden>
                 <i style={{ width: `${(mine.length / most) * 100}%` }} className={late ? 'bad' : ''} />
               </span>
@@ -1269,8 +1311,8 @@ function ProjectWorkload({ tasks, people, users, me, onOpenTask }: { tasks: Todo
             <button type="button" className="team-row" onClick={() => setOpenId(openId === '-' ? null : '-')} aria-expanded={openId === '-'}>
               <span className="avatar-empty">?</span>
               <span className="team-row-text">
-                <strong>Not picked up yet</strong>
-                <small className="muted">Nobody is doing these</small>
+                <strong>{t('Not picked up yet')}</strong>
+                <small className="muted">{t('Nobody is doing these')}</small>
               </span>
               <span className="team-count">{nobody.length}</span>
               <ChevronRight size={14} className={`rot-chev ${openId === '-' ? 'open' : ''}`} />
@@ -1295,7 +1337,7 @@ function WhatsAppDialog({ to, workspaceId, channelId, onClose }: { to: ClientPer
     setErr('');
     const r = await fetch('/api/whatsapp/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId, to: to.phone, text, channelId }) });
     setBusy(false);
-    if (!r.ok) return setErr(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t send.');
+    if (!r.ok) return setErr(t(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t send.'));
     onClose();
   };
   return (
@@ -1303,23 +1345,23 @@ function WhatsAppDialog({ to, workspaceId, channelId, onClose }: { to: ClientPer
       <div className="modal" role="dialog" aria-label={`WhatsApp ${to.name}`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span>
-            <MessageCircle size={14} /> WhatsApp to {to.name} · {to.phone}
+            <MessageCircle size={14} /> {t('WhatsApp to {name} · {phone}', { name: to.name, phone: to.phone ?? '' })}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body">
-          <textarea autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Your message" />
+          <textarea autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder={t('Your message')} />
           {err && <p className="err small">{err}</p>}
-          <p className="muted small">Sent from the company’s WhatsApp number. {channelId ? 'A copy stays in the shared channel.' : ''} Outside a 24-hour conversation, Meta only allows approved templates.</p>
+          <p className="muted small">{[t('Sent from the company’s WhatsApp number.'), channelId ? t('A copy stays in the shared channel.') : '', t('Outside a 24-hour conversation, Meta only allows approved templates.')].filter(Boolean).join(' ')}</p>
         </div>
         <footer className="modal-foot">
           <button className="ghost-btn sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn sm" disabled={busy || !text.trim()} onClick={() => void send()}>
-            {busy ? 'Sending…' : 'Send'}
+            {busy ? t('Sending…') : t('Send')}
           </button>
         </footer>
       </div>

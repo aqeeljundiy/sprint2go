@@ -5,12 +5,15 @@ import { Sheet } from '../ui/Sheet';
 import { PeopleList } from '../ui/PeopleList';
 import { Avatar } from '../Avatar';
 import { asToken, parseQuickAdd, remindText, triggerAt, type QuickToken } from '../../quickAdd';
-import { addDays, dateTone, dayDate, dueText } from '../../taskDates';
+import { addDays, dateTone, dayDate, dueText, hhmmText } from '../../taskDates';
 import { stageName, stagesForTask, toneOf } from '../../stages';
 import { term } from '../../terms';
 import type { Repeat, TaskStage } from '../../types';
 import { DayPicker, dayWords, toastAdded } from './TaskSheets';
 import { quoted, type NewTask, type TaskOps } from './taskOps';
+import { t } from '../../i18n';
+import { fmtList, fmtTime } from '../../i18n/format';
+import { useLang } from '../../i18n/useLang';
 
 export interface QuickDefaults {
   userId?: string; // '' puts it in the team's queue
@@ -25,12 +28,12 @@ type PickerId = 'date' | 'who' | 'project' | 'stage' | 'remind' | 'repeat';
 
 let draft = ''; // what was typed when the sheet was closed: it's there again next time
 
-const REPEATS: [Repeat | '', string][] = [
-  ['', 'Doesn’t repeat'],
-  ['daily', 'Every day'],
-  ['weekdays', 'Every weekday'],
-  ['weekly', 'Every week'],
-  ['monthly', 'Every month'],
+const repeats = (): [Repeat | '', string][] => [
+  ['', t('Doesn’t repeat')],
+  ['daily', t('Every day')],
+  ['weekdays', t('Every weekday')],
+  ['weekly', t('Every week')],
+  ['monthly', t('Every month')],
 ];
 
 /**
@@ -51,6 +54,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const projects = useMemo(() => ops.clients.filter((c) => c.status !== 'ended'), [ops.clients]);
   const has = (k: keyof Picks) => Object.prototype.hasOwnProperty.call(picks, k);
+  const lang = useLang(); // the chips' words come from the parse: read again in a new language
 
   // "/stage" reads the stages of where the task goes: its project's or team's own, else the company's. The project
   // can come from the same text ("#kopi"), so it reads once for the project, then with that project's stages.
@@ -64,7 +68,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
     });
   const stagesOfTarget = (clientId?: string) => stagesForTask({ workspaceId: ops.wsId, clientId, teamId: defaults.teamId });
   const pickedClient = has('clientId') ? picks.clientId || undefined : undefined;
-  const first = useMemo(() => read(stagesOfTarget(pickedClient ?? defaults.clientId)), [text, off, ops.today, projects, ops.users, pickedClient, defaults.clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const first = useMemo(() => read(stagesOfTarget(pickedClient ?? defaults.clientId)), [text, off, ops.today, projects, ops.users, pickedClient, defaults.clientId, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const target = has('clientId') ? pickedClient : (first.clientId ?? defaults.clientId);
   const stages = stagesOfTarget(target);
   const parsed = useMemo(() => (stages === stagesOfTarget(pickedClient ?? defaults.clientId) ? first : read(stages)), [first, stages]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -75,7 +79,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
   const status = picks.status ?? parsed.stageId ?? defaults.status;
   const remindAt = has('remindAt') ? picks.remindAt || undefined : parsed.remindAt;
   const repeat = has('repeat') ? picks.repeat || undefined : parsed.repeat;
-  const tokenOf = (kind: QuickToken['kind']) => parsed.tokens.find((t) => t.kind === kind);
+  const tokenOf = (kind: QuickToken['kind']) => parsed.tokens.find((tok) => tok.kind === kind);
 
   // The field grows with the text (two or three lines on a phone).
   useLayoutEffect(() => {
@@ -98,10 +102,10 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
   const refocus = () => requestAnimationFrame(() => field.current?.focus());
   /** Takes a token's words out of the text (its chip now holds the value). */
   const dropToken = (kind: QuickToken['kind'] | 'person-all') => {
-    const toks = kind === 'person-all' ? parsed.tokens.filter((t) => t.kind === 'person') : parsed.tokens.filter((t) => t.kind === kind).slice(0, 1);
+    const toks = kind === 'person-all' ? parsed.tokens.filter((tok) => tok.kind === 'person') : parsed.tokens.filter((tok) => tok.kind === kind).slice(0, 1);
     if (!toks.length) return;
     let next = text;
-    for (const t of [...toks].sort((a, b) => b.start - a.start)) next = next.slice(0, t.start) + next.slice(t.end);
+    for (const tok of [...toks].sort((a, b) => b.start - a.start)) next = next.slice(0, tok.start) + next.slice(tok.end);
     setText(next.replace(/ {2,}/g, ' ').replace(/^ /, ''));
   };
   const pick = (patch: Picks, kind?: QuickToken['kind'] | 'person-all', close = true) => {
@@ -133,9 +137,10 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
     const id = ops.add(input);
     const who = assignees.filter((x) => x !== ops.me).map((x) => ops.users.find((u) => u.id === x)?.name.split(' ')[0]).filter(Boolean);
     const c = ops.clients.find((x) => x.id === clientId);
-    const where = c && c.id !== defaults.clientId ? ` to ${c.name}` : !assignees.length && defaults.teamId ? ' to the team’s queue' : '';
-    const bits = [due && due !== defaults.due ? `due ${dayWords(due, ops.today)}` : '', who.length ? `for ${who.join(' and ')}` : ''].filter(Boolean);
-    toastAdded(`Added ${quoted(title)}${where}${bits.length ? `, ${bits.join(', ')}` : ''}`, () => ops.remove([id], true), () => ops.open(id));
+    // "Added “Send invoice” to Kopi Harian, due tomorrow, for Dewi": the sentence, then each detail on its own.
+    const where = c && c.id !== defaults.clientId ? t('to {name}', { name: c.name }) : !assignees.length && defaults.teamId ? t('to the team’s queue') : '';
+    const bits = [due && due !== defaults.due ? t('due {day}', { day: dayWords(due, ops.today) }) : '', who.length ? t('for {names}', { names: fmtList(who as string[]) }) : ''].filter(Boolean);
+    toastAdded([[t('Added {title}', { title: quoted(title) }), where].filter(Boolean).join(' '), ...bits].join(', '), () => ops.remove([id], true), () => ops.open(id));
     setText('');
     draft = '';
     setOff([]);
@@ -146,14 +151,14 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
   // The highlights, drawn under the field's own text.
   const mirror: ReactNode[] = [];
   let at = 0;
-  for (const t of parsed.tokens) {
-    if (t.start > at) mirror.push(text.slice(at, t.start));
+  for (const tok of parsed.tokens) {
+    if (tok.start > at) mirror.push(text.slice(at, tok.start));
     mirror.push(
-      <mark key={t.key} className={`qa-tok k-${t.kind}`} data-keys={t.keys.join('|')}>
-        {text.slice(t.start, t.end)}
+      <mark key={tok.key} className={`qa-tok k-${tok.kind}`} data-keys={tok.keys.join('|')}>
+        {text.slice(tok.start, tok.end)}
       </mark>,
     );
-    at = t.end;
+    at = tok.end;
   }
   mirror.push(text.slice(at) + '​');
 
@@ -190,10 +195,11 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
       d.setHours(9, 0, 0, 0);
       return d.toISOString();
     };
+    const nine = fmtTime(new Date(2026, 0, 1, 9, 0));
     const list: [string, string][] = [
-      ['In 1 hour', new Date(Date.now() + 3_600_000).toISOString()],
-      ['Tomorrow, 09:00', at9(addDays(ops.today, 1))],
-      ...(due ? ([['The day before, 09:00', at9(due, 1)], ['On the day, 09:00', at9(due)]] as [string, string][]) : []),
+      [t('In 1 hour'), new Date(Date.now() + 3_600_000).toISOString()],
+      [t('Tomorrow, {time}', { time: nine }), at9(addDays(ops.today, 1))],
+      ...(due ? ([[t('The day before, {time}', { time: nine }), at9(due, 1)], [t('On the day, {time}', { time: nine }), at9(due)]] as [string, string][]) : []),
     ];
     return list.filter(([, v]) => v > new Date().toISOString());
   })();
@@ -209,8 +215,8 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
           rows={1}
           value={text}
           enterKeyHint="send"
-          placeholder={mode === 'sheet' ? 'What needs doing?' : 'Task name, then a date, #project, +person, p1…'}
-          aria-label="New task"
+          placeholder={mode === 'sheet' ? t('What needs doing?') : t('Task name, then a date, #project, +person, p1…')}
+          aria-label={t('New task')}
           onChange={(e) => {
             setText(e.target.value);
             if (mode === 'sheet') draft = e.target.value;
@@ -237,7 +243,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
         />
       </div>
       {trigger && suggestions.length > 0 && (
-        <div className="qa-suggest" role="listbox" aria-label={trigger.char === '#' ? term.Many : trigger.char === '+' ? 'People' : 'Stages'}>
+        <div className="qa-suggest" role="listbox" aria-label={trigger.char === '#' ? term.Many : trigger.char === '+' ? t('People') : t('Stages')}>
           {suggestions.map((s, i) => (
             <button key={s.id} type="button" role="option" aria-selected={i === hi} className={`qa-sug${i === hi ? ' hi' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={() => applySuggestion(s.name)}>
               <span className="qa-sug-icon">{s.icon}</span>
@@ -248,23 +254,23 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
       )}
       <div className={`qa-chips-wrap${chips ? ' open' : ''}`} aria-hidden={!chips}>
         <div className="qa-chips-clip">
-        <div className="qa-chips" role="group" aria-label="Details">
-          {chip('date', <CalendarDays size={15} />, due ? `${dueText(due, ops.today)}${!has('due') && parsed.time ? ` ${parsed.time}` : ''}` : 'Date', !!due, !!tokenOf('date') && !has('due'), tone ? ` tone-${tone}` : '')}
+        <div className="qa-chips" role="group" aria-label={t('Details')}>
+          {chip('date', <CalendarDays size={15} />, due ? (!has('due') && parsed.time ? t('{day} {time}', { day: dueText(due, ops.today), time: hhmmText(parsed.time) }) : dueText(due, ops.today)) : t('Date'), !!due, !!tokenOf('date') && !has('due'), tone ? ` tone-${tone}` : '')}
           {chip(
             'who',
             assignees.length && person(assignees[0]) ? <Avatar person={person(assignees[0])!} size={18} /> : <UserRound size={15} />,
-            assignees.length ? assignees.map((x) => (x === ops.me ? 'Me' : (person(x)?.name.split(' ')[0] ?? ''))).join(', ') : 'Not assigned',
+            assignees.length ? assignees.map((x) => (x === ops.me ? t('Me') : (person(x)?.name.split(' ')[0] ?? ''))).join(', ') : t('Not assigned'),
             assignees.length > 0 && !(assignees.length === 1 && assignees[0] === ops.me),
             !!tokenOf('person') && !picks.assignees,
           )}
           {chip('project', proj ? <span className="dot" style={{ background: proj.color }} /> : <Hash size={15} />, proj ? proj.name : term.One, !!proj, !!tokenOf('project') && !has('clientId'))}
           <button type="button" className={`qa-chip${priority === 'high' ? ' on p-high' : ''}${tokenOf('priority') && !picks.priority ? ' from-text' : ''}`} onClick={() => pick({ priority: priority === 'high' ? 'normal' : 'high' }, 'priority', false)} aria-pressed={priority === 'high'}>
             <Flag size={15} />
-            <span>{priority === 'high' ? 'High priority' : 'Priority'}</span>
+            <span>{priority === 'high' ? t('High priority') : t('Priority')}</span>
           </button>
-          {chip('stage', stageNow ? <span className={`stage-dot k-${stageNow.kind} tone-${toneOf(stageNow)}`} /> : <Columns3 size={15} />, stageNow ? stageName(stageNow) : 'Stage', !!stageNow && stageNow.kind !== 'open', !!tokenOf('stage') && !picks.status)}
-          {chip('remind', <Bell size={15} />, remindAt ? remindText(remindAt, ops.today) : 'Remind', !!remindAt, !!tokenOf('reminder') && !has('remindAt'))}
-          {chip('repeat', <RepeatIcon size={15} />, repeat ? (REPEATS.find(([v]) => v === repeat)?.[1] ?? 'Repeats') : 'Repeat', !!repeat, !!tokenOf('repeat') && !has('repeat'))}
+          {chip('stage', stageNow ? <span className={`stage-dot k-${stageNow.kind} tone-${toneOf(stageNow)}`} /> : <Columns3 size={15} />, stageNow ? stageName(stageNow) : t('Stage'), !!stageNow && stageNow.kind !== 'open', !!tokenOf('stage') && !picks.status)}
+          {chip('remind', <Bell size={15} />, remindAt ? remindText(remindAt, ops.today) : t('Remind'), !!remindAt, !!tokenOf('reminder') && !has('remindAt'))}
+          {chip('repeat', <RepeatIcon size={15} />, repeat ? (repeats().find(([v]) => v === repeat)?.[1] ?? t('Repeats')) : t('Repeat'), !!repeat, !!tokenOf('repeat') && !has('repeat'))}
         </div>
         </div>
       </div>
@@ -281,29 +287,29 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
         </span>
         {mode === 'inline' && (
           <button type="button" className="ghost-btn sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
         )}
-        <button type="button" className={`primary-btn ${mode === 'sheet' ? 'qa-send' : 'sm'}`} onPointerDown={(e) => e.preventDefault()} onClick={submit} disabled={!parsed.title.trim()} aria-label="Add task">
-          {mode === 'sheet' ? <ArrowUp size={20} /> : 'Add task'}
+        <button type="button" className={`primary-btn ${mode === 'sheet' ? 'qa-send' : 'sm'}`} onPointerDown={(e) => e.preventDefault()} onClick={submit} disabled={!parsed.title.trim()} aria-label={t('Add task')}>
+          {mode === 'sheet' ? <ArrowUp size={20} /> : t('Add task')}
         </button>
       </div>
 
-      <Popover anchor={anchor('date')} open={picker === 'date'} onClose={() => setPicker(null)} width={300} title="Date">
+      <Popover anchor={anchor('date')} open={picker === 'date'} onClose={() => setPicker(null)} width={300} title={t('Date')}>
         <DayPicker today={ops.today} value={due} onPick={(d) => pick({ due: d }, 'date')} noDate={!!due} />
       </Popover>
-      <Popover anchor={anchor('who')} open={picker === 'who'} onClose={() => setPicker(null)} width={300} title="Who’s doing it">
+      <Popover anchor={anchor('who')} open={picker === 'who'} onClose={() => setPicker(null)} width={300} title={t('Who’s doing it')}>
         <PeopleList
           users={ops.users}
           me={ops.me}
           selected={assignees}
-          extra={defaults.teamId ? [{ value: '', label: 'Not assigned', hint: 'Waits in the team’s queue', icon: <span className="avatar-empty sm">?</span> }] : []}
+          extra={defaults.teamId ? [{ value: '', label: t('Not assigned'), hint: t('Waits in the team’s queue'), icon: <span className="avatar-empty sm">?</span> }] : []}
           onPick={(id) => pick({ assignees: !id ? [] : assignees.includes(id) ? assignees.filter((x) => x !== id) : [...assignees, id] }, 'person-all', false)}
         />
       </Popover>
       <Popover anchor={anchor('project')} open={picker === 'project'} onClose={() => setPicker(null)} width={280} title={term.One}>
         <div className="as-list qa-list">
-          {[{ id: '', name: `No ${term.one}`, color: 'var(--text-3)' }, ...projects].map((c) => (
+          {[{ id: '', name: t('No {project}', { project: term.one }), color: 'var(--text-3)' }, ...projects].map((c) => (
             <button key={c.id || 'none'} type="button" className={`as-item${(clientId ?? '') === c.id ? ' on' : ''}`} onClick={() => pick({ clientId: c.id }, 'project')}>
               <span className="as-icon ts-dot">
                 <span className="dot" style={{ background: c.color }} />
@@ -316,7 +322,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
           ))}
         </div>
       </Popover>
-      <Popover anchor={anchor('stage')} open={picker === 'stage'} onClose={() => setPicker(null)} width={240} title="Stage">
+      <Popover anchor={anchor('stage')} open={picker === 'stage'} onClose={() => setPicker(null)} width={240} title={t('Stage')}>
         <div className="as-list qa-list">
           {stages.map((s) => (
             <button key={s.id} type="button" className={`as-item${status === s.id ? ' on' : ''}`} onClick={() => pick({ status: s.id }, 'stage')}>
@@ -329,7 +335,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
           ))}
         </div>
       </Popover>
-      <Popover anchor={anchor('remind')} open={picker === 'remind'} onClose={() => setPicker(null)} width={260} title="Remind">
+      <Popover anchor={anchor('remind')} open={picker === 'remind'} onClose={() => setPicker(null)} width={260} title={t('Remind')}>
         <div className="as-list qa-list">
           {remindChoices.map(([l, v]) => (
             <button key={l} type="button" className="as-item" onClick={() => pick({ remindAt: v }, 'reminder')}>
@@ -340,14 +346,14 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
           {remindAt && (
             <button type="button" className="as-item" onClick={() => pick({ remindAt: '' }, 'reminder')}>
               <span className="as-icon" />
-              <span className="as-label">No reminder</span>
+              <span className="as-label">{t('No reminder')}</span>
             </button>
           )}
         </div>
       </Popover>
-      <Popover anchor={anchor('repeat')} open={picker === 'repeat'} onClose={() => setPicker(null)} width={240} title="Repeat">
+      <Popover anchor={anchor('repeat')} open={picker === 'repeat'} onClose={() => setPicker(null)} width={240} title={t('Repeat')}>
         <div className="as-list qa-list">
-          {REPEATS.map(([v, l]) => (
+          {repeats().map(([v, l]) => (
             <button key={v || 'none'} type="button" className={`as-item${(repeat ?? '') === v ? ' on' : ''}`} onClick={() => pick({ repeat: v }, 'repeat')}>
               <RepeatIcon size={16} className="as-icon" />
               <span className="as-label">{l}</span>
@@ -361,7 +367,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
 
   if (mode === 'inline') return body;
   return (
-    <Sheet onClose={onClose} className="qa-sheet" label="New task">
+    <Sheet onClose={onClose} className="qa-sheet" label={t('New task')}>
       {body}
     </Sheet>
   );

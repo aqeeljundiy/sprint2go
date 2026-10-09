@@ -6,30 +6,82 @@
 // The five built-in stages keep the ids tasks always had ('todo', 'doing', 'waiting', 'review', 'done'), so nothing
 // needs moving; stages a company adds get new ids.
 import { term } from './terms';
+import { phrase, t, type Msg } from './i18n/index'; // the full path: the server imports this file too (it gets English)
 import type { StageColor, StageKind, TaskStage, Todo, Workspace } from './types';
 
 export const STAGE_KINDS: StageKind[] = ['open', 'active', 'waiting', 'review', 'done'];
 
-/** What each kind means, in the settings' words. */
+/** What each kind means, in the settings' words (in the reader's language: the server gets English). */
 export const KIND_INFO: Record<StageKind, { name: string; hint: string }> = {
-  open: { name: 'Not started', hint: 'New tasks land in the first one' },
-  active: { name: 'In progress', hint: 'Start moves a task to the first one' },
-  waiting: {
+  open: {
     get name() {
-      return `Waiting on the ${term.who}`;
+      return t('Not started');
     },
     get hint() {
-      return `The ${term.who}’s shared space says “Waiting on you”`;
+      return t('New tasks land in the first one');
     },
   },
-  review: { name: 'Review', hint: 'The supervisor approves it or sends it back' },
-  done: { name: 'Done', hint: 'Counts as finished everywhere' },
+  active: {
+    get name() {
+      return t('In progress');
+    },
+    get hint() {
+      return t('Start moves a task to the first one');
+    },
+  },
+  waiting: {
+    get name() {
+      return t('Waiting on the {who}', { who: term.who });
+    },
+    get hint() {
+      return t('The {who}’s shared space says “Waiting on you”', { who: term.who });
+    },
+  },
+  review: {
+    get name() {
+      return t('Review');
+    },
+    get hint() {
+      return t('The supervisor approves it or sends it back');
+    },
+  },
+  done: {
+    get name() {
+      return t('Done');
+    },
+    get hint() {
+      return t('Counts as finished everywhere');
+    },
+  },
 };
 
 /** Colours a stage can have. Red stays for late work; amber is always waiting and green always done. */
 export const STAGE_COLORS: StageColor[] = ['gray', 'accent', 'blue', 'violet', 'teal'];
 export type StageTone = StageColor | 'amber' | 'green';
-export const TONE_NAME: Record<StageTone, string> = { gray: 'Grey', accent: 'Brand colour', blue: 'Blue', violet: 'Violet', teal: 'Teal', amber: 'Amber', green: 'Green' };
+/** Each colour's name, in the reader's language. */
+export const TONE_NAME: Record<StageTone, string> = {
+  get gray() {
+    return t('Grey');
+  },
+  get accent() {
+    return t('Brand colour');
+  },
+  get blue() {
+    return t('Blue');
+  },
+  get violet() {
+    return t('Violet');
+  },
+  get teal() {
+    return t('Teal');
+  },
+  get amber() {
+    return t('Amber');
+  },
+  get green() {
+    return t('Green');
+  },
+};
 const KIND_TONE: Record<StageKind, StageTone> = { open: 'gray', active: 'accent', waiting: 'amber', review: 'violet', done: 'green' };
 /** Waiting and done stages always wear their meaning's colour. */
 export const fixedTone = (k: StageKind) => k === 'waiting' || k === 'done';
@@ -43,12 +95,33 @@ export const DEFAULT_STAGES: TaskStage[] = [
   { id: 'review', kind: 'review' },
   { id: 'done', kind: 'done' },
 ];
-const BUILT_IN: Record<string, () => string> = { todo: () => 'To do', doing: () => 'In progress', waiting: () => `Waiting on ${term.who}`, review: () => 'Review', done: () => 'Done' };
+// The built-in stages' names, in the reader's language (the server and the AI connector get English). A company's own
+// names are what someone typed: they're never translated.
+const BUILT_IN: Record<string, () => string> = {
+  todo: () => t('To do'),
+  doing: () => t('In progress'),
+  waiting: () => t('Waiting on {who}', { who: term.who }),
+  review: () => t('Review'),
+  done: () => t('Done'),
+};
 /** A built-in stage's usual name (it follows the company's words, e.g. "Waiting on client"). */
 export const builtInName = (id: string) => BUILT_IN[id]?.();
 export const stageName = (s: Pick<TaskStage, 'id' | 'name' | 'kind'>) => s.name?.trim() || BUILT_IN[s.id]?.() || KIND_INFO[s.kind].name;
 /** The words on a task's row: the built-in review stage says what it's waiting for. */
-export const stageBadge = (s: TaskStage) => (s.id === 'review' && !s.name?.trim() ? 'Waiting for review' : stageName(s));
+export const stageBadge = (s: TaskStage) => (s.id === 'review' && !s.name?.trim() ? t('Waiting for review') : stageName(s));
+
+/**
+ * A stage's name for words saved now and read later (a task's history): a company's own name as typed, a built-in
+ * one as a phrase each reader sees in their own language.
+ */
+export function stagePhrase(s: Pick<TaskStage, 'id' | 'name' | 'kind'>): string | Msg {
+  if (s.name?.trim()) return s.name.trim();
+  const who = phrase(term.word === 'client' ? 'client' : 'guest');
+  const built: Record<string, Msg> = { todo: phrase('To do'), doing: phrase('In progress'), waiting: phrase('Waiting on {who}', { who }), review: phrase('Review'), done: phrase('Done') };
+  if (built[s.id]) return built[s.id];
+  const kinds: Record<StageKind, Msg> = { open: phrase('Not started'), active: phrase('In progress'), waiting: phrase('Waiting on the {who}', { who }), review: phrase('Review'), done: phrase('Done') };
+  return kinds[s.kind];
+}
 
 /** A list the app can work with: known kinds, no repeated ids, and at least one open and one done stage. */
 export function cleanStages(list: unknown): TaskStage[] {

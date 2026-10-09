@@ -10,6 +10,7 @@ import { relative } from '../../utils';
 import type { Todo } from '../../types';
 import { Doer } from './TaskSheets';
 import { doersOf, type TaskOps } from './taskOps';
+import { t } from '../../i18n';
 
 export interface RowLook {
   show: (field: string) => boolean; // what this person chose rows show (Display, "On each row")
@@ -26,7 +27,7 @@ export interface RowLook {
  * right-click it, for everything else. While selecting, a tap picks it instead.
  */
 export function TaskRow({
-  t,
+  task,
   ops,
   look,
   selecting,
@@ -41,14 +42,14 @@ export function TaskRow({
   act,
   note,
 }: {
-  t: Todo;
+  task: Todo;
   ops: TaskOps;
   look: RowLook;
   selecting: boolean;
   selected: boolean;
   onSelect: (id: string) => void;
   ticking: boolean;
-  onTick: (t: Todo) => void;
+  onTick: (task: Todo) => void;
   leaving?: boolean;
   start?: SwipeAction[];
   end?: SwipeAction[];
@@ -56,62 +57,62 @@ export function TaskRow({
   act?: ReactNode;
   note?: string;
 }) {
-  const st = stageOf(t); // its own stages (its project's or team's, when they have their own)
-  const m = useActionMenu(menu, { title: t.title });
+  const st = stageOf(task); // its own stages (its project's or team's, when they have their own)
+  const m = useActionMenu(menu, { title: task.title });
   const dots = useRef<HTMLButtonElement>(null);
-  const done = t.done || ticking;
-  const tone = t.due && !t.done ? dateTone(t.due, ops.today) : null;
-  const c = look.project ? ops.clients.find((x) => x.id === t.clientId) : undefined;
-  const tm = look.team ? ops.teams.find((x) => x.id === t.teamId) : undefined;
-  const comments = look.show('comments') ? (t.history ?? []).filter((h) => h.kind === 'comment').length : 0;
-  const cl = t.checklist ?? [];
-  const brief = look.show('brief') && t.briefId ? ops.tasks.find((x) => x.id === t.briefId) : undefined;
-  const showStage = look.stage && !t.done && st.kind !== 'done' && st !== firstOf('open', stagesForTask(t));
-  const hol = t.due && !t.done && tone !== 'overdue' ? holidayOn(t.due) : '';
-  const last = t.history?.at(-1)?.at ?? t.createdAt;
+  const done = task.done || ticking;
+  const tone = task.due && !task.done ? dateTone(task.due, ops.today) : null;
+  const c = look.project ? ops.clients.find((x) => x.id === task.clientId) : undefined;
+  const tm = look.team ? ops.teams.find((x) => x.id === task.teamId) : undefined;
+  const comments = look.show('comments') ? (task.history ?? []).filter((h) => h.kind === 'comment').length : 0;
+  const cl = task.checklist ?? [];
+  const brief = look.show('brief') && task.briefId ? ops.tasks.find((x) => x.id === task.briefId) : undefined;
+  const showStage = look.stage && !task.done && st.kind !== 'done' && st !== firstOf('open', stagesForTask(task));
+  const hol = task.due && !task.done && tone !== 'overdue' ? holidayOn(task.due) : '';
+  const last = task.history?.at(-1)?.at ?? task.createdAt;
   return (
     <SwipeRow start={selecting ? [] : start} end={selecting ? [] : end} leaving={leaving} className="trow-swipe">
       <div
-        className={`trow lp${done ? ' done' : ''}${ticking ? ' ticking' : ''}${selecting ? ' selecting' : ''}${selected ? ' selected' : ''}${t.priority === 'high' && look.show('priority') ? ' high' : ''}`}
+        className={`trow lp${done ? ' done' : ''}${ticking ? ' ticking' : ''}${selecting ? ' selecting' : ''}${selected ? ' selected' : ''}${task.priority === 'high' && look.show('priority') ? ' high' : ''}`}
         {...m.bind}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('button, a, input, .sel, .people-btn')) return;
-          if (selecting || e.metaKey || e.ctrlKey) return onSelect(t.id);
-          ops.open(t.id);
+          if (selecting || e.metaKey || e.ctrlKey) return onSelect(task.id);
+          ops.open(task.id);
         }}
         aria-selected={selecting ? selected : undefined}
       >
         <button
           type="button"
-          className={`trow-check${t.priority === 'high' && look.show('priority') ? ' p-high' : ''}${done ? ' on' : ''}`}
-          onClick={(e) => (e.stopPropagation(), selecting ? onSelect(t.id) : onTick(t))}
-          aria-label={selecting ? (selected ? 'Unselect' : 'Select') : t.done ? 'Mark not done' : `Mark “${t.title}” done`}
+          className={`trow-check${task.priority === 'high' && look.show('priority') ? ' p-high' : ''}${done ? ' on' : ''}`}
+          onClick={(e) => (e.stopPropagation(), selecting ? onSelect(task.id) : onTick(task))}
+          aria-label={selecting ? (selected ? t('Unselect') : t('Select')) : task.done ? t('Mark not done') : t('Mark “{title}” done', { title: task.title })}
         >
           <span className="ring">{(selecting ? selected : done) && <Check size={13} strokeWidth={3} />}</span>
         </button>
         <div className="trow-main">
-          <button type="button" className="trow-title" onClick={() => (selecting ? onSelect(t.id) : ops.open(t.id))} tabIndex={selecting ? -1 : 0}>
-            {t.title}
+          <button type="button" className="trow-title" onClick={() => (selecting ? onSelect(task.id) : ops.open(task.id))} tabIndex={selecting ? -1 : 0}>
+            {task.title}
           </button>
           <div className="trow-meta">
-            {t.source === 'request' && (
-              <span className="tm req" title={`Request from ${t.requestedBy}`}>
-                <Inbox size={12} /> Request
+            {task.source === 'request' && (
+              <span className="tm req" title={t('Request from {who}', { who: task.requestedBy ?? '' })}>
+                <Inbox size={12} /> {t('Request')}
               </span>
             )}
-            {look.show('due') && t.due && !t.done && (look.dueWords !== false || t.repeat) && (
+            {look.show('due') && task.due && !task.done && (look.dueWords !== false || task.repeat) && (
               <span className={`tm due-${tone}`}>
-                {t.repeat && <RepeatIcon size={12} aria-label="Repeats" />}
-                {look.dueWords !== false && dueText(t.due, ops.today)}
+                {task.repeat && <RepeatIcon size={12} aria-label={t('Repeats')} />}
+                {look.dueWords !== false && dueText(task.due, ops.today)}
               </span>
             )}
-            {look.show('due') && !t.due && t.repeat && !t.done && (
+            {look.show('due') && !task.due && task.repeat && !task.done && (
               <span className="tm">
-                <RepeatIcon size={12} /> Repeats
+                <RepeatIcon size={12} /> {t('Repeats')}
               </span>
             )}
-            {hol && <span className="tm hol" title={`Public holiday: ${hol}`}>Holiday</span>}
-            {t.done && t.doneAt && <span className="tm">Done {relative(t.doneAt)}</span>}
+            {hol && <span className="tm hol" title={t('Public holiday: {name}', { name: hol })}>{t('Holiday')}</span>}
+            {task.done && task.doneAt && <span className="tm">{t('Done {when}', { when: relative(task.doneAt) })}</span>}
             {showStage && (
               <span className={`tm stage tone-${toneOf(st)}`}>
                 <span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />
@@ -119,17 +120,17 @@ export function TaskRow({
               </span>
             )}
             {look.show('checklist') && cl.length > 0 && (
-              <span className={`tm${cl.every((x) => x.done) ? ' ok' : ''}`} title="Checklist">
+              <span className={`tm${cl.every((x) => x.done) ? ' ok' : ''}`} title={t('Checklist')}>
                 <CheckCircle2 size={12} /> {cl.filter((x) => x.done).length}/{cl.length}
               </span>
             )}
             {comments > 0 && (
-              <span className="tm" title="Comments">
+              <span className="tm" title={t('Comments')}>
                 <MessageSquare size={12} /> {comments}
               </span>
             )}
             {brief && (
-              <span className="tm brief" title="Part of a brief">
+              <span className="tm brief" title={t('Part of a brief')}>
                 <FileText size={12} /> {brief.title}
               </span>
             )}
@@ -149,17 +150,17 @@ export function TaskRow({
           </div>
         </div>
         {act && <span className="trow-act">{act}</span>}
-        {look.avatar && doersOf(t).length > 0 && (
+        {look.avatar && doersOf(task).length > 0 && (
           <span className="trow-who phone-only">
-            <Doer t={t} ops={ops} size={24} />
+            <Doer task={task} ops={ops} size={24} />
           </span>
         )}
         {look.show('assignee') && (
           <span className="trow-pick hide-phone">
-            <PeoplePicker compact value={doersOf(t)} users={ops.users} me={ops.me} label="Doing it" onChange={(ids) => ops.patch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />
+            <PeoplePicker compact value={doersOf(task)} users={ops.users} me={ops.me} label={t('Doing it')} onChange={(ids) => ops.patch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />
           </span>
         )}
-        <button type="button" ref={dots} className="icon-btn sm trow-more hide-phone" aria-label={`More for “${t.title}”`} onClick={(e) => (e.stopPropagation(), m.openFrom(dots))}>
+        <button type="button" ref={dots} className="icon-btn sm trow-more hide-phone" aria-label={t('More for “{title}”', { title: task.title })} onClick={(e) => (e.stopPropagation(), m.openFrom(dots))}>
           <MoreHorizontal size={16} />
         </button>
       </div>

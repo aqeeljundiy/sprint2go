@@ -2,6 +2,7 @@ import { useReducer } from 'react';
 import { lsKey } from '../../settings';
 import type { StageKind, Todo } from '../../types';
 import { doersOf } from './taskOps';
+import { t } from '../../i18n';
 
 /**
  * How a task view shows its tasks: the layout, completed tasks, grouping, order and who/what is filtered. Each view
@@ -69,12 +70,12 @@ export function useDisplay(kind: string): [Display, (d: Display) => void, () => 
 /** The filters on now, in words ("Me", "Late"), for the line under the toolbar and the Display button. */
 export function filterWords(d: Display, nameOf: (id: string) => string, waitingWord: string): string[] {
   const out: string[] = [];
-  if (d.who === 'me') out.push('Me');
-  if (d.who === 'me-none') out.push('Me and not assigned');
-  if (d.who === 'none') out.push('Not assigned');
+  if (d.who === 'me') out.push(t('Me'));
+  if (d.who === 'me-none') out.push(t('Me and not assigned'));
+  if (d.who === 'none') out.push(t('Not assigned'));
   if (d.who === 'people' && d.people.length) out.push(d.people.map(nameOf).join(', '));
-  if (d.only.includes('late')) out.push('Late');
-  if (d.only.includes('high')) out.push('High priority');
+  if (d.only.includes('late')) out.push(t('Late'));
+  if (d.only.includes('high')) out.push(t('High priority'));
   if (d.only.includes('waiting')) out.push(waitingWord);
   return out;
 }
@@ -112,5 +113,6 @@ export function sortTasks(tasks: Todo[], by: SortBy): Todo[] {
   }
 }
 
-export const GROUP_LABEL: Record<GroupBy, string> = { date: 'Date', client: 'Project', team: 'Team', person: 'Person', stage: 'Stage', none: 'None' };
-export const SORT_LABEL: Record<SortBy, string> = { smart: 'Smart', due: 'Due date', priority: 'Priority', name: 'Name', newest: 'Newest first' };
+/** The orders' names, in the reader's language. */
+export const sortLabel = (s: SortBy) => ({ smart: t('Smart'), due: t('Due date'), priority: t('Priority'), name: t('Name'), newest: t('Newest first') })[s];
+export const SORTS: SortBy[] = ['smart', 'due', 'priority', 'name', 'newest'];

@@ -6,18 +6,20 @@ import { Avatar } from '../Avatar';
 import { term } from '../../terms';
 import type { User } from '../../types';
 import type { Display, GroupBy, Layout, Only, SortBy, Who } from './display';
-import { SORT_LABEL } from './display';
+import { SORTS, sortLabel } from './display';
+import { mark, t } from '../../i18n';
 
+/** What a row or card can show. Show the names with t(name). */
 export const TASK_FIELDS: { id: string; name: string }[] = [
-  { id: 'due', name: 'Due date' },
-  { id: 'assignee', name: 'Who’s on it' },
-  { id: 'project', name: 'Project' },
-  { id: 'team', name: 'Team' },
-  { id: 'brief', name: 'Brief' },
-  { id: 'priority', name: 'High priority ring' },
-  { id: 'checklist', name: 'Checklist progress' },
-  { id: 'comments', name: 'Comments' },
-  { id: 'updated', name: 'Last change' },
+  { id: 'due', name: mark('Due date') },
+  { id: 'assignee', name: mark('Who’s on it') },
+  { id: 'project', name: mark('Project') },
+  { id: 'team', name: mark('Team') },
+  { id: 'brief', name: mark('Brief') },
+  { id: 'priority', name: mark('High priority ring') },
+  { id: 'checklist', name: mark('Checklist progress') },
+  { id: 'comments', name: mark('Comments') },
+  { id: 'updated', name: mark('Last change') },
 ];
 
 const Pic = ({ kind }: { kind: Layout }) => (
@@ -79,7 +81,7 @@ export function DisplaySheet({
   const [rowsOpen, setRowsOpen] = useState(false);
   const patch = (p: Partial<Display>) => set({ ...d, ...p });
   const toggleOnly = (o: Only) => patch({ only: d.only.includes(o) ? d.only.filter((x) => x !== o) : [...d.only, o] });
-  const groupName = (g: GroupBy) => (g === 'client' ? term.One : g === 'date' ? 'Date' : g === 'team' ? 'Team' : g === 'person' ? 'Person' : g === 'stage' ? 'Stage' : 'None');
+  const groupName = (g: GroupBy) => (g === 'client' ? term.One : g === 'date' ? t('Date') : g === 'team' ? t('Team') : g === 'person' ? t('Person') : g === 'stage' ? t('Stage') : t('None'));
   const whoValue = d.who === 'people' ? `p:${d.people[0] ?? ''}` : d.who;
   const sw = (on: boolean, run: () => void, label: string) => (
     <button type="button" className="ds-row" onClick={run} role="switch" aria-checked={on}>
@@ -90,83 +92,83 @@ export function DisplaySheet({
     </button>
   );
   return (
-    <Popover anchor={anchor} open={open} onClose={onClose} width={340} align="end" title="Display">
+    <Popover anchor={anchor} open={open} onClose={onClose} width={340} align="end" title={t('Display')}>
       <div className="ds">
         {layouts.length > 1 && (
-          <div className="ds-pics" role="radiogroup" aria-label="Layout">
+          <div className="ds-pics" role="radiogroup" aria-label={t('Layout')}>
             {layouts.map((l) => (
               <button key={l} type="button" role="radio" aria-checked={d.layout === l} className={`ds-pic${d.layout === l ? ' on' : ''}`} onClick={() => patch({ layout: l })}>
                 <Pic kind={l} />
-                <span>{l === 'list' ? 'List' : l === 'board' ? 'Board' : 'Calendar'}</span>
+                <span>{l === 'list' ? t('List') : l === 'board' ? t('Board') : t('Calendar')}</span>
               </button>
             ))}
           </div>
         )}
         <div className="ds-sec">
-          {sw(d.completed, () => patch({ completed: !d.completed }), 'Show completed tasks')}
+          {sw(d.completed, () => patch({ completed: !d.completed }), t('Show completed tasks'))}
           {d.layout === 'list' && groups.length > 1 && (
             <div className="ds-row">
-              <span>Group by</span>
-              <Select<GroupBy> value={d.group} onChange={(g) => patch({ group: g })} label="Group by" className="sel-flat" options={groups.map((g) => ({ value: g, label: groupName(g) }))} width={200} />
+              <span>{t('Group by')}</span>
+              <Select<GroupBy> value={d.group} onChange={(g) => patch({ group: g })} label={t('Group by')} className="sel-flat" options={groups.map((g) => ({ value: g, label: groupName(g) }))} width={200} />
             </div>
           )}
           <div className="ds-row">
-            <span>Order</span>
-            <Select<SortBy> value={d.sort} onChange={(s) => patch({ sort: s })} label="Order" className="sel-flat" options={(Object.keys(SORT_LABEL) as SortBy[]).map((s) => ({ value: s, label: SORT_LABEL[s], hint: s === 'smart' ? 'By day, high priority first' : undefined }))} width={220} />
+            <span>{t('Order')}</span>
+            <Select<SortBy> value={d.sort} onChange={(s) => patch({ sort: s })} label={t('Order')} className="sel-flat" options={SORTS.map((s) => ({ value: s, label: sortLabel(s), hint: s === 'smart' ? t('By day, high priority first') : undefined }))} width={220} />
           </div>
         </div>
         <div className="ds-sec">
           <div className="ds-row">
-            <span>Who</span>
+            <span>{t('Who')}</span>
             <Select<string>
               value={whoValue}
               onChange={(v) => (v.startsWith('p:') ? patch({ who: 'people', people: [v.slice(2)] }) : patch({ who: v as Who, people: [] }))}
-              label="Whose tasks"
+              label={t('Whose tasks')}
               className="sel-flat"
               width={260}
               options={[
-                { value: 'any', label: 'Anyone' },
-                { value: 'me', label: 'Me' },
-                { value: 'me-none', label: 'Me and not assigned' },
-                { value: 'none', label: 'Not assigned' },
-                ...users.filter((u) => u.id !== me).map((u) => ({ value: `p:${u.id}`, label: u.name, icon: <Avatar person={u} size={20} />, group: 'People' })),
+                { value: 'any', label: t('Anyone') },
+                { value: 'me', label: t('Me') },
+                { value: 'me-none', label: t('Me and not assigned') },
+                { value: 'none', label: t('Not assigned') },
+                ...users.filter((u) => u.id !== me).map((u) => ({ value: `p:${u.id}`, label: u.name, icon: <Avatar person={u} size={20} />, group: t('People') })),
               ]}
             />
           </div>
-          {sw(d.only.includes('late'), () => toggleOnly('late'), 'Only late')}
-          {sw(d.only.includes('high'), () => toggleOnly('high'), 'Only high priority')}
-          {waitingWord && sw(d.only.includes('waiting'), () => toggleOnly('waiting'), `Only ${waitingWord.charAt(0).toLowerCase()}${waitingWord.slice(1)}`)}
+          {sw(d.only.includes('late'), () => toggleOnly('late'), t('Only late'))}
+          {sw(d.only.includes('high'), () => toggleOnly('high'), t('Only high priority'))}
+          {waitingWord && sw(d.only.includes('waiting'), () => toggleOnly('waiting'), t('Only {stage}', { stage: waitingWord.charAt(0).toLowerCase() + waitingWord.slice(1) }))}
         </div>
         <div className="ds-sec">
           <button type="button" className="ds-row ds-fold" onClick={() => setRowsOpen((o) => !o)} aria-expanded={rowsOpen}>
-            <span>On each {d.layout === 'board' ? 'card' : 'row'}</span>
+            <span>{d.layout === 'board' ? t('On each card') : t('On each row')}</span>
             <ChevronRight size={16} className={`rot-chev ${rowsOpen ? 'open' : ''}`} />
           </button>
           <div className={`fold ${rowsOpen ? 'open' : ''}`}>
             <div className="fold-in">
-              {TASK_FIELDS.map((f) => sw(fields.includes(f.id), () => onFields(fields.includes(f.id) ? fields.filter((x) => x !== f.id) : [...fields, f.id]), f.name))}
+              {TASK_FIELDS.map((f) => sw(fields.includes(f.id), () => onFields(fields.includes(f.id) ? fields.filter((x) => x !== f.id) : [...fields, f.id]), f.id === 'project' ? term.One : t(f.name)))}
             </div>
           </div>
         </div>
         <div className="ds-sec ds-views">
           <div className="ds-save">
             <Bookmark size={15} className="muted" />
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Save this as a view…" aria-label="View name" onKeyDown={(e) => e.key === 'Enter' && name.trim() && (onSaveView(name.trim()), setName(''))} />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Save this as a view…')} aria-label={t('View name')} onKeyDown={(e) => e.key === 'Enter' && name.trim() && (onSaveView(name.trim()), setName(''))} />
             <button type="button" className="ghost-btn sm" disabled={!name.trim()} onClick={() => (onSaveView(name.trim()), setName(''))}>
-              Save
+              {t('Save')}
             </button>
           </div>
           {views.map((v) => (
             <div key={v.id} className={`ds-view${v.id === activeView ? ' on' : ''}`}>
               <span>{v.name}</span>
-              <button type="button" className="icon-btn sm" aria-label={`Delete the view ${v.name}`} onClick={() => onDeleteView(v.id)}>
+              <button type="button" className="icon-btn sm" aria-label={t('Delete the view {name}', { name: v.name })} onClick={() => onDeleteView(v.id)}>
                 <X size={14} />
               </button>
             </div>
           ))}
         </div>
         <button type="button" className="link-btn small ds-reset" onClick={reset}>
-          Back to the usual
+          {t('Back to the usual')}
         </button>
       </div>
     </Popover>

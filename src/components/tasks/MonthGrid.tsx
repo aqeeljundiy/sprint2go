@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { MONTHS, addDays, addMonths, dayDate, isoDay, weekStart } from '../../taskDates';
+import { addDays, addMonths, dayDate, isoDay, weekStart } from '../../taskDates';
 import { holidayOn } from '../../holidayDays';
+import { t } from '../../i18n';
+import { fmtDate, fmtWeekdayLong, weekdayNames } from '../../i18n/format';
 
 /**
  * A month you can pick a day in, laid out flat (inside a sheet or a panel, not as its own popover): weeks start on
@@ -15,21 +17,21 @@ export function MonthGrid({ value, today, onPick, busy, min }: { value?: string;
     return Array.from({ length: 42 }, (_, i) => addDays(first, i));
   }, [month]);
   const m = dayDate(month);
-  const label = `${MONTHS[m.getMonth()]}${m.getFullYear() === dayDate(today).getFullYear() ? '' : ` ${m.getFullYear()}`}`;
+  const label = fmtDate(m, m.getFullYear() === dayDate(today).getFullYear() ? { month: 'long' } : { month: 'long', year: 'numeric' });
   const lastRow = days.slice(35).every((d) => d.slice(0, 7) !== month.slice(0, 7)); // a sixth row only when the month needs it
   return (
     <div className="mgp">
       <div className="mgp-head">
-        <button type="button" className="icon-btn" onClick={() => setMonth(addMonths(month, -1))} aria-label="Previous month" disabled={!!min && addMonths(month, -1).slice(0, 7) < min.slice(0, 7)}>
+        <button type="button" className="icon-btn" onClick={() => setMonth(addMonths(month, -1))} aria-label={t('Previous month')} disabled={!!min && addMonths(month, -1).slice(0, 7) < min.slice(0, 7)}>
           <ChevronLeft size={18} />
         </button>
         <strong aria-live="polite">{label}</strong>
-        <button type="button" className="icon-btn" onClick={() => setMonth(addMonths(month, 1))} aria-label="Next month">
+        <button type="button" className="icon-btn" onClick={() => setMonth(addMonths(month, 1))} aria-label={t('Next month')}>
           <ChevronRight size={18} />
         </button>
       </div>
       <div className="mgp-grid" role="grid" aria-label={label}>
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+        {weekdayNames('narrow').map((d, i) => (
           <span key={i} className="mgp-wd" aria-hidden="true">
             {d}
           </span>
@@ -45,7 +47,7 @@ export function MonthGrid({ value, today, onPick, busy, min }: { value?: string;
               role="gridcell"
               className={`mgp-day${out ? ' out' : ''}${d === today ? ' today' : ''}${d === value ? ' on' : ''}${busy?.has(d) ? ' busy' : ''}${hol ? ' hol' : ''}`}
               aria-selected={d === value}
-              aria-label={`${dayDate(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}${hol ? `, ${hol}` : ''}${busy?.has(d) ? ', has tasks' : ''}`}
+              aria-label={[fmtWeekdayLong(d), hol, busy?.has(d) ? t('has tasks') : ''].filter(Boolean).join(', ')}
               disabled={!!min && d < min}
               onClick={() => onPick(d)}
             >

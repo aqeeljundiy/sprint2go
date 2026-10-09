@@ -2,8 +2,12 @@
 // time, repeat, project, stage, people, priority and reminder. Each piece it understood is a token with its place in
 // the text, so the field can highlight it and show it again as a chip; tapping a highlight turns it back into plain
 // words (its key goes in `off`). Pure: no React, no browser, the unit tests run it (scripts/unit-tests.mjs).
+// It reads English and Indonesian whatever the screen's language ("besok jam 3 sore", "setiap Senin", "lusa"), and
+// its chips speak the person's language.
 import type { Repeat } from './types';
-import { MON_SHORT, WD_SHORT, addDays, addMonths, clock, dayDate, dueText, isoDay, nextOn, onOrAfter, weekStart } from './taskDates';
+import { WD_SHORT, addDays, addMonths, dayDate, dueText, hhmmText, isoDay, nextOn, onOrAfter, weekStart } from './taskDates';
+import { t } from './i18n/index'; // full paths: the unit tests import this file
+import { fmtTime, weekdayName } from './i18n/format';
 
 export type TokenKind = 'date' | 'repeat' | 'project' | 'stage' | 'person' | 'priority' | 'reminder';
 
@@ -39,13 +43,28 @@ export interface QuickContext {
   off?: string[]; // token keys turned back into plain text
 }
 
-const MONTH_RE = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+// Months and weekdays in English and Indonesian (Okt, Mei, Agustus, Desember; Senin to Minggu, full names only).
+const MONTH_RE = '(jan(?:uary|uari)?|feb(?:ruary|ruari)?|mar(?:ch|et)?|apr(?:il)?|may|mei|jun[ei]?|jul[yi]?|aug(?:ust)?|agu(?:stus)?|agt|ags|sep(?:t(?:ember)?)?|oct(?:ober)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?|des(?:ember)?)';
 const WD_RE = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu(?:rs?)?|fri|sat|sun)';
-const PREFIX = '(?:(?:on|by|due|from)\\s+)?';
+const ID_WD = "senin|selasa|rabu|kamis|jum['’]?at|sabtu|minggu";
+// "Minggu" is Sunday, but "minggu ini / depan / lalu" is this, next or last week: those aren't Sunday.
+const ID_WD_ALONE = "senin|selasa|rabu|kamis|jum['’]?at|sabtu|minggu(?!\\s+(?:ini|depan|lalu)\\b)";
+const PREFIX = '(?:(?:on|by|due|from|pada|tanggal|tgl\\.?|paling\\s+lambat|tenggat)\\s+)?';
 const TIME_RE = '(?:at\\s+)?(?:(\\d{1,2})(?:[:.](\\d{2}))?\\s?(am|pm)|([01]?\\d|2[0-3])[:.]([0-5]\\d))';
+// "jam 3 sore", "pukul 15.30", "jam 9 pagi", "jam 7 malam".
+const ID_TIME_RE = '(?:jam|pukul|pkl\\.?)\\s*(\\d{1,2})(?:[:.](\\d{2}))?(?:\\s+(pagi|siang|sore|malam))?';
 
-const monthOf = (s: string) => MON_SHORT.findIndex((m) => s.toLowerCase().startsWith(m.toLowerCase()));
-const wdOf = (s: string) => WD_SHORT.findIndex((w) => s.toLowerCase().startsWith(w.toLowerCase()));
+const MONTH_KEYS = [['jan'], ['feb'], ['mar'], ['apr'], ['may', 'mei'], ['jun'], ['jul'], ['aug', 'agu', 'agt', 'ags'], ['sep'], ['oct', 'okt'], ['nov'], ['dec', 'des']];
+const monthOf = (s: string) => {
+  const w = s.toLowerCase();
+  return MONTH_KEYS.findIndex((keys) => keys.some((k) => w.startsWith(k)));
+};
+const ID_DAYS = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
+const wdOf = (s: string) => {
+  const w = s.toLowerCase().replace(/['’]/g, '');
+  const id = ID_DAYS.indexOf(w);
+  return id >= 0 ? id : WD_SHORT.findIndex((x) => w.startsWith(x.toLowerCase()));
+};
 /** Lowercase letters and digits only: "Kopi Harian" and "kopi-harian" both read "kopiharian". */
 export const squash = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
 
@@ -74,11 +93,28 @@ function dayFrom(m: RegExpExecArray, kind: string, today: string): string | null
   switch (kind) {
     case 'word': {
       const w = m[1].toLowerCase().replace(/\s+/g, ' ');
-      if (w === 'today' || w === 'tod' || w === 'tonight') return today;
-      if (w === 'yesterday') return addDays(today, -1);
-      if (w === 'tomorrow' || w === 'tmr' || w === 'tmrw') return addDays(today, 1);
-      if (w === 'this weekend' || w === 'weekend') return onOrAfter(today, 6);
+      if (w === 'today' || w === 'tod' || w === 'tonight' || w === 'hari ini' || w === 'malam ini' || w === 'nanti malam') return today;
+      if (w === 'yesterday' || w === 'kemarin') return addDays(today, -1);
+      if (w === 'tomorrow' || w === 'tmr' || w === 'tmrw' || w === 'besok' || w === 'bsk') return addDays(today, 1);
+      if (w === 'lusa') return addDays(today, 2);
+      if (w === 'this weekend' || w === 'weekend' || w.startsWith('akhir ')) return onOrAfter(today, 6);
       return null;
+    }
+    case 'depan': {
+      // "minggu depan" or "pekan depan" is next week, "bulan depan" next month, "Jumat depan" (or "hari Minggu depan")
+      // that day in next week.
+      const w = m[2].toLowerCase();
+      if (w === 'pekan' || (w === 'minggu' && !m[1])) return nextOn(today, 1);
+      if (w === 'bulan') return addMonths(today, 1);
+      const wd = wdOf(w);
+      return wd < 0 ? null : addDays(weekStart(addDays(weekStart(today), 7)), (wd + 6) % 7);
+    }
+    case 'dalam': {
+      // "dalam 3 hari", "2 minggu lagi", "sebulan lagi".
+      const n = m[1] ? Number(m[1]) : 1;
+      const unit = m[3].toLowerCase();
+      if (!n || n > 400) return null;
+      return unit === 'hari' ? addDays(today, n) : unit === 'bulan' ? addMonths(today, n) : addDays(today, n * 7);
     }
     case 'next': {
       const w = m[1].toLowerCase();
@@ -110,6 +146,22 @@ function dayFrom(m: RegExpExecArray, kind: string, today: string): string | null
   }
   return null;
 }
+
+/**
+ * "jam 3 sore" is 15:00, "jam 9 pagi" 09:00, "jam 7 malam" 19:00, "jam 1 siang" 13:00. Without a part of the day it's
+ * read as working hours: "jam 3" is 15:00, "jam 8" is 08:00 ("jam 03.00" stays 03:00).
+ */
+const idTimeFrom = (m: RegExpExecArray): string | null => {
+  let h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  if (h > 23 || min > 59) return null;
+  const part = m[3]?.toLowerCase();
+  if (part === 'siang') h = h >= 1 && h <= 5 ? h + 12 : h;
+  else if (part === 'sore') h = h >= 1 && h <= 11 ? h + 12 : h;
+  else if (part === 'malam') h = h === 12 ? 0 : h >= 5 && h <= 11 ? h + 12 : h;
+  else if (!part && h >= 1 && h <= 6 && !m[1].startsWith('0')) h += 12;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+};
 
 const timeFrom = (m: RegExpExecArray, at = 1): string | null => {
   if (m[at + 2] !== undefined) {
@@ -159,46 +211,63 @@ export function parseQuickAdd(text: string, ctx: QuickContext): QuickParsed {
   const hits: Hit[] = [];
   const add = (kind: Hit['kind'], start: number, end: number, value: string, label?: string) => hits.push({ kind, start, end, text: text.slice(start, end), value, label });
 
-  // Repeats first (they also set the day): "every Monday", "every weekday", "daily".
+  // Repeats first (they also set the day): "every Monday", "every weekday", "daily"; "setiap Senin", "tiap hari kerja",
+  // "bulanan".
+  const repeatLabel = (rep: Repeat, wd: number) => (rep === 'daily' ? t('Every day') : rep === 'weekdays' ? t('Every weekday') : rep === 'monthly' ? t('Every month') : wd >= 0 ? t('Every {day}', { day: weekdayName(wd) }) : t('Every week'));
   for (const m of scan(text, `\\b(?:every\\s+(day|weekday|week|month|${WD_RE.slice(1, -1)})|(daily|weekly|monthly|weekdays))\\b`)) {
     const w = (m[1] ?? m[2]).toLowerCase();
     const rep: Repeat = w === 'day' || w === 'daily' ? 'daily' : w === 'weekday' || w === 'weekdays' ? 'weekdays' : w === 'month' || w === 'monthly' ? 'monthly' : 'weekly';
     const wd = rep === 'weekly' && w !== 'week' && w !== 'weekly' ? wdOf(w) : -1;
-    add('repeat', m.index, m.index + m[0].length, `${rep}|${wd >= 0 ? onOrAfter(today, wd) : ''}`, rep === 'daily' ? 'Every day' : rep === 'weekdays' ? 'Every weekday' : rep === 'monthly' ? 'Every month' : wd >= 0 ? `Every ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][wd]}` : 'Every week');
+    add('repeat', m.index, m.index + m[0].length, `${rep}|${wd >= 0 ? onOrAfter(today, wd) : ''}`, repeatLabel(rep, wd));
+  }
+  for (const m of scan(text, `\\b(?:(?:setiap|tiap)\\s+(hari\\s+kerja|hari\\s+(?:${ID_WD})|hari|minggu|pekan|bulan|${ID_WD})|(harian|mingguan|bulanan))\\b`)) {
+    const w = (m[1] ?? m[2]).toLowerCase().replace(/\s+/g, ' ');
+    const rep: Repeat = w === 'hari' || w === 'harian' ? 'daily' : w === 'hari kerja' ? 'weekdays' : w === 'bulan' || w === 'bulanan' ? 'monthly' : 'weekly';
+    const wd = rep === 'weekly' && !['minggu', 'pekan', 'mingguan'].includes(w) ? wdOf(w.replace(/^hari /, '')) : -1;
+    add('repeat', m.index, m.index + m[0].length, `${rep}|${wd >= 0 ? onOrAfter(today, wd) : ''}`, repeatLabel(rep, wd));
   }
   // Dates.
   const dates: [string, string][] = [
     ['next', `\\b${PREFIX}next\\s+(week|month|${WD_RE.slice(1, -1)})\\b`],
     ['in', `\\b(?:in\\s+)(an?|\\d{1,3})\\s+(days?|weeks?|months?)\\b`],
-    ['word', `\\b${PREFIX}(today|tod|tonight|tomorrow|tmrw?|yesterday|this\\s+weekend|weekend)\\b`],
+    ['word', `\\b${PREFIX}(today|tod|tonight|tomorrow|tmrw?|yesterday|this\\s+weekend|weekend|hari\\s+ini|malam\\s+ini|nanti\\s+malam|besok|bsk|lusa|kemarin|akhir\\s+(?:pekan|minggu)(?:\\s+ini)?)\\b`],
+    ['depan', `\\b${PREFIX}(?:(hari)\\s+)?(minggu|pekan|bulan|${ID_WD})\\s+depan\\b`],
+    ['dalam', `\\b(?:dalam\\s+)(?:(\\d{1,3})\\s+|(se))(hari|minggu|pekan|bulan)\\b`],
+    ['dalam', `\\b(?:(\\d{1,3})\\s+|(se))(hari|minggu|pekan|bulan)\\s+lagi\\b`],
     ['dm', `\\b${PREFIX}(\\d{1,2})(?:st|nd|rd|th)?\\s+${MONTH_RE}\\b`],
     ['md', `\\b${PREFIX}${MONTH_RE}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`],
     ['iso', `\\b${PREFIX}(\\d{4})-(\\d{2})-(\\d{2})\\b`],
     ['slash', `\\b${PREFIX}(\\d{1,2})/(\\d{1,2})\\b`],
     ['weekday', `\\b${PREFIX}${WD_RE}\\b`],
+    ['weekday', `\\b${PREFIX}(?:hari\\s+)?(${ID_WD_ALONE})\\b`],
   ];
   for (const [kind, src] of dates)
     for (const m of scan(text, src)) {
       const day = dayFrom(m, kind, today);
       if (day) add('date', m.index, m.index + m[0].length, day);
     }
-  // Times: "3pm", "at 15:00", "9.30am".
+  // Times: "3pm", "at 15:00", "9.30am"; "jam 3 sore", "pukul 15.30".
   for (const m of scan(text, `\\b${TIME_RE}\\b`)) {
-    const t = timeFrom(m);
-    if (t) add('time', m.index, m.index + m[0].length, t);
+    const at = timeFrom(m);
+    if (at) add('time', m.index, m.index + m[0].length, at);
   }
-  // Reminders: "!3pm", "!15:00", "!30m", "!2h", "!1d".
-  for (const m of scan(text, `!(?:(\\d{1,3})\\s?(m|mins?|minutes?|h|hrs?|hours?|d|days?)\\b|(\\d{1,2})(?:[:.](\\d{2}))?\\s?(am|pm)\\b|([01]?\\d|2[0-3])[:.]([0-5]\\d)\\b)`)) {
+  for (const m of scan(text, `\\b${ID_TIME_RE}\\b`)) {
+    const at = idTimeFrom(m);
+    if (at) add('time', m.index, m.index + m[0].length, at);
+  }
+  // Reminders: "!3pm", "!15:00", "!30m", "!2h", "!1d" (and "!30menit", "!2jam", "!1hari").
+  for (const m of scan(text, `!(?:(\\d{1,3})\\s?(m|mins?|minutes?|h|hrs?|hours?|d|days?|menit|mnt|jam|hari)\\b|(\\d{1,2})(?:[:.](\\d{2}))?\\s?(am|pm)\\b|([01]?\\d|2[0-3])[:.]([0-5]\\d)\\b)`)) {
     if (!wordStart(text, m.index)) continue;
     let iso = '';
     if (m[1]) {
       const n = Number(m[1]);
-      const u = m[2].toLowerCase()[0];
-      iso = new Date(now.getTime() + n * (u === 'm' ? 60_000 : u === 'h' ? 3_600_000 : 86_400_000)).toISOString();
+      const u = m[2].toLowerCase();
+      const each = u === 'hari' || u.startsWith('d') ? 86_400_000 : u === 'jam' || u.startsWith('h') ? 3_600_000 : 60_000;
+      iso = new Date(now.getTime() + n * each).toISOString();
     } else {
-      const t = timeFrom(m, 3);
-      if (!t) continue;
-      iso = `time:${t}`; // a time of day: settled below, on the due day
+      const at = timeFrom(m, 3);
+      if (!at) continue;
+      iso = `time:${at}`; // a time of day: settled below, on the due day
     }
     add('reminder', m.index, m.index + m[0].length, iso);
   }
@@ -311,7 +380,7 @@ export function parseQuickAdd(text: string, ctx: QuickContext): QuickParsed {
     if (at.getTime() > now.getTime()) out.remindAt = at.toISOString();
   }
 
-  const dateLabel = out.due ? `${dueText(out.due, today)}${out.time ? ` ${out.time}` : ''}` : '';
+  const dateLabel = out.due ? (out.time ? t('{day} {time}', { day: dueText(out.due, today), time: hhmmText(out.time) }) : dueText(out.due, today)) : '';
   out.tokens = used
     .sort((a, b) => a.start - b.start)
     .map((h) => ({
@@ -326,9 +395,9 @@ export function parseQuickAdd(text: string, ctx: QuickContext): QuickParsed {
   // The title: the words that are left.
   let title = '';
   let at = 0;
-  for (const t of out.tokens) {
-    title += text.slice(at, t.start) + ' ';
-    at = t.end;
+  for (const tok of out.tokens) {
+    title += text.slice(at, tok.start) + ' ';
+    at = tok.end;
   }
   title += text.slice(at);
   out.title = title.replace(/\s+/g, ' ').replace(/\s+([,.!?;:])/g, '$1').trim();
@@ -348,8 +417,8 @@ export function triggerAt(text: string, cursor: number): { char: '#' | '+' | '/'
 /** What a suggestion puts in the text: the name as one word ("#Kopi-Harian"). */
 export const asToken = (char: string, name: string) => `${char}${name.trim().replace(/\s+/g, '-')}`;
 
-/** For the "Remind" chip and the task panel: "Tomorrow, 15:00". */
+/** For the "Remind" chip and the task panel: "Tomorrow, 15:00" / "Besok, 15.00". */
 export function remindText(iso: string, today: string) {
   const d = new Date(iso);
-  return `${dueText(isoDay(d), today)}, ${clock(d)}`;
+  return t('{day}, {time}', { day: dueText(isoDay(d), today), time: fmtTime(d) });
 }

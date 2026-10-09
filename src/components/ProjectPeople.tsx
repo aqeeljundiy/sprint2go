@@ -7,6 +7,7 @@ import { Badge, PersonCell } from './ui/Person';
 import { Popover } from './ui/Popover';
 import { Select } from './ui/Select';
 import { personOption } from './ui/PeopleList';
+import { t } from '../i18n';
 
 /**
  * Who's on a project: the owner, teammates (Lead or Member) and guests. Teammates on it see it in their
@@ -23,7 +24,7 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
   const add = (id: string) => onPatch({ members: [...members, { userId: id, role: 'member', addedBy: me, at: new Date().toISOString() }] });
   return (
     <>
-      <button ref={ref} type="button" className="proj-people" onClick={() => setOpen(true)} title={`People on this ${term.one}`}>
+      <button ref={ref} type="button" className="proj-people" onClick={() => setOpen(true)} title={t('People on this {project}', { project: term.one })}>
         <span className="avatar-stack">
           {team.slice(0, 4).map((u) => (
             <Avatar key={u.id} person={u} size={24} />
@@ -31,16 +32,16 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
         </span>
         {team.length + guests.length > 4 && <span className="muted small">+{team.length + guests.length - 4}</span>}
         <span className="proj-people-add">
-          <UserPlus size={14} /> <span className="lbl">Invite</span>
+          <UserPlus size={14} /> <span className="lbl">{t('Invite')}</span>
         </span>
       </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={320} align="end" title={`People on ${client.name}`}>
+      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={320} align="end" title={t('People on {name}', { name: client.name })}>
         <div className="pp-list">
-          <span className="pp-head">Team</span>
+          <span className="pp-head">{t('Team')}</span>
           {owner && (
             <div className="pp-row">
-              <PersonCell person={owner} size={28} sub={null} badges={owner.id === me && <Badge tone="accent">You</Badge>} />
-              <span className="muted small">Owner</span>
+              <PersonCell person={owner} size={28} sub={null} badges={owner.id === me && <Badge tone="accent">{t('You')}</Badge>} />
+              <span className="muted small">{t('Owner')}</span>
             </div>
           )}
           {members
@@ -50,25 +51,25 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
               if (!u) return null;
               return (
                 <div key={m.userId} className="pp-row">
-                  <PersonCell person={u} size={28} sub={null} badges={u.id === me && <Badge tone="accent">You</Badge>} />
+                  <PersonCell person={u} size={28} sub={null} badges={u.id === me && <Badge tone="accent">{t('You')}</Badge>} />
                   {canEdit ? (
                     <>
                       <Select<'lead' | 'member'>
                         value={m.role}
                         onChange={(role) => onPatch({ members: members.map((x) => (x.userId === m.userId ? { ...x, role } : x)) })}
-                        label="Role"
+                        label={t('Role')}
                         className="sel-flat"
                         options={[
-                          { value: 'lead', label: 'Lead', hint: 'Runs it day to day' },
-                          { value: 'member', label: 'Member', hint: 'Works on it' },
+                          { value: 'lead', label: t('Lead'), hint: t('Runs it day to day') },
+                          { value: 'member', label: t('Member'), hint: t('Works on it') },
                         ]}
                       />
-                      <button type="button" className="icon-btn sm" aria-label={`Take ${u.name} off`} onClick={() => onPatch({ members: members.filter((x) => x.userId !== m.userId) })}>
+                      <button type="button" className="icon-btn sm" aria-label={t('Take {name} off', { name: u.name })} onClick={() => onPatch({ members: members.filter((x) => x.userId !== m.userId) })}>
                         <X size={13} />
                       </button>
                     </>
                   ) : (
-                    <span className="muted small">{m.role === 'lead' ? 'Lead' : 'Member'}</span>
+                    <span className="muted small">{m.role === 'lead' ? t('Lead') : t('Member')}</span>
                   )}
                 </div>
               );
@@ -77,27 +78,27 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
             <Select<string>
               value={null}
               onChange={add}
-              placeholder="+ Add a teammate"
-              label="Add a teammate"
+              placeholder={t('+ Add a teammate')}
+              label={t('Add a teammate')}
               className="sel-flat"
               searchable
               options={free.map((u) => ({ ...personOption(u), label: u.name, hint: u.title, icon: <Avatar person={u} size={20} /> }))}
             />
           )}
-          <span className="pp-head">Guests</span>
+          <span className="pp-head">{t('Guests')}</span>
           {guests.length ? (
             guests.map((g) => (
               <div key={g.email} className="pp-row">
                 <PersonCell person={{ name: g.name, email: g.email, color: client.color }} size={28} sub={g.company ?? null} />
-                <span className="muted small">{g.status === 'invited' ? 'Invited' : g.role === 'approver' ? 'Approver' : g.role === 'viewer' ? 'Viewer' : 'Collaborator'}</span>
+                <span className="muted small">{g.status === 'invited' ? t('Invited') : g.role === 'approver' ? t('Approver') : g.role === 'viewer' ? t('Viewer') : t('Collaborator')}</span>
               </div>
             ))
           ) : (
-            <p className="muted small">No guests yet. Guests see what you share in their own space.</p>
+            <p className="muted small">{t('No guests yet. Guests see what you share in their own space.')}</p>
           )}
           {canInvite && (
             <button type="button" className="ghost-btn sm" onClick={() => (setOpen(false), onGuests())}>
-              <UserPlus size={13} /> Invite a guest
+              <UserPlus size={13} /> {t('Invite a guest')}
             </button>
           )}
         </div>

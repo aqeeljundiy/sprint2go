@@ -23,7 +23,7 @@ import { rp, storageGB } from './data/pricing';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { fmtTime } from './calendarUtils';
 import { fullDate, lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
-import { templatesFor, type TaskTemplate } from './data/templates';
+import { templatesFor, tplText, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
 import type { NotesApi } from './components/notes/useNoteMenu';
 import type { VaultItem } from './components/VaultApp';
@@ -96,7 +96,7 @@ import { SEARCHABLE } from './components/CommandPalette';
 import type { ToastMsg } from './toast';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
-import { firstOf as firstStage, kindOf as stageKind, registerStages, stageAfterMove, stageIdFor, stageName, stageOf, stagesForTask } from './stages';
+import { firstOf as firstStage, kindOf as stageKind, registerStages, stageAfterMove, stageIdFor, stageName, stageOf, stagePhrase, stagesForTask } from './stages';
 import { celebrate } from './components/ui/confetti';
 import type { AskScope, MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS, trialPlan } from './data/workspaces';
@@ -108,13 +108,20 @@ import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
 import { msg, phrase, t, textOf, tn, type Msg } from './i18n';
-import { fmtDay, fmtList } from './i18n/format';
+import { fmtDateTime, fmtDay, fmtList } from './i18n/format';
 
-/** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
+/** For words saved in a msg(): "today", "tomorrow", "overdue" lower-case mid-sentence (each reader's language), a date as "Thu 8 Oct". */
 const dueWords = (d: string) => {
-  const t = dueLabel(d).text;
-  return /^[A-Z][a-z]{2},/.test(t) ? t : t.toLowerCase();
+  const l = dueLabel(d);
+  return l.cls ? l.en.toLowerCase() : l.en;
 };
+/** The same on screen, in the reader's language: "today", "besok", "Kam, 8 Okt". */
+const dueWordsHere = (d: string) => {
+  const l = dueLabel(d);
+  return l.cls ? t(l.en.toLowerCase()) : l.text;
+};
+/** A repeat in a history line ("set it to repeat weekly"): a phrase each reader sees in their own language. */
+const repeatPhrase = (r: Todo['repeat']) => phrase(r === 'weekdays' ? 'every weekday' : r === 'daily' ? 'daily' : r === 'weekly' ? 'weekly' : 'monthly');
 
 const FOLDER_TITLES: Record<FolderId, string> = {
   inbox: 'Inbox',
@@ -1192,8 +1199,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (!ended) return;
       askedBlocks.current.add(ended.id);
       showToast({
-        text: `Time’s up for “${ended.title}”, but it isn’t done`,
-        action: { label: 'Extend 30 min', run: () => setEvents((es) => es.map((e) => (e.id === ended.id ? { ...e, end: new Date(Math.max(Date.now(), new Date(e.end).getTime()) + 30 * 60_000).toISOString() } : e))) },
+        text: t('Time’s up for “{title}”, but it isn’t done', { title: ended.title }),
+        action: { label: t('Extend 30 min'), run: () => setEvents((es) => es.map((e) => (e.id === ended.id ? { ...e, end: new Date(Math.max(Date.now(), new Date(e.end).getTime()) + 30 * 60_000).toISOString() } : e))) },
         ms: 15000,
       });
     };
@@ -1283,27 +1290,27 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const gone = new Set(Array.isArray(ids) ? ids : [ids]);
     const snapshot = todos;
     setTodos((list) => list.filter((t) => !gone.has(t.id)));
-    if (!quiet) showToast({ text: gone.size === 1 ? 'Task deleted' : `${gone.size} tasks deleted`, action: { label: 'Undo', run: () => setTodos(snapshot) } });
+    if (!quiet) showToast({ text: tn(gone.size, 'Task deleted', '{n} tasks deleted'), action: { label: t('Undo'), run: () => setTodos(snapshot) } });
   };
   /** A task gets a time: how long, then a free slot (the Schedule sheet). From the task's panel, its row and Calendar. */
   const todoToCalendar = (t: Todo) => setScheduling(t);
-  const blockTask = (t: Todo, start: Date, minutes: number) => {
+  const blockTask = (task: Todo, start: Date, minutes: number) => {
     const ev: CalEvent = {
       id: uid(),
-      title: t.title,
+      title: task.title,
       calendarId: 'work',
       start: start.toISOString(),
       end: new Date(start.getTime() + minutes * 60_000).toISOString(),
-      threadId: t.threadId,
-      taskId: t.id,
+      threadId: task.threadId,
+      taskId: task.id,
       workspaceId: ws.id,
       userId: user.id,
     };
     setEvents((es) => [...es, ev]);
     setScheduling(null);
     showToast({
-      text: `Blocked ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(start)} for “${t.title}”`,
-      action: { label: 'Undo', run: () => setEvents((es) => es.filter((e) => e.id !== ev.id)) },
+      text: t('Blocked {when} for “{title}”', { when: fmtDateTime(start), title: task.title }),
+      action: { label: t('Undo'), run: () => setEvents((es) => es.filter((e) => e.id !== ev.id)) },
     });
   };
 
@@ -1428,7 +1435,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const createProject = (name: string, extra: Partial<Client> = {}): Client => {
     const c: Client = { id: uid(), workspaceId: ws.id, name: name.trim(), color: ['#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444'][wsClientsAll.length % 6], status: 'active', since: nowIso(), ownerId: user.id, ...extra };
     setClients((cs) => [...cs, c]);
-    showToast({ text: `${c.name} added`, action: { label: 'Open', run: () => openClient(c.id) } });
+    showToast({ text: t('{name} added', { name: c.name }), action: { label: t('Open'), run: () => openClient(c.id) } });
     return c;
   };
   const projectsCtx = useMemo(() => ({ create: (name: string) => createProject(name) }), [ws.id, wsClientsAll.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1457,16 +1464,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const client = wsClientsAll.find((c) => c.id === q.clientId);
     // The guests who can accept hear about it in their shared space.
     (client ? clientPeople(client, channels) : []).filter((x) => x.status !== 'pending' && x.role === 'approver').forEach((x) => notify(clientInbox(x.email), 'task', msg('{company} sent you a quote: {title}', { company: ws.name, title: q.title }), { app: 'projects', id: q.clientId }));
-    showToast({ text: client ? `Sent to ${client.name}. They see it in their shared space.` : 'Sent' });
+    showToast({ text: client ? t('Sent to {name}. They see it in their shared space.', { name: client.name }) : t('Sent') });
   };
   /** An accepted quote becomes a brief: one task per line, due by its days (or spaced a few days apart). */
   const briefFromQuote = (q: Quote) => {
     const client = wsClientsAll.find((c) => c.id === q.clientId);
     const start = localDay();
-    const brief = createTask({ kind: 'brief', title: q.title, context: [q.intro, q.terms ? `Terms: ${q.terms}` : '', `Quote accepted${q.signature ? ` by ${q.signature}` : ''}: ${q.items.map((i) => `${i.title} (${i.qty} × ${i.price})`).join(', ')}`].filter(Boolean).join('\n\n'), clientId: q.clientId, userId: user.id, due: addWorkdays(start, Math.max(5, ...q.items.map((i, k) => i.days ?? (k + 1) * 3))), source: 'manual' });
+    const lines = q.items.map((i) => `${i.title} (${i.qty} × ${i.price})`).join(', ');
+    const brief = createTask({ kind: 'brief', title: q.title, context: [q.intro, q.terms ? t('Terms: {terms}', { terms: q.terms }) : '', q.signature ? t('Quote accepted by {name}: {lines}', { name: q.signature, lines }) : t('Quote accepted: {lines}', { lines })].filter(Boolean).join('\n\n'), clientId: q.clientId, userId: user.id, due: addWorkdays(start, Math.max(5, ...q.items.map((i, k) => i.days ?? (k + 1) * 3))), source: 'manual' });
     q.items.forEach((i, k) => createTask({ title: i.title, briefId: brief.id, clientId: q.clientId, userId: '', due: addWorkdays(start, i.days ?? (k + 1) * 3), source: 'manual' }));
     saveQuote({ ...q, briefId: brief.id });
-    showToast({ text: `Brief made from the quote${client ? ` for ${client.name}` : ''}`, action: { label: 'Open', run: () => openTask(brief.id) } });
+    showToast({ text: client ? t('Brief made from the quote for {name}', { name: client.name }) : t('Brief made from the quote'), action: { label: t('Open'), run: () => openTask(brief.id) } });
   };
   /** A guest's answer, when they're viewed or hosted from here (real guests answer through the server's rules). */
   const decideQuote = (email: string) => (id: string, status: 'accepted' | 'declined', text: string) => {
@@ -1480,7 +1488,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     for (const q of wsQuotes) {
       const was = seenQuotes.current.get(q.id);
       if (was && was === 'sent' && (q.status === 'accepted' || q.status === 'declined') && q.decidedBy?.includes('@') && q.createdBy === user.id)
-        showToast({ text: `${q.decidedBy} ${q.status} “${q.title}”`, action: q.status === 'accepted' && !q.briefId ? { label: 'Make the brief', run: () => briefFromQuote(q) } : undefined });
+        showToast({ text: q.status === 'accepted' ? t('{who} accepted “{title}”', { who: q.decidedBy, title: q.title }) : t('{who} declined “{title}”', { who: q.decidedBy, title: q.title }), action: q.status === 'accepted' && !q.briefId ? { label: t('Make the brief'), run: () => briefFromQuote(q) } : undefined });
       seenQuotes.current.set(q.id, q.status);
     }
   }, [wsQuotes]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1597,40 +1605,40 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   /** Saves this company's teams. A new team gets its own channel; people added to a team join it and hear about it. */
-  const saveTeams = (t: Team[]) => {
-    const fresh = t.filter((x) => !wsTeams.some((y) => y.id === x.id));
+  const saveTeams = (list: Team[]) => {
+    const fresh = list.filter((x) => !wsTeams.some((y) => y.id === x.id));
     fresh.forEach((tm) => {
       const id = uid();
-      setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'channel', name: tm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), members: [...new Set([user.id, ...tm.members])], teamId: tm.id, topic: `${tm.name} team`, category: 'team', ownerId: user.id, createdAt: nowIso() }]);
+      setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'channel', name: tm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), members: [...new Set([user.id, ...tm.members])], teamId: tm.id, topic: t('{team} team', { team: tm.name }), category: 'team', ownerId: user.id, createdAt: nowIso() }]);
     });
-    t.forEach((tm) => {
+    list.forEach((tm) => {
       const before = wsTeams.find((x) => x.id === tm.id);
       tm.members.filter((m) => m !== user.id && !before?.members.includes(m)).forEach((m) => notify(m, 'team', msg('{name} added you to {team}', { name: user.name, team: tm.name }), { app: 'teams', id: tm.id }));
       setChannels((cs) => cs.map((c) => (c.teamId === tm.id ? { ...c, members: [...new Set([...c.members, ...tm.members])] } : c)));
     });
-    setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...t]);
+    setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...list]);
   };
   const teamActions: TeamActions = {
-    patch: (id, p) => saveTeams(wsTeams.map((t) => (t.id === id ? { ...t, ...p } : t))),
-    direct: (t) => t.join === 'open' || isAdmin,
-    join: (t) => {
-      if (t.join === 'open' || isAdmin) {
-        saveTeams(wsTeams.map((x) => (x.id === t.id ? { ...x, members: [...new Set([...x.members, user.id])], requests: (x.requests ?? []).filter((r) => r.userId !== user.id) } : x)));
-        return showToast({ text: `You joined ${t.name}` });
+    patch: (id, p) => saveTeams(wsTeams.map((tm) => (tm.id === id ? { ...tm, ...p } : tm))),
+    direct: (tm) => tm.join === 'open' || isAdmin,
+    join: (tm) => {
+      if (tm.join === 'open' || isAdmin) {
+        saveTeams(wsTeams.map((x) => (x.id === tm.id ? { ...x, members: [...new Set([...x.members, user.id])], requests: (x.requests ?? []).filter((r) => r.userId !== user.id) } : x)));
+        return showToast({ text: t('You joined {team}', { team: tm.name }) });
       }
-      saveTeams(wsTeams.map((x) => (x.id === t.id ? { ...x, requests: [...(x.requests ?? []).filter((r) => r.userId !== user.id), { userId: user.id, at: nowIso() }] } : x)));
-      const to = t.leadId ? [t.leadId] : ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
-      to.forEach((id) => notify(id, 'team', msg('{name} asked to join {team}', { name: user.name, team: t.name }), { app: 'teams', id: t.id }));
-      showToast({ text: t.leadId ? `Asked ${firstOf(t.leadId)} to add you` : 'Asked an admin to add you' });
+      saveTeams(wsTeams.map((x) => (x.id === tm.id ? { ...x, requests: [...(x.requests ?? []).filter((r) => r.userId !== user.id), { userId: user.id, at: nowIso() }] } : x)));
+      const to = tm.leadId ? [tm.leadId] : ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
+      to.forEach((id) => notify(id, 'team', msg('{name} asked to join {team}', { name: user.name, team: tm.name }), { app: 'teams', id: tm.id }));
+      showToast({ text: tm.leadId ? t('Asked {name} to add you', { name: firstOf(tm.leadId) }) : t('Asked an admin to add you') });
     },
-    leave: (t) => {
-      saveTeams(wsTeams.map((x) => (x.id === t.id ? { ...x, members: x.members.filter((m) => m !== user.id), leadId: x.leadId === user.id ? undefined : x.leadId } : x)));
-      showToast({ text: `You left ${t.name}` });
+    leave: (tm) => {
+      saveTeams(wsTeams.map((x) => (x.id === tm.id ? { ...x, members: x.members.filter((m) => m !== user.id), leadId: x.leadId === user.id ? undefined : x.leadId } : x)));
+      showToast({ text: t('You left {team}', { team: tm.name }) });
     },
-    remove: (t) => {
-      saveTeams(wsTeams.filter((x) => x.id !== t.id));
+    remove: (tm) => {
+      saveTeams(wsTeams.filter((x) => x.id !== tm.id));
       setTeamId(null);
-      showToast({ text: `${t.name} deleted. Its tasks keep their ${term.many}` });
+      showToast({ text: t('{team} deleted. Its tasks keep their {projects}', { team: tm.name, projects: term.many }) });
     },
   };
   const canCreateTeams = isAdmin || perms.createTeams;
@@ -1669,6 +1677,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (c) return phrase('“{title}” for {project}', { title, project: c.name });
     if (task.due) return phrase('“{title}”, due {due}', { title, due: phrase(dueWords(task.due)) });
     return phrase('“{title}”', { title });
+  };
+
+  /** A task's first history line: "created this from an email for Dewi", in each reader's language. */
+  const createdLine = (from: Todo['source'] | 'note', forName: string) => {
+    const src = { note: 'a note', ai: 'an email', manual: '', braindump: 'a brain dump', chat: 'chat', meeting: 'a meeting', request: 'a request', import: 'an import' }[from];
+    if (src && forName) return msg('created this from {source} for {name}', { source: phrase(src), name: forName });
+    if (src) return msg('created this from {source}', { source: phrase(src) });
+    if (forName) return msg('created this for {name}', { name: forName });
+    return msg('created this');
   };
 
   const createTask = (
@@ -1726,7 +1743,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       createdAt: nowIso(),
       assignees: t.assignees?.length ? t.assignees : t.userId ? [t.userId] : [],
       supervisorId: user.id, // whoever assigns it supervises it, unless someone changes it
-      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${t.noteId ? ' from a note' : ''}${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting', request: ' from a request', import: ' from an import' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
+      history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', ...createdLine(t.noteId ? 'note' : t.source, t.userId && t.userId !== user.id ? firstOf(t.userId) : '') }],
     };
     setTodos((ts) => [...ts, task]);
     // Not assigned yet: tell the team lead it's waiting in their queue.
@@ -1744,61 +1761,61 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   function setTaskStatus(id: string, requested: TaskStatus, quiet = false) {
-    const t = todos.find((x) => x.id === id);
-    if (!t) return;
+    const task = todos.find((x) => x.id === id);
+    if (!task) return;
     // The task's own stages (its project's or team's, else the company's); what happens depends on the kind, not the name.
-    const list = stagesForTask(t);
+    const list = stagesForTask(task);
     const target = list.find((s) => s.id === requested);
     if (!target) return;
-    const from = stageOf(t, list);
+    const from = stageOf(task, list);
     // The review step: when the team asks for it, finishing a task sends it to the supervisor first.
-    const team = teams.find((x) => x.id === t.teamId);
+    const team = teams.find((x) => x.id === task.teamId);
     const reviewStage = firstStage('review', list);
-    const needsReview = target.kind === 'done' && !!reviewStage && !!team?.review && !!t.supervisorId && t.supervisorId !== user.id && !doersOf(t).includes(t.supervisorId) && from.kind !== 'review';
+    const needsReview = target.kind === 'done' && !!reviewStage && !!team?.review && !!task.supervisorId && task.supervisorId !== user.id && !doersOf(task).includes(task.supervisorId) && from.kind !== 'review';
     const to = needsReview ? reviewStage : target;
     const status: TaskStatus = to.id;
     const done = to.kind === 'done';
-    const before = { status: t.status, done: t.done, doneAt: t.doneAt, doneBy: t.doneBy, history: t.history };
+    const before = { status: task.status, done: task.done, doneAt: task.doneAt, doneBy: task.doneBy, history: task.history };
     if (to.id !== from.id) {
       tried('stage');
-      const text = needsReview
-        ? 'finished it and sent it for review'
-        : done && !t.done
+      const line = needsReview
+        ? msg('finished it and sent it for review')
+        : done && !task.done
           ? from.kind === 'review'
-            ? 'approved it'
-            : 'marked it done'
-          : !done && t.done
+            ? msg('approved it')
+            : msg('marked it done')
+          : !done && task.done
             ? to.kind === 'open'
-              ? 'reopened it'
-              : `reopened it (${stageName(to)})`
+              ? msg('reopened it')
+              : msg('reopened it ({stage})', { stage: stagePhrase(to) })
             : to.kind === 'active' && from.kind === 'open'
-              ? 'started it'
-              : `moved it to ${stageName(to)}`;
-      logTask(id, needsReview || from.kind === 'review' ? 'review' : 'status', text);
+              ? msg('started it')
+              : msg('moved it to {stage}', { stage: stagePhrase(to) });
+      logTask(id, needsReview || from.kind === 'review' ? 'review' : 'status', line);
     }
     if (needsReview) {
       setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status, done: false } : x)));
-      notify(t.supervisorId!, 'task', msg('{name} finished {task}. Ready for your review', { name: myFirst, task: describeP(t) }), { app: 'tasks', id });
-      if (!quiet) showToast({ text: `Sent to ${firstOf(t.supervisorId)} for review` });
+      notify(task.supervisorId!, 'task', msg('{name} finished {task}. Ready for your review', { name: myFirst, task: describeP(task) }), { app: 'tasks', id });
+      if (!quiet) showToast({ text: t('Sent to {name} for review', { name: firstOf(task.supervisorId) }) });
       return;
     }
     // A repeating task: finishing it creates the next one.
     const next: Todo | undefined =
-      done && !t.done && t.repeat
+      done && !task.done && task.repeat
         ? {
-            ...t,
+            ...task,
             id: uid(),
-            status: stageIdFor(t, 'open', list),
+            status: stageIdFor(task, 'open', list),
             done: false,
             doneAt: undefined,
             doneBy: undefined,
-            due: nextDue(t.due, t.repeat),
-            remindAt: t.remindAt && t.due ? new Date(new Date(t.remindAt).getTime() + (new Date(nextDue(t.due, t.repeat)).getTime() - new Date(t.due).getTime())).toISOString() : undefined,
+            due: nextDue(task.due, task.repeat),
+            remindAt: task.remindAt && task.due ? new Date(new Date(task.remindAt).getTime() + (new Date(nextDue(task.due, task.repeat)).getTime() - new Date(task.due).getTime())).toISOString() : undefined,
             reminded: false,
-            checklist: t.checklist?.map((c) => ({ ...c, done: false })),
+            checklist: task.checklist?.map((c) => ({ ...c, done: false })),
             approval: undefined,
             createdAt: nowIso(),
-            history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this (repeats ${t.repeat === 'weekdays' ? 'every weekday' : t.repeat})` }],
+            history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', ...msg('created this (repeats {repeat})', { repeat: repeatPhrase(task.repeat) }) }],
           }
         : undefined;
     if (next) setTodos((ts) => [...ts, next]);
@@ -1808,69 +1825,78 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       ),
     );
     // Requests: the client sees each status change.
-    if (t.requestedBy && requestStatus(t).label !== requestStatus({ ...t, status, done }).label) tellClient(t, msg('Your request “{title}” is now: {status}', { title: t.title, status: phrase(requestStatus({ ...t, status, done }).label) }));
-    else if (t.visibleToClient && done && !t.done) tellClient(t, msg('“{title}” is done', { title: t.title }));
-    if (done && !t.done) {
-      const tell = new Set([t.supervisorId ?? t.createdBy, ...(t.followers ?? []), ...(from.kind === 'review' ? doersOf(t) : [])].filter((x): x is string => !!x && x !== user.id));
-      tell.forEach((uid2) => notify(uid2, 'done', from.kind === 'review' ? msg('{name} approved {task}', { name: myFirst, task: describeP(t) }) : msg('{name} finished {task}', { name: myFirst, task: describeP(t) }), { app: 'tasks', id: t.id }));
+    if (task.requestedBy && requestStatus(task).label !== requestStatus({ ...task, status, done }).label) tellClient(task, msg('Your request “{title}” is now: {status}', { title: task.title, status: phrase(requestStatus({ ...task, status, done }).label) }));
+    else if (task.visibleToClient && done && !task.done) tellClient(task, msg('“{title}” is done', { title: task.title }));
+    if (done && !task.done) {
+      const tell = new Set([task.supervisorId ?? task.createdBy, ...(task.followers ?? []), ...(from.kind === 'review' ? doersOf(task) : [])].filter((x): x is string => !!x && x !== user.id));
+      tell.forEach((uid2) => notify(uid2, 'done', from.kind === 'review' ? msg('{name} approved {task}', { name: myFirst, task: describeP(task) }) : msg('{name} finished {task}', { name: myFirst, task: describeP(task) }), { app: 'tasks', id: task.id }));
       // Finishing the last task of a brief tells the person in charge.
-      const br = t.briefId ? todos.find((x) => x.id === t.briefId) : undefined;
+      const br = task.briefId ? todos.find((x) => x.id === task.briefId) : undefined;
       if (br && br.userId !== user.id && todos.filter((x) => x.briefId === br.id && x.id !== id).every((x) => x.done))
         notify(br.userId, 'done', msg('All tasks in the brief “{title}” are done', { title: br.title }), { app: 'tasks', id: br.id });
       // Celebrate in the client's (or team's) channel, and with a little confetti for the person who finished it.
-      if (ws.chat?.celebrations !== false && !isBrief(t)) {
-        const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && c.category !== 'shared' && ((t.clientId && c.clientId === t.clientId) || (!t.clientId && t.teamId && c.teamId === t.teamId)));
-        if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `${myFirst} finished “${t.title}”`, at: nowIso(), kind: 'celebration', taskId: t.id }]);
+      if (ws.chat?.celebrations !== false && !isBrief(task)) {
+        const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && c.category !== 'shared' && ((task.clientId && c.clientId === task.clientId) || (!task.clientId && task.teamId && c.teamId === task.teamId)));
+        if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `${myFirst} finished “${task.title}”`, at: nowIso(), kind: 'celebration', taskId: task.id }]);
         if (!quiet) celebrate();
       }
       if (!quiet) offerInstall(); // finishing something is a good moment to offer the app
       if (!quiet)
         showToast({
-          text: next ? `Done. The next one is due ${dueWords(next.due!)}` : `Done: ${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}`,
-          action: { label: 'Undo', run: () => setTodos((ts) => ts.filter((x) => x.id !== next?.id).map((x) => (x.id === id ? { ...x, ...before } : x))) },
+          text: next ? t('Done. The next one is due {day}', { day: dueWordsHere(next.due!) }) : t('Done: {title}', { title: task.title.length > 40 ? task.title.slice(0, 40) + '…' : task.title }),
+          action: { label: t('Undo'), run: () => setTodos((ts) => ts.filter((x) => x.id !== next?.id).map((x) => (x.id === id ? { ...x, ...before } : x))) },
           ms: 6000,
         });
     }
   }
 
   const doersOf = (t: Todo) => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
-  /** Adds a line to a task's history. */
-  const logTask = (id: string, kind: TaskEvent['kind'], text: string, by = user.id) =>
-    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by, kind, text }] } : x)));
+  /** Adds a line to a task's history: a msg() (English text for the AI connector, and a `tr` for each reader's language). */
+  const logTask = (id: string, kind: TaskEvent['kind'], line: { text: string; tr: Msg }, by = user.id) =>
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by, kind, ...line }] } : x)));
 
   const patchTask = (id: string, patch: Partial<Todo>) => {
-    const t = todos.find((x) => x.id === id);
+    const task = todos.find((x) => x.id === id);
     // Keep userId (first person doing it) and assignees in step.
-    if (patch.userId !== undefined && patch.assignees === undefined && t) patch = { ...patch, assignees: patch.userId ? [patch.userId, ...doersOf(t).filter((x) => x !== patch.userId && x !== t.userId)] : [] };
+    if (patch.userId !== undefined && patch.assignees === undefined && task) patch = { ...patch, assignees: patch.userId ? [patch.userId, ...doersOf(task).filter((x) => x !== patch.userId && x !== task.userId)] : [] };
     if (patch.assignees && patch.userId === undefined) patch = { ...patch, userId: patch.assignees[0] ?? '' };
     // Moving to a project or team with stages of its own: the stage of the same name there, else its first stage.
-    const moved = t && !('status' in patch) && (('clientId' in patch && patch.clientId !== t.clientId) || ('teamId' in patch && patch.teamId !== t.teamId)) ? stageAfterMove(t, { ...t, ...patch }) : null;
+    const moved = task && !('status' in patch) && (('clientId' in patch && patch.clientId !== task.clientId) || ('teamId' in patch && patch.teamId !== task.teamId)) ? stageAfterMove(task, { ...task, ...patch }) : null;
     if (moved) patch = { ...patch, status: moved.stage.id, done: moved.stage.kind === 'done', ...(moved.stage.kind === 'done' ? {} : { doneAt: undefined, doneBy: undefined }) };
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-    if (!t) return;
+    if (!task) return;
     if (moved) {
-      const where = 'clientId' in patch && patch.clientId !== t.clientId ? (clients.find((c) => c.id === patch.clientId)?.name ?? 'no project') : (teams.find((x) => x.id === patch.teamId)?.name ?? 'no team');
-      logTask(id, 'status', moved.kept ? `kept it in ${stageName(moved.stage)} when it moved to ${where}` : `moved it to ${stageName(moved.stage)} when it moved to ${where}, which has no ${stageName(moved.from)} stage`);
-      showToast({ text: moved.kept ? `Moved to ${where}, still in “${stageName(moved.stage)}”.` : `Moved to ${where}, which has no “${stageName(moved.from)}” stage, so the task is in “${stageName(moved.stage)}” now.`, ms: moved.kept ? undefined : 7000 });
+      const toProject = 'clientId' in patch && patch.clientId !== task.clientId;
+      const name = toProject ? clients.find((c) => c.id === patch.clientId)?.name : teams.find((x) => x.id === patch.teamId)?.name;
+      const where = name ?? (toProject ? phrase('no project') : phrase('no team'));
+      const whereHere = name ?? (toProject ? t('no {project}', { project: term.one }) : t('no team'));
+      logTask(id, 'status', moved.kept ? msg('kept it in {stage} when it moved to {where}', { stage: stagePhrase(moved.stage), where }) : msg('moved it to {stage} when it moved to {where}, which has no {from} stage', { stage: stagePhrase(moved.stage), where, from: stagePhrase(moved.from) }));
+      showToast({ text: moved.kept ? t('Moved to {where}, still in “{stage}”.', { where: whereHere, stage: stageName(moved.stage) }) : t('Moved to {where}, which has no “{from}” stage, so the task is in “{stage}” now.', { where: whereHere, from: stageName(moved.from), stage: stageName(moved.stage) }), ms: moved.kept ? undefined : 7000 });
     }
-    const before = doersOf(t);
+    const before = doersOf(task);
     if (patch.assignees) {
       const added = patch.assignees.filter((x) => !before.includes(x));
       const removed = before.filter((x) => !patch.assignees!.includes(x));
-      if (added.length || removed.length)
-        logTask(id, 'assigned', [added.length ? `added ${added.map(firstOf).join(', ')}` : '', removed.length ? `removed ${removed.map(firstOf).join(', ')}` : ''].filter(Boolean).join(' and '));
-      added.filter((x) => x !== user.id).forEach((x) => notify(x, 'task', msg('{name} assigned you {task}', { name: myFirst, task: describeP(t) }), { app: 'tasks', id }));
-      if (added.length === 1 && added[0] !== user.id) showToast({ text: `Assigned to ${firstOf(added[0])}` });
+      if (added.length || removed.length) {
+        const a = added.map(firstOf).join(', ');
+        const r = removed.map(firstOf).join(', ');
+        logTask(id, 'assigned', a && r ? msg('added {added} and removed {removed}', { added: a, removed: r }) : a ? msg('added {names}', { names: a }) : msg('removed {names}', { names: r }));
+      }
+      added.filter((x) => x !== user.id).forEach((x) => notify(x, 'task', msg('{name} assigned you {task}', { name: myFirst, task: describeP(task) }), { app: 'tasks', id }));
+      if (added.length === 1 && added[0] !== user.id) showToast({ text: t('Assigned to {name}', { name: firstOf(added[0]) }) });
     }
-    if (patch.supervisorId && patch.supervisorId !== t.supervisorId) {
-      logTask(id, 'supervisor', `made ${patch.supervisorId === user.id ? 'themselves' : firstOf(patch.supervisorId)} the supervisor`);
-      if (patch.supervisorId !== user.id) notify(patch.supervisorId, 'task', msg('{name} asked you to supervise {task}', { name: myFirst, task: describeP(t) }), { app: 'tasks', id });
+    if (patch.supervisorId && patch.supervisorId !== task.supervisorId) {
+      logTask(id, 'supervisor', patch.supervisorId === user.id ? msg('made themselves the supervisor') : msg('made {name} the supervisor', { name: firstOf(patch.supervisorId) }));
+      if (patch.supervisorId !== user.id) notify(patch.supervisorId, 'task', msg('{name} asked you to supervise {task}', { name: myFirst, task: describeP(task) }), { app: 'tasks', id });
     }
-    if ('repeat' in patch && patch.repeat !== t.repeat) logTask(id, 'edit', patch.repeat ? `set it to repeat ${patch.repeat === 'weekdays' ? 'every weekday' : patch.repeat}` : 'stopped it repeating');
-    if ('due' in patch && patch.due !== t.due) logTask(id, 'due', patch.due ? `moved the due date ${t.due ? `from ${dueLabel(t.due).text} ` : ''}to ${dueLabel(patch.due).text}` : 'removed the due date');
+    if ('repeat' in patch && patch.repeat !== task.repeat) logTask(id, 'edit', patch.repeat ? msg('set it to repeat {repeat}', { repeat: repeatPhrase(patch.repeat) }) : msg('stopped it repeating'));
+    if ('due' in patch && patch.due !== task.due) logTask(id, 'due', patch.due ? (task.due ? msg('moved the due date from {from} to {to}', { from: phrase(dueWords(task.due)), to: phrase(dueWords(patch.due)) }) : msg('moved the due date to {to}', { to: phrase(dueWords(patch.due)) })) : msg('removed the due date'));
     if (patch.followers) {
-      const added = patch.followers.filter((x) => !(t.followers ?? []).includes(x));
-      if (added.length) logTask(id, 'edit', `added ${added.map((x) => (x === user.id ? 'themselves' : firstOf(x))).join(', ')} as follower${added.length > 1 ? 's' : ''}`);
+      const added = patch.followers.filter((x) => !(task.followers ?? []).includes(x));
+      const others = added.filter((x) => x !== user.id).map(firstOf).join(', ');
+      const self = added.includes(user.id);
+      if (added.length)
+        logTask(id, 'edit', self && others ? msg('added themselves and {names} as followers', { names: others }) : self ? msg('added themselves as a follower') : added.length > 1 ? msg('added {names} as followers', { names: others }) : msg('added {names} as a follower', { names: others }));
     }
   };
 
@@ -1889,20 +1915,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** The supervisor sends a finished task back with a note. */
   const sendBack = (id: string, note: string) => {
-    const t = todos.find((x) => x.id === id);
-    if (!t) return;
+    const task = todos.find((x) => x.id === id);
+    if (!task) return;
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status: stageIdFor(x, 'active'), done: false } : x)));
-    logTask(id, 'review', `sent it back: “${note}”`);
-    doersOf(t)
+    logTask(id, 'review', msg('sent it back: “{note}”', { note }));
+    doersOf(task)
       .filter((x) => x !== user.id)
-      .forEach((x) => notify(x, 'task', msg('{name} sent back “{title}”: “{note}”', { name: myFirst, title: t.title, note: note.slice(0, 80) }), { app: 'tasks', id }));
-    showToast({ text: 'Sent back with your note' });
+      .forEach((x) => notify(x, 'task', msg('{name} sent back “{title}”: “{note}”', { name: myFirst, title: task.title, note: note.slice(0, 80) }), { app: 'tasks', id }));
+    showToast({ text: t('Sent back with your note') });
   };
 
   /** Creates a brief and its tasks from a template, spaced out in working days. Tasks go to the matching team's queue. */
   const fromTemplate = (tpl: TaskTemplate, o: { clientId?: string; start: string; ownerId: string; skip: number[] }) => {
     const client = wsClients.find((c) => c.id === o.clientId);
-    const brief = createTask({ kind: 'brief', title: client ? `${tpl.name}: ${client.name}` : tpl.name, context: tpl.description, clientId: o.clientId, userId: o.ownerId, due: addWorkdays(o.start, Math.max(0, ...tpl.tasks.map((x) => x.days))), source: 'manual' });
+    const name = tplText(tpl, tpl.name); // a built-in template in the language of the person who starts it
+    const brief = createTask({ kind: 'brief', title: client ? `${name}: ${client.name}` : name, context: tplText(tpl, tpl.description), clientId: o.clientId, userId: o.ownerId, due: addWorkdays(o.start, Math.max(0, ...tpl.tasks.map((x) => x.days))), source: 'manual' });
     tpl.tasks.forEach((x, i) => {
       if (o.skip.includes(i)) return;
       const tl = x.title.toLowerCase();
@@ -1912,20 +1939,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         .filter((x) => x.hits.length)
         .sort((a, b) => b.hits.length - a.hits.length || Math.max(...b.hits.map((k) => k.length)) - Math.max(...a.hits.map((k) => k.length)))[0]?.tm;
       createTask({
-        title: x.title,
+        title: tplText(tpl, x.title),
         briefId: brief.id,
         clientId: o.clientId,
         teamId: team?.id,
         userId: team ? '' : o.ownerId,
         due: addWorkdays(o.start, x.days),
         source: 'manual',
-        checklist: x.checklist?.map((text) => ({ id: uid(), text, done: false })),
+        checklist: x.checklist?.map((text) => ({ id: uid(), text: tplText(tpl, text), done: false })),
         repeat: x.repeat,
       });
     });
     setTplOpen(null);
     setTaskOpen(brief.id);
-    showToast({ text: `Brief created with ${tpl.tasks.length - o.skip.length} tasks` });
+    showToast({ text: tn(tpl.tasks.length - o.skip.length, 'Brief created with {n} task', 'Brief created with {n} tasks') });
   };
   /** Saves a brief and its tasks as a template the whole company can reuse. */
   const saveTemplate = (briefId: string) => {
@@ -1944,7 +1971,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       { id: uid(), name, description: br.context ?? '', workspaceId: ws.id, tasks: subs.map((x) => ({ title: x.title, days: x.due ? workdaysBetween(start, x.due) : 0, checklist: x.checklist?.map((c) => c.text), repeat: x.repeat })) },
       ...ts,
     ]);
-    showToast({ text: `Saved “${name}” as a template` });
+    showToast({ text: t('Saved “{name}” as a template', { name }) });
   };
 
   /** Gives people (and whole teams) every channel in a section of the company sidebar. */
@@ -2046,20 +2073,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (Object.keys(r.learned).length) patchWorkspace(ws.id, { aliases: { ...(ws.aliases ?? {}), ...r.learned } });
     setDump(null);
     const people = new Set(made.filter((t) => t.userId && t.userId !== user.id).map((t) => t.userId));
+    const what = br ? tn(made.length, 'Brief and {n} task created', 'Brief and {n} tasks created') : tn(made.length, 'Created {n} task', 'Created {n} tasks');
     showToast({
-      text: `${br ? 'Brief and ' : 'Created '}${made.length} task${made.length === 1 ? '' : 's'}${br ? ' created' : ''}${people.size ? `, ${people.size} ${people.size === 1 ? 'person' : 'people'} notified` : ''}`,
-      action: br ? { label: 'Open brief', run: () => openTask(br.id) } : { label: 'View', run: () => openTasks({ kind: 'all' }) },
+      text: people.size ? t('{what}, {told}', { what, told: tn(people.size, '{n} person notified', '{n} people notified') }) : what,
+      action: br ? { label: t('Open brief'), run: () => openTask(br.id) } : { label: t('View'), run: () => openTasks({ kind: 'all' }) },
     });
   };
 
   /** Ask the client to approve a task: it becomes visible in their portal and the guests are told in the client channel. */
   const askApproval = (id: string) => {
-    const t = todos.find((x) => x.id === id);
-    if (!t) return;
+    const task = todos.find((x) => x.id === id);
+    if (!task) return;
     patchTask(id, { visibleToClient: true, approval: { status: 'waiting', askedBy: user.id, askedAt: nowIso() } });
-    const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === t.clientId && c.guests?.length);
-    if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `Could you approve “${t.title}”? It’s waiting for you in your shared space 🙏`, at: nowIso(), taskId: id }]);
-    showToast({ text: ch ? `Approval requested. ${ch.guests!.map((g) => g.name.split(' ')[0]).join(', ')} will see it in the shared space` : `Approval requested in the shared space` });
+    const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === task.clientId && c.guests?.length);
+    // The request is a message from you to the guests: in your words.
+    if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: t('Could you approve “{title}”? It’s waiting for you in your shared space 🙏', { title: task.title }), at: nowIso(), taskId: id }]);
+    showToast({ text: ch ? t('Approval requested. {names} will see it in the shared space', { names: fmtList(ch.guests!.map((g) => g.name.split(' ')[0])) }) : t('Approval requested in the shared space') });
   };
 
 
@@ -2090,10 +2119,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const link = await makeClientInvite(clientId)(person);
     showToast(
       inSandbox
-        ? { text: `${person.name} added to ${c.name}. It’s the demo company, so no invite goes out.`, ms: 6000 }
+        ? { text: t('{name} added to {project}. It’s the demo company, so no invite goes out.', { name: person.name, project: c.name }), ms: 6000 }
         : link
-          ? { text: `${person.name.split(' ')[0]} can sign in with their invite link`, action: { label: 'Copy link', run: () => void navigator.clipboard?.writeText(link) }, ms: 20000 }
-          : { text: `${person.name} invited to ${c.name}` },
+          ? { text: t('{name} can sign in with their invite link', { name: person.name.split(' ')[0] }), action: { label: t('Copy link'), run: () => void navigator.clipboard?.writeText(link) }, ms: 20000 }
+          : { text: t('{name} invited to {project}', { name: person.name, project: c.name }) },
     );
   };
   const inviteClientPerson = (clientId: string, person: { name: string; email: string; role: ClientPerson['role']; company?: string; phone?: string }) => void giveClientAccess(clientId, person, 'invited');
@@ -2110,14 +2139,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (o.closeTasks) setTodos((ts) => ts.map((t) => (t.clientId === id && !t.done ? { ...t, done: true, status: stageIdFor(t, 'done'), doneAt: nowIso(), doneBy: user.id } : t)));
     setEnding(null);
     const c = clients.find((x) => x.id === id);
-    showToast({ text: `Work with ${c?.name} ended. They’re in Past ${term.many}`, action: { label: 'Undo', run: () => reactivateClient(id) } });
+    showToast({ text: t('Work with {name} ended. They’re in Past {projects}', { name: c?.name ?? '', projects: term.many }), action: { label: t('Undo'), run: () => reactivateClient(id) } });
   };
   const reactivateClient = (id: string) => {
     const c = clients.find((x) => x.id === id);
     if (!c) return;
     setClients((cs) => cs.map((x) => (x.id === id ? { ...x, status: 'active', endedAt: undefined, endReason: undefined, portalAfterEnd: undefined, archivedOnEnd: undefined } : x)));
     if (c.archivedOnEnd?.length) setChannels((cs) => cs.map((ch) => (c.archivedOnEnd!.includes(ch.id) ? { ...ch, archived: false } : ch)));
-    showToast({ text: `${c.name} is an active ${term.one} again` });
+    showToast({ text: t('{name} is an active {project} again', { name: c.name, project: term.one }) });
   };
 
   const loadVault = () => {
@@ -2662,10 +2691,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const c = wsClients.find((x) => x.id === clientId);
     const list = wsMeetings.filter((m) => m.clientId === clientId && m.summary);
     if (!c) return;
-    const t = wsTasks.filter((x) => x.meetingId && list.some((m) => m.id === x.meetingId));
-    const o = await ai.folderOverview(c.name, list.map((m) => ({ title: m.title, summary: m.summary, decisions: m.decisions ?? [], openQuestions: m.openQuestions ?? [] })), t.filter((x) => !x.done).map((x) => x.title), t.filter((x) => x.done).length);
+    const linked = wsTasks.filter((x) => x.meetingId && list.some((m) => m.id === x.meetingId));
+    const o = await ai.folderOverview(c.name, list.map((m) => ({ title: m.title, summary: m.summary, decisions: m.decisions ?? [], openQuestions: m.openQuestions ?? [] })), linked.filter((x) => !x.done).map((x) => x.title), linked.filter((x) => x.done).length);
     setClients((cs) => cs.map((x) => (x.id === clientId ? { ...x, overview: { ...o, at: nowIso(), from: list.length } } : x)));
-    showToast({ text: 'Overview updated' });
+    showToast({ text: t('Overview updated') });
   };
 
   const openNotice = (n: Notice) => {
@@ -3477,9 +3506,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         label: term.Many,
         value: projScope.kind === 'client' ? projScope.id : projScope.kind === 'past' ? 'past' : 'all',
         options: [
-          { value: 'all', label: `All ${term.many}`, group: term.Many },
+          { value: 'all', label: t('All {projects}', { projects: term.many }), group: term.Many },
           ...wsClients.map((c) => ({ value: c.id, label: c.name, group: term.Many })),
-          { value: 'past', label: `Past ${term.many}`, group: 'More' },
+          { value: 'past', label: t('Past {projects}', { projects: term.many }), group: t('More') },
         ],
         onChange: (v: string) => setProjScope(v === 'all' ? { kind: 'projects' } : v === 'past' ? { kind: 'past' } : { kind: 'client', id: v }),
       };
@@ -4108,7 +4137,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               const task = todos.find((x) => x.id === id);
               if (!task) return;
               doersOf(task).filter((x) => x !== user.id).forEach((x) => notify(x, 'task', task.due ? msg('{name} is checking on “{title}”, it was due {due}', { name: myFirst, title: task.title, due: phrase(dueWords(task.due)) }) : msg('{name} is checking on “{title}”', { name: myFirst, title: task.title }), { app: 'tasks', id }));
-              logTask(id, 'comment', 'sent a reminder');
+              logTask(id, 'comment', msg('sent a reminder'));
               showToast({ text: t('Reminded {names}', { names: fmtList(doersOf(task).map(firstOf)) }) });
             }}
             onOpenTask={openTask}
@@ -4792,7 +4821,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 onMoveTasks={(moves) => {
                   const by = new Map(moves.map((m) => [m.id, m.patch]));
                   setTodos((ts) => ts.map((x) => (by.has(x.id) ? { ...x, ...by.get(x.id) } : x)));
-                  if (moves.length) showToast({ text: `Moved ${moves.length} task${moves.length === 1 ? '' : 's'}` });
+                  if (moves.length) showToast({ text: tn(moves.length, 'Moved {n} task', 'Moved {n} tasks') });
                 }}
               />
             ) : (
@@ -4805,12 +4834,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             me={user.id}
             count={wsTeams.length}
             onClose={() => setNewTeam(false)}
-            onCreate={(t) => {
+            onCreate={(tm) => {
               const id = 't-' + Date.now().toString(36);
-              saveTeams([...wsTeams, { ...t, id, workspaceId: ws.id }]);
+              saveTeams([...wsTeams, { ...tm, id, workspaceId: ws.id }]);
               setTeamId(id);
               go('teams');
-              showToast({ text: `${t.name} created, with its own channel` });
+              showToast({ text: t('{team} created, with its own channel', { team: tm.name }) });
             }}
           />
         )}
@@ -5249,14 +5278,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           })()}
           onSendBack={sendBack}
           onSaveTemplate={saveTemplate}
-          onDuplicate={(t) => {
-            const copy = createTask({ ...duplicateOf(t), source: 'manual' });
-            showToast({ text: `Duplicated “${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}”`, action: { label: 'Open', run: () => setTaskOpen(copy.id) } });
+          onDuplicate={(task) => {
+            const copy = createTask({ ...duplicateOf(task), source: 'manual' });
+            showToast({ text: t('Duplicated “{title}”', { title: task.title.length > 40 ? task.title.slice(0, 40) + '…' : task.title }), action: { label: t('Open'), run: () => setTaskOpen(copy.id) } });
           }}
           onOpenChannel={(clientId) => {
             const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId && c.category !== 'shared') ?? channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));
-            else showToast({ text: `This ${term.one} has no channel yet` });
+            else showToast({ text: t('This {project} has no channel yet', { project: term.one }) });
           }}
         />
       )}

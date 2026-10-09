@@ -480,8 +480,10 @@ export interface TaskEvent {
   by: string; // user id, or a guest email
   byName?: string; // brought in by an import from someone who isn't a member here: their name (by is "former:…")
   kind: 'created' | 'assigned' | 'status' | 'due' | 'edit' | 'comment' | 'review' | 'supervisor';
-  text: string;
+  text: string; // English for what the app writes (the AI connector reads it); a comment as typed
   toClient?: boolean; // a comment the client can read (team comments are internal unless marked)
+  /** What the app wrote, for each reader in their own language (msg() and textOf() in src/i18n). Older entries have none. */
+  tr?: Msg;
 }
 
 export interface Approval {

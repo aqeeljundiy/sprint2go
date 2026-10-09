@@ -1,9 +1,13 @@
 // Dates for tasks, as days (YYYY-MM-DD in the person's own time): what a due date means today (its colour), the short
 // words a row shows, the days people pick when they reschedule, and the exact times a snooze lands on. No React and no
-// browser here, so the server and the unit tests use the same rules (scripts/unit-tests.mjs).
+// browser here, so the server and the unit tests use the same rules (scripts/unit-tests.mjs). The words come in the
+// person's language (docs/i18n.md); the server and the unit tests get English.
+import { t, tx } from './i18n/index'; // full paths: the server and the unit tests import this file
+import { fmtDate, fmtTime, weekdayName } from './i18n/format';
 
 export type DateTone = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later';
 
+// English names, for reading what people type (Quick Add). On screen, days and months come from src/i18n/format.ts.
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -55,29 +59,31 @@ export function dateTone(due: string, today: string): DateTone {
   return 'later';
 }
 
-/** "13 Oct", with the year when it isn't this one. */
+const sameYear = (day: string, today: string) => day.slice(0, 4) === today.slice(0, 4);
+/** "13 Oct" / "13 Okt", with the year when it isn't this one. */
 export function shortDay(day: string, today: string) {
-  const d = dayDate(day);
-  const label = `${d.getDate()} ${MON_SHORT[d.getMonth()]}`;
-  return day.slice(0, 4) === today.slice(0, 4) ? label : `${label} ${d.getFullYear()}`;
+  return sameYear(day, today) ? fmtDate(day, { day: 'numeric', month: 'short' }) : fmtDate(day, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+/** "Fri 9 Oct" / "Jum, 9 Okt", with the year when it isn't this one. */
+export function weekdayDay(day: string, today: string) {
+  return fmtDate(day, sameYear(day, today) ? { weekday: 'short', day: 'numeric', month: 'short' } : { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** The words for a due date on a row: Yesterday, Today, Tomorrow, the weekday within a week, else "13 Oct". */
 export function dueText(due: string, today: string): string {
   const n = daysBetween(today, due);
-  if (n === -1) return 'Yesterday';
-  if (n === 0) return 'Today';
-  if (n === 1) return 'Tomorrow';
-  if (n > 1 && n <= 6) return WEEKDAYS[weekdayOf(due)];
+  if (n === -1) return t('Yesterday');
+  if (n === 0) return t('Today');
+  if (n === 1) return t('Tomorrow');
+  if (n > 1 && n <= 6) return weekdayName(weekdayOf(due));
   return shortDay(due, today);
 }
 
 /** A day heading in Upcoming and the date sections: "Today · Fri 9 Oct", "Mon 12 Oct". */
 export function dayHeading(day: string, today: string) {
-  const d = dayDate(day);
-  const date = `${WD_SHORT[d.getDay()]} ${d.getDate()} ${MON_SHORT[d.getMonth()]}${day.slice(0, 4) === today.slice(0, 4) ? '' : ` ${d.getFullYear()}`}`;
+  const date = weekdayDay(day, today);
   const n = daysBetween(today, day);
-  return n === 0 ? `Today · ${date}` : n === 1 ? `Tomorrow · ${date}` : n === -1 ? `Yesterday · ${date}` : date;
+  return n === 0 ? t('Today · {date}', { date }) : n === 1 ? t('Tomorrow · {date}', { date }) : n === -1 ? t('Yesterday · {date}', { date }) : date;
 }
 
 export interface DayChoice {
@@ -89,24 +95,32 @@ export interface DayChoice {
 
 /** The quick choices for a new due date: Today, Tomorrow, This weekend, Next week, and No date. */
 export function dayChoices(today: string, current?: string): DayChoice[] {
-  const hint = (day: string) => `${WD_SHORT[weekdayOf(day)]} ${dayDate(day).getDate()} ${MON_SHORT[dayDate(day).getMonth()]}`;
+  const hint = (day: string) => fmtDate(day, { weekday: 'short', day: 'numeric', month: 'short' });
   const tomorrow = addDays(today, 1);
   const sat = onOrAfter(today, 6);
   const wd = weekdayOf(today);
   const out: DayChoice[] = [
-    { id: 'today', label: 'Today', day: today, hint: hint(today) },
-    { id: 'tomorrow', label: 'Tomorrow', day: tomorrow, hint: hint(tomorrow) },
+    { id: 'today', label: t('Today'), day: today, hint: hint(today) },
+    { id: 'tomorrow', label: t('Tomorrow'), day: tomorrow, hint: hint(tomorrow) },
   ];
   // This weekend only makes sense on a weekday (and isn't tomorrow already).
-  if (wd >= 1 && wd <= 4) out.push({ id: 'weekend', label: 'This weekend', day: sat, hint: hint(sat) });
+  if (wd >= 1 && wd <= 4) out.push({ id: 'weekend', label: t('This weekend'), day: sat, hint: hint(sat) });
   const mon = nextOn(today, 1);
-  if (mon !== tomorrow) out.push({ id: 'nextweek', label: 'Next week', day: mon, hint: hint(mon) });
-  if (current) out.push({ id: 'none', label: 'No date', day: '', hint: '' });
+  if (mon !== tomorrow) out.push({ id: 'nextweek', label: t('Next week'), day: mon, hint: hint(mon) });
+  if (current) out.push({ id: 'none', label: t('No date'), day: '', hint: '' });
   return out;
 }
 
-/** "09:00", in 24 hours (the app's own clock style). */
+/** "09:00", in 24 hours (the app's own clock style): for code and what's saved. On screen: clockText. */
 export const clock = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** A time on screen: "09:00" / "09.00". */
+export const clockText = (d: Date) => fmtTime(d);
+/** "15:00" (as Quick Add keeps a time) on screen: "15:00" / "15.00". */
+export const hhmmText = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(2026, 0, 1, h, m);
+  return fmtTime(d);
+};
 
 export interface SnoozeChoice {
   id: 'hour' | 'evening' | 'tomorrow' | 'nextweek';
@@ -132,14 +146,14 @@ export function snoozeChoices(now: Date): SnoozeChoice[] {
   const say = (d: Date) => {
     const day = isoDay(d);
     const n = daysBetween(today, day);
-    const when = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : `${WD_SHORT[d.getDay()]} ${d.getDate()} ${MON_SHORT[d.getMonth()]}`;
-    return `${when}, ${clock(d)}`;
+    const when = n === 0 ? t('Today') : n === 1 ? t('Tomorrow') : fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' });
+    return t('{day}, {time}', { day: when, time: fmtTime(d) });
   };
-  const out: SnoozeChoice[] = [{ id: 'hour', label: 'In an hour', at: hour, hint: say(hour) }];
+  const out: SnoozeChoice[] = [{ id: 'hour', label: t('In an hour'), at: hour, hint: say(hour) }];
   const evening = at(today, 18);
-  if (now.getTime() < evening.getTime() - 90 * 60_000) out.push({ id: 'evening', label: 'This evening', at: evening, hint: say(evening) });
-  out.push({ id: 'tomorrow', label: 'Tomorrow morning', at: at(tomorrow, 9), hint: say(at(tomorrow, 9)) });
-  out.push({ id: 'nextweek', label: 'Next week', at: at(monday, 9), hint: say(at(monday, 9)) });
+  if (now.getTime() < evening.getTime() - 90 * 60_000) out.push({ id: 'evening', label: t('This evening'), at: evening, hint: say(evening) });
+  out.push({ id: 'tomorrow', label: t('Tomorrow morning'), at: at(tomorrow, 9), hint: say(at(tomorrow, 9)) });
+  out.push({ id: 'nextweek', label: t('Next week'), at: at(monday, 9), hint: say(at(monday, 9)) });
   return out;
 }
 
@@ -157,12 +171,43 @@ export function reschedule<T extends { id: string; due?: string }>(tasks: T[], d
 
 /** Which date section a task sits in on My tasks: Overdue, Today, Tomorrow, This week, Later, No date. */
 export type DateGroup = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later' | 'none';
+/** The sections, with their names in the reader's language. */
 export const DATE_GROUPS: { id: DateGroup; label: string }[] = [
-  { id: 'overdue', label: 'Overdue' },
-  { id: 'today', label: 'Today' },
-  { id: 'tomorrow', label: 'Tomorrow' },
-  { id: 'week', label: 'This week' },
-  { id: 'later', label: 'Later' },
-  { id: 'none', label: 'No date' },
+  {
+    id: 'overdue',
+    get label() {
+      return tx('due', 'Overdue');
+    },
+  },
+  {
+    id: 'today',
+    get label() {
+      return t('Today');
+    },
+  },
+  {
+    id: 'tomorrow',
+    get label() {
+      return t('Tomorrow');
+    },
+  },
+  {
+    id: 'week',
+    get label() {
+      return t('This week');
+    },
+  },
+  {
+    id: 'later',
+    get label() {
+      return t('Later');
+    },
+  },
+  {
+    id: 'none',
+    get label() {
+      return t('No date');
+    },
+  },
 ];
 export const dateGroup = (due: string | undefined, today: string): DateGroup => (due ? dateTone(due, today) : 'none');

@@ -15,14 +15,18 @@ import { term } from '../../terms';
 import { localDay } from '../../utils';
 import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../../types';
 import { copyTaskLink, doersOf } from './taskOps';
+import { t, tn } from '../../i18n';
+import { fmtTime } from '../../i18n/format';
 
-const REPEATS: { value: Repeat | ''; label: string }[] = [
-  { value: '', label: 'Doesn’t repeat' },
-  { value: 'daily', label: 'Every day' },
-  { value: 'weekdays', label: 'Every weekday' },
-  { value: 'weekly', label: 'Every week' },
-  { value: 'monthly', label: 'Every month' },
+const repeats = (): { value: Repeat | ''; label: string }[] => [
+  { value: '', label: t('Doesn’t repeat') },
+  { value: 'daily', label: t('Every day') },
+  { value: 'weekdays', label: t('Every weekday') },
+  { value: 'weekly', label: t('Every week') },
+  { value: 'monthly', label: t('Every month') },
 ];
+/** 09:00 the local way ("09:00" / "09.00"). */
+const nine = () => fmtTime(new Date(2026, 0, 1, 9, 0));
 
 /**
  * A task, opened: its project and stage on top, then the fields it has as rows and the ones it doesn't as a row of
@@ -30,7 +34,7 @@ const REPEATS: { value: Repeat | ''; label: string }[] = [
  * is pinned to the bottom and says who will hear about it. A side panel on a computer, a sheet on a phone.
  */
 export function TaskDetail({
-  t,
+  t: task,
   wsId,
   users,
   me,
@@ -67,8 +71,8 @@ export function TaskDetail({
   meta: ReactNode;
 }) {
   const phone = usePhone();
-  const stages = stagesOf(t);
-  const st = stageOf(t, stages);
+  const stages = stagesOf(task);
+  const st = stageOf(task, stages);
   const today = localDay();
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const [opened, setOpened] = useState<string[]>([]); // empty fields someone just gave the task (notes, checklist)
@@ -78,30 +82,30 @@ export function TaskDetail({
   const dots = useRef<HTMLButtonElement>(null);
   const checkInput = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => setOpened([]), [t.id]);
+  useEffect(() => setOpened([]), [task.id]);
   useEffect(() => {
     const el = titleRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
-  }, [t.title, t.id]);
+  }, [task.title, task.id]);
 
   const menu = useActionMenu(
     () => [
-      ...(!t.done ? [{ label: 'Add to calendar', icon: CalendarPlus, run: () => onToCalendar(t) }] : []),
-      ...(onDuplicate ? [{ label: 'Duplicate', icon: Copy, run: () => onDuplicate(t) }] : []),
-      { label: 'Copy link', icon: Link2, run: () => void copyTaskLink(wsId, t.id) },
-      { label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => (onDelete(t.id), onClose()) },
+      ...(!task.done ? [{ label: t('Add to calendar'), icon: CalendarPlus, run: () => onToCalendar(task) }] : []),
+      ...(onDuplicate ? [{ label: t('Duplicate'), icon: Copy, run: () => onDuplicate(task) }] : []),
+      { label: t('Copy link'), icon: Link2, run: () => void copyTaskLink(wsId, task.id) },
+      { label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => (onDelete(task.id), onClose()) },
     ],
-    { title: t.title },
+    { title: task.title },
   );
 
-  const doers = doersOf(t);
-  const checklist = t.checklist ?? [];
-  const reminder = t.remindAt && !t.reminded ? t.remindAt : '';
-  const project = clients.find((c) => c.id === t.clientId);
-  const team = teams.find((x) => x.id === t.teamId);
-  const tone = t.due && !t.done ? dateTone(t.due, today) : null;
+  const doers = doersOf(task);
+  const checklist = task.checklist ?? [];
+  const reminder = task.remindAt && !task.reminded ? task.remindAt : '';
+  const project = clients.find((c) => c.id === task.clientId);
+  const team = teams.find((x) => x.id === task.teamId);
+  const tone = task.due && !task.done ? dateTone(task.due, today) : null;
   const remindChoices = (() => {
     const at = (day: string, h: number) => {
       const d = dayDate(day);
@@ -109,20 +113,20 @@ export function TaskDetail({
       return d.toISOString();
     };
     const list: [string, string][] = [
-      ['In 1 hour', new Date(Date.now() + 3_600_000).toISOString()],
-      ['Tomorrow, 09:00', at(addDays(today, 1), 9)],
-      ...(t.due ? ([['The day before, 09:00', at(addDays(t.due, -1), 9)], ['On the day, 09:00', at(t.due, 9)]] as [string, string][]) : []),
+      [t('In 1 hour'), new Date(Date.now() + 3_600_000).toISOString()],
+      [t('Tomorrow, {time}', { time: nine() }), at(addDays(today, 1), 9)],
+      ...(task.due ? ([[t('The day before, {time}', { time: nine() }), at(addDays(task.due, -1), 9)], [t('On the day, {time}', { time: nine() }), at(task.due, 9)]] as [string, string][]) : []),
     ];
     return list.filter(([, v]) => v > new Date().toISOString());
   })();
   const remindOptions = [
-    { value: '', label: 'No reminder' },
+    { value: '', label: t('No reminder') },
     ...(reminder && !remindChoices.some(([, v]) => v === reminder) ? [{ value: reminder, label: remindText(reminder, today), icon: <Bell size={14} /> }] : []),
     ...remindChoices.map(([l, v]) => ({ value: v, label: l, hint: remindText(v, today), icon: <Bell size={14} /> })),
   ];
-  const peopleOpts = [{ value: '', label: 'Nobody' }, ...users.map((u) => ({ value: u.id, label: u.id === me ? `${u.name} (me)` : u.name }))];
-  const teamOpts = [{ value: '', label: 'No team', icon: <Dot color="var(--text-3)" /> }, ...teams.map((x) => ({ value: x.id, label: x.name, icon: <Dot color={x.color} /> }))];
-  const projectOpts = [{ value: '', label: `No ${term.one}`, icon: <Dot color="var(--text-3)" /> }, ...clients.filter((c) => c.status !== 'ended' || c.id === t.clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))];
+  const peopleOpts = [{ value: '', label: t('Nobody') }, ...users.map((u) => ({ value: u.id, label: u.id === me ? t('{name} (me)', { name: u.name }) : u.name }))];
+  const teamOpts = [{ value: '', label: t('No team'), icon: <Dot color="var(--text-3)" /> }, ...teams.map((x) => ({ value: x.id, label: x.name, icon: <Dot color={x.color} /> }))];
+  const projectOpts = [{ value: '', label: t('No {project}', { project: term.one }), icon: <Dot color="var(--text-3)" /> }, ...clients.filter((c) => c.status !== 'ended' || c.id === task.clientId).map((c) => ({ value: c.id, label: c.name, icon: <Dot color={c.color} /> }))];
 
   // Each field: shown as a row when it has a value (or was just added), as a chip when it doesn't.
   type Field = { id: string; label: string; icon: LucideIcon; filled: boolean; row: ReactNode; chip: ReactNode };
@@ -138,49 +142,49 @@ export function TaskDetail({
   const fields: Field[] = [
     {
       id: 'who',
-      label: 'Doing it',
+      label: t('Doing it'),
       icon: UserRound,
       filled: doers.length > 0,
-      row: <PeoplePicker value={doers} users={users} me={me} label="Doing it" emptyText="Waiting in the team queue" onChange={(ids) => onPatch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />,
+      row: <PeoplePicker value={doers} users={users} me={me} label={t('Doing it')} emptyText={t('Waiting in the team queue')} onChange={(ids) => onPatch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />,
       chip: (
         <span className="td-chip-people">
-          <PeoplePicker value={doers} users={users} me={me} label="Doing it" emptyText="Assign" onChange={(ids) => onPatch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />
+          <PeoplePicker value={doers} users={users} me={me} label={t('Doing it')} emptyText={t('Assign')} onChange={(ids) => onPatch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />
         </span>
       ),
     },
     {
       id: 'due',
-      label: 'Due',
+      label: t('Due'),
       icon: CalendarDays,
-      filled: !!t.due,
+      filled: !!task.due,
       row: (
         <span className={`td-due due-${tone ?? 'none'}`}>
-          <DatePicker value={t.due ?? ''} onChange={(v) => onPatch(t.id, { due: v || undefined })} label="Due date" placeholder="No date" className="sel-flat" />
-          {t.due && !t.done && tone !== 'overdue' && holidayOn(t.due) && <small className="hol-hint">{holidayOn(t.due)} is a public holiday</small>}
+          <DatePicker value={task.due ?? ''} onChange={(v) => onPatch(task.id, { due: v || undefined })} label={t('Due date')} placeholder={t('No date')} className="sel-flat" />
+          {task.due && !task.done && tone !== 'overdue' && holidayOn(task.due) && <small className="hol-hint">{t('{holiday} is a public holiday', { holiday: holidayOn(task.due) ?? '' })}</small>}
         </span>
       ),
-      chip: <DatePicker value="" onChange={(v) => onPatch(t.id, { due: v || undefined })} label="Due date" placeholder="Due date" className="td-chip" />,
+      chip: <DatePicker value="" onChange={(v) => onPatch(task.id, { due: v || undefined })} label={t('Due date')} placeholder={t('Due date')} className="td-chip" />,
     },
     {
       id: 'priority',
-      label: 'Priority',
+      label: t('Priority'),
       icon: Flag,
-      filled: t.priority === 'high',
+      filled: task.priority === 'high',
       row: (
         <Select<'normal' | 'high'>
-          value={t.priority}
-          onChange={(v) => onPatch(t.id, { priority: v })}
-          label="Priority"
+          value={task.priority}
+          onChange={(v) => onPatch(task.id, { priority: v })}
+          label={t('Priority')}
           className="sel-flat td-prio"
           options={[
-            { value: 'normal', label: 'Normal' },
-            { value: 'high', label: 'High', icon: <span className="st-dot st-high" /> },
+            { value: 'normal', label: t('Normal') },
+            { value: 'high', label: t('High'), icon: <span className="st-dot st-high" /> },
           ]}
         />
       ),
       chip: (
-        <button type="button" className="td-chip" onClick={() => onPatch(t.id, { priority: 'high' })}>
-          {chipLook(Flag, 'High priority')}
+        <button type="button" className="td-chip" onClick={() => onPatch(task.id, { priority: 'high' })}>
+          {chipLook(Flag, t('High priority'))}
         </button>
       ),
     },
@@ -188,80 +192,80 @@ export function TaskDetail({
       id: 'project',
       label: term.One,
       icon: Hash,
-      filled: !!t.clientId,
-      row: <ProjectPicker value={t.clientId ?? ''} projects={clients} none={`No ${term.one}`} onChange={(v) => onPatch(t.id, { clientId: v || undefined })} className="sel-flat" />,
-      chip: <Select value="" options={projectOpts} onChange={(v) => onPatch(t.id, { clientId: v || undefined })} label={term.One} className="td-chip" renderValue={() => chipLook(Hash, term.One)} />,
+      filled: !!task.clientId,
+      row: <ProjectPicker value={task.clientId ?? ''} projects={clients} none={t('No {project}', { project: term.one })} onChange={(v) => onPatch(task.id, { clientId: v || undefined })} className="sel-flat" />,
+      chip: <Select value="" options={projectOpts} onChange={(v) => onPatch(task.id, { clientId: v || undefined })} label={term.One} className="td-chip" renderValue={() => chipLook(Hash, term.One)} />,
     },
     {
       id: 'team',
-      label: 'Team',
+      label: t('Team'),
       icon: Users,
-      filled: !!t.teamId,
-      row: <Select value={t.teamId ?? ''} options={teamOpts} onChange={(v) => onPatch(t.id, { teamId: v || undefined })} label="Team" className="sel-flat" />,
-      chip: <Select value="" options={teamOpts} onChange={(v) => onPatch(t.id, { teamId: v || undefined })} label="Team" className="td-chip" renderValue={() => chipLook(Users, 'Team')} />,
+      filled: !!task.teamId,
+      row: <Select value={task.teamId ?? ''} options={teamOpts} onChange={(v) => onPatch(task.id, { teamId: v || undefined })} label={t('Team')} className="sel-flat" />,
+      chip: <Select value="" options={teamOpts} onChange={(v) => onPatch(task.id, { teamId: v || undefined })} label={t('Team')} className="td-chip" renderValue={() => chipLook(Users, t('Team'))} />,
     },
     {
       id: 'supervisor',
-      label: 'Checks it',
+      label: t('Checks it'),
       icon: Eye,
-      filled: !!t.supervisorId,
-      row: <Select value={t.supervisorId ?? ''} options={peopleOpts} onChange={(v) => onPatch(t.id, { supervisorId: v || undefined })} label="Supervisor" className="sel-flat" />,
-      chip: <Select value="" options={peopleOpts.slice(1)} onChange={(v) => onPatch(t.id, { supervisorId: v || undefined })} label="Supervisor" className="td-chip" renderValue={() => chipLook(Eye, 'Supervisor')} />,
+      filled: !!task.supervisorId,
+      row: <Select value={task.supervisorId ?? ''} options={peopleOpts} onChange={(v) => onPatch(task.id, { supervisorId: v || undefined })} label={t('Supervisor')} className="sel-flat" />,
+      chip: <Select value="" options={peopleOpts.slice(1)} onChange={(v) => onPatch(task.id, { supervisorId: v || undefined })} label={t('Supervisor')} className="td-chip" renderValue={() => chipLook(Eye, t('Supervisor'))} />,
     },
     {
       id: 'followers',
-      label: 'Followers',
+      label: t('Followers'),
       icon: Users,
-      filled: (t.followers ?? []).length > 0,
-      row: <PeoplePicker value={t.followers ?? []} users={users} me={me} label="Followers" emptyText="Nobody" onChange={(ids) => onPatch(t.id, { followers: ids })} />,
+      filled: (task.followers ?? []).length > 0,
+      row: <PeoplePicker value={task.followers ?? []} users={users} me={me} label={t('Followers')} emptyText={t('Nobody')} onChange={(ids) => onPatch(task.id, { followers: ids })} />,
       chip: (
         <span className="td-chip-people">
-          <PeoplePicker value={[]} users={users} me={me} label="Followers" emptyText="Followers" onChange={(ids) => onPatch(t.id, { followers: ids })} />
+          <PeoplePicker value={[]} users={users} me={me} label={t('Followers')} emptyText={t('Followers')} onChange={(ids) => onPatch(task.id, { followers: ids })} />
         </span>
       ),
     },
     {
       id: 'repeat',
-      label: 'Repeats',
+      label: t('Repeats'),
       icon: RepeatIcon,
-      filled: !!t.repeat,
+      filled: !!task.repeat,
       row: (
         <span className="td-val-col">
-          <Select<Repeat | ''> value={t.repeat ?? ''} options={REPEATS} onChange={(v) => onPatch(t.id, { repeat: v || undefined, ...(v && !t.due ? { due: today } : {}) })} label="Repeats" className="sel-flat" />
-          <small className="muted">When it’s done, the next one appears</small>
+          <Select<Repeat | ''> value={task.repeat ?? ''} options={repeats()} onChange={(v) => onPatch(task.id, { repeat: v || undefined, ...(v && !task.due ? { due: today } : {}) })} label={t('Repeats')} className="sel-flat" />
+          <small className="muted">{t('When it’s done, the next one appears')}</small>
         </span>
       ),
-      chip: <Select<Repeat | ''> value="" options={REPEATS.slice(1)} onChange={(v) => onPatch(t.id, { repeat: v || undefined, ...(v && !t.due ? { due: today } : {}) })} label="Repeats" className="td-chip" renderValue={() => chipLook(RepeatIcon, 'Repeat')} />,
+      chip: <Select<Repeat | ''> value="" options={repeats().slice(1)} onChange={(v) => onPatch(task.id, { repeat: v || undefined, ...(v && !task.due ? { due: today } : {}) })} label={t('Repeats')} className="td-chip" renderValue={() => chipLook(RepeatIcon, t('Repeat'))} />,
     },
     {
       id: 'remind',
-      label: 'Reminder',
+      label: t('Reminder'),
       icon: Bell,
       filled: !!reminder,
-      row: <Select value={reminder} options={remindOptions} onChange={(v) => onPatch(t.id, { remindAt: v || undefined, reminded: false })} label="Reminder" className="sel-flat" />,
-      chip: <Select value="" options={remindOptions.slice(1)} onChange={(v) => onPatch(t.id, { remindAt: v || undefined, reminded: false })} label="Reminder" className="td-chip" renderValue={() => chipLook(Bell, 'Reminder')} />,
+      row: <Select value={reminder} options={remindOptions} onChange={(v) => onPatch(task.id, { remindAt: v || undefined, reminded: false })} label={t('Reminder')} className="sel-flat" />,
+      chip: <Select value="" options={remindOptions.slice(1)} onChange={(v) => onPatch(task.id, { remindAt: v || undefined, reminded: false })} label={t('Reminder')} className="td-chip" renderValue={() => chipLook(Bell, t('Reminder'))} />,
     },
     {
       id: 'notes',
-      label: 'Notes',
+      label: t('Notes'),
       icon: AlignLeft,
-      filled: !!t.notes || opened.includes('notes'),
+      filled: !!task.notes || opened.includes('notes'),
       row: null,
       chip: (
         <button type="button" className="td-chip" onClick={() => (setOpened((o) => [...o, 'notes']), requestAnimationFrame(() => notesRef.current?.focus()))}>
-          {chipLook(AlignLeft, 'Notes')}
+          {chipLook(AlignLeft, t('Notes'))}
         </button>
       ),
     },
     {
       id: 'checklist',
-      label: 'Checklist',
+      label: t('Checklist'),
       icon: ListChecks,
       filled: checklist.length > 0 || opened.includes('checklist'),
       row: null,
       chip: (
         <button type="button" className="td-chip" onClick={() => (setOpened((o) => [...o, 'checklist']), requestAnimationFrame(() => checkInput.current?.focus()))}>
-          {chipLook(ListChecks, 'Checklist')}
+          {chipLook(ListChecks, t('Checklist'))}
         </button>
       ),
     },
@@ -271,39 +275,39 @@ export function TaskDetail({
 
   const addCheck = () => {
     if (!checkText.trim()) return;
-    onPatch(t.id, { checklist: [...checklist, { id: Math.random().toString(36).slice(2), text: checkText.trim(), done: false }] });
+    onPatch(task.id, { checklist: [...checklist, { id: Math.random().toString(36).slice(2), text: checkText.trim(), done: false }] });
     setCheckText('');
   };
 
   // Who hears about a comment: everyone on the task but you.
-  const told = [...new Set([...doers, t.supervisorId, ...(t.followers ?? [])].filter((x): x is string => !!x && x !== me))].map((id) => users.find((u) => u.id === id)?.name.split(' ')[0]).filter(Boolean) as string[];
-  const toldText = told.length ? `${told[0]}${told.length > 1 ? ` and ${told.length - 1} other${told.length > 2 ? 's' : ''}` : ''} will be notified` : 'Nobody else is on this task yet';
+  const told = [...new Set([...doers, task.supervisorId, ...(task.followers ?? [])].filter((x): x is string => !!x && x !== me))].map((id) => users.find((u) => u.id === id)?.name.split(' ')[0]).filter(Boolean) as string[];
+  const toldText = !told.length ? t('Nobody else is on this task yet') : told.length === 1 ? t('{name} will be notified', { name: told[0] }) : tn(told.length - 1, '{name} and {n} other will be notified', '{name} and {n} others will be notified', { name: told[0] });
   const send = () => {
     if (!comment.trim()) return;
-    onComment(t.id, comment.trim(), toClient);
+    onComment(task.id, comment.trim(), toClient);
     setComment('');
   };
 
   const crumbs = (
-    <nav className="td-crumbs" aria-label="Where it is">
+    <nav className="td-crumbs" aria-label={t('Where it is')}>
       <Select
-        value={t.clientId ?? ''}
+        value={task.clientId ?? ''}
         options={projectOpts}
-        onChange={(v) => onPatch(t.id, { clientId: v || undefined })}
+        onChange={(v) => onPatch(task.id, { clientId: v || undefined })}
         label={term.One}
         className="td-crumb"
         renderValue={() => (
           <>
             <span className="dot" style={{ background: project?.color ?? 'var(--text-3)' }} />
-            <span className="td-crumb-text">{project?.name ?? (team ? team.name : 'No project')}</span>
+            <span className="td-crumb-text">{project?.name ?? (team ? team.name : t('No {project}', { project: term.one }))}</span>
           </>
         )}
       />
       <ChevronRight size={14} className="td-crumb-sep" aria-hidden="true" />
       <Select<TaskStatus>
         value={st.id}
-        onChange={(v) => onStatus(t.id, v)}
-        label="Stage"
+        onChange={(v) => onStatus(task.id, v)}
+        label={t('Stage')}
         className="td-crumb"
         options={stages.map((s) => ({ value: s.id, label: stageName(s), icon: <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} /> }))}
         renderValue={() => (
@@ -317,10 +321,10 @@ export function TaskDetail({
   );
   const head = (
     <>
-      <button ref={dots} type="button" className="icon-btn" aria-label="More" onClick={() => menu.openFrom(dots)}>
+      <button ref={dots} type="button" className="icon-btn" aria-label={t('More')} onClick={() => menu.openFrom(dots)}>
         <MoreHorizontal size={18} />
       </button>
-      <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+      <button type="button" className="icon-btn" onClick={onClose} aria-label={t('Close')}>
         <X size={18} />
       </button>
     </>
@@ -328,10 +332,10 @@ export function TaskDetail({
   const body = (
     <div className="td">
       <div className="drawer-title-row td-title-row">
-        <button type="button" className={`trow-check td-check${t.priority === 'high' ? ' p-high' : ''}${t.done ? ' on' : ''}`} onClick={() => onStatus(t.id, stageIdFor(t, t.done ? 'open' : 'done', stages))} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
-          <span className="ring">{t.done && <span>✓</span>}</span>
+        <button type="button" className={`trow-check td-check${task.priority === 'high' ? ' p-high' : ''}${task.done ? ' on' : ''}`} onClick={() => onStatus(task.id, stageIdFor(task, task.done ? 'open' : 'done', stages))} aria-label={task.done ? t('Mark not done') : t('Mark done')}>
+          <span className="ring">{task.done && <span>✓</span>}</span>
         </button>
-        <textarea ref={titleRef} className="drawer-title" rows={1} value={t.title} onChange={(e) => onPatch(t.id, { title: e.target.value })} aria-label="Title" />
+        <textarea ref={titleRef} className="drawer-title" rows={1} value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} aria-label={t('Title')} />
       </div>
       {above}
       {rows.length > 0 && (
@@ -348,7 +352,7 @@ export function TaskDetail({
         </div>
       )}
       {chips.length > 0 && (
-        <div className="td-chips" role="group" aria-label="Add to this task">
+        <div className="td-chips" role="group" aria-label={t('Add to this task')}>
           {chips.map((f) => (
             <span key={f.id} className="td-chip-slot">
               {f.chip}
@@ -356,18 +360,18 @@ export function TaskDetail({
           ))}
         </div>
       )}
-      {(t.notes || opened.includes('notes')) && (
+      {(task.notes || opened.includes('notes')) && (
         <section className="td-sec">
           <h3 className="td-h">
-            <AlignLeft size={15} /> Notes
+            <AlignLeft size={15} /> {t('Notes')}
           </h3>
-          <textarea ref={notesRef} className="drawer-notes" value={t.notes ?? ''} onChange={(e) => onPatch(t.id, { notes: e.target.value })} placeholder="Details, links, what done looks like…" />
+          <textarea ref={notesRef} className="drawer-notes" value={task.notes ?? ''} onChange={(e) => onPatch(task.id, { notes: e.target.value })} placeholder={t('Details, links, what done looks like…')} />
         </section>
       )}
       {(checklist.length > 0 || opened.includes('checklist')) && (
         <section className="td-sec">
           <h3 className="td-h">
-            <ListChecks size={15} /> Checklist
+            <ListChecks size={15} /> {t('Checklist')}
             {checklist.length > 0 && (
               <span className="muted">
                 {checklist.filter((c) => c.done).length}/{checklist.length}
@@ -378,23 +382,23 @@ export function TaskDetail({
             {checklist.map((c) => (
               <li key={c.id} className={c.done ? 'done' : ''}>
                 <label>
-                  <input type="checkbox" checked={c.done} onChange={() => onPatch(t.id, { checklist: checklist.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)) })} />
+                  <input type="checkbox" checked={c.done} onChange={() => onPatch(task.id, { checklist: checklist.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)) })} />
                   <span>{c.text}</span>
                 </label>
-                <button className="icon-btn sm" aria-label={`Remove ${c.text}`} onClick={() => onPatch(t.id, { checklist: checklist.filter((x) => x.id !== c.id) })}>
+                <button className="icon-btn sm" aria-label={t('Remove {step}', { step: c.text })} onClick={() => onPatch(task.id, { checklist: checklist.filter((x) => x.id !== c.id) })}>
                   <X size={13} />
                 </button>
               </li>
             ))}
             <li className="check-add">
               <Plus size={14} />
-              <input ref={checkInput} value={checkText} onChange={(e) => setCheckText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCheck()} placeholder="Add a step…" />
+              <input ref={checkInput} value={checkText} onChange={(e) => setCheckText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCheck()} placeholder={t('Add a step…')} />
             </li>
           </ul>
         </section>
       )}
       <section className="td-sec">
-        <h3 className="td-h">Activity</h3>
+        <h3 className="td-h">{t('Activity')}</h3>
         {history}
       </section>
       {meta}
@@ -408,18 +412,18 @@ export function TaskDetail({
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.preventDefault(), send())}
-          placeholder={toClient ? `Reply to the ${term.who}…` : 'Add a comment…'}
-          aria-label="Comment"
+          placeholder={toClient ? t('Reply to the {who}…', { who: term.who }) : t('Add a comment…')}
+          aria-label={t('Comment')}
         />
         <button type="button" className="primary-btn sm" disabled={!comment.trim()} onPointerDown={(e) => e.preventDefault()} onClick={send}>
-          {toClient ? 'Send' : 'Comment'}
+          {toClient ? t('Send') : t('Comment')}
         </button>
       </div>
       <div className="td-c-foot">
-        <small className="muted">{toClient ? `The ${term.who} and your team will see this` : toldText}</small>
+        <small className="muted">{toClient ? t('The {who} and your team will see this', { who: term.who }) : toldText}</small>
         {clientCanSee && (
           <label className="cb-toggle">
-            <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> {term.Who} can see this
+            <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> {t('{Who} can see this', { who: term.who })}
           </label>
         )}
       </div>
@@ -429,7 +433,7 @@ export function TaskDetail({
   if (phone)
     return (
       <>
-        <Sheet onClose={onClose} size="full" className="td-sheet" label="Task" title={crumbs} head={head} footer={foot}>
+        <Sheet onClose={onClose} size="full" className="td-sheet" label={t('Task')} title={crumbs} head={head} footer={foot}>
           {body}
         </Sheet>
         {menu.menu}
@@ -437,7 +441,7 @@ export function TaskDetail({
     );
   return (
     <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <aside className="drawer td-drawer" role="dialog" aria-label="Task">
+      <aside className="drawer td-drawer" role="dialog" aria-label={t('Task')}>
         <header className="drawer-head">
           {crumbs}
           {head}
@@ -451,4 +455,4 @@ export function TaskDetail({
 }
 
 /** The task's own stages: its project's or team's, else the company's. */
-const stagesOf = (t: Todo) => stagesForTask(t);
+const stagesOf = (task: Todo) => stagesForTask(task);

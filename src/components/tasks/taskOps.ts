@@ -1,5 +1,6 @@
 import type { Client, Repeat, TaskStage, TaskStatus, Team, Todo, User } from '../../types';
 import { toast } from '../../toast';
+import { t } from '../../i18n';
 
 /** A new task, as Quick Add, Duplicate and the board's "Add task" make it. */
 export interface NewTask {
@@ -46,9 +47,9 @@ export async function copyTaskLink(wsId: string, id: string) {
   const url = taskLink(wsId, id);
   try {
     await navigator.clipboard.writeText(url);
-    toast({ text: 'Link copied' });
+    toast({ text: t('Link copied') });
   } catch {
-    toast({ text: 'Couldn’t copy here. The link: ' + url, ms: 9000 });
+    toast({ text: t('Couldn’t copy here. The link: {url}', { url }), ms: 9000 });
   }
 }
 

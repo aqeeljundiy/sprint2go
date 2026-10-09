@@ -11,6 +11,7 @@ import type { Todo } from '../../types';
 import { Doer } from './TaskSheets';
 import { quoted, type TaskOps } from './taskOps';
 import type { RowLook } from './TaskRow';
+import { t } from '../../i18n';
 
 type Drag = { id: string; x: number; y: number; dx: number; dy: number; w: number; on: boolean; over: string | null };
 
@@ -34,8 +35,8 @@ export function TaskBoard({
   ops: TaskOps;
   tasks: Todo[];
   look: RowLook;
-  menu: (t: Todo) => SheetAction[];
-  onStage: (t: Todo) => void; // the stage pill: pick a stage
+  menu: (task: Todo) => SheetAction[];
+  onStage: (task: Todo) => void; // the stage pill: pick a stage
   onAdd: (stageId: string) => void;
 }) {
   const phone = usePhone();
@@ -47,17 +48,17 @@ export function TaskBoard({
   const [current, setCurrent] = useState(0);
   // The page's columns (a project's or team's own stages on its page, else the company's); a task with stages of its
   // own sits in its own stage when the board has it, else the column of the same kind.
-  const cols = ops.stages.map((s) => ({ s, items: tasks.filter((t) => columnOf(t, ops.stages).id === s.id) }));
+  const cols = ops.stages.map((s) => ({ s, items: tasks.filter((task) => columnOf(task, ops.stages).id === s.id) }));
 
   const colAt = (x: number, y: number) => (document.elementsFromPoint(x, y).find((el) => el instanceof HTMLElement && el.classList.contains('tcol')) as HTMLElement | undefined)?.dataset.stage ?? null;
-  const moveTo = (t: Todo, colId: string) => {
+  const moveTo = (task: Todo, colId: string) => {
     const col = ops.stages.find((s) => s.id === colId);
     if (!col) return;
-    const from = stageOf(t).id;
-    const to = ownStageForColumn(t, col); // its own stage of that kind when its stages differ from the board's
+    const from = stageOf(task).id;
+    const to = ownStageForColumn(task, col); // its own stage of that kind when its stages differ from the board's
     if (from === to.id) return;
-    ops.status(t.id, to.id, true);
-    toastUndo(`${quoted(t.title)} moved to ${stageName(to)}`, () => ops.status(t.id, from, true));
+    ops.status(task.id, to.id, true);
+    toastUndo(t('{title} moved to {stage}', { title: quoted(task.title), stage: stageName(to) }), () => ops.status(task.id, from, true));
   };
 
   // While a card is held at the board's edge, the board moves one column that way, then waits a moment before the
@@ -115,11 +116,11 @@ export function TaskBoard({
     b?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [current]);
 
-  const dragged = drag ? tasks.find((t) => t.id === drag.id) : undefined;
+  const dragged = drag ? tasks.find((task) => task.id === drag.id) : undefined;
   return (
     <div className={`tboard-wrap${drag?.on ? ' dragging' : ''}`}>
       {phone && (
-        <div className="tboard-strip" ref={strip} role="tablist" aria-label="Stages">
+        <div className="tboard-strip" ref={strip} role="tablist" aria-label={t('Stages')}>
           {cols.map(({ s, items }, i) => (
             <button key={s.id} type="button" role="tab" aria-selected={i === current} className={i === current ? 'on' : ''} onClick={() => jump(i)}>
               <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} />
@@ -138,8 +139,8 @@ export function TaskBoard({
             aria-label={stageName(s)}
             onDragOver={(e) => mouseDrag && e.preventDefault()}
             onDrop={() => {
-              const t = tasks.find((x) => x.id === mouseDrag);
-              if (t) moveTo(t, s.id);
+              const task = tasks.find((x) => x.id === mouseDrag);
+              if (task) moveTo(task, s.id);
               setMouseDrag(null);
             }}
           >
@@ -149,30 +150,30 @@ export function TaskBoard({
               <span className="tcol-n">{items.length}</span>
             </header>
             <div className="tcol-cards">
-              {items.map((t) => (
+              {items.map((task) => (
                 <BoardCard
-                  key={t.id}
-                  t={t}
+                  key={task.id}
+                  task={task}
                   ops={ops}
                   look={look}
-                  menu={() => menu(t)}
-                  dragging={drag?.on && drag.id === t.id}
-                  onStage={() => onStage(t)}
+                  menu={() => menu(task)}
+                  dragging={drag?.on && drag.id === task.id}
+                  onStage={() => onStage(task)}
                   onMouseDrag={setMouseDrag}
-                  onLift={(x, y, r) => setDrag({ id: t.id, x, y, dx: x - r.left, dy: y - r.top, w: r.width, on: false, over: null })}
+                  onLift={(x, y, r) => setDrag({ id: task.id, x, y, dx: x - r.left, dy: y - r.top, w: r.width, on: false, over: null })}
                   onMove={(x, y) => setDrag((d) => d && { ...d, x, y, on: true, over: colAt(x, y) })}
                   onDrop={(x, y) => {
                     const over = colAt(x, y);
                     setDrag(null);
-                    if (over) moveTo(t, over);
+                    if (over) moveTo(task, over);
                   }}
                   onCancel={() => setDrag(null)}
                 />
               ))}
-              {!items.length && <p className="tcol-empty">{phone ? 'Nothing here' : 'Drop tasks here'}</p>}
+              {!items.length && <p className="tcol-empty">{phone ? t('Nothing here') : t('Drop tasks here')}</p>}
             </div>
             <button type="button" className="tcol-add" onClick={() => onAdd(s.id)}>
-              <Plus size={16} /> Add task
+              <Plus size={16} /> {t('Add task')}
             </button>
           </section>
         ))}
@@ -192,7 +193,7 @@ export function TaskBoard({
 }
 
 function BoardCard({
-  t,
+  task,
   ops,
   look,
   menu,
@@ -204,7 +205,7 @@ function BoardCard({
   onDrop,
   onCancel,
 }: {
-  t: Todo;
+  task: Todo;
   ops: TaskOps;
   look: RowLook;
   menu: () => SheetAction[];
@@ -218,7 +219,7 @@ function BoardCard({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const moved = useRef(false);
-  const m = useActionMenu(menu, { title: t.title });
+  const m = useActionMenu(menu, { title: task.title });
   // Hold, then move: drag. Hold and let go without moving: the card's menu.
   const press = useLongPress(
     (p) => {
@@ -240,20 +241,20 @@ function BoardCard({
       },
     },
   );
-  const st = stageOf(t);
-  const tone = t.due && !t.done ? dateTone(t.due, ops.today) : null;
-  const cl = t.checklist ?? [];
-  const comments = (t.history ?? []).filter((h) => h.kind === 'comment').length;
-  const c = look.project ? ops.clients.find((x) => x.id === t.clientId) : undefined;
+  const st = stageOf(task);
+  const tone = task.due && !task.done ? dateTone(task.due, ops.today) : null;
+  const cl = task.checklist ?? [];
+  const comments = (task.history ?? []).filter((h) => h.kind === 'comment').length;
+  const c = look.project ? ops.clients.find((x) => x.id === task.clientId) : undefined;
   return (
     <>
       <div
         ref={ref}
-        className={`tcard lp${t.priority === 'high' && look.show('priority') ? ' high' : ''}${dragging ? ' dragging' : ''}${t.done ? ' done' : ''}`}
+        className={`tcard lp${task.priority === 'high' && look.show('priority') ? ' high' : ''}${dragging ? ' dragging' : ''}${task.done ? ' done' : ''}`}
         draggable={!touchFirst()}
-        onDragStart={() => onMouseDrag(t.id)}
+        onDragStart={() => onMouseDrag(task.id)}
         onDragEnd={() => onMouseDrag(null)}
-        onClick={(e) => !(e.target as HTMLElement).closest('button') && ops.open(t.id)}
+        onClick={(e) => !(e.target as HTMLElement).closest('button') && ops.open(task.id)}
         {...press}
         onContextMenu={(e) => {
           press.onContextMenu(e);
@@ -263,17 +264,17 @@ function BoardCard({
         }}
       >
         <div className="tcard-top">
-          <button type="button" className="tcard-title" onClick={() => ops.open(t.id)}>
-            {t.priority === 'high' && look.show('priority') && <i className="tcard-high" aria-label="High priority" />}
-            {t.title}
+          <button type="button" className="tcard-title" onClick={() => ops.open(task.id)}>
+            {task.priority === 'high' && look.show('priority') && <i className="tcard-high" aria-label={t('High priority')} />}
+            {task.title}
           </button>
-          {look.show('assignee') && <Doer t={t} ops={ops} />}
+          {look.show('assignee') && <Doer task={task} ops={ops} />}
         </div>
         <div className="tcard-meta">
-          {look.show('due') && t.due && !t.done && (
+          {look.show('due') && task.due && !task.done && (
             <span className={`tm due-${tone}`}>
-              {t.repeat && <RepeatIcon size={12} />}
-              {dueText(t.due, ops.today)}
+              {task.repeat && <RepeatIcon size={12} />}
+              {dueText(task.due, ops.today)}
             </span>
           )}
           {look.show('checklist') && cl.length > 0 && (
@@ -293,7 +294,7 @@ function BoardCard({
             </span>
           )}
         </div>
-        <button type="button" className={`tcard-stage tone-${toneOf(st)}`} onClick={onStage} aria-label={`Stage: ${stageName(st)}. Move to another stage`}>
+        <button type="button" className={`tcard-stage tone-${toneOf(st)}`} onClick={onStage} aria-label={t('Stage: {stage}. Move to another stage', { stage: stageName(st) })}>
           <span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />
           {stageName(st)}
           <ChevronDown size={13} />

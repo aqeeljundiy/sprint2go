@@ -9,8 +9,9 @@ import type { SheetAction } from '../ui/ActionSheet';
 import { Avatar } from '../Avatar';
 import { useAppSettings, useCreateAction } from '../../mobile/chrome';
 import { usePhone } from '../../mobile/media';
+import { useLang } from '../../i18n/useLang';
 import { usePersisted } from '../../settings';
-import { DATE_GROUPS, clock, dateGroup, dueText, isoDay } from '../../taskDates';
+import { DATE_GROUPS, dateGroup, dueText, isoDay } from '../../taskDates';
 import { columnOf, firstOf, stageIdFor, stageName, stageOf, stagesForTask, toneOf } from '../../stages';
 import { term } from '../../terms';
 import { toast, toastUndo } from '../../toast';
@@ -25,6 +26,8 @@ import { PlanMyDay } from './PlanMyDay';
 import { BulkBar } from './BulkBar';
 import { dayWords, useTaskSheets } from './TaskSheets';
 import { copyTaskLink, doersOf, duplicateOf, quoted, type TaskOps } from './taskOps';
+import { t, tn } from '../../i18n';
+import { fmtTime } from '../../i18n/format';
 
 export type SwipeChoice = 'complete' | 'schedule' | 'none';
 export interface SavedTaskView {
@@ -81,6 +84,7 @@ export function TaskViews({
   barStart?: ReactNode; // the start of the toolbar (a project's "Open" on phones)
 }) {
   const phone = usePhone();
+  const lang = useLang();
   const [d, setD, resetD] = useDisplay(kind === 'client' ? 'client' : kind);
   const layouts: Layout[] = kind === 'upcoming' ? ['calendar'] : kind === 'today' ? ['list', 'board'] : ['list', 'board', 'calendar'];
   const layout: Layout = layouts.includes(d.layout) ? d.layout : layouts[0];
@@ -89,17 +93,17 @@ export function TaskViews({
   const show = (f: string) => fields.includes(f);
   const [swipes, setSwipes] = usePersisted<{ right: SwipeChoice; left: SwipeChoice }>('s2g-task-swipes', { right: 'complete', left: 'schedule' });
   const [snoozed, setSnoozed] = usePersisted<Record<string, string>>(`s2g-queue-snooze:${ops.me}`, {});
-  const kindOf = (t: Todo) => stageOf(t).kind; // each task's own stages
+  const kindOf = (task: Todo) => stageOf(task).kind; // each task's own stages
   const today = ops.today;
 
   /* ---------- which tasks, in which order ---------- */
   const nowIso = new Date().toISOString();
-  const isQueue = (t: Todo) => !!triage && !t.done && !doersOf(t).length;
-  const sleeping = (t: Todo) => isQueue(t) && !!snoozed[t.id] && snoozed[t.id] > nowIso;
+  const isQueue = (task: Todo) => !!triage && !task.done && !doersOf(task).length;
+  const sleeping = (task: Todo) => isQueue(task) && !!snoozed[task.id] && snoozed[task.id] > nowIso;
   const filtered = useMemo(() => applyFilters(tasks, d, ops.me, today, kindOf), [tasks, d, ops.me, today]); // eslint-disable-line react-hooks/exhaustive-deps
-  const open = useMemo(() => sortTasks(filtered.filter((t) => !t.done && !sleeping(t)), d.sort), [filtered, d.sort, snoozed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const open = useMemo(() => sortTasks(filtered.filter((task) => !task.done && !sleeping(task)), d.sort), [filtered, d.sort, snoozed]); // eslint-disable-line react-hooks/exhaustive-deps
   const asleep = filtered.filter(sleeping);
-  const doneList = useMemo(() => filtered.filter((t) => t.done).sort((a, b) => (b.doneAt ?? b.createdAt).localeCompare(a.doneAt ?? a.createdAt)), [filtered]);
+  const doneList = useMemo(() => filtered.filter((task) => task.done).sort((a, b) => (b.doneAt ?? b.createdAt).localeCompare(a.doneAt ?? a.createdAt)), [filtered]);
   const [doneMore, setDoneMore] = useState(false);
 
   /* ---------- selecting many ---------- */
@@ -118,16 +122,17 @@ export function TaskViews({
   }, [selecting]);
   useEffect(stopSelecting, [kind, scopeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const busy = useMemo(() => new Set(ops.tasks.filter((t) => !t.done && t.due && doersOf(t).includes(ops.me)).map((t) => t.due!)), [ops.tasks, ops.me]);
+  const busy = useMemo(() => new Set(ops.tasks.filter((task) => !task.done && task.due && doersOf(task).includes(ops.me)).map((task) => task.due!)), [ops.tasks, ops.me]);
   const sheets = useTaskSheets(ops, {
     onDone: stopSelecting,
     busy,
     snooze: (ids, until) => {
       const before = { ...snoozed };
       setSnoozed({ ...Object.fromEntries(Object.entries(snoozed).filter(([, v]) => v > nowIso)), ...Object.fromEntries(ids.map((id) => [id, until.toISOString()])) });
-      const t = ops.tasks.find((x) => x.id === ids[0]);
+      const task = ops.tasks.find((x) => x.id === ids[0]);
       const sameDay = isoDay(until) === today;
-      toastUndo(`${ids.length === 1 && t ? quoted(t.title) : `${ids.length} tasks`} snoozed until ${sameDay ? clock(until) : `${dayWords(isoDay(until), today)}, ${clock(until)}`}`, () => setSnoozed(before));
+      const when = sameDay ? fmtTime(until) : t('{day}, {time}', { day: dayWords(isoDay(until), today), time: fmtTime(until) });
+      toastUndo(ids.length === 1 && task ? t('{title} snoozed until {when}', { title: quoted(task.title), when }) : tn(ids.length, '{n} task snoozed until {when}', '{n} tasks snoozed until {when}', { when }), () => setSnoozed(before));
     },
   });
 
@@ -150,7 +155,7 @@ export function TaskViews({
     flushSync(() => setQuick(defaults));
     focus(quickField.current);
   };
-  useCreateAction('tasks', canAdd && { label: 'New task', icon: Plus, run: () => openAdd(), more: onBrainDump ? [{ label: 'Brain dump', icon: Sparkles, run: onBrainDump }] : undefined });
+  useCreateAction('tasks', canAdd && { label: t('New task'), icon: Plus, run: () => openAdd(), more: onBrainDump ? [{ label: t('Brain dump'), icon: Sparkles, run: onBrainDump }] : undefined });
   const handledAdd = useRef(addKey ?? 0);
   useEffect(() => {
     if (addKey && addKey !== handledAdd.current) {
@@ -174,104 +179,104 @@ export function TaskViews({
   /* ---------- swipes and menus ---------- */
   useAppSettings('tasks', {
     id: 'swipes',
-    label: 'Swipe actions',
-    hint: 'What a swipe right and a swipe left do on a task',
+    label: t('Swipe actions'),
+    hint: t('What a swipe right and a swipe left do on a task'),
     render: () => <SwipeSettings value={swipes} onChange={setSwipes} />,
   });
-  const done = (t: Todo) => stageIdFor(t, 'done');
+  const done = (task: Todo) => stageIdFor(task, 'done');
   const [ticking, setTicking] = useState<string[]>([]);
-  const tick = (t: Todo) => {
-    if (t.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return ops.status(t.id, stageIdFor(t, t.done ? 'open' : 'done'));
-    setTicking((x) => [...x, t.id]);
+  const tick = (task: Todo) => {
+    if (task.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return ops.status(task.id, stageIdFor(task, task.done ? 'open' : 'done'));
+    setTicking((x) => [...x, task.id]);
     setTimeout(() => {
-      ops.status(t.id, done(t));
-      setTicking((x) => x.filter((id) => id !== t.id));
+      ops.status(task.id, done(task));
+      setTicking((x) => x.filter((id) => id !== task.id));
     }, 320);
   };
-  const swipeOf = (which: SwipeChoice, t: Todo): SwipeAction | null => {
+  const swipeOf = (which: SwipeChoice, task: Todo): SwipeAction | null => {
     if (which === 'complete') {
-      const review = kindOf(t) === 'review' && t.supervisorId === ops.me;
-      if (t.done) return { id: 'reopen', label: 'Reopen', icon: Check, tone: 'neutral', run: () => ops.status(t.id, stageIdFor(t, 'open')) };
-      return { id: 'done', label: review ? 'Approve' : 'Done', icon: Check, tone: 'ok', removes: !d.completed, run: () => ops.status(t.id, done(t)) };
+      const review = kindOf(task) === 'review' && task.supervisorId === ops.me;
+      if (task.done) return { id: 'reopen', label: t('Reopen'), icon: Check, tone: 'neutral', run: () => ops.status(task.id, stageIdFor(task, 'open')) };
+      return { id: 'done', label: review ? t('Approve') : t('Done'), icon: Check, tone: 'ok', removes: !d.completed, run: () => ops.status(task.id, done(task)) };
     }
-    if (which === 'schedule') return { id: 'schedule', label: 'Schedule', icon: CalendarDays, tone: 'warn', run: () => sheets.open('schedule', [t.id]) };
+    if (which === 'schedule') return { id: 'schedule', label: t('Schedule'), icon: CalendarDays, tone: 'warn', run: () => sheets.open('schedule', [task.id]) };
     return null;
   };
-  const swipesFor = (t: Todo) => {
-    if (isQueue(t))
+  const swipesFor = (task: Todo) => {
+    if (isQueue(task))
       return {
-        start: [{ id: 'take', label: 'Take it', icon: Hand, tone: 'accent' as const, removes: true, done: 'Yours now', run: () => (ops.patch(t.id, { assignees: [ops.me], userId: ops.me }), () => ops.patch(t.id, { assignees: [], userId: '' })) }],
-        end: [{ id: 'snooze', label: 'Snooze', icon: Clock, tone: 'warn' as const, run: () => sheets.open('snooze', [t.id]) }],
+        start: [{ id: 'take', label: t('Take it'), icon: Hand, tone: 'accent' as const, removes: true, done: t('Yours now'), run: () => (ops.patch(task.id, { assignees: [ops.me], userId: ops.me }), () => ops.patch(task.id, { assignees: [], userId: '' })) }],
+        end: [{ id: 'snooze', label: t('Snooze'), icon: Clock, tone: 'warn' as const, run: () => sheets.open('snooze', [task.id]) }],
       };
-    const a = swipeOf(swipes.right, t);
-    const b = swipeOf(swipes.left, t);
+    const a = swipeOf(swipes.right, task);
+    const b = swipeOf(swipes.left, task);
     return { start: a ? [a] : [], end: b ? [b] : [] };
   };
-  const menuFor = (t: Todo, board = false): SheetAction[] => {
-    const st = stageOf(t);
-    const who = doersOf(t).map((id) => (id === ops.me ? 'You' : ops.users.find((u) => u.id === id)?.name.split(' ')[0])).filter(Boolean);
+  const menuFor = (task: Todo, board = false): SheetAction[] => {
+    const st = stageOf(task);
+    const who = doersOf(task).map((id) => (id === ops.me ? t('You') : ops.users.find((u) => u.id === id)?.name.split(' ')[0])).filter(Boolean);
     return [
-      ...(!board && layout === 'list' ? [{ label: 'Select', icon: CheckSquare, run: () => toggle(t.id) }] : []),
-      { label: 'Schedule', icon: CalendarDays, hint: t.due ? dueText(t.due, today) : 'No date', run: () => sheets.open('schedule', [t.id]) },
-      { label: 'Move to', icon: Columns3, hint: stageName(st), run: () => sheets.open('move', [t.id]) },
-      { label: 'Priority', icon: Flag, hint: t.priority === 'high' ? 'High' : 'Normal', run: () => sheets.open('priority', [t.id]) },
-      { label: 'Assign', icon: UserRound, hint: who.join(', ') || 'Nobody yet', run: () => sheets.open('assign', [t.id]) },
-      ...(isQueue(t) ? [{ label: 'Snooze', icon: Clock, run: () => sheets.open('snooze', [t.id]) }] : []),
-      { label: 'Add to calendar', icon: CalendarPlus, group: 'more', run: () => ops.toCalendar(t) },
-      { label: 'Duplicate', icon: Copy, group: 'more', run: () => {
-        const id = ops.add(duplicateOf(t));
-        toast({ text: `Duplicated ${quoted(t.title)}`, action: { label: 'Open', run: () => ops.open(id) } });
+      ...(!board && layout === 'list' ? [{ label: t('Select'), icon: CheckSquare, run: () => toggle(task.id) }] : []),
+      { label: t('Schedule'), icon: CalendarDays, hint: task.due ? dueText(task.due, today) : t('No date'), run: () => sheets.open('schedule', [task.id]) },
+      { label: t('Move to'), icon: Columns3, hint: stageName(st), run: () => sheets.open('move', [task.id]) },
+      { label: t('Priority'), icon: Flag, hint: task.priority === 'high' ? t('High') : t('Normal'), run: () => sheets.open('priority', [task.id]) },
+      { label: t('Assign'), icon: UserRound, hint: who.join(', ') || t('Nobody yet'), run: () => sheets.open('assign', [task.id]) },
+      ...(isQueue(task) ? [{ label: t('Snooze'), icon: Clock, run: () => sheets.open('snooze', [task.id]) }] : []),
+      { label: t('Add to calendar'), icon: CalendarPlus, group: 'more', run: () => ops.toCalendar(task) },
+      { label: t('Duplicate'), icon: Copy, group: 'more', run: () => {
+        const id = ops.add(duplicateOf(task));
+        toast({ text: t('Duplicated {title}', { title: quoted(task.title) }), action: { label: t('Open'), run: () => ops.open(id) } });
       } },
-      { label: 'Copy link', icon: Link2, group: 'more', run: () => void copyTaskLink(ops.wsId, t.id) },
-      { label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => ops.remove([t.id]) },
+      { label: t('Copy link'), icon: Link2, group: 'more', run: () => void copyTaskLink(ops.wsId, task.id) },
+      { label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => ops.remove([task.id]) },
     ];
   };
 
   /* ---------- rows ---------- */
   const cross = !['project', 'client'].includes(kind);
   const look: RowLook = { show, project: cross, team: kind !== 'team' && d.group !== 'team' && !phone, stage: d.group !== 'stage', avatar: !!triage || kind === 'team' || kind === 'myteams' || kind === 'all' || kind === 'project' || kind === 'client' };
-  const act = (t: Todo) => {
-    if (t.done) return null;
-    const st = stageOf(t);
-    if (st.kind === 'review' && t.supervisorId === ops.me)
+  const act = (task: Todo) => {
+    if (task.done) return null;
+    const st = stageOf(task);
+    if (st.kind === 'review' && task.supervisorId === ops.me)
       return (
-        <button type="button" className="row-act primary" onClick={() => ops.status(t.id, done(t))}>
-          Approve
+        <button type="button" className="row-act primary" onClick={() => ops.status(task.id, done(task))}>
+          {t('Approve')}
         </button>
       );
-    if (isQueue(t))
+    if (isQueue(task))
       return (
-        <button type="button" className="row-act" onClick={() => (ops.patch(t.id, { assignees: [ops.me], userId: ops.me }), toastUndo(`${quoted(t.title)} is yours now`, () => ops.patch(t.id, { assignees: [], userId: '' })))}>
-          Take it
+        <button type="button" className="row-act" onClick={() => (ops.patch(task.id, { assignees: [ops.me], userId: ops.me }), toastUndo(t('{title} is yours now', { title: quoted(task.title) }), () => ops.patch(task.id, { assignees: [], userId: '' })))}>
+          {t('Take it')}
         </button>
       );
-    const active = firstOf('active', stagesForTask(t));
-    if (t.source === 'request' && st.kind === 'open' && active)
+    const active = firstOf('active', stagesForTask(task));
+    if (task.source === 'request' && st.kind === 'open' && active)
       return (
-        <button type="button" className="row-act" onClick={() => ops.status(t.id, active.id)}>
-          Start
+        <button type="button" className="row-act" onClick={() => ops.status(task.id, active.id)}>
+          {t('Start')}
         </button>
       );
     return null;
   };
-  const row = (t: Todo, leaving = false, note?: string, group?: string) => {
-    const sw = swipesFor(t);
+  const row = (task: Todo, leaving = false, note?: string, group?: string) => {
+    const sw = swipesFor(task);
     return (
       <TaskRow
-        key={t.id}
-        t={t}
+        key={task.id}
+        task={task}
         ops={ops}
         look={group === 'today' || group === 'tomorrow' || group === 'day' ? { ...look, dueWords: false } : look}
         selecting={selecting}
-        selected={selected.includes(t.id)}
+        selected={selected.includes(task.id)}
         onSelect={toggle}
-        ticking={ticking.includes(t.id)}
+        ticking={ticking.includes(task.id)}
         onTick={tick}
         leaving={leaving}
         start={sw.start}
         end={sw.end}
-        menu={() => menuFor(t)}
-        act={act(t)}
+        menu={() => menuFor(task)}
+        act={act(task)}
         note={note}
       />
     );
@@ -283,39 +288,39 @@ export function TaskViews({
     if (g === 'none' || layout !== 'list') return [{ key: 'all', label: null as ReactNode, items: open, reschedule: false }];
     if (g === 'date') {
       const by = new Map<string, Todo[]>();
-      for (const t of open) {
-        const k = dateGroup(t.due, today);
-        by.set(k, [...(by.get(k) ?? []), t]);
+      for (const task of open) {
+        const k = dateGroup(task.due, today);
+        by.set(k, [...(by.get(k) ?? []), task]);
       }
       return DATE_GROUPS.filter((x) => by.has(x.id)).map((x) => ({ key: x.id, label: x.label as ReactNode, items: by.get(x.id)!, reschedule: x.id === 'overdue' }));
     }
-    const keyOf = (t: Todo) => (g === 'client' ? (t.clientId ?? '') : g === 'team' ? (t.teamId ?? '') : g === 'stage' ? columnOf(t, ops.stages).id : (doersOf(t)[0] ?? ''));
+    const keyOf = (task: Todo) => (g === 'client' ? (task.clientId ?? '') : g === 'team' ? (task.teamId ?? '') : g === 'stage' ? columnOf(task, ops.stages).id : (doersOf(task)[0] ?? ''));
     const by = new Map<string, Todo[]>();
-    for (const t of open) by.set(keyOf(t), [...(by.get(keyOf(t)) ?? []), t]);
+    for (const task of open) by.set(keyOf(task), [...(by.get(keyOf(task)) ?? []), task]);
     const out = [...by.entries()].map(([k, items]) => {
       if (g === 'client') {
         const c = ops.clients.find((x) => x.id === k);
-        return { key: k, sort: c ? c.name : '~', label: c ? <><span className="dot" style={{ background: c.color }} />{c.name}</> : `No ${term.one}`, items, reschedule: false };
+        return { key: k, sort: c ? c.name : '~', label: c ? <><span className="dot" style={{ background: c.color }} />{c.name}</> : t('No {project}', { project: term.one }), items, reschedule: false };
       }
       if (g === 'team') {
         const tm = ops.teams.find((x) => x.id === k);
-        return { key: k, sort: tm ? tm.name : '~', label: tm ? <><span className="dot" style={{ background: tm.color }} />{tm.name}</> : 'No team', items, reschedule: false };
+        return { key: k, sort: tm ? tm.name : '~', label: tm ? <><span className="dot" style={{ background: tm.color }} />{tm.name}</> : t('No team'), items, reschedule: false };
       }
       if (g === 'stage') {
         const i = ops.stages.findIndex((x) => x.id === k);
         const st = ops.stages[i];
-        return { key: k, sort: String(i).padStart(3, '0'), label: st ? <><span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />{stageName(st)}</> : 'Other', items, reschedule: false };
+        return { key: k, sort: String(i).padStart(3, '0'), label: st ? <><span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />{stageName(st)}</> : t('Other'), items, reschedule: false };
       }
       const u = ops.users.find((x) => x.id === k);
-      return { key: k || 'nobody', sort: u ? (u.id === ops.me ? '!' : u.name) : ' ', label: u ? <><Avatar person={u} size={18} />{u.id === ops.me ? 'You' : u.name}</> : <><span className="avatar-empty sm">?</span>Not assigned yet</>, items, reschedule: false };
+      return { key: k || 'nobody', sort: u ? (u.id === ops.me ? '!' : u.name) : ' ', label: u ? <><Avatar person={u} size={18} />{u.id === ops.me ? t('You') : u.name}</> : <><span className="avatar-empty sm">?</span>{t('Not assigned yet')}</>, items, reschedule: false };
     });
     return out.sort((a, b) => a.sort.localeCompare(b.sort));
-  }, [open, d.group, layout, today, ops.clients, ops.teams, ops.users, ops.stages, ops.me]);
+  }, [open, d.group, layout, today, ops.clients, ops.teams, ops.users, ops.stages, ops.me, lang]); // the language: the groups' names
 
   /* ---------- Plan my day ---------- */
   const [planning, setPlanning] = useState(false);
   const planList = useMemo(
-    () => sortTasks(ops.tasks.filter((t) => t.kind !== 'brief' && !t.done && doersOf(t).includes(ops.me) && !!t.due && t.due <= today), 'smart'),
+    () => sortTasks(ops.tasks.filter((task) => task.kind !== 'brief' && !task.done && doersOf(task).includes(ops.me) && !!task.due && task.due <= today), 'smart'),
     [ops.tasks, ops.me, today],
   );
   const canPlan = (kind === 'mine' || kind === 'today' || kind === 'upcoming') && planList.length > 0;
@@ -333,51 +338,51 @@ export function TaskViews({
 
   const displayBtn = useRef<HTMLButtonElement>(null);
   const [displayOpen, setDisplayOpen] = useState(false);
-  const words = filterWords(d, (id) => ops.users.find((u) => u.id === id)?.name.split(' ')[0] ?? '', 'Waiting');
+  const words = filterWords(d, (id) => ops.users.find((u) => u.id === id)?.name.split(' ')[0] ?? '', t('Waiting'));
   const waiting = ops.stages.filter((s) => s.kind === 'waiting');
   const groupsFor: GroupBy[] = kind === 'today' ? ['date', 'client', 'stage', 'none'] : kind === 'client' ? ['team', 'person', 'stage', 'none'] : kind === 'project' ? ['stage', 'person', 'date', 'team', 'none'] : kind === 'team' ? ['person', 'date', 'stage', 'client', 'none'] : ['date', 'client', 'team', 'person', 'stage', 'none'];
-  const overdueMine = open.filter((t) => t.due && t.due < today);
+  const overdueMine = open.filter((task) => task.due && task.due < today);
 
   const empty = (() => {
     if (open.length || asleep.length) return null;
-    const filteredOut = tasks.some((t) => !t.done) && words.length > 0;
+    const filteredOut = tasks.some((task) => !task.done) && words.length > 0;
     const action = canAdd && (
       <button type="button" className="primary-btn sm" onClick={() => openAdd()}>
-        <Plus size={14} /> New task
+        <Plus size={14} /> {t('New task')}
       </button>
     );
     if (filteredOut)
-      return <EmptyState icon={<SlidersHorizontal size={22} />} title="Nothing matches these filters" text={`Showing: ${words.join(', ')}.`} action={<button type="button" className="ghost-btn sm" onClick={() => setD({ ...d, who: 'any', people: [], only: [] })}>Clear filters</button>} />;
-    if (kind === 'today') return <EmptyState icon="✓" title="Nothing due today" text="Plan ahead in Upcoming, or add something for today." action={<button type="button" className="ghost-btn sm" onClick={() => onScope({ kind: 'upcoming' })}>Open Upcoming</button>} />;
-    if (kind === 'supervising') return <EmptyState icon="✓" title="Nothing to check" text="When someone finishes work you supervise, it waits here for you." />;
-    if (triage) return <EmptyState icon="✓" title="The queue is empty" text="Every task in this team has someone on it." action={action} />;
-    return <EmptyState icon="✓" title="Nothing open" text="Add one, or use Brain dump to turn your thoughts into tasks." action={action} />;
+      return <EmptyState icon={<SlidersHorizontal size={22} />} title={t('Nothing matches these filters')} text={t('Showing: {filters}.', { filters: words.join(', ') })} action={<button type="button" className="ghost-btn sm" onClick={() => setD({ ...d, who: 'any', people: [], only: [] })}>{t('Clear filters')}</button>} />;
+    if (kind === 'today') return <EmptyState icon="✓" title={t('Nothing due today')} text={t('Plan ahead in Upcoming, or add something for today.')} action={<button type="button" className="ghost-btn sm" onClick={() => onScope({ kind: 'upcoming' })}>{t('Open Upcoming')}</button>} />;
+    if (kind === 'supervising') return <EmptyState icon="✓" title={t('Nothing to check')} text={t('When someone finishes work you supervise, it waits here for you.')} />;
+    if (triage) return <EmptyState icon="✓" title={t('The queue is empty')} text={t('Every task in this team has someone on it.')} action={action} />;
+    return <EmptyState icon="✓" title={t('Nothing open')} text={t('Add one, or use Brain dump to turn your thoughts into tasks.')} action={action} />;
   })();
 
   const listBody =
     layout === 'board' ? (
       <TaskBoard
         ops={ops}
-        tasks={[...open, ...(d.completed ? doneList : doneList.filter((t) => (t.doneAt ?? '') > new Date(Date.now() - 14 * 86_400_000).toISOString()))]}
+        tasks={[...open, ...(d.completed ? doneList : doneList.filter((task) => (task.doneAt ?? '') > new Date(Date.now() - 14 * 86_400_000).toISOString()))]}
         look={{ ...look, show: (f) => fieldsPref.board?.includes(f) ?? BOARD_FIELDS.includes(f) }}
-        menu={(t) => menuFor(t, true)}
-        onStage={(t) => sheets.open('stage', [t.id])}
+        menu={(task) => menuFor(task, true)}
+        onStage={(task) => sheets.open('stage', [task.id])}
         onAdd={(status) => openAdd({ status })}
       />
     ) : layout === 'calendar' ? (
       <TaskCalendar
-        tasks={open.filter((t) => t.due && t.due >= today)}
+        tasks={open.filter((task) => task.due && task.due >= today)}
         today={today}
-        row={(t) => row(t, false, undefined, 'day')}
+        row={(task) => row(task, false, undefined, 'day')}
         onAdd={(due) => openAdd({ due })}
         head={
           overdueMine.length > 0 && (
             <div className="t-group">
               <div className="t-heading late">
-                <span className="t-h-label">Overdue</span>
+                <span className="t-h-label">{DATE_GROUPS[0].label}</span>
                 <b>{overdueMine.length}</b>
-                <button type="button" className="link-btn small t-resched" onClick={() => sheets.open('schedule', overdueMine.map((t) => t.id))}>
-                  Reschedule
+                <button type="button" className="link-btn small t-resched" onClick={() => sheets.open('schedule', overdueMine.map((task) => task.id))}>
+                  {t('Reschedule')}
                 </button>
               </div>
               <Rows items={overdueMine} row={row} />
@@ -385,9 +390,9 @@ export function TaskViews({
           )
         }
         undated={
-          open.some((t) => !t.due) ? (
-            <Fold title="No date" count={open.filter((t) => !t.due).length}>
-              <Rows items={open.filter((t) => !t.due)} row={row} />
+          open.some((task) => !task.due) ? (
+            <Fold title={t('No date')} count={open.filter((task) => !task.due).length}>
+              <Rows items={open.filter((task) => !task.due)} row={row} />
             </Fold>
           ) : undefined
         }
@@ -402,18 +407,18 @@ export function TaskViews({
                 <span className="t-h-label">{g.label}</span>
                 <b>{g.items.length}</b>
                 {g.reschedule && (
-                  <button type="button" className="link-btn small t-resched" onClick={() => sheets.open('schedule', g.items.map((t) => t.id))}>
-                    Reschedule
+                  <button type="button" className="link-btn small t-resched" onClick={() => sheets.open('schedule', g.items.map((task) => task.id))}>
+                    {t('Reschedule')}
                   </button>
                 )}
               </div>
             )}
-            <Rows items={g.items} row={(t, l) => row(t, l, undefined, d.group === 'date' ? g.key : undefined)} />
+            <Rows items={g.items} row={(task, l) => row(task, l, undefined, d.group === 'date' ? g.key : undefined)} />
           </div>
         ))}
         {asleep.length > 0 && (
-          <Fold title="Snoozed" count={asleep.length}>
-            <Rows items={asleep} row={(t, l) => row(t, l, `Back ${(() => { const at = new Date(snoozed[t.id]); return isoDay(at) === today ? `at ${clock(at)}` : `${dueText(isoDay(at), today).toLowerCase()} ${clock(at)}`; })()}`)} />
+          <Fold title={t('Snoozed')} count={asleep.length}>
+            <Rows items={asleep} row={(task, l) => row(task, l, (() => { const at = new Date(snoozed[task.id]); return isoDay(at) === today ? t('Back at {time}', { time: fmtTime(at) }) : t('Back {day}, {time}', { day: dayWords(isoDay(at), today), time: fmtTime(at) }); })())} />
           </Fold>
         )}
       </>
@@ -428,23 +433,23 @@ export function TaskViews({
         {barStart}
         {canPlan && (
           <button type="button" className="ghost-btn sm tq-plan" onClick={() => setPlanning(true)}>
-            <Wand2 size={15} /> Plan my day
+            <Wand2 size={15} /> {t('Plan my day')}
           </button>
         )}
         {words.length > 0 && (
           <span className="tq-filters">
             <span className="tq-f-text">{words.join(', ')}</span>
             <button type="button" className="link-btn small" onClick={() => setD({ ...d, who: 'any', people: [], only: [] })}>
-              Clear
+              {t('Clear')}
             </button>
           </span>
         )}
         <span className="spacer" />
         {layouts.length > 1 && (
-          <div className="segmented icon-seg tq-layout" role="radiogroup" aria-label="Layout">
+          <div className="segmented icon-seg tq-layout" role="radiogroup" aria-label={t('Layout')}>
             {layouts.map((l) => {
               const Icon = l === 'list' ? LayoutList : l === 'board' ? Columns3 : CalendarRange;
-              const name = l === 'list' ? 'List' : l === 'board' ? 'Board' : 'Calendar';
+              const name = l === 'list' ? t('List') : l === 'board' ? t('Board') : t('Calendar');
               return (
                 <button key={l} type="button" role="radio" aria-checked={layout === l} className={layout === l ? 'on' : ''} onClick={() => setD({ ...d, layout: l })} title={name} aria-label={name}>
                   <Icon size={16} />
@@ -453,13 +458,13 @@ export function TaskViews({
             })}
           </div>
         )}
-        <button ref={displayBtn} type="button" className={`icon-btn tq-display${words.length || d.completed || activeView ? ' on' : ''}`} onClick={() => setDisplayOpen((o) => !o)} aria-label={`Display${words.length ? `, ${words.length} filter${words.length === 1 ? '' : 's'} on` : ''}`} title="Display">
+        <button ref={displayBtn} type="button" className={`icon-btn tq-display${words.length || d.completed || activeView ? ' on' : ''}`} onClick={() => setDisplayOpen((o) => !o)} aria-label={words.length ? tn(words.length, 'Display, {n} filter on', 'Display, {n} filters on') : t('Display')} title={t('Display')}>
           <SlidersHorizontal size={17} />
           {words.length > 0 && <i>{words.length}</i>}
         </button>
         {canAdd && (!phone || kind === 'client') && (
-          <button type="button" className="primary-btn sm tq-new" onClick={() => (inline ? setInline(false) : openAdd())} aria-expanded={inline} title="New task (N)">
-            <Plus size={14} /> New task <kbd>N</kbd>
+          <button type="button" className="primary-btn sm tq-new" onClick={() => (inline ? setInline(false) : openAdd())} aria-expanded={inline} title={t('New task (N)')}>
+            <Plus size={14} /> {t('New task')} <kbd>N</kbd>
           </button>
         )}
       </div>
@@ -474,13 +479,13 @@ export function TaskViews({
         {d.completed && layout === 'list' && doneList.length > 0 && (
           <div className="t-group t-done">
             <div className="t-heading">
-              <span>Completed</span>
+              <span>{t('Completed')}</span>
               <b>{doneList.length}</b>
             </div>
             <Rows items={doneMore ? doneList : doneList.slice(0, 20)} row={row} />
             {doneList.length > 20 && (
               <button type="button" className="link-btn small t-more" onClick={() => setDoneMore((x) => !x)}>
-                {doneMore ? 'Show fewer' : `Show ${doneList.length - 20} more`}
+                {doneMore ? t('Show fewer') : tn(doneList.length - 20, 'Show {n} more', 'Show {n} more')}
               </button>
             )}
           </div>
@@ -498,7 +503,7 @@ export function TaskViews({
         groups={groupsFor}
         users={ops.users}
         me={ops.me}
-        waitingWord={waiting.length ? (waiting.length === 1 ? stageName(waiting[0]) : `Waiting on ${term.who}`) : undefined}
+        waitingWord={waiting.length ? (waiting.length === 1 ? stageName(waiting[0]) : t('Waiting on {who}', { who: term.who })) : undefined}
         fields={fields}
         onFields={(ids) => setFieldsPref({ ...fieldsPref, [layout === 'board' ? 'board' : 'list']: ids })}
         views={views.filter(sameScope)}
@@ -513,19 +518,19 @@ export function TaskViews({
         <BulkBar
           count={selected.length}
           all={selected.length === open.length && open.length > 0}
-          onAll={() => setSelected(selected.length === open.length ? [] : open.map((t) => t.id))}
+          onAll={() => setSelected(selected.length === open.length ? [] : open.map((task) => task.id))}
           onCancel={stopSelecting}
           onDate={() => sheets.open('schedule', selected)}
           onMove={() => sheets.open('move', selected)}
           onAssign={() => sheets.open('assign', selected)}
           onPriority={() => sheets.open('priority', selected)}
           onComplete={() => {
-            const list = selected.map((id) => ops.tasks.find((t) => t.id === id)).filter((t): t is Todo => !!t && !t.done);
-            const before = list.map((t) => ({ id: t.id, s: stageOf(t).id }));
-            list.forEach((t) => ops.status(t.id, done(t), true));
+            const list = selected.map((id) => ops.tasks.find((task) => task.id === id)).filter((task): task is Todo => !!task && !task.done);
+            const before = list.map((task) => ({ id: task.id, s: stageOf(task).id }));
+            list.forEach((task) => ops.status(task.id, done(task), true));
             stopSelecting();
-            const text = `${list.length} task${list.length === 1 ? '' : 's'} done`;
-            if (list.some((t) => t.repeat)) toast({ text });
+            const text = tn(list.length, '{n} task done', '{n} tasks done');
+            if (list.some((task) => task.repeat)) toast({ text });
             else toastUndo(text, () => before.forEach((b) => ops.status(b.id, b.s, true)));
           }}
           onDelete={() => (ops.remove(selected), stopSelecting())}
@@ -536,8 +541,8 @@ export function TaskViews({
 }
 
 /** Rows that fold away when they leave (ticked, moved, taken). */
-function Rows({ items, row }: { items: Todo[]; row: (t: Todo, leaving: boolean) => ReactNode }) {
-  const list = useLeaving(items, (t) => t.id);
+function Rows({ items, row }: { items: Todo[]; row: (task: Todo, leaving: boolean) => ReactNode }) {
+  const list = useLeaving(items, (task) => task.id);
   return <div className="t-rows">{list.map(({ item, leaving }) => row(item, leaving))}</div>;
 }
 
@@ -560,15 +565,15 @@ function Fold({ title, count, children }: { title: string; count: number; childr
 /** Settings, Swipe actions (opened from the title switcher on phones). */
 function SwipeSettings({ value, onChange }: { value: { right: SwipeChoice; left: SwipeChoice }; onChange: (v: { right: SwipeChoice; left: SwipeChoice }) => void }) {
   const opts: [SwipeChoice, string, string][] = [
-    ['complete', 'Done', 'Approve, when it waits for your review'],
-    ['schedule', 'Schedule', 'Pick a new day'],
-    ['none', 'Nothing', 'So nothing happens by accident'],
+    ['complete', t('Done'), t('Approve, when it waits for your review')],
+    ['schedule', t('Schedule'), t('Pick a new day')],
+    ['none', t('Nothing'), t('So nothing happens by accident')],
   ];
   return (
     <div className="swipe-settings">
       {(['right', 'left'] as const).map((side) => (
         <section key={side}>
-          <h3 className="as-group">{side === 'right' ? 'Swipe right' : 'Swipe left'}</h3>
+          <h3 className="as-group">{side === 'right' ? t('Swipe right') : t('Swipe left')}</h3>
           <div className="as-list">
             {opts.map(([v, l, h]) => (
               <button key={v} type="button" className={`as-item${value[side] === v ? ' on' : ''}`} role="radio" aria-checked={value[side] === v} onClick={() => onChange({ ...value, [side]: v })}>
@@ -582,7 +587,7 @@ function SwipeSettings({ value, onChange }: { value: { right: SwipeChoice; left:
           </div>
         </section>
       ))}
-      <p className="muted small swipe-note">A team’s queue always swipes right to take a task and left to snooze it.</p>
+      <p className="muted small swipe-note">{t('A team’s queue always swipes right to take a task and left to snooze it.')}</p>
     </div>
   );
 }

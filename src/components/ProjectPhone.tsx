@@ -6,6 +6,7 @@ import { usePersisted } from '../settings';
 import { arrange, TabDefaultsCtx, type TabItem, type TabPrefs } from './ui/TabBar';
 import { useFocusedScreen, useTitleMenu } from '../mobile/chrome';
 import { usePhone } from '../mobile/media';
+import { t, tn } from '../i18n';
 
 /**
  * A project's page on phones. Desktop shows its parts as a row of tabs; a phone has no room for 12 tabs, so:
@@ -31,24 +32,23 @@ const ICONS: Record<ProjectTab, LucideIcon> = {
   portal: UserPlus,
 };
 
-/** The parts of a project, as tabs: Overview first. `label` carries what needs a look ("Tasks · 1 late"). */
-export function projectTabs(o: { late: number; unreadMail: number; quotes: boolean; quoteWaiting: boolean; tables: boolean }): TabItem[] {
-  return (
-    [
-      ['overview', 'Overview', 'Overview'],
-      ['tasks', o.late ? `Tasks · ${o.late} late` : 'Tasks', 'Tasks'],
-      ['workload', 'Workload', 'Workload'],
-      ...(o.quotes ? ([['quotes', o.quoteWaiting ? 'Quotes · waiting' : 'Quotes', 'Quotes']] as const) : []),
-      ['chat', 'Chat', 'Chat'],
-      ['emails', o.unreadMail ? `Mail · ${o.unreadMail} unread` : 'Mail', 'Mail'],
-      ['meetings', 'Meetings', 'Meetings'],
-      ['files', 'Files', 'Files'],
-      ['notes', 'Notes', 'Notes'],
-      ...(o.tables ? ([['tables', 'Tables', 'Tables']] as const) : []),
-      ['logins', 'Logins', 'Logins'],
-      ['portal', 'Guests', 'Guests'],
-    ] as const
-  ).map(([id, label, name]) => ({ id, label, name }));
+/** The parts of a project, as tabs: Overview first. `label` carries what needs a look ("Tasks · 1 late"); `note` is that part. */
+export function projectTabs(o: { late: number; unreadMail: number; quotes: boolean; quoteWaiting: boolean; tables: boolean }): (TabItem & { note?: string })[] {
+  const tab = (id: ProjectTab, name: string, note?: string) => ({ id, name, label: note ? `${name} · ${note}` : name, note });
+  return [
+    tab('overview', t('Overview')),
+    tab('tasks', t('Tasks'), o.late ? tn(o.late, '{n} late', '{n} late') : undefined),
+    tab('workload', t('Workload')),
+    ...(o.quotes ? [tab('quotes', t('Quotes'), o.quoteWaiting ? t('waiting') : undefined)] : []),
+    tab('chat', t('Chat')),
+    tab('emails', t('Mail'), o.unreadMail ? tn(o.unreadMail, '{n} unread', '{n} unread') : undefined),
+    tab('meetings', t('Meetings')),
+    tab('files', t('Files')),
+    tab('notes', t('Notes')),
+    ...(o.tables ? [tab('tables', t('Tables'))] : []),
+    tab('logins', t('Logins')),
+    tab('portal', t('Guests')),
+  ];
 }
 
 /** The tabs in the order this person (or the company) chose on desktop, with the ones they hid left out. */
@@ -60,7 +60,8 @@ function useArranged(items: TabItem[]) {
   return { all: arrange(items, prefs), shown: arrange(items, prefs).filter((t) => !hidden.has(t.id)) };
 }
 
-const noteOf = (t: TabItem) => (typeof t.label === 'string' && t.label.includes(' · ') ? t.label.split(' · ').slice(1).join(' · ') : '');
+/** What needs a look on a part ("1 late"): every note is a warning. */
+const noteOf = (tab: TabItem & { note?: string }) => tab.note ?? '';
 
 /**
  * The phone's title switcher and Back for a project's page. Call it before any early return. `others` are the projects
@@ -75,13 +76,13 @@ export function useProjectPhone({ client, items, tab, onTab, others, onProject }
       label: client.name,
       value,
       options: [
-        ...all.map((t) => {
-          const Icon = ICONS[t.id as ProjectTab] ?? FileText;
-          return { value: `tab:${t.id}`, label: t.name ?? t.id, hint: noteOf(t) || undefined, group: `In this ${term.one}`, icon: <Icon size={18} /> };
+        ...all.map((tab) => {
+          const Icon = ICONS[tab.id as ProjectTab] ?? FileText;
+          return { value: `tab:${tab.id}`, label: tab.name ?? tab.id, hint: noteOf(tab) || undefined, group: t('In this {project}', { project: term.one }), icon: <Icon size={18} /> };
         }),
-        { value: 'p:all', label: `All ${term.many}`, group: term.Many },
+        { value: 'p:all', label: t('All {projects}', { projects: term.many }), group: term.Many },
         ...others.filter((c) => c.status !== 'ended').map((c) => ({ value: `p:${c.id}`, label: c.name, group: term.Many })),
-        { value: 'p:past', label: `Past ${term.many}`, group: term.Many },
+        { value: 'p:past', label: t('Past {projects}', { projects: term.many }), group: term.Many },
       ],
       onChange: (v) => {
         if (v.startsWith('tab:')) return onTab(v.slice(4) as ProjectTab);
@@ -96,8 +97,8 @@ export function useProjectPhone({ client, items, tab, onTab, others, onProject }
   const phone = usePhone();
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setReady(true), 0);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setReady(true), 0);
+    return () => clearTimeout(timer);
   }, []);
   useFocusedScreen(ready && phone && !!client && tab !== 'overview', () => onTab('overview'));
 }
@@ -108,19 +109,19 @@ export function ProjectSections({ items, onTab, actions = [] }: { items: TabItem
   const { shown } = useArranged(items);
   if (!phone) return null;
   return (
-    <nav className="proj-sections" aria-label={`This ${term.one}`}>
+    <nav className="proj-sections" aria-label={t('This {project}', { project: term.one })}>
       {shown
-        .filter((t) => t.id !== 'overview')
-        .map((t) => {
-          const Icon = ICONS[t.id as ProjectTab] ?? FileText;
-          const note = noteOf(t);
+        .filter((tab) => tab.id !== 'overview')
+        .map((tab) => {
+          const Icon = ICONS[tab.id as ProjectTab] ?? FileText;
+          const note = noteOf(tab);
           return (
-            <button key={t.id} type="button" className="proj-sec-row" onClick={() => onTab(t.id as ProjectTab)}>
+            <button key={tab.id} type="button" className="proj-sec-row" onClick={() => onTab(tab.id as ProjectTab)}>
               <span className="proj-sec-icon">
                 <Icon size={17} />
               </span>
-              <span className="proj-sec-name">{t.name}</span>
-              {note && <span className={`proj-sec-note${/late|unread|waiting/.test(note) ? ' warn' : ''}`}>{note}</span>}
+              <span className="proj-sec-name">{tab.name}</span>
+              {note && <span className="proj-sec-note warn">{note}</span>}
               <ChevronRight size={18} className="proj-sec-chev" />
             </button>
           );
