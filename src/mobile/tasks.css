@@ -3,4 +3,340 @@
    Loaded after src/system.css and src/mobile/shell.css, so a rule here wins over the old ones without
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
+   The shared look of rows, boards, Quick Add and the sheets is in src/tasks.css.
    ========================================================================== */
+
+@media (max-width: 767px) {
+  /* The top bar says which tasks these are: no second title row (a project's own page keeps its header). */
+  .tasks-pane:not(.scope-client):not(.scope-grid):not(.scope-briefs) > .tasks-head {
+    display: none !important;
+  }
+  .tasks-pane:not(.scope-client) > .tracking-scroll {
+    padding: 4px 12px calc(24px + var(--fab-space));
+  }
+
+  /* ---------- Toolbar: one row ---------- */
+  .tq-bar {
+    position: sticky;
+    top: -4px;
+    z-index: 4;
+    gap: 6px;
+    min-height: 52px;
+    margin: -4px -12px 0;
+    padding: 4px 12px;
+    background: var(--surface);
+  }
+  .tq-bar .tq-display,
+  .tq-layout.icon-seg > button {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .tq-layout {
+    flex: none;
+  }
+  .tq-plan {
+    min-height: var(--tap);
+    padding-inline: 12px;
+  }
+  .tq-filters {
+    min-height: 32px;
+  }
+
+  /* ---------- Rows: three lines at most, a 44px ring, dividers ---------- */
+  .trow {
+    gap: 6px;
+    min-height: 56px;
+    padding: 10px 2px 10px 0;
+  }
+  .trow:hover {
+    background: var(--surface); /* touch leaves no hover behind */
+  }
+  .trow:active,
+  .trow.lp-lifted {
+    background: var(--hover);
+  }
+  .trow.selected {
+    background: var(--accent-soft);
+  }
+  .trow-check {
+    width: 44px;
+    height: 44px;
+    margin: -11px -6px -11px -6px;
+  }
+  .trow-check .ring {
+    width: 22px;
+    height: 22px;
+  }
+  .trow-title {
+    font-size: 15.5px;
+  }
+  .trow-meta {
+    font-size: 12.5px;
+  }
+  .trow-act .row-act {
+    min-height: 36px;
+    padding-inline: 12px;
+    font-size: 13px;
+  }
+  .trow-who {
+    padding-right: 4px;
+  }
+  .t-heading {
+    min-height: 44px;
+    padding: 12px 2px 4px;
+    font-size: 13px;
+  }
+  .t-resched {
+    min-height: 40px;
+    padding-inline: 8px;
+  }
+  .t-fold-head {
+    min-height: var(--tap);
+  }
+
+  /* ---------- Board: one stage at a time, the next one peeking ---------- */
+  .tboard {
+    display: flex;
+    gap: 12px;
+    margin: 0 -12px;
+    padding: 0 12px 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 12px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .tboard::-webkit-scrollbar {
+    display: none;
+  }
+  .tboard-wrap.dragging .tboard {
+    scroll-snap-type: none;
+  }
+  .tcol {
+    flex: 0 0 85%;
+    min-height: 50dvh;
+    scroll-snap-align: start;
+  }
+  .tboard-strip {
+    position: sticky;
+    top: 48px;
+    z-index: 3;
+    display: flex;
+    gap: 6px;
+    margin: 0 -12px 8px;
+    padding: 4px 12px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: var(--surface);
+  }
+  .tboard-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .tboard-strip button {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--hover);
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    transition: background-color 0.18s ease, color 0.18s ease;
+  }
+  .tboard-strip button.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .tboard-strip b {
+    color: var(--text-3);
+    font-weight: 600;
+  }
+  .tcard {
+    padding: 12px;
+  }
+  .tcard:hover {
+    box-shadow: 0 1px 2px rgba(16, 16, 30, 0.04);
+  }
+  .tcard-title {
+    font-size: 15px;
+  }
+  .tcard-stage {
+    min-height: 36px;
+    padding: 0 12px 0 10px;
+    font-size: 13px;
+  }
+  .tcol-add {
+    min-height: var(--tap);
+    font-size: 14px;
+  }
+
+  /* ---------- Calendar ---------- */
+  .ucal-top {
+    top: 48px;
+    margin: 0 -12px 8px;
+    padding: 0 12px 8px;
+  }
+  .ucal-days7 {
+    max-width: none;
+    gap: 2px;
+  }
+  .ucal-cell {
+    min-height: 58px;
+  }
+  .ucal-month {
+    min-height: var(--tap);
+  }
+  .ucal-add {
+    min-height: var(--tap);
+    font-size: 14.5px;
+  }
+  .ucal-day {
+    scroll-margin-top: 190px;
+  }
+
+  /* ---------- Quick Add: a sheet on the keyboard ---------- */
+  .qa-sheet .sheet-body {
+    padding: 0;
+  }
+  .qa-sheet .sheet-grab {
+    margin-bottom: 0;
+  }
+  .qa-mirror,
+  .qa-field textarea {
+    padding: 8px 16px 8px;
+    font-size: 16px; /* the field is 16px on phones (no zoom): the highlights under it match */
+  }
+  .qa-chips {
+    padding: 2px 16px 12px;
+  }
+  .qa-chip {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .qa-sug {
+    min-height: var(--tap);
+    font-size: 15px;
+  }
+  .qa-foot {
+    padding: 6px 12px 8px 16px;
+  }
+
+  /* ---------- Sheets ---------- */
+  .ds-row {
+    min-height: var(--tap);
+    font-size: 15px;
+  }
+  .ds-save input {
+    height: var(--tap);
+    font-size: 16px;
+  }
+  .ds-view {
+    min-height: var(--tap);
+  }
+  .mgp-day {
+    max-width: 44px;
+    font-size: 15px;
+  }
+  .pmd-act {
+    min-height: 52px;
+    font-size: 15px;
+  }
+
+
+  /* ---------- A task, opened: a sheet ---------- */
+  .td-row {
+    grid-template-columns: 112px minmax(0, 1fr);
+    min-height: 48px;
+  }
+  .td-label {
+    font-size: 14px;
+  }
+  .sel.td-chip,
+  button.td-chip,
+  .td-chip-people .people-btn {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .sel.td-crumb {
+    height: 40px;
+    font-size: 14px;
+  }
+  .td-c-row textarea {
+    min-height: var(--tap);
+  }
+  .td-c-row .primary-btn {
+    min-height: var(--tap);
+  }
+  /* While selecting, toasts sit above the bar. */
+  html:has(.task-bulk:not(.is-leaving)) .toast {
+    bottom: calc(132px + env(safe-area-inset-bottom));
+  }
+
+  /* ---------- Select many: the bar takes the tab bar's place ---------- */
+  .task-bulk {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    max-width: none;
+    padding: 4px 6px calc(6px + env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 18px 18px 0 0;
+    transform: none;
+    animation-name: bulkUp;
+  }
+  .task-bulk.is-leaving {
+    animation-name: bulkDown;
+  }
+  @keyframes bulkUp {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes bulkDown {
+    to {
+      transform: translateY(100%);
+    }
+  }
+  .tb-top {
+    min-height: var(--tap);
+    padding: 0 4px;
+  }
+  .tb-top .link-btn {
+    margin-left: auto;
+    min-height: 40px;
+  }
+  .tb-acts {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .tb-acts button {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: 54px;
+    padding: 4px 0;
+    font-size: 12px;
+  }
+  .tq.is-selecting .tq-body {
+    padding-bottom: 150px;
+  }
+}
+
+@media (max-width: 359px) {
+  .tq-plan svg {
+    display: none;
+  }
+  .tb-acts button {
+    font-size: 11px;
+  }
+}

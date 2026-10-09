@@ -13,6 +13,7 @@ import { SOURCE, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions 
 import { kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { useOnePanel } from '../onePanel';
+import { TaskDetail } from './tasks/TaskDetail';
 
 interface Props {
   task: Todo;
@@ -35,6 +36,7 @@ interface Props {
   clientNames?: Record<string, string>; // client people by email (for their comments)
   onSendBack: (id: string, note: string) => void;
   onSaveTemplate?: (briefId: string) => void;
+  onDuplicate?: (t: Todo) => void;
 }
 
 /** A task or brief, opened. A brief shows its context and its tasks; a task shows the brief it belongs to and who's in charge. */
@@ -229,49 +231,8 @@ export function TaskDrawer(p: Props) {
           </div>
   );
 
-  // A brief has a lot to read (goal, context, everyone's tasks): a large dialog in the middle. A task: the side panel.
-  const Shell = brief ? 'div' : 'aside';
-  return (
-    <div className={brief ? 'modal-scrim' : 'drawer-scrim'} onMouseDown={(e) => e.target === e.currentTarget && p.onClose()}>
-      <Shell className={brief ? 'modal big-modal brief-modal' : 'drawer'} role="dialog" aria-label={brief ? 'Brief' : 'Task'}>
-        <header className="drawer-head">
-          {brief ? (
-            <span className="brief-badge">
-              <FileText size={12} /> Brief
-            </span>
-          ) : (
-            <span className="drawer-kind">Task</span>
-          )}
-          <span className="spacer" />
-          {brief && p.onSaveTemplate && (
-            <button className="icon-btn sm" title="Save as a template" onClick={() => p.onSaveTemplate!(t.id)}>
-              <LayoutTemplate size={16} />
-            </button>
-          )}
-          {!brief && !t.done && (
-            <button className="icon-btn sm" title="Add to calendar" onClick={() => p.onToCalendar(t)}>
-              <CalendarPlus size={16} />
-            </button>
-          )}
-          <button className="icon-btn sm" title="Delete" onClick={() => (p.onDelete(t.id), p.onClose())}>
-            <Trash2 size={16} />
-          </button>
-          <button className="icon-btn sm" onClick={p.onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </header>
-
-        <div className={`drawer-body${brief ? ' brief-body' : ''}`}>
-          <div className={brief ? 'bf-main' : 'bf-flat'}>
-          <div className="drawer-title-row">
-            {!brief && (
-              <button className={`todo-check big ${t.done ? 'on' : ''}`} onClick={() => p.onStatus(t.id, stageIdFor(t, t.done ? 'open' : 'done'))} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
-                {t.done && <span>✓</span>}
-              </button>
-            )}
-            <textarea ref={titleRef} className="drawer-title" rows={1} value={t.title} onChange={(e) => p.onPatch(t.id, { title: e.target.value })} aria-label="Title" />
-          </div>
-
+  const aboveBlock = (
+    <>
           {parent && (
             <button className="parent-brief" onClick={() => p.onOpen(parent.id)}>
               <span className="pb-head">
@@ -356,6 +317,108 @@ export function TaskDrawer(p: Props) {
             </div>
           )}
           </SmoothHeight>
+    </>
+  );
+  const historyBlock = (
+          <ol className="history">
+            {(t.history ?? []).map((h) => {
+              const who = p.users.find((u) => u.id === h.by);
+              const fromClient = h.by.includes('@');
+              const name = fromClient ? (p.clientNames?.[h.by.toLowerCase()] ?? h.by) : who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : (h.byName ?? 'Someone');
+              return (
+                <li key={h.id} className={`h-${h.kind} ${fromClient ? 'h-client' : ''}`}>
+                  {who ? <Avatar person={who} size={22} /> : fromClient ? <span className="avatar-empty sm client">{name.charAt(0)}</span> : h.byName ? <Avatar person={{ name: h.byName, email: h.byName }} size={22} /> : <span className="avatar-empty sm">?</span>}
+                  <span className="h-body">
+                    {h.kind === 'comment' ? (
+                      <>
+                        <b>
+                          {name}
+                          {fromClient && <em className="h-tag client">{term.One}</em>}
+                          {!fromClient && h.toClient && <em className="h-tag">To {term.who}</em>}
+                        </b>
+                        <span className="h-comment">{h.text}</span>
+                      </>
+                    ) : (
+                      <span>
+                        <b>{name}</b> {h.text}
+                      </span>
+                    )}
+                    <time>{relative(h.at)}</time>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+  );
+
+  // A task: its own panel (a sheet on phones), with set fields as rows and the rest as chips.
+  if (!brief)
+    return (
+      <TaskDetail
+        t={t}
+        wsId={t.workspaceId ?? ''}
+        users={p.users}
+        me={p.me}
+        clients={p.clients}
+        teams={p.teams}
+        onClose={p.onClose}
+        onPatch={p.onPatch}
+        onStatus={p.onStatus}
+        onDelete={p.onDelete}
+        onDuplicate={p.onDuplicate}
+        onToCalendar={p.onToCalendar}
+        onComment={p.onComment}
+        clientCanSee={clientCanSee}
+        above={aboveBlock}
+        history={historyBlock}
+        meta={metaBlock}
+      />
+    );
+
+  // A brief has a lot to read (goal, context, everyone's tasks): a large dialog in the middle. A task: the side panel.
+  const Shell = brief ? 'div' : 'aside';
+  return (
+    <div className={brief ? 'modal-scrim' : 'drawer-scrim'} onMouseDown={(e) => e.target === e.currentTarget && p.onClose()}>
+      <Shell className={brief ? 'modal big-modal brief-modal' : 'drawer'} role="dialog" aria-label={brief ? 'Brief' : 'Task'}>
+        <header className="drawer-head">
+          {brief ? (
+            <span className="brief-badge">
+              <FileText size={12} /> Brief
+            </span>
+          ) : (
+            <span className="drawer-kind">Task</span>
+          )}
+          <span className="spacer" />
+          {brief && p.onSaveTemplate && (
+            <button className="icon-btn sm" title="Save as a template" onClick={() => p.onSaveTemplate!(t.id)}>
+              <LayoutTemplate size={16} />
+            </button>
+          )}
+          {!brief && !t.done && (
+            <button className="icon-btn sm" title="Add to calendar" onClick={() => p.onToCalendar(t)}>
+              <CalendarPlus size={16} />
+            </button>
+          )}
+          <button className="icon-btn sm" title="Delete" onClick={() => (p.onDelete(t.id), p.onClose())}>
+            <Trash2 size={16} />
+          </button>
+          <button className="icon-btn sm" onClick={p.onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className={`drawer-body${brief ? ' brief-body' : ''}`}>
+          <div className={brief ? 'bf-main' : 'bf-flat'}>
+          <div className="drawer-title-row">
+            {!brief && (
+              <button className={`todo-check big ${t.done ? 'on' : ''}`} onClick={() => p.onStatus(t.id, stageIdFor(t, t.done ? 'open' : 'done'))} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
+                {t.done && <span>✓</span>}
+              </button>
+            )}
+            <textarea ref={titleRef} className="drawer-title" rows={1} value={t.title} onChange={(e) => p.onPatch(t.id, { title: e.target.value })} aria-label="Title" />
+          </div>
+
+          {aboveBlock}
 
           {!brief && fieldsBlock}
 
@@ -444,35 +507,7 @@ export function TaskDrawer(p: Props) {
           )}
 
           <label className="drawer-label">History</label>
-          <ol className="history">
-            {(t.history ?? []).map((h) => {
-              const who = p.users.find((u) => u.id === h.by);
-              const fromClient = h.by.includes('@');
-              const name = fromClient ? (p.clientNames?.[h.by.toLowerCase()] ?? h.by) : who ? (who.id === p.me ? 'You' : who.name.split(' ')[0]) : (h.byName ?? 'Someone');
-              return (
-                <li key={h.id} className={`h-${h.kind} ${fromClient ? 'h-client' : ''}`}>
-                  {who ? <Avatar person={who} size={22} /> : fromClient ? <span className="avatar-empty sm client">{name.charAt(0)}</span> : h.byName ? <Avatar person={{ name: h.byName, email: h.byName }} size={22} /> : <span className="avatar-empty sm">?</span>}
-                  <span className="h-body">
-                    {h.kind === 'comment' ? (
-                      <>
-                        <b>
-                          {name}
-                          {fromClient && <em className="h-tag client">{term.One}</em>}
-                          {!fromClient && h.toClient && <em className="h-tag">To {term.who}</em>}
-                        </b>
-                        <span className="h-comment">{h.text}</span>
-                      </>
-                    ) : (
-                      <span>
-                        <b>{name}</b> {h.text}
-                      </span>
-                    )}
-                    <time>{relative(h.at)}</time>
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
+          {historyBlock}
           <div className={`comment-box ${toClient ? 'to-client' : ''}`}>
             <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(t.id, comment.trim(), toClient), setComment(''))} placeholder={toClient ? `Reply to the ${term.who}… they will see this` : 'Internal comment… @mention someone'} />
             <div className="cb-foot">

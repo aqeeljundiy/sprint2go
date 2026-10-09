@@ -106,7 +106,6 @@ export function needsYou(p: NeedsInput): Need[] {
   const work = p.tasks.filter((t) => t.kind !== 'brief');
   const open = work.filter((t) => !t.done);
   const late = (t: TaskIn) => !t.done && !!t.due && t.due < today;
-  const mine = open.filter((t) => doersOf(t).includes(me));
   const leads = p.teams.filter((t) => t.leadId === me);
   const queue = open.filter((t) => !t.userId && !doersOf(t).length && (p.isOwner || leads.some((tm) => tm.id === t.teamId)));
   const project = (id?: string) => p.clients.find((c) => c.id === id)?.name;

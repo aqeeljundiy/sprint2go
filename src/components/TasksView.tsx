@@ -1,15 +1,12 @@
-import { Popover } from './ui/Popover';
-import { holidayOn } from '../holidayDays';
 import { TabBar } from './ui/TabBar';
 import { ProjectPeople } from './ProjectPeople';
 import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
-import { SmoothHeight, TabPane } from './ui/Smooth';
+import { useEffect, useMemo, useState } from 'react';
+import { TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, FolderInput, ChevronDown, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, Mail, Menu, MessagesSquare, Plus, Sparkles, Users, Video, type LucideIcon, FolderInput, ChevronRight, MessageCircle } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
-import { firstOf, kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
+import { kindOf, stageOf, stagesFor, toneOf } from '../stages';
 import { ProjectTables } from './tables/TablesApp';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { PastClients } from './PastClients';
@@ -20,15 +17,19 @@ import { Avatar } from './Avatar';
 import { Badge, PersonCell } from './ui/Person';
 import { EmptyState } from './ui/EmptyState';
 import { Dot, Select, type Option } from './ui/Select';
-import { DatePicker } from './ui/DatePicker';
-import { PeoplePicker } from './ui/PeoplePicker';
 import { personOption } from './ui/PeopleList';
 import { QuotesTab } from './Quotes';
 import type { Quote } from '../types';
-import { useCreateAction } from '../mobile/chrome';
+import { useTitleMenu } from '../mobile/chrome';
+import { TaskViews, type SavedTaskView } from './tasks/TaskViews';
+import type { NewTask, TaskOps } from './tasks/taskOps';
+import { saveDisplay } from './tasks/display';
 
 export type TaskScope =
   | { kind: 'mine' }
+  | { kind: 'today' } // my overdue tasks and today's, with Plan my day
+  | { kind: 'upcoming' } // my tasks by day: a week strip and one list of days
+  | { kind: 'project'; id: string } // one project's tasks, inside Tasks (its page lives in Projects)
   | { kind: 'supervising' }
   | { kind: 'myteams' }
   | { kind: 'myclients' }
@@ -89,8 +90,6 @@ export const clientOptions = (clients: Client[], current?: string): Option[] => 
   ...clients.filter((c) => c.status !== 'ended' || c.id === current).map((c) => ({ value: c.id, label: c.name, hint: c.status === 'lead' ? 'Lead' : c.status === 'ended' ? `Past ${term.one}` : undefined, icon: <Dot color={c.color} /> })),
 ];
 
-type GroupBy = 'client' | 'team' | 'person' | 'stage' | 'none';
-type Filter = 'open' | 'done' | 'all';
 
 interface Props {
   scope: TaskScope;
@@ -132,10 +131,10 @@ interface Props {
   onOpenTask: (id: string) => void;
   myTeamIds: string[];
   myClientIds: string[];
-  onAdd: (t: { title: string; clientId?: string; teamId?: string; userId: string; due?: string }) => void;
-  onStatus: (id: string, s: TaskStatus) => void;
+  onAdd: (t: NewTask) => string; // the new task's id
+  onStatus: (id: string, s: TaskStatus, quiet?: boolean) => void;
   onPatch: (id: string, p: Partial<Todo>) => void;
-  onDelete: (id: string) => void;
+  onDelete: (ids: string | string[], quiet?: boolean) => void;
   onToCalendar: (t: Todo) => void;
   onOpenThread: (id: string) => void;
   onOpenChannel: (id: string) => void;
@@ -148,38 +147,13 @@ interface Props {
   dumpInSidebar?: boolean; // the Tasks sidebar already has Brain dump at its top: no second one in the header
   onTemplate: () => void;
   onMenu: () => void;
+  onOpenProject?: (id: string) => void; // a project's own page (the Projects app)
+  onPastProjects?: () => void;
 }
 
-/** What a task can show on its card (board) or row (list); each person picks, per layout. */
-const TASK_FIELDS: { id: string; name: string }[] = [
-  { id: 'due', name: 'Deadline' },
-  { id: 'assignee', name: 'Who’s on it' },
-  { id: 'project', name: 'Project' },
-  { id: 'team', name: 'Team' },
-  { id: 'brief', name: 'Brief' },
-  { id: 'priority', name: 'High priority mark' },
-  { id: 'checklist', name: 'Checklist progress' },
-  { id: 'comments', name: 'Comments' },
-  { id: 'source', name: 'Where it came from' },
-  { id: 'updated', name: 'Last change' },
-];
-const FIELD_DEFAULTS = { list: ['due', 'project', 'team', 'brief', 'priority', 'checklist', 'source'], board: ['assignee', 'due', 'project', 'team', 'priority', 'checklist'] };
-
-/** The last "New task" asked for from outside (More), so coming back to Tasks later doesn't open the field again. */
-let handledAdd = 0;
-
 export function TasksView(p: Props) {
-  const [layout, setLayout] = usePersisted<'list' | 'board'>('s2g-task-layout', 'list');
-  const [groupPref, setGroupBy] = usePersisted<GroupBy>('s2g-task-group', 'client');
   const [briefsOpen, setBriefsOpen] = usePersisted('s2g-briefs-open', true);
-  const [projGroup, setProjGroup] = usePersisted<GroupBy>('s2g-project-group', 'team'); // a project's tasks: by team, person or not at all
-  const [filter, setFilter] = useState<Filter>('open');
-  const [showDone, setShowDone] = useState(true);
-  const [title, setTitle] = useState('');
-  const [assignee, setAssignee] = useState<string | null>(null);
-  const [teamPick, setTeamPick] = useState<string | null>(null);
-  const [due, setDue] = useState('');
-  const [dragging, setDragging] = useState<string | null>(null);
+  const [views, setViews] = usePersisted<SavedTaskView[]>('s2g-task-views', []);
   const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'workload' | 'quotes' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal'>('overview');
   const [writingOv, setWritingOv] = useState(false);
   const scopeId = 'id' in p.scope ? p.scope.id : '';
@@ -193,27 +167,33 @@ export function TasksView(p: Props) {
   const [waTo, setWaTo] = useState<ClientPerson | null>(null); // a WhatsApp message being written to this guest
   const [inviteEmail, setInviteEmail] = useState('');
 
-  const scope = p.scope;
+  // A team or project that's gone (deleted, or this device remembered one from another company): back to My tasks.
+  const scopeRef = p.scope as { kind: string; id?: string };
+  const gone = (scopeRef.kind === 'team' && !p.teams.some((t) => t.id === scopeRef.id)) || (scopeRef.kind === 'project' && !p.clients.some((c) => c.id === scopeRef.id));
+  const scope: TaskScope = gone ? { kind: 'mine' } : p.scope;
   // The company's own stages: board columns, grouping, the Start button and what each row says.
   const stages = stagesFor(p.workspace.id);
-  const activeStage = firstOf('active', stages);
-  const waitingStages = stages.filter((s) => s.kind === 'waiting');
   const client = scope.kind === 'client' ? p.clients.find((c) => c.id === scope.id) : undefined;
+  const project = scope.kind === 'project' ? p.clients.find((c) => c.id === scope.id) : undefined;
   const team = scope.kind === 'team' ? p.teams.find((t) => t.id === scope.id) : undefined;
   const cellTeam = scope.kind === 'client' && scope.teamId ? p.teams.find((t) => t.id === scope.teamId) : undefined;
   const person = (id?: string) => p.users.find((u) => u.id === id);
   const clientOf = (id?: string) => p.clients.find((c) => c.id === id);
   const teamOf = (id?: string) => p.teams.find((t) => t.id === id);
-  const briefOf = (id?: string) => p.tasks.find((t) => t.id === id && isBrief(t));
+  const today = localDay();
 
   // What this page is about (briefs are shown as cards, not rows).
-  // Quick filters on top of where you are: only late, only high priority, only waiting on the client, only nobody on it.
-  const [quick, setQuick] = useState<string[]>([]);
   const scoped = useMemo(() => {
     const work = p.tasks.filter((t) => !isBrief(t));
     switch (scope.kind) {
       case 'mine':
         return work.filter((t) => doers(t).includes(p.me));
+      case 'today':
+        return work.filter((t) => doers(t).includes(p.me) && (t.done ? (t.doneAt ?? '').slice(0, 10) === today || t.due === today : !!t.due && t.due <= today));
+      case 'upcoming':
+        return work.filter((t) => doers(t).includes(p.me) && (!!t.due || t.done));
+      case 'project':
+        return work.filter((t) => t.clientId === scope.id);
       case 'supervising':
         return work.filter((t) => t.supervisorId === p.me && !doers(t).includes(p.me));
       case 'myteams':
@@ -229,71 +209,86 @@ export function TasksView(p: Props) {
       default:
         return work;
     }
-  }, [p.tasks, scope, p.me]);
-  const inScope = useMemo(
-    () =>
-      scoped.filter(
-        (t) =>
-          (!quick.includes('late') || (!t.done && late(t))) &&
-          (!quick.includes('high') || t.priority === 'high') &&
-          (!quick.includes('waiting') || kindOf(t) === 'waiting' || t.approval?.status === 'waiting') &&
-          (!quick.includes('nobody') || (!t.userId && !(t.assignees?.length))),
-      ),
-    [scoped, quick],
-  );
-
-  /* Saved views: where you are, list or board, open or done, grouping and quick filters, under a name. Just yours. */
-  type SavedView = { id: string; name: string; scope: TaskScope; layout: 'list' | 'board'; filter: Filter; groupBy: GroupBy; quick: string[] };
-  const [views, setViews] = usePersisted<SavedView[]>('s2g-task-views', []);
-  const [viewName, setViewName] = useState('');
-  const [viewsOpen, setViewsOpen] = useState(false);
-  const viewsBtn = useRef<HTMLButtonElement>(null);
-  const nowState = { scope, layout, filter, groupBy: groupPref, quick: [...quick].sort() };
-  const activeView = views.find((v) => JSON.stringify({ scope: v.scope, layout: v.layout, filter: v.filter, groupBy: v.groupBy, quick: [...v.quick].sort() }) === JSON.stringify(nowState));
-  const applyView = (v: SavedView) => {
-    p.onScope(v.scope);
-    setLayout(v.layout);
-    setFilter(v.filter);
-    setGroupBy(v.groupBy);
-    setQuick(v.quick);
-  };
-  const saveView = () => {
-    const name = viewName.trim();
-    if (!name) return;
-    setViews([...views, { id: Date.now().toString(36), name, ...nowState }]);
-    setViewName('');
-    setViewsOpen(false);
-  };
+  }, [p.tasks, scope, p.me, today]);
 
   const briefs = useMemo(() => {
     const all = p.tasks.filter(isBrief);
     switch (scope.kind) {
       case 'mine':
-        return all.filter((b) => !b.done && (b.userId === p.me || inScope.some((t) => t.briefId === b.id)));
+        return all.filter((b) => !b.done && (b.userId === p.me || scoped.some((t) => t.briefId === b.id)));
       case 'delegated':
         return all.filter((b) => !b.done && b.createdBy === p.me);
       case 'client':
-        return all.filter((b) => b.clientId === scope.id);
+      case 'project':
+        return all.filter((b) => b.clientId === scope.id && (scope.kind === 'client' || !b.done));
       case 'team':
-        return all.filter((b) => !b.done && inScope.some((t) => t.briefId === b.id));
+        return all.filter((b) => !b.done && scoped.some((t) => t.briefId === b.id));
       case 'briefs':
         return all;
+      case 'today':
+      case 'upcoming':
+        return [];
       default:
         return all.filter((b) => !b.done);
     }
-  }, [p.tasks, scope, p.me, inScope]);
+  }, [p.tasks, scope, p.me, scoped]);
 
-  const open = inScope.filter((t) => !t.done).sort((a, b) => (scope.kind === 'supervising' ? Number(kindOf(b) === 'review') - Number(kindOf(a) === 'review') : 0) || byDue(a, b));
-  const done = inScope.filter((t) => t.done).sort((a, b) => (b.doneAt ?? b.createdAt).localeCompare(a.doneAt ?? a.createdAt));
-  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const recentDone = done.filter((t) => (t.doneAt ?? t.createdAt) > weekAgo);
+  const open = scoped.filter((t) => !t.done).sort(byDue);
   const overdue = open.filter(late).length;
-  const shown = filter === 'open' ? open : filter === 'done' ? done : [...open, ...done];
 
-  const groupBy: GroupBy = scope.kind === 'team' ? 'person' : scope.kind === 'client' ? (scope.teamId ? 'none' : projGroup) : groupPref;
+  // The phone's title switcher: every place in Tasks, with the counts worth acting on.
+  const workAll = p.tasks.filter((t) => !isBrief(t) && !t.done);
+  const lateMine = workAll.filter((t) => doers(t).includes(p.me) && late(t)).length;
+  const todayMine = workAll.filter((t) => doers(t).includes(p.me) && t.due === today).length;
+  const toReview = workAll.filter((t) => t.supervisorId === p.me && kindOf(t) === 'review').length;
+  const myTeams = p.teams.filter((t) => p.canManage || p.myTeamIds.includes(t.id));
+  const myProjects = p.clients.filter((c) => c.status !== 'ended' && (p.canManage || p.myClientIds.includes(c.id)));
+  const scopeValue = scope.kind === 'team' || scope.kind === 'project' || scope.kind === 'client' ? `${scope.kind}:${scope.id}` : scope.kind;
+  useTitleMenu('tasks', {
+    label: 'Which tasks',
+    value: scopeValue,
+    options: [
+      { value: 'mine', label: 'My tasks', hint: lateMine ? `${lateMine} late` : undefined, group: 'Tasks' },
+      { value: 'today', label: 'Today', hint: todayMine + lateMine ? `${todayMine + lateMine} to do` : undefined, group: 'Tasks' },
+      { value: 'upcoming', label: 'Upcoming', group: 'Tasks' },
+      { value: 'supervising', label: 'Supervising', hint: toReview ? `${toReview} to review` : undefined, group: 'Tasks' },
+      { value: 'delegated', label: 'Assigned by me', group: 'Tasks' },
+      { value: 'briefs', label: 'Briefs', group: 'Tasks' },
+      ...(p.canManage ? [{ value: 'all', label: 'Everything', group: 'Tasks' }] : []),
+      ...myTeams.map((tm) => {
+        const n = workAll.filter((t) => t.teamId === tm.id && !doers(t).length).length;
+        return { value: `team:${tm.id}`, label: tm.name, hint: n ? `${n} not assigned` : undefined, icon: <span className="ts-dot"><Dot color={tm.color} /></span>, group: 'Team queues' };
+      }),
+      ...myProjects.map((c) => {
+        const n = workAll.filter((t) => t.clientId === c.id && late(t)).length;
+        return { value: `project:${c.id}`, label: c.name, hint: n ? `${n} late` : undefined, icon: <span className="ts-dot"><Dot color={c.color} /></span>, group: term.Many };
+      }),
+      { value: 'dump', label: 'Brain dump', hint: 'Turn notes into tasks', group: 'More' },
+      ...(p.onPastProjects ? [{ value: 'past', label: `Past ${term.many}`, group: 'More' }] : []),
+      ...views.map((v) => ({ value: `view:${v.id}`, label: v.name, group: 'Your views' })),
+    ],
+    onChange: (v) => {
+      if (v === 'dump') return p.onBrainDump();
+      if (v === 'past') return p.onPastProjects?.();
+      if (v.startsWith('view:')) {
+        const view = views.find((x) => x.id === v.slice(5));
+        if (view?.display) saveDisplay(view.scope.kind, view.display);
+        if (view) p.onScope(view.scope as TaskScope);
+        return;
+      }
+      const [k, id] = v.split(':');
+      p.onScope(id ? ({ kind: k, id } as TaskScope) : ({ kind: k } as TaskScope));
+    },
+  });
 
   const heading =
-    scope.kind === 'supervising'
+    scope.kind === 'today'
+      ? 'Today'
+      : scope.kind === 'upcoming'
+        ? 'Upcoming'
+        : scope.kind === 'project'
+          ? (project?.name ?? term.One)
+          : scope.kind === 'supervising'
       ? 'Supervising'
       : scope.kind === 'myteams'
         ? 'My teams'
@@ -312,228 +307,6 @@ export function TasksView(p: Props) {
               : scope.kind === 'team'
                 ? (team?.name ?? 'Team')
                 : `${client?.name ?? 'Client'}${cellTeam ? ` · ${cellTeam.name}` : ''}`;
-
-  // Add-task defaults follow the page: a team page adds to that team's queue.
-  const defaultAssignee = scope.kind === 'team' ? '' : p.me;
-  const addAssignee = assignee ?? defaultAssignee;
-  const addTeam = teamPick ?? (scope.kind === 'team' ? scope.id : scope.kind === 'client' ? (scope.teamId ?? '') : '');
-  const add = () => {
-    if (!title.trim()) return;
-    p.onAdd({ title: title.trim(), clientId: client?.id, teamId: addTeam || undefined, userId: addAssignee, due: due || undefined });
-    setTitle('');
-    setDue('');
-    addInput.current?.focus(); // ready for the next one
-  };
-  // Quick capture: a "New task" button (or N) opens the field in place; Escape, or leaving it empty, folds it away.
-  const [adding, setAdding] = useState(false);
-  const addInput = useRef<HTMLInputElement>(null);
-  const addRow = useRef<HTMLDivElement>(null);
-  const newBtn = useRef<HTMLButtonElement>(null);
-  // Opened by a tap: the field shows and takes focus in the same tap, so a phone's keyboard comes up with it (iPhone only
-  // opens the keyboard for focus given during the tap itself). From an effect it waits a frame instead.
-  const openAdd = (now: unknown = true) => {
-    const focus = () => (addInput.current?.focus(), addRow.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
-    if (now === false) return void (setAdding(true), requestAnimationFrame(focus));
-    flushSync(() => setAdding(true));
-    focus();
-  };
-  // Phones: New task is the create button by the tab bar. "New, Task" in More opens the field too (addKey bumps).
-  useCreateAction('tasks', scope.kind !== 'grid' && scope.kind !== 'briefs' && !client && { label: 'New task', icon: Plus, run: openAdd });
-  useEffect(() => {
-    if (p.addKey && p.addKey !== handledAdd) {
-      handledAdd = p.addKey;
-      openAdd(false);
-    }
-  }, [p.addKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const onAddBlur = () =>
-    setTimeout(() => {
-      const a = document.activeElement;
-      if (addRow.current?.contains(a) || a?.closest('.pop')) return; // still in the row, or picking who or when
-      if (!addInput.current?.value.trim()) setAdding(false);
-    }, 0);
-
-  const groups: { key: string; label: React.ReactNode; items: Todo[]; extra?: React.ReactNode }[] = useMemo(() => {
-    if (groupBy === 'none') return [{ key: 'all', label: null, items: shown }];
-    const map = new Map<string, Todo[]>();
-    const keyOf = (t: Todo) => (groupBy === 'client' ? (t.clientId ?? '') : groupBy === 'team' ? (t.teamId ?? '') : groupBy === 'stage' ? stageOf(t, stages).id : t.userId);
-    for (const t of shown) map.set(keyOf(t), [...(map.get(keyOf(t)) ?? []), t]);
-    const out = [...map.entries()].map(([k, items]) => {
-      if (groupBy === 'client') {
-        const c = clientOf(k);
-        return { key: k, sort: c ? c.name : '~', label: c ? <><span className="dot" style={{ background: c.color }} />{c.name}</> : `No ${term.one}`, items };
-      }
-      if (groupBy === 'team') {
-        const tm = teamOf(k);
-        return { key: k, sort: tm ? tm.name : '~', label: tm ? <><span className="dot" style={{ background: tm.color }} />{tm.name}</> : 'No team', items };
-      }
-      if (groupBy === 'stage') {
-        const i = stages.findIndex((x) => x.id === k);
-        const st = stages[i];
-        return { key: k, sort: String(i).padStart(3, '0'), label: st ? <><span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />{stageName(st)}</> : 'Other', items };
-      }
-      const u = person(k);
-      return { key: k, sort: u ? (u.id === p.me ? '!' : u.name) : ' ', label: u ? <><Avatar person={u} size={18} />{u.id === p.me ? 'You' : u.name}</> : <><span className="avatar-empty sm">?</span>Not assigned yet</>, items };
-    });
-    return out.sort((a, b) => a.sort.localeCompare(b.sort));
-  }, [shown, groupBy, stages]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Ticking a task: show the tick, let the row fold away, then move it (instead of it jumping between groups).
-  const [ticking, setTicking] = useState<Set<string>>(new Set());
-  const tick = (t: Todo) => {
-    if (t.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return p.onStatus(t.id, stageIdFor(t, t.done ? 'open' : 'done'));
-    setTicking((s) => new Set(s).add(t.id));
-    setTimeout(() => {
-      p.onStatus(t.id, stageIdFor(t, 'done'));
-      setTicking((s) => {
-        const n = new Set(s);
-        n.delete(t.id);
-        return n;
-      });
-    }, 380);
-  };
-  const [taskFields, setTaskFields] = usePersisted<{ list: string[]; board: string[] }>('s2g-task-fields', FIELD_DEFAULTS);
-  const showF = (layoutName: 'list' | 'board', id: string) => (taskFields[layoutName] ?? FIELD_DEFAULTS[layoutName]).includes(id);
-  const [fieldsOpen, setFieldsOpen] = useState(false);
-  const fieldsBtn = useRef<HTMLButtonElement>(null);
-  const extras = (t: Todo, l: 'list' | 'board') => {
-    const comments = (t.history ?? []).filter((h) => h.kind === 'comment').length;
-    const last = t.history?.at(-1)?.at ?? t.createdAt;
-    const cl = t.checklist ?? [];
-    return (
-      <>
-        {showF(l, 'checklist') && cl.length > 0 && (
-          <span className={`meta-chip ${cl.every((x) => x.done) ? 'ok' : ''}`} title="Checklist">
-            <CheckCircle2 size={11} /> {cl.filter((x) => x.done).length}/{cl.length}
-          </span>
-        )}
-        {showF(l, 'comments') && comments > 0 && (
-          <span className="meta-chip" title="Comments">
-            <MessagesSquare size={11} /> {comments}
-          </span>
-        )}
-        {showF(l, 'updated') && last && <span className="meta-chip muted">{relative(last)}</span>}
-      </>
-    );
-  };
-  const row = (t: Todo) => {
-    const d = t.due ? dueLabel(t.due) : null;
-    const st = stageOf(t, stages);
-    const src = SOURCE[t.source];
-    const c = clientOf(t.clientId);
-    const tm = teamOf(t.teamId);
-    const br = briefOf(t.briefId);
-    return (
-      <div
-        key={t.id}
-        className={`task ${t.done || ticking.has(t.id) ? 'done' : ''} ${ticking.has(t.id) ? 'leaving' : ''} ${t.priority === 'high' && showF('list', 'priority') ? 'high' : ''} ${st.kind === 'active' ? 'doing' : ''}`}
-        onClick={(e) => !(e.target as HTMLElement).closest('button, input, .sel') && p.onOpenTask(t.id)}
-      >
-        <button className="todo-check" onClick={() => tick(t)} aria-label={t.done ? 'Mark not done' : 'Mark done'}>
-          {(t.done || ticking.has(t.id)) && <span>✓</span>}
-        </button>
-        <div className="task-main">
-          <button className="task-title-btn" onClick={() => p.onOpenTask(t.id)}>
-            {t.title}
-          </button>
-          <div className="task-meta">
-            {t.source === 'request' && (
-              <span className="req-chip" title={`Request from ${t.requestedBy}`}>
-                <Inbox size={11} /> Request
-              </span>
-            )}
-            {st.kind !== 'done' && st !== firstOf('open', stages) && groupBy !== 'stage' && <span className={`due stage-badge tone-${toneOf(st)}`}>{stageBadge(st)}</span>}
-            {showF('list', 'due') && d && !t.done && <span className={`due ${d.cls}`}>{d.text}</span>}
-            {showF('list', 'due') && !t.done && t.due && d?.cls !== 'overdue' && holidayOn(t.due) && (
-              <span className="hol-chip" title={`Public holiday: ${holidayOn(t.due)}`}>
-                Holiday
-              </span>
-            )}
-            {showF('list', 'assignee') && person(t.userId) && (
-              <span className="meta-chip person-chip">
-                <Avatar person={person(t.userId)!} size={14} /> {person(t.userId)!.name.split(' ')[0]}
-              </span>
-            )}
-            {t.done && (
-              <span className="done-info">
-                Done {t.doneBy ? `by ${t.doneBy === p.me ? 'you' : (person(t.doneBy)?.name.split(' ')[0] ?? 'someone')} ` : ''}
-                {t.doneAt ? relative(t.doneAt) : ''}
-              </span>
-            )}
-            {showF('list', 'project') && c && scope.kind !== 'client' && (
-              <span className="client-chip" style={{ ['--c' as string]: c.color }}>
-                {c.name}
-              </span>
-            )}
-            {showF('list', 'team') && tm && groupBy !== 'team' && scope.kind !== 'team' && (
-              <span className="team-chip" style={{ ['--c' as string]: tm.color }}>
-                {tm.name}
-              </span>
-            )}
-            {showF('list', 'brief') && br && (
-              <button className="brief-chip" onClick={() => p.onOpenTask(br.id)} title="Open the brief">
-                <FileText size={11} /> {br.title}
-              </button>
-            )}
-            {showF('list', 'source') && (
-              <span className="src" title={src.label}>
-                <src.icon size={12} />
-              </span>
-            )}
-            {extras(t, 'list')}
-            {t.threadId && (
-              <button className="todo-src" onClick={() => p.onOpenThread(t.threadId!)}>
-                Open email
-              </button>
-            )}
-            {t.createdBy && t.createdBy !== t.userId && t.userId && <span className="src">from {t.createdBy === p.me ? 'you' : t.createdBy.includes('@') ? (p.clients.flatMap((c) => c.people ?? []).find((x) => x.email === t.createdBy)?.name.split(' ')[0] ?? `the ${term.who}`) : person(t.createdBy)?.name.split(' ')[0]}</span>}
-          </div>
-        </div>
-        {(() => {
-          // The one thing this row needs, right on it.
-          if (t.done) return null;
-          if (st.kind === 'review' && t.supervisorId === p.me)
-            return (
-              <button className="row-act primary" onClick={() => p.onStatus(t.id, stageIdFor(t, 'done', stages))}>
-                Approve
-              </button>
-            );
-          if (t.source === 'request' && st.kind === 'open' && activeStage)
-            return (
-              <button className="row-act" onClick={() => p.onStatus(t.id, activeStage.id)}>
-                Start
-              </button>
-            );
-          if (d?.cls === 'overdue' && doers(t).includes(p.me))
-            return (
-              <button className="row-act" title="Move the due date to tomorrow" onClick={() => p.onPatch(t.id, { due: localDay(new Date(Date.now() + 86_400_000)) })}>
-                Tomorrow
-              </button>
-            );
-          return null;
-        })()}
-        <PeoplePicker compact value={doers(t)} users={p.users} me={p.me} label="Doing it" onChange={(ids) => p.onPatch(t.id, { assignees: ids, userId: ids[0] ?? '' })} />
-        <div className="todo-actions">
-          {!t.done && activeStage && (st.kind === 'open' || st.kind === 'active') && (
-            <button
-              className="icon-btn sm"
-              title={st.kind === 'active' ? `Move back to ${stageName(firstOf('open', stages)!)}` : `Start (${stageName(activeStage)})`}
-              onClick={() => p.onStatus(t.id, st.kind === 'active' ? stageIdFor(t, 'open', stages) : activeStage.id)}
-            >
-              <Columns3 size={15} />
-            </button>
-          )}
-          {!t.done && (
-            <button className="icon-btn sm" title="Add to calendar" onClick={() => p.onToCalendar(t)}>
-              <CalendarPlus size={15} />
-            </button>
-          )}
-          <button className="icon-btn sm" title="Delete" onClick={() => p.onDelete(t.id)}>
-            <Trash2 size={15} />
-          </button>
-        </div>
-      </div>
-    );
-  };
 
   const briefCard = (b: Todo) => {
     const subs = p.tasks.filter((t) => t.briefId === b.id);
@@ -695,18 +468,33 @@ export function TasksView(p: Props) {
   const teamChannel = team ? p.channels.find((c) => c.name === team.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')) : undefined;
 
   const showTaskList = scope.kind !== 'grid' && scope.kind !== 'briefs' && (!client || clientTab === 'tasks');
-  useEffect(() => {
-    if (!showTaskList) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.key !== 'n' && e.key !== 'N') || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-      if ((document.activeElement as HTMLElement | null)?.closest('input, textarea, select, [contenteditable]')) return;
-      if (document.querySelector('.modal-scrim:not(.is-leaving), .palette-scrim:not(.is-leaving), .pop:not(.is-leaving)')) return; // a dialog or menu is open
-      e.preventDefault();
-      openAdd();
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, [showTaskList]);
+  // What the task screens can do: read and change tasks the way the rest of the app does.
+  const ops: TaskOps = {
+    me: p.me,
+    today,
+    wsId: p.workspace.id,
+    tasks: p.tasks,
+    users: p.users,
+    clients: p.clients,
+    teams: p.teams,
+    stages,
+    open: p.onOpenTask,
+    status: p.onStatus,
+    patch: p.onPatch,
+    remove: (ids, quiet) => p.onDelete(ids, quiet),
+    add: p.onAdd,
+    toCalendar: p.onToCalendar,
+  };
+  const addDefaults =
+    scope.kind === 'team'
+      ? { userId: '', teamId: scope.id }
+      : scope.kind === 'client'
+        ? { clientId: scope.id, teamId: scope.teamId }
+        : scope.kind === 'project'
+          ? { clientId: scope.id }
+          : scope.kind === 'today'
+            ? { due: today }
+            : {};
   const subtitle = client
     ? `${client.status === 'lead' ? 'Lead' : client.status === 'paused' ? 'Paused' : client.status === 'ended' ? `Past ${term.one}${client.endReason ? ` · ${client.endReason}` : ''}` : 'Active'}${client.domain ? ` · @${client.domain}` : ''} · owner ${person(client.ownerId)?.name ?? 'not set'}`
     : team
@@ -723,7 +511,7 @@ export function TasksView(p: Props) {
   // Admins, the owner and the project's Leads manage a project: its status, people, guests and their access.
   const projectManage = !!client && (p.canManage || client.ownerId === p.me || (client.members ?? []).some((m) => m.userId === p.me && m.role === 'lead'));
   return (
-    <section className="tasks-pane view-enter">
+    <section className={`tasks-pane view-enter scope-${scope.kind}`}>
       <header className="tracking-head tasks-head">
         <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
           <Menu size={18} />
@@ -797,51 +585,10 @@ export function TasksView(p: Props) {
             <Sparkles size={14} /> Brain dump
           </button>
         )}
-        {showTaskList && (
-          <button ref={newBtn} className="primary-btn sm new-task-btn" onClick={() => (adding ? setAdding(false) : openAdd())} aria-expanded={adding} title="New task (N)">
-            <Plus size={14} /> New task <kbd>N</kbd>
+        {project && p.onOpenProject && (
+          <button className="ghost-btn sm" onClick={() => p.onOpenProject!(project.id)}>
+            Open the {term.one} <ChevronRight size={14} />
           </button>
-        )}
-        {showTaskList && (
-          <>
-            <button ref={fieldsBtn} className="icon-btn" onClick={() => setFieldsOpen(true)} title={`What ${layout === 'board' ? 'cards' : 'rows'} show`} aria-label="Fields">
-              <SlidersHorizontal size={16} />
-            </button>
-            <Popover anchor={fieldsBtn} open={fieldsOpen} onClose={() => setFieldsOpen(false)} width={240} align="end" title={`On each ${layout === 'board' ? 'card' : 'row'}`}>
-              <div className="tab-edit-list">
-                <p className="muted small">What each {layout === 'board' ? 'card on the board' : 'row in the list'} shows. Just for you.</p>
-                {TASK_FIELDS.map((f) => (
-                  <label key={f.id} className="check-row tb-field-toggle">
-                    <input
-                      type="checkbox"
-                      checked={showF(layout === 'board' ? 'board' : 'list', f.id)}
-                      onChange={(e) => {
-                        const l = layout === 'board' ? 'board' : 'list';
-                        const cur = taskFields[l] ?? FIELD_DEFAULTS[l];
-                        setTaskFields({ ...taskFields, [l]: e.target.checked ? [...cur, f.id] : cur.filter((x) => x !== f.id) });
-                      }}
-                    />{' '}
-                    {f.name}
-                  </label>
-                ))}
-                <div className="tab-edit-foot">
-                  <button type="button" className="link-btn small" onClick={() => setTaskFields({ ...taskFields, [layout === 'board' ? 'board' : 'list']: FIELD_DEFAULTS[layout === 'board' ? 'board' : 'list'] })}>
-                    Back to the usual
-                  </button>
-                </div>
-              </div>
-            </Popover>
-          </>
-        )}
-        {showTaskList && (
-          <div className="segmented icon-seg">
-            <button className={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')} title="List">
-              <List size={15} />
-            </button>
-            <button className={layout === 'board' ? 'on' : ''} onClick={() => setLayout('board')} title="Board">
-              <Columns3 size={15} />
-            </button>
-          </div>
         )}
       </header>
 
@@ -877,7 +624,7 @@ export function TasksView(p: Props) {
         />
       )}
 
-      <div className="tracking-scroll" key={`${JSON.stringify(scope)}:${layout}:${clientTab}`}>
+      <div className="tracking-scroll" key={`${JSON.stringify(scope)}:${clientTab}`}>
         {team && (
           <div className="workload">
             {workload.map((w) => (
@@ -928,265 +675,21 @@ export function TasksView(p: Props) {
         )}
 
         {showTaskList && (
-          <>
-            <button type="button" className={`new-task-slim ${adding ? 'gone' : ''}`} onClick={openAdd} aria-expanded={adding} tabIndex={adding ? -1 : 0}>
-              <Plus size={16} /> New task
-            </button>
-            <div className={`fold task-add-fold ${adding ? 'open' : ''}`}>
-              <div className="fold-in">
-                <div className="todo-add task-add" ref={addRow} onBlur={onAddBlur}>
-                  <Plus size={16} />
-                  <input
-                    ref={addInput}
-                    id="new-task"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') add();
-                      if (e.key === 'Escape') (e.preventDefault(), setAdding(false), newBtn.current?.offsetParent && newBtn.current.focus()); // focus goes back to the button
-                    }}
-                    placeholder={client ? `Add a task for ${client.name}…` : team ? `Add to ${team.name}’s queue…` : 'Add a task…'}
-                    aria-label="New task"
-                  />
-                  <Select value={addAssignee} options={peopleOptions(p.users, p.me)} onChange={setAssignee} label="Assign to" className="sel-flat" />
-                  <Select value={addTeam} options={teamOptions(p.teams)} onChange={setTeamPick} label="Team" className="sel-flat hide-sm" />
-                  <DatePicker value={due} onChange={setDue} label="Due date" placeholder="Due" className="sel-flat" />
-                  <button className="primary-btn sm" onClick={add} disabled={!title.trim()}>
-                    Add
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="task-views">
-              {views.length > 0 && (
-                <TabBar
-                  storageKey="task-views"
-                  className="client-tabs task-view-tabs"
-                  value={activeView?.id ?? ''}
-                  onSelect={(id) => {
-                    const v = views.find((x) => x.id === id);
-                    if (v) applyView(v);
-                  }}
-                  items={views.map((v) => ({ id: v.id, name: v.name, label: v.name }))}
-                />
-              )}
-              <div className="tool-row task-toolbar">
-                {layout === 'list' && (
-                  <>
-                    <div className="segmented">
-                      {(
-                        [
-                          ['open', `Open ${open.length}`],
-                          ['done', `Done ${done.length}`],
-                          ['all', 'All'],
-                        ] as const
-                      ).map(([id, l]) => (
-                        <button key={id} className={filter === id ? 'on' : ''} onClick={() => setFilter(id)}>
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                    {scope.kind === 'client' && !scope.teamId && (
-                      <Select<GroupBy>
-                        value={projGroup}
-                        onChange={setProjGroup}
-                        label="Group by"
-                        className="sel-flat"
-                        renderValue={(o) => (
-                          <>
-                            <span className="sel-text">Group: {o?.label}</span>
-                            <ChevronDown size={14} className="sel-chev" />
-                          </>
-                        )}
-                        options={[
-                          { value: 'team', label: 'Team' },
-                          { value: 'person', label: 'Person' },
-                          { value: 'stage', label: 'Stage' },
-                          { value: 'none', label: 'None' },
-                        ]}
-                      />
-                    )}
-                    {!['team', 'client'].includes(scope.kind) && (
-                      <Select<GroupBy>
-                        value={groupPref}
-                        onChange={setGroupBy}
-                        label="Group by"
-                        className="sel-flat"
-                        renderValue={(o) => (
-                          <>
-                            <span className="sel-text">Group: {o?.label}</span>
-                            <ChevronDown size={14} className="sel-chev" />
-                          </>
-                        )}
-                        options={[
-                          { value: 'client', label: `${term.One}` },
-                          { value: 'team', label: 'Team' },
-                          { value: 'person', label: 'Person' },
-                          { value: 'stage', label: 'Stage' },
-                          { value: 'none', label: 'None' },
-                        ]}
-                      />
-                    )}
-                  </>
-                )}
-                <div className="quick-chips" role="group" aria-label="Quick filters">
-                  {(
-                    [
-                      ['late', 'Late'],
-                      ['high', 'High priority'],
-                      ...(firstOf('waiting', stages) || quick.includes('waiting') ? ([['waiting', waitingStages.length === 1 ? stageName(waitingStages[0]) : `Waiting on ${term.who}`]] as const) : []),
-                      ['nobody', 'Nobody on it'],
-                    ] as const
-                  ).map(([id, l]) => (
-                    <button key={id} className={quick.includes(id) ? 'on' : ''} aria-pressed={quick.includes(id)} onClick={() => setQuick((q) => (q.includes(id) ? q.filter((x) => x !== id) : [...q, id]))}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                <span className="spacer" />
-                <button ref={viewsBtn} className="link-btn small" onClick={() => setViewsOpen(true)}>
-                  <Bookmark size={13} /> {activeView ? activeView.name : 'Save as a view'}
-                </button>
-                <Popover anchor={viewsBtn} open={viewsOpen} onClose={() => setViewsOpen(false)} width={280} align="end" title="Your views">
-                  <div className="tab-edit-list">
-                    <p className="muted small">A view remembers where you are, list or board, what’s showing and these filters. Views are just yours and appear as tabs here.</p>
-                    {!activeView && (
-                      <div className="tb-act-row">
-                        <input className="tb-native" autoFocus value={viewName} placeholder="Name, like “My late work”" onChange={(e) => setViewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveView()} />
-                        <button className="primary-btn sm" disabled={!viewName.trim()} onClick={saveView}>
-                          Save
-                        </button>
-                      </div>
-                    )}
-                    {views.map((v) => (
-                      <div key={v.id} className="tab-edit-row">
-                        <Bookmark size={13} className="muted" />
-                        <button type="button" className="tab-edit-name link-like" onClick={() => (applyView(v), setViewsOpen(false))}>
-                          {v.name}
-                        </button>
-                        <button type="button" className="icon-btn sm" aria-label={`Delete ${v.name}`} onClick={() => setViews(views.filter((x) => x.id !== v.id))}>
-                          <X size={13} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </Popover>
-              </div>
-            </div>
-
-
-            {layout === 'board' ? (
-              <div className="board" style={{ ['--cols' as string]: stages.length }}>
-                {stages.map((col) => {
-                  const items = inScope.filter((t) => stageOf(t, stages).id === col.id).sort(byDue);
-                  return (
-                    <div
-                      key={col.id}
-                      className={`board-col ${dragging ? 'droppable' : ''}`}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        if (dragging) p.onStatus(dragging, col.id);
-                        setDragging(null);
-                      }}
-                    >
-                      <div className="board-head">
-                        <span className={`stage-dot k-${col.kind} tone-${toneOf(col)}`} />
-                        {stageName(col)} <span>{items.length}</span>
-                      </div>
-                      {items.map((t) => {
-                        const c = clientOf(t.clientId);
-                        const tm = teamOf(t.teamId);
-                        const d = t.due ? dueLabel(t.due) : null;
-                        const owner = person(t.userId);
-                        return (
-                          <div
-                            key={t.id}
-                            className={`card-task ${t.priority === 'high' && showF('board', 'priority') ? 'high' : ''}`}
-                            draggable
-                            onDragStart={() => setDragging(t.id)}
-                            onDragEnd={() => setDragging(null)}
-                            onClick={() => p.onOpenTask(t.id)}
-                          >
-                            <div className="ct-top">
-                              <div className="ct-title">
-                                {t.priority === 'high' && showF('board', 'priority') && <i className="ct-high" title="High priority" />}
-                                {t.title}
-                              </div>
-                              {showF('board', 'assignee') && (owner ? <Avatar person={owner} size={22} /> : <span className="avatar-empty sm" title="Nobody on it yet">?</span>)}
-                            </div>
-                            <div className="ct-meta">
-                              {showF('board', 'project') && c && scope.kind !== 'client' && (
-                                <span className="client-chip" style={{ ['--c' as string]: c.color }}>
-                                  {c.name}
-                                </span>
-                              )}
-                              {showF('board', 'team') && tm && scope.kind !== 'team' && (
-                                <span className="team-chip" style={{ ['--c' as string]: tm.color }}>
-                                  {tm.name}
-                                </span>
-                              )}
-                              {showF('board', 'due') && d && col.kind !== 'done' && <span className={`due ${d.cls}`}>{d.text}</span>}
-                              {showF('board', 'brief') && briefOf(t.briefId) && (
-                                <span className="meta-chip">
-                                  <FileText size={11} /> {briefOf(t.briefId)!.title}
-                                </span>
-                              )}
-                              {showF('board', 'source') && (
-                                <span className="src" title={SOURCE[t.source].label}>
-                                  {(() => {
-                                    const I = SOURCE[t.source].icon;
-                                    return <I size={12} />;
-                                  })()}
-                                </span>
-                              )}
-                              {extras(t, 'board')}
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {items.length === 0 && <div className="board-empty">Drop tasks here</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <>
-                {shown.length === 0 && (
-                  <EmptyState
-                    icon="✓"
-                    title={filter === 'done' ? 'Nothing finished yet' : 'Nothing open'}
-                    text="Add one, or use Brain dump to turn your thoughts into tasks."
-                    action={
-                      filter !== 'done' && (
-                        <button type="button" className="primary-btn sm" onClick={openAdd}>
-                          <Plus size={14} /> New task
-                        </button>
-                      )
-                    }
-                  />
-                )}
-                {groups.map((g) => (
-                  <div key={g.key || 'none'} className="todo-group">
-                    {g.label && (
-                      <div className="d-heading">
-                        {g.label} <span>{g.items.length}</span>
-                      </div>
-                    )}
-                    {g.items.map(row)}
-                  </div>
-                ))}
-                {filter === 'open' && recentDone.length > 0 && (
-                  <div className="todo-group done-group">
-                    <button className="d-heading done-toggle" onClick={() => setShowDone((s) => !s)}>
-                      Done this week <span>{recentDone.length}</span> <ChevronRight size={14} className={`rot-chev ${showDone ? 'open' : ''}`} />
-                    </button>
-                    <SmoothHeight>{showDone && recentDone.map(row)}</SmoothHeight>
-                  </div>
-                )}
-              </>
-            )}
-          </>
+          <TaskViews
+            ops={ops}
+            kind={scope.kind}
+            scopeId={'id' in scope ? scope.id : undefined}
+            tasks={scoped}
+            label={scope.kind === 'team' ? `${team?.name ?? 'Team'} queue` : heading}
+            canAdd
+            addDefaults={addDefaults}
+            addKey={p.addKey}
+            onBrainDump={p.onBrainDump}
+            views={views}
+            onViews={setViews}
+            onScope={(s) => p.onScope(s as TaskScope)}
+            triage={scope.kind === 'team' || scope.kind === 'myteams'}
+          />
         )}
 
         <TabPane key={clientTab}>

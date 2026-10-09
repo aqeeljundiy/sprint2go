@@ -75,6 +75,7 @@ function dayFrom(m: RegExpExecArray, kind: string, today: string): string | null
     case 'word': {
       const w = m[1].toLowerCase().replace(/\s+/g, ' ');
       if (w === 'today' || w === 'tod' || w === 'tonight') return today;
+      if (w === 'yesterday') return addDays(today, -1);
       if (w === 'tomorrow' || w === 'tmr' || w === 'tmrw') return addDays(today, 1);
       if (w === 'this weekend' || w === 'weekend') return onOrAfter(today, 6);
       return null;
@@ -169,7 +170,7 @@ export function parseQuickAdd(text: string, ctx: QuickContext): QuickParsed {
   const dates: [string, string][] = [
     ['next', `\\b${PREFIX}next\\s+(week|month|${WD_RE.slice(1, -1)})\\b`],
     ['in', `\\b(?:in\\s+)(an?|\\d{1,3})\\s+(days?|weeks?|months?)\\b`],
-    ['word', `\\b${PREFIX}(today|tod|tonight|tomorrow|tmrw?|this\\s+weekend|weekend)\\b`],
+    ['word', `\\b${PREFIX}(today|tod|tonight|tomorrow|tmrw?|yesterday|this\\s+weekend|weekend)\\b`],
     ['dm', `\\b${PREFIX}(\\d{1,2})(?:st|nd|rd|th)?\\s+${MONTH_RE}\\b`],
     ['md', `\\b${PREFIX}${MONTH_RE}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`],
     ['iso', `\\b${PREFIX}(\\d{4})-(\\d{2})-(\\d{2})\\b`],
