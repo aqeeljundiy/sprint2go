@@ -19,7 +19,7 @@ Every change has to pass this bar before it's called done. It isn't optional pol
 4. **Calm.** Nothing moves by itself: no loops, auto-advancing carousels or tours, or bobbing decorations. The exception is live status (a recording dot, a progress bar). Motion answers what the person did.
 5. **Clean.** Spacing on a 4/8 px scale, consistent radii, one primary action per area, aligned edges and baselines. **No box inside a box**: inside a bordered card or list, rows and controls have no border of their own (use a divider line, a hover background or plain spacing). A dropdown inside a form row is a plain field, not a framed button inside a frame. Centered things are actually centered: check for class clashes like the old `.sel`, which is the Select component's class.
 6. **Responsive.** Check at 375, 768, 1024 and 1440 px wide.
-   - No horizontal scroll, and tap targets of at least 40 px on phones.
+   - No horizontal scroll, and tap targets of at least 44 px on phones (`var(--tap)`), fields at 16 px, labels at least 12 px.
    - Popovers become bottom sheets on phones.
    - Panes react to their own width (container queries), not just the window's.
 7. **Balanced.** Even visual weight across columns. Headings don't leave one orphan word on a line. Floating or decorative bits never cover content.
@@ -32,7 +32,13 @@ Every change has to pass this bar before it's called done. It isn't optional pol
 - Empty lists and screens: `EmptyState` (src/components/ui/EmptyState.tsx), with a compact form inside cards.
 - A dialog opened from inside a pane: `Layer` (src/components/ui/Layer.tsx) puts it at page level so nothing traps it.
 - Rows that leave: `useLeaving` (src/components/ui/Smooth.tsx). Times: `TimePicker` next to `DatePicker`.
-- The shared styles for all of these live in src/system.css, loaded last.
+- Bottom sheet: `Sheet` (src/components/ui/Sheet.tsx). Grab handle, swipe down to close, rides above the keyboard; a centred panel on desktop.
+- Actions for one thing: `ActionSheet` and `useActionMenu` (src/components/ui/ActionSheet.tsx). One list: a sheet from long-press on phones, a menu from right-click or "…" on desktop.
+- Swipes on rows: `SwipeRow` (src/components/ui/SwipeRow.tsx). Up to two actions per side, Undo toast, folds away with `useLeaving`.
+- Long-press: `useLongPress` (src/components/ui/useLongPress.ts). 350 ms hold, a small lift and a tick; moving first always scrolls; hold then move drags.
+- A screen pushed over another on phones: `PushScreen` (src/components/ui/PushScreen.tsx). Back, swipe from the left edge, slides both ways.
+- The phone shell: `useCreateAction`, `useTitleMenu`, `useAppSettings`, `useFocusedScreen` (src/mobile/chrome.ts); the keyboard: `useKeyboard` and `var(--kb)` (src/mobile/keyboard.ts). How to use all of these: docs/mobile-kit.md.
+- The shared styles live in src/system.css. The phone layer, src/mobile/ (one file per area), loads after it.
 
 ## Which surface
 
