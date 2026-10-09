@@ -264,3 +264,10 @@
     min-height: 140px;
   }
 }
+
+/* Tiny phones: the create button floats at the bottom right, so the search makes room for it. */
+@media (max-width: 359px) {
+  .nl-search-dock {
+    padding-right: 84px;
+  }
+}
