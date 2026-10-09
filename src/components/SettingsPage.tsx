@@ -40,6 +40,7 @@ import { DemoCompanyBlock, type DemoSettings } from './DemoCompany';
 import { ConnectedApps } from './ConnectedApps';
 import { ImportSection } from './imports/ImportSection';
 import { BarDefaults } from '../mobile/BarDefaults';
+import { MAIL_APPS_SECTION, PhoneMailApps } from './PhoneMailApps';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -60,6 +61,7 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'appearance', name: 'Appearance', icon: Palette, group: 'You' },
   { id: 'myapps', name: 'Your apps', icon: LayoutGrid, group: 'You' },
   { id: 'mail', name: 'Mail & signature', icon: PenLine, group: 'You' },
+  MAIL_APPS_SECTION,
   { id: 'notifications', name: 'Notifications', icon: Bell, group: 'You' },
   { id: 'help', name: 'Help & support', icon: LifeBuoy, group: 'You' },
   { id: 'shortcuts', name: 'Shortcuts', icon: Keyboard, group: 'You' },
@@ -68,7 +70,7 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
 
 
 /** Settings the demo company leaves out: they reach the real world (billing, AI keys, mail delivery, brand, security). */
-const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security', 'import'];
+const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security', 'import', 'mailapps'];
 
 const SHORTCUTS: [string, string[]][] = [
   ['Compose', ['C']],
@@ -656,6 +658,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           )}
 
           {section === 'notifications' && <NotificationSettings s={s} update={update} />}
+          {section === 'mailapps' && <PhoneMailApps ws={ws} canManage={canManage} onWorkspace={onWorkspace} toast={admin.toast} />}
 
           {section === 'shortcuts' && (
             <>

@@ -26,7 +26,7 @@ The phone redesign and every other buildable item, built locally (not pushed or 
 
 - **Company logo in Gmail (BIMI)**: once the logo has been in use for 12 months (CMC) or is a registered trademark (VMC); needs the SVG, a `default._bimi` record and the certificate.
 - **Imports**: Slack export, Trello boards, Google Drive, so switching is easy.
-- **Phone mail apps (IMAP)**: decide whether sprint2go mail should open in other apps.
+- **Phone mail apps (IMAP)**: built locally (IMAP, sending from mail apps, app passwords, Settings, Phone mail apps; docs/imap.md). Live needs `IMAP_ENABLED=1`, the trusted mail certificate (the Cloudflare token above) and ports 993, 143, 587 and 465 published in Dokploy; then a check with a real iPhone, Gmail and Thunderbird.
 - **Task stages per project or team**, if someone asks.
 - **The app in Indonesian**, if decided.
 - **Smaller follow-ups**: trial limits so one person can't collect many trials; "remember this device" for two-step; spotting the same calendar link added twice; choosing which regions' holidays show; rare repeat rules in invites; all-day invites in time zones beyond plus or minus 11 hours.

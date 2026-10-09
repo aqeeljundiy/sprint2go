@@ -308,6 +308,8 @@ export interface Workspace {
   demoCompany?: boolean;
   /** "Let people connect AI apps" (Settings, Security & data): Claude, ChatGPT and others through /mcp. Missing: on. */
   aiApps?: boolean;
+  /** "Let people use other mail apps" (Settings, Phone mail apps): iPhone Mail, Gmail, Thunderbird over IMAP. Missing: on. */
+  mailApps?: boolean;
   /** Set on someone's own demo company only (src/sandbox.ts): whose it is, and their "Try this" list. */
   sandbox?: SandboxMark;
 }

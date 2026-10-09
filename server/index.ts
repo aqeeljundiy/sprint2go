@@ -58,6 +58,7 @@ import * as imports from './imports.ts';
 import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
 import * as connector from './connector.ts';
+import * as mailApps from './mailApps.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -641,7 +642,7 @@ function tellTwoStepRequired(wsId: string, by: string | null) {
 /** Signs someone out everywhere (or everywhere but one session) and closes their live connections. */
 function kick(userId: string, keepToken?: string) {
   if (keepToken) twostep.endOtherSessions(userId, keepToken);
-  else (db.endSessions(userId), connector.endAll(userId, 'signed out everywhere'));
+  else (db.endSessions(userId), connector.endAll(userId, 'signed out everywhere'), mailApps.endAll(userId));
   for (const [id, c] of clients) if (c.userId === userId && c.token !== keepToken) (c.res.end(), clients.delete(id));
 }
 /**
@@ -725,6 +726,8 @@ function broadcast(coll: string, upserts: db.Doc[], deletes: string[], except?: 
   if (!upserts.length && !deletes.length) return;
   // New notices, guests' messages and arriving mail also go to the phones and computers of people who are away.
   pushRules.onBroadcast(coll, upserts);
+  // Mail apps over IMAP (server/mailApps.ts) hear about changed mail and access at once.
+  mailApps.changed(coll, upserts, deletes);
   const views = new Map<string, ReturnType<typeof lens>>();
   for (const [id, c] of clients) {
     if (id === except) continue;
@@ -1640,6 +1643,8 @@ createServer(async (req, res) => {
   if (p.startsWith('/t/') && readTracking.serveTracking(req, res, url, ipOf(req), tooMany(`track:${ipOf(req)}`, 600, 60_000))) return;
   // Connected AI apps: /mcp and the sign-in addresses they expect (OAuth and /.well-known). /oauth/authorize is a page.
   if ((p === '/mcp' || p.startsWith('/oauth/') || p.startsWith('/.well-known/oauth-') || p === '/.well-known/openid-configuration') && (await connector.handlePublic(req, res, url))) return;
+  // Thunderbird's autoconfig for mail apps (server/mailApps.ts).
+  if (mailApps.handlePublic(req, res, url)) return;
   // A company's BIMI logo (server/bimi.ts): public, at the same address for as long as it has one, never anything else.
   const bimiLogo = p.match(/^\/bimi\/([\w-]{1,64})\.svg$/);
   if (bimiLogo && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -1813,6 +1818,7 @@ createServer(async (req, res) => {
       await db.setLogin(login.user_id, mail, password);
       db.endSessions(login.user_id);
       connector.endAll(login.user_id, 'password reset'); // connected AI apps too: they connect again with the new password
+      mailApps.endAll(login.user_id); // and mail apps' app passwords
       twostep.forgetDevices(login.user_id); // a new password: every remembered device asks for the code again
       const t = db.newSession(login.user_id);
       if (twostep.isOn(login.user_id)) twostep.markPassed(t);
@@ -1995,6 +2001,8 @@ createServer(async (req, res) => {
     }
     // Connecting an AI app (the consent screen at /oauth/authorize) and each person's connected apps (Settings, Account).
     if (p.startsWith('/api/oauth/') && (await connector.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body }))) return;
+    // Phone mail apps: app passwords, setup help, the Apple profile (Settings, Phone mail apps).
+    if (p.startsWith('/api/mailapps') && (await mailApps.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body, tooMany }))) return;
 
     /* ---------- help and support, for everyone signed in ---------- */
     if (p === '/api/support' && req.method === 'GET') {
@@ -2530,6 +2538,7 @@ createServer(async (req, res) => {
       const passed = twostep.sessionPassed(cookie(req, 's2g'));
       db.endSessions(me);
       connector.endAll(me, 'password changed');
+      mailApps.endAll(me);
       for (const [id, c] of clients) if (c.userId === me && c.token !== cookie(req, 's2g')) (c.res.end(), clients.delete(id));
       const fresh = db.newSession(me);
       if (passed) twostep.markPassed(fresh);
@@ -2551,6 +2560,7 @@ createServer(async (req, res) => {
       twostep.forget(me);
       db.endSessions(me);
       connector.endAll(me, 'account deleted');
+      mailApps.endAll(me);
       feeds.forgetPerson(me); // their calendar links (private addresses) and the events read from them
       sandbox.remove(me); // their demo company, with everything in it
       for (const [id, c] of clients) if (c.userId === me) (c.res.end(), clients.delete(id));
@@ -3340,6 +3350,8 @@ createServer(async (req, res) => {
     notifyAdmins: (wsId, text) => notifyUsers((workspaces().find((w) => w.id === wsId)?.members ?? []).filter((m) => m.role !== 'member').map((m) => m.userId), text, '/settings/agency', wsId),
   });
   feeds.startCalendarFeeds({ broadcast });
+  // Phone mail apps (IMAP and SMTP submission): off unless IMAP_ENABLED=1 and the mail certificate is trusted.
+  void mailApps.start({ write: (userId, coll, upserts, deletes) => applySync(userId, { coll, upserts, deletes }), memberOf: (userId) => memberOf(userId) as any, readOnlyWhy: (w) => billing.readOnlyWhy(w as any), log: (line) => console.log(line) });
 }).requestTimeout = 60 * 60_000; // a big upload on a slow line can take a while (Node's own limit is 5 minutes)
 
 /** Whether the meeting recorder answers, checked every few minutes (the app asks often). */
