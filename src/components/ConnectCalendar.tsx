@@ -5,6 +5,7 @@ import { AlertCircle, ArrowLeft, CalendarDays, Check, Globe, Info, Link2, Loader
 import type { CalendarDef, CalendarSource } from '../types';
 import { Select } from './ui/Select';
 import { HOLIDAY_COUNTRIES, holidayCountry } from '../data/holidays';
+import { calendarLinkKey } from '../calendarLink';
 
 export const SOURCE_NAME: Record<CalendarSource, string> = {
   get sprint2go() {
@@ -118,7 +119,10 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
     setPicked(subCals[s]?.slice(0, 1) ?? []);
   };
   const linkOk = /^(https?|webcals?):\/\/[^\s/]+\.[^\s]+/i.test(url.trim());
-  const valid = source === 'ics' ? linkOk : source === 'holidays' ? isAdmin && (country || '') !== (ws.holidays?.country ?? '') : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.trim()) && picked.length > 0;
+  // The same link added before (webcal or https, a trailing slash, its query in another order): say so instead.
+  const linkKey = source === 'ics' && linkOk ? calendarLinkKey(url) : null;
+  const dup = linkKey ? existing.find((c) => c.source === 'ics' && !!c.url && calendarLinkKey(c.url) === linkKey) : undefined;
+  const valid = source === 'ics' ? linkOk && !dup : source === 'holidays' ? isAdmin && (country || '') !== (ws.holidays?.country ?? '') : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.trim()) && picked.length > 0;
   const holidaysOn = holidayCountry(ws.holidays?.country);
 
   const connect = async () => {
@@ -292,11 +296,15 @@ export function ConnectCalendar({ me, existing, workspace: ws, isAdmin, live, de
                           placeholder="https://… .ics or webcal://…"
                           aria-invalid={!!error}
                         />
-                        {error && (
+                        {error ? (
                           <small className="err link-err" role="alert">
                             <AlertCircle size={13} /> {error}
                           </small>
-                        )}
+                        ) : dup ? (
+                          <small className="link-dup" role="status">
+                            <Info size={13} /> Already added, as “{dup.name}”. It updates by itself every 30 minutes.
+                          </small>
+                        ) : null}
                       </label>
                       <label className="field">
                         <span>Name</span>

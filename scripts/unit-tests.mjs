@@ -743,6 +743,27 @@ await test('Invites: an all-day invite goes on the calendar as floating dates, s
   assert.deepEqual([t.start, t.end, t.occurrence], ['2026-10-20T02:00:00.000Z', '2026-10-20T03:00:00.000Z', undefined], 'timed invites keep their instants');
 });
 
+await test('Calendar links: the same link written another way is the same calendar', async () => {
+  const { calendarLinkKey } = await import('../src/calendarLink.ts');
+  const base = calendarLinkKey('https://calendar.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1&b=2');
+  for (const same of [
+    'webcal://calendar.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?b=2&a=1',
+    'webcals://CALENDAR.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1&b=2#top',
+    'http://calendar.google.com:80/calendar/ical/abc%40group/private-XyZ/basic.ics/?a=1&b=2',
+    '  https://calendar.google.com:443/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1&b=2  ',
+  ])
+    assert.equal(calendarLinkKey(same), base, same);
+  assert.notEqual(calendarLinkKey('https://calendar.google.com/calendar/ical/abc%40group/private-xyz/basic.ics?a=1&b=2'), base, 'a secret address is case-sensitive');
+  assert.notEqual(calendarLinkKey('https://calendar.google.com/calendar/ical/abc%40group/private-XyZ/basic.ics?a=1'), base, 'a different query is another calendar');
+  assert.equal(calendarLinkKey('ftp://x.example/cal.ics'), null);
+  assert.equal(calendarLinkKey('not a link'), null);
+  // The server says so instead of adding it again (before it reads anything from the link).
+  const feeds = await import('../server/calendarFeeds.ts');
+  db.writeDocs('calendars', [{ id: 'link-dup', name: 'Bookings', source: 'ics', ownerId: 'aj-ana', readOnly: true, url: 'https://cal.example.com/feeds/ana.ics?token=a&v=2', share: 'busy' }], [], null);
+  await assert.rejects(feeds.addLink('aj-ana', { url: 'webcal://CAL.example.com/feeds/ana.ics/?v=2&token=a' }), /already added this calendar, as “Bookings”/);
+  db.writeDocs('calendars', [], ['link-dup'], null);
+});
+
 /* email for teammates who are away (server/digest.ts) */
 
 const digest = await import('../server/digest.ts');

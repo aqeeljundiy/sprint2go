@@ -892,7 +892,8 @@
   color: var(--text-3);
   font-weight: 600;
 }
-.connect-form .link-err {
+.connect-form .link-err,
+.connect-form .link-dup {
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -900,9 +901,19 @@
   line-height: 1.4;
   animation: fadeIn 0.18s ease-out backwards;
 }
-.connect-form .link-err svg {
+.connect-form .link-dup {
+  color: var(--text-2);
+}
+.connect-form .link-err svg,
+.connect-form .link-dup svg {
   flex: none;
   margin-top: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .connect-form .link-err,
+  .connect-form .link-dup {
+    animation: none;
+  }
 }
 .connect-form .field > input[aria-invalid='true'] {
   border-color: var(--danger);
