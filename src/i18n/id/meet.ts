@@ -127,7 +127,7 @@ const id: Record<string, string> = {
   'Transcribe again in': 'Transkrip ulang dalam',
   'Your company’s meeting languages': 'Bahasa rapat perusahaan Anda',
   'Used last time': 'Dipakai terakhir kali',
-  Unknown: 'Tidak dikenal',
+  Unknown: 'Tidak diketahui',
   'Waiting for people to talk… (captions must be on in the meeting)': 'Menunggu ada yang bicara… (teks di rapat harus dinyalakan)',
   'No transcript.': 'Tidak ada transkrip.',
   'Nothing logged yet.': 'Belum ada yang tercatat.',

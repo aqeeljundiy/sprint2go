@@ -1026,7 +1026,8 @@ export interface TableLogEntry {
   at: string;
   dir: 'in' | 'out';
   ok: boolean;
-  text: string; // what happened, in a sentence
+  text: string; // what happened, in a sentence (English)
+  tr?: Msg; // the same sentence for each reader's language (textOf)
   rowId?: string;
 }
 
@@ -1147,7 +1148,7 @@ export interface TableRow {
   updatedAt: string;
   comments?: { id: string; by: string; at: string; text: string }[];
   extra?: Record<string, unknown>; // incoming data no field was mapped to (kept, never lost)
-  runs?: { fieldId: string; at: string; by: string; ok: boolean; note: string }[]; // button presses on this row
+  runs?: { fieldId: string; at: string; by: string; ok: boolean; note: string; tr?: Msg }[]; // button presses on this row (note in English, tr for textOf)
   history?: { by: string; at: string; fieldId: string; from: CellValue; to: CellValue }[];
 }
 

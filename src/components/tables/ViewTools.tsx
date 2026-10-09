@@ -6,15 +6,16 @@ import { PickSelect } from '../ui/PickSelect';
 import { PersonSelect } from '../ui/PeoplePicker';
 import { DatePicker } from '../ui/DatePicker';
 import { fieldIcon, opsFor, quickFilters, sortWords, type TCtx } from './fields';
+import { t, tx } from '../../i18n';
 
 /* The tools that shape a view: filter (quick values, then conditions with groups), sort, fields, group, colours.
    The same pieces sit in desktop popovers and in the phone's sheets. */
 
 type FilterPatch = Pick<TableViewTweak, 'filters' | 'filterMode' | 'filterGroups'>;
 
-const usableFields = (t: DataTable) => t.fields.filter((f) => f.type !== 'button');
-const blank = (t: DataTable): TableFilter => {
-  const f = usableFields(t).find((x) => x.type === 'select') ?? usableFields(t)[0];
+const usableFields = (tb: DataTable) => tb.fields.filter((f) => f.type !== 'button');
+const blank = (tb: DataTable): TableFilter => {
+  const f = usableFields(tb).find((x) => x.type === 'select') ?? usableFields(tb)[0];
   return { fieldId: f.id, op: opsFor(f.type)[0].op };
 };
 
@@ -30,7 +31,7 @@ export function ConditionRow({ table, flt, lead, users, me, onChange, onRemove }
       <span className="tb-filter-lead">{lead}</span>
       <PickSelect
         value={f.id}
-        aria-label="Field"
+        aria-label={t('Field')}
         onChange={(e) => {
           const nf = table.fields.find((x) => x.id === e.target.value)!;
           onChange({ fieldId: nf.id, op: opsFor(nf.type)[0].op });
@@ -42,7 +43,7 @@ export function ConditionRow({ table, flt, lead, users, me, onChange, onRemove }
           </option>
         ))}
       </PickSelect>
-      <PickSelect value={flt.op} aria-label="Test" onChange={(e) => set({ op: e.target.value as TableFilter['op'] })}>
+      <PickSelect value={flt.op} aria-label={t('Test')} onChange={(e) => set({ op: e.target.value as TableFilter['op'] })}>
         {opsFor(f.type).map((o) => (
           <option key={o.op} value={o.op}>
             {o.label}
@@ -51,8 +52,8 @@ export function ConditionRow({ table, flt, lead, users, me, onChange, onRemove }
       </PickSelect>
       {needsValue ? (
         f.type === 'select' || f.type === 'multi' ? (
-          <PickSelect value={flt.value ?? ''} aria-label="Value" onChange={(e) => set({ value: e.target.value })}>
-            <option value="">Choose…</option>
+          <PickSelect value={flt.value ?? ''} aria-label={t('Value')} onChange={(e) => set({ value: e.target.value })}>
+            <option value="">{t('Choose…')}</option>
             {(f.options ?? []).map((o) => (
               <option key={o.id} value={o.id}>
                 {o.label}
@@ -60,41 +61,44 @@ export function ConditionRow({ table, flt, lead, users, me, onChange, onRemove }
             ))}
           </PickSelect>
         ) : f.type === 'person' || f.type === 'creator' ? (
-          <PersonSelect value={flt.value ?? ''} users={users} me={me} label="Person" extra={[{ value: '@me', label: 'Me (whoever is looking)', icon: <UserRound size={15} /> }]} onChange={(v) => set({ value: v })} />
+          <PersonSelect value={flt.value ?? ''} users={users} me={me} label={t('Person')} extra={[{ value: '@me', label: t('Me (whoever is looking)'), icon: <UserRound size={15} /> }]} onChange={(v) => set({ value: v })} />
         ) : f.type === 'checkbox' ? (
-          <PickSelect value={flt.value ?? 'yes'} aria-label="Value" onChange={(e) => set({ value: e.target.value })}>
-            <option value="yes">Checked</option>
-            <option value="no">Not checked</option>
+          <PickSelect value={flt.value ?? 'yes'} aria-label={t('Value')} onChange={(e) => set({ value: e.target.value })}>
+            <option value="yes">{t('Checked')}</option>
+            <option value="no">{t('Not checked')}</option>
           </PickSelect>
         ) : isDate ? (
           <span className="tb-filter-date">
             <button type="button" className={`tb-chip linked${flt.value === '@today' ? ' on' : ''}`} onClick={() => set({ value: '@today' })}>
-              Today
+              {t('Today')}
             </button>
-            <DatePicker value={flt.value && flt.value !== '@today' ? flt.value : ''} onChange={(d) => set({ value: d })} label="Date" placeholder="A date" className="sel-flat" />
+            <DatePicker value={flt.value && flt.value !== '@today' ? flt.value : ''} onChange={(d) => set({ value: d })} label={t('Date')} placeholder={t('A date')} className="sel-flat" />
           </span>
         ) : (
-          <input className="tb-native" inputMode={['number', 'money', 'rating', 'rollup'].includes(f.type) ? 'decimal' : undefined} value={flt.value ?? ''} placeholder="Value" aria-label="Value" onChange={(e) => set({ value: e.target.value })} />
+          <input className="tb-native" inputMode={['number', 'money', 'rating', 'rollup'].includes(f.type) ? 'decimal' : undefined} value={flt.value ?? ''} placeholder={t('Value')} aria-label={t('Value')} onChange={(e) => set({ value: e.target.value })} />
         )
       ) : (
         <span />
       )}
-      <button type="button" className="icon-btn sm tb-filter-x" aria-label="Remove condition" onClick={onRemove}>
+      <button type="button" className="icon-btn sm tb-filter-x" aria-label={t('Remove condition')} onClick={onRemove}>
         <X size={14} />
       </button>
     </div>
   );
 }
 
+/** The word before a condition: "Where" for the first, then "and" or "or". */
+const lead = (i: number, mode: 'and' | 'or') => (i === 0 ? tx('filter', 'Where') : mode === 'and' ? tx('filter', 'and') : tx('filter', 'or'));
+
 /** All of these / Any of these. */
 function ModeSwitch({ mode, onMode, small }: { mode: 'and' | 'or'; onMode: (m: 'and' | 'or') => void; small?: boolean }) {
   return (
     <div className={`segmented sm tb-filter-mode${small ? ' in-group' : ''}`}>
       <button type="button" className={mode === 'and' ? 'on' : ''} onClick={() => onMode('and')}>
-        All of these
+        {t('All of these')}
       </button>
       <button type="button" className={mode === 'or' ? 'on' : ''} onClick={() => onMode('or')}>
-        Any of these
+        {t('Any of these')}
       </button>
     </div>
   );
@@ -136,40 +140,40 @@ export function FilterPanel({ table, view, rows, ctx, onChange }: { table: DataT
         </div>
       )}
       <div className="tb-cond-head">
-        <span className="tb-quick-label">Conditions</span>
+        <span className="tb-quick-label">{t('Conditions')}</span>
         {items > 1 && <ModeSwitch mode={mode} onMode={(m) => onChange({ filterMode: m })} />}
       </div>
-      {!items && <p className="muted small">Show only the rows you want: Status is New, Follow-up before today, Owner is you.</p>}
+      {!items && <p className="muted small">{t('Show only the rows you want: Status is New, Follow-up before today, Owner is you.')}</p>}
       {filters.map((flt, i) => (
-        <ConditionRow key={`c${i}`} table={table} flt={flt} lead={i === 0 ? 'Where' : mode === 'and' ? 'and' : 'or'} users={ctx.users} me={ctx.me} onChange={(nf) => onChange({ filters: filters.map((x, j) => (j === i ? nf : x)) })} onRemove={() => onChange({ filters: filters.filter((_, j) => j !== i) })} />
+        <ConditionRow key={`c${i}`} table={table} flt={flt} lead={lead(i, mode)} users={ctx.users} me={ctx.me} onChange={(nf) => onChange({ filters: filters.map((x, j) => (j === i ? nf : x)) })} onRemove={() => onChange({ filters: filters.filter((_, j) => j !== i) })} />
       ))}
       {groups.map((g, gi) => (
         <div key={g.id} className="tb-fgroup">
           <div className="tb-fgroup-head">
-            <span className="tb-filter-lead">{filters.length + gi === 0 ? 'Where' : mode === 'and' ? 'and' : 'or'}</span>
+            <span className="tb-filter-lead">{lead(filters.length + gi, mode)}</span>
             <ModeSwitch mode={g.mode} onMode={(m) => setGroup(g.id, { mode: m })} small />
-            <button type="button" className="icon-btn sm" aria-label="Remove group" onClick={() => onChange({ filterGroups: groups.filter((x) => x.id !== g.id) })}>
+            <button type="button" className="icon-btn sm" aria-label={t('Remove group')} onClick={() => onChange({ filterGroups: groups.filter((x) => x.id !== g.id) })}>
               <X size={14} />
             </button>
           </div>
           {g.filters.map((flt, i) => (
-            <ConditionRow key={i} table={table} flt={flt} lead={i === 0 ? 'Where' : g.mode === 'and' ? 'and' : 'or'} users={ctx.users} me={ctx.me} onChange={(nf) => setGroup(g.id, { filters: g.filters.map((x, j) => (j === i ? nf : x)) })} onRemove={() => setGroup(g.id, { filters: g.filters.filter((_, j) => j !== i) })} />
+            <ConditionRow key={i} table={table} flt={flt} lead={lead(i, g.mode)} users={ctx.users} me={ctx.me} onChange={(nf) => setGroup(g.id, { filters: g.filters.map((x, j) => (j === i ? nf : x)) })} onRemove={() => setGroup(g.id, { filters: g.filters.filter((_, j) => j !== i) })} />
           ))}
           <button type="button" className="link-btn small tb-fgroup-add" onClick={() => setGroup(g.id, { filters: [...g.filters, blank(table)] })}>
-            <Plus size={13} /> Add a condition to this group
+            <Plus size={13} /> {t('Add a condition to this group')}
           </button>
         </div>
       ))}
       <div className="tb-filters-foot">
         <button type="button" className="link-btn small" onClick={() => onChange({ filters: [...filters, blank(table)] })}>
-          <Plus size={13} /> Add a condition
+          <Plus size={13} /> {t('Add a condition')}
         </button>
         <button type="button" className="link-btn small" onClick={() => onChange({ filterGroups: [...groups, { id: uid(), mode: 'or', filters: [blank(table)] }] })}>
-          <Plus size={13} /> Add a group
+          <Plus size={13} /> {t('Add a group')}
         </button>
         {items > 0 && (
           <button type="button" className="link-btn small tb-clear-all" onClick={() => onChange({ filters: [], filterGroups: [] })}>
-            Clear all
+            {t('Clear all')}
           </button>
         )}
       </div>
@@ -183,25 +187,25 @@ export function SortEditor({ table, sorts, onChange }: { table: DataTable; sorts
   const set = (i: number, p: Partial<{ fieldId: string; dir: 'asc' | 'desc' }>) => onChange(sorts.map((s, j) => (j === i ? { ...s, ...p } : s)));
   return (
     <div className="tb-filters">
-      {!sorts.length && <p className="muted small">Rows are in your own order. Sort to order them by a field instead.</p>}
+      {!sorts.length && <p className="muted small">{t('Rows are in your own order. Sort to order them by a field instead.')}</p>}
       {sorts.map((s, i) => {
         const f = table.fields.find((x) => x.id === s.fieldId) ?? sortable[0];
         const [asc, desc] = sortWords(f.type);
         return (
           <div key={i} className="tb-filter tb-sort">
-            <span className="tb-filter-lead">{i === 0 ? 'Sort by' : 'then by'}</span>
-            <PickSelect value={f.id} aria-label="Field" onChange={(e) => set(i, { fieldId: e.target.value })}>
+            <span className="tb-filter-lead">{i === 0 ? t('Sort by') : t('then by')}</span>
+            <PickSelect value={f.id} aria-label={t('Field')} onChange={(e) => set(i, { fieldId: e.target.value })}>
               {sortable.map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.name}
                 </option>
               ))}
             </PickSelect>
-            <PickSelect value={s.dir} aria-label="Direction" onChange={(e) => set(i, { dir: e.target.value as 'asc' | 'desc' })}>
+            <PickSelect value={s.dir} aria-label={t('Direction')} onChange={(e) => set(i, { dir: e.target.value as 'asc' | 'desc' })}>
               <option value="asc">{asc}</option>
               <option value="desc">{desc}</option>
             </PickSelect>
-            <button type="button" className="icon-btn sm tb-filter-x" aria-label="Remove sort" onClick={() => onChange(sorts.filter((_, j) => j !== i))}>
+            <button type="button" className="icon-btn sm tb-filter-x" aria-label={t('Remove sort')} onClick={() => onChange(sorts.filter((_, j) => j !== i))}>
               <X size={14} />
             </button>
           </div>
@@ -209,11 +213,11 @@ export function SortEditor({ table, sorts, onChange }: { table: DataTable; sorts
       })}
       <div className="tb-filters-foot">
         <button type="button" className="link-btn small" onClick={() => onChange([...sorts, { fieldId: (sortable.find((f) => !sorts.some((s) => s.fieldId === f.id)) ?? sortable[0]).id, dir: 'asc' }])}>
-          <Plus size={13} /> {sorts.length ? 'Then by…' : 'Add a sort'}
+          <Plus size={13} /> {sorts.length ? t('Then by…') : t('Add a sort')}
         </button>
         {sorts.length > 0 && (
           <button type="button" className="link-btn small" onClick={() => onChange([])}>
-            Back to your own order
+            {t('Back to your own order')}
           </button>
         )}
       </div>
@@ -222,7 +226,7 @@ export function SortEditor({ table, sorts, onChange }: { table: DataTable; sorts
 }
 
 /** Fields in this view: show or hide each, and move them (drag, or the arrows, which work on phones and keyboards). */
-export function FieldsEditor({ t, view, onView, all: allIn }: { t: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void; all: TableField[] }) {
+export function FieldsEditor({ t: tb, view, onView, all: allIn }: { t: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void; all: TableField[] }) {
   const all = allIn;
   const hidden = new Set(view.hidden ?? []);
   const [drag, setDrag] = useState<string | null>(null);
@@ -240,9 +244,9 @@ export function FieldsEditor({ t, view, onView, all: allIn }: { t: DataTable; vi
   };
   return (
     <div className="tab-edit-list tb-fields-edit">
-      <p className="muted small">What this view shows, in this order.</p>
+      <p className="muted small">{t('What this view shows, in this order.')}</p>
       {all.map((f, i) => {
-        const isName = f.id === t.fields[0].id;
+        const isName = f.id === tb.fields[0].id;
         const I = fieldIcon(f.type);
         return (
           <div
@@ -257,28 +261,28 @@ export function FieldsEditor({ t, view, onView, all: allIn }: { t: DataTable; vi
             <GripVertical size={14} className="muted tb-drag" />
             <I size={14} className="muted" />
             <span className="tab-edit-name">{f.name}</span>
-            <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(f.id, i - 1)} aria-label={`Move ${f.name} up`}>
+            <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(f.id, i - 1)} aria-label={t('Move {name} up', { name: f.name })}>
               <ArrowUp size={14} />
             </button>
-            <button type="button" className="icon-btn sm" disabled={i === all.length - 1} onClick={() => move(f.id, i + 1)} aria-label={`Move ${f.name} down`}>
+            <button type="button" className="icon-btn sm" disabled={i === all.length - 1} onClick={() => move(f.id, i + 1)} aria-label={t('Move {name} down', { name: f.name })}>
               <ArrowDown size={14} />
             </button>
             {!isName ? (
-              <button type="button" className="icon-btn sm" onClick={() => onView({ hidden: hidden.has(f.id) ? [...hidden].filter((x) => x !== f.id) : [...hidden, f.id] })} aria-label={hidden.has(f.id) ? `Show ${f.name}` : `Hide ${f.name}`}>
+              <button type="button" className="icon-btn sm" onClick={() => onView({ hidden: hidden.has(f.id) ? [...hidden].filter((x) => x !== f.id) : [...hidden, f.id] })} aria-label={hidden.has(f.id) ? t('Show {name}', { name: f.name }) : t('Hide {name}', { name: f.name })}>
                 {hidden.has(f.id) ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             ) : (
-              <small className="muted tb-name-note">name</small>
+              <small className="muted tb-name-note">{t('name')}</small>
             )}
           </div>
         );
       })}
       <div className="tab-edit-foot">
         <button type="button" className="link-btn small" onClick={() => onView({ hidden: [] })}>
-          Show all
+          {t('Show all')}
         </button>
-        <button type="button" className="link-btn small" onClick={() => onView({ hidden: all.filter((f) => f.id !== t.fields[0].id).map((f) => f.id) })}>
-          Hide all
+        <button type="button" className="link-btn small" onClick={() => onView({ hidden: all.filter((f) => f.id !== tb.fields[0].id).map((f) => f.id) })}>
+          {t('Hide all')}
         </button>
       </div>
     </div>
@@ -286,16 +290,16 @@ export function FieldsEditor({ t, view, onView, all: allIn }: { t: DataTable; vi
 }
 
 /** Group rows by a field, then (optionally) by another inside each group. On a board: columns, then swimlanes. */
-export function GroupEditor({ t, view, onView, board }: { t: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void; board?: boolean }) {
-  const groupable = t.fields.filter((f) => !['button', 'files', 'longtext', 'link'].includes(f.type));
-  const selects = t.fields.filter((f) => f.type === 'select');
+export function GroupEditor({ t: tb, view, onView, board }: { t: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void; board?: boolean }) {
+  const groupable = tb.fields.filter((f) => !['button', 'files', 'longtext', 'link'].includes(f.type));
+  const selects = tb.fields.filter((f) => f.type === 'select');
   const main = board ? (view.groupBy ?? selects[0]?.id ?? '') : (view.groupBy ?? '');
   return (
     <div className="tb-group-edit">
       <label className="tb-ge-row">
-        <span>{board ? 'Columns from' : 'Group by'}</span>
-        <PickSelect value={main} aria-label={board ? 'Columns from' : 'Group by'} onChange={(e) => onView({ groupBy: e.target.value || undefined, collapsed: [], subGroupBy: e.target.value && e.target.value !== view.subGroupBy ? view.subGroupBy : undefined })}>
-          {!board && <option value="">No grouping</option>}
+        <span>{board ? t('Columns from') : t('Group by')}</span>
+        <PickSelect value={main} aria-label={board ? t('Columns from') : t('Group by')} onChange={(e) => onView({ groupBy: e.target.value || undefined, collapsed: [], subGroupBy: e.target.value && e.target.value !== view.subGroupBy ? view.subGroupBy : undefined })}>
+          {!board && <option value="">{t('No grouping')}</option>}
           {(board ? selects : groupable).map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
@@ -305,9 +309,9 @@ export function GroupEditor({ t, view, onView, board }: { t: DataTable; view: Ta
       </label>
       {main && (
         <label className="tb-ge-row">
-          <span>{board ? 'Swimlanes by' : 'Then by'}</span>
-          <PickSelect value={view.subGroupBy ?? ''} aria-label={board ? 'Swimlanes by' : 'Then group by'} onChange={(e) => onView({ subGroupBy: e.target.value || undefined })}>
-            <option value="">{board ? 'No swimlanes' : 'Nothing'}</option>
+          <span>{board ? t('Swimlanes by') : t('Then by')}</span>
+          <PickSelect value={view.subGroupBy ?? ''} aria-label={board ? t('Swimlanes by') : t('Then group by')} onChange={(e) => onView({ subGroupBy: e.target.value || undefined })}>
+            <option value="">{board ? t('No swimlanes') : t('Nothing')}</option>
             {groupable
               .filter((f) => f.id !== main)
               .map((f) => (
@@ -318,7 +322,7 @@ export function GroupEditor({ t, view, onView, board }: { t: DataTable; view: Ta
           </PickSelect>
         </label>
       )}
-      <p className="muted small">{board ? 'Swimlanes split the board into rows, one for each value, each with all the columns.' : 'Rows gather under a heading for each value, with a count, and fold open and shut.'}</p>
+      <p className="muted small">{board ? t('Swimlanes split the board into rows, one for each value, each with all the columns.') : t('Rows gather under a heading for each value, with a count, and fold open and shut.')}</p>
     </div>
   );
 }
@@ -326,10 +330,10 @@ export function GroupEditor({ t, view, onView, board }: { t: DataTable; view: Ta
 const RULE_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
 
 /** A first colour rule that's useful straight away: past a date in red (overdue), else a choice. */
-function firstRule(t: DataTable, n: number): TableColorRule {
-  const date = t.fields.find((f) => f.type === 'date');
+function firstRule(tb: DataTable, n: number): TableColorRule {
+  const date = tb.fields.find((f) => f.type === 'date');
   if (date && n === 0) return { id: uid(), when: { fieldId: date.id, op: 'lt', value: '@today' }, color: '#ef4444', target: 'row' };
-  return { id: uid(), when: blank(t), color: RULE_COLORS[n % RULE_COLORS.length], target: 'row' };
+  return { id: uid(), when: blank(tb), color: RULE_COLORS[n % RULE_COLORS.length], target: 'row' };
 }
 
 /** Colour rules: rows (or one cell) that match get a tint, like overdue in red or won in green. */
@@ -338,22 +342,22 @@ export function ColorRulesEditor({ table, view, users, me, onView }: { table: Da
   const set = (id: string, p: Partial<TableColorRule>) => onView({ colors: rules.map((r) => (r.id === id ? { ...r, ...p } : r)) });
   return (
     <div className="tb-filters tb-colors-edit">
-      {!rules.length && <p className="muted small">Tint the rows that need a look: Follow-up before today in red, Won in green. Only this view.</p>}
+      {!rules.length && <p className="muted small">{t('Tint the rows that need a look: Follow-up before today in red, Won in green. Only this view.')}</p>}
       {rules.map((r) => (
         <div key={r.id} className="tb-crule">
-          <ConditionRow table={table} flt={r.when} lead="When" users={users} me={me} onChange={(when) => set(r.id, { when })} onRemove={() => onView({ colors: rules.filter((x) => x.id !== r.id) })} />
+          <ConditionRow table={table} flt={r.when} lead={tx('color', 'When')} users={users} me={me} onChange={(when) => set(r.id, { when })} onRemove={() => onView({ colors: rules.filter((x) => x.id !== r.id) })} />
           <div className="tb-crule-look">
-            <div className="tb-colors" role="radiogroup" aria-label="Colour">
+            <div className="tb-colors" role="radiogroup" aria-label={t('Colour')}>
               {RULE_COLORS.map((c) => (
                 <button key={c} type="button" role="radio" aria-checked={r.color === c} className={`tb-dot big${r.color === c ? ' on' : ''}`} style={{ background: c }} onClick={() => set(r.id, { color: c })} aria-label={c} />
               ))}
             </div>
             <div className="segmented sm">
               <button type="button" className={r.target === 'row' ? 'on' : ''} onClick={() => set(r.id, { target: 'row' })}>
-                Whole row
+                {t('Whole row')}
               </button>
               <button type="button" className={r.target === 'cell' ? 'on' : ''} onClick={() => set(r.id, { target: 'cell' })}>
-                Just {table.fields.find((f) => f.id === r.when.fieldId)?.name ?? 'the cell'}
+                {t('Just {field}', { field: table.fields.find((f) => f.id === r.when.fieldId)?.name ?? t('the cell') })}
               </button>
             </div>
           </div>
@@ -361,7 +365,7 @@ export function ColorRulesEditor({ table, view, users, me, onView }: { table: Da
       ))}
       <div className="tb-filters-foot">
         <button type="button" className="link-btn small" onClick={() => onView({ colors: [...rules, firstRule(table, rules.length)] })}>
-          <Plus size={13} /> Add a colour rule
+          <Plus size={13} /> {t('Add a colour rule')}
         </button>
       </div>
     </div>

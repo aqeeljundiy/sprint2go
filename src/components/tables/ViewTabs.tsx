@@ -3,6 +3,7 @@ import { ChevronDown, Plus } from 'lucide-react';
 import type { TableViewDef } from '../../types';
 import { Popover } from '../ui/Popover';
 import { viewIcon } from './viewKinds';
+import { t, tn } from '../../i18n';
 
 /**
  * A table's views as tabs. As many as fit the row show; the rest are one click away under "N more" (the open view
@@ -75,7 +76,7 @@ export function ViewTabs({ views, current, canEdit, onSelect, onMenu, onReorder,
           );
         })}
       </div>
-      <div className="client-tabs tb-views" role="tablist" aria-label="Views" onDragOver={(e) => drag && e.preventDefault()} onDrop={(e) => (e.preventDefault(), drop())}>
+      <div className="client-tabs tb-views" role="tablist" aria-label={t('Views')} onDragOver={(e) => drag && e.preventDefault()} onDrop={(e) => (e.preventDefault(), drop())}>
         {shown.map((v) => {
           const I = viewIcon(v.kind);
           const on = v.id === current;
@@ -86,7 +87,7 @@ export function ViewTabs({ views, current, canEdit, onSelect, onMenu, onReorder,
               role="tab"
               aria-selected={on}
               className={`${on ? 'on' : ''}${drag === v.id ? ' tab-dragging' : ''}${over?.id === v.id && drag !== v.id ? (over.after ? ' drop-after' : ' drop-before') : ''}`}
-              title={on && onMenu ? 'View options' : undefined}
+              title={on && onMenu ? t('View options') : undefined}
               draggable={canEdit}
               onDragStart={(e) => ((e.dataTransfer.effectAllowed = 'move'), e.dataTransfer.setData('text/plain', v.id), setDrag(v.id))}
               onDragEnd={() => (setDrag(null), setOver(null))}
@@ -109,10 +110,10 @@ export function ViewTabs({ views, current, canEdit, onSelect, onMenu, onReorder,
       {hidden.length > 0 && (
         <>
           <button ref={moreRef} type="button" className="tb-vmore" onClick={() => setMore(true)} aria-haspopup="menu">
-            {hidden.length} more
+            {tn(hidden.length, '{n} more', '{n} more')}
             <ChevronDown size={13} />
           </button>
-          <Popover anchor={moreRef} open={more} onClose={() => setMore(false)} width={240} title="More views">
+          <Popover anchor={moreRef} open={more} onClose={() => setMore(false)} width={240} title={t('More views')}>
             <div className="tb-menu">
               {hidden.map((v) => {
                 const I = viewIcon(v.kind);
@@ -127,7 +128,7 @@ export function ViewTabs({ views, current, canEdit, onSelect, onMenu, onReorder,
         </>
       )}
       {onAdd && (
-        <button type="button" className="tb-add-view icon-btn sm" onClick={(e) => onAdd(e.currentTarget)} title="Add a view" aria-label="Add a view">
+        <button type="button" className="tb-add-view icon-btn sm" onClick={(e) => onAdd(e.currentTarget)} title={t('Add a view')} aria-label={t('Add a view')}>
           <Plus size={15} />
         </button>
       )}

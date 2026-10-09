@@ -1886,7 +1886,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}) }] } : x)));
     if (toClient) {
       const c = clients.find((x) => x.id === t.clientId);
-      tellClient(t, msg('{name} replied on “{title}”: “{text}”', { name: c ? teamLabel(user, accessFor(ws, c), ws.name) : myFirst, title: t.title, text: text.slice(0, 80) }));
+      // "{company} team" is read in each guest's own language; a name is a name.
+      const name = !c ? myFirst : accessFor(ws, c).teamNames === 'hide' ? phrase('{company} team', { company: ws.name }) : teamLabel(user, accessFor(ws, c), ws.name);
+      tellClient(t, msg('{name} replied on “{title}”: “{text}”', { name, title: t.title, text: text.slice(0, 80) }));
     }
     const tell = new Set([...doersOf(t), t.supervisorId, ...(t.followers ?? []), ...members.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id)].filter((x): x is string => !!x && x !== user.id));
     tell.forEach((x) => notify(x, 'task', msg('{name} commented on “{title}”: “{text}”', { name: myFirst, title: t.title, text: text.slice(0, 80) }), { app: 'tasks', id }));
@@ -5206,13 +5208,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onCreate={(w, newUsers) => {
             newUsers.forEach(onInvite);
             setWorkspaces((list) => [...list, w]);
-            // Starter tables for what the company does, so Tables isn't empty on day one.
+            // Starter tables for what the company does, so Tables isn't empty on day one (named in the maker's language).
             const starters: Record<string, { name: string; template: TemplateId }[]> = {
-              agency: [{ name: 'Leads', template: 'leads' }, { name: 'Content pipeline', template: 'pipeline' }],
-              ecommerce: [{ name: 'Customers', template: 'leads' }, { name: 'Product launches', template: 'pipeline' }],
-              consulting: [{ name: 'Prospects', template: 'leads' }, { name: 'Engagements', template: 'tracker' }],
-              software: [{ name: 'Roadmap', template: 'pipeline' }, { name: 'Bugs', template: 'tracker' }],
-              events: [{ name: 'Sponsors', template: 'leads' }, { name: 'Vendors', template: 'tracker' }],
+              agency: [{ name: t('Leads'), template: 'leads' }, { name: t('Content pipeline'), template: 'pipeline' }],
+              ecommerce: [{ name: t('Customers'), template: 'leads' }, { name: t('Product launches'), template: 'pipeline' }],
+              consulting: [{ name: t('Prospects'), template: 'leads' }, { name: t('Engagements'), template: 'tracker' }],
+              software: [{ name: t('Roadmap'), template: 'pipeline' }, { name: t('Bugs'), template: 'tracker' }],
+              events: [{ name: t('Sponsors'), template: 'leads' }, { name: t('Vendors'), template: 'tracker' }],
             };
             const made = (starters[w.industry ?? ''] ?? []).map((d) => makeTable(d, w.id, user.id));
             if (made.length) setTables((ts) => [...ts, ...made]);

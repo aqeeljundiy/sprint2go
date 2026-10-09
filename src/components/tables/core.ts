@@ -1,5 +1,8 @@
 import type { CalcKind, CellValue, DataTable, FieldType, FileRef, RowTemplate, TableField, TableFilter, TableFilterGroup, TableRow, TableViewDef, TableViewTweak, User } from '../../types';
 import { localDay, uid } from '../../utils';
+// The server loads this file too: the full paths, and only t/tx/mark and the format helpers (docs/i18n.md).
+import { getLang, t, textOf, tx, type Msg } from '../../i18n/index';
+import { fmtDate, fmtList, fmtMoney, fmtNumber, fmtTime, toDate, weekdayName } from '../../i18n/format';
 
 /* Pure table logic, shared by the app and the server (no React, no icons). */
 
@@ -11,22 +14,25 @@ const option = (label: string, color: string) => ({ id: uid(), label, color });
 
 export const isEmpty = (v: CellValue | undefined) => v == null || v === '' || (Array.isArray(v) && !v.length) || v === false;
 
-const CURRENCY: Record<string, { locale: string; code: string }> = {
-  IDR: { locale: 'id-ID', code: 'IDR' },
-  USD: { locale: 'en-US', code: 'USD' },
-  SGD: { locale: 'en-SG', code: 'SGD' },
-  EUR: { locale: 'de-DE', code: 'EUR' },
-};
+const CURRENCIES = ['IDR', 'USD', 'SGD', 'EUR'];
+/** Money in its currency: "Rp 39.000" in both languages, other currencies the reader's way ("US$1,234.50" / "US$1.234,50"). */
 export function money(n: number, currency = 'IDR') {
-  const c = CURRENCY[currency] ?? CURRENCY.IDR;
-  return new Intl.NumberFormat(c.locale, { style: 'currency', currency: c.code, maximumFractionDigits: currency === 'IDR' ? 0 : 2 }).format(n);
+  const code = CURRENCIES.includes(currency) ? currency : 'IDR';
+  if (code === 'IDR') return (n < 0 ? '-' : '') + fmtMoney(Math.abs(n)).replace(' ', '\u00a0'); // "Rp" never wraps away from its number
+  return fmtMoney(n, code, { maximumFractionDigits: 2 });
 }
 
 /** One row's name: its first field, or "Untitled". */
-export const rowName = (t: DataTable, r: TableRow | undefined) => {
-  const v = r?.values[t.fields[0]?.id];
-  return (typeof v === 'string' && v.trim()) || (typeof v === 'number' ? String(v) : '') || 'Untitled';
+export const rowName = (tb: DataTable, r: TableRow | undefined) => {
+  const v = r?.values[tb.fields[0]?.id];
+  return (typeof v === 'string' && v.trim()) || (typeof v === 'number' ? String(v) : '') || t('Untitled');
 };
+
+/**
+ * What the server said a button or rule did, in the reader's language: its own words when it sent them (`tr`), else
+ * its fixed English looked up (older notes, a guest's "Done").
+ */
+export const noteOf = (x: { note: string; tr?: Msg }) => (x.tr ? textOf({ text: x.note, tr: x.tr }) : t(x.note));
 
 /** What cell helpers need to know: people (for names), and for links and rollups the rows and tables. */
 export interface TCtx {
@@ -102,7 +108,11 @@ function rollupValue(t: DataTable, f: TableField, r: TableRow, ctx: TCtx, depth:
   return Math.max(...nums);
 }
 
-const dateTime = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+/** A day or a moment the reader's way ("8 Oct 2026" / "8 Okt 2026"); text that isn't a date stays as it is. */
+const asDate = (v: string, opts: Intl.DateTimeFormatOptions) => (Number.isNaN(toDate(v).getTime()) ? v : fmtDate(v, opts));
+const dateTime = (iso: string) => asDate(iso, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+/** A number the reader's way, with at most two decimals: 1,234.5 / 1.234,5. */
+const num = (n: number) => fmtNumber(n, { maximumFractionDigits: 2 });
 
 /** A cell as plain text: for search, sorting, CSV and copying. */
 export function cellText(f: TableField, v: CellValue | undefined, ctx: TCtx): string {
@@ -115,13 +125,13 @@ export function cellText(f: TableField, v: CellValue | undefined, ctx: TCtx): st
     case 'person':
       return ctx.users.find((u) => u.id === v)?.name ?? '';
     case 'creator':
-      return v === 'webhook' ? 'Webhook' : String(v).includes('@') ? String(v) : (ctx.users.find((u) => u.id === v)?.name ?? 'Someone');
+      return v === 'webhook' ? 'Webhook' : String(v).includes('@') ? String(v) : (ctx.users.find((u) => u.id === v)?.name ?? t('Someone'));
     case 'money':
       return money(Number(v), f.currency);
     case 'checkbox':
-      return v ? 'Yes' : '';
+      return v ? t('Yes') : '';
     case 'date':
-      return new Date(`${v}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+      return asDate(String(v), { day: 'numeric', month: 'short', year: 'numeric' });
     case 'created':
     case 'edited':
       return dateTime(String(v));
@@ -133,7 +143,7 @@ export function cellText(f: TableField, v: CellValue | undefined, ctx: TCtx): st
       return `${Number(v)}/${f.max ?? 5}`;
     case 'formula':
     case 'rollup':
-      return typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 })) : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v);
+      return typeof v === 'number' ? num(v) : typeof v === 'boolean' ? (v ? t('Yes') : t('No')) : String(v);
     default:
       return String(v);
   }
@@ -151,12 +161,12 @@ function sortKey(f: TableField, v: CellValue | undefined, ctx: TCtx): number | s
 }
 
 /** Words for the two sort directions, in the field's own terms. */
-export function sortWords(t: FieldType): [string, string] {
-  if (t === 'number' || t === 'money' || t === 'rating' || t === 'rollup' || t === 'formula') return ['Low to high', 'High to low'];
-  if (t === 'date' || t === 'created' || t === 'edited') return ['Oldest first', 'Newest first'];
-  if (t === 'select') return ['In choice order', 'Reverse choice order'];
-  if (t === 'checkbox') return ['Unchecked first', 'Checked first'];
-  return ['A to Z', 'Z to A'];
+export function sortWords(type: FieldType): [string, string] {
+  if (type === 'number' || type === 'money' || type === 'rating' || type === 'rollup' || type === 'formula') return [t('Low to high'), t('High to low')];
+  if (type === 'date' || type === 'created' || type === 'edited') return [t('Oldest first'), t('Newest first')];
+  if (type === 'select') return [t('In choice order'), t('Reverse choice order')];
+  if (type === 'checkbox') return [t('Unchecked first'), t('Checked first')];
+  return [t('A to Z'), t('Z to A')];
 }
 
 /** Does a row pass one filter? */
@@ -181,18 +191,22 @@ export function passes(flt: TableFilter, f: TableField, v0: CellValue | undefine
   }
 }
 
-/** Which filter tests make sense for a kind of field. */
-export function opsFor(t: FieldType): { op: TableFilter['op']; label: string }[] {
+/**
+ * Which filter tests make sense for a kind of field, in words that sit between the field's name and the value
+ * ("Status is New", "Due before today"). Translated with a context: "is", "on" and "before" are short and mean
+ * something else elsewhere.
+ */
+export function opsFor(type: FieldType): { op: TableFilter['op']; label: string }[] {
   const base = [
-    { op: 'empty' as const, label: 'is empty' },
-    { op: 'filled' as const, label: 'is not empty' },
+    { op: 'empty' as const, label: tx('filter', 'is empty') },
+    { op: 'filled' as const, label: tx('filter', 'is not empty') },
   ];
-  if (t === 'select' || t === 'multi' || t === 'person' || t === 'creator') return [{ op: 'is', label: t === 'multi' ? 'has' : 'is' }, { op: 'not', label: t === 'multi' ? 'doesn’t have' : 'is not' }, ...base];
-  if (t === 'checkbox') return [{ op: 'is', label: 'is' }];
-  if (t === 'number' || t === 'money' || t === 'rating' || t === 'rollup') return [{ op: 'gt', label: 'more than' }, { op: 'lt', label: 'less than' }, { op: 'is', label: 'equals' }, ...base];
-  if (t === 'date' || t === 'created' || t === 'edited') return [{ op: 'lt', label: 'before' }, { op: 'gt', label: 'after' }, { op: 'is', label: 'on' }, ...base];
-  if (t === 'files') return [{ op: 'filled', label: 'has files' }, { op: 'empty', label: 'has no files' }];
-  return [{ op: 'has', label: 'contains' }, { op: 'is', label: 'is exactly' }, ...base];
+  if (type === 'select' || type === 'multi' || type === 'person' || type === 'creator') return [{ op: 'is', label: type === 'multi' ? tx('filter', 'has') : tx('filter', 'is') }, { op: 'not', label: type === 'multi' ? tx('filter', 'doesn’t have') : tx('filter', 'is not') }, ...base];
+  if (type === 'checkbox') return [{ op: 'is', label: tx('filter', 'is') }];
+  if (type === 'number' || type === 'money' || type === 'rating' || type === 'rollup') return [{ op: 'gt', label: tx('filter', 'more than') }, { op: 'lt', label: tx('filter', 'less than') }, { op: 'is', label: tx('filter', 'equals') }, ...base];
+  if (type === 'date' || type === 'created' || type === 'edited') return [{ op: 'lt', label: tx('filter', 'before') }, { op: 'gt', label: tx('filter', 'after') }, { op: 'is', label: tx('filter', 'on') }, ...base];
+  if (type === 'files') return [{ op: 'filled', label: tx('filter', 'has files') }, { op: 'empty', label: tx('filter', 'has no files') }];
+  return [{ op: 'has', label: tx('filter', 'contains') }, { op: 'is', label: tx('filter', 'is exactly') }, ...base];
 }
 
 /** The sorts a view uses (older views had one). */
@@ -243,7 +257,7 @@ export function filterTest(t: DataTable, view: Pick<TableViewDef, 'filters' | 'f
 export function statusField(t: DataTable, view?: Pick<TableViewDef, 'groupBy'>) {
   const selects = t.fields.filter((f) => f.type === 'select');
   const board = t.views.find((v) => v.kind === 'board' && selects.some((f) => f.id === v.groupBy))?.groupBy;
-  return selects.find((f) => f.id === view?.groupBy) ?? selects.find((f) => f.id === board) ?? selects.find((f) => /^(status|stage|state)$/i.test(f.name.trim())) ?? selects[0];
+  return selects.find((f) => f.id === view?.groupBy) ?? selects.find((f) => f.id === board) ?? selects.find((f) => /^(status|stage|state|tahap)$/i.test(f.name.trim())) ?? selects[0];
 }
 
 /** A view with this person's own filters and sorts on top (what they see until they save it for everyone). */
@@ -286,31 +300,35 @@ export function rowColors(t: DataTable, view: TableViewDef, r: TableRow, ctx: TC
   return out;
 }
 
+/** The group or quick filter for rows with nothing in a field: "No status", "No owner". */
+export const noValue = (f: TableField) => t('No {field}', { field: f.name.toLowerCase() });
+
 /**
  * The quick values a filter sheet starts with, with how many rows each would show: the people in a person field
  * (Me first), the choices of a single-choice field, and Overdue / Today / No date for a date field.
  * Counts are among the rows the other conditions already let through.
  */
-export function quickFilters(t: DataTable, view: TableViewDef, rows: TableRow[], ctx: TCtx): { field: TableField; items: { label: string; filter: TableFilter; count: number; color?: string; on: boolean }[] }[] {
+export function quickFilters(tb: DataTable, view: TableViewDef, rows: TableRow[], ctx: TCtx): { field: TableField; items: { label: string; filter: TableFilter; count: number; color?: string; on: boolean }[] }[] {
   const fields = [
-    statusField(t, view),
-    t.fields.find((f) => f.type === 'person'),
-    t.fields.find((f) => f.type === 'date'),
+    statusField(tb, view),
+    tb.fields.find((f) => f.type === 'person'),
+    tb.fields.find((f) => f.type === 'date'),
   ].filter(Boolean) as TableField[];
   const current = view.filters ?? [];
   const isOn = (flt: TableFilter) => current.some((x) => x.fieldId === flt.fieldId && x.op === flt.op && (x.value ?? '') === (flt.value ?? ''));
   return fields.map((f) => {
-    const test = filterTest(t, view, ctx, f.id);
+    const test = filterTest(tb, view, ctx, f.id);
     const pool = test ? rows.filter(test) : rows;
-    const count = (flt: TableFilter) => pool.filter((r) => rowPasses(t, flt, r, ctx)).length;
+    const count = (flt: TableFilter) => pool.filter((r) => rowPasses(tb, flt, r, ctx)).length;
     const item = (label: string, filter: TableFilter, color?: string) => ({ label, filter, count: count(filter), color, on: isOn(filter) });
+    const none = () => item(noValue(f), { fieldId: f.id, op: 'empty' });
     let items: ReturnType<typeof item>[] = [];
-    if (f.type === 'select') items = [...(f.options ?? []).map((o) => item(o.label, { fieldId: f.id, op: 'is', value: o.id }, o.color)), item(`No ${f.name.toLowerCase()}`, { fieldId: f.id, op: 'empty' })];
+    if (f.type === 'select') items = [...(f.options ?? []).map((o) => item(o.label, { fieldId: f.id, op: 'is', value: o.id }, o.color)), none()];
     else if (f.type === 'person') {
       const ids = [...new Set(pool.map((r) => r.values[f.id]).filter((x): x is string => typeof x === 'string' && !!x))];
-      const others = ids.filter((id) => id !== ctx.me).map((id) => item(ctx.users.find((u) => u.id === id)?.name ?? 'Someone', { fieldId: f.id, op: 'is', value: id }));
-      items = [...(ctx.me ? [item('Me', { fieldId: f.id, op: 'is', value: '@me' })] : []), ...others.sort((a, b) => b.count - a.count), item(`No ${f.name.toLowerCase()}`, { fieldId: f.id, op: 'empty' })];
-    } else if (f.type === 'date') items = [item('Overdue', { fieldId: f.id, op: 'lt', value: '@today' }), item('Today', { fieldId: f.id, op: 'is', value: '@today' }), item('Later', { fieldId: f.id, op: 'gt', value: '@today' }), item(`No ${f.name.toLowerCase()}`, { fieldId: f.id, op: 'empty' })];
+      const others = ids.filter((id) => id !== ctx.me).map((id) => item(ctx.users.find((u) => u.id === id)?.name ?? t('Someone'), { fieldId: f.id, op: 'is', value: id }));
+      items = [...(ctx.me ? [item(tx('person', 'Me'), { fieldId: f.id, op: 'is', value: '@me' })] : []), ...others.sort((a, b) => b.count - a.count), none()];
+    } else if (f.type === 'date') items = [item(tx('date', 'Overdue'), { fieldId: f.id, op: 'lt', value: '@today' }), item(t('Today'), { fieldId: f.id, op: 'is', value: '@today' }), item(tx('date', 'Later'), { fieldId: f.id, op: 'gt', value: '@today' }), none()];
     return { field: f, items: items.filter((x) => x.count > 0 || x.on) };
   }).filter((s) => s.items.length > 0);
 }
@@ -329,18 +347,18 @@ export function templateValues(t: DataTable, tpl: RowTemplate | undefined, me: s
   return out;
 }
 
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
+/** A day of the month as English says it (5th, 22nd); Indonesian says "tanggal 5", so just the number. */
+const ordinal = (n: number) => (getLang() !== 'en' ? String(n) : `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`);
 
 /** "Every weekday at 09:00", "Every week on Monday at 09:00", "Every month on the 5th at 09:00". */
 export function repeatWords(r: NonNullable<RowTemplate['repeat']>) {
-  const at = `at ${String(r.hour).padStart(2, '0')}:00`;
+  const time = fmtTime(new Date(2026, 0, 1, r.hour, 0));
   const days = [...(r.days ?? [])].sort();
-  if (r.every === 'day') return days.length && days.length < 7 ? (days.join() === '1,2,3,4,5' ? `Every weekday ${at}` : `Every ${days.map((d) => WEEKDAY_NAMES[d].slice(0, 3)).join(', ')} ${at}`) : `Every day ${at}`;
-  if (r.every === 'week') return `Every week on ${(days.length ? days : [1]).map((d) => WEEKDAY_NAMES[d]).join(' and ')} ${at}`;
+  if (r.every === 'day') return days.length && days.length < 7 ? (days.join() === '1,2,3,4,5' ? t('Every weekday at {time}', { time }) : t('Every {days} at {time}', { days: days.map((d) => weekdayName(d, 'short')).join(', '), time })) : t('Every day at {time}', { time });
+  if (r.every === 'week') return t('Every week on {days} at {time}', { days: fmtList((days.length ? days : [1]).map((d) => weekdayName(d))), time });
   const from = new Date(`${r.from}T12:00`);
-  if (r.every === 'month') return `Every month on the ${ordinal(from.getDate())} ${at}`;
-  return `Every year on ${from.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} ${at}`;
+  if (r.every === 'month') return t('Every month on the {day} at {time}', { day: ordinal(from.getDate()), time });
+  return t('Every year on {date} at {time}', { date: fmtDate(from, { day: 'numeric', month: 'long' }), time });
 }
 
 /** Whether a repeating template is due now: the right day, at or after its hour, not run today, not before it starts. */
@@ -408,7 +426,7 @@ export interface RowGroup {
 }
 
 /** Rows grouped by a field: choices in their own order, people by name, dates by day, empty last. */
-export function groupRows(t: DataTable, f: TableField, rows: TableRow[], ctx: TCtx): RowGroup[] {
+export function groupRows(tb: DataTable, f: TableField, rows: TableRow[], ctx: TCtx): RowGroup[] {
   const groups = new Map<string, RowGroup>();
   const add = (key: string, label: string, value: CellValue, r: TableRow, color?: string) => {
     const g = groups.get(key) ?? { key, label, value, color, rows: [] };
@@ -416,18 +434,18 @@ export function groupRows(t: DataTable, f: TableField, rows: TableRow[], ctx: TC
     groups.set(key, g);
   };
   for (const r of rows) {
-    const v = valueOf(t, f, r, ctx);
+    const v = valueOf(tb, f, r, ctx);
     if (isEmpty(v) && f.type !== 'checkbox') {
-      add('', `No ${f.name.toLowerCase()}`, null, r);
+      add('', noValue(f), null, r);
       continue;
     }
     if (f.type === 'select') {
       const o = f.options?.find((x) => x.id === v);
-      add(String(v), o?.label ?? 'Unknown', v, r, o?.color);
+      add(String(v), o?.label ?? t('Unknown'), v, r, o?.color);
     } else if (f.type === 'multi') {
       const o = f.options?.find((x) => x.id === (v as string[])[0]);
-      add(String((v as string[])[0]), o?.label ?? 'Unknown', [String((v as string[])[0])], r, o?.color);
-    } else if (f.type === 'checkbox') add(v ? 'yes' : 'no', v ? `${f.name}: yes` : `${f.name}: no`, !!v, r);
+      add(String((v as string[])[0]), o?.label ?? t('Unknown'), [String((v as string[])[0])], r, o?.color);
+    } else if (f.type === 'checkbox') add(v ? 'yes' : 'no', v ? t('{field}: yes', { field: f.name }) : t('{field}: no', { field: f.name }), !!v, r);
     else if (f.type === 'created' || f.type === 'edited') add(String(v).slice(0, 10), cellText({ ...f, type: 'date' }, String(v).slice(0, 10), ctx), null, r);
     else add(String(cellText(f, v, ctx)), cellText(f, v, ctx), isComputed(f) ? null : v, r);
   }
@@ -435,16 +453,17 @@ export function groupRows(t: DataTable, f: TableField, rows: TableRow[], ctx: TC
   return [...groups.values()].sort((a, b) => order(a) - order(b) || (a.key === '' ? 1 : b.key === '' ? -1 : a.label.localeCompare(b.label)));
 }
 
+/** The totals a column can show under it. `label` is in the reader's language (read it while rendering). */
 export const CALCS: { kind: CalcKind; label: string; numeric?: boolean }[] = [
-  { kind: 'count', label: 'Count' },
-  { kind: 'filled', label: 'Filled' },
-  { kind: 'empty', label: 'Empty' },
-  { kind: 'percent', label: 'Percent filled' },
-  { kind: 'unique', label: 'Different values' },
-  { kind: 'sum', label: 'Sum', numeric: true },
-  { kind: 'avg', label: 'Average', numeric: true },
-  { kind: 'min', label: 'Smallest', numeric: true },
-  { kind: 'max', label: 'Largest', numeric: true },
+  { kind: 'count', get label() { return tx('calc', 'Count'); } },
+  { kind: 'filled', get label() { return tx('calc', 'Filled'); } },
+  { kind: 'empty', get label() { return tx('calc', 'Empty'); } },
+  { kind: 'percent', get label() { return t('Percent filled'); } },
+  { kind: 'unique', get label() { return t('Different values'); } },
+  { kind: 'sum', get label() { return tx('calc', 'Sum'); }, numeric: true },
+  { kind: 'avg', get label() { return t('Average'); }, numeric: true },
+  { kind: 'min', get label() { return t('Smallest'); }, numeric: true },
+  { kind: 'max', get label() { return t('Largest'); }, numeric: true },
 ];
 export const isNumeric = (f: TableField) => ['number', 'money', 'rating', 'rollup', 'formula'].includes(f.type);
 
@@ -452,19 +471,19 @@ export const isNumeric = (f: TableField) => ['number', 'money', 'rating', 'rollu
 export function calc(kind: CalcKind, t: DataTable, f: TableField, rows: TableRow[], ctx: TCtx): string {
   const vals = rows.map((r) => valueOf(t, f, r, ctx));
   const filled = vals.filter((v) => !isEmpty(v));
-  const fmt = (n: number) => (f.type === 'money' ? money(n, f.currency) : Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 2 }));
+  const fmt = (n: number) => (f.type === 'money' ? money(n, f.currency) : num(n));
   const nums = filled.map(Number).filter(Number.isFinite);
   switch (kind) {
     case 'count':
-      return `${rows.length}`;
+      return num(rows.length);
     case 'filled':
-      return `${filled.length}`;
+      return num(filled.length);
     case 'empty':
-      return `${rows.length - filled.length}`;
+      return num(rows.length - filled.length);
     case 'percent':
-      return rows.length ? `${Math.round((filled.length / rows.length) * 100)}%` : '0%';
+      return fmtNumber(rows.length ? Math.round((filled.length / rows.length) * 100) / 100 : 0, { style: 'percent' });
     case 'unique':
-      return `${new Set(filled.map((v) => JSON.stringify(v))).size}`;
+      return num(new Set(filled.map((v) => JSON.stringify(v))).size);
     case 'sum':
       return fmt(nums.reduce((a, b) => a + b, 0));
     case 'avg':
@@ -495,12 +514,12 @@ export function evaluate(src: string, field: (name: string) => unknown, fieldNam
       i += m[0].length;
     } else if (c === '"' || c === "'") {
       const end = src.indexOf(c, i + 1);
-      if (end < 0) throw new Error('A text is missing its closing quote');
+      if (end < 0) throw new Error(t('A text is missing its closing quote'));
       toks.push({ t: 'str', v: src.slice(i + 1, end) });
       i = end + 1;
     } else if (c === '{') {
       const end = src.indexOf('}', i);
-      if (end < 0) throw new Error('A field name is missing its }');
+      if (end < 0) throw new Error(t('A field name is missing its }'));
       toks.push({ t: 'ref', v: src.slice(i + 1, end).trim() });
       i = end + 1;
     } else if (/[A-Za-z_]/.test(c)) {
@@ -516,13 +535,13 @@ export function evaluate(src: string, field: (name: string) => unknown, fieldNam
     } else if ('(),'.includes(c)) {
       toks.push({ t: 'punc', v: c });
       i++;
-    } else throw new Error(`“${c}” isn’t understood`);
+    } else throw new Error(t('“{char}” isn’t understood', { char: c }));
   }
   let p = 0;
   const peek = () => toks[p];
   const eat = (v?: string) => {
     const tk = toks[p++];
-    if (!tk || (v && tk.v !== v)) throw new Error(v ? `Expected ${v}` : 'The formula ends too soon');
+    if (!tk || (v && tk.v !== v)) throw new Error(v ? t('Expected {what}', { what: v }) : t('The formula ends too soon'));
     return tk;
   };
   const num = (x: unknown) => (typeof x === 'number' ? x : typeof x === 'boolean' ? (x ? 1 : 0) : Number(String(x ?? '').replace(/[^\d.-]/g, '')) || 0);
@@ -570,9 +589,9 @@ export function evaluate(src: string, field: (name: string) => unknown, fieldNam
       if (peek()?.v !== '(') {
         // A plain word: a one-word field name works without braces; anything else needs them.
         if (fieldNames.some((n) => n.toLowerCase() === tk.v.toLowerCase())) return field(tk.v);
-        throw new Error(`Put field names in curly braces, like {${tk.v}}`);
+        throw new Error(t('Put field names in curly braces, like {example}', { example: `{${tk.v}}` }));
       }
-      if (!fn) throw new Error(`There’s no ${tk.v}()`);
+      if (!fn) throw new Error(t('There’s no {name}()', { name: tk.v }));
       eat('(');
       const args: unknown[] = [];
       if (peek()?.v !== ')') {
@@ -582,7 +601,7 @@ export function evaluate(src: string, field: (name: string) => unknown, fieldNam
       eat(')');
       return fn(args);
     }
-    throw new Error(`“${tk.v}” is in the wrong place`);
+    throw new Error(t('“{token}” is in the wrong place', { token: tk.v }));
   };
   const mul = (): unknown => {
     let v = primary();
@@ -625,17 +644,17 @@ export function evaluate(src: string, field: (name: string) => unknown, fieldNam
   };
   if (!toks.length) return null;
   const out = or();
-  if (p < toks.length) throw new Error(`“${toks[p].v}” is in the wrong place`);
+  if (p < toks.length) throw new Error(t('“{token}” is in the wrong place', { token: toks[p].v }));
   return out;
 }
 
 /** Checks a formula against a table: an error in plain words, or null if it's fine. */
-export function formulaError(src: string, t: DataTable): string | null {
+export function formulaError(src: string, tb: DataTable): string | null {
   try {
     evaluate(src, (name) => {
-      if (!t.fields.some((f) => f.name.toLowerCase() === name.toLowerCase())) throw new Error(`There’s no field called “${name}”`);
+      if (!tb.fields.some((f) => f.name.toLowerCase() === name.toLowerCase())) throw new Error(t('There’s no field called “{name}”', { name }));
       return 1;
-    }, t.fields.map((f) => f.name));
+    }, tb.fields.map((f) => f.name));
     return null;
   } catch (e) {
     return (e as Error).message;
@@ -689,44 +708,49 @@ export function optionsFromValues(from: TableField, rows: TableRow[], ctx: TCtx)
 /* ---------- templates ---------- */
 
 export type TemplateId = 'blank' | 'leads' | 'pipeline' | 'tracker';
+/** The starter tables. `name` and `hint` are in the reader's language (read them while rendering). */
 export const TEMPLATES: { id: TemplateId; name: string; hint: string }[] = [
-  { id: 'leads', name: 'Leads', hint: 'Name, contact, source, status, value, owner, follow-up' },
-  { id: 'pipeline', name: 'Content pipeline', hint: 'Idea to posted, with platform, owner and due date' },
-  { id: 'tracker', name: 'Simple tracker', hint: 'Item, status, owner, due date' },
-  { id: 'blank', name: 'Blank', hint: 'Start with one column and build your own' },
+  { id: 'leads', get name() { return t('Leads'); }, get hint() { return t('Name, contact, source, status, value, owner, follow-up'); } },
+  { id: 'pipeline', get name() { return t('Content pipeline'); }, get hint() { return t('Idea to posted, with platform, owner and due date'); } },
+  { id: 'tracker', get name() { return t('Simple tracker'); }, get hint() { return t('Item, status, owner, due date'); } },
+  { id: 'blank', get name() { return tx('template', 'Blank'); }, get hint() { return t('Start with one column and build your own'); } },
 ];
 
-const grid = (hidden: string[] = []): TableViewDef => ({ id: uid(), name: 'Grid', kind: 'grid', hidden });
-const board = (groupBy: string, name = 'Board'): TableViewDef => ({ id: uid(), name, kind: 'board', groupBy });
+const grid = (hidden: string[] = []): TableViewDef => ({ id: uid(), name: tx('view', 'Grid'), kind: 'grid', hidden });
+const board = (groupBy: string, name = tx('view', 'Board')): TableViewDef => ({ id: uid(), name, kind: 'board', groupBy });
 
-/** Columns and views for a new table. Every column can be changed afterwards. */
+/**
+ * Columns and views for a new table, named in the maker's language (from then on they're the table's own words, as
+ * if typed). Every column can be changed afterwards.
+ */
 export function templateFields(id: TemplateId): { fields: TableField[]; views: TableViewDef[] } {
   const f = (name: string, type: FieldType, extra: Partial<TableField> = {}): TableField => ({ id: uid(), name, type, ...extra });
+  const owner = () => f(tx('field', 'Owner'), 'person');
   if (id === 'leads') {
-    const status = f('Status', 'select', { options: [option('New', '#3b82f6'), option('Contacted', '#f59e0b'), option('Qualified', '#8b5cf6'), option('Won', '#10b981'), option('Lost', '#64748b')] });
+    const status = f(t('Status'), 'select', { options: [option(tx('lead', 'New'), '#3b82f6'), option(t('Contacted'), '#f59e0b'), option(t('Qualified'), '#8b5cf6'), option(t('Won'), '#10b981'), option(t('Lost'), '#64748b')] });
     const fields = [
-      f('Name', 'text'),
-      f('Email', 'email'),
-      f('Phone', 'phone'),
-      f('Source', 'select', { options: [option('Facebook Ads', '#3b82f6'), option('Instagram', '#ec4899'), option('Website', '#10b981'), option('Referral', '#f59e0b')] }),
+      f(t('Name'), 'text'),
+      f(t('Email'), 'email'),
+      f(tx('field', 'Phone'), 'phone'),
+      f(t('Source'), 'select', { options: [option('Facebook Ads', '#3b82f6'), option('Instagram', '#ec4899'), option('Website', '#10b981'), option('Referral', '#f59e0b')] }),
       status,
-      f('Value', 'money', { currency: 'IDR' }),
-      f('Owner', 'person'),
-      f('Follow-up', 'date'),
-      f('Notes', 'longtext'),
+      f(tx('field', 'Value'), 'money', { currency: 'IDR' }),
+      owner(),
+      f(t('Follow-up'), 'date'),
+      f(t('Notes'), 'longtext'),
     ];
-    return { fields, views: [grid(), board(status.id, 'Pipeline')] };
+    return { fields, views: [grid(), board(status.id, t('Pipeline'))] };
   }
   if (id === 'pipeline') {
-    const stage = f('Stage', 'select', { options: [option('Idea', '#64748b'), option('Script', '#0ea5e9'), option('Shooting', '#f59e0b'), option('Editing', '#f97316'), option('Review', '#8b5cf6'), option('Posted', '#10b981')] });
-    const fields = [f('Title', 'text'), stage, f('Platform', 'multi', { options: [option('Instagram', '#ec4899'), option('TikTok', '#0f172a'), option('YouTube', '#ef4444')] }), f('Owner', 'person'), f('Due', 'date'), f('Brief', 'longtext')];
+    const stage = f(t('Stage'), 'select', { options: [option(t('Idea'), '#64748b'), option(t('Script'), '#0ea5e9'), option(t('Shooting'), '#f59e0b'), option(t('Editing'), '#f97316'), option(t('Review'), '#8b5cf6'), option(t('Posted'), '#10b981')] });
+    const fields = [f(tx('field', 'Title'), 'text'), stage, f(t('Platform'), 'multi', { options: [option('Instagram', '#ec4899'), option('TikTok', '#0f172a'), option('YouTube', '#ef4444')] }), owner(), f(tx('field', 'Due'), 'date'), f(t('Brief'), 'longtext')];
     return { fields, views: [board(stage.id), grid()] };
   }
   if (id === 'tracker') {
-    const status = f('Status', 'select', { options: [option('To do', '#64748b'), option('Doing', '#3b82f6'), option('Done', '#10b981')] });
-    return { fields: [f('Item', 'text'), status, f('Owner', 'person'), f('Due', 'date')], views: [grid(), board(status.id)] };
+    const status = f(t('Status'), 'select', { options: [option(t('To do'), '#64748b'), option(t('Doing'), '#3b82f6'), option(t('Done'), '#10b981')] });
+    return { fields: [f(t('Item'), 'text'), status, owner(), f(tx('field', 'Due'), 'date')], views: [grid(), board(status.id)] };
   }
-  return { fields: [f('Name', 'text'), f('Notes', 'longtext')], views: [grid()] };
+  return { fields: [f(t('Name'), 'text'), f(t('Notes'), 'longtext')], views: [grid()] };
 }
 
 /** A value from outside (a webhook, a CSV cell) turned into what the field holds: choices by label (new ones added), Indonesian or English number formats, dates, people by email or name. */

@@ -8,6 +8,8 @@ import { PickSelect } from '../ui/PickSelect';
 import type { CellCtx } from './Cell';
 import { isEmpty, rowColors, rowName, valueOf } from './fields';
 import { Agenda } from './Views';
+import { t, tx } from '../../i18n';
+import { fmtDate, fmtDay } from '../../i18n/format';
 
 const DAY = 86_400_000;
 // Days as whole numbers, worked out on the calendar date itself (UTC arithmetic), so no time zone can shift a day.
@@ -22,7 +24,7 @@ type Zoom = keyof typeof ZOOMS;
  * move it, drag its ends to change the dates, click it to open the row; click the empty line of an undated row to put
  * it on that day. On a narrow screen it reads as a list by date instead.
  */
-export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, onView, onNewField, readOnly, narrow, canAdd, onAddRow }: {
+export function TimelineView({ table: tb, view, rows, ctx, onOpenRow, onValues, onView, onNewField, readOnly, narrow, canAdd, onAddRow }: {
   table: DataTable;
   view: TableViewDef;
   rows: TableRow[];
@@ -36,8 +38,8 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
   canAdd?: boolean;
   onAddRow?: (values: Record<string, CellValue>) => void;
 }) {
-  const sf = t.fields.find((f) => f.id === view.dateField && (f.type === 'date' || f.type === 'created')) ?? t.fields.find((f) => f.type === 'date');
-  const ef = t.fields.find((f) => f.id === view.endField && f.type === 'date' && f.id !== sf?.id);
+  const sf = tb.fields.find((f) => f.id === view.dateField && (f.type === 'date' || f.type === 'created')) ?? tb.fields.find((f) => f.type === 'date');
+  const ef = tb.fields.find((f) => f.id === view.endField && f.type === 'date' && f.id !== sf?.id);
   const [zoom, setZoom] = usePersisted<Zoom>(`s2g-tl-zoom:${view.id}`, 'month');
   const dw = ZOOMS[zoom] ?? ZOOMS.month;
   const scroller = useRef<HTMLDivElement>(null);
@@ -48,7 +50,7 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
     if (!sf) return new Map<string, { s: number; e: number }>();
     const m = new Map<string, { s: number; e: number }>();
     for (const r of rows) {
-      const sv = valueOf(t, sf, r, ctx);
+      const sv = valueOf(tb, sf, r, ctx);
       if (isEmpty(sv)) continue;
       const s = toDay(String(sv));
       const ev = ef ? r.values[ef.id] : null;
@@ -56,7 +58,7 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
       m.set(r.id, { s, e });
     }
     return m;
-  }, [rows, sf, ef, t, ctx]);
+  }, [rows, sf, ef, tb, ctx]);
   const all = [...spans.values()];
   const min = Math.min(today - 14, ...all.map((x) => x.s - 7));
   const max = Math.max(today + 60, ...all.map((x) => x.e + 21));
@@ -99,29 +101,29 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
   if (!sf)
     return (
       <EmptyState
-        title="A timeline needs dates"
-        text="Add a Start and an End date; each row then shows as a bar between them."
+        title={t('A timeline needs dates')}
+        text={t('Add a Start and an End date; each row then shows as a bar between them.')}
         action={
           !readOnly && (
             <button
               className="primary-btn sm"
               onClick={() => {
-                const s: TableField = { id: uid(), name: 'Start', type: 'date' };
-                const e: TableField = { id: uid(), name: 'End', type: 'date' };
+                const s: TableField = { id: uid(), name: tx('field', 'Start'), type: 'date' };
+                const e: TableField = { id: uid(), name: tx('field', 'End'), type: 'date' };
                 onNewField(s);
                 onNewField(e);
                 onView({ dateField: s.id, endField: e.id });
               }}
             >
-              <Plus size={14} /> Add Start and End
+              <Plus size={14} /> {t('Add Start and End')}
             </button>
           )
         }
       />
     );
-  if (narrow) return <Agenda table={t} view={view} rows={rows} ctx={ctx} field={sf} end={ef} onOpenRow={onOpenRow} canAdd={canAdd} onAddRow={onAddRow} />;
+  if (narrow) return <Agenda table={tb} view={view} rows={rows} ctx={ctx} field={sf} end={ef} onOpenRow={onOpenRow} canAdd={canAdd} onAddRow={onAddRow} />;
 
-  const dates = t.fields.filter((f) => f.type === 'date' || f.type === 'created');
+  const dates = tb.fields.filter((f) => f.type === 'date' || f.type === 'created');
   const movable = !readOnly && sf.type === 'date' && (!ctx.canEdit || ctx.canEdit(sf.id));
   // Month labels over the days.
   const months: { left: number; width: number; label: string }[] = [];
@@ -130,24 +132,24 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
     const left = i;
     const next = Math.round(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / DAY);
     const n = Math.min(days - i, Math.max(1, next - (from + i)));
-    months.push({ left: left * dw, width: n * dw, label: d.toLocaleDateString(undefined, { timeZone: 'UTC', month: 'long', year: d.getUTCFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) });
+    months.push({ left: left * dw, width: n * dw, label: fmtDate(d, d.getUTCFullYear() === new Date().getFullYear() ? { timeZone: 'UTC', month: 'long' } : { timeZone: 'UTC', month: 'long', year: 'numeric' }) });
     i += n;
   }
   const dayLabels = dw >= 18;
   return (
     <div className="tb-tl-wrap">
       <div className="tb-tl-tools">
-        <span className="muted small">From</span>
-        <PickSelect value={sf.id} aria-label="Bars start at" onChange={(e) => onView({ dateField: e.target.value })}>
+        <span className="muted small">{tx('timeline', 'From')}</span>
+        <PickSelect value={sf.id} aria-label={t('Bars start at')} onChange={(e) => onView({ dateField: e.target.value })}>
           {dates.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
           ))}
         </PickSelect>
-        <span className="muted small">to</span>
-        <PickSelect value={ef?.id ?? ''} aria-label="Bars end at" onChange={(e) => onView({ endField: e.target.value || undefined })}>
-          <option value="">Same day</option>
+        <span className="muted small">{tx('timeline', 'to')}</span>
+        <PickSelect value={ef?.id ?? ''} aria-label={t('Bars end at')} onChange={(e) => onView({ endField: e.target.value || undefined })}>
+          <option value="">{t('The same day')}</option>
           {dates
             .filter((f) => f.type === 'date' && f.id !== sf.id)
             .map((f) => (
@@ -160,17 +162,17 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
         <div className="segmented sm">
           {(Object.keys(ZOOMS) as Zoom[]).map((z) => (
             <button key={z} type="button" className={zoom === z ? 'on' : ''} onClick={() => setZoom(z)}>
-              {z === 'week' ? 'Weeks' : z === 'month' ? 'Months' : 'Quarters'}
+              {z === 'week' ? t('Weeks') : z === 'month' ? t('Months') : t('Quarters')}
             </button>
           ))}
         </div>
         <button type="button" className="ghost-btn sm" onClick={() => scroller.current?.scrollTo({ left: Math.max(0, (today - from - 3) * dw), behavior: 'smooth' })}>
-          Today
+          {t('Today')}
         </button>
       </div>
       <div className="tb-tl" ref={scroller} style={{ ['--dw' as string]: `${dw}px`, ['--days' as string]: days }}>
         <div className="tb-tl-head">
-          <div className="tb-tl-corner">{t.fields[0].name}</div>
+          <div className="tb-tl-corner">{tb.fields[0].name}</div>
           <div className="tb-tl-scale">
             <div className="tb-tl-months">
               {months.map((m, i) => (
@@ -204,7 +206,7 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
               else if (live.mode === 'start') s = Math.min(e, s + live.delta);
               else e = Math.max(s, e + live.delta);
             }
-            const tint = rowColors(t, view, r, ctx).row;
+            const tint = rowColors(tb, view, r, ctx).row;
             const startDrag = (mode: 'move' | 'start' | 'end') => (ev: React.PointerEvent) => {
               if (ev.button > 0) return;
               ev.stopPropagation();
@@ -213,8 +215,8 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
             };
             return (
               <div key={r.id} className="tb-tl-row" style={{ ['--i' as string]: Math.min(i, 20) }}>
-                <button type="button" className="tb-tl-name" onClick={() => onOpenRow(r.id)} title={rowName(t, r)}>
-                  {rowName(t, r)}
+                <button type="button" className="tb-tl-name" onClick={() => onOpenRow(r.id)} title={rowName(tb, r)}>
+                  {rowName(tb, r)}
                 </button>
                 <div
                   className="tb-tl-track"
@@ -224,7 +226,7 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
                     const day = from + Math.floor((ev.clientX - box.left) / dw);
                     onValues(r.id, { [sf.id]: fromDay(day), ...(ef ? { [ef.id]: fromDay(day) } : {}) });
                   }}
-                  title={span ? undefined : movable ? 'Click a day to put it there' : undefined}
+                  title={span ? undefined : movable ? t('Click a day to put it there') : undefined}
                 >
                   {span && (
                     <div
@@ -233,11 +235,11 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
                       onPointerDown={startDrag('move')}
                       role="button"
                       tabIndex={0}
-                      aria-label={`${rowName(t, r)}: ${fromDay(s)}${e !== s ? ` to ${fromDay(e)}` : ''}`}
+                      aria-label={e !== s ? t('{name}: {from} to {to}', { name: rowName(tb, r), from: fmtDay(fromDay(s)), to: fmtDay(fromDay(e)) }) : `${rowName(tb, r)}: ${fmtDay(fromDay(s))}`}
                       onKeyDown={(ev) => ev.key === 'Enter' && onOpenRow(r.id)}
                     >
                       {movable && <span className="tb-tl-grip start" onPointerDown={startDrag('start')} aria-hidden />}
-                      <span className="tb-tl-label">{rowName(t, r)}</span>
+                      <span className="tb-tl-label">{rowName(tb, r)}</span>
                       {movable && ef && <span className="tb-tl-grip end" onPointerDown={startDrag('end')} aria-hidden />}
                     </div>
                   )}
@@ -247,7 +249,7 @@ export function TimelineView({ table: t, view, rows, ctx, onOpenRow, onValues, o
           })}
           {!readOnly && canAdd && onAddRow && (
             <button type="button" className="tb-grid-add tb-tl-add" onClick={() => onAddRow({ [sf.id]: localDay(), ...(ef ? { [ef.id]: localDay() } : {}) })}>
-              <Plus size={14} /> New row
+              <Plus size={14} /> {t('New row')}
             </button>
           )}
         </div>

@@ -2,19 +2,31 @@
 // One engine for all of them, so a button, a rule and an incoming lead behave the same way.
 import { createHmac, randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { cellText, guessField, isEmpty, parseIncoming, passes, repeatWords, rowName, templateDue, templateValues, valueOf } from '../src/components/tables/core.ts';
+import { cellText, guessField, isEmpty, parseIncoming, passes, rowName, templateDue, templateValues, valueOf } from '../src/components/tables/core.ts';
 import type { CellValue, DataTable, TableAction, TableField, TableLogEntry, TableRow, User } from '../src/types.ts';
 import { stageIdFor, stagesFrom } from '../src/stages.ts';
 import { companyTz } from '../src/jobTimes.ts';
+import { msg, phrase, type Msg } from '../src/i18n/index.ts';
 
 export interface Env {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
 }
 export interface RunResult {
   ok: boolean;
-  note: string;
+  note: string; // what happened, in English
+  tr?: Msg; // the same, for each reader's language (textOf in the app)
   open?: string; // a link for the browser to open
   compose?: { to: string; subject: string; body: string }; // an email for the browser to open, filled in
+}
+
+/** A msg() as a note: { note: English, tr }, read in the app with noteOf (tables/core.ts). */
+const said = (m: { text: string; tr: Msg }) => ({ note: m.text, tr: m.tr });
+/** A note as a part of a longer sentence: its own words when it has them, else its English. */
+const part = (x: { note: string; tr?: Msg }): string | Msg => x.tr ?? x.note;
+/** Several notes joined with " · ", each read in the reader's language. */
+function joined(list: { note: string; tr?: Msg }[]): { note: string; tr: Msg } {
+  const key = list.map((_, i) => `{n${i}}`).join(' · ');
+  return { note: list.map((x) => x.note).join(' · '), tr: { key, vars: Object.fromEntries(list.map((x, i) => [`n${i}`, part(x)])) } };
 }
 
 const now = () => new Date().toISOString();
@@ -138,12 +150,12 @@ export function hookPayload(t: DataTable, r: TableRow, a: Extract<TableAction, {
 const dig = (obj: unknown, path: string) => path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj);
 
 /** Sends one webhook, retrying network errors and server errors (1s, 4s, 10s). Returns the reply. */
-export async function sendHook(t: DataTable, url: string, payload: unknown): Promise<{ ok: boolean; status: number; reply: unknown; note: string }> {
-  if (!/^https?:\/\//.test(url)) return { ok: false, status: 0, reply: null, note: 'The webhook address must start with https://' };
+export async function sendHook(t: DataTable, url: string, payload: unknown): Promise<{ ok: boolean; status: number; reply: unknown; note: string; tr?: Msg }> {
+  if (!/^https?:\/\//.test(url)) return { ok: false, status: 0, reply: null, ...said(msg('The webhook address must start with https://')) };
   const body = JSON.stringify(payload);
   const sig = t.signingSecret ? createHmac('sha256', t.signingSecret).update(body).digest('hex') : '';
   const waits = [0, 1000, 4000, 10000];
-  let last = { ok: false, status: 0, reply: null as unknown, note: '' };
+  let last: { ok: boolean; status: number; reply: unknown; note: string; tr?: Msg } = { ok: false, status: 0, reply: null, note: '' };
   for (const w of waits) {
     if (w) await new Promise((r) => setTimeout(r, w));
     try {
@@ -155,13 +167,13 @@ export async function sendHook(t: DataTable, url: string, payload: unknown): Pro
       } catch {
         /* not JSON: keep the text */
       }
-      last = { ok: res.ok, status: res.status, reply, note: res.ok ? `Sent (${res.status})` : `The other side said ${res.status}` };
+      last = { ok: res.ok, status: res.status, reply, ...(res.ok ? said(msg('Sent ({status})', { status: res.status })) : said(msg('The other side said {status}', { status: res.status }))) };
       if (res.ok || (res.status < 500 && res.status !== 429)) return last;
     } catch (err) {
-      last = { ok: false, status: 0, reply: null, note: err instanceof Error && err.name === 'TimeoutError' ? 'No answer within 10 seconds' : 'Couldn’t reach the address' };
+      last = { ok: false, status: 0, reply: null, ...(err instanceof Error && err.name === 'TimeoutError' ? said(msg('No answer within 10 seconds')) : said(msg('Couldn’t reach the address'))) };
     }
   }
-  return { ...last, note: `${last.note}, after 4 tries` };
+  return { ...last, ...said(msg('{note}, after 4 tries', { note: part(last) })) };
 }
 
 /* ---------- actions ---------- */
@@ -176,13 +188,13 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
       save(env, 'rows', [next]);
       afterRowWrite(env, new Map([[r.id, r]]), [next], me, depth + 1);
       const names = Object.keys(values).map((k) => t.fields.find((f) => f.id === k)?.name).filter(Boolean);
-      return { ok: true, note: `Set ${names.join(', ')}` };
+      return { ok: true, ...said(msg('Set {fields}', { fields: names.join(', ') })) };
     }
     case 'copy':
     case 'move':
     case 'linked': {
       const target = tables().find((x) => x.id === a.tableId && x.workspaceId === t.workspaceId);
-      if (!target) return { ok: false, note: 'The other table is gone' };
+      if (!target) return { ok: false, ...said(msg('The other table is gone')) };
       const values = carry(t, r, target, users);
       if (a.kind === 'linked') {
         const lf = target.fields.find((f) => f.id === a.linkFieldId) ?? target.fields.find((f) => f.type === 'link' && f.linkTable === t.id);
@@ -192,7 +204,8 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
       save(env, 'rows', [made]);
       afterRowWrite(env, new Map(), [made], me, depth + 1);
       if (a.kind === 'move') save(env, 'rows', [], [r.id]);
-      return { ok: true, note: a.kind === 'move' ? `Moved to ${target.name}` : a.kind === 'copy' ? `Copied to ${target.name}` : `Added to ${target.name}` };
+      const table = target.name;
+      return { ok: true, ...said(a.kind === 'move' ? msg('Moved to {table}', { table }) : a.kind === 'copy' ? msg('Copied to {table}', { table }) : msg('Added to {table}', { table })) };
     }
     case 'task': {
       const who = personFrom(a.assignee, t, r, me) ?? '';
@@ -203,28 +216,29 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
       const task = { id: uid(), title, userId: who, assignees: who ? [who] : [], due, done: false, status: stageIdFor(t, 'open', stages), priority: 'normal', source: 'manual', workspaceId: t.workspaceId, clientId: t.clientId, createdBy: me, createdAt: now(), notes: `From ${t.name}: ${rowName(t, r)}`, history: [{ id: uid(), at: now(), by: me, kind: 'created' }] };
       save(env, 'todos', [task]);
       if (who && who !== me) save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', text: `New task: ${title}`, at: now(), read: false, link: { app: 'tasks', id: task.id } }]);
-      return { ok: true, note: `Task made${who ? ` for ${users.find((u) => u.id === who)?.name.split(' ')[0] ?? 'someone'}` : ''}` };
+      return { ok: true, ...(who ? said(msg('Task made for {name}', { name: users.find((u) => u.id === who)?.name.split(' ')[0] ?? phrase('someone') })) : said(msg('Task made'))) };
     }
     case 'email': {
       const f = t.fields.find((x) => x.id === a.toField) ?? t.fields.find((x) => x.type === 'email');
       const to = f ? String(r.values[f.id] ?? '') : '';
-      return { ok: true, note: to ? `Email to ${to} opened` : 'Email opened', compose: { to, subject: fill(a.subject, t, r, users), body: fill(a.body, t, r, users) } };
+      return { ok: true, ...(to ? said(msg('Email to {to} opened', { to })) : said(msg('Email opened'))), compose: { to, subject: fill(a.subject, t, r, users), body: fill(a.body, t, r, users) } };
     }
     case 'chat': {
       const ch = db.getDoc('channels', a.channelId) as any;
-      if (!ch || ch.workspaceId !== t.workspaceId) return { ok: false, note: 'That channel is gone' };
+      if (!ch || ch.workspaceId !== t.workspaceId) return { ok: false, ...said(msg('That channel is gone')) };
       save(env, 'messages', [{ id: uid(), channelId: ch.id, userId: me, text: fill(a.text, t, r, users), at: now(), kind: 'message' }]);
-      return { ok: true, note: `Posted in #${ch.name}` };
+      return { ok: true, ...said(msg('Posted in #{channel}', { channel: ch.name })) };
     }
     case 'notify': {
       const who = personFrom(a.who, t, r, me);
-      if (!who) return { ok: false, note: 'Nobody to tell (the person field is empty)' };
+      if (!who) return { ok: false, ...said(msg('Nobody to tell (the person field is empty)')) };
       save(env, 'notices', [{ id: uid(), userId: who, workspaceId: t.workspaceId, kind: 'task', text: fill(a.text, t, r, users), at: now(), read: false, link: { app: 'tables', id: t.id, msg: r.id } }]);
-      return { ok: true, note: `Told ${users.find((u) => u.id === who)?.name.split(' ')[0] ?? 'them'}` };
+      return { ok: true, ...said(msg('Told {name}', { name: users.find((u) => u.id === who)?.name.split(' ')[0] ?? phrase('them') })) };
     }
     case 'webhook': {
       const out = await sendHook(t, a.url, hookPayload(t, r, a, event, users));
-      logTo(env, t.id, { dir: 'out', ok: out.ok, text: `${event === 'button' ? 'Button' : 'Rule'} sent ${rowName(t, r)} to ${new URL(a.url).host}: ${out.note}`, rowId: r.id });
+      const sent = { row: rowName(t, r), host: new URL(a.url).host, note: part(out) };
+      logTo(env, t.id, { dir: 'out', ok: out.ok, ...(event === 'button' ? msg('Button sent {row} to {host}: {note}', sent) : msg('Rule sent {row} to {host}: {note}', sent)), rowId: r.id });
       // Write what came back into fields, like a record id or a booking link.
       if (out.ok && a.replyTo?.length) {
         const values: Record<string, CellValue> = {};
@@ -235,15 +249,15 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
         const cur = db.getDoc('rows', r.id) as unknown as TableRow | undefined;
         if (cur && Object.keys(values).length) save(env, 'rows', [changed(cur, values, me)]);
       }
-      return { ok: out.ok, note: out.note };
+      return { ok: out.ok, note: out.note, tr: out.tr };
     }
     case 'open':
-      return { ok: true, note: 'Opened', open: fill(a.url, t, r, users, true) };
+      return { ok: true, ...said(msg('Opened')), open: fill(a.url, t, r, users, true) };
     case 'assign': {
       // The next person in turn (the turn is remembered per field, so it carries on across rows and days).
       const among = a.among.filter((id) => users.some((u) => u.id === id));
       const f = t.fields.find((x) => x.id === a.fieldId && x.type === 'person');
-      if (!f || !among.length) return { ok: false, note: 'Nobody to assign to' };
+      if (!f || !among.length) return { ok: false, ...said(msg('Nobody to assign to')) };
       const cur = db.getDoc('tables', t.id) as unknown as DataTable;
       const n = (cur.turns?.[f.id] ?? -1) + 1;
       const who = among[n % among.length];
@@ -251,7 +265,7 @@ async function runAction(env: Env, a: TableAction, t: DataTable, r0: TableRow, m
       const next = changed(r, { [f.id]: who }, me);
       save(env, 'rows', [next]);
       afterRowWrite(env, new Map([[r.id, r]]), [next], me, depth + 1);
-      return { ok: true, note: `Assigned to ${users.find((u) => u.id === who)?.name.split(' ')[0] ?? 'someone'}` };
+      return { ok: true, ...said(msg('Assigned to {name}', { name: users.find((u) => u.id === who)?.name.split(' ')[0] ?? phrase('someone') })) };
     }
   }
 }
@@ -261,11 +275,11 @@ export async function runButton(env: Env, tableId: string, rowId: string, fieldI
   const t = tables().find((x) => x.id === tableId);
   const r = rows().find((x) => x.id === rowId && x.tableId === tableId);
   const f = t?.fields.find((x) => x.id === fieldId && x.type === 'button');
-  if (!t || !r || !f?.button) return { ok: false, results: [{ ok: false, note: 'That button or row is gone' }] as RunResult[] };
+  if (!t || !r || !f?.button) return { ok: false, results: [{ ok: false, ...said(msg('That button or row is gone')) }] as RunResult[] };
   const users = usersOf(t.workspaceId);
   if (f.button.showWhen) {
     const sf = t.fields.find((x) => x.id === f.button!.showWhen!.fieldId);
-    if (sf && !passes(f.button.showWhen, sf, r.values[sf.id], { users, rowName: nameOf })) return { ok: false, results: [{ ok: false, note: 'This button doesn’t apply to this row' }] };
+    if (sf && !passes(f.button.showWhen, sf, r.values[sf.id], { users, rowName: nameOf })) return { ok: false, results: [{ ok: false, ...said(msg('This button doesn’t apply to this row')) }] };
   }
   const asked = Object.fromEntries(Object.entries(input).filter(([k]) => f.button!.ask?.includes(k)));
   if (Object.keys(asked).length) {
@@ -278,12 +292,12 @@ export async function runButton(env: Env, tableId: string, rowId: string, fieldI
     try {
       results.push(await runAction(env, a, t, r, me, 1, 'button'));
     } catch (err) {
-      results.push({ ok: false, note: err instanceof Error ? err.message.slice(0, 120) : 'Something went wrong' });
+      results.push(err instanceof Error ? { ok: false, note: err.message.slice(0, 120) } : { ok: false, ...said(msg('Something went wrong')) });
     }
   }
   const ok = results.every((x) => x.ok);
   const cur = db.getDoc('rows', rowId) as unknown as TableRow | undefined;
-  if (cur) save(env, 'rows', [{ ...cur, runs: [...(cur.runs ?? []), { fieldId, at: now(), by: me, ok, note: results.map((x) => x.note).join(' · ') }].slice(-20) }]);
+  if (cur) save(env, 'rows', [{ ...cur, runs: [...(cur.runs ?? []), { fieldId, at: now(), by: me, ok, ...joined(results) }].slice(-20) }]);
   return { ok, results };
 }
 
@@ -319,12 +333,12 @@ export function afterRowWrite(env: Env, before: Map<string, TableRow | undefined
       }
       if (!fire) continue;
       void (async () => {
-        const notes: string[] = [];
+        const notes: RunResult[] = [];
         for (const a of rule.actions.filter((x) => x.kind !== 'email' && x.kind !== 'open')) {
           const out = await runAction(env, a, t, r, by, depth + 1, 'rule').catch((e) => ({ ok: false, note: String(e?.message ?? e).slice(0, 120) }) as RunResult);
-          notes.push(out.note);
+          notes.push(out);
         }
-        if (rule.actions.some((a) => a.kind !== 'webhook')) logTo(env, t.id, { dir: 'out', ok: true, text: `Rule “${rule.name}” ran on ${rowName(t, r)}: ${notes.join(' · ')}`, rowId: r.id });
+        if (rule.actions.some((a) => a.kind !== 'webhook')) logTo(env, t.id, { dir: 'out', ok: true, ...msg('Rule “{rule}” ran on {row}: {notes}', { rule: rule.name, row: rowName(t, r), notes: joined(notes).tr }), rowId: r.id });
       })();
     }
   }
@@ -356,7 +370,7 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
 
   const flat = flatten(payload);
   if (!Object.keys(flat).length) {
-    logTo(env, t.id, { dir: 'in', ok: false, text: 'A delivery arrived with no data' });
+    logTo(env, t.id, { dir: 'in', ok: false, ...msg('A delivery arrived with no data') });
     return { status: 400, body: { error: 'No data' } };
   }
   // Listening for a test: capture what arrived so its variables can be matched to fields; no row yet.
@@ -364,7 +378,7 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
     const sample = Object.fromEntries(Object.entries(flat).slice(0, 80));
     const mapping = { ...t.intake.mapping };
     for (const k of Object.keys(sample)) if (!(k in mapping)) mapping[k] = guessField(k, t.fields) ?? '';
-    save(env, 'tables', [{ ...t, intake: { ...t.intake, listening: false, sample, mapping, testAt: now() }, log: [...(t.log ?? []), { at: now(), dir: 'in' as const, ok: true, text: `Test received: ${Object.keys(sample).length} values to match to fields` }].slice(-50) }]);
+    save(env, 'tables', [{ ...t, intake: { ...t.intake, listening: false, sample, mapping, testAt: now() }, log: [...(t.log ?? []), { at: now(), dir: 'in' as const, ok: true, ...(Object.keys(sample).length === 1 ? msg('Test received: 1 value to match to a field') : msg('Test received: {n} values to match to fields', { n: Object.keys(sample).length })) }].slice(-50) }]);
     return { status: 200, body: { ok: true, test: true, received: Object.keys(sample) } };
   }
   if (!t.intake.enabled) return { status: 403, body: { error: 'This table isn’t accepting data yet. Finish matching the test delivery to fields, then turn it on.' } };
@@ -394,7 +408,7 @@ export function intake(env: Env, token: string, payload: unknown): { status: num
     ...t,
     fields,
     intake: { ...t.intake, mapping, sample: Object.fromEntries(Object.entries(flat).slice(0, 60)) },
-    log: [...(t.log ?? []), { at: now(), dir: 'in' as const, ok: true, text: match ? `Updated ${label} (same ${t.fields.find((f) => f.id === dd)?.name.toLowerCase()})` : `Added ${label}`, rowId: row.id }].slice(-50),
+    log: [...(t.log ?? []), { at: now(), dir: 'in' as const, ok: true, ...(match ? msg('Updated {row} (same {field})', { row: label, field: t.fields.find((f) => f.id === dd)?.name.toLowerCase() ?? '' }) : msg('Added {row}', { row: label })), rowId: row.id }].slice(-50),
   };
   save(env, 'tables', [nextTable]);
   save(env, 'rows', [row]);
@@ -430,7 +444,7 @@ export function importRows(env: Env, tableId: string, me: string, plan: { fields
     updated.push(changed(r, u.values, me));
   }
   save(env, 'rows', [...made, ...updated]);
-  logTo(env, t.id, { dir: 'in', ok: true, text: `CSV import: ${made.length} added${updated.length ? `, ${updated.length} updated` : ''}` });
+  logTo(env, t.id, { dir: 'in', ok: true, ...(updated.length ? msg('CSV import: {added} added, {updated} updated', { added: made.length, updated: updated.length }) : msg('CSV import: {added} added', { added: made.length })) });
   if (plan.runRules) afterRowWrite(env, before, [...made, ...updated], me);
   return { status: 200, body: { ok: true, added: made.length, updated: updated.length } };
 }
@@ -471,7 +485,7 @@ export function runSchedules(env: Env) {
         .slice(0, 500);
       void (async () => {
         for (const r of due) for (const a of rule.actions.filter((x) => x.kind !== 'email' && x.kind !== 'open')) await runAction(env, a, t, r, t.createdBy, 1, 'schedule').catch(() => null);
-        logTo(env, t.id, { dir: 'out', ok: true, text: `Scheduled rule “${rule.name}” ran on ${due.length} row${due.length === 1 ? '' : 's'}` });
+        logTo(env, t.id, { dir: 'out', ok: true, ...(due.length === 1 ? msg('Scheduled rule “{rule}” ran on 1 row', { rule: rule.name }) : msg('Scheduled rule “{rule}” ran on {n} rows', { rule: rule.name, n: due.length })) });
       })();
     }
   }
@@ -499,7 +513,7 @@ export function runTemplates(env: Env, clock?: (tz: string) => { day: string; ho
       const made = newRow(cur, templateValues(cur, tpl, cur.createdBy, at.day), cur.createdBy);
       save(env, 'rows', [made]);
       afterRowWrite(env, new Map(), [made], cur.createdBy, 1);
-      logTo(env, t.id, { dir: 'in', ok: true, text: `“${tpl.name}” added ${rowName(cur, made)} (${repeatWords(r).toLowerCase()})`, rowId: made.id });
+      logTo(env, t.id, { dir: 'in', ok: true, ...msg('“{template}” added {row} on schedule', { template: tpl.name, row: rowName(cur, made) }), rowId: made.id });
     }
   }
 }
