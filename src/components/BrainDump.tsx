@@ -11,7 +11,7 @@ import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { peopleOptions, teamOptions } from './TasksView';
 import { personOption } from './ui/PeopleList';
-import { t, tn } from '../i18n';
+import { t, tn, tx } from '../i18n';
 
 export interface DumpResult {
   tasks: { title: string; clientId?: string; teamId?: string; userId: string; due?: string; priority: 'high' | 'normal' }[];
@@ -274,7 +274,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
                       value={r.assigneeId ?? ''}
                       options={peopleOptions(users, me, !!r.teamId)}
                       onChange={(v) => patch(r.key, { assigneeId: v || null, resolved: r.unknownName ? 'person' : r.resolved })}
-                      label={t('Assignee')}
+                      label={tx('field', 'Doing it')}
                       placeholder={r.teamId ? t('Team queue') : t('Me')}
                       className={!r.assigneeId && !r.teamId ? 'missing' : ''}
                     />

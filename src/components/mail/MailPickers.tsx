@@ -9,6 +9,7 @@ import { Avatar } from '../Avatar';
 import { usePhone } from '../../mobile/media';
 import { snoozePresets, whenWords } from '../../mailRules';
 import { localDay } from '../../utils';
+import { mark, t, tn } from '../../i18n';
 
 /**
  * A short pick next to what was tapped: a bottom sheet on phones, a menu by the button on desktop (a centred panel when
@@ -54,7 +55,7 @@ export function SnoozePicker({ open, onClose, anchor, onPick, waiting = false, c
   const presets = useMemo(() => snoozePresets(), [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const done = (d: Date) => (onClose(), onPick(d.toISOString(), noReply));
   return (
-    <PickPanel open={open} onClose={onClose} anchor={anchor} title={count > 1 ? `Snooze ${count} emails until` : 'Snooze until'} className="snooze-pick">
+    <PickPanel open={open} onClose={onClose} anchor={anchor} title={count > 1 ? tn(count, 'Snooze {n} email until', 'Snooze {n} emails until') : t('Snooze until')} className="snooze-pick">
       <div className="as-list" role="menu">
         {presets.map((p) => {
           const Icon = PRESET_ICON[p.id] ?? Clock;
@@ -62,7 +63,7 @@ export function SnoozePicker({ open, onClose, anchor, onPick, waiting = false, c
             <button key={p.id} type="button" role="menuitem" className="as-item" onClick={() => done(p.at)}>
               <Icon size={18} className="as-icon" />
               <span className="as-label">
-                {p.label}
+                {t(p.label)}
                 <small>{whenWords(p.at)}</small>
               </span>
             </button>
@@ -70,27 +71,27 @@ export function SnoozePicker({ open, onClose, anchor, onPick, waiting = false, c
         })}
         <button type="button" className={`as-item${custom ? ' on' : ''}`} aria-expanded={custom} onClick={() => setCustom((c) => !c)}>
           <CalendarClock size={18} className="as-icon" />
-          <span className="as-label">Pick a date and time</span>
+          <span className="as-label">{t('Pick a date and time')}</span>
           <ChevronDown size={16} className={`as-icon rot-chev${custom ? ' open' : ''}`} />
         </button>
       </div>
       <SmoothHeight>
         {custom && (
           <div className="mp-custom">
-            <DatePicker value={pick.day} onChange={pick.setDay} clearable={false} label="Day" />
+            <DatePicker value={pick.day} onChange={pick.setDay} clearable={false} label={t('Day')} />
             <TimePicker value={pick.time} onChange={pick.setTime} />
-            <button type="button" className="primary-btn" disabled={!pick.ok} onClick={() => done(pick.at)} title={pick.ok ? undefined : 'Pick a time in the future'}>
-              Snooze
+            <button type="button" className="primary-btn" disabled={!pick.ok} onClick={() => done(pick.at)} title={pick.ok ? undefined : t('Pick a time in the future')}>
+              {t('Snooze')}
             </button>
           </div>
         )}
       </SmoothHeight>
       <div className="mp-toggle">
         <span>
-          <strong>Only if no reply</strong>
-          <small>{noReply ? 'It stays away if anyone writes in this conversation before then.' : 'It comes back at that time either way.'}</small>
+          <strong>{t('Only if no reply')}</strong>
+          <small>{noReply ? t('It stays away if anyone writes in this conversation before then.') : t('It comes back at that time either way.')}</small>
         </span>
-        <button type="button" role="switch" aria-checked={noReply} aria-label="Only if no reply" className={`switch ${noReply ? 'on' : ''}`} onClick={() => setNoReply((v) => !v)}>
+        <button type="button" role="switch" aria-checked={noReply} aria-label={t('Only if no reply')} className={`switch ${noReply ? 'on' : ''}`} onClick={() => setNoReply((v) => !v)}>
           <span />
         </button>
       </div>
@@ -107,7 +108,7 @@ export function AssignPicker({ open, onClose, anchor, people, me, current, prese
   const s = q.trim().toLowerCase();
   const shown = s ? others.filter((u) => `${u.name} ${u.email} ${u.title ?? ''}`.toLowerCase().includes(s)) : others;
   const pick = (id: string) => (onClose(), onPick(id));
-  const away = (id: string) => (presence?.(id) === 'meeting' ? 'In a meeting' : presence?.(id) === 'away' ? 'Away' : undefined);
+  const away = (id: string) => (presence?.(id) === 'meeting' ? t('In a meeting') : presence?.(id) === 'away' ? t('Away') : undefined);
   const row = (u: User, label: string, hint?: string) => (
     <button key={u.id} type="button" role="option" aria-selected={current === u.id} className={`as-item${current === u.id ? ' on' : ''}`} onClick={() => pick(u.id)}>
       <span className="dm-av">
@@ -122,30 +123,30 @@ export function AssignPicker({ open, onClose, anchor, people, me, current, prese
     </button>
   );
   return (
-    <PickPanel open={open} onClose={onClose} anchor={anchor} title="Who handles this" width={280} className="assign-pick">
+    <PickPanel open={open} onClose={onClose} anchor={anchor} title={t('Who handles this')} width={280} className="assign-pick">
       {others.length > 6 && (
         <label className="sheet-search">
           <Search size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find someone" aria-label="Find someone" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Find someone')} aria-label={t('Find someone')} />
         </label>
       )}
-      <div className="as-list" role="listbox" aria-label="Who handles this">
+      <div className="as-list" role="listbox" aria-label={t('Who handles this')}>
         {!s && (
           <>
             <button type="button" role="option" aria-selected={!current} className={`as-item${!current ? ' on' : ''}`} onClick={() => pick('')}>
               <UserX size={18} className="as-icon mp-none" />
               <span className="as-label">
-                Unassigned
-                <small>Anyone with this inbox can take it</small>
+                {t('Unassigned')}
+                <small>{t('Anyone with this inbox can take it')}</small>
               </span>
               {!current && <Check size={16} className="as-check" />}
             </button>
-            {row(me, 'Me', 'You handle it')}
+            {row(me, t('Me'), t('You handle it'))}
             {others.length > 0 && <div className="as-sep" />}
           </>
         )}
         {shown.map((u) => row(u, u.name, away(u.id) ?? u.title))}
-        {s && !shown.length && <p className="sheet-empty">Nobody called “{q}” has this inbox</p>}
+        {s && !shown.length && <p className="sheet-empty">{t('Nobody called “{name}” has this inbox', { name: q })}</p>}
       </div>
     </PickPanel>
   );
@@ -164,38 +165,38 @@ export function SendLaterPicker({ open, onClose, anchor, onPick }: { open: boole
       return d;
     };
     const out: { id: string; label: string; at: Date }[] = [];
-    if (now.getHours() < 20) out.push({ id: 'tonight', label: 'Tonight', at: at(0, 21) });
-    out.push({ id: 'morning', label: 'Tomorrow morning', at: at(1, 8) });
-    if (![5, 6, 0].includes(now.getDay())) out.push({ id: 'afternoon', label: 'Tomorrow afternoon', at: at(1, 13) });
-    out.push({ id: 'monday', label: 'Monday morning', at: at(((8 - now.getDay()) % 7) || 7, 8) });
+    if (now.getHours() < 20) out.push({ id: 'tonight', label: mark('Tonight'), at: at(0, 21) });
+    out.push({ id: 'morning', label: mark('Tomorrow morning'), at: at(1, 8) });
+    if (![5, 6, 0].includes(now.getDay())) out.push({ id: 'afternoon', label: mark('Tomorrow afternoon'), at: at(1, 13) });
+    out.push({ id: 'monday', label: mark('Monday morning'), at: at(((8 - now.getDay()) % 7) || 7, 8) });
     return out;
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const done = (d: Date) => (onClose(), onPick(d.toISOString()));
   return (
-    <PickPanel open={open} onClose={onClose} anchor={anchor} title="Send later" className="later-pick">
+    <PickPanel open={open} onClose={onClose} anchor={anchor} title={t('Send later')} className="later-pick">
       <div className="as-list" role="menu">
         {options.map((o) => (
           <button key={o.id} type="button" role="menuitem" className="as-item" onClick={() => done(o.at)}>
             <Send size={18} className="as-icon" />
             <span className="as-label">
-              {o.label}
+              {t(o.label)}
               <small>{whenWords(o.at)}</small>
             </span>
           </button>
         ))}
         <button type="button" className={`as-item${custom ? ' on' : ''}`} aria-expanded={custom} onClick={() => setCustom((c) => !c)}>
           <CalendarClock size={18} className="as-icon" />
-          <span className="as-label">Pick a date and time</span>
+          <span className="as-label">{t('Pick a date and time')}</span>
           <ChevronDown size={16} className={`as-icon rot-chev${custom ? ' open' : ''}`} />
         </button>
       </div>
       <SmoothHeight>
         {custom && (
           <div className="mp-custom">
-            <DatePicker value={pick.day} onChange={pick.setDay} clearable={false} label="Day" />
+            <DatePicker value={pick.day} onChange={pick.setDay} clearable={false} label={t('Day')} />
             <TimePicker value={pick.time} onChange={pick.setTime} />
-            <button type="button" className="primary-btn" disabled={!pick.ok} onClick={() => done(pick.at)} title={pick.ok ? undefined : 'Pick a time in the future'}>
-              Schedule
+            <button type="button" className="primary-btn" disabled={!pick.ok} onClick={() => done(pick.at)} title={pick.ok ? undefined : t('Pick a time in the future')}>
+              {t('Schedule')}
             </button>
           </div>
         )}

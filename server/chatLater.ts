@@ -7,6 +7,7 @@
 //  - Mute: whether someone muted a conversation (prefs, `s2g-chat-muted:<id>`), for the push rules.
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
+import { msg, phrase } from '../src/i18n/index.ts';
 
 type Doc = db.Doc;
 const MAX_AHEAD = 120 * 86_400_000; // a message can wait up to 120 days
@@ -44,31 +45,34 @@ export function guardOwnMessage(d: Doc, before: any, now = Date.now()): Doc {
 
 const firstName = (users: Map<string, any>, id: string) => String(users.get(id)?.name ?? 'Someone').split(' ')[0];
 const quote = (text: string) => `“${text.replace(/\s+/g, ' ').trim().slice(0, 80)}”`;
-const notice = (userId: string, workspaceId: string, kind: string, text: string, link: Record<string, string>, at: string): Doc => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind, text: text.slice(0, 300), at, read: false, link });
+/** A notice saved with msg(): the English `text`, and `tr` so each reader sees it in their own language. */
+const notice = (userId: string, workspaceId: string, kind: string, words: { text: string; tr?: unknown }, link: Record<string, string>, at: string): Doc => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind, text: words.text.slice(0, 300), ...(words.tr ? { tr: words.tr } : {}), at, read: false, link });
 
 /** Who hears about a message that just went out: the other side of a direct message, people it mentions, and whoever wrote the message it answers. */
 export function noticesFor(m: any, at: string, users: Map<string, any>): Doc[] {
   const ch = db.getDoc('channels', String(m.channelId)) as any;
   if (!ch) return [];
   const who = firstName(users, m.userId);
-  const where = ch.kind === 'dm' ? 'a message' : `#${ch.name}`;
+  const where = ch.kind === 'dm' ? phrase('a message') : `#${ch.name}`;
   const body = String(m.text ?? '') || (m.voice ? 'a voice note' : m.files?.length ? 'a file' : '');
+  // What a message without words is, in the reader's language ("a voice note"); its own words stay as written.
+  const said = String(m.text ?? '') ? quote(body) : body ? phrase('“{what}”', { what: phrase(body) }) : quote(body);
   const link = { app: 'chat', id: String(ch.id), msg: String(m.id) };
   const out: Doc[] = [];
   const told = new Set<string>([m.userId]);
   if (m.parentId) {
     const root = db.getDoc('messages', String(m.parentId)) as any;
     if (root && root.userId !== m.userId && root.userId !== 'guest' && (ch.members ?? []).includes(root.userId)) {
-      out.push(notice(root.userId, ch.workspaceId, 'mention', `${who} replied to your message in ${where}: ${quote(body)}`, link, at));
+      out.push(notice(root.userId, ch.workspaceId, 'mention', msg('{name} replied to your message in {where}: {quote}', { name: who, where, quote: said }), link, at));
       told.add(root.userId);
     }
   }
   for (const id of (ch.members ?? []) as string[]) {
     if (told.has(id)) continue;
-    if (ch.kind === 'dm') out.push(notice(id, ch.workspaceId, 'mention', `${who} messaged you: ${quote(body)}`, link, at));
+    if (ch.kind === 'dm') out.push(notice(id, ch.workspaceId, 'mention', msg('{name} messaged you: {quote}', { name: who, quote: said }), link, at));
     else {
       const first = firstName(users, id).replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
-      if (body && new RegExp(`@${first}\\b`, 'i').test(body)) out.push(notice(id, ch.workspaceId, 'mention', `${who} mentioned you in #${ch.name}: ${quote(body)}`, link, at));
+      if (body && new RegExp(`@${first}\\b`, 'i').test(body)) out.push(notice(id, ch.workspaceId, 'mention', msg('{name} mentioned you in {channel}: {quote}', { name: who, channel: `#${ch.name}`, quote: said }), link, at));
     }
   }
   return out;
@@ -113,8 +117,8 @@ export function remindersDue(now: number, canSee: (userId: string, m: any) => bo
       users ??= new Map((db.allDocs('users') as any[]).map((u) => [String(u.id), u]));
       const visible = !!m && canSee(String(p.id), m);
       const author = m?.guestEmail ? String((ch.guests ?? []).find((g: any) => g.email === m.guestEmail)?.name ?? 'A guest') : firstName(users, String(m?.userId ?? ''));
-      const where = ch.kind === 'dm' ? 'a direct message' : `#${ch.name}`;
-      const text = visible ? `Reminder: ${author} in ${where}: ${quote(String(m.text ?? '') || 'a file')}` : 'Reminder: a message you saved';
+      const where = ch.kind === 'dm' ? phrase('a direct message') : `#${ch.name}`;
+      const text = visible ? msg('Reminder: {name} in {where}: {quote}', { name: author, where, quote: String(m.text ?? '') ? quote(String(m.text)) : phrase('“{what}”', { what: phrase('a file') }) }) : msg('Reminder: a message you saved');
       notices.push(notice(String(p.id), ch.workspaceId, 'task', text, { app: 'chat', id: String(ch.id), msg: String(x.id) }, at));
     }
     const done = new Set(due);

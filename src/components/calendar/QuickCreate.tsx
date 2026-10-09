@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { CalEvent, CalendarDef, Person, User } from '../../types';
 import { fromWall, wallIn } from './calTools';
 import { Sheet } from '../ui/Sheet';
-import { Draft, draftEvent, draftTimes, EventForm } from './EventForm';
+import { Draft, draftEvent, draftTimes, EventForm, NO_REPEAT } from './EventForm';
+import { t } from '../../i18n';
 
 /**
  * New event on a phone: the block drawn on the grid (with handles for its time) and this sheet over the lower part
@@ -30,7 +31,7 @@ export function QuickCreate({
   onSave: (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task') => void;
   onClose: () => void;
 }) {
-  const [rest, setRest] = useState<Omit<Draft, 'date' | 'from' | 'to'>>({ kind: 'event', title: '', allDay: false, calendarId: calendars[0].id, guests: [], location: '', meetUrl: '', notes: '', remind: null, tz: null });
+  const [rest, setRest] = useState<Omit<Draft, 'date' | 'from' | 'to'>>({ kind: 'event', title: '', allDay: false, calendarId: calendars[0].id, guests: [], location: '', meetUrl: '', notes: '', remind: null, tz: null, repeat: NO_REPEAT, sendInvites: true });
   const [more, setMore] = useState(false);
   const s0 = wallIn(quick.start, rest.tz);
   const draft: Draft = { ...rest, date: s0.date, from: s0.time, to: wallIn(quick.end, rest.tz).time };
@@ -75,15 +76,15 @@ export function QuickCreate({
   return (
     <Sheet
       onClose={onClose}
-      label={draft.kind === 'task' ? 'New task' : 'New event'}
+      label={draft.kind === 'task' ? t('New task') : t('New event')}
       className={`quick-sheet${more ? ' more' : ''}`}
       footer={
         <>
           <button type="button" className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" className="primary-btn" onClick={save} disabled={!valid}>
-            {draft.kind === 'task' ? 'Add task' : 'Save'}
+            {draft.kind === 'task' ? t('Add task') : t('Save')}
           </button>
         </>
       }

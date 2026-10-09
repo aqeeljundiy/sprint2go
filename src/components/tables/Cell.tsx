@@ -3,11 +3,13 @@ import { Check, ExternalLink, FileText, Mail, MessageCircle, Paperclip, Phone, P
 import type { CellValue, DataTable, FieldOption, FileRef, TableField, TableRow, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Popover } from '../ui/Popover';
-import { OPTION_COLORS, cellText, isEmpty, money, passes, rowName } from './fields';
+import { OPTION_COLORS, cellText, isEmpty, money, noteOf, passes, rowName } from './fields';
 import { uid } from '../../utils';
 import { PeopleList } from '../ui/PeopleList';
 import { uploadFile } from '../../sync';
 import { session } from '../../store';
+import { t } from '../../i18n';
+import { fmtDay, fmtNumber } from '../../i18n/format';
 
 export interface CellCtx {
   users: User[];
@@ -31,7 +33,7 @@ export function ButtonCell({ f, row, ctx }: { f: TableField; row: TableRow; ctx:
   const b = f.button;
   if (!b || !ctx.runButton) return null;
   if (b.showWhen) {
-    const sf = ctx.tables.flatMap((t) => t.fields).find((x) => x.id === b.showWhen!.fieldId);
+    const sf = ctx.tables.flatMap((tb) => tb.fields).find((x) => x.id === b.showWhen!.fieldId);
     if (sf && !passes(b.showWhen, sf, row.values[sf.id], { users: ctx.users, rowName: () => '' })) return null;
   }
   const busy = ctx.running?.has(`${row.id}:${f.id}`);
@@ -43,7 +45,7 @@ export function ButtonCell({ f, row, ctx }: { f: TableField; row: TableRow; ctx:
       className={`tb-run${busy ? ' busy' : ''}${last && !last.ok ? ' failed' : ''}`}
       style={{ ['--c' as string]: b.color ?? OPTION_COLORS[1] }}
       disabled={busy || locked}
-      title={locked ? 'Only admins can press this' : last ? `${last.ok ? 'Last run' : 'Failed'}: ${last.note}` : undefined}
+      title={locked ? t('Only admins can press this') : last ? (last.ok ? t('Last run: {note}', { note: noteOf(last) }) : t('Failed: {note}', { note: noteOf(last) })) : undefined}
       onClick={(e) => (e.stopPropagation(), ctx.runButton!(row, f))}
     >
       {busy ? <span className="tb-spin" aria-hidden /> : null}
@@ -59,13 +61,13 @@ export const Chip = ({ o }: { o: FieldOption }) => (
 );
 
 const linkRows = (f: TableField, ctx: CellCtx) => {
-  const target = ctx.tables.find((t) => t.id === f.linkTable);
+  const target = ctx.tables.find((tb) => tb.id === f.linkTable);
   return { target, rows: target ? ctx.rows.filter((r) => r.tableId === target.id) : [] };
 };
 
 /** A cell as you read it: chips for choices, an avatar for people, formatted money and dates. */
 export function CellView({ f, v, ctx, wrap }: { f: TableField; v: CellValue | undefined; ctx: CellCtx; wrap?: boolean }) {
-  if (isEmpty(v)) return f.type === 'checkbox' ? <span className="tb-check" aria-label="No" /> : null;
+  if (isEmpty(v)) return f.type === 'checkbox' ? <span className="tb-check" aria-label={t('No')} /> : null;
   switch (f.type) {
     case 'select': {
       const o = f.options?.find((x) => x.id === v);
@@ -92,24 +94,23 @@ export function CellView({ f, v, ctx, wrap }: { f: TableField; v: CellValue | un
     case 'money':
       return <span className="tb-num">{money(Number(v), f.currency)}</span>;
     case 'number':
-      return <span className="tb-num">{Number(v).toLocaleString()}</span>;
+      return <span className="tb-num">{fmtNumber(Number(v))}</span>;
     case 'checkbox':
       return (
-        <span className="tb-check on" aria-label="Yes">
+        <span className="tb-check on" aria-label={t('Yes')}>
           <Check size={12} />
         </span>
       );
     case 'date': {
-      const d = new Date(`${v}T00:00:00`);
       const late = String(v) < new Date().toISOString().slice(0, 10);
-      return <span className={late ? 'tb-date late' : 'tb-date'}>{d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}</span>;
+      return <span className={late ? 'tb-date late' : 'tb-date'}>{fmtDay(String(v).slice(0, 10))}</span>;
     }
     case 'link': {
       const { target } = linkRows(f, ctx);
       return (
         <span className="tb-chips">
           {(v as string[]).map((id) => {
-            const name = target ? rowName(target, ctx.rows.find((r) => r.id === id)) : 'Missing';
+            const name = target ? rowName(target, ctx.rows.find((r) => r.id === id)) : t('Missing');
             const go = target && ctx.openLinked ? () => ctx.openLinked!(target.id, id) : undefined;
             // A linked row is a link: click it to go there (in a span, since it can sit inside a card's button).
             return go ? (
@@ -118,7 +119,7 @@ export function CellView({ f, v, ctx, wrap }: { f: TableField; v: CellValue | un
                 role="link"
                 tabIndex={0}
                 className="tb-chip linked go"
-                title={`Open ${name} in ${target!.name}`}
+                title={t('Open {row} in {table}', { row: name, table: target!.name })}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => (e.stopPropagation(), e.preventDefault(), go())}
                 onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), go())}
@@ -175,7 +176,7 @@ export function CellView({ f, v, ctx, wrap }: { f: TableField; v: CellValue | un
 
 /** Stars, read only. */
 export const Stars = ({ n, max }: { n: number; max: number }) => (
-  <span className="tb-stars" aria-label={`${n} of ${max}`}>
+  <span className="tb-stars" aria-label={t('{n} of {max}', { n, max })}>
     {Array.from({ length: max }, (_, i) => (
       <Star key={i} size={13} className={i < n ? 'on' : ''} />
     ))}
@@ -189,7 +190,7 @@ export function RatingInput({ v, max, onSave }: { v: CellValue | undefined; max:
   return (
     <span className="tb-stars edit" onMouseLeave={() => setHover(0)}>
       {Array.from({ length: max }, (_, i) => (
-        <button key={i} type="button" className={i < (hover || n) ? 'on' : ''} onMouseEnter={() => setHover(i + 1)} onClick={(e) => (e.stopPropagation(), onSave(n === i + 1 ? null : i + 1))} aria-label={`${i + 1} of ${max}`}>
+        <button key={i} type="button" className={i < (hover || n) ? 'on' : ''} onMouseEnter={() => setHover(i + 1)} onClick={(e) => (e.stopPropagation(), onSave(n === i + 1 ? null : i + 1))} aria-label={t('{n} of {max}', { n: i + 1, max })}>
           <Star size={14} />
         </button>
       ))}
@@ -208,9 +209,9 @@ export async function toRef(file: File): Promise<FileRef> {
     const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
     const c = Object.assign(document.createElement('canvas'), { width: Math.round(img.width * scale), height: Math.round(img.height * scale) });
     c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-    blob = await new Promise<Blob>((res, rej) => c.toBlob((x) => (x ? res(x) : rej(new Error('Couldn’t read the picture'))), 'image/jpeg', 0.82));
+    blob = await new Promise<Blob>((res, rej) => c.toBlob((x) => (x ? res(x) : rej(new Error(t('Couldn’t read the picture')))), 'image/jpeg', 0.82));
     type = 'image/jpeg';
-  } else if (file.size > MAX_FILE) throw new Error('Files up to 3 MB here; put bigger ones in Drive and link them.');
+  } else if (file.size > MAX_FILE) throw new Error(t('Files up to 3 MB here; put bigger ones in Drive and link them.'));
   const up = await uploadFile(new File([blob], file.name, { type }), session.wsId, file.name);
   return { name: file.name, size: up.size, type: up.type, url: up.url };
 }
@@ -240,9 +241,9 @@ export function FilesPopover({ v, anchor, open, onClose, onSave, title, readOnly
             <a href={x.url} download={x.name} target="_blank" rel="noreferrer" className="tb-file-name">
               {x.name}
             </a>
-            <small className="muted">{x.size > 1e6 ? `${(x.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(x.size / 1e3))} KB`}</small>
+            <small className="muted">{x.size > 1e6 ? `${fmtNumber(x.size / 1e6, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB` : `${fmtNumber(Math.max(1, Math.round(x.size / 1e3)))} KB`}</small>
             {!readOnly && (
-              <button type="button" className="icon-btn sm" aria-label={`Remove ${x.name}`} onClick={() => onSave(files.filter((_, j) => j !== i))}>
+              <button type="button" className="icon-btn sm" aria-label={t('Remove {name}', { name: x.name })} onClick={() => onSave(files.filter((_, j) => j !== i))}>
                 <Trash2 size={13} />
               </button>
             )}
@@ -250,7 +251,7 @@ export function FilesPopover({ v, anchor, open, onClose, onSave, title, readOnly
         ))}
         {!readOnly && (
           <button type="button" className="tb-file-add" onClick={() => input.current?.click()}>
-            <Paperclip size={14} /> {files.length ? 'Add more' : 'Add files'} <small className="muted">or drop them here</small>
+            <Paperclip size={14} /> {files.length ? t('Add more') : t('Add files')} <small className="muted">{t('or drop them here')}</small>
           </button>
         )}
         {err && <p className="err small">{err}</p>}
@@ -266,7 +267,7 @@ export function ContactActions({ f, v }: { f: TableField; v: CellValue | undefin
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   if (f.type === 'email')
     return (
-      <a className="tb-act" href={`mailto:${v}`} onClick={stop} title={`Email ${v}`}>
+      <a className="tb-act" href={`mailto:${v}`} onClick={stop} title={t('Email {address}', { address: v })}>
         <Mail size={13} />
       </a>
     );
@@ -274,7 +275,7 @@ export function ContactActions({ f, v }: { f: TableField; v: CellValue | undefin
     const digits = v.replace(/[^\d]/g, '').replace(/^0/, '62');
     return (
       <>
-        <a className="tb-act" href={`tel:${v.replace(/\s/g, '')}`} onClick={stop} title="Call">
+        <a className="tb-act" href={`tel:${v.replace(/\s/g, '')}`} onClick={stop} title={t('Call')}>
           <Phone size={13} />
         </a>
         <a className="tb-act" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" onClick={stop} title="WhatsApp">
@@ -285,7 +286,7 @@ export function ContactActions({ f, v }: { f: TableField; v: CellValue | undefin
   }
   if (f.type === 'url')
     return (
-      <a className="tb-act" href={/^https?:\/\//.test(v) ? v : `https://${v}`} target="_blank" rel="noreferrer" onClick={stop} title="Open">
+      <a className="tb-act" href={/^https?:\/\//.test(v) ? v : `https://${v}`} target="_blank" rel="noreferrer" onClick={stop} title={t('Open')}>
         <ExternalLink size={13} />
       </a>
     );
@@ -293,7 +294,7 @@ export function ContactActions({ f, v }: { f: TableField; v: CellValue | undefin
 }
 
 /** Fields typed straight into the cell (text, numbers, contact details, dates). */
-export const typesInline = (t: TableField['type']) => ['text', 'number', 'money', 'email', 'phone', 'url'].includes(t);
+export const typesInline = (type: TableField['type']) => ['text', 'number', 'money', 'email', 'phone', 'url'].includes(type);
 
 /** The input for a field typed in place. Saves on Enter or leaving; Escape puts it back. */
 export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className, initial }: { f: TableField; v: CellValue | undefined; onSave: (v: CellValue) => void; onDone?: (move?: 'down' | 'right' | 'left') => void; autoFocus?: boolean; className?: string; initial?: string }) {
@@ -303,7 +304,7 @@ export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className,
   const [focused, setFocused] = useState(autoFocus);
   const cancelled = useRef(false);
   // Money and numbers read formatted (Rp 4.500.000) until you click in to change them.
-  const shown = !focused && !isEmpty(v) && (f.type === 'money' || f.type === 'number') ? (f.type === 'money' ? money(Number(v), f.currency) : Number(v).toLocaleString()) : text;
+  const shown = !focused && !isEmpty(v) && (f.type === 'money' || f.type === 'number') ? (f.type === 'money' ? money(Number(v), f.currency) : fmtNumber(Number(v))) : text;
   useEffect(() => {
     if (initial === undefined) setText(start);
   }, [start]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -312,11 +313,11 @@ export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className,
     if (finished.current) return;
     finished.current = true;
     if (cancelled.current) return void (cancelled.current = false);
-    const t = text.trim();
-    let next: CellValue = t || null;
+    const typed = text.trim();
+    let next: CellValue = typed || null;
     if (f.type === 'number' || f.type === 'money') {
-      const n = Number(t.replace(/[^\d.,-]/g, '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
-      next = t && Number.isFinite(n) ? n : null;
+      const n = Number(typed.replace(/[^\d.,-]/g, '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
+      next = typed && Number.isFinite(n) ? n : null;
     }
     if (next !== (isEmpty(v) ? null : v)) onSave(next);
     onDone?.(move.current);
@@ -329,7 +330,7 @@ export function InlineInput({ f, v, onSave, onDone, autoFocus = true, className,
       type={f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text'}
       inputMode={f.type === 'number' || f.type === 'money' ? 'decimal' : f.type === 'phone' ? 'tel' : undefined}
       value={shown}
-      placeholder={f.type === 'money' ? (autoFocus ? (f.currency ?? 'IDR') : 'Empty') : undefined}
+      placeholder={f.type === 'money' ? (autoFocus ? (f.currency ?? 'IDR') : t('Empty')) : undefined}
       onChange={(e) => setText(e.target.value)}
       onFocus={() => ((finished.current = false), setFocused(true))}
       onBlur={() => (setFocused(false), commit())}
@@ -388,7 +389,7 @@ export function PickPopover({ f, v, ctx, anchor, open, onClose, onSave }: { f: T
         <PeopleList
           users={ctx.users}
           selected={[...chosen]}
-          extra={chosen.size ? [{ value: '', label: 'Clear', icon: <X size={14} /> }] : []}
+          extra={chosen.size ? [{ value: '', label: t('Clear'), icon: <X size={14} /> }] : []}
           onPick={(id) => (onSave(id && !chosen.has(id) ? id : null), onClose())}
         />
       </Popover>
@@ -398,7 +399,7 @@ export function PickPopover({ f, v, ctx, anchor, open, onClose, onSave }: { f: T
       <div className="tb-pick">
         <label className="tb-pick-search">
           <Search size={13} />
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={f.type === 'link' ? 'Find a row' : 'Find or add a choice'} onKeyDown={(e) => e.key === 'Enter' && (canAdd ? add() : shown[0] && pick(shown[0].id))} />
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={f.type === 'link' ? t('Find a row') : t('Find or add a choice')} onKeyDown={(e) => e.key === 'Enter' && (canAdd ? add() : shown[0] && pick(shown[0].id))} />
         </label>
         <div className="tb-pick-list">
           {shown.map((i) => (
@@ -408,16 +409,16 @@ export function PickPopover({ f, v, ctx, anchor, open, onClose, onSave }: { f: T
               {chosen.has(i.id) && <Check size={13} />}
             </button>
           ))}
-          {!shown.length && !canAdd && <p className="muted small tb-pick-empty">{f.type === 'link' && !linkRows(f, ctx).target ? 'Pick the table to link to in this column’s settings.' : 'Nothing matches.'}</p>}
+          {!shown.length && !canAdd && <p className="muted small tb-pick-empty">{f.type === 'link' && !linkRows(f, ctx).target ? t('Pick the table to link to in this column’s settings.') : t('Nothing matches.')}</p>}
           {canAdd && (
             <button type="button" className="tb-pick-add" onClick={add}>
-              <Plus size={13} /> Add “{q.trim()}”
+              <Plus size={13} /> {t('Add “{name}”', { name: q.trim() })}
             </button>
           )}
         </div>
         {chosen.size > 0 && !many && (
           <button type="button" className="tb-pick-clear" onClick={() => (onSave(null), onClose())}>
-            <X size={13} /> Clear
+            <X size={13} /> {t('Clear')}
           </button>
         )}
       </div>
@@ -432,14 +433,14 @@ export function TextPopover({ v, anchor, open, onClose, onSave, title }: { v: Ce
     if (open) setText(isEmpty(v) ? '' : String(v));
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const close = () => {
-    const t = text.trim();
-    if (t !== (isEmpty(v) ? '' : String(v))) onSave(t || null);
+    const typed = text.trim();
+    if (typed !== (isEmpty(v) ? '' : String(v))) onSave(typed || null);
     onClose();
   };
   return (
     <Popover anchor={anchor} open={open} onClose={close} width={340} title={title}>
       <textarea className="tb-longtext" autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={6} onKeyDown={(e) => (e.key === 'Escape' ? onClose() : (e.metaKey || e.ctrlKey) && e.key === 'Enter' && close())} />
-      <p className="muted small tb-hint">Saved when you click away. ⌘ Enter to finish.</p>
+      <p className="muted small tb-hint">{t('Saved when you click away. ⌘ Enter to finish.')}</p>
     </Popover>
   );
 }

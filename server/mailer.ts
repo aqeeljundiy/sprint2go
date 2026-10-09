@@ -22,6 +22,8 @@ import { maybeAnswer, type Away } from './away.ts';
 import { overRoom, overRoomWhy } from './billing.ts';
 import * as track from './readTracking.ts';
 import { keepRaw } from './mailRaw.ts';
+import { msg } from '../src/i18n/index.ts';
+import type { Said } from './lang.ts';
 export { domainKey };
 
 db.db.exec(`
@@ -40,7 +42,7 @@ type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; 
 export interface MailerDeps {
   publicUrl: string;
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
-  notify: (userIds: string[], workspaceId: string, text: string, link?: string) => void;
+  notify: (userIds: string[], workspaceId: string, text: Said, link?: string) => void; // msg(): each reader's language
   log: (line: string) => void;
 }
 let deps: MailerDeps;
@@ -575,7 +577,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     route = 'own';
     if (!ws.mailCreditsNotified) {
       const admins = ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
-      deps.notify(admins, ws.id, 'Boosted sending has no credits left; mail goes out from the sprint2go server until you top up.', '/settings/email');
+      deps.notify(admins, ws.id, msg('Boosted sending has no credits left; mail goes out from the sprint2go server until you top up.'), '/settings/email');
       db.writeDocs('workspaces', [{ ...(ws as any), mailCreditsNotified: true }], [], null);
     }
   }
@@ -618,13 +620,17 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     // Pictures inside the HTML (from a mail app) arrive as part of it, as in received mail, not as attachments.
     const inline = o.files.some((f) => f.cid);
     const listed = o.files.filter((f) => !f.cid);
-    const sizes = parsed.attachments.filter((a) => !(inline && a.related && a.contentId));
-    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined };
+    const sizes = parsed.attachments.filter((a) => !(inline && a.related && a.contentId) && !/^(text\/calendar|application\/ics)\b/i.test(a.contentType ?? ''));
+    // A calendar invite (one a teammate sent from their calendar, or an answer to one): read as mail from outside is.
+    const cal = o.ical ? readInvite(parsed.attachments, [lower(hit.account.email)]) : null;
+    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
     keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     localCount++;
+    // An update or cancellation moves or removes events people here answered; an answer lands on the event it's for.
+    if (cal?.invite) applyInbound(hit.ws, hit.account, cal.invite, thread.id, deps.broadcast, deps.notify);
     // A colleague away gets to answer too (their answer carries Auto-Submitted, so it never answers back).
     if (!shared) void maybeAnswer({ workspaceId: hit.ws.id, account: hit.account, canSend: !!(hit.ws as any).mailReady?.mailboxes?.[hit.account.id]?.send, parsed, envelopeFrom: o.from.email, mid, refs: o.references ?? [], spam: false, send: queueSend, log: deps.log });
   }
@@ -767,7 +773,7 @@ export function releaseHeld(at = Date.now()): Promise<{ id: string; state: 'sent
         markDelivery(h.thread_id, h.message_id, null, 'failed', why);
         const ws = workspaces().find((w) => w.id === h.workspace_id);
         const who = h.user_id ? [h.user_id] : ((ws?.accounts ?? []).find((a) => a.id === h.account_id)?.users ?? []);
-        if (who.length) deps?.notify(who, h.workspace_id, `Your email could not be sent: ${why.slice(0, 160)}`, '/mail');
+        if (who.length) deps?.notify(who, h.workspace_id, msg('Your email could not be sent: {why}', { why: why.slice(0, 160) }), '/mail');
         out.push({ id: h.id, state: 'failed', error: why });
       }
     }
@@ -804,7 +810,7 @@ function watchBounces(row: any) {
   const next = { ...ws, accounts: ws.accounts.map((a: any) => (a.id === acct.id ? { ...a, sendPaused: { at: now(), reason } } : a)) };
   db.writeDocs('workspaces', [next], [], null);
   deps.broadcast('workspaces', [next], []);
-  deps.notify(ws.members.filter((m: any) => m.role !== 'member').map((m: any) => m.userId), ws.id, `Sending from ${acct.email} is paused: ${reason} Check the addresses, then ask support to lift it.`, '/settings/email');
+  deps.notify(ws.members.filter((m: any) => m.role !== 'member').map((m: any) => m.userId), ws.id, msg('Sending from {email} is paused: {n} of the last {total} emails bounced, which can get the server blocked. Check the addresses, then ask support to lift it.', { email: acct.email, n: failed, total: recent.length }), '/settings/email');
   onPaused?.(ws, acct, reason);
 }
 let onPaused: ((ws: any, account: any, reason: string) => void) | null = null;
@@ -874,7 +880,7 @@ function settle(row: any, error?: string) {
     const ws = workspaces().find((w) => w.id === row.workspace_id);
     const account = ws?.accounts?.find((a) => a.id === row.account_id);
     const who = account?.users?.length ? account.users : (ws?.members ?? []).map((m) => m.userId);
-    deps.notify(who, row.workspace_id, `Your email to ${failed.map((f) => f.to_addr).join(', ') || row.to_addr} could not be delivered: ${(failed[0]?.error ?? error ?? '').slice(0, 140)}`, '/mail');
+    deps.notify(who, row.workspace_id, msg('Your email to {to} could not be delivered: {error}', { to: failed.map((f) => f.to_addr).join(', ') || row.to_addr, error: (failed[0]?.error ?? error ?? '').slice(0, 140) }), '/mail');
   }
 }
 

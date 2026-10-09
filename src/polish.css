@@ -1243,6 +1243,26 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .sh-start small {
   color: var(--text-3);
 }
+/* A longer heading (Indonesian "Dibagikan dengan Anda") wraps evenly beside Sign out instead of orphaning a word. */
+.sh-head > div {
+  min-width: 0;
+}
+.sh-head > button {
+  flex: none;
+}
+.sh-head h1 {
+  text-wrap: balance;
+}
+/* English or Bahasa Indonesia, small and centred under the page, like the sign-in page's switch. */
+.shared-home .sh-lang {
+  display: flex;
+  width: fit-content;
+  margin: 24px auto 0;
+}
+.shared-home .sh-lang > button {
+  font-size: 12px;
+  padding: 0 12px;
+}
 .th-text p .type-sel {
   display: inline-flex;
   vertical-align: middle;
@@ -1348,6 +1368,18 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 }
 .guest-menu .menu-note {
   padding: 6px 10px 4px;
+}
+/* English or Bahasa Indonesia, under Light / Dark / Auto (guests have no Settings). */
+.guest-menu .am-lang.segmented.wide {
+  margin: 0 4px 6px;
+  width: auto;
+}
+/* The portal's rail: a longer name (Indonesian "Permintaan") ends in "…" rather than spilling; the button's title has it all. */
+.client-app .rail-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .profile-modal {
   width: min(460px, calc(100vw - 32px));

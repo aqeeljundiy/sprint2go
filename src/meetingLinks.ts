@@ -1,6 +1,7 @@
 // Video call links inside calendar events (the event's own link, its place, or its description): for Join, and for
 // sending the notetaker. Shared by the app and the server (which stores the link it finds on events it imports).
 import type { CalEvent } from './types';
+import { mark } from './i18n/index'; // the full path: the server imports this file too
 
 export type MeetingKind = 'meet' | 'zoom' | 'teams' | 'webex' | 'whereby' | 'jitsi';
 
@@ -52,13 +53,13 @@ export function callKey(url: string) {
   }
 }
 
-/** The company's "Bot joins automatically" (Settings, Meetings, and Meet's Upcoming). */
+/** The company's "Bot joins automatically" (Settings, Meetings, and Meet's Upcoming). Show label and hint with t(). */
 export type JoinMode = 'accepted' | 'organizer' | 'all' | 'off';
 export const JOIN_MODES: { value: JoinMode; label: string; hint: string }[] = [
-  { value: 'accepted', label: 'Meetings people organize or accept', hint: 'Their own events, invites they said yes to, and their linked calendars' },
-  { value: 'organizer', label: 'Only meetings people organize', hint: 'Events they made, or invites they sent' },
-  { value: 'all', label: 'Every meeting with a link', hint: 'Anything on their calendar with a Meet or Zoom link' },
-  { value: 'off', label: 'Off: people pick each one', hint: 'Switch it on per meeting in Meet, Upcoming' },
+  { value: 'accepted', label: mark('Meetings people organize or accept'), hint: mark('Their own events, invites they said yes to, and their linked calendars') },
+  { value: 'organizer', label: mark('Only meetings people organize'), hint: mark('Events they made, or invites they sent') },
+  { value: 'all', label: mark('Every meeting with a link'), hint: mark('Anything on their calendar with a Meet or Zoom link') },
+  { value: 'off', label: mark('Off: people pick each one'), hint: mark('Switch it on per meeting in Meet, Upcoming') },
 ];
 
 /**
@@ -81,6 +82,7 @@ export function joinsByRule(e: Pick<CalEvent, 'organizer' | 'inviteUid' | 'feed'
 export function botJoins(e: CalEvent, mode: JoinMode | undefined, overrides: Record<string, boolean> | undefined, mine: (email: string) => boolean) {
   const link = meetingLinkOf(e);
   if (!link || !notetakerJoins(link.kind) || e.allDay) return false;
-  const own = overrides?.[e.id];
+  // One date of a repeating event: its own switch, else the series' switch.
+  const own = overrides?.[e.id] ?? (e.seriesId ? overrides?.[e.seriesId] : undefined);
   return typeof own === 'boolean' ? own : joinsByRule(e, mode, mine);
 }

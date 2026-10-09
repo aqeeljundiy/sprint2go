@@ -4,6 +4,7 @@ import type { Person, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Popover } from '../ui/Popover';
 import { PeopleList } from '../ui/PeopleList';
+import { t } from '../../i18n';
 
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 const key = (email: string) => email.trim().toLowerCase();
@@ -18,7 +19,7 @@ export function GuestPicker({
   team,
   contacts = [],
   me,
-  label = 'Guests',
+  label = t('Guests'),
 }: {
   value: Person[];
   onChange: (p: Person[]) => void;
@@ -62,22 +63,22 @@ export function GuestPicker({
         <span key={p.email} className="guest-chip" title={p.email}>
           <Avatar person={people.find((u) => u.id === key(p.email)) ?? p} size={20} />
           <span className="guest-chip-name">{p.name}</span>
-          <button type="button" onClick={() => onChange(value.filter((x) => x !== p))} aria-label={`Remove ${p.name}`}>
+          <button type="button" onClick={() => onChange(value.filter((x) => x !== p))} aria-label={t('Remove {name}', { name: p.name })}>
             <X size={13} />
           </button>
         </span>
       ))}
       <button ref={btn} type="button" className={`guest-add${open ? ' open' : ''}`} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog">
         <UserPlus size={15} />
-        {value.length ? 'Add' : 'Add guests'}
+        {value.length ? t('Add') : t('Add guests')}
       </button>
       <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={320} title={label}>
         <PeopleList
           users={people}
           selected={chosen}
           onPick={toggle}
-          placeholder="Name, team or any email"
-          typed={(q) => (isEmail(q) && !people.some((u) => u.id === key(q)) ? { value: `new:${q}`, label: `Add ${q}`, hint: 'Someone who isn’t in the list yet', icon: <Mail size={16} /> } : null)}
+          placeholder={t('Name, team or any email')}
+          typed={(q) => (isEmail(q) && !people.some((u) => u.id === key(q)) ? { value: `new:${q}`, label: t('Add {email}', { email: q }), hint: t('Someone who isn’t in the list yet'), icon: <Mail size={16} /> } : null)}
         />
       </Popover>
     </div>

@@ -1,9 +1,10 @@
-import { Check, MapPin, Mic, Video } from 'lucide-react';
+import { Check, MapPin, Mic, Repeat, Video } from 'lucide-react';
 import type { CalEvent } from '../../types';
-import { fmtTime } from '../../calendarUtils';
+import { fmtTimeRange } from '../../calendarUtils';
 import { meetingLinkOf } from '../../meetingLinks';
 import { useLongPress } from '../ui/useLongPress';
 import { isMaybe, isPast, isPending } from './calTools';
+import { t } from '../../i18n';
 
 export interface CardKit {
   color: (calendarId: string) => string;
@@ -45,7 +46,7 @@ export function EventCard({ e, kit, now }: { e: CalEvent; kit: CardKit; now: num
         <button
           type="button"
           className={`ev-check${task.done ? ' on' : ''}`}
-          aria-label={task.done ? 'Done' : 'Mark the task done'}
+          aria-label={task.done ? t('Done') : t('Mark the task done')}
           aria-pressed={task.done}
           onClick={(c) => (c.stopPropagation(), !task.done && kit.onTaskDone?.(e))}
         >
@@ -55,11 +56,12 @@ export function EventCard({ e, kit, now }: { e: CalEvent; kit: CardKit; now: num
       <span className="ev-card-text">
         <span className="ev-card-title">{e.title}</span>
         <span className="ev-card-meta">
-          {e.allDay ? 'All day' : `${fmtTime(e.start)} to ${fmtTime(e.end)}`}
+          {e.allDay ? t('All day') : fmtTimeRange(e.start, e.end)}
+          {e.rrule && <Repeat size={12} className="ev-repeat" aria-label={t('Repeats')} />}
           {link && (
             <>
               {' · '}
-              <Video size={13} aria-label="Video call" />
+              <Video size={13} aria-label={t('Video call')} />
             </>
           )}
           {where && (
@@ -71,7 +73,7 @@ export function EventCard({ e, kit, now }: { e: CalEvent; kit: CardKit; now: num
           )}
         </span>
       </span>
-      {kit.botWillJoin?.(e) && <Mic size={15} className="ev-card-bot" aria-label="The notetaker will join" />}
+      {kit.botWillJoin?.(e) && <Mic size={15} className="ev-card-bot" aria-label={t('The notetaker will join')} />}
     </div>
   );
 }

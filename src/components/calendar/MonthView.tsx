@@ -1,10 +1,12 @@
 import { useRef } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { eventsOn, fmtTime, monthGrid, sameDay, startOfDay } from '../../calendarUtils';
 import { EventCard, type CardKit } from './EventCard';
 import { isPending } from './calTools';
 import { useSwipeNav } from './useSwipeNav';
+import { t, tn } from '../../i18n';
+import { fmtDate, fmtMonth, fmtWeekdayLong } from '../../i18n/format';
 
 /**
  * Month. On a wide screen: the grid with each day's first events. On a phone: a compact grid with a dot per event
@@ -48,10 +50,10 @@ export function MonthView({
         <div className="mg-top" ref={grid}>
           <div className="mg-head" aria-hidden>
             {cells.slice(0, 7).map((d) => (
-              <span key={d.getDay()}>{d.toLocaleDateString([], { weekday: 'narrow' })}</span>
+              <span key={d.getDay()}>{fmtDate(d, { weekday: 'narrow' })}</span>
             ))}
           </div>
-          <div className="mg-body" role="grid" aria-label={cursor.toLocaleDateString([], { month: 'long', year: 'numeric' })}>
+          <div className="mg-body" role="grid" aria-label={fmtMonth(cursor)}>
             {cells.map((d) => {
               const evs = sorted(d);
               return (
@@ -60,7 +62,7 @@ export function MonthView({
                   type="button"
                   className={`mg-cell ${d.getMonth() !== cursor.getMonth() ? 'out' : ''} ${sameDay(d, today) ? 'today' : ''} ${sameDay(d, cursor) ? 'picked' : ''}`}
                   onClick={() => onCursor(d)}
-                  aria-label={`${d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}${evs.length ? `, ${evs.length} ${evs.length === 1 ? 'event' : 'events'}` : ''}`}
+                  aria-label={evs.length ? tn(evs.length, '{day}, {n} event', '{day}, {n} events', { day: fmtWeekdayLong(d) }) : fmtWeekdayLong(d)}
                   aria-pressed={sameDay(d, cursor)}
                 >
                   <span className="mg-num">{d.getDate()}</span>
@@ -76,9 +78,9 @@ export function MonthView({
         </div>
         <div className="mg-list" key={cursor.toDateString()}>
           <div className="mg-list-head">
-            <h2>{cursor.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
+            <h2>{fmtWeekdayLong(cursor)}</h2>
             <button type="button" className="ghost-btn sm" onClick={() => onDay(cursor)}>
-              Open day
+              {t('Open day')}
             </button>
           </div>
           {list.map((e) => (
@@ -86,7 +88,7 @@ export function MonthView({
           ))}
           {!list.length && (
             <button type="button" className="sch-free" onClick={() => onCreate(nine(cursor))}>
-              <Plus size={15} /> Nothing planned. Add an event
+              <Plus size={15} /> {t('Nothing planned. Add an event')}
             </button>
           )}
         </div>
@@ -98,7 +100,7 @@ export function MonthView({
     <div className="mg">
       <div className="mg-head">
         {cells.slice(0, 7).map((d) => (
-          <span key={d.getDay()}>{d.toLocaleDateString([], { weekday: 'short' })}</span>
+          <span key={d.getDay()}>{fmtDate(d, { weekday: 'short' })}</span>
         ))}
       </div>
       <div className="mg-body">
@@ -130,6 +132,7 @@ export function MonthView({
                   {!e.allDay && <i />}
                   {!e.allDay && <span className="de-time">{fmtTime(e.start)}</span>}
                   <span className="de-title">{e.title}</span>
+                  {e.rrule && <Repeat size={11} className="de-repeat" aria-label={t('Repeats')} />}
                 </button>
               ))}
               {extra > 0 && (

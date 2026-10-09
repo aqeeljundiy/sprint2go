@@ -1,6 +1,9 @@
 // Where huddle audio may travel: public STUN servers find each browser's outside address, and our call relay (TURN),
 // when the server has one, carries the audio when two browsers can't reach each other directly. Relay credentials
 // come from GET /api/ice and work for an hour; they're fetched again before they run out.
+import { t } from './i18n';
+import { fmtList } from './i18n/format';
+
 export const STUN: RTCIceServer = { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] };
 
 export interface Ice {
@@ -37,9 +40,9 @@ export const redacted = (c: RTCConfiguration) => ({ ...c, iceServers: c.iceServe
  */
 export async function testRelay(): Promise<{ ok: boolean; text: string }> {
   const r = await fetch('/api/ice', { cache: 'no-store' }).catch(() => null);
-  if (r?.status === 403) return { ok: false, text: 'This account isn’t in a company, so it gets no relay credentials. Run the test signed in as a team member.' };
+  if (r?.status === 403) return { ok: false, text: t('This account isn’t in a company, so it gets no relay credentials. Run the test signed in as a team member.') };
   const b = (r?.ok ? await r.json().catch(() => null) : null) as { relay?: boolean; iceServers?: RTCIceServer[] } | null;
-  if (!b?.relay || !b.iceServers?.length) return { ok: false, text: 'The relay isn’t set up on this server.' };
+  if (!b?.relay || !b.iceServers?.length) return { ok: false, text: t('The relay isn’t set up on this server.') };
   const pc = new RTCPeerConnection({ iceServers: b.iceServers, iceTransportPolicy: 'relay' });
   const got = new Set<string>();
   const unreachable = new Set<string>();
@@ -51,9 +54,9 @@ export async function testRelay(): Promise<{ ok: boolean; text: string }> {
     else if (errorCode === 701) unreachable.add(transport(url));
   });
   const done = new Promise<void>((resolve) => {
-    const t = setTimeout(resolve, 8000);
+    const timer = setTimeout(resolve, 8000);
     pc.addEventListener('icecandidate', (e) => {
-      if (!e.candidate) return (clearTimeout(t), resolve());
+      if (!e.candidate) return (clearTimeout(timer), resolve());
       if (e.candidate.type === 'relay') got.add(transport((e as RTCPeerConnectionIceEvent & { url?: string | null }).url));
     });
   });
@@ -61,7 +64,9 @@ export async function testRelay(): Promise<{ ok: boolean; text: string }> {
   await pc.setLocalDescription(await pc.createOffer());
   await done;
   pc.close();
-  if (got.size) return { ok: true, text: `It works: this browser got a relay address over ${[...got].join(', ')}.` };
-  if (refused) return { ok: false, text: 'The relay refused our credentials. TURN_SECRET here must match static-auth-secret in coturn.' };
-  return { ok: false, text: `No relay address came back${unreachable.size ? ` (no answer over ${[...unreachable].join(', ')})` : ''}. Check that coturn is running and that UDP 3478 and its relay ports are open on the server.` };
+  if (got.size) return { ok: true, text: t('It works: this browser got a relay address over {how}.', { how: fmtList([...got]) }) };
+  if (refused) return { ok: false, text: t('The relay refused our credentials. TURN_SECRET here must match static-auth-secret in coturn.') };
+  const check = t('Check that coturn is running and that UDP 3478 and its relay ports are open on the server.');
+  if (unreachable.size) return { ok: false, text: t('No relay address came back (no answer over {how}). {check}', { how: fmtList([...unreachable]), check }) };
+  return { ok: false, text: t('No relay address came back. {check}', { check }) };
 }

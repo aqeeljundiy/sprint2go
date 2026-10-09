@@ -8,6 +8,8 @@ import * as db from './db.ts';
 import * as mailer from './mailer.ts';
 import { mayUse } from './domains.ts';
 import { simpleHtml } from './mail.ts';
+import { msg, phrase, t, textOf } from '../src/i18n/index.ts';
+import { inLang, langOf } from './lang.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS routing_probes (token TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, domain TEXT NOT NULL, kind TEXT NOT NULL, outbox_id TEXT, state TEXT NOT NULL, why TEXT, sent_at TEXT NOT NULL, done_at TEXT, notified INTEGER NOT NULL DEFAULT 0);
@@ -19,7 +21,7 @@ type Probe = { token: string; workspace_id: string; domain: string; kind: 'daily
 type Ws = { id: string; name: string; domains?: string[]; accounts?: { email: string; provider?: string }[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; suspended?: unknown; whiteLabel?: { enabled?: boolean; name?: string }; mailRouting?: { dailyCheck?: boolean; verifiedAt?: string; lastCheck?: { at: string; ok: boolean } } };
 
 export interface RoutingDeps {
-  notify: (userIds: string[], workspaceId: string, text: string, link?: string) => void;
+  notify: (userIds: string[], workspaceId: string, text: { text: string; tr?: any }, link?: string) => void; // msg()
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
   log: (line: string) => void;
 }
@@ -96,14 +98,21 @@ function alertIfStreak(ws: Ws, p: Probe) {
   if (streak.length < 2 || streak.some((r) => r.notified)) return;
   db.db.prepare('UPDATE routing_probes SET notified = 1 WHERE token = ?').run(p.token);
   const brand = brandOf(ws);
-  const prov = PROVIDER[ws.emailProvider || 'google'] ?? 'your mail provider';
-  const text = `Mail routing for ${p.domain} failed its last two checks, so mail to ${brand} mailboxes at ${p.domain} may not be arriving. Check the routing at ${prov} in Settings, Email delivery.`;
+  const prov = PROVIDER[ws.emailProvider || 'google'] ?? phrase('your mail provider');
+  const said = msg('Mail routing for {domain} failed its last two checks, so mail to {brand} mailboxes at {domain} may not be arriving. Check the routing at {provider} in Settings, Email delivery.', { domain: p.domain, brand, provider: prov });
   const admins = ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
-  deps?.notify(admins, ws.id, text, '/settings/email');
-  const emails = admins.map((id) => String((db.getDoc('users', id) as { email?: string } | undefined)?.email ?? '')).filter((e) => e.includes('@'));
-  const last = streak[0]?.why ? ` Last answer: ${streak[0].why}` : '';
-  for (const to of emails)
-    void mailer.sendNote(to, `${brand}: mail routing for ${p.domain} stopped working`, `${text}${last}`, simpleHtml(brand, [text, ...(last ? [last.trim()] : [])]), brand).catch(() => false);
+  deps?.notify(admins, ws.id, said, '/settings/email');
+  // Each admin's email in their own language (theirs, else the company's).
+  for (const id of admins) {
+    const to = String((db.getDoc('users', id) as { email?: string } | undefined)?.email ?? '');
+    if (!to.includes('@')) continue;
+    const m = inLang(langOf(id, ws.id), () => {
+      const text = textOf(said);
+      const last = streak[0]?.why ? t('Last answer: {why}', { why: streak[0].why }) : '';
+      return { subject: t('{brand}: mail routing for {domain} stopped working', { brand, domain: p.domain }), text: last ? `${text} ${last}` : text, html: simpleHtml(brand, [text, ...(last ? [last] : [])]) };
+    });
+    void mailer.sendNote(to, m.subject, m.text, m.html, brand).catch(() => false);
+  }
 }
 
 /** A test's verdict from its delivery: refused by the provider at once, or delivered there and not back after a while. */

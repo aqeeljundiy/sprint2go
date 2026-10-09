@@ -6,6 +6,8 @@
 import * as db from './db.ts';
 import { DIGEST_HOUR, companyTz, isZone, localParts, type DigestEvery } from '../src/jobTimes.ts';
 import { wants, type PushKind } from './notifyPush.ts';
+import { mark, msg, t, textOf, tn, type Msg } from '../src/i18n/index.ts';
+import { inLang, langOf, type Lang } from './lang.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS digest_state (user_id TEXT PRIMARY KEY, last_at TEXT, last_day TEXT);
@@ -29,8 +31,9 @@ const DAILY_UNTIL = 12;
 const MAX_LINES = 20;
 
 export type Group = 'messages' | 'tasks' | 'replies' | 'guests' | 'mail';
-export type DigestItem = { key: string; group: Group; text: string; url: string; at: string; workspaceId: string };
-const GROUP_NAME: Record<Group, string> = { messages: 'Messages and mentions', tasks: 'Tasks', replies: 'Replies to your email', guests: 'From guests', mail: 'Email for you' };
+/** `text`: the English; `tr`: the words in each reader's language (a notice saved with msg()). */
+export type DigestItem = { key: string; group: Group; text: string; tr?: Msg; url: string; at: string; workspaceId: string };
+const GROUP_NAME: Record<Group, string> = { messages: mark('Messages and mentions'), tasks: mark('Tasks'), replies: mark('Replies to your email'), guests: mark('From guests'), mail: mark('Email for you') };
 const PUSH_KIND: Record<Group, PushKind> = { messages: 'messages', tasks: 'tasks', replies: 'mail', guests: 'guests', mail: 'mail' };
 
 const prefsOf = (userId: string) => ((db.getDoc('prefs', userId) as any)?.value ?? {}) as Record<string, any>;
@@ -67,7 +70,7 @@ export function itemsFor(userId: string, since: string, publicUrl: string): Dige
     if (l.app === 'chat' && l.id && read[l.id] && read[l.id] >= n.at) continue;
     if (l.app === 'mail' && l.id) threadsInNotices.add(l.id);
     const url = n.url ? (String(n.url).startsWith('http') ? String(n.url) : `${publicUrl}${n.url}`) : `${publicUrl}/${l.app ?? ''}${q({ ws: n.workspaceId, id: l.id, msg: l.msg, notice: n.id })}`;
-    out.push({ key: `n:${n.id}`, group, text: String(n.text ?? '').slice(0, 240), url, at: n.at, workspaceId: String(n.workspaceId ?? '') });
+    out.push({ key: `n:${n.id}`, group, text: String(n.text ?? '').slice(0, 240), ...(n.tr ? { tr: n.tr } : {}), url, at: n.at, workspaceId: String(n.workspaceId ?? '') });
   }
   if (wants(userId, 'mail')) {
     // Replies they're waiting on: an unread answer in a conversation where they wrote, in a mailbox that's theirs.
@@ -82,7 +85,7 @@ export function itemsFor(userId: string, since: string, publicUrl: string): Dige
       const last = msgs[msgs.length - 1];
       if (!last || last.listUnsubscribe || String(last.from?.email ?? '').toLowerCase() === own || typeof last.date !== 'string' || last.date <= since) continue;
       if (!msgs.slice(0, -1).some((m) => String(m.from?.email ?? '').toLowerCase() === own)) continue;
-      out.push({ key: `t:${t.id}:${last.id ?? last.mid ?? last.date}`, group: 'replies', text: `${last.from?.name || last.from?.email} replied: ${String(t.subject ?? '(no subject)').slice(0, 160)}`, url: `${publicUrl}/mail${q({ ws: box.ws.id, id: t.id })}`, at: last.date, workspaceId: box.ws.id });
+      out.push({ key: `t:${t.id}:${last.id ?? last.mid ?? last.date}`, group: 'replies', ...msg('{name} replied: {subject}', { name: last.from?.name || last.from?.email, subject: String(t.subject ?? '(no subject)').slice(0, 160) }), url: `${publicUrl}/mail${q({ ws: box.ws.id, id: t.id })}`, at: last.date, workspaceId: box.ws.id });
     }
   }
   return out.sort((a, b) => a.at.localeCompare(b.at));
@@ -91,21 +94,26 @@ export function itemsFor(userId: string, since: string, publicUrl: string): Dige
 const emailed = (key: string) => !!db.db.prepare('SELECT 1 FROM digest_items WHERE key = ?').get(key);
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** The email: grouped, one line and one link per item, plain text and simple HTML. */
-export function compose(name: string, brand: string, items: DigestItem[], publicUrl: string) {
-  const shown = items.slice(0, MAX_LINES);
-  const more = items.length - shown.length;
-  const groups = (Object.keys(GROUP_NAME) as Group[]).map((g) => [g, shown.filter((i) => i.group === g)] as const).filter(([, list]) => list.length);
-  const subject = `${items.length} thing${items.length === 1 ? '' : 's'} waiting for you in ${brand}`;
-  const settings = `${publicUrl}/settings?id=notifications`;
-  const hello = `Hi ${name.split(' ')[0] || 'there'}, while you were away:`;
-  const footer = `You get this email when you haven’t opened ${brand} for a while. Change how often in Settings, Notifications: ${settings}`;
-  const text = [hello, '', ...groups.flatMap(([g, list]) => [GROUP_NAME[g], ...list.map((i) => `- ${i.text}\n  ${i.url}`), '']), ...(more ? [`And ${more} more in ${brand}: ${publicUrl}`, ''] : []), footer].join('\n');
-  // Its own white card, so dark mail apps (and dark Mail here) never put dark text on a dark page.
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#16161d;background:#ffffff;max-width:560px;padding:20px 24px;border-radius:12px"><p style="margin-top:0">${esc(hello)}</p>${groups
-    .map(([g, list]) => `<p style="margin:20px 0 6px;font-weight:600">${esc(GROUP_NAME[g])}</p>${list.map((i) => `<p style="margin:0 0 8px"><a href="${esc(i.url)}" style="color:#2448ff;text-decoration:none">${esc(i.text)}</a></p>`).join('')}`)
-    .join('')}${more ? `<p style="margin-top:16px"><a href="${esc(publicUrl)}" style="color:#2448ff">And ${more} more in ${esc(brand)}</a></p>` : ''}<p style="margin-top:24px;color:#6b6f7b;font-size:13px">You get this email when you haven’t opened ${esc(brand)} for a while. <a href="${esc(settings)}" style="color:#6b6f7b">Change how often</a>.</p></div>`;
-  return { subject, text, html };
+/** The email: grouped, one line and one link per item, plain text and simple HTML. In `l`, the person's language. */
+export function compose(name: string, brand: string, items: DigestItem[], publicUrl: string, l: Lang = 'en') {
+  return inLang(l, () => {
+    const shown = items.slice(0, MAX_LINES);
+    const more = items.length - shown.length;
+    const groups = (Object.keys(GROUP_NAME) as Group[]).map((g) => [g, shown.filter((i) => i.group === g)] as const).filter(([, list]) => list.length);
+    const line = (i: DigestItem) => textOf(i);
+    const subject = tn(items.length, '{n} thing waiting for you in {brand}', '{n} things waiting for you in {brand}', { brand });
+    const settings = `${publicUrl}/settings?id=notifications`;
+    const first = name.split(' ')[0];
+    const hello = first ? t('Hi {name}, while you were away:', { name: first }) : t('Hi there, while you were away:');
+    const footer = t('You get this email when you haven’t opened {brand} for a while. Change how often in Settings, Notifications: {link}', { brand, link: settings });
+    const moreText = t('And {n} more in {brand}', { n: more, brand });
+    const text = [hello, '', ...groups.flatMap(([g, list]) => [t(GROUP_NAME[g]), ...list.map((i) => `- ${line(i)}\n  ${i.url}`), '']), ...(more ? [`${moreText}: ${publicUrl}`, ''] : []), footer].join('\n');
+    // Its own white card, so dark mail apps (and dark Mail here) never put dark text on a dark page.
+    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#16161d;background:#ffffff;max-width:560px;padding:20px 24px;border-radius:12px"><p style="margin-top:0">${esc(hello)}</p>${groups
+      .map(([g, list]) => `<p style="margin:20px 0 6px;font-weight:600">${esc(t(GROUP_NAME[g]))}</p>${list.map((i) => `<p style="margin:0 0 8px"><a href="${esc(i.url)}" style="color:#2448ff;text-decoration:none">${esc(line(i))}</a></p>`).join('')}`)
+      .join('')}${more ? `<p style="margin-top:16px"><a href="${esc(publicUrl)}" style="color:#2448ff">${esc(moreText)}</a></p>` : ''}<p style="margin-top:24px;color:#6b6f7b;font-size:13px">${t('You get this email when you haven’t opened {brand} for a while. {link}.', { brand: esc(brand), link: `<a href="${esc(settings)}" style="color:#6b6f7b">${esc(t('Change how often'))}</a>` })}</p></div>`;
+    return { subject, text, html };
+  });
 }
 
 let running = false;
@@ -137,7 +145,7 @@ export async function runDigests(deps: DigestDeps, now = Date.now()): Promise<{ 
       const from = new Set(items.map((i) => i.workspaceId));
       const one = from.size === 1 ? wss.find((w) => from.has(w.id)) : mine.length === 1 ? mine[0] : null;
       const brand = one?.name ? String(one.name) : 'sprint2go';
-      const mail = compose(String(u.name ?? ''), brand, items, deps.publicUrl);
+      const mail = compose(String(u.name ?? ''), brand, items, deps.publicUrl, langOf(userId, one?.id));
       const sent = await deps.send(String(u.email), mail.subject, mail.text, mail.html, brand).catch(() => false);
       if (sent) {
         const at = new Date(now).toISOString();

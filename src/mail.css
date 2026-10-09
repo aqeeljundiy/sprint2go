@@ -42,6 +42,25 @@
 .list-title {
   container-type: inline-size;
 }
+/* The title and the unread count stay on one line each (longer words, as in Indonesian, give way at the end). */
+.list-title h1 {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.list-title .pill {
+  flex: none;
+  white-space: nowrap;
+}
+/* "Updated…" takes what's left after the title and the count, and gives way first. */
+.list-title .list-sync {
+  flex: 1 1 0;
+  justify-content: flex-end;
+}
+.list-sync .icon-btn {
+  flex: none;
+}
 @container (max-width: 300px) {
   .list-sync small {
     display: none;

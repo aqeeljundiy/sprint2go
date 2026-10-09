@@ -1,6 +1,7 @@
 // What a client can see and do. One set of rules for the client app, "View as client" and the local server.
 import { kindOf } from './stages';
 import { hasBranding } from './data/pricing';
+import { mark, t } from './i18n/index'; // the full path: the server imports this file too (docs/i18n.md)
 import { DEFAULT_CLIENT_ACCESS, type Channel, type Client, type ClientAccess, type ClientPerson, type DataTable, type DriveItem, type Meeting, type TableRow, type Todo, type User, type Workspace } from './types';
 
 /** A project's guest settings: the company's, then its type's (e.g. Partners see more), then the project's own changes. */
@@ -22,10 +23,10 @@ export function clientPeople(client: Client, channels: Channel[]): ClientPerson[
 }
 
 const firstName = (n: string) => n.split(' ')[0].toLowerCase();
-const isClient = (t: Todo, client: Client) => t.clientId === client.id;
+const isClient = (task: Todo, client: Client) => task.clientId === client.id;
 
 /** Briefs, tasks and requests the client can see. */
-export const tasksFor = (client: Client, tasks: Todo[]) => tasks.filter((t) => isClient(t, client) && (t.visibleToClient || t.source === 'request'));
+export const tasksFor = (client: Client, tasks: Todo[]) => tasks.filter((task) => isClient(task, client) && (task.visibleToClient || task.source === 'request'));
 
 /** Shared channels this person is in. */
 export const channelsFor = (email: string, clientId: string, channels: Channel[], includeArchived = false) =>
@@ -48,7 +49,7 @@ export function filesFor(client: Client, drive: DriveItem[]) {
 
 /** How a team member's name shows to clients. */
 export function teamLabel(u: Pick<User, 'name'> | undefined, access: ClientAccess, companyName: string) {
-  if (!u || access.teamNames === 'hide') return `${companyName} team`;
+  if (!u || access.teamNames === 'hide') return t('{company} team', { company: companyName });
   return access.teamNames === 'first' ? u.name.split(' ')[0] : u.name;
 }
 
@@ -58,13 +59,16 @@ export function afterEnd(client: Client, person: ClientPerson, access: ClientAcc
   return { person: { ...person, role: 'viewer' }, access: { ...access, requests: false, uploads: false, ai: false, invites: 'off' } };
 }
 
-/** A request's status in the client's words: from the kind of stage it's in, whatever the company calls its stages. */
-export function requestStatus(t: Todo): { label: string; cls: string } {
-  const kind = kindOf(t);
-  if (kind === 'done') return { label: 'Done', cls: 'done' };
-  if (kind === 'waiting') return { label: 'Waiting on you', cls: 'waiting' };
-  if (kind === 'active' || kind === 'review') return { label: 'In progress', cls: 'doing' };
-  return { label: 'New', cls: 'new' };
+/**
+ * A request's status in the client's words: from the kind of stage it's in, whatever the company calls its stages.
+ * The label is English: show it with t(label); a notice saves it as phrase(label), so each reader gets their language.
+ */
+export function requestStatus(task: Todo): { label: string; cls: string } {
+  const kind = kindOf(task);
+  if (kind === 'done') return { label: mark('Done'), cls: 'done' };
+  if (kind === 'waiting') return { label: mark('Waiting on you'), cls: 'waiting' };
+  if (kind === 'active' || kind === 'review') return { label: mark('In progress'), cls: 'doing' };
+  return { label: mark('New'), cls: 'new' };
 }
 
 /** What a role allows. */
@@ -108,17 +112,17 @@ export function companyOf(email: string, company?: string, client?: Pick<Client,
  * A table as a project's guests see it: only shared tables of their project, only the shared fields, buttons
  * without their inner workings, and none of the team's settings (rules, webhook addresses, secrets, log).
  */
-export function guestTable(client: Pick<Client, 'id'>, t: DataTable): DataTable | null {
-  if (t.clientId !== client.id || !t.share?.enabled) return null;
-  const share = t.share;
-  const visible = new Set([t.fields[0]?.id, ...share.fields, ...share.buttons]);
-  const fields = t.fields
+export function guestTable(client: Pick<Client, 'id'>, tb: DataTable): DataTable | null {
+  if (tb.clientId !== client.id || !tb.share?.enabled) return null;
+  const share = tb.share;
+  const visible = new Set([tb.fields[0]?.id, ...share.fields, ...share.buttons]);
+  const fields = tb.fields
     .filter((f) => visible.has(f.id) && (f.type !== 'button' || share.buttons.includes(f.id)) && (f.type !== 'link'))
     .map((f) => (f.type === 'button' ? { id: f.id, name: f.name, type: f.type, button: { label: f.button?.label ?? f.name, color: f.button?.color, confirm: f.button?.confirm, ask: f.button?.ask?.filter((x) => share.edit.includes(x)), actions: [] } } : f));
   const ids = new Set(fields.map((f) => f.id));
   const has = (id: string | undefined) => (id && ids.has(id) ? id : undefined);
   // Nothing in a view may point at a field they don't see (a filter's value, a colour rule, a sort would give it away).
-  const views = t.views.map((v) => ({
+  const views = tb.views.map((v) => ({
     ...v,
     hidden: v.hidden?.filter((x) => ids.has(x)),
     filters: v.filters?.filter((x) => ids.has(x.fieldId)),
@@ -134,13 +138,13 @@ export function guestTable(client: Pick<Client, 'id'>, t: DataTable): DataTable 
     order: v.order?.filter((x) => ids.has(x)),
   }));
   // The row page's pinned fields and main button, among what they see (sections and templates stay with the team).
-  const page = t.page ? { pinned: t.page.pinned?.filter((x) => ids.has(x)), main: share.buttons.includes(t.page.main ?? '') ? t.page.main : undefined, order: t.page.order?.filter((x) => ids.has(x)), hideEmpty: t.page.hideEmpty } : undefined;
-  return { id: t.id, workspaceId: t.workspaceId, name: t.name, color: t.color, clientId: t.clientId, description: t.description, fields, views, page, createdBy: t.createdBy, createdAt: t.createdAt, share };
+  const page = tb.page ? { pinned: tb.page.pinned?.filter((x) => ids.has(x)), main: share.buttons.includes(tb.page.main ?? '') ? tb.page.main : undefined, order: tb.page.order?.filter((x) => ids.has(x)), hideEmpty: tb.page.hideEmpty } : undefined;
+  return { id: tb.id, workspaceId: tb.workspaceId, name: tb.name, color: tb.color, clientId: tb.clientId, description: tb.description, fields, views, page, createdBy: tb.createdBy, createdAt: tb.createdAt, share };
 }
 
 /** A row as guests see it: shared fields only, no comments, history of shared fields only. */
-export function guestRow(t: DataTable, r: TableRow): TableRow {
-  const ids = new Set(t.fields.map((f) => f.id));
+export function guestRow(tb: DataTable, r: TableRow): TableRow {
+  const ids = new Set(tb.fields.map((f) => f.id));
   return {
     id: r.id,
     workspaceId: r.workspaceId,

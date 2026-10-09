@@ -15,6 +15,7 @@ import * as oauth from './oauth.ts';
 import * as sandbox from './sandbox.ts';
 import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { registerTools, type ToolDeps, type ToolCtx } from './mcpTools.ts';
+import { mark } from '../src/i18n/index.ts';
 
 export interface ConnectorDeps extends ToolDeps {
   origin: (req: IncomingMessage) => string;
@@ -173,14 +174,14 @@ export async function handleApi(p: string, c: ApiCtx): Promise<boolean> {
     return (json(res, 200, { app: { name: r.ask.client.name, host: oauth.hostOf(r.ask.redirectUri) }, me: { name: u?.name ?? '', email: u?.email ?? '' }, companies: companiesOf(me) }), true);
   }
   if (p === '/api/oauth/consent' && req.method === 'POST') {
-    if (c.operator) return (json(res, 403, { error: 'That’s theirs to do: you’re signed in as them.' }), true);
+    if (c.operator) return (json(res, 403, { error: mark('That’s theirs to do: you’re signed in as them.') }), true);
     const b = await c.body(req);
     const r = oauth.checkAsk(b?.query && typeof b.query === 'object' ? b.query : {}, origin);
     if (!r.ok) return (json(res, 400, { error: r.error, redirect: r.redirect }), true);
     if (b.allow !== true) return (json(res, 200, { redirect: oauth.deny(r.ask, origin) }), true);
-    if (deps.tooMany(`oauth-consent:${me}`, 30, 60 * 60_000)) return (json(res, 429, { error: 'That’s a lot of connections in an hour. Try again later.' }), true);
+    if (deps.tooMany(`oauth-consent:${me}`, 30, 60 * 60_000)) return (json(res, 429, { error: mark('That’s a lot of connections in an hour. Try again later.') }), true);
     const company = companiesOf(me).find((w) => w.id === b.workspaceId);
-    if (!company) return (json(res, 400, { error: 'Pick one of your companies.' }), true);
+    if (!company) return (json(res, 400, { error: mark('Pick one of your companies.') }), true);
     if (company.off) return (json(res, 403, { error: `${company.name} switched off AI apps. An admin can switch them on in Settings, Security & data.` }), true);
     if (!company.demo) deps.event('security.ai-app', company.id, me, `connected ${r.ask.client.name}${oauth.hostOf(r.ask.redirectUri) ? ` (${oauth.hostOf(r.ask.redirectUri)})` : ''}`);
     return (json(res, 200, { redirect: oauth.allow(r.ask, me, company.id, origin) }), true);
@@ -194,10 +195,10 @@ export async function handleApi(p: string, c: ApiCtx): Promise<boolean> {
     return (json(res, 200, { url: oauth.resourceOf(origin), grants }), true);
   }
   if (p === '/api/oauth/grants/revoke' && req.method === 'POST') {
-    if (c.operator) return (json(res, 403, { error: 'That’s theirs to do: you’re signed in as them.' }), true);
+    if (c.operator) return (json(res, 403, { error: mark('That’s theirs to do: you’re signed in as them.') }), true);
     const { id } = await c.body(req);
     const g = typeof id === 'string' ? oauth.grant(id) : null;
-    if (!g || g.userId !== me) return (json(res, 404, { error: 'No such connection.' }), true);
+    if (!g || g.userId !== me) return (json(res, 404, { error: mark('No such connection.') }), true);
     oauth.revokeGrant(g.id, 'disconnected in Settings');
     if (!isSandboxId(g.workspaceId)) deps.event('security.ai-app', g.workspaceId, me, `disconnected ${g.app}`);
     return (json(res, 200, { ok: true }), true);

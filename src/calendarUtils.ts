@@ -1,4 +1,6 @@
 import type { CalEvent } from './types';
+import { t } from './i18n/index'; // the full paths: the server loads this file (seed.ts, data/calendar.ts)
+import { fmtTime as fmtClock, fmtWeekdayLong } from './i18n/format';
 
 export const DAY_MS = 86_400_000;
 
@@ -36,19 +38,20 @@ export function monthGrid(d: Date) {
 
 export const minutesIntoDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
 
-export const fmtTime = (d: Date | string) =>
-  new Date(d).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+/** "14:30" / "14.30", in the person's language. */
+export const fmtTime = (d: Date | string) => fmtClock(d);
+
+/** "09:00 to 10:30" / "09.00 sampai 10.30". */
+export const fmtTimeRange = (a: Date | string, b: Date | string) => t('{first} to {last}', { first: fmtClock(a), last: fmtClock(b) });
 
 export function fmtRange(e: CalEvent) {
-  const s = new Date(e.start);
-  const en = new Date(e.end);
-  const day = s.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
-  if (e.allDay) return `${day} · All day`;
-  return `${day} · ${fmtTime(s)} – ${fmtTime(en)}`;
+  const day = fmtWeekdayLong(e.start);
+  if (e.allDay) return t('{day} · All day', { day });
+  return `${day} · ${fmtTimeRange(e.start, e.end)}`;
 }
 
-export const hourLabel = (h: number) =>
-  new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: 'numeric' });
+/** The time grid's hour marks: "09:00" / "09.00". */
+export const hourLabel = (h: number) => fmtClock(new Date(2000, 0, 1, h));
 
 /** Events that touch the given day. */
 export function eventsOn(events: CalEvent[], day: Date) {

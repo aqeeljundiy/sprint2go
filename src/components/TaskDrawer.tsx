@@ -14,7 +14,7 @@ import { kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesForTask, tone
 import { PeoplePicker } from './ui/PeoplePicker';
 import { useOnePanel } from '../onePanel';
 import { TaskDetail } from './tasks/TaskDetail';
-import { t } from '../i18n';
+import { t, tx } from '../i18n';
 import { tj } from '../i18n/tj';
 import { fmtDateTime, fmtTime } from '../i18n/format';
 
@@ -131,9 +131,9 @@ export function TaskDrawer(p: Props) {
               </>
             ) : (
               <>
-                <dt>{t('Doing it')}</dt>
+                <dt>{tx('field', 'Doing it')}</dt>
                 <dd>
-                  <PeoplePicker value={doers(task)} users={p.users} me={p.me} label={t('Doing it')} emptyText={t('Waiting in the team queue')} onChange={(ids) => p.onPatch(task.id, { assignees: ids })} />
+                  <PeoplePicker value={doers(task)} users={p.users} me={p.me} label={tx('field', 'Doing it')} emptyText={t('Waiting in the team queue')} onChange={(ids) => p.onPatch(task.id, { assignees: ids })} />
                 </dd>
                 <dt>{t('Supervisor')}</dt>
                 <dd>
@@ -193,7 +193,7 @@ export function TaskDrawer(p: Props) {
                     onChange={(v) => p.onPatch(task.id, { remindAt: v || undefined, reminded: false })}
                     label={t('Reminder')}
                     options={[
-                      { value: '', label: t('No reminder') },
+                      { value: '', label: tx('option', 'No reminder') },
                       ...(task.remindAt && !task.reminded && !remindChoices.some(([, v]) => v === task.remindAt) ? [{ value: task.remindAt, label: remindLabel(task.remindAt), icon: <Bell size={14} /> }] : []),
                       ...remindChoices.map(([l, v]) => ({ value: v, label: l, hint: remindLabel(v), icon: <Bell size={14} /> })),
                     ]}
@@ -490,7 +490,7 @@ export function TaskDrawer(p: Props) {
               <label className="drawer-label">{t('Notes')}</label>
               <textarea className="drawer-notes" value={task.notes ?? ''} onChange={(e) => p.onPatch(task.id, { notes: e.target.value })} placeholder={t('Details, links, what done looks like…')} />
               <div className="drawer-label label-row">
-                {t('Checklist')}
+                {tx('task', 'Checklist')}
                 {checklist.length > 0 && (
                   <span className="bc-progress">
                     {checklist.filter((c) => c.done).length}/{checklist.length}

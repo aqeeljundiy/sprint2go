@@ -5,6 +5,7 @@ import { uid } from '../utils';
 import { Avatar } from './Avatar';
 import { SmoothHeight } from './ui/Smooth';
 import { Select } from './ui/Select';
+import { mark, t, tn } from '../i18n';
 
 /** Throwaway addresses live on a sprint2go domain, so they work at once whatever the company's own email setup. */
 export const tempDomain = (ws: Workspace) => {
@@ -13,10 +14,10 @@ export const tempDomain = (ws: Workspace) => {
 };
 
 const LIFETIMES = [
-  ['1', '1 day'],
-  ['7', '7 days'],
-  ['30', '30 days'],
-  ['', 'Until I delete it'],
+  ['1', mark('1 day')],
+  ['7', mark('7 days')],
+  ['30', mark('30 days')],
+  ['', mark('Until I delete it')],
 ] as const;
 
 const WORDS = ['test', 'trial', 'signup', 'try', 'demo', 'check'];
@@ -24,9 +25,9 @@ const randomName = () => `${WORDS[Math.floor(Math.random() * WORDS.length)]}-${M
 
 /** "Deletes in 6 days", "Deletes today", or "Kept until you delete it". */
 export function lifeLeft(a: Account) {
-  if (!a.temp?.expiresAt) return 'Kept until you delete it';
+  if (!a.temp?.expiresAt) return t('Kept until you delete it');
   const days = Math.ceil((new Date(a.temp.expiresAt).getTime() - Date.now()) / 86_400_000);
-  return days <= 0 ? 'Deletes today' : days === 1 ? 'Deletes tomorrow' : `Deletes in ${days} days`;
+  return days <= 0 ? t('Deletes today') : days === 1 ? t('Deletes tomorrow') : tn(days, 'Deletes in {n} day', 'Deletes in {n} days');
 }
 
 /**
@@ -56,12 +57,12 @@ export function TempAddressDialog({ ws, me, people, editing, onSave, onClose }: 
   };
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal temp-modal" role="dialog" aria-label={editing ? 'Temporary address' : 'New temporary address'} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal temp-modal" role="dialog" aria-label={editing ? t('Temporary address') : t('New temporary address')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Timer size={15} /> {editing ? editing.email : 'New temporary address'}
+            <Timer size={15} /> {editing ? editing.email : t('New temporary address')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -69,23 +70,23 @@ export function TempAddressDialog({ ws, me, people, editing, onSave, onClose }: 
           <SmoothHeight>
             {!editing && (
               <>
-                <p className="muted small">For a quick sign-up or a test. Only the people you pick see what arrives, and it deletes itself when you’re done.</p>
+                <p className="muted small">{t('For a quick sign-up or a test. Only the people you pick see what arrives, and it deletes itself when you’re done.')}</p>
                 <label className="field">
-                  <span>Address</span>
+                  <span>{t('Address')}</span>
                   <span className="temp-addr">
                     <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder="tiktok-test" />
                     <span className="temp-at">@</span>
                     {ownDomain ? (
-                      <Select<string> value={domain} onChange={setDomain} label="Domain" className="sel-flat temp-domain-sel" options={[{ value: tempDomain(ws), label: tempDomain(ws), hint: 'Works straight away' }, { value: ownDomain, label: ownDomain, hint: 'Your company’s domain' }]} />
+                      <Select<string> value={domain} onChange={setDomain} label={t('Domain')} className="sel-flat temp-domain-sel" options={[{ value: tempDomain(ws), label: tempDomain(ws), hint: t('Works straight away') }, { value: ownDomain, label: ownDomain, hint: t('Your company’s domain') }]} />
                     ) : (
                       <span className="temp-domain">{domain}</span>
                     )}
-                    <button type="button" className="icon-btn sm" title="Make one up" onClick={() => setName(randomName())}>
+                    <button type="button" className="icon-btn sm" title={t('Make one up')} onClick={() => setName(randomName())}>
                       <Dices size={15} />
                     </button>
                   </span>
                   {taken ? (
-                    <small className="err">That address already exists.</small>
+                    <small className="err">{t('That address already exists.')}</small>
                   ) : (
                     local.length >= 2 && (
                       <small className="temp-preview">
@@ -95,7 +96,7 @@ export function TempAddressDialog({ ws, me, people, editing, onSave, onClose }: 
                           className="link-btn"
                           onClick={() => void navigator.clipboard?.writeText(email).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1400)))}
                         >
-                          {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}
+                          {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? t('Copied') : t('Copy')}
                         </button>
                       </small>
                     )
@@ -104,36 +105,36 @@ export function TempAddressDialog({ ws, me, people, editing, onSave, onClose }: 
               </>
             )}
             <div className="field">
-              <span>Who can see it</span>
+              <span>{t('Who can see it')}</span>
               <div className="temp-people">
                 {people.map((u) => (
                   <button key={u.id} type="button" className={who.includes(u.id) ? 'on' : ''} onClick={() => toggle(u.id)} aria-pressed={who.includes(u.id)}>
-                    <Avatar person={u} size={20} /> {u.id === me ? 'You' : u.name.split(' ')[0]}
+                    <Avatar person={u} size={20} /> {u.id === me ? t('You') : u.name.split(' ')[0]}
                     {who.includes(u.id) && <Check size={12} />}
                   </button>
                 ))}
               </div>
             </div>
             <div className="field">
-              <span>{editing ? 'Keep it for' : 'Delete it after'}</span>
+              <span>{editing ? t('Keep it for') : t('Delete it after')}</span>
               <div className="segmented">
-                {(editing ? [['same', 'No change'] as const, ...LIFETIMES] : LIFETIMES).map(([v, l]) => (
+                {(editing ? [['same', mark('No change')] as const, ...LIFETIMES] : LIFETIMES).map(([v, l]) => (
                   <button key={l} type="button" className={life === v ? 'on' : ''} onClick={() => setLife(v)}>
-                    {l}
+                    {t(l)}
                   </button>
                 ))}
               </div>
-              {editing && <small className="muted">{lifeLeft(editing)}. Picking a length counts from today.</small>}
+              {editing && <small className="muted">{t('{left}. Picking a length counts from today.', { left: lifeLeft(editing) })}</small>}
             </div>
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" disabled={!ok} onClick={save}>
-            {editing ? 'Save' : 'Create address'}
+            {editing ? t('Save') : t('Create address')}
           </button>
         </footer>
       </div>

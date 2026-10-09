@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, Mic } from 'lucide-react';
+import { Check, Mic, Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
-import { eventsOn, fmtTime, hourLabel, layoutDay, minutesIntoDay, sameDay, startOfDay } from '../../calendarUtils';
+import { eventsOn, fmtTime, fmtTimeRange, hourLabel, layoutDay, minutesIntoDay, sameDay, startOfDay } from '../../calendarUtils';
 import { haptic, useLongPress } from '../ui/useLongPress';
 import { isMaybe, isPending } from './calTools';
 import { swipeLock, useSwipeNav } from './useSwipeNav';
+import { t } from '../../i18n';
+import { fmtDate, fmtWeekdayLong } from '../../i18n/format';
 
 const Q = 15 * 60_000;
 
@@ -16,7 +18,7 @@ export interface GridProps {
   color: (calendarId: string) => string;
   selectedId: string | null;
   canEdit: (e: CalEvent) => boolean;
-  onMove?: (id: string, start: Date, end: Date) => void;
+  onMove?: (id: string, start: Date, end: Date, at?: { x: number; y: number }) => void; // `at`: where it was let go
   onSelect: (id: string) => void;
   onSlot: (start: Date, touch: boolean) => void; // an empty slot tapped or clicked
   onDay: (d: Date) => void; // a day's heading: that day on its own
@@ -94,9 +96,10 @@ export function TimeGrid(p: GridProps) {
   };
   const finish = (d: Drag | null, x: number, y: number) => {
     swipeLock.on = false;
+    dragRef.current = null; // once: the block's own release and the page's can both arrive
     setDrag(null);
     if (!d) return;
-    if (d.moved && (d.curStart.getTime() !== d.start.getTime() || d.curEnd.getTime() !== d.end.getTime())) p.onMove?.(d.id, d.curStart, d.curEnd);
+    if (d.moved && (d.curStart.getTime() !== d.start.getTime() || d.curEnd.getTime() !== d.end.getTime())) p.onMove?.(d.id, d.curStart, d.curEnd, { x, y });
     else if (d.touch && !d.moved) {
       const ev = events.find((e) => e.id === d.id);
       if (ev) p.onMenu(ev, x, y);
@@ -138,6 +141,27 @@ export function TimeGrid(p: GridProps) {
     return () => cancelAnimationFrame(raf);
   }, [drag?.id, drag?.touch]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Touch: the page follows the finger too. A block that moves past another event or into another day's column moves
+  // in the page, and its pointer capture goes with it; the drag still follows and ends where the finger lets go.
+  useEffect(() => {
+    if (!drag?.touch) return;
+    const move = (e: PointerEvent) => {
+      lastPoint.current = { x: e.clientX, y: e.clientY };
+      setDrag((d) => d && follow(d, e.clientX, e.clientY));
+    };
+    const up = (e: PointerEvent) => finish(dragRef.current && follow(dragRef.current, e.clientX, e.clientY), e.clientX, e.clientY);
+    // Taken away (a call, the system): it goes back to where it was.
+    const cancel = () => finish(dragRef.current && follow(dragRef.current, dragRef.current.x, dragRef.current.y), lastPoint.current.x, lastPoint.current.y);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+  }, [drag?.id, drag?.touch]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const live = drag ? events.map((e) => (e.id === drag.id ? { ...e, start: drag.curStart.toISOString(), end: drag.curEnd.toISOString() } : e)) : events;
 
   /* ---------- making a new one ---------- */
@@ -170,8 +194,8 @@ export function TimeGrid(p: GridProps) {
       <div className="tg-head">
         <div className="tg-gutter" />
         {days.map((d) => (
-          <button key={d.toISOString()} className={`tg-day ${sameDay(d, now) ? 'today' : ''}`} onClick={() => p.onDay(d)} aria-label={d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}>
-            <span className="tg-dow">{d.toLocaleDateString([], { weekday: 'short' })}</span>
+          <button key={d.toISOString()} className={`tg-day ${sameDay(d, now) ? 'today' : ''}`} onClick={() => p.onDay(d)} aria-label={fmtWeekdayLong(d)}>
+            <span className="tg-dow">{fmtDate(d, { weekday: 'short' })}</span>
             <span className="tg-num">{d.getDate()}</span>
           </button>
         ))}
@@ -179,16 +203,17 @@ export function TimeGrid(p: GridProps) {
 
       {hasAllDay && (
         <div className="tg-allday">
-          <div className="tg-gutter">all day</div>
+          <div className="tg-gutter">{t('all day')}</div>
           {allDay.map((list, i) => (
             <div key={i} className="tg-allday-cell">
               {list.slice(0, perDay).map((e) => (
                 <button key={e.id} className={`pill-event ${p.selectedId === e.id ? 'picked' : ''} ${isPending(e) ? 'pending' : ''}`} style={{ ['--c' as string]: color(e.calendarId) }} onClick={() => p.onSelect(e.id)}>
+                  {e.rrule && <Repeat size={11} className="pe-repeat" aria-label={t('Repeats')} />}
                   {e.title}
                 </button>
               ))}
               {list.length > perDay && (
-                <button className="tg-allday-more" onClick={() => p.onAllDay(days[i])} aria-label={`${list.length - perDay} more all-day events`}>
+                <button className="tg-allday-more" onClick={() => p.onAllDay(days[i])} aria-label={t('{n} more all-day events', { n: list.length - perDay })}>
                   +{list.length - perDay}
                 </button>
               )}
@@ -334,7 +359,7 @@ function Block(b: {
     <div
       role="button"
       tabIndex={0}
-      aria-label={`${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}`}
+      aria-label={ev.rrule ? t('{label}, repeats', { label: `${ev.title}, ${fmtTimeRange(s, e)}` }) : `${ev.title}, ${fmtTimeRange(s, e)}`}
       className={cls}
       {...press}
       onPointerDown={(pe) => {
@@ -366,7 +391,7 @@ function Block(b: {
         <button
           type="button"
           className={`ev-check sm${b.task.done ? ' on' : ''}`}
-          aria-label={b.task.done ? 'Done' : 'Mark the task done'}
+          aria-label={b.task.done ? t('Done') : t('Mark the task done')}
           onPointerDown={(x) => x.stopPropagation()}
           onClick={(x) => (x.stopPropagation(), !b.task!.done && (haptic(), b.onTaskDone()))}
         >
@@ -375,9 +400,9 @@ function Block(b: {
       )}
       <span className="be-title">{ev.title}</span>
       <span className="be-time">
-        {b.bot && <Mic size={11} className="be-bot" aria-label="The notetaker will join" />}
-        {fmtTime(s)}
-        {(!short || b.dragging) && ` to ${fmtTime(e)}`}
+        {b.bot && <Mic size={11} className="be-bot" aria-label={t('The notetaker will join')} />}
+        {ev.rrule && <Repeat size={11} className="be-repeat" aria-label={t('Repeats')} />}
+        {!short || b.dragging ? fmtTimeRange(s, e) : fmtTime(s)}
       </span>
       {b.editable && <span className="be-resize" aria-hidden />}
     </div>
@@ -422,11 +447,11 @@ function Ghost({ q, hour, onChange }: { q: { start: Date; end: Date }; hour: num
   const up = () => (st.current = null);
   return (
     <div className="ghost-block" style={{ top, height }} onClick={(e) => e.stopPropagation()} onPointerDown={down('move')} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
-      <span className="gh-handle top" onPointerDown={down('start')} aria-label="Drag to change the start" role="slider" aria-valuenow={minutesIntoDay(q.start)} aria-valuetext={fmtTime(q.start)} />
+      <span className="gh-handle top" onPointerDown={down('start')} aria-label={t('Drag to change the start')} role="slider" aria-valuenow={minutesIntoDay(q.start)} aria-valuetext={fmtTime(q.start)} />
       <span className="gh-time">
-        {fmtTime(q.start)} to {fmtTime(q.end)}
+        {fmtTimeRange(q.start, q.end)}
       </span>
-      <span className="gh-handle bottom" onPointerDown={down('end')} aria-label="Drag to change the end" role="slider" aria-valuenow={minutesIntoDay(q.end)} aria-valuetext={fmtTime(q.end)} />
+      <span className="gh-handle bottom" onPointerDown={down('end')} aria-label={t('Drag to change the end')} role="slider" aria-valuenow={minutesIntoDay(q.end)} aria-valuetext={fmtTime(q.end)} />
     </div>
   );
 }

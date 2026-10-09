@@ -6,10 +6,11 @@ import { DatePicker, TimePicker } from '../ui/DatePicker';
 import { Sheet } from '../ui/Sheet';
 import { SmoothHeight } from '../ui/Smooth';
 import { freeSlots } from './calTools';
+import { t, tn } from '../../i18n';
+import { fmtTime } from '../../i18n/format';
 
 const LENGTHS = [15, 30, 60, 90];
-const words = (m: number) => (m < 60 ? `${m} min` : m === 60 ? '1 hour' : `${m / 60} hours`);
-const t = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const words = (m: number) => (m < 60 ? t('{n} min', { n: m }) : tn(m / 60, '{n} hour', '{n} hours'));
 
 /**
  * Give a task a time without dragging (phones can't drag a task onto the calendar): how long, then the next free slots
@@ -22,14 +23,14 @@ export function ScheduleTask({ title, events, onPick, onClose }: { title: string
   const [at, setAt] = useState('09:00');
   const slots = useMemo(() => (len ? freeSlots(events, len) : null), [events, len]);
   return (
-    <Sheet onClose={onClose} title="Block time for it" className="sched-sheet">
+    <Sheet onClose={onClose} title={t('Block time for it')} className="sched-sheet">
       <div className="sched">
         <p className="sched-task">
           <CalendarClock size={16} />
           <span>{title}</span>
         </p>
-        <div className="sched-label">How long?</div>
-        <div className="cal-chips" role="radiogroup" aria-label="How long">
+        <div className="sched-label">{t('How long?')}</div>
+        <div className="cal-chips" role="radiogroup" aria-label={t('How long')}>
           {LENGTHS.map((m) => (
             <button key={m} type="button" role="radio" aria-checked={len === m} className={`cal-chip${len === m ? ' on' : ''}`} onClick={() => setLen(m)}>
               {words(m)}
@@ -41,28 +42,28 @@ export function ScheduleTask({ title, events, onPick, onClose }: { title: string
             <div className="sched-slots" key={len}>
               {(['today', 'tomorrow'] as const).map((k) => (
                 <div key={k}>
-                  <div className="sched-label">{k === 'today' ? 'Free today' : 'Free tomorrow'}</div>
+                  <div className="sched-label">{k === 'today' ? t('Free today') : t('Free tomorrow')}</div>
                   <div className="cal-chips">
                     {slots[k].map((s) => (
                       <button key={s.getTime()} type="button" className="cal-chip slot" onClick={() => onPick(s, len!)}>
-                        {t(s)}
+                        {fmtTime(s)}
                       </button>
                     ))}
-                    {!slots[k].length && <span className="muted sched-none">{k === 'today' ? 'Nothing free for that long today' : 'Nothing free for that long'}</span>}
+                    {!slots[k].length && <span className="muted sched-none">{k === 'today' ? t('Nothing free for that long today') : t('Nothing free for that long')}</span>}
                   </div>
                 </div>
               ))}
               {own ? (
                 <div className="sched-own">
-                  <DatePicker value={day} onChange={(v) => v && setDay(v)} clearable={false} label="Day" />
-                  <TimePicker value={at} onChange={setAt} label="Starts" />
+                  <DatePicker value={day} onChange={(v) => v && setDay(v)} clearable={false} label={t('Day')} />
+                  <TimePicker value={at} onChange={setAt} label={t('Starts')} />
                   <button type="button" className="primary-btn" onClick={() => onPick(new Date(`${day}T${at}`), len!)}>
-                    Block it
+                    {t('Block it')}
                   </button>
                 </div>
               ) : (
                 <button type="button" className="link-btn sched-other" onClick={() => setOwn(true)}>
-                  Another day or time
+                  {t('Another day or time')}
                 </button>
               )}
             </div>

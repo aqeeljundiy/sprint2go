@@ -6,6 +6,9 @@ import { uid } from '../../utils';
 import { SmoothHeight, TabPane } from '../ui/Smooth';
 import { FIELD_TYPES, guessField, isEmpty, optionsFromValues, parseIncoming } from './fields';
 import { guessType, parseCsv } from './csv';
+import { t, tn } from '../../i18n';
+import { fmtNumber } from '../../i18n/format';
+import { useLang } from '../../i18n/useLang';
 
 type Target = { kind: 'field'; fieldId: string } | { kind: 'new'; type: FieldType } | { kind: 'skip' };
 export interface ImportPlan {
@@ -32,14 +35,15 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
   const [error, setError] = useState('');
   const [over, setOver] = useState(false);
   const usable = table.fields.filter((f) => f.type !== 'button' && f.type !== 'link');
+  const lang = useLang(); // a new column without a header is named "Column 3" in the reader's words
 
   const load = async (file: File) => {
     setError('');
-    if (file.size > 15_000_000) return setError('That file is over 15 MB. Split it into smaller files.');
+    if (file.size > 15_000_000) return setError(t('That file is over 15 MB. Split it into smaller files.'));
     const text = await file.text();
     const g = parseCsv(text);
-    if (g.length < 2) return setError('That file has no rows under its header. Save the sheet as CSV and try again.');
-    if (g.length > 20_001) return setError(`That file has ${g.length - 1} rows; at most 20,000 at a time.`);
+    if (g.length < 2) return setError(t('That file has no rows under its header. Save the sheet as CSV and try again.'));
+    if (g.length > 20_001) return setError(t('That file has {n} rows; at most {max} at a time.', { n: fmtNumber(g.length - 1), max: fmtNumber(20_000) }));
     setName(file.name);
     setGrid(g);
     const head = g[0];
@@ -65,12 +69,12 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
   const plan = useMemo((): ImportPlan | null => {
     if (!grid) return null;
     let fields = [...table.fields];
-    const colField: (string | null)[] = targets.map((t, i) => {
-      if (t.kind === 'skip') return null;
-      if (t.kind === 'field') return t.fieldId;
-      const f: TableField = { id: uid(), name: head[i] || `Column ${i + 1}`, type: t.type, ...(t.type === 'money' ? { currency: 'IDR' as const } : {}) };
+    const colField: (string | null)[] = targets.map((tg, i) => {
+      if (tg.kind === 'skip') return null;
+      if (tg.kind === 'field') return tg.fieldId;
+      const f: TableField = { id: uid(), name: head[i] || t('Column {n}', { n: i + 1 }), type: tg.type, ...(tg.type === 'money' ? { currency: 'IDR' as const } : {}) };
       const tmp: TableField = { id: 'tmp', name: f.name, type: 'text' };
-      if (t.type === 'select' || t.type === 'multi')
+      if (tg.type === 'select' || tg.type === 'multi')
         f.options = optionsFromValues(tmp, body.map((r) => ({ id: '', workspaceId: '', tableId: '', order: 0, createdBy: '', createdAt: '', updatedAt: '', values: { tmp: r[i] ?? '' } })), { users, rowName: () => '' });
       fields.push(f);
       return f.id;
@@ -94,7 +98,7 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
       else creates.push(values);
     }
     return { fields, creates, updates: [...updates].map(([id, values]) => ({ id, values })), runRules };
-  }, [grid, targets, dedupe, runRules, rows, table.fields, users, body, head]);
+  }, [grid, targets, dedupe, runRules, rows, table.fields, users, body, head, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = async () => {
     if (!plan) return;
@@ -105,17 +109,17 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
       setBusy(false);
     }
   };
-  const setTarget = (i: number, v: string) => setTargets((ts) => ts.map((t, j) => (j !== i ? t : v === 'skip' ? { kind: 'skip' } : v.startsWith('new:') ? { kind: 'new', type: v.slice(4) as FieldType } : { kind: 'field', fieldId: v })));
-  const taken = (i: number) => new Set(targets.flatMap((t, j) => (j !== i && t.kind === 'field' ? [t.fieldId] : [])));
+  const setTarget = (i: number, v: string) => setTargets((ts) => ts.map((tg, j) => (j !== i ? tg : v === 'skip' ? { kind: 'skip' } : v.startsWith('new:') ? { kind: 'new', type: v.slice(4) as FieldType } : { kind: 'field', fieldId: v })));
+  const taken = (i: number) => new Set(targets.flatMap((tg, j) => (j !== i && tg.kind === 'field' ? [tg.fieldId] : [])));
 
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal tb-import" role="dialog" aria-label="Import CSV" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="modal tb-import" role="dialog" aria-label={t('Import CSV')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <FileUp size={15} /> Import into {table.name}
+            <FileUp size={15} /> {t('Import into {table}', { table: table.name })}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -138,63 +142,61 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
                     }}
                   >
                     <Upload size={22} />
-                    <strong>Drop a CSV file here, or choose one</strong>
-                    <small>From Excel or Google Sheets: File, Download (or Save as), CSV. The first row should be the column names.</small>
+                    <strong>{t('Drop a CSV file here, or choose one')}</strong>
+                    <small>{t('From Excel or Google Sheets: File, Download (or Save as), CSV. The first row should be the column names.')}</small>
                   </button>
                   <input ref={fileRef} type="file" accept=".csv,text/csv,.tsv,text/tab-separated-values" hidden onChange={(e) => e.target.files?.[0] && void load(e.target.files[0])} />
                   {error && <p className="err">{error}</p>}
                 </>
               ) : (
                 <>
-                  <p className="muted small">
-                    {name}: {body.length} row{body.length === 1 ? '' : 's'}. Each column goes into a field; matching names are already set.
-                  </p>
+                  <p className="muted small">{tn(body.length, '{file}: {n} row. Each column goes into a field; matching names are already set.', '{file}: {n} rows. Each column goes into a field; matching names are already set.', { file: name })}</p>
                   <div className="tb-imap">
                     {head.map((h, i) => {
-                      const t = targets[i];
-                      const value = t.kind === 'skip' ? 'skip' : t.kind === 'new' ? `new:${t.type}` : t.fieldId;
+                      const tg = targets[i];
+                      const value = tg.kind === 'skip' ? 'skip' : tg.kind === 'new' ? `new:${tg.type}` : tg.fieldId;
                       const samples = body.slice(0, 3).map((r) => r[i]).filter(Boolean);
                       return (
-                        <div key={i} className={`tb-imap-row${t.kind === 'skip' ? ' skip' : ''}`}>
+                        <div key={i} className={`tb-imap-row${tg.kind === 'skip' ? ' skip' : ''}`}>
                           <span className="tb-imap-col">
-                            <strong>{h || `Column ${i + 1}`}</strong>
-                            <small className="muted">{samples.join(' · ').slice(0, 70) || 'empty'}</small>
+                            <strong>{h || t('Column {n}', { n: i + 1 })}</strong>
+                            <small className="muted">{samples.join(' · ').slice(0, 70) || t('empty')}</small>
                           </span>
-                          <PickSelect value={value} aria-label={`Where ${h} goes`} onChange={(e) => setTarget(i, e.target.value)}>
-                            <optgroup label="Into a field">
+                          <PickSelect value={value} aria-label={t('Where {column} goes', { column: h || t('Column {n}', { n: i + 1 }) })} onChange={(e) => setTarget(i, e.target.value)}>
+                            <optgroup label={t('Into a field')}>
                               {usable.filter((f) => !taken(i).has(f.id)).map((f) => (
                                 <option key={f.id} value={f.id}>
                                   {f.name}
                                 </option>
                               ))}
                             </optgroup>
-                            <optgroup label={`New field “${h}” as`}>
+                            <optgroup label={t('New field “{name}” as', { name: h || t('Column {n}', { n: i + 1 }) })}>
                               {FIELD_TYPES.filter((x) => x.type !== 'button' && x.type !== 'link').map((x) => (
                                 <option key={x.type} value={`new:${x.type}`}>
-                                  New: {x.label}
+                                  {t('New: {type}', { type: x.label })}
                                 </option>
                               ))}
                             </optgroup>
-                            <option value="skip">Skip this column</option>
+                            <option value="skip">{t('Skip this column')}</option>
                           </PickSelect>
                         </div>
                       );
                     })}
                   </div>
                   <div className="tb-act-row">
-                    <span className="tb-act-label">Duplicates</span>
-                    <PickSelect value={dedupe} aria-label="Duplicates" onChange={(e) => setDedupe(e.target.value)}>
-                      <option value="">Always add new rows</option>
-                      {usable.filter((f) => ['text', 'email', 'phone', 'url', 'number'].includes(f.type) && targets.some((t) => t.kind === 'field' && t.fieldId === f.id)).map((f) => (
+                    <span className="tb-act-label">{t('Duplicates')}</span>
+                    <PickSelect value={dedupe} aria-label={t('Duplicates')} onChange={(e) => setDedupe(e.target.value)}>
+                      <option value="">{t('Always add new rows')}</option>
+                      {usable.filter((f) => ['text', 'email', 'phone', 'url', 'number'].includes(f.type) && targets.some((tg) => tg.kind === 'field' && tg.fieldId === f.id)).map((f) => (
                         <option key={f.id} value={f.id}>
-                          Same {f.name.toLowerCase()} updates the row already here
+                          {t('Same {field} updates the row already here', { field: f.name.toLowerCase() })}
                         </option>
                       ))}
                     </PickSelect>
                   </div>
                   {(table.rules ?? []).some((r) => r.enabled && r.on === 'created') && (
                     <label className="check-row">
-                      <input type="checkbox" checked={runRules} onChange={(e) => setRunRules(e.target.checked)} /> Run “when a row is added” rules for these rows too
+                      <input type="checkbox" checked={runRules} onChange={(e) => setRunRules(e.target.checked)} /> {t('Run “when a row is added” rules for these rows too')}
                     </label>
                   )}
                 </>
@@ -205,20 +207,20 @@ export function ImportDialog({ table, rows, users, onImport, onClose }: { table:
         <footer className="modal-foot">
           {grid && (
             <button className="ghost-btn" onClick={() => (setGrid(null), setName(''))}>
-              Another file
+              {t('Another file')}
             </button>
           )}
           <span className="spacer" />
           {plan && (
             <span className="muted small tb-imp-sum">
-              {plan.creates.length} new{plan.updates.length ? `, ${plan.updates.length} updated` : ''}
+              {plan.updates.length ? t('{created} new, {updated} updated', { created: fmtNumber(plan.creates.length), updated: fmtNumber(plan.updates.length) }) : t('{n} new', { n: fmtNumber(plan.creates.length) })}
             </span>
           )}
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" disabled={!plan || busy || (!plan.creates.length && !plan.updates.length)} onClick={go}>
-            {busy ? 'Importing…' : plan ? `Import ${plan.creates.length + plan.updates.length} row${plan.creates.length + plan.updates.length === 1 ? '' : 's'}` : 'Import'}
+            {busy ? t('Importing…') : plan ? tn(plan.creates.length + plan.updates.length, 'Import {n} row', 'Import {n} rows') : t('Import')}
           </button>
         </footer>
       </div>

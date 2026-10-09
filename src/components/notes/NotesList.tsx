@@ -16,6 +16,7 @@ import { hasTasks, snippetAround } from './noteHtml';
 import { noteActions, type NoteMenuCtx } from './noteMenu';
 import { useNoteMenu, type NotesApi } from './useNoteMenu';
 import { KEEP_DAYS } from './noteDraft';
+import { t, tn } from '../../i18n';
 
 export type NotesFilter = 'all' | 'private' | 'team' | 'shared' | `client:${string}`;
 type Facet = { kind: 'pinned' | 'shared' | 'tasks' } | { kind: 'project'; id: string } | { kind: 'person'; id: string };
@@ -64,7 +65,7 @@ export function NotesList({
   onNew: () => void;
   phone: boolean;
 }) {
-  useCreateAction('notes', { label: 'New note', icon: SquarePen, run: onNew });
+  useCreateAction('notes', { label: t('New note'), icon: SquarePen, run: onNew });
   const me = api.me;
   const { ctx, sheets } = useNoteMenu(api);
   const [q, setQ] = useState('');
@@ -84,20 +85,20 @@ export function NotesList({
   const row = (r: { item: Note; leaving: boolean }) => <NoteRow key={r.item.id} n={r.item} leaving={r.leaving} ctx={ctx} api={api} active={!phone && current === r.item.id} q={query} phone={phone} onOpen={(find) => (setSearching(false), onOpen(r.item.id, find))} />;
   const list = (
     <>
-      {pinned.length > 0 && !looking && <div className="nl-head">Pinned</div>}
+      {pinned.length > 0 && !looking && <div className="nl-head">{t('Pinned')}</div>}
       {(looking ? rows : pinned).map(row)}
-      {pinned.length > 0 && rest.length > 0 && !looking && <div className="nl-head">Notes</div>}
+      {pinned.length > 0 && rest.length > 0 && !looking && <div className="nl-head">{t('Notes')}</div>}
       {!looking && rest.map(row)}
       {!shown.length &&
         (looking ? (
-          <p className="nl-none">{query ? `No notes with “${query}”.` : 'No notes here.'}</p>
+          <p className="nl-none">{query ? t('No notes with “{query}”.', { query }) : t('No notes here.')}</p>
         ) : (
-          <EmptyState compact icon={<SquarePen size={20} />} title={filter === 'all' ? 'No notes yet' : 'No notes here yet'} text={phone ? 'Tap the pen to write one. The first line is its title.' : 'Write one with New note. The first line is its title.'} />
+          <EmptyState compact icon={<SquarePen size={20} />} title={filter === 'all' ? t('No notes yet') : t('No notes here yet')} text={phone ? t('Tap the pen to write one. The first line is its title.') : t('Write one with New note. The first line is its title.')} />
         ))}
       {deleted.length > 0 && !looking && (
         <button type="button" className="nl-trash" onClick={() => setTrash(true)}>
           <Trash2 size={17} />
-          <span>Recently deleted</span>
+          <span>{t('Recently deleted')}</span>
           <ChevronRight size={16} />
         </button>
       )}
@@ -109,14 +110,14 @@ export function NotesList({
   if (!phone)
     return (
       <>
-        <button className="compose-btn" onClick={onNew} title="New note">
+        <button className="compose-btn" onClick={onNew} title={t('New note')}>
           <Plus size={16} />
-          <span className="sb-label">New note</span>
+          <span className="sb-label">{t('New note')}</span>
         </button>
         {trash ? (
           <>
             <button type="button" className="nl-back sb-label" onClick={() => setTrash(false)}>
-              <ChevronRight size={15} className="flip" /> All notes
+              <ChevronRight size={15} className="flip" /> {t('All notes')}
             </button>
             {trashView}
           </>
@@ -124,9 +125,9 @@ export function NotesList({
           <>
             <label className="notes-search sb-label">
               <Search size={14} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search notes" aria-label="Search notes" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search notes')} aria-label={t('Search notes')} />
               {q && (
-                <button type="button" className="icon-btn sm" onClick={() => setQ('')} aria-label="Clear the search">
+                <button type="button" className="icon-btn sm" onClick={() => setQ('')} aria-label={t('Clear the search')}>
                   <X size={14} />
                 </button>
               )}
@@ -135,17 +136,17 @@ export function NotesList({
               <Select<string>
                 value={filter}
                 onChange={(v) => onFilter(v as NotesFilter)}
-                label="Show"
+                label={t('Show')}
                 className="sel-flat"
                 options={[
-                  { value: 'all', label: 'All notes' },
-                  { value: 'private', label: 'Only me', icon: <Lock size={13} /> },
-                  { value: 'shared', label: 'Shared with me', icon: <Users size={13} /> },
+                  { value: 'all', label: t('All notes') },
+                  { value: 'private', label: t('Only me'), icon: <Lock size={13} /> },
+                  { value: 'shared', label: t('Shared with me'), icon: <Users size={13} /> },
                   ...withNotes.map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}`, icon: <Dot color={c.color} /> })),
                 ]}
               />
             </div>
-            <nav className="nav notes-nav" aria-label="Notes">
+            <nav className="nav notes-nav" aria-label={t('Notes')}>
               {list}
             </nav>
           </>
@@ -156,16 +157,16 @@ export function NotesList({
 
   // Phones
   const chips: { f: NotesFilter; label: string; icon?: React.ReactNode }[] = [
-    { f: 'all', label: 'All' },
-    { f: 'private', label: 'Only me', icon: <Lock size={14} /> },
-    { f: 'shared', label: 'Shared with me', icon: <Users size={14} /> },
+    { f: 'all', label: t('All') },
+    { f: 'private', label: t('Only me'), icon: <Lock size={14} /> },
+    { f: 'shared', label: t('Shared with me'), icon: <Users size={14} /> },
     ...withNotes.map((c) => ({ f: `client:${c.id}` as NotesFilter, label: c.name, icon: <Dot color={c.color} /> })),
   ];
   const people = [...new Set(live.filter((n) => n.ownerId !== me).map((n) => n.ownerId))].map((id) => api.users.find((u) => u.id === id)).filter(Boolean).slice(0, 4);
   const facets: { f: Facet; label: string; icon: React.ReactNode }[] = [
-    { f: { kind: 'pinned' }, label: 'Pinned', icon: <Pin size={14} /> },
-    { f: { kind: 'shared' }, label: 'Shared with me', icon: <Users size={14} /> },
-    { f: { kind: 'tasks' }, label: 'Has tasks', icon: <ListTodo size={14} /> },
+    { f: { kind: 'pinned' }, label: t('Pinned'), icon: <Pin size={14} /> },
+    { f: { kind: 'shared' }, label: t('Shared with me'), icon: <Users size={14} /> },
+    { f: { kind: 'tasks' }, label: t('Has tasks'), icon: <ListTodo size={14} /> },
     ...withNotes.map((c) => ({ f: { kind: 'project', id: c.id } as Facet, label: c.name, icon: <Dot color={c.color} /> })),
     ...people.map((u) => ({ f: { kind: 'person', id: u!.id } as Facet, label: u!.name.split(' ')[0], icon: <Avatar person={u!} size={18} /> })),
   ];
@@ -174,7 +175,7 @@ export function NotesList({
     <section className={`notes-phone view-enter${searching || looking ? ' searching' : ''}`}>
       <div className={`fold nl-chips-fold${looking ? '' : ' open'}`}>
         <div>
-          <div className="nl-chips" role="tablist" aria-label="Which notes">
+          <div className="nl-chips" role="tablist" aria-label={t('Which notes')}>
             {chips.map((c) => (
               <button key={c.f} type="button" role="tab" aria-selected={filter === c.f} className={`nl-chip${filter === c.f ? ' on' : ''}`} onClick={() => onFilter(c.f)}>
                 {c.icon}
@@ -188,7 +189,7 @@ export function NotesList({
       <div className="nl-search-dock">
         <div className={`fold${searching && !query ? ' open' : ''}`}>
           <div>
-            <div className="nl-facets" aria-label="Narrow the search">
+            <div className="nl-facets" aria-label={t('Narrow the search')}>
               {facets.map((x) => (
                 <button key={x.label + x.f.kind} type="button" className={`nl-chip${same(facet, x.f) ? ' on' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={() => setFacet(same(facet, x.f) ? null : x.f)}>
                   {x.icon}
@@ -200,16 +201,16 @@ export function NotesList({
         </div>
         <label className="nl-search">
           <Search size={17} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setSearching(true)} onBlur={() => setSearching(false)} placeholder={facet ? `Search in ${facets.find((x) => same(facet, x.f))?.label}` : 'Search notes'} aria-label="Search notes" enterKeyHint="search" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setSearching(true)} onBlur={() => setSearching(false)} placeholder={facet ? t('Search in {place}', { place: facets.find((x) => same(facet, x.f))?.label ?? '' }) : t('Search notes')} aria-label={t('Search notes')} enterKeyHint="search" />
           {(q || facet) && (
-            <button type="button" className="nl-clear" onPointerDown={(e) => e.preventDefault()} onClick={() => (setQ(''), setFacet(null))} aria-label="Clear the search">
+            <button type="button" className="nl-clear" onPointerDown={(e) => e.preventDefault()} onClick={() => (setQ(''), setFacet(null))} aria-label={t('Clear the search')}>
               <X size={16} />
             </button>
           )}
         </label>
       </div>
       {trash && (
-        <PushScreen title="Recently deleted" backLabel="Notes" onBack={() => setTrash(false)}>
+        <PushScreen title={t('Recently deleted')} backLabel={t('Notes')} onBack={() => setTrash(false)}>
           {trashView}
         </PushScreen>
       )}
@@ -220,24 +221,23 @@ export function NotesList({
 
 function NoteRow({ n, leaving, ctx, api, active, q, phone, onOpen }: { n: Note; leaving: boolean; ctx: NoteMenuCtx; api: NotesApi; active: boolean; q: string; phone: boolean; onOpen: (find?: string) => void }) {
   const dots = useRef<HTMLButtonElement>(null);
-  const menu = useActionMenu(() => noteActions(n, ctx), { title: n.title || 'Untitled' });
+  const menu = useActionMenu(() => noteActions(n, ctx), { title: n.title || t('Untitled') });
   const project = api.clients.find((c) => c.id === n.clientId);
   const editedBy = n.updatedBy && n.updatedBy !== api.me ? api.users.find((u) => u.id === n.updatedBy)?.name.split(' ')[0] : '';
   const snip = snippetAround(n, q);
   const edit = ctx.canEdit(n);
   const face = (
-    <div className={`note-item lp${active ? ' active' : ''}`} {...menu.bind} onClick={() => onOpen(q || undefined)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(q || undefined)} title={n.title || 'Untitled'}>
+    <div className={`note-item lp${active ? ' active' : ''}`} {...menu.bind} onClick={() => onOpen(q || undefined)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(q || undefined)} title={n.title || t('Untitled')}>
       <span className="ni-dot" aria-hidden>
         {(n.title || 'U').trim().charAt(0).toUpperCase()}
       </span>
       <span className="ni-title">
-        {n.pinned && <Pin size={12} aria-label="Pinned" />}
-        {n.visibility === 'private' && <Lock size={12} aria-label="Only you see it" />}
-        <strong>{n.title || 'Untitled'}</strong>
+        {n.pinned && <Pin size={12} aria-label={t('Pinned')} />}
+        {n.visibility === 'private' && <Lock size={12} aria-label={t('Only you see it')} />}
+        <strong>{n.title || t('Untitled')}</strong>
       </span>
       <small>
-        {relative(n.updatedAt)}
-        {editedBy ? ` by ${editedBy}` : ''}
+        {editedBy ? t('{when} by {name}', { when: relative(n.updatedAt), name: editedBy }) : relative(n.updatedAt)}
         {project ? ` · ${project.name}` : ''}
       </small>
       <span className="ni-snip">
@@ -249,7 +249,7 @@ function NoteRow({ n, leaving, ctx, api, active, q, phone, onOpen }: { n: Note; 
         ref={dots}
         type="button"
         className="ni-more"
-        aria-label={`Actions for ${n.title || 'Untitled'}`}
+        aria-label={t('Actions for {title}', { title: n.title || t('Untitled') })}
         onClick={(e) => {
           e.stopPropagation();
           menu.openFrom(dots);
@@ -265,10 +265,10 @@ function NoteRow({ n, leaving, ctx, api, active, q, phone, onOpen }: { n: Note; 
         <SwipeRow
           leaving={leaving}
           className="note-swipe"
-          start={edit ? [{ id: 'pin', label: n.pinned ? 'Unpin' : 'Pin', icon: n.pinned ? PinOff : Pin, tone: 'accent', done: n.pinned ? 'Unpinned' : 'Pinned', run: () => (api.patch(n.id, { pinned: !n.pinned }), () => api.patch(n.id, { pinned: !!n.pinned })) }] : []}
+          start={edit ? [{ id: 'pin', label: n.pinned ? t('Unpin') : t('Pin'), icon: n.pinned ? PinOff : Pin, tone: 'accent', done: n.pinned ? t('Unpinned') : t('Pinned'), run: () => (api.patch(n.id, { pinned: !n.pinned }), () => api.patch(n.id, { pinned: !!n.pinned })) }] : []}
           end={[
-            ...(edit ? [{ id: 'move', label: 'Move', icon: ChevronRight, tone: 'neutral' as const, run: () => ctx.move(n) }] : []),
-            ...(ctx.canDelete(n) ? [{ id: 'delete', label: 'Delete', icon: Trash2, tone: 'danger' as const, removes: true, run: () => ctx.remove(n) }] : []),
+            ...(edit ? [{ id: 'move', label: t('Move'), icon: ChevronRight, tone: 'neutral' as const, run: () => ctx.move(n) }] : []),
+            ...(ctx.canDelete(n) ? [{ id: 'delete', label: t('Delete'), icon: Trash2, tone: 'danger' as const, removes: true, run: () => ctx.remove(n) }] : []),
           ]}
         >
           {face}
@@ -286,11 +286,11 @@ function RecentlyDeleted({ notes, api, onOpen }: { notes: Note[]; api: NotesApi;
   const rows = useLeaving(notes, (n) => n.id);
   return (
     <div className="nl-deleted">
-      <p className="nl-deleted-note">Deleted notes stay here for {KEEP_DAYS} days, then they’re gone for good.</p>
+      <p className="nl-deleted-note">{t('Deleted notes stay here for {n} days, then they’re gone for good.', { n: KEEP_DAYS })}</p>
       {rows.map(({ item: n, leaving }) => (
         <DeletedRow key={n.id} n={n} leaving={leaving} api={api} onOpen={() => onOpen(n.id)} />
       ))}
-      {!notes.length && <p className="nl-none">Nothing deleted lately.</p>}
+      {!notes.length && <p className="nl-none">{t('Nothing deleted lately.')}</p>}
     </div>
   );
 }
@@ -298,27 +298,27 @@ function RecentlyDeleted({ notes, api, onOpen }: { notes: Note[]; api: NotesApi;
 function DeletedRow({ n, leaving, api, onOpen }: { n: Note; leaving: boolean; api: NotesApi; onOpen: () => void }) {
   const left = Math.max(0, KEEP_DAYS - Math.floor((Date.now() - Date.parse(n.deletedAt ?? '')) / 86_400_000));
   const actions: SheetAction[] = [
-    { label: 'Put back', icon: RotateCcw, run: () => api.restore(n.id) },
-    { label: 'Delete for good', icon: Trash2, danger: true, group: 'end', run: () => api.purge(n.id) },
+    { label: t('Put back'), icon: RotateCcw, run: () => api.restore(n.id) },
+    { label: t('Delete for good'), icon: Trash2, danger: true, group: 'end', run: () => api.purge(n.id) },
   ];
-  const menu = useActionMenu(actions, { title: n.title || 'Untitled' });
+  const menu = useActionMenu(actions, { title: n.title || t('Untitled') });
   return (
     <SwipeRow
       leaving={leaving}
       className="note-swipe"
-      start={[{ id: 'back', label: 'Put back', icon: RotateCcw, tone: 'ok', removes: true, run: () => api.restore(n.id) }]}
-      end={[{ id: 'gone', label: 'Delete', icon: Trash2, tone: 'danger', removes: true, run: () => api.purge(n.id) }]}
+      start={[{ id: 'back', label: t('Put back'), icon: RotateCcw, tone: 'ok', removes: true, run: () => api.restore(n.id) }]}
+      end={[{ id: 'gone', label: t('Delete'), icon: Trash2, tone: 'danger', removes: true, run: () => api.purge(n.id) }]}
     >
       <div className="note-item deleted lp" {...menu.bind} role="button" tabIndex={0} onClick={onOpen}>
         <span className="ni-title">
-          <strong>{n.title || 'Untitled'}</strong>
+          <strong>{n.title || t('Untitled')}</strong>
         </span>
         <small>
-          Deleted {relative(n.deletedAt ?? '')} · {left ? `${left} ${left === 1 ? 'day' : 'days'} left` : 'goes today'}
+          {t('Deleted {when}', { when: relative(n.deletedAt ?? '') })} · {left ? tn(left, '{n} day left', '{n} days left') : t('goes today')}
         </small>
         <span className="nl-deleted-acts">
           <button type="button" className="ghost-btn sm" onClick={(e) => (e.stopPropagation(), api.restore(n.id))}>
-            <RotateCcw size={14} /> Put back
+            <RotateCcw size={14} /> {t('Put back')}
           </button>
         </span>
       </div>

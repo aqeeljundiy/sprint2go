@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { htmlToText, sanitize } from '../sanitize';
+import { mark, t } from '../i18n';
 
 export interface RichEditorHandle {
   focus: () => void;
@@ -37,21 +38,21 @@ interface Props {
 type Cmd = 'bold' | 'italic' | 'underline' | 'strikeThrough' | 'insertUnorderedList' | 'insertOrderedList';
 
 const BUTTONS: { cmd: Cmd; icon: LucideIcon; label: string; key?: string }[] = [
-  { cmd: 'bold', icon: Bold, label: 'Bold', key: '⌘B' },
-  { cmd: 'italic', icon: Italic, label: 'Italic', key: '⌘I' },
-  { cmd: 'underline', icon: Underline, label: 'Underline', key: '⌘U' },
-  { cmd: 'strikeThrough', icon: Strikethrough, label: 'Strikethrough' },
+  { cmd: 'bold', icon: Bold, label: mark('Bold'), key: '⌘B' },
+  { cmd: 'italic', icon: Italic, label: mark('Italic'), key: '⌘I' },
+  { cmd: 'underline', icon: Underline, label: mark('Underline'), key: '⌘U' },
+  { cmd: 'strikeThrough', icon: Strikethrough, label: mark('Strikethrough') },
 ];
 const LISTS: { cmd: Cmd; icon: LucideIcon; label: string }[] = [
-  { cmd: 'insertUnorderedList', icon: List, label: 'Bulleted list' },
-  { cmd: 'insertOrderedList', icon: ListOrdered, label: 'Numbered list' },
+  { cmd: 'insertUnorderedList', icon: List, label: mark('Bulleted list') },
+  { cmd: 'insertOrderedList', icon: ListOrdered, label: mark('Numbered list') },
 ];
 const COLORS = ['inherit', '#ef4444', '#f59e0b', '#10b981', '#0ea5e9', '#5b5bf6', '#d946ef', '#6b7280'];
 const SIZES = [
-  { label: 'Small', size: '2', px: 12 },
-  { label: 'Normal', size: '3', px: 14 },
-  { label: 'Large', size: '5', px: 19 },
-  { label: 'Huge', size: '6', px: 24 },
+  { label: mark('Small'), size: '2', px: 12 },
+  { label: mark('Normal'), size: '3', px: 14 },
+  { label: mark('Large'), size: '5', px: 19 },
+  { label: mark('Huge'), size: '6', px: 24 },
 ];
 
 // document.execCommand is old but still the simplest way to format a contentEditable
@@ -172,37 +173,37 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
     <div className="rich">
       <div className="rich-toolbar" onMouseDown={keep}>
         <div className="tb-group">
-          <button className={`tb ${popup === 'size' ? 'on' : ''}`} title="Text size" onClick={() => openPopup('size')}>
+          <button className={`tb ${popup === 'size' ? 'on' : ''}`} title={t('Text size')} onClick={() => openPopup('size')}>
             <Type size={15} />
           </button>
           {BUTTONS.map(({ cmd, icon: Icon, label, key }) => (
             <button
               key={cmd}
               className={`tb ${active.has(cmd) ? 'on' : ''}`}
-              title={key ? `${label} (${key})` : label}
+              title={key ? `${t(label)} (${key})` : t(label)}
               onClick={() => run(cmd)}
             >
               <Icon size={15} />
             </button>
           ))}
-          <button className={`tb ${popup === 'color' ? 'on' : ''}`} title="Text color" onClick={() => openPopup('color')}>
+          <button className={`tb ${popup === 'color' ? 'on' : ''}`} title={t('Text color')} onClick={() => openPopup('color')}>
             <Palette size={15} />
           </button>
         </div>
         <span className="tb-sep" />
         <div className="tb-group">
           {LISTS.map(({ cmd, icon: Icon, label }) => (
-            <button key={cmd} className={`tb ${active.has(cmd) ? 'on' : ''}`} title={label} onClick={() => run(cmd)}>
+            <button key={cmd} className={`tb ${active.has(cmd) ? 'on' : ''}`} title={t(label)} onClick={() => run(cmd)}>
               <Icon size={15} />
             </button>
           ))}
-          <button className={`tb ${active.has('quote') ? 'on' : ''}`} title="Quote" onClick={toggleQuote}>
+          <button className={`tb ${active.has('quote') ? 'on' : ''}`} title={t('Quote')} onClick={toggleQuote}>
             <Quote size={15} />
           </button>
-          <button className={`tb ${popup === 'link' ? 'on' : ''}`} title="Link (⌘K)" onClick={() => openPopup('link')}>
+          <button className={`tb ${popup === 'link' ? 'on' : ''}`} title={t('Link (⌘K)')} onClick={() => openPopup('link')}>
             <Link2 size={15} />
           </button>
-          <button className="tb" title="Clear formatting" onClick={() => run('removeFormat')}>
+          <button className="tb" title={t('Clear formatting')} onClick={() => run('removeFormat')}>
             <RemoveFormatting size={15} />
           </button>
         </div>
@@ -232,12 +233,12 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
                       setPopup(null);
                     }
                   }}
-                  placeholder="Paste or type a link"
+                  placeholder={t('Paste or type a link')}
                 />
-                <button className="tb" onMouseDown={keep} onClick={applyLink} title="Apply">
+                <button className="tb" onMouseDown={keep} onClick={applyLink} title={t('Apply')}>
                   <Check size={14} />
                 </button>
-                <button className="tb" onMouseDown={keep} onClick={() => setPopup(null)} title="Cancel">
+                <button className="tb" onMouseDown={keep} onClick={() => setPopup(null)} title={t('Cancel')}>
                   <X size={14} />
                 </button>
               </div>
@@ -249,7 +250,7 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
                     key={c}
                     className="swatch"
                     style={{ background: c === 'inherit' ? 'var(--text)' : c }}
-                    title={c === 'inherit' ? 'Default' : c}
+                    title={c === 'inherit' ? t('Default') : c}
                     onClick={() => {
                       setPopup(null);
                       run('foreColor', c === 'inherit' ? getComputedStyle(el.current!).color : c);
@@ -268,7 +269,7 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
                       run('fontSize', s.size);
                     }}
                   >
-                    <span style={{ fontSize: s.px }}>{s.label}</span>
+                    <span style={{ fontSize: s.px }}>{t(s.label)}</span>
                   </button>
                 ))}
               </div>

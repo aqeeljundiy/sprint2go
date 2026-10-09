@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react';
 import type { Todo } from '../../types';
 import { addPill, blockOf, cleanStyles, decorate, findText, lineText, sanitizeNote } from './noteHtml';
+import { t } from '../../i18n';
 
 /** Where the caret is, for the keyboard bar and the toolbar: it changes with the cursor. */
 export interface Caret {
@@ -308,7 +309,7 @@ export const NoteText = forwardRef<NoteTextHandle, {
       suppressContentEditableWarning
       role="textbox"
       aria-multiline="true"
-      aria-label="Note"
+      aria-label={t('Note')}
       aria-readonly={!p.editable}
       data-placeholder={p.placeholder}
       onInput={(e) => {

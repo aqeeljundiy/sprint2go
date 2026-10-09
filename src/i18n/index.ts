@@ -122,11 +122,23 @@ const loadId = () =>
     },
   ));
 
+/**
+ * Tells the server which language this screen speaks (a cookie it reads with every request), so the messages it
+ * answers with come back in the same language (server/lang.ts). Not a preference: the screen's language right now.
+ */
+function tellServer(lang: Lang) {
+  try {
+    if (typeof document !== 'undefined' && !document.cookie.split('; ').includes(`s2g-lang=${lang}`)) document.cookie = `s2g-lang=${lang}; path=/; max-age=31536000; samesite=lax`;
+  } catch {
+    /* cookies blocked: the server goes by the person's settings and the browser's language */
+  }
+}
+
 let asked = 0;
 /** Switches the language. The words arrive first, then everything re-renders at once (no half-translated screen). */
 export async function setLang(lang: Lang): Promise<void> {
   const n = ++asked;
-  if (lang === current && (lang === 'en' || dict)) return;
+  if (lang === current && (lang === 'en' || dict)) return tellServer(lang);
   let next: Dict | null = null;
   if (lang === 'id') {
     try {
@@ -139,7 +151,33 @@ export async function setLang(lang: Lang): Promise<void> {
   current = lang;
   dict = next;
   if (typeof document !== 'undefined') document.documentElement.lang = lang;
+  tellServer(lang);
   listeners.forEach((fn) => fn());
+}
+
+/* ---------- the server: one process, many readers ---------- */
+
+const kept: Partial<Record<Lang, Dict>> = {};
+/** The server keeps every language's words from the start (server/lang.ts), without switching the process to one. */
+export function addWords(lang: Lang, words: Dict) {
+  kept[lang] = words;
+}
+
+/**
+ * Runs `fn` in a language and switches straight back: the server writes one person's email, push or error in theirs.
+ * `fn` must not await (the language is only set while it runs). Without that language's words (never added): English.
+ */
+export function inLang<T>(lang: Lang, fn: () => T): T {
+  const was = { current, dict };
+  const words = lang === 'en' ? null : (kept[lang] ?? (lang === current ? dict : null));
+  current = words || lang === 'en' ? lang : 'en';
+  dict = words;
+  try {
+    return fn();
+  } finally {
+    current = was.current;
+    dict = was.dict;
+  }
 }
 
 /* ---------- the device's language: before anyone is signed in ---------- */

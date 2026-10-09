@@ -8,6 +8,9 @@ import { botJoins, callKey, meetingLinkOf, notetakerJoins, type JoinMode } from 
 import { meetHours } from '../src/data/pricing.ts';
 import { teamSize } from './aiplan.ts';
 import { readOnlyWhy } from './billing.ts';
+import { msg } from '../src/i18n/index.ts';
+import type { Said } from './lang.ts';
+import { expandEvents } from '../src/repeat.ts';
 
 db.db.exec('CREATE TABLE IF NOT EXISTS autojoin (key TEXT PRIMARY KEY, event_id TEXT NOT NULL, workspace_id TEXT NOT NULL, meeting_id TEXT, outcome TEXT NOT NULL, at TEXT NOT NULL)');
 
@@ -17,7 +20,7 @@ export interface AutoJoinDeps {
   /** Saves the meeting and sends the recorder bot to it: null when it's on its way, else why not. */
   send: (ws: any, meeting: any) => Promise<string | null>;
   /** A notice in these people's bell. */
-  notify: (userIds: string[], workspaceId: string, text: string, link: { app: string; id?: string }) => void;
+  notify: (userIds: string[], workspaceId: string, text: Said, link: { app: string; id?: string }) => void;
 }
 
 /** Meetings starting this soon get the notetaker (it joins a minute or two early and waits to be let in). */
@@ -59,7 +62,8 @@ export async function runAutoJoin(deps: AutoJoinDeps, now = Date.now()): Promise
   try {
     const wss = db.allDocs('workspaces') as any[];
     const users = new Map((db.allDocs('users') as any[]).map((u) => [u.id, u]));
-    for (const e of db.allDocs('events') as any[]) {
+    // A repeating event: its dates about to start (each one an event of its own, its id saying which date).
+    for (const e of expandEvents(db.allDocs('events') as any[], now - BEHIND, now + AHEAD) as any[]) {
       if (!e?.start || e.allDay || !e.userId || e.busy) continue;
       const start = Date.parse(e.start);
       if (!(start > now - BEHIND && start <= now + AHEAD)) continue;
@@ -85,7 +89,7 @@ export async function runAutoJoin(deps: AutoJoinDeps, now = Date.now()): Promise
       const hours = botHours(ws, now);
       if (hours.left <= 0) {
         remember(key, e.id, ws.id, 'no-hours');
-        deps.notify([e.userId], ws.id, `The notetaker didn’t join “${title}”: this month’s ${hours.hours} meeting-bot hours are used up. An admin can add more in Settings, Plan & billing.`, { app: 'settings', id: 'billing' });
+        deps.notify([e.userId], ws.id, msg('The notetaker didn’t join “{title}”: this month’s {hours} meeting-bot hours are used up. An admin can add more in Settings, Plan & billing.', { title, hours: hours.hours }), { app: 'settings', id: 'billing' });
         out.push({ eventId: e.id, workspaceId: ws.id, outcome: 'no-hours' });
         continue;
       }
@@ -116,7 +120,7 @@ export async function runAutoJoin(deps: AutoJoinDeps, now = Date.now()): Promise
       const error = await deps.send(ws, meeting).catch((err) => (err instanceof Error ? err.message : 'The recorder didn’t answer'));
       if (error) {
         remember(key, e.id, ws.id, 'failed', id);
-        deps.notify([e.userId], ws.id, `The notetaker couldn’t join “${title}”: ${error}`, { app: 'meet', id });
+        deps.notify([e.userId], ws.id, msg('The notetaker couldn’t join “{title}”: {error}', { title, error }), { app: 'meet', id });
         out.push({ eventId: e.id, workspaceId: ws.id, outcome: 'failed', meetingId: id, error });
       } else out.push({ eventId: e.id, workspaceId: ws.id, outcome: 'sent', meetingId: id });
     }

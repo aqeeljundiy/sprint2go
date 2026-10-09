@@ -9,6 +9,7 @@ import { TABLE_COLORS, TEMPLATES, templateFields, type TemplateId } from './fiel
 import { EmptyState } from '../ui/EmptyState';
 import { useCreateAction } from '../../mobile/chrome';
 import { useTableLinkOpen } from './hooks';
+import { t, tn } from '../../i18n';
 
 /* ---------- sidebar ---------- */
 
@@ -16,23 +17,23 @@ import { useTableLinkOpen } from './hooks';
 export function TablesSidebar({ tables, clients, current, onOpen, onNew }: { tables: DataTable[]; clients: Client[]; current: string | null; onOpen: (id: string) => void; onNew: () => void }) {
   const company = tables.filter((t) => !t.clientId);
   const byProject = clients.map((c) => ({ c, list: tables.filter((t) => t.clientId === c.id) })).filter((g) => g.list.length);
-  const item = (t: DataTable) => (
-    <button key={t.id} className={`nav-item ${current === t.id ? 'active' : ''}`} onClick={() => onOpen(t.id)} title={t.name}>
-      <span className="client-dot" style={{ background: t.color }}>
-        {t.name.charAt(0).toUpperCase()}
+  const item = (tb: DataTable) => (
+    <button key={tb.id} className={`nav-item ${current === tb.id ? 'active' : ''}`} onClick={() => onOpen(tb.id)} title={tb.name}>
+      <span className="client-dot" style={{ background: tb.color }}>
+        {tb.name.charAt(0).toUpperCase()}
       </span>
-      <span className="sb-label">{t.name}</span>
+      <span className="sb-label">{tb.name}</span>
     </button>
   );
   return (
     <>
-      <button className="compose-btn" onClick={onNew} title="New table">
+      <button className="compose-btn" onClick={onNew} title={t('New table')}>
         <Plus size={16} />
-        <span className="sb-label">New table</span>
+        <span className="sb-label">{t('New table')}</span>
       </button>
       {company.length > 0 && (
         <>
-          <div className="nav-heading sb-label">Company</div>
+          <div className="nav-heading sb-label">{t('Company')}</div>
           <nav className="nav">{company.map(item)}</nav>
         </>
       )}
@@ -42,7 +43,7 @@ export function TablesSidebar({ tables, clients, current, onOpen, onNew }: { tab
           <nav className="nav">{list.map(item)}</nav>
         </div>
       ))}
-      {!tables.length && <p className="muted small sb-note sb-label">No tables yet. Make one for leads, a content pipeline, anything you track in rows.</p>}
+      {!tables.length && <p className="muted small sb-note sb-label">{t('No tables yet. Make one for leads, a content pipeline, anything you track in rows.')}</p>}
     </>
   );
 }
@@ -52,53 +53,53 @@ export function TablesSidebar({ tables, clients, current, onOpen, onNew }: { tab
 export function NewTableDialog({ clients, clientId: startClient, onCreate, onClose }: { clients: Client[]; clientId?: string; onCreate: (d: { name: string; clientId?: string; template: TemplateId }) => void; onClose: () => void }) {
   const [template, setTemplate] = useState<TemplateId>('leads');
   const [clientId, setClientId] = useState(startClient ?? '');
-  const tplName = TEMPLATES.find((t) => t.id === template)!.name;
+  const tplName = TEMPLATES.find((x) => x.id === template)!.name;
   const project = clients.find((c) => c.id === clientId);
-  const suggested = template === 'blank' ? 'Untitled table' : project ? `${project.name} ${tplName.toLowerCase()}` : tplName;
+  const suggested = template === 'blank' ? t('Untitled table') : project ? t('{project} {template}', { project: project.name, template: tplName.toLowerCase() }) : tplName;
   const [name, setName] = useState('');
   const create = () => onCreate({ name: name.trim() || suggested, clientId: clientId || undefined, template });
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label="New table" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal" role="dialog" aria-label={t('New table')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Table2 size={15} /> New table
+            <Table2 size={15} /> {t('New table')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body connect-form">
           <SmoothHeight>
             <div className="field">
-              <span>Start from</span>
+              <span>{t('Start from')}</span>
               <div className="cat-pick two">
-                {TEMPLATES.map((t) => (
-                  <button key={t.id} type="button" className={template === t.id ? 'on' : ''} onClick={() => setTemplate(t.id)}>
-                    <strong>{t.name}</strong>
-                    <small>{t.hint}</small>
+                {TEMPLATES.map((x) => (
+                  <button key={x.id} type="button" className={template === x.id ? 'on' : ''} onClick={() => setTemplate(x.id)}>
+                    <strong>{x.name}</strong>
+                    <small>{x.hint}</small>
                   </button>
                 ))}
               </div>
             </div>
             <label className="field">
-              <span>Name</span>
+              <span>{t('Name')}</span>
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} onKeyDown={(e) => e.key === 'Enter' && create()} />
             </label>
             <div className="field">
-              <span>Belongs to</span>
-              <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none="The whole company" label="Belongs to" />
+              <span>{t('Belongs to')}</span>
+              <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none={t('The whole company')} label={t('Belongs to')} />
             </div>
-            <p className="muted small">{clientId ? `It shows in the ${term.one}’s Tables tab too.` : 'Everyone in the company can open it.'} Every column can be changed later.</p>
+            <p className="muted small">{clientId ? t('It shows in the {project}’s Tables tab too. Every column can be changed later.', { project: term.one }) : t('Everyone in the company can open it. Every column can be changed later.')}</p>
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" onClick={create}>
-            Create table
+            {t('Create table')}
           </button>
         </footer>
       </div>
@@ -119,11 +120,11 @@ export function ProjectTables({ tables, rows, onOpen, onNew, bare }: { tables: D
     return (
       <EmptyState
         icon={<Table2 size={20} />}
-        title={<>No tables for this {term.one} yet</>}
-        text="Leads, a content pipeline, a list of anything: your own columns, as a grid or a board."
+        title={t('No tables for this {project} yet', { project: term.one })}
+        text={t('Leads, a content pipeline, a list of anything: your own columns, as a grid or a board.')}
         action={
           <button className="primary-btn sm" onClick={onNew}>
-            <Plus size={14} /> New table
+            <Plus size={14} /> {t('New table')}
           </button>
         }
       />
@@ -133,20 +134,20 @@ export function ProjectTables({ tables, rows, onOpen, onNew, bare }: { tables: D
       {!bare && <div className="tb-project-head">
         <span className="spacer" />
         <button className="ghost-btn sm" onClick={onNew}>
-          <Plus size={13} /> New table
+          <Plus size={13} /> {t('New table')}
         </button>
       </div>}
       <div className="tb-cards">
-        {tables.map((t, i) => {
-          const n = rows.filter((r) => r.tableId === t.id).length;
+        {tables.map((tb, i) => {
+          const n = rows.filter((r) => r.tableId === tb.id).length;
           return (
-            <button key={t.id} className="tb-table-card" style={{ ['--i' as string]: i }} onClick={() => onOpen(t.id)}>
-              <span className="client-badge" style={{ background: t.color }}>
-                {t.name.charAt(0).toUpperCase()}
+            <button key={tb.id} className="tb-table-card" style={{ ['--i' as string]: i }} onClick={() => onOpen(tb.id)}>
+              <span className="client-badge" style={{ background: tb.color }}>
+                {tb.name.charAt(0).toUpperCase()}
               </span>
               <span className="tb-tc-text">
-                <strong>{t.name}</strong>
-                <small>{t.description || `${n} row${n === 1 ? '' : 's'} · ${t.fields.length} fields`}</small>
+                <strong>{tb.name}</strong>
+                <small>{tb.description || `${tn(n, '{n} row', '{n} rows')} · ${tn(tb.fields.length, '{n} field', '{n} fields')}`}</small>
               </span>
             </button>
           );
@@ -160,32 +161,32 @@ export function ProjectTables({ tables, rows, onOpen, onNew, bare }: { tables: D
 
 /** Tables with none open: every table as a card (company first, then each project's), or how to start. */
 export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { tables: DataTable[]; rows: TableRow[]; clients: Client[]; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void }) {
-  useCreateAction('tables', { label: 'New table', icon: Plus, run: onNew });
+  useCreateAction('tables', { label: t('New table'), icon: Plus, run: onNew });
   useTableLinkOpen(null, onOpen); // a link to a table, a view or a row
-  const groups = [{ id: '', name: 'Company', list: tables.filter((t) => !t.clientId) }, ...clients.map((c) => ({ id: c.id, name: c.name, list: tables.filter((t) => t.clientId === c.id) }))].filter((g) => g.list.length);
+  const groups = [{ id: '', name: t('Company'), list: tables.filter((tb) => !tb.clientId) }, ...clients.map((c) => ({ id: c.id, name: c.name, list: tables.filter((tb) => tb.clientId === c.id) }))].filter((g) => g.list.length);
   return (
     <section className="tasks-pane view-enter">
       <header className="tracking-head tasks-head tb-head-bar tb-home-head">
-        <button className="icon-btn menu-btn" onClick={onMenu} aria-label="Open menu">
+        <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
         </button>
         <div className="th-text">
-          <h1>Tables</h1>
-          <p>Your own databases: leads, pipelines, lists of anything. Your columns, as a grid or a board.</p>
+          <h1>{t('Tables')}</h1>
+          <p>{t('Your own databases: leads, pipelines, lists of anything. Your columns, as a grid or a board.')}</p>
         </div>
         <button className="primary-btn sm" onClick={onNew}>
-          <Plus size={14} /> New table
+          <Plus size={14} /> {t('New table')}
         </button>
       </header>
       <div className="tracking-scroll">
         {!tables.length ? (
           <EmptyState
             icon={<Table2 size={20} />}
-            title="No tables yet"
-            text="Start from Leads, a content pipeline or a blank table. Add your own columns any time."
+            title={t('No tables yet')}
+            text={t('Start from Leads, a content pipeline or a blank table. Add your own columns any time.')}
             action={
               <button className="primary-btn sm" onClick={onNew}>
-                <Plus size={14} /> New table
+                <Plus size={14} /> {t('New table')}
               </button>
             }
           />

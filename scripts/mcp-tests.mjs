@@ -174,6 +174,9 @@ try {
   const soon = new Date(Date.now() + 20 * 60_000);
   put('events', { id: 'e-standup', title: 'Banana standup', calendarId: 'work', start: soon.toISOString(), end: new Date(soon.getTime() + 30 * 60_000).toISOString(), workspaceId: 'w-acme', userId: 'u-alice', meetUrl: 'https://meet.google.com/abc-defg-hij' });
   put('events', { id: 'e-bob', title: 'Bob dentist', calendarId: 'personal', start: soon.toISOString(), end: new Date(soon.getTime() + 60 * 60_000).toISOString(), workspaceId: 'w-acme', userId: 'u-bob', notes: 'private bit' });
+  // A repeating one: every day at 09:00 Jakarta since ten days ago, one date left out, one moved and renamed.
+  const jk = (n, hh = '02') => `${new Date(Date.now() + n * 86_400_000 + 7 * 3_600_000).toISOString().slice(0, 10)}T${hh}:00:00.000Z`;
+  put('events', { id: 'e-daily', title: 'Banana daily', calendarId: 'work', start: jk(-10), end: jk(-10).replace(':00:00.', ':15:00.'), rrule: 'FREQ=DAILY', timeZone: 'Asia/Jakarta', exdates: [jk(2)], overrides: [{ occurrence: jk(3), start: jk(3, '06'), end: jk(3, '07'), title: 'Banana daily (long one)' }], workspaceId: 'w-acme', userId: 'u-alice' });
 
   /* ---------- signing in to the app (cookies), as the consent screen does ---------- */
   const signIn = async (email) => {
@@ -312,6 +315,8 @@ try {
   check((await A('read_channel', { channel: 'Bob' })).data?.id === 'ch-dm', 'read_channel: a teammate’s name opens your direct messages');
   const cal = await A('calendar_agenda');
   check(cal.data?.events?.some((e) => e.id === 'e-standup' && e.video) && !cal.data.events.some((e) => e.id === 'e-bob'), 'calendar_agenda: her week, not Bob’s');
+  const daily = (cal.data?.events ?? []).filter((e) => e.id.startsWith('e-daily~'));
+  check(daily.length === 6 && daily.every((e) => e.repeats === 'Every day') && daily.filter((e) => e.title === 'Banana daily (long one)').length === 1 && new Set(daily.map((e) => e.id)).size === 6, 'calendar_agenda: a repeating event as each of its dates this week (one left out, one moved and renamed)');
   const calBob = await A('calendar_agenda', { person: 'Bob' });
   check(calBob.data?.events?.some((e) => e.id === 'e-bob') && !JSON.stringify(calBob.data).includes('private bit'), 'calendar_agenda for a teammate: their events without the private details');
   const notes = await A('list_notes');
@@ -362,6 +367,13 @@ try {
   const evd = doc('events', ev.data?.created?.id);
   check(evd?.userId === 'u-alice' && evd.guests?.length === 1 && evd.guests[0].email === 'bob@acme.test' && ev.data.not_added?.[0] === 'nadia@client.test', 'add_event: on her calendar, teammates as guests, outside people left out with a note');
   check(new Date(evd.start).toISOString().slice(11, 16) === '03:00', 'add_event: 10:00 is the company’s time (Jakarta)');
+  const rep = await A('add_event', { title: 'Banana weekly', start: `${day(1)}T10:00`, repeat: { every: 'week', times: 4 } });
+  const repd = doc('events', rep.data?.created?.id);
+  check(/^FREQ=WEEKLY;BYDAY=(MO|TU|WE|TH|FR|SA|SU);COUNT=4$/.test(repd?.rrule ?? '') && repd.timeZone === 'Asia/Jakarta' && /^Every week on \w+day, 4 times$/.test(rep.data.created.repeats ?? ''), 'add_event: a repeating event (every week, 4 times) on the company’s clock');
+  const later = await A('calendar_agenda', { from: day(0), to: day(40) });
+  check((later.data?.events ?? []).filter((e) => e.title === 'Banana weekly').length === 4, 'calendar_agenda: its four dates');
+  const hourly = await A('add_event', { title: 'Hourly', start: `${day(1)}T10:00`, rrule: 'FREQ=HOURLY' });
+  check(hourly.error && /FREQ/.test(hourly.text), 'add_event: a rule calendars don’t use is refused');
   const outbox = () => db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'outbox'").get().n ? db.prepare('SELECT COUNT(*) AS n FROM outbox').get().n : 0;
   const ob = outbox();
   const dm = await A('draft_mail', { to: ['nadia@client.test', 'Bob'], subject: 'Banana timing', text: 'Hi Nadia,\n\nFriday works.' });

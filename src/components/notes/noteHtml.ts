@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import type { Note, Todo } from '../../types';
 import { htmlToText } from '../../sanitize';
+import { t } from '../../i18n';
 
 /*
  * A note's text is simple HTML: paragraphs, headings, lists (a checklist is <ul class="checklist">, a ticked line
@@ -87,10 +88,10 @@ export function addPill(block: HTMLElement, taskId: string) {
 export function decorate(root: HTMLElement, tasks: Map<string, Todo>) {
   root.querySelectorAll<HTMLElement>('.note-task').forEach((p) => {
     if (p.contentEditable !== 'false') p.contentEditable = 'false';
-    const t = tasks.get(p.dataset.task ?? '');
-    const state = !t ? 'gone' : t.done ? 'done' : 'open';
+    const task = tasks.get(p.dataset.task ?? '');
+    const state = !task ? 'gone' : task.done ? 'done' : 'open';
     if (p.dataset.state !== state) p.dataset.state = state;
-    const label = !t ? 'Task (deleted)' : `Task: ${t.title}${t.done ? ', done' : ''}`;
+    const label = !task ? t('Task (deleted)') : task.done ? t('Task: {title}, done', { title: task.title }) : t('Task: {title}', { title: task.title });
     if (p.getAttribute('aria-label') !== label) {
       p.setAttribute('aria-label', label);
       p.setAttribute('role', 'button');

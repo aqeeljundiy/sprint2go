@@ -4,7 +4,7 @@
 //
 //   node scripts/i18n-check.mjs                 per area: words used, translated, missing; fails on placeholder problems
 //   node scripts/i18n-check.mjs --strict        also fails on missing words, conflicts and copy problems
-//   node scripts/i18n-check.mjs --strict tasks,projects   the same, for those areas only (and warnings naming their files)
+//   node scripts/i18n-check.mjs --strict admin,server,misc   the same, for these areas only (finished ones)
 //   node scripts/i18n-check.mjs --missing shell the words with no Indonesian yet in one area (or a file path)
 //   node scripts/i18n-check.mjs --todo settings text that still looks untranslated in an area's files (or one file)
 //   node scripts/i18n-check.mjs --unused        entries no code uses any more
@@ -22,11 +22,8 @@ const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const opt = (f) => (args.includes(f) ? args[args.indexOf(f) + 1] : undefined);
 const STRICT = flag('--strict');
-// `--strict tasks,projects`: strict for those areas only. Without a list, every area.
-const STRICT_LIST = STRICT && opt('--strict') && !opt('--strict').startsWith('--') ? opt('--strict').split(',').map((s) => s.trim()).filter(Boolean) : null;
-// Areas that are finished: the plain run (CI) fails when one of them has a word without Indonesian, or a warning names
-// its dictionary. Add yours here when your area is done.
-const DONE = ['tasks', 'projects', 'teams'];
+// --strict a,b,c: only these areas' missing words and only warnings that name them fail the check.
+const STRICT_AREAS = STRICT && opt('--strict') && !opt('--strict').startsWith('--') ? opt('--strict').split(',').map((x) => x.trim()) : null;
 
 /* ---------- which area each file belongs to (the owners are in docs/i18n.md and each area file's header) ---------- */
 
@@ -38,8 +35,8 @@ const AREAS = [
   ['home', /^src\/components\/HomeView\.tsx$|^src\/components\/home\/|^src\/needsYou\.ts$/],
   ['onboarding', /^src\/components\/Onboarding\.tsx$/],
   ['mail', /^src\/components\/(Reader|Compose|MessageList|Sidebar|RecipientInput|BlockDialog|TempAddress|TrackingDashboard|TrackingPanel|AIWriter|InviteCard)\.tsx$|^src\/components\/mail\/|^src\/(mailRules|tracking|inviteTimes|identity)\.ts$|^src\/data\/mock\.ts$/],
-  ['calendar', /^src\/components\/(CalendarView|CalendarSidebar|EventEditor|ConnectCalendar|HolidayCountries)\.tsx$|^src\/(calendarUtils|calendarLink|holidayDays|holidayRegions)\.ts$|^src\/data\/(calendar|holidays)\.ts$/],
-  ['notes', /^src\/components\/(NotesApp|RichEditor)\.tsx$|^src\/data\/notes\.ts$/],
+  ['calendar', /^src\/components\/calendar\/|^src\/(repeat|recurrence)\.ts$|^src\/components\/(CalendarView|CalendarSidebar|EventEditor|ConnectCalendar|HolidayCountries)\.tsx$|^src\/(calendarUtils|calendarLink|holidayDays|holidayRegions)\.ts$|^src\/data\/(calendar|holidays)\.ts$/],
+  ['notes', /^src\/components\/notes\/|^src\/components\/(NotesApp|RichEditor)\.tsx$|^src\/data\/notes\.ts$/],
   ['chat', /^src\/components\/(ChatApp|ChannelDialog|ChannelMaterials|ChatDraft|Huddle)\.tsx$|^src\/components\/chat\/|^src\/ice\.ts$/],
   ['meet', /^src\/components\/MeetApp\.tsx$|^src\/(meetingLinks)\.ts$|^src\/data\/languages\.ts$/],
   ['drive', /^src\/components\/(DriveView|DriveSidebar|DrivePreview|BigFileDialog|FileIcon)\.tsx$|^src\/data\/drive\.ts$/],
@@ -288,20 +285,12 @@ if (flag('--missing')) {
 
 if (warnings.length) console.log(`\nWarnings:\n${warnings.map((w) => '  ' + w).join('\n')}`);
 if (errors.length) console.log(`\nProblems:\n${errors.map((e) => '  ' + e).join('\n')}`);
-const missing = [...rows.values()].reduce((n, r) => n + r.missing.size, 0);
-// Strict for some areas: their missing words, and the warnings that name their dictionaries.
-const strictFor = (areas) => {
-  const gaps = areas.flatMap((a) => [...(rows.get(a)?.missing ?? [])].map((k) => `${a}: ${JSON.stringify(k)} has no Indonesian`));
-  const own = warnings.filter((w) => areas.some((a) => w.startsWith(`${a}: `) || new RegExp(`id/${a}(\\.[a-z]+)?\\.ts`).test(w)));
-  return [...gaps, ...own];
-};
-const listed = STRICT_LIST ? strictFor(STRICT_LIST) : [];
-const done = strictFor(DONE);
-if (done.length) console.log(`\nFinished areas (${DONE.join(', ')}) must stay translated:\n${done.map((x) => '  ' + x).join('\n')}`);
-if (listed.length) console.log(`\n--strict ${STRICT_LIST.join(',')}:\n${listed.map((x) => '  ' + x).join('\n')}`);
-const fail = errors.length > 0 || done.length > 0 || (STRICT_LIST ? listed.length > 0 : STRICT && (missing > 0 || warnings.length > 0));
+const strictRows = STRICT_AREAS ? [...rows].filter(([a]) => STRICT_AREAS.includes(a)).map(([, r]) => r) : [...rows.values()];
+const missing = strictRows.reduce((n, r) => n + r.missing.size, 0);
+const strictWarnings = STRICT_AREAS ? warnings.filter((w) => STRICT_AREAS.some((a) => w.startsWith(`${a}:`) || w.includes(`id/${a}.`) || w.includes(`src/i18n/id/${a}`))) : warnings;
+const fail = errors.length > 0 || (STRICT && (missing > 0 || strictWarnings.length > 0));
 if (fail) {
-  console.log(`\ni18n check failed${STRICT && !STRICT_LIST && !errors.length ? ` (--strict: ${missing} missing, ${warnings.length} warnings)` : ''}.`);
+  console.log(`\ni18n check failed${STRICT && !errors.length ? ` (--strict${STRICT_AREAS ? ` ${STRICT_AREAS.join(',')}` : ''}: ${missing} missing, ${strictWarnings.length} warnings)` : ''}.`);
   process.exit(1);
 }
 console.log(`\ni18n check passed${missing ? ` (${missing} words still English, allowed until --strict)` : ''}.`);

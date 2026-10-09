@@ -16,6 +16,8 @@ import { lineText, linkedFrom, noteLink } from './noteHtml';
 import { noteActions } from './noteMenu';
 import { canEditNote, useNoteMenu, type NotesApi } from './useNoteMenu';
 import { KEEP_DAYS, keepDraft, useNoteDraft, useSaveState } from './noteDraft';
+import { t, tx } from '../../i18n';
+import { fmtDate } from '../../i18n/format';
 
 const NO_CARET: Caret = { inList: false, inChecklist: false, selection: false, on: new Set() };
 
@@ -47,7 +49,7 @@ export function NoteEditor(p: NoteEditorProps) {
   if (!note)
     return (
       <section className="notes-pane view-enter">
-        <EmptyState icon={<NotebookPen size={22} />} title="Pick a note, or write a new one" text={<>Private notes, meeting prep, how-tos for the team. Link a note to a {term.one} and it shows on their page.</>} />
+        <EmptyState icon={<NotebookPen size={22} />} title={t('Pick a note, or write a new one')} text={t('Private notes, meeting prep, how-tos for the team. Link a note to a {project} and it shows on their page.', { project: term.one })} />
       </section>
     );
   return <Open key={note.id} {...p} note={note} />;
@@ -75,12 +77,12 @@ function Open(p: NoteEditorProps & { note: Note }) {
   const project = api.clients.find((c) => c.id === note.clientId);
   const who = whoSees(note, api.company, project?.name, phone);
   const editedBy = api.users.find((u) => u.id === note.updatedBy);
-  const ownerName = api.users.find((u) => u.id === note.ownerId)?.name.split(' ')[0] ?? 'its owner';
+  const ownerName = api.users.find((u) => u.id === note.ownerId)?.name.split(' ')[0] ?? t('its owner');
   const aaBtn = useRef<HTMLButtonElement>(null);
   const linkBtn = useRef<HTMLButtonElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const dots = useRef<HTMLButtonElement>(null);
-  const menu = useActionMenu(() => noteActions(note, ctx), { title: note.title || 'Untitled' });
+  const menu = useActionMenu(() => noteActions(note, ctx), { title: note.title || t('Untitled') });
 
   // Opened from a search: the match, marked for a moment. A new note: straight onto its title.
   useEffect(() => {
@@ -117,13 +119,13 @@ function Open(p: NoteEditorProps & { note: Note }) {
     const l = block ? { block, text: lineText(block) } : text.current?.line() ?? { text: '', block: null };
     const existing = l.block?.querySelector<HTMLElement>('.note-task')?.dataset.task;
     if (existing && tasks.has(existing)) return p.onOpenTask(existing);
-    if (!l.text) return toast({ text: 'Write the task on a line first, then make it a task.' });
-    const t = p.onTask(l.text, note);
-    if (l.block) text.current?.pill(l.block, t.id);
+    if (!l.text) return toast({ text: t('Write the task on a line first, then make it a task.') });
+    const task = p.onTask(l.text, note);
+    if (l.block) text.current?.pill(l.block, task.id);
     toast({
-      text: `Task made: “${t.title}”`,
-      also: { label: 'Open', run: () => p.onOpenTask(t.id) },
-      action: { label: 'Undo', run: () => (p.onUndoTask(t.id), text.current?.unpill(t.id)) },
+      text: t('Task made: “{title}”', { title: task.title }),
+      also: { label: t('Open'), run: () => p.onOpenTask(task.id) },
+      action: { label: t('Undo'), run: () => (p.onUndoTask(task.id), text.current?.unpill(task.id)) },
     });
   };
 
@@ -139,12 +141,12 @@ function Open(p: NoteEditorProps & { note: Note }) {
       text.current?.changed();
     };
     return [
-      ...(tid && tasks.has(tid) ? [{ label: 'Open its task', icon: ListTodo, run: () => p.onOpenTask(tid) }] : canEdit && words ? [{ label: 'Make a task', icon: ListTodo, run: () => makeTask(b) }] : []),
-      ...(check && canEdit ? [{ label: b.classList.contains('done') ? 'Untick' : 'Tick', icon: SquareCheck, run: () => (b.classList.toggle('done'), text.current?.changed()) }] : []),
-      ...(canEdit && b.previousElementSibling ? [{ label: 'Move up', icon: ArrowUp, group: 'move', run: () => moved(-1) }] : []),
-      ...(canEdit && b.nextElementSibling ? [{ label: 'Move down', icon: ArrowDown, group: 'move', run: () => moved(1) }] : []),
-      ...(words ? [{ label: 'Copy the line', icon: Copy, group: 'copy', run: () => void navigator.clipboard?.writeText(words).then(() => toast({ text: 'Copied' })) }] : []),
-      ...(canEdit ? [{ label: 'Delete the line', icon: Trash2, danger: true, group: 'end', run: () => (b.remove(), text.current?.changed()) }] : []),
+      ...(tid && tasks.has(tid) ? [{ label: t('Open its task'), icon: ListTodo, run: () => p.onOpenTask(tid) }] : canEdit && words ? [{ label: tx('mail', 'Make a task'), icon: ListTodo, run: () => makeTask(b) }] : []),
+      ...(check && canEdit ? [{ label: b.classList.contains('done') ? t('Untick') : t('Tick'), icon: SquareCheck, run: () => (b.classList.toggle('done'), text.current?.changed()) }] : []),
+      ...(canEdit && b.previousElementSibling ? [{ label: t('Move up'), icon: ArrowUp, group: 'move', run: () => moved(-1) }] : []),
+      ...(canEdit && b.nextElementSibling ? [{ label: t('Move down'), icon: ArrowDown, group: 'move', run: () => moved(1) }] : []),
+      ...(words ? [{ label: t('Copy the line'), icon: Copy, group: 'copy', run: () => void navigator.clipboard?.writeText(words).then(() => toast({ text: t('Copied') })) }] : []),
+      ...(canEdit ? [{ label: t('Delete the line'), icon: Trash2, danger: true, group: 'end', run: () => (b.remove(), text.current?.changed()) }] : []),
     ];
   };
 
@@ -196,40 +198,39 @@ function Open(p: NoteEditorProps & { note: Note }) {
   const status =
     save.state === 'device' ? (
       <>
-        <CloudOff size={13} /> Saved on this device, will sync
+        <CloudOff size={13} /> {t('Saved on this device, will sync')}
       </>
     ) : save.state === 'failed' ? (
       <>
-        <CloudOff size={13} /> Not saved to the server{save.why ? `: ${save.why}` : ''}. It’s kept on this device.
+        <CloudOff size={13} /> {save.why ? t('Not saved to the server: {why}. It’s kept on this device.', { why: t(save.why) }) : t('Not saved to the server. It’s kept on this device.')}
       </>
     ) : save.state === 'saving' ? (
       <>
-        <Cloud size={13} /> Saving…
+        <Cloud size={13} /> {t('Saving…')}
       </>
     ) : Date.now() - Date.parse(note.updatedAt) < 8000 && note.updatedBy === me ? (
       <>
-        <Cloud size={13} /> Saved
+        <Cloud size={13} /> {t('Saved')}
       </>
     ) : (
       <>
-        Edited {relative(note.updatedAt)}
-        {editedBy ? ` by ${editedBy.id === me ? 'you' : editedBy.name.split(' ')[0]}` : ''}
+        {editedBy ? (editedBy.id === me ? t('Edited {when} by you', { when: relative(note.updatedAt) }) : t('Edited {when} by {name}', { when: relative(note.updatedAt), name: editedBy.name.split(' ')[0] })) : t('Edited {when}', { when: relative(note.updatedAt) })}
       </>
     );
 
   const linked = (links.notes.length > 0 || links.tasks.length > 0) && (
-    <section className="note-linked" aria-label="Linked from">
-      <h3>Linked from</h3>
+    <section className="note-linked" aria-label={t('Linked from')}>
+      <h3>{t('Linked from')}</h3>
       {links.notes.map((n) => (
         <button key={n.id} type="button" className="nl-link" onClick={() => p.onOpenNote(n.id)}>
           <NotebookPen size={15} />
-          <span>{n.title || 'Untitled'}</span>
+          <span>{n.title || t('Untitled')}</span>
         </button>
       ))}
-      {links.tasks.map((t) => (
-        <button key={t.id} type="button" className={`nl-link${t.done ? ' done' : ''}`} onClick={() => p.onOpenTask(t.id)}>
-          {t.done ? <Check size={15} /> : <ListTodo size={15} />}
-          <span>{t.title}</span>
+      {links.tasks.map((task) => (
+        <button key={task.id} type="button" className={`nl-link${task.done ? ' done' : ''}`} onClick={() => p.onOpenTask(task.id)}>
+          {task.done ? <Check size={15} /> : <ListTodo size={15} />}
+          <span>{task.title}</span>
         </button>
       ))}
     </section>
@@ -242,10 +243,10 @@ function Open(p: NoteEditorProps & { note: Note }) {
           {note.deletedAt && (
             <div className="note-banner">
               <Trash2 size={15} />
-              <span>In Recently deleted. It goes for good {new Date(Date.parse(note.deletedAt) + KEEP_DAYS * 86_400_000).toLocaleDateString([], { day: 'numeric', month: 'long' })}.</span>
+              <span>{t('In Recently deleted. It goes for good {date}.', { date: fmtDate(Date.parse(note.deletedAt) + KEEP_DAYS * 86_400_000, { day: 'numeric', month: 'long' }) })}</span>
               {ctx.canDelete(note) && (
                 <button type="button" className="ghost-btn sm" onClick={() => api.restore(note.id)}>
-                  <RotateCcw size={14} /> Put back
+                  <RotateCcw size={14} /> {t('Put back')}
                 </button>
               )}
             </div>
@@ -253,7 +254,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
           {!note.deletedAt && !canEdit && (
             <div className="note-banner quiet">
               <Eye size={15} />
-              <span>View only. {ownerName} keeps this note as it is.</span>
+              <span>{t('View only. {name} keeps this note as it is.', { name: ownerName })}</span>
             </div>
           )}
           <textarea
@@ -279,8 +280,8 @@ function Open(p: NoteEditorProps & { note: Note }) {
               const [first, ...rest] = t.split(/\r?\n/);
               change({ title: (note.title + first).trim(), html: `${rest.map((l) => `<p>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;') || '<br>'}</p>`).join('')}${note.html}` });
             }}
-            placeholder="Title"
-            aria-label="Title"
+            placeholder={tx('note', 'Title')}
+            aria-label={tx('note', 'Title')}
             enterKeyHint="next"
           />
           <p className="note-meta">{status}</p>
@@ -289,7 +290,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
             html={note.html}
             editable={canEdit && editing}
             tasks={tasks}
-            placeholder={canEdit ? 'Write here. A line can become a task: put the caret on it and tap Make task.' : ''}
+            placeholder={canEdit ? t('Write here. A line can become a task: put the caret on it and tap Make task.') : ''}
             onChange={(html) => change({ html })}
             onCaret={setCaret}
             onFocus={(on) => setFocus((f) => (on ? 'text' : f === 'text' ? null : f))}
@@ -311,7 +312,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
               type="button"
               className="note-line-dots"
               style={{ top: dotsAt.top }}
-              aria-label="This line’s actions"
+              aria-label={t('This line’s actions')}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => {
                 const r = lineBtn.current!.getBoundingClientRect();
@@ -333,14 +334,14 @@ function Open(p: NoteEditorProps & { note: Note }) {
           const f = e.target.files?.[0];
           e.target.value = '';
           if (!f) return;
-          toast({ text: `Adding ${f.name}…` });
+          toast({ text: t('Adding {name}…', { name: f.name }) });
           try {
             const up = await p.onUpload(f);
             text.current?.restore();
             text.current?.link(up.url, up.name);
-            toast({ text: `${up.name} added` });
+            toast({ text: t('{name} added', { name: up.name }) });
           } catch (err) {
-            toast({ text: err instanceof Error ? err.message : 'The file couldn’t be added.' });
+            toast({ text: err instanceof Error ? t(err.message) : t('The file couldn’t be added.') });
           }
         }}
       />
@@ -354,20 +355,20 @@ function Open(p: NoteEditorProps & { note: Note }) {
           onClose={() => (setPanel(null), back())}
           onPick={(x) => {
             back();
-            if (x.kind === 'note') return text.current?.link(noteLink(x.n.id), x.n.title || 'Untitled');
+            if (x.kind === 'note') return text.current?.link(noteLink(x.n.id), x.n.title || t('Untitled'));
             text.current?.link(`mailto:${x.u.email}`, `@${x.u.name.split(' ')[0]}`);
             if (note.visibility === 'team') p.onMention(x.u.id, note);
           }}
         />
       )}
-      {lineMenu && <ActionSheet open onClose={() => setLineMenu(null)} title={lineText(lineMenu.block).slice(0, 60) || 'This line'} actions={lineActions(lineMenu.block)} at={phone ? null : { x: lineMenu.x, y: lineMenu.y }} />}
+      {lineMenu && <ActionSheet open onClose={() => setLineMenu(null)} title={lineText(lineMenu.block).slice(0, 60) || t('This line')} actions={lineActions(lineMenu.block)} at={phone ? null : { x: lineMenu.x, y: lineMenu.y }} />}
       {menu.menu}
       {sheets}
     </div>
   );
 
   const whoBtn = (
-    <button type="button" className="note-who" onClick={() => (owner ? ctx.share(note) : undefined)} disabled={!owner} aria-label={`Who sees it: ${who.label}${owner ? '. Change' : ''}`}>
+    <button type="button" className="note-who" onClick={() => (owner ? ctx.share(note) : undefined)} disabled={!owner} aria-label={owner ? t('Who sees it: {who}. Change', { who: who.label }) : t('Who sees it: {who}', { who: who.label })}>
       <who.icon size={14} />
       <span>{who.label}</span>
       {owner && <ChevronDown size={14} />}
@@ -378,16 +379,16 @@ function Open(p: NoteEditorProps & { note: Note }) {
     return (
       <PushScreen
         title={whoBtn}
-        backLabel="Notes"
+        backLabel={t('Notes')}
         onBack={() => (done(), p.onBack?.())}
         className="note-screen"
         actions={
           focus ? (
             <button type="button" className="note-done" onClick={done}>
-              Done
+              {t('Done')}
             </button>
           ) : (
-            <button ref={dots} type="button" className="icon-btn" onClick={() => menu.openFrom(dots)} aria-label="Note actions">
+            <button ref={dots} type="button" className="icon-btn" onClick={() => menu.openFrom(dots)} aria-label={t('Note actions')}>
               <MoreHorizontal size={20} />
             </button>
           )
@@ -402,57 +403,57 @@ function Open(p: NoteEditorProps & { note: Note }) {
     <section className="notes-pane view-enter">
       <header className="note-head">
         {whoBtn}
-        {canEdit && <ProjectPicker value={note.clientId ?? ''} onChange={(v) => change({ clientId: v || undefined })} projects={api.clients} none={`No ${term.one}`} className="sel-flat" />}
+        {canEdit && <ProjectPicker value={note.clientId ?? ''} onChange={(v) => change({ clientId: v || undefined })} projects={api.clients} none={t('No {project}', { project: term.one })} className="sel-flat" />}
         <span className="spacer" />
         {canEdit && (
-          <button className="icon-btn sm" onClick={() => ctx.pin(note)} title={note.pinned ? 'Unpin' : 'Pin to the top'} aria-label={note.pinned ? 'Unpin' : 'Pin to the top'}>
+          <button className="icon-btn sm" onClick={() => ctx.pin(note)} title={note.pinned ? t('Unpin') : t('Pin to the top')} aria-label={note.pinned ? t('Unpin') : t('Pin to the top')}>
             {note.pinned ? <PinOff size={15} /> : <Pin size={15} />}
           </button>
         )}
-        <button ref={dots} className="icon-btn sm" onClick={() => menu.openFrom(dots)} aria-label="Note actions" title="More">
+        <button ref={dots} className="icon-btn sm" onClick={() => menu.openFrom(dots)} aria-label={t('Note actions')} title={t('More')}>
           <MoreHorizontal size={16} />
         </button>
       </header>
       {canEdit && (
-        <div className="note-tools" role="toolbar" aria-label="Formatting" onMouseDown={(e) => (e.target as HTMLElement).closest('button') && e.preventDefault()}>
-          <button ref={aaBtn} type="button" className={`tb${panel === 'format' ? ' on' : ''}`} onClick={() => openPanel('format')} title="Text styles" aria-label="Text styles">
+        <div className="note-tools" role="toolbar" aria-label={t('Formatting')} onMouseDown={(e) => (e.target as HTMLElement).closest('button') && e.preventDefault()}>
+          <button ref={aaBtn} type="button" className={`tb${panel === 'format' ? ' on' : ''}`} onClick={() => openPanel('format')} title={t('Text styles')} aria-label={t('Text styles')}>
             <Type size={15} />
           </button>
           <span className="tb-sep" />
           {(
             [
-              ['bold', 'Bold (⌘B)', Bold],
-              ['italic', 'Italic (⌘I)', Italic],
-              ['underline', 'Underline (⌘U)', Underline],
-              ['strikeThrough', 'Strikethrough', Strikethrough],
+              ['bold', `${t('Bold')} (⌘B)`, Bold],
+              ['italic', `${t('Italic')} (⌘I)`, Italic],
+              ['underline', `${t('Underline')} (⌘U)`, Underline],
+              ['strikeThrough', t('Strikethrough'), Strikethrough],
             ] as const
           ).map(([c, label, Icon]) => (
             <button key={c} type="button" className={`tb${caret.on.has(c) ? ' on' : ''}`} onClick={() => text.current?.cmd(c)} title={label} aria-label={label} aria-pressed={caret.on.has(c)}>
               <Icon size={15} />
             </button>
           ))}
-          <button type="button" className="tb" onClick={() => text.current?.highlight(hl)} title="Highlight" aria-label="Highlight">
+          <button type="button" className="tb" onClick={() => text.current?.highlight(hl)} title={t('Highlight')} aria-label={t('Highlight')}>
             <Highlighter size={15} />
           </button>
           <span className="tb-sep" />
-          <button type="button" className={`tb${caret.on.has('insertUnorderedList') && !caret.inChecklist ? ' on' : ''}`} onClick={() => text.current?.cmd('insertUnorderedList')} title="Bulleted list" aria-label="Bulleted list">
+          <button type="button" className={`tb${caret.on.has('insertUnorderedList') && !caret.inChecklist ? ' on' : ''}`} onClick={() => text.current?.cmd('insertUnorderedList')} title={t('Bulleted list')} aria-label={t('Bulleted list')}>
             <List size={15} />
           </button>
-          <button type="button" className={`tb${caret.on.has('insertOrderedList') ? ' on' : ''}`} onClick={() => text.current?.cmd('insertOrderedList')} title="Numbered list" aria-label="Numbered list">
+          <button type="button" className={`tb${caret.on.has('insertOrderedList') ? ' on' : ''}`} onClick={() => text.current?.cmd('insertOrderedList')} title={t('Numbered list')} aria-label={t('Numbered list')}>
             <ListOrdered size={15} />
           </button>
-          <button type="button" className={`tb${caret.inChecklist ? ' on' : ''}`} onClick={() => text.current?.checklist()} title="Checklist" aria-label="Checklist">
+          <button type="button" className={`tb${caret.inChecklist ? ' on' : ''}`} onClick={() => text.current?.checklist()} title={t('Checklist')} aria-label={t('Checklist')}>
             <ListChecks size={15} />
           </button>
-          <button type="button" className={`tb${caret.on.has('quote') ? ' on' : ''}`} onClick={() => text.current?.block('BLOCKQUOTE')} title="Quote" aria-label="Quote">
+          <button type="button" className={`tb${caret.on.has('quote') ? ' on' : ''}`} onClick={() => text.current?.block('BLOCKQUOTE')} title={t('Quote')} aria-label={t('Quote')}>
             <Quote size={15} />
           </button>
-          <button ref={linkBtn} type="button" className={`tb${panel === 'link' ? ' on' : ''}`} onClick={() => openPanel('link')} title="Link (⌘K)" aria-label="Link">
+          <button ref={linkBtn} type="button" className={`tb${panel === 'link' ? ' on' : ''}`} onClick={() => openPanel('link')} title={t('Link (⌘K)')} aria-label={t('Link')}>
             <Link2 size={15} />
           </button>
           <span className="spacer" />
-          <button type="button" className="ghost-btn sm note-make-task" onClick={() => makeTask()} title="Make a task from the line the caret is on">
-            <ListTodo size={14} /> Make a task
+          <button type="button" className="ghost-btn sm note-make-task" onClick={() => makeTask()} title={t('Make a task from the line the caret is on')}>
+            <ListTodo size={14} /> {tx('mail', 'Make a task')}
           </button>
         </div>
       )}

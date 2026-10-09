@@ -6,7 +6,7 @@ import { localDay, relative, uid } from '../utils';
 import { DatePicker } from './ui/DatePicker';
 import { Select } from './ui/Select';
 import { EmptyState } from './ui/EmptyState';
-import { t, tn } from '../i18n';
+import { t, tn, tx } from '../i18n';
 import { fmtDate } from '../i18n/format';
 
 export const money = (n: number, cur: Quote['currency']) => (cur === 'IDR' ? `Rp ${Math.round(n).toLocaleString('id-ID')}` : `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
@@ -146,10 +146,10 @@ function QuoteEditor({ q, client, onChange, onSave, onSend, onClose }: { q: Quot
   const ok = q.items.some((i) => i.title.trim());
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal qt-modal" role="dialog" aria-label={t('Quote')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal qt-modal" role="dialog" aria-label={tx('quote', 'Quote')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="big-head">
           <FileSignature size={15} />
-          <strong>{q.status === 'draft' && !q.sentAt ? t('Quote') : q.title}</strong>
+          <strong>{q.status === 'draft' && !q.sentAt ? tx('quote', 'Quote') : q.title}</strong>
           <span className="muted">{client.name}</span>
           <span className="spacer" />
           <button type="button" className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
@@ -179,7 +179,7 @@ function QuoteEditor({ q, client, onChange, onSave, onSend, onClose }: { q: Quot
           </div>
           <div className="qt-foot-row">
             <button type="button" className="link-btn small" onClick={() => set({ items: [...q.items, { id: uid(), title: '', qty: 1, price: 0 }] })}>
-              <Plus size={13} /> {t('Add a line')}
+              <Plus size={13} /> {tx('quote', 'Add a line')}
             </button>
             <span className="spacer" />
             <strong>{t('Total {amount}', { amount: money(quoteTotal(q), q.currency) })}</strong>

@@ -4,6 +4,15 @@ import type { Message, Thread } from '../types';
 import { DEFAULT_TRACK_OPTIONS, PROXY, autoWhy, fmtDuration, maybeForwarded, realClicks, realOpens, recipientLine, replyAfter, summarize } from '../tracking';
 import { fullDate, relative } from '../utils';
 import { Avatar } from './Avatar';
+import { t, tn } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtWeekday } from '../i18n/format';
+
+/** "6 of 8 pages" (the tracker writes "6 of 8"). */
+const pagesSeen = (s: string) => {
+  const m = s.match(/^(\d+) of (\d+)$/);
+  return m ? t('{seen} of {total} pages', { seen: m[1], total: m[2] }) : s;
+};
 
 /** Who opened an email you sent, how often, what they clicked and viewed, and whether they replied. */
 export function TrackingPanel({ thread, message }: { thread: Thread; message: Message }) {
@@ -26,15 +35,15 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
     <div className="track-panel">
       <div className="tp-head">
         <Eye size={15} />
-        <strong>Read tracking</strong>
+        <strong>{t('Read tracking')}</strong>
         <span>
           {sum.opens
-            ? `Opened by ${sum.openedBy} of ${sum.recipients} · ${sum.opens} open${sum.opens > 1 ? 's' : ''}${sum.clicks ? ` · ${sum.clicks} click${sum.clicks > 1 ? 's' : ''}` : ''}`
+            ? [t('Opened by {opened} of {total}', { opened: sum.openedBy, total: sum.recipients }), tn(sum.opens, '{n} open', '{n} opens'), sum.clicks ? tn(sum.clicks, '{n} click', '{n} clicks') : ''].filter(Boolean).join(' · ')
             : sum.clicks
-              ? `${sum.clicks} click${sum.clicks > 1 ? 's' : ''}`
+              ? tn(sum.clicks, '{n} click', '{n} clicks')
               : sum.autoOnly
-                ? 'Opened (maybe automatic)'
-                : 'Not opened yet'}
+                ? t('Opened (maybe automatic)')
+                : t('Not opened yet')}
         </span>
       </div>
 
@@ -60,21 +69,21 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
               <span className="tp-who">
                 <strong>{person.name}</strong>
                 <small className={replied || real.length || clicks.length ? 'ok' : r.opens.length ? 'auto' : ''} title={!replied && !real.length && !clicks.length && r.opens.length ? autoWhy(r.opens[r.opens.length - 1]) : undefined}>
-                  {replied ? `Replied ${relative(replied)}` : recipientLine(r)}
+                  {replied ? t('Replied {when}', { when: relative(replied) }) : recipientLine(r)}
                 </small>
               </span>
               {forwarded && (
-                <span className="tp-tag warn" title="Opened from more than one city, so it may have been forwarded">
-                  <Forward size={12} /> Forwarded?
+                <span className="tp-tag warn" title={t('Opened from more than one city, so it may have been forwarded')}>
+                  <Forward size={12} /> {t('Forwarded?')}
                 </span>
               )}
               {(r.docs?.length ?? 0) > 0 && (
-                <span className="tp-tag" title="Attachment views">
+                <span className="tp-tag" title={t('Attachment views')}>
                   <FileSearch size={12} /> {r.docs!.length}
                 </span>
               )}
               {clicks.length > 0 && (
-                <span className="tp-tag" title="Link clicks">
+                <span className="tp-tag" title={t('Link clicks')}>
                   <MousePointerClick size={12} /> {clicks.length}
                 </span>
               )}
@@ -100,36 +109,30 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
                     </span>
                     <span className="tp-text">
                       {ev.kind === 'click' && (
-                        <>
-                          Clicked <b>{ev.c.label}</b>
-                        </>
+                        <>{tj('Clicked {link}', { link: <b>{ev.c.label}</b> })}</>
                       )}
                       {ev.kind === 'doc' && (
                         <>
-                          Viewed <b>{ev.d.file}</b> for {fmtDuration(ev.d.seconds)}
-                          {ev.d.pages && ` · ${ev.d.pages} pages`}
+                          {tj('Viewed {file} for {time}', { file: <b>{ev.d.file}</b>, time: fmtDuration(ev.d.seconds) })}
+                          {ev.d.pages && ` · ${pagesSeen(ev.d.pages)}`}
                         </>
                       )}
-                      {ev.kind === 'reply' && <b>Replied</b>}
+                      {ev.kind === 'reply' && <b>{t('Replied')}</b>}
                       {ev.kind === 'checked' && (
-                        <span title="Some mail filters open every link to check it before the person sees the email">
-                          Link checked by a mail filter: {ev.c.label}, not counted
-                        </span>
+                        <span title={t('Some mail filters open every link to check it before the person sees the email')}>{t('Link checked by a mail filter: {link}, not counted', { link: ev.c.label })}</span>
                       )}
-                      {ev.kind === 'auto' && <span title={autoWhy(ev.o)}>Opened (maybe automatic){ev.o.auto === 'apple' ? ' by Apple Mail' : ''}, not counted</span>}
+                      {ev.kind === 'auto' && <span title={autoWhy(ev.o)}>{ev.o.auto === 'apple' ? t('Opened (maybe automatic) by Apple Mail, not counted') : t('Opened (maybe automatic), not counted')}</span>}
                       {ev.kind === 'open' &&
                         (ev.o.via ? (
-                          <span title={`${PROXY[ev.o.via]} loads pictures through its own servers, so the device isn’t known`}>
-                            Opened via <b>{PROXY[ev.o.via]}</b>
-                          </span>
+                          <span title={t('{app} loads pictures through its own servers, so the device isn’t known', { app: PROXY[ev.o.via] })}>{tj('Opened via {app}', { app: <b>{PROXY[ev.o.via]}</b> })}</span>
                         ) : ev.o.device ? (
                           <>
-                            Opened on <b>{ev.o.device}</b>
+                            {tj('Opened on {device}', { device: <b>{ev.o.device}</b> })}
                             {ev.o.place && ` · ${ev.o.place}`}
                           </>
                         ) : (
                           <>
-                            <b>Opened</b>
+                            <b>{t('Opened')}</b>
                             {ev.o.place && ` · ${ev.o.place}`}
                           </>
                         ))}
@@ -146,10 +149,10 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
       {remindAt && !emails.every((e) => replyAfter(thread, message, e)) && (
         <div className="tp-remind">
           <BellRing size={13} />
-          {remindAt > new Date() ? `Reminder on ${remindAt.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} if there’s no reply` : 'No reply yet, time to follow up'}
+          {remindAt > new Date() ? t('Reminder on {day} if there’s no reply', { day: fmtWeekday(remindAt) }) : t('No reply yet, time to follow up')}
         </div>
       )}
-      <p className="tp-note">Opens are a hint, not proof. Apple Mail and some mail filters load pictures by themselves, so those show as maybe automatic and don’t count. Gmail and Outlook.com load them through their own servers, which hide the device. Apps that block pictures never show an open. Clicks and replies are the surest signs.</p>
+      <p className="tp-note">{t('Opens are a hint, not proof. Apple Mail and some mail filters load pictures by themselves, so those show as maybe automatic and don’t count. Gmail and Outlook.com load them through their own servers, which hide the device. Apps that block pictures never show an open. Clicks and replies are the surest signs.')}</p>
     </div>
   );
 }

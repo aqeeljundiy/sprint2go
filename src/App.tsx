@@ -20,14 +20,16 @@ import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp, storageGB } from './data/pricing';
-import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
-import { fmtTime } from './calendarUtils';
+import { MAIL_USAGE, QUOTA, kindOf, parseSize, sizeText } from './data/drive';
+import { fmtTime, fmtTimeRange } from './calendarUtils';
 import { fullDate, lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { templatesFor, tplText, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
 import type { NotesApi } from './components/notes/useNoteMenu';
 import type { VaultItem } from './components/VaultApp';
-import { eventsOn } from './calendarUtils';
+import { eventsOn, monthGrid } from './calendarUtils';
+import { answerSeries, changeSeries, changesRule, expandEvents, findEvent, removeFromSeries, startOnRule, timeLike, type Scope, type SeriesChange } from './repeat';
+import { askScope as askRepeatScope, ScopeHost, type ScopeAt } from './components/calendar/RepeatScope';
 import { botJoins, callKey, meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
 import { setHolidayDays } from './holidayDays';
 import { holidayCalendarId, holidayCountry } from './data/holidays';
@@ -39,7 +41,7 @@ import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped }
 import { isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
-import { inviteCalendarTimes } from './inviteTimes';
+import { inviteCalendarTimes, inviteSeries } from './inviteTimes';
 import { isPersonalHoliday, personalHolidayId, regionsToSave, useHolidayRegions } from './holidayRegions';
 import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
@@ -49,7 +51,7 @@ import type { AskChat } from './components/Assistant';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { InviteMember, NewAccount, RemoveMailbox } from './components/WorkspaceForms';
 import { applyBranding } from './components/WorkspaceLogo';
-import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, type Mode } from './components/Sidebar';
+import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, folderName, type Mode } from './components/Sidebar';
 import { MessageList, type MailActions, type MailFilter } from './components/MessageList';
 import { needsReply, snoozePatch, wakeThread, whenWords } from './mailRules';
 import { SwipeSettings, swipeWords, useMailSwipes } from './components/mail/MailSettings';
@@ -59,7 +61,7 @@ import type { CalView } from './components/CalendarView';
 import { CalendarSidebar } from './components/CalendarSidebar';
 import { ScheduleTask } from './components/calendar/ScheduleTask';
 import { AccountMenu, type SettingsSection } from './components/AccountMenu';
-import { DriveSidebar } from './components/DriveSidebar';
+import { DriveSidebar, DRIVE_SECTIONS } from './components/DriveSidebar';
 import { DrivePreview } from './components/DrivePreview';
 import { AppRail, APPS, appWord } from './components/AppRail';
 import { AppSettingsButton, appSettingsLinks } from './components/AppSettings';
@@ -71,13 +73,13 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
 import { ChatPages } from './components/chat/Pages';
 import { useDockRef } from './components/chat/huddleDock';
 import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
 import { chanName } from './components/chat/Sheets';
 import { preview as msgPreview } from './components/chat/Message';
-import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
+import { ChannelDialog, CATEGORY_ONE, categoryText } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { openSettingsList } from './components/settingsList';
 import { PushScreen } from './components/ui/PushScreen';
@@ -107,8 +109,8 @@ import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
-import { msg, phrase, t, textOf, tn, type Msg } from './i18n';
-import { fmtDateTime, fmtDay, fmtList } from './i18n/format';
+import { mark, msg, phrase, t, textOf, tn, tx, type Msg } from './i18n';
+import { fmtDay, fmtList, fmtWeekday } from './i18n/format';
 
 /** For words saved in a msg(): "today", "tomorrow", "overdue" lower-case mid-sentence (each reader's language), a date as "Thu 8 Oct". */
 const dueWords = (d: string) => {
@@ -122,19 +124,6 @@ const dueWordsHere = (d: string) => {
 };
 /** A repeat in a history line ("set it to repeat weekly"): a phrase each reader sees in their own language. */
 const repeatPhrase = (r: Todo['repeat']) => phrase(r === 'weekdays' ? 'every weekday' : r === 'daily' ? 'daily' : r === 'weekly' ? 'weekly' : 'monthly');
-
-const FOLDER_TITLES: Record<FolderId, string> = {
-  inbox: 'Inbox',
-  starred: 'Starred',
-  sent: 'Sent',
-  drafts: 'Drafts',
-  archive: 'Archive',
-  spam: 'Spam',
-  trash: 'Trash',
-  snoozed: 'Snoozed',
-  scheduled: 'Scheduled',
-  assigned: 'Assigned to me',
-};
 
 const APP_IDS = APPS.map((a) => a.id) as string[];
 // app.sprint2go.com/mail, /chat… on a real server; #/mail when opened as a local file.
@@ -402,9 +391,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (activeAccount === a.id) setActiveAccount('all');
     if (!quiet)
       showToast({
-        text: `${a.email} deleted`,
+        text: t('{email} deleted', { email: a.email }),
         // The address goes back first; its mail follows once the server knows the address again (or it would be refused).
-        action: { label: 'Undo', run: () => (withAccounts(w.id, (l) => [...l, a]), setTimeout(() => setThreads((ts) => [...ts, ...gone]), 900)) },
+        action: { label: t('Undo'), run: () => (withAccounts(w.id, (l) => [...l, a]), setTimeout(() => setThreads((ts) => [...ts, ...gone]), 900)) },
       });
   };
   // Time's up: the people who can see an address clear it out (whoever opens the app first).
@@ -425,12 +414,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {
         id: uid(),
         accountId: a.id,
-        subject: `Test: your verification code is ${code}`,
+        subject: t('Test: your verification code is {code}', { code }),
         location: 'inbox',
         starred: false,
         unread: true,
         labels: [],
-        messages: [{ id: uid(), from: { name: 'sprint2go test', email: 'test@s2g.email' }, to: [{ name: a.email, email: a.email }], date: nowIso(), body: `This is a test message for ${a.email}.\n\nYour verification code is ${code}. It expires in 10 minutes.` }],
+        messages: [{ id: uid(), from: { name: 'sprint2go test', email: 'test@s2g.email' }, to: [{ name: a.email, email: a.email }], date: nowIso(), body: t('This is a test message for {email}.\n\nYour verification code is {code}. It expires in 10 minutes.', { email: a.email, code }) }],
       },
       ...ts,
     ]);
@@ -592,7 +581,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const openDump = (text: string) => (aiOn ? setDump(text) : aiOff(t('AI isn’t set up for this company yet, so the brain dump can’t turn notes into tasks. An admin can add an AI key in Settings, AI, or switch to the AI plan.')));
   const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : aiOff());
   const botOn = !server.on || caps.demo || inSandbox || recorderOn;
-  const openSendBot = () => (botOn ? (setSendBotSeed(null), setSendBotOpen(true)) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
+  const openSendBot = () => (botOn ? (setSendBotSeed(null), setSendBotOpen(true)) : explainOff(t('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.')));
   const calendarsOn = !server.on || caps.demo || inSandbox || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
   const go = (m: Mode) => {
     if (m !== 'settings') setLastMode(m);
@@ -780,7 +769,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const openCompose = (init?: Omit<ComposeState, 'key'>) => {
     // No mailbox can send yet: say why instead of opening a window that can't send.
     if (!mailOut && myAccounts.length) {
-      showToast({ text: `Sending isn’t set up yet. ${mailWhy.send ?? ''}`.trim(), ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+      showToast({ text: mailWhy.send ? t('Sending isn’t set up yet. {why}', { why: t(mailWhy.send) }) : t('Sending isn’t set up yet.'), ms: 7000, action: wsAdmin ? { label: t('Set it up'), run: () => (setSettingsSection('email'), go('settings')) } : undefined });
       return;
     }
     // An email already being written (parked as a pill on a phone, or minimised): Compose brings it back; anything
@@ -839,18 +828,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const old = new Map(list.map((t) => [t.id, Object.fromEntries(Object.keys(patch(t)).map((k) => [k, t[k as keyof Thread]])) as Partial<Thread>]));
     leaveReader(list.filter((t) => !staysInList(t, patch(t))).map((t) => t.id));
     setThreads((ts) => ts.map((t) => (set.has(t.id) ? { ...t, ...patch(t) } : t)));
-    if (text) showToast({ text, action: { label: 'Undo', run: () => setThreads((ts) => ts.map((t) => (old.has(t.id) ? { ...t, ...old.get(t.id) } : t))) } });
+    if (text) showToast({ text, action: { label: t('Undo'), run: () => setThreads((ts) => ts.map((x) => (old.has(x.id) ? { ...x, ...old.get(x.id) } : x))) } });
   };
-  const emails = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
+  const n1 = (ids: string[]) => ids.length === 1;
   const mailActions: MailActions = {
-    done: (ids) => changeMail(ids, () => ({ location: 'archive' }), emails(ids.length, 'Marked done. It’s in Archive', 'emails marked done')),
-    inbox: (ids) => changeMail(ids, () => ({ location: 'inbox' }), emails(ids.length, 'Moved to Inbox', 'emails moved to Inbox')),
-    trash: (ids) => changeMail(ids, () => ({ location: 'trash' }), emails(ids.length, 'Moved to Trash', 'emails moved to Trash')),
-    spam: (ids) => changeMail(ids, () => ({ location: 'spam' }), emails(ids.length, 'Reported as spam', 'emails reported as spam')),
-    star: (ids, on) => changeMail(ids, () => ({ starred: on }), ids.length > 1 ? `${ids.length} emails ${on ? 'starred' : 'unstarred'}` : null),
-    read: (ids, unread) => changeMail(ids, () => ({ unread }), ids.length > 1 ? `${ids.length} emails marked as ${unread ? 'unread' : 'read'}` : null),
-    snooze: (ids, until, ifNoReply) =>
-      changeMail(ids, (t) => snoozePatch(t, until, ifNoReply), `${emails(ids.length, 'Snoozed', 'emails snoozed')} until ${whenWords(new Date(until))}${ifNoReply ? ', if nobody replies' : ''}`),
+    done: (ids) => changeMail(ids, () => ({ location: 'archive' }), n1(ids) ? t('Marked done. It’s in Archive') : t('{n} emails marked done', { n: ids.length })),
+    inbox: (ids) => changeMail(ids, () => ({ location: 'inbox' }), n1(ids) ? t('Moved to Inbox') : t('{n} emails moved to Inbox', { n: ids.length })),
+    trash: (ids) => changeMail(ids, () => ({ location: 'trash' }), n1(ids) ? t('Moved to Trash') : t('{n} emails moved to Trash', { n: ids.length })),
+    spam: (ids) => changeMail(ids, () => ({ location: 'spam' }), n1(ids) ? t('Reported as spam') : t('{n} emails reported as spam', { n: ids.length })),
+    star: (ids, on) => changeMail(ids, () => ({ starred: on }), ids.length > 1 ? (on ? t('{n} emails starred', { n: ids.length }) : t('{n} emails unstarred', { n: ids.length })) : null),
+    read: (ids, unread) => changeMail(ids, () => ({ unread }), ids.length > 1 ? (unread ? t('{n} emails marked as unread', { n: ids.length }) : t('{n} emails marked as read', { n: ids.length })) : null),
+    snooze: (ids, until, ifNoReply) => {
+      const when = whenWords(new Date(until));
+      const n = ids.length;
+      const text = n === 1 ? (ifNoReply ? t('Snoozed until {when}, if nobody replies', { when }) : t('Snoozed until {when}', { when })) : ifNoReply ? t('{n} emails snoozed until {when}, if nobody replies', { n, when }) : t('{n} emails snoozed until {when}', { n, when });
+      changeMail(ids, (th) => snoozePatch(th, until, ifNoReply), text);
+    },
   };
   const archive = (id: string) => mailActions.done([id]);
   const trash = (id: string) => mailActions.trash([id]);
@@ -870,37 +863,42 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return members.find((u) => u.email.toLowerCase() === e) ?? members.find((u) => ws.accounts.some((a) => a.kind === 'personal' && a.email.toLowerCase() === e && a.users.includes(u.id)));
   };
   /** Forward: a new email with the last message quoted under your signature, and its files attached. */
-  const forward = (t: Thread) => {
-    const m = lastMessage(t);
+  const forward = (th: Thread) => {
+    const m = lastMessage(th);
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = `<p><br></p>${settings.signature}<p><br></p><p>Forwarded message from ${esc(m.from.name)} &lt;${esc(m.from.email)}&gt;, ${esc(fullDate(m.date))}</p><blockquote>${m.html ? sanitize(m.html) : textToHtml(m.body)}</blockquote>`;
+    const html = `<p><br></p>${settings.signature}<p><br></p><p>${esc(t('Forwarded message from {name} <{email}>, {date}', { name: m.from.name, email: m.from.email, date: fullDate(m.date) }))}</p><blockquote>${m.html ? sanitize(m.html) : textToHtml(m.body)}</blockquote>`;
     openCompose({
       initial: {
         to: [],
         cc: [],
         bcc: [],
-        subject: /^fwd?:/i.test(t.subject) ? t.subject : `Fwd: ${t.subject}`,
+        subject: /^fwd?:/i.test(th.subject) ? th.subject : `Fwd: ${th.subject}`,
         html,
         text: htmlToText(html),
         files: (m.attachments ?? []).filter((a) => a.url).map((a) => ({ name: a.name, size: parseSize(a.size), url: a.url! })),
         track: settings.trackByDefault,
         trackOptions: DEFAULT_TRACK_OPTIONS,
-        fromId: t.accountId,
+        fromId: th.accountId,
       },
     });
   };
 
-  const replyWhy = (acct: { id: string; email: string }) => boxReady(acct.id).sendWhy ?? `Replies can’t go out from ${acct.email} yet. ${boxReady(acct.id).why ?? mailWhy.send ?? ''}`.trim();
+  const replyWhy = (acct: { id: string; email: string }) => {
+    const own = boxReady(acct.id).sendWhy;
+    if (own) return t(own);
+    const why = boxReady(acct.id).why ?? mailWhy.send;
+    return why ? t('Replies can’t go out from {email} yet. {why}', { email: acct.email, why: t(why) }) : t('Replies can’t go out from {email} yet.', { email: acct.email });
+  };
   const replyBlocked = (acct: { id: string; email: string }) =>
-    showToast({ text: replyWhy(acct), ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+    showToast({ text: replyWhy(acct), ms: 7000, action: wsAdmin ? { label: t('Set it up'), run: () => (setSettingsSection('email'), go('settings')) } : undefined });
   /**
    * Undo send for real: the mail engine keeps each email for the sender's Undo window (Settings, Mail) before anything
    * leaves, so taking it back means nobody gets it. `then` runs once the server has it back.
    */
   const takeBack = (threadId: string, messageId: string, then: () => void) =>
     void fetch('/api/mail/undo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId, messageId }) }).then(
-      async (r) => (r.ok ? then() : showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'It couldn’t be taken back.' })),
-      () => showToast({ text: 'No connection: it couldn’t be taken back.' }),
+      async (r) => (r.ok ? then() : showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? t('It couldn’t be taken back.') })),
+      () => showToast({ text: t('No connection: it couldn’t be taken back.') }),
     );
   /** After the mail engine took an email: "sent", with Undo for as long as it's still waiting there. */
   const sentToast = async (r: Response, text: string, undo: () => void) => {
@@ -908,22 +906,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const left = d.held && d.until ? Date.parse(d.until) - Date.now() - 300 : 0;
     // `note`: a local server kept it on this computer instead of sending it out.
     if (d.note) text = d.note;
-    showToast(left > 1000 ? { text, ms: Math.max(left, d.note ? 6000 : 0), action: { label: 'Undo', run: undo } } : { text, ms: d.note ? 6000 : undefined });
+    showToast(left > 1000 ? { text, ms: Math.max(left, d.note ? 6000 : 0), action: { label: t('Undo'), run: undo } } : { text, ms: d.note ? 6000 : undefined });
   };
   const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number } | null>(null);
 
   /** Why the mail engine didn't take an email, as a sentence that ends properly. */
   const refusal = async (r: Response | null, fallback: string) => {
-    const why = (r ? (((await r.json().catch(() => ({}))) as { error?: string }).error ?? fallback) : 'There’s no connection.').trim();
+    const why = (r ? (((await r.json().catch(() => ({}))) as { error?: string }).error ?? fallback) : t('There’s no connection.')).trim();
     return /[.!?]$/.test(why) ? why : `${why}.`;
   };
 
   const reply = (id: string, html: string, text: string, track = false) => {
-    const t = threads.find((x) => x.id === id);
-    if (!t) return;
-    const acct = accountOf(t.accountId);
+    const th = threads.find((x) => x.id === id);
+    if (!th) return;
+    const acct = accountOf(th.accountId);
     if (acct && !boxReady(acct.id).send) return replyBlocked(acct);
-    const last = lastMessage(t);
+    const last = lastMessage(th);
     const to = isMine(last.from.email) ? last.to : [last.from];
     const from = senderFor(acct);
     const msgId = uid();
@@ -937,29 +935,29 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
       const back = () => setRestoreReply({ threadId: id, html, text, key: Date.now() });
       back();
-      showToast({ text: `Reply not sent. ${why} What you wrote is back in the reply box.`, ms: 10000, action: { label: 'Open', run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
+      showToast({ text: t('Reply not sent. {why} What you wrote is back in the reply box.', { why }), ms: 10000, action: { label: t('Open'), run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
     };
     // With the server, the mail engine sends it for real, threaded under the message it answers.
     if (real && acct && (!acct.provider || acct.provider === 'sprint2go')) {
-      const refs = t.messages.map((m) => m.mid).filter(Boolean) as string[];
+      const refs = th.messages.map((m) => m.mid).filter(Boolean) as string[];
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: t.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: th.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(th.subject) ? th.subject : `Re: ${th.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend }),
       }).then(
         async (r) =>
           r.ok
-            ? sentToast(r, 'Reply sent', () =>
+            ? sentToast(r, t('Reply sent'), () =>
                 takeBack(id, msgId, () => {
                   setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
                   setRestoreReply({ threadId: id, html, text, key: Date.now() });
                 }),
               )
-            : notSent(await refusal(r, 'The mail engine refused it.')),
+            : notSent(await refusal(r, t('The mail engine refused it.'))),
         async () => notSent(await refusal(null, '')),
       );
-    } else showToast({ text: inSandbox ? 'Reply sent in the demo company. Nothing left it.' : 'Reply sent' });
-    if (inSandbox && clientForThread(t)) tried('reply');
+    } else showToast({ text: inSandbox ? t('Reply sent in the demo company. Nothing left it.') : t('Reply sent') });
+    if (inSandbox && clientForThread(th)) tried('reply');
   };
 
   /** `scheduled`: a "send later" draft keeps its tracking, so the server tracks it when it goes out. */
@@ -980,7 +978,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         date: new Date().toISOString(),
         body: m.text,
         html: m.html,
-        attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: fmtSize(f.size) })) : undefined,
+        attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: sizeText(f.size) })) : undefined,
         trackOptions: m.track && (location !== 'drafts' || scheduled) ? m.trackOptions : undefined,
         tracking:
           m.track && (location !== 'drafts' || scheduled)
@@ -1023,23 +1021,23 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const notSent = (thread: Thread, m: Outgoing, why: string) => {
     const draft = toThread(m, 'drafts');
     setThreads((ts) => [draft, ...ts.filter((x) => x.id !== thread.id)]);
-    showToast({ text: `Not sent. ${why} It’s in Drafts.`, ms: 10000, action: { label: 'Open draft', run: () => openCompose({ draftId: draft.id, initial: m }) } });
+    showToast({ text: t('Not sent. {why} It’s in Drafts.', { why }), ms: 10000, action: { label: t('Open draft'), run: () => openCompose({ draftId: draft.id, initial: m }) } });
   };
 
   const send = (m: Outgoing) => {
     if (m.sendAt) {
       // Send later: kept as a scheduled draft until its time (the server does this for real).
-      const t = { ...toThread(m, 'drafts', undefined, true), sendAt: m.sendAt };
-      setThreads((ts) => [t, ...ts.filter((x) => x.id !== compose?.draftId)]);
+      const th = { ...toThread(m, 'drafts', undefined, true), sendAt: m.sendAt };
+      setThreads((ts) => [th, ...ts.filter((x) => x.id !== compose?.draftId)]);
       setCompose(null);
       // Undo: not scheduled any more, back to the draft it was (the server sends only what's still scheduled at its time).
       showToast({
-        text: `Scheduled for ${new Date(m.sendAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
+        text: t('Scheduled for {when}', { when: whenWords(new Date(m.sendAt)) }),
         action: {
-          label: 'Undo',
+          label: t('Undo'),
           run: () => {
-            setThreads((ts) => ts.map((x) => (x.id === t.id ? { ...x, sendAt: undefined } : x)));
-            openCompose({ draftId: t.id, initial: { ...m, sendAt: undefined } });
+            setThreads((ts) => ts.map((x) => (x.id === th.id ? { ...x, sendAt: undefined } : x)));
+            openCompose({ draftId: th.id, initial: { ...m, sendAt: undefined } });
           },
         },
       });
@@ -1048,7 +1046,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const from = accountOf(m.fromId);
     // With the server, a mailbox that can't send keeps the message open instead of pretending it went out.
     if (!demoOk && (!from || !boxReady(from.id).send)) {
-      showToast({ text: from ? replyWhy(from) : 'Choose a mailbox that can send.', ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+      showToast({ text: from ? replyWhy(from) : t('Choose a mailbox that can send.'), ms: 7000, action: wsAdmin ? { label: t('Set it up'), run: () => (setSettingsSection('email'), go('settings')) } : undefined });
       return;
     }
     // A reply drafted in a connected AI app keeps the conversation's headers, so it lands in the same thread.
@@ -1064,9 +1062,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, bcc: m.bcc ?? [], subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend }),
       }).then(
         async (r) => {
-          if (!r.ok) return notSent(thread, m, await refusal(r, 'The mail engine refused it.'));
+          if (!r.ok) return notSent(thread, m, await refusal(r, t('The mail engine refused it.')));
           // Undo while the mail engine still has it waiting: it comes back as a draft, and nobody got it.
-          await sentToast(r, 'Message sent', () =>
+          await sentToast(r, t('Message sent'), () =>
             takeBack(thread.id, thread.messages[0].id, () => {
               setThreads((ts) => ts.map((x) => (x.id === thread.id ? { ...x, location: 'drafts', messages: x.messages.map((msg) => ({ ...msg, delivery: undefined })) } : x)));
               openCompose({ draftId: thread.id, initial: m });
@@ -1080,11 +1078,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // Without the mail engine (the demo), nothing has left yet: Undo just puts it back.
     const canUndo = !!settings.undoSend && !real;
     showToast({
-      text: inSandbox ? 'Sent in the demo company. Nothing left it.' : 'Message sent',
+      text: inSandbox ? t('Sent in the demo company. Nothing left it.') : t('Message sent'),
       ms: canUndo ? settings.undoSend * 1000 : 4000,
       action: canUndo
         ? {
-            label: 'Undo',
+            label: t('Undo'),
             run: () => {
               const gone = new Set([thread.id, ...delivered.map((d) => d.id)]);
               setThreads((ts) => ts.filter((t) => !gone.has(t.id)));
@@ -1123,7 +1121,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ),
       );
       if (latest.current.notifyOpens)
-        showToast({ text: `${who} just opened “${thread.subject}”`, action: { label: 'View', run: () => openThread(thread.id) } });
+        showToast({ text: t('{name} just opened “{subject}”', { name: who, subject: thread.subject }), action: { label: t('View'), run: () => openThread(thread.id) } });
     }, 9000);
   };
 
@@ -1132,9 +1130,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setCompose(null);
     if (!draft) return;
     const replyTo = draftId ? threads.find((x) => x.id === draftId)?.replyTo : undefined;
-    const t = { ...toThread(draft, 'drafts', draftId), ...(replyTo ? { replyTo } : {}) };
-    setThreads((ts) => (draftId ? ts.map((x) => (x.id === draftId ? t : x)) : [t, ...ts]));
-    showToast({ text: 'Draft saved', action: { label: 'Open', run: () => openCompose({ draftId: t.id, initial: draft }) } });
+    const th = { ...toThread(draft, 'drafts', draftId), ...(replyTo ? { replyTo } : {}) };
+    setThreads((ts) => (draftId ? ts.map((x) => (x.id === draftId ? th : x)) : [th, ...ts]));
+    showToast({ text: t('Draft saved'), action: { label: t('Open'), run: () => openCompose({ draftId: th.id, initial: draft }) } });
   };
 
   const selectView = (v: View) => {
@@ -1261,11 +1259,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setTimeout(() => {
       if (added)
         showToast({
-          text: `✨ Found ${added} to-do${added > 1 ? 's' : ''} in your email`,
-          action: { label: 'View', run: () => openTasks({ kind: 'mine' }) },
+          text: tn(added, '✨ Found {n} to-do in your email', '✨ Found {n} to-dos in your email'),
+          action: { label: t('View'), run: () => openTasks({ kind: 'mine' }) },
           quiet: true,
         });
-      else if (force) showToast({ text: 'No new to-dos found' });
+      else if (force) showToast({ text: t('No new to-dos found') });
     });
   };
 
@@ -1275,11 +1273,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** "Make a task" on an email: a task from it for you, with its project and a link back to the email. */
   const taskFromThread = (id: string) => {
-    const t = threads.find((x) => x.id === id);
-    if (!t) return;
-    const task = createTask({ title: t.subject.replace(/^((re|fwd?)\s*:\s*)+/i, '').trim() || 'Follow up on this email', userId: user.id, source: 'ai', threadId: t.id, clientId: clientForThread(t)?.id });
+    const th = threads.find((x) => x.id === id);
+    if (!th) return;
+    const task = createTask({ title: th.subject.replace(/^((re|fwd?)\s*:\s*)+/i, '').trim() || t('Follow up on this email'), userId: user.id, source: 'ai', threadId: th.id, clientId: clientForThread(th)?.id });
     tried('email-task');
-    showToast({ text: 'Task made from this email', action: { label: 'Open', run: () => openTask(task.id) } });
+    showToast({ text: t('Task made from this email'), action: { label: t('Open'), run: () => openTask(task.id) } });
   };
   const toggleTodo = (id: string) => {
     const t = todos.find((x) => x.id === id);
@@ -1309,7 +1307,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setEvents((es) => [...es, ev]);
     setScheduling(null);
     showToast({
-      text: t('Blocked {when} for “{title}”', { when: fmtDateTime(start), title: task.title }),
+      text: t('Blocked {when} for “{title}”', { when: whenWords(start), title: task.title }),
       action: { label: t('Undo'), run: () => setEvents((es) => es.filter((e) => e.id !== ev.id)) },
     });
   };
@@ -1318,9 +1316,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const domainOf = (email: string) => email.split('@')[1]?.toLowerCase() ?? email;
 
-  const unsubscribe = (t: Thread) => {
-    const m = [...t.messages].reverse().find((x) => x.listUnsubscribe);
-    const from = incomingFrom(t);
+  const unsubscribe = (th: Thread) => {
+    const m = [...th.messages].reverse().find((x) => x.listUnsubscribe);
+    const from = incomingFrom(th);
     if (!m || !from) return;
     const at = new Date().toISOString();
     const link = m.listUnsubscribe!.url;
@@ -1330,25 +1328,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (!m.listUnsubscribe!.oneClick) {
         openPage();
         setUnsubscribed((u) => ({ ...u, [domainOf(from.email)]: at }));
-        showToast({ text: `${from.name}’s unsubscribe page is open. Finish there.`, ms: 6000 });
+        showToast({ text: t('{name}’s unsubscribe page is open. Finish there.', { name: from.name }), ms: 6000 });
         return;
       }
       // One-click senders (RFC 8058): the server sends the request for you.
-      void fetch('/api/mail/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: t.id }) })
+      void fetch('/api/mail/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: th.id }) })
         .then(async (r) => ({ ok: r.ok, d: (await r.json().catch(() => ({}))) as { error?: string; open?: string } }))
         .then(
           ({ ok, d }) => {
             if (ok) {
               setUnsubscribed((u) => ({ ...u, [domainOf(from.email)]: at }));
-              showToast({ text: `Unsubscribed from ${from.name}` });
-            } else showToast({ text: d.error ?? 'Couldn’t unsubscribe. Try again.', ms: 7000, action: d.open ? { label: 'Open their page', run: () => void openPage() } : undefined });
+              showToast({ text: t('Unsubscribed from {name}', { name: from.name }) });
+            } else showToast({ text: d.error ?? t('Couldn’t unsubscribe. Try again.'), ms: 7000, action: d.open ? { label: t('Open their page'), run: () => void openPage() } : undefined });
           },
-          () => showToast({ text: 'No connection. Try again.' }),
+          () => showToast({ text: t('No connection. Try again.') }),
         );
       return;
     }
     setUnsubscribed((u) => ({ ...u, [domainOf(from.email)]: at }));
-    showToast({ text: `Unsubscribed from ${from.name}${m.listUnsubscribe!.oneClick ? '' : ', request sent'}` });
+    showToast({ text: m.listUnsubscribe!.oneClick ? t('Unsubscribed from {name}', { name: from.name }) : t('Unsubscribed from {name}, request sent', { name: from.name }) });
 
     // DEMO ONLY: senders without one-click unsubscribe often keep mailing. Simulate that,
     // so the "still sending → Block" flow can be tried.
@@ -1356,18 +1354,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       setTimeout(() => {
         const again: Thread = {
           id: uid(),
-          accountId: t.accountId,
+          accountId: th.accountId,
           subject: 'LAST CHANCE 🔥 Extra 10% off ends tonight',
           location: 'inbox',
           starred: false,
           unread: true,
           labels: [],
           messages: [
-            { id: uid(), from, to: t.messages[0].to, date: new Date().toISOString(), body: 'Final hours! Use code LAST10 for an extra 10% off.', listUnsubscribe: m.listUnsubscribe, trackersBlocked: 4 },
+            { id: uid(), from, to: th.messages[0].to, date: new Date().toISOString(), body: 'Final hours! Use code LAST10 for an extra 10% off.', listUnsubscribe: m.listUnsubscribe, trackersBlocked: 4 },
           ],
         };
         setThreads((ts) => [again, ...ts]);
-        showToast({ text: `${from.name} emailed you again after you unsubscribed`, ms: 8000, action: { label: 'Block', run: () => setBlockTarget(again) } });
+        showToast({ text: t('{name} emailed you again after you unsubscribed', { name: from.name }), ms: 8000, action: { label: t('Block'), run: () => setBlockTarget(again) } });
       }, 8000);
   };
 
@@ -1384,10 +1382,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     setBlockTarget(null);
     showToast({
-      text: `Blocked ${r.kind === 'domain' ? '@' + r.value : r.value}. Future emails are deleted on arrival`,
+      text: t('Blocked {who}. Future emails are deleted on arrival', { who: r.kind === 'domain' ? '@' + r.value : r.value }),
       ms: 7000,
       action: {
-        label: 'Undo',
+        label: t('Undo'),
         run: () => {
           setBlocked((b) => b.filter((x) => x.id !== r.id));
           setThreads(prevThreads);
@@ -1592,10 +1590,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const summaryCost = (() => {
     const trial = !!ws.plan?.trialEnds && ws.plan.trialEnds > nowIso();
     const included = ((ws.plan?.track === 'ai' && ws.plan.tier !== 'free') || trial) && ws.ai?.payer !== 'own';
-    if (included) return 'about 1 summary from your AI allowance';
+    if (included) return t('about 1 summary from your AI allowance');
     const job = ws.ai?.jobs.digest ?? ws.ai?.jobs.summary;
     const c = job ? costPer100(JOBS.find((j) => j.id === 'digest')!, job.provider, job.model) : null;
-    return c !== null && c !== undefined ? `about ${rp(c / 100)} on your own AI key` : 'a small amount on your own AI key';
+    return c !== null && c !== undefined ? t('about {cost} on your own AI key', { cost: rp(c / 100) }) : t('a small amount on your own AI key');
   })();
 
   /** A notice for someone else. Its words come from msg(), so each reader sees them in their own language (docs/i18n.md). */
@@ -1654,8 +1652,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return id;
   };
 
-  const postChat = (channelId: string, text: string, taskId?: string, fromId = user.id) =>
-    setMessages((ms) => [...ms, { id: uid(), channelId, userId: fromId, text, at: nowIso(), taskId }]);
+  const postChat = (channelId: string, text: string, taskId?: string, fromId = user.id, tr?: Msg) =>
+    setMessages((ms) => [...ms, { id: uid(), channelId, userId: fromId, text, at: nowIso(), taskId, ...(tr ? { tr } : {}) }]);
 
   /** A short email from me to a teammate (used for task notifications). */
   const emailTeammate = (toId: string, subject: string, text: string) => {
@@ -1753,7 +1751,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     for (const who of (task.assignees ?? []).filter((x) => x !== user.id)) {
       notify(who, 'task', msg('{name} assigned you {task}', { name: myFirst, task: describeP(task) }), { app: 'tasks', id: task.id });
-      if (tell.chat) postChat(dmWith(who), `📌 New task for you: ${describe(task)}`, task.id);
+      if (tell.chat) {
+        const line = msg('📌 New task for you: {task}', { task: describeP(task) });
+        postChat(dmWith(who), line.text, task.id, undefined, line.tr);
+      }
       if (tell.email)
         emailTeammate(who, `New task: ${task.title}`, `Hi ${firstOf(who)},\n\nI've assigned you a task: ${describe(task)}.\n\nYou'll find it in ${product.name} under Tasks.`);
     }
@@ -1837,7 +1838,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       // Celebrate in the client's (or team's) channel, and with a little confetti for the person who finished it.
       if (ws.chat?.celebrations !== false && !isBrief(task)) {
         const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && c.category !== 'shared' && ((task.clientId && c.clientId === task.clientId) || (!task.clientId && task.teamId && c.teamId === task.teamId)));
-        if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `${myFirst} finished “${task.title}”`, at: nowIso(), kind: 'celebration', taskId: task.id }]);
+        if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, ...msg('{name} finished “{task}”', { name: myFirst, task: task.title }), at: nowIso(), kind: 'celebration', taskId: task.id }]);
         if (!quiet) celebrate();
       }
       if (!quiet) offerInstall(); // finishing something is a good moment to offer the app
@@ -1907,7 +1908,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}) }] } : x)));
     if (toClient) {
       const c = clients.find((x) => x.id === t.clientId);
-      tellClient(t, msg('{name} replied on “{title}”: “{text}”', { name: c ? teamLabel(user, accessFor(ws, c), ws.name) : myFirst, title: t.title, text: text.slice(0, 80) }));
+      // "{company} team" is read in each guest's own language; a name is a name.
+      const name = !c ? myFirst : accessFor(ws, c).teamNames === 'hide' ? phrase('{company} team', { company: ws.name }) : teamLabel(user, accessFor(ws, c), ws.name);
+      tellClient(t, msg('{name} replied on “{title}”: “{text}”', { name, title: t.title, text: text.slice(0, 80) }));
     }
     const tell = new Set([...doersOf(t), t.supervisorId, ...(t.followers ?? []), ...members.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id)].filter((x): x is string => !!x && x !== user.id));
     tell.forEach((x) => notify(x, 'task', msg('{name} commented on “{title}”: “{text}”', { name: myFirst, title: t.title, text: text.slice(0, 80) }), { app: 'tasks', id }));
@@ -1986,8 +1989,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout: { ...layout, sections: layout.sections.map((x) => (x.id === sectionId ? next : x)) } } });
     const inSection = channels.filter((c) => c.workspaceId === ws.id && c.kind === 'channel' && !c.archived && sectionIdOf(layout, c) === sectionId);
     setChannels((cs) => cs.map((c) => (inSection.some((x) => x.id === c.id) ? { ...c, members: [...new Set([...c.members.filter((m) => !removed.includes(m) || m === c.ownerId), ...after])] } : c)));
-    after.filter((x) => !before.includes(x) && x !== user.id).forEach((x) => notify(x, 'mention', msg('{name} gave you access to the {section} channels', { name: myFirst, section: sec.name }), { app: 'chat' }));
-    showToast({ text: `${after.length} ${after.length === 1 ? 'person has' : 'people have'} access to ${sec.name} (${inSection.length} channel${inSection.length === 1 ? '' : 's'})` });
+    after.filter((x) => !before.includes(x) && x !== user.id).forEach((x) => notify(x, 'mention', msg('{name} gave you access to the {section} channels', { name: myFirst, section: sec.category ? phrase(sec.name) : sec.name }), { app: 'chat' }));
+    const inChannels = tn(inSection.length, '{n} channel', '{n} channels');
+    showToast({ text: after.length === 1 ? t('1 person has access to {section} ({channels})', { section: sectionTitle(sec), channels: inChannels }) : tn(after.length, '{n} people have access to {section} ({channels})', '{n} people have access to {section} ({channels})', { section: sectionTitle(sec), channels: inChannels }) });
   };
   // Section access stays up to date: channels moved or created in a section, and new team members, get the right people.
   useEffect(() => {
@@ -2020,17 +2024,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // A client channel needs to know which client: ask in the settings.
     if ((category === 'client' || category === 'shared') && !c.clientId) {
       setChanDialog({ id });
-      showToast({ text: `Pick the ${term.one}, then choose the category` });
+      showToast({ text: t('Pick the {project}, then choose the category', { project: term.one }) });
       return;
     }
     const apply = () => {
       const before = c;
       setChannels((cs) => cs.map((x) => (x.id === id ? { ...x, category, guests: category === 'shared' ? x.guests : [] } : x)));
-      showToast({ text: `#${c.name} moved to ${label}`, action: { label: 'Undo', run: () => setChannels((cs) => cs.map((x) => (x.id === id ? before : x))) } });
+      showToast({ text: t('#{channel} moved to {category}', { channel: c.name, category: categoryText(label) }), action: { label: t('Undo'), run: () => setChannels((cs) => cs.map((x) => (x.id === id ? before : x))) } });
     };
     // Leaving "With client" removes the client's guests, so ask first.
     if (c.category === 'shared' && category !== 'shared' && c.guests?.length) {
-      showToast({ text: `Moving #${c.name} out of Shared removes ${c.guests.length} guest${c.guests.length > 1 ? 's' : ''}`, action: { label: 'Move anyway', run: apply }, ms: 8000 });
+      showToast({ text: tn(c.guests.length, 'Moving #{channel} out of Shared removes {n} guest', 'Moving #{channel} out of Shared removes {n} guests', { channel: c.name }), action: { label: t('Move anyway'), run: apply }, ms: 8000 });
       return;
     }
     apply();
@@ -2205,27 +2209,27 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!n) return;
     setNotes((ns) => ns.map((x) => (x.id === id ? { ...x, deletedAt: nowIso(), deletedBy: user.id } : x)));
     if (noteId === id) setNoteId(null);
-    showToast({ text: `“${n.title || 'Untitled'}” is in Recently deleted`, action: { label: 'Undo', run: () => setNotes((ns) => ns.map((x) => (x.id === id ? { ...x, deletedAt: undefined, deletedBy: undefined } : x))) } });
+    showToast({ text: t('“{title}” is in Recently deleted', { title: n.title || t('Untitled') }), action: { label: t('Undo'), run: () => setNotes((ns) => ns.map((x) => (x.id === id ? { ...x, deletedAt: undefined, deletedBy: undefined } : x))) } });
   };
   const restoreNote = (id: string) => {
     const n = notes.find((x) => x.id === id);
     if (!n) return;
     setNotes((ns) => ns.map((x) => (x.id === id ? { ...x, deletedAt: undefined, deletedBy: undefined } : x)));
-    showToast({ text: `“${n.title || 'Untitled'}” is back`, action: { label: 'Open', run: () => openNote(id) } });
+    showToast({ text: t('“{title}” is back', { title: n.title || t('Untitled') }), action: { label: t('Open'), run: () => openNote(id) } });
   };
   const purgeNote = (id: string) => {
     const n = notes.find((x) => x.id === id);
     if (!n) return;
     setNotes((ns) => ns.filter((x) => x.id !== id));
     if (noteId === id) setNoteId(null);
-    showToast({ text: `“${n.title || 'Untitled'}” deleted for good`, action: { label: 'Undo', run: () => setNotes((ns) => [n, ...ns]) } });
+    showToast({ text: t('“{title}” deleted for good', { title: n.title || t('Untitled') }), action: { label: t('Undo'), run: () => setNotes((ns) => [n, ...ns]) } });
   };
   const duplicateNote = (id: string) => {
     const n = notes.find((x) => x.id === id);
     if (!n) return;
-    const copy: Note = { ...n, id: uid(), title: n.title ? `${n.title} (copy)` : '', ownerId: user.id, visibility: n.visibility, pinned: false, html: n.html.replace(/<span class="note-task"[^>]*><\/span>/g, ''), createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id, deletedAt: undefined, deletedBy: undefined };
+    const copy: Note = { ...n, id: uid(), title: n.title ? t('{title} (copy)', { title: n.title }) : '', ownerId: user.id, visibility: n.visibility, pinned: false, html: n.html.replace(/<span class="note-task"[^>]*><\/span>/g, ''), createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id, deletedAt: undefined, deletedBy: undefined };
     setNotes((ns) => [copy, ...ns]);
-    showToast({ text: 'Copy made', also: { label: 'Open', run: () => openNote(copy.id) }, action: { label: 'Undo', run: () => setNotes((ns) => ns.filter((x) => x.id !== copy.id)) } });
+    showToast({ text: t('Copy made'), also: { label: t('Open'), run: () => openNote(copy.id) }, action: { label: t('Undo'), run: () => setNotes((ns) => ns.filter((x) => x.id !== copy.id)) } });
   };
   const openNote = (id: string, find?: string) => (setNoteId(id), setNoteOpenAt({ find }), go('notes'));
   const notesApi: NotesApi = {
@@ -2368,7 +2372,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const presence = (id: string): Presence => {
     if (id === user.id) {
       const now = new Date().toISOString();
-      return myEvents.some((e) => !e.allDay && e.start <= now && e.end > now) ? 'meeting' : 'active';
+      return myNear.some((e) => !e.allDay && new Date(e.start).toISOString() <= now && new Date(e.end).toISOString() > now) ? 'meeting' : 'active';
     }
     if (statuses[id]?.emoji === '🗓️') return 'meeting';
     return id === 'u-dewi' || id === 'u-bayu' ? 'away' : 'active';
@@ -2407,7 +2411,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const files = pl.files ? [...saveChatFiles(pl.files.filter((f) => !f.driveId), ch), ...pl.files.filter((f) => f.driveId)] : undefined;
     const msgId = uid();
     if (pl.voice) tried('voice');
-    const msg: ChatMessage = { id: msgId, channelId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor, taskId: pl.taskId, ref: pl.ref, forwarded: pl.forwarded, sendAt: pl.sendAt };
+    const msg: ChatMessage = { id: msgId, channelId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor, taskId: pl.taskId, ref: pl.ref, forwarded: pl.forwarded, sendAt: pl.sendAt, ...(pl.tr ? { tr: pl.tr } : {}) };
     setMessages((ms) => [...ms, msg]);
     if (pl.sendAt) return;
     chatNotices(msg, ch);
@@ -2446,12 +2450,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const target = to.channelId ?? (to.userId ? dmWith(to.userId) : null);
     const from = channels.find((c) => c.id === m.channelId);
     if (!target || !from) return;
-    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'A guest') : (allUsers.find((u) => u.id === m.userId)?.name ?? m.authorName ?? 'Someone');
+    // Saved with the message: English, shown in each reader's language (Message.tsx).
+    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? mark('A guest')) : (allUsers.find((u) => u.id === m.userId)?.name ?? m.authorName ?? mark('Someone'));
     // Next tick: a brand-new DM has to exist before its first message.
     setTimeout(() => {
       sendChatTo(target, { text: note, forwarded: { channelId: m.channelId, messageId: m.id, userId: m.userId, who, where: chanName(from, allUsers, user.id), text: m.text || msgPreview(m), at: m.at } });
       const toCh = channels.find((c) => c.id === target);
-      showToast({ text: `Forwarded to ${toCh ? chanName(toCh, allUsers, user.id) : firstOf(to.userId)}`, action: { label: 'Open', run: () => openChannel(target) } });
+      showToast({ text: t('Forwarded to {name}', { name: toCh ? chanName(toCh, allUsers, user.id) : firstOf(to.userId) }), action: { label: t('Open'), run: () => openChannel(target) } });
     }, 0);
   };
   const leaveChannel = (id: string) => {
@@ -2459,14 +2464,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!ch) return;
     setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: c.members.filter((x) => x !== user.id) } : c)));
     if (chatId === id) setChatId(null);
-    showToast({ text: `You left ${chanName(ch, allUsers, user.id)}`, action: ch.private ? undefined : { label: 'Undo', run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...new Set([...c.members, user.id])] } : c))) } });
+    showToast({ text: t('You left {name}', { name: chanName(ch, allUsers, user.id) }), action: ch.private ? undefined : { label: t('Undo'), run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...new Set([...c.members, user.id])] } : c))) } });
   };
   const openChatRef = (r: NonNullable<ChatMessage['ref']>) => {
-    if (r.kind === 'note') return wsNotes.some((n) => n.id === r.id) ? openNote(r.id) : showToast({ text: 'That note is private, or isn’t here any more.' });
-    if (r.kind === 'row') return r.tableId && wsTables.some((t) => t.id === r.tableId) ? openTable(r.tableId, r.id) : showToast({ text: 'You can’t open that table.' });
+    if (r.kind === 'note') return wsNotes.some((n) => n.id === r.id) ? openNote(r.id) : showToast({ text: t('That note is private, or isn’t here any more.') });
+    if (r.kind === 'row') return r.tableId && wsTables.some((tb) => tb.id === r.tableId) ? openTable(r.tableId, r.id) : showToast({ text: t('You can’t open that table.') });
     const it = wsDrive.find((d) => d.id === r.id && !d.trashed);
     if (it) setPreview({ item: it, list: [it] });
-    else showToast({ text: 'That file isn’t in Drive any more.' });
+    else showToast({ text: t('That file isn’t in Drive any more.') });
   };
 
   const reactTo = (id: string, emoji: string) =>
@@ -2490,7 +2495,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const deleteMessage = (id: string) => {
     const snapshot = messages;
     setMessages((ms) => ms.filter((m) => m.id !== id && m.parentId !== id));
-    showToast({ text: 'Message deleted', action: { label: 'Undo', run: () => setMessages(snapshot) } });
+    showToast({ text: t('Message deleted'), action: { label: t('Undo'), run: () => setMessages(snapshot) } });
   };
 
   const makeTaskFromMessage = (m: ChatMessage) => {
@@ -2501,7 +2506,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     title = (title.charAt(0).toUpperCase() + title.slice(1)).slice(0, 90);
     const task = createTask({ title, userId: assignee, clientId: ch?.clientId, source: 'chat' });
     setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, taskId: task.id } : x)));
-    showToast({ text: `Task created for ${assignee === user.id ? 'you' : firstOf(assignee)}`, action: { label: 'View', run: () => openTask(task.id) } });
+    showToast({ text: assignee === user.id ? t('Task created for you') : t('Task created for {name}', { name: firstOf(assignee) }), action: { label: t('View'), run: () => openTask(task.id) } });
   };
 
   const DAY_WORDS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -2592,7 +2597,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) later(id, 60, () => next.actions.forEach((_, i) => meetingActionToTask(next, i, true)));
       notify(current.createdBy ?? user.id, 'meeting', actions.length === 1 ? msg('Notes are ready for “{title}” · 1 action item', { title: next.title }) : msg('Notes are ready for “{title}” · {n} action items', { title: next.title, n: actions.length }), { app: 'meet', id });
       if (current.createdBy !== user.id) return;
-      showToast({ text: `Notes ready for “${next.title}”`, action: { label: 'Open', run: () => openMeeting(id) } });
+      showToast({ text: t('Notes ready for “{title}”', { title: next.title }), action: { label: t('Open'), run: () => openMeeting(id) } });
     });
   };
 
@@ -2606,7 +2611,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         setTodos((ts) => ts.filter((t) => !(t.meetingId === m.id && t.source === 'meeting' && !t.done && !t.notes && t.createdBy === user.id)));
         if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) m.actions.forEach((_, i) => meetingActionToTask(m, i, true));
         notify(user.id, 'meeting', m.actions.length === 1 ? msg('Notes are ready for “{title}” · 1 action item', { title: m.title }) : msg('Notes are ready for “{title}” · {n} action items', { title: m.title, n: m.actions.length }), { app: 'meet', id: m.id });
-        showToast({ text: `Notes ready for “${m.title}”`, action: { label: 'Open', run: () => openMeeting(m.id) } });
+        showToast({ text: t('Notes ready for “{title}”', { title: m.title }), action: { label: t('Open'), run: () => openMeeting(m.id) } });
       });
   }, [meetings]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2673,7 +2678,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setMeetings((ms) => ms.filter((m) => m.id !== id));
     setTodos((ts) => ts.filter((t) => t.meetingId !== id || t.done));
     setMeetPage({ kind: 'list' });
-    showToast({ text: 'Meeting deleted', action: { label: 'Undo', run: () => (setMeetings(snapshot.meetings), setTodos(snapshot.todos)) } });
+    showToast({ text: t('Meeting deleted'), action: { label: t('Undo'), run: () => (setMeetings(snapshot.meetings), setTodos(snapshot.todos)) } });
   };
 
   const setMeetingFolder = (id: string, clientId: string | null, remember: boolean) => {
@@ -2683,7 +2688,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const outsiders = [...new Set((m.transcript ?? []).map((l) => l.speaker))].filter((sp) => !members.some((u) => u.name.split(' ')[0] === sp.split(' ')[0]) && sp !== 'Guest');
       const rules = outsiders.map((v) => ({ id: uid(), kind: 'participant' as const, value: v, clientId }));
       patchWorkspace(ws.id, { meetingRules: [...(ws.meetingRules ?? []), ...rules] });
-      showToast({ text: `Meetings with ${outsiders.join(', ')} will be filed here` });
+      showToast({ text: t('Meetings with {names} will be filed here', { names: fmtList(outsiders) }) });
     }
   };
 
@@ -2691,8 +2696,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const c = wsClients.find((x) => x.id === clientId);
     const list = wsMeetings.filter((m) => m.clientId === clientId && m.summary);
     if (!c) return;
-    const linked = wsTasks.filter((x) => x.meetingId && list.some((m) => m.id === x.meetingId));
-    const o = await ai.folderOverview(c.name, list.map((m) => ({ title: m.title, summary: m.summary, decisions: m.decisions ?? [], openQuestions: m.openQuestions ?? [] })), linked.filter((x) => !x.done).map((x) => x.title), linked.filter((x) => x.done).length);
+    const found = wsTasks.filter((x) => x.meetingId && list.some((m) => m.id === x.meetingId));
+    const o = await ai.folderOverview(c.name, list.map((m) => ({ title: m.title, summary: m.summary, decisions: m.decisions ?? [], openQuestions: m.openQuestions ?? [] })), found.filter((x) => !x.done).map((x) => x.title), found.filter((x) => x.done).length);
     setClients((cs) => cs.map((x) => (x.id === clientId ? { ...x, overview: { ...o, at: nowIso(), from: list.length } } : x)));
     showToast({ text: t('Overview updated') });
   };
@@ -2715,7 +2720,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (n.link.app === 'settings') return (setSettingsSection((n.link.id ?? 'account') as SettingsSection), go('settings'));
     if (n.link.app === 'notes' && n.link.id) return openNote(n.link.id);
     if (n.link.app === 'calendar' && n.link.id) {
-      const ev = events.find((e) => e.id === n.link!.id);
+      const ev = findEvent(events, n.link.id);
       if (ev) (setCalCursor(new Date(ev.start)), setSelectedEventId(ev.id));
     }
     go(n.link.app);
@@ -2773,11 +2778,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const share = ext ? (ext.share ?? 'busy') : 'details';
       if (share === 'private') return [];
       const first = (allUsers.find((u) => u.id === owner)?.name ?? 'Someone').split(' ')[0];
-      return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${share === 'busy' || e.busy ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined, meetUrl: undefined }];
+      const busy = share === 'busy' || !!e.busy;
+      // A repeating one keeps its dates; a date changed on its own shows only what the rest of it shows.
+      const overrides = e.overrides?.map((o) => ({ occurrence: o.occurrence, start: o.start, end: o.end, ...(!busy && o.title ? { title: `${first}: ${o.title}` } : {}), ...(!busy && o.location !== undefined ? { location: o.location } : {}) }));
+      return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${busy ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined, meetUrl: undefined, answers: undefined, overrides }];
     });
     return [...mine, ...holidays.events.filter((e) => !hiddenCals.has(e.calendarId)), ...mates];
   }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers, holidays.events, holidays.showCompany]);
+  /** My events as stored: a repeating one once, as its series. The calendar draws its dates for what's on screen. */
   const myEvents = useMemo(() => visibleEvents.filter((e) => !e.calendarId.startsWith('mate-')), [visibleEvents]);
+  /** My events around now, repeating ones as their dates (yesterday to two months on): Home, Meet, scheduling, who's in a meeting. */
+  const calToday = localDay();
+  const myNear = useMemo(() => {
+    const from = new Date(`${calToday}T00:00`).getTime() - 86_400_000;
+    return expandEvents(myEvents, from, from + 62 * 86_400_000);
+  }, [myEvents, calToday]);
   // The notetaker joining by itself: the server does it when the real recorder answers; the demo keeps its switches.
   const autoJoin: 'live' | 'demo' | 'off' = recorderOn && real ? 'live' : demoOk ? 'demo' : 'off';
   // (It joins from two minutes before the start until a minute after; a meeting already going gets "Send now".)
@@ -2794,7 +2809,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const out: Record<string, string> = { ...sentEvents };
     const auto = wsMeetings.filter((m) => m.auto && m.scheduledFor && m.url);
     if (!auto.length) return out;
-    for (const e of myEvents) {
+    for (const e of myNear) {
       if (out[e.id]) continue;
       const link = meetingLinkOf(e);
       const start = new Date(e.start).toISOString();
@@ -2802,8 +2817,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (hit) out[e.id] = hit.id;
     }
     return out;
-  }, [sentEvents, wsMeetings, myEvents]);
-  const busyDays = useMemo(() => new Set(myEvents.map((e) => new Date(e.start).toDateString())), [myEvents]);
+  }, [sentEvents, wsMeetings, myNear]);
+  // The side panel's mini month: days with something on them (repeating events too), for the month it shows.
+  const calMonth = `${calCursor.getFullYear()}-${calCursor.getMonth()}`;
+  const busyDays = useMemo(() => {
+    const g = monthGrid(calCursor);
+    return new Set(expandEvents(myEvents, g[0].getTime(), g[41].getTime() + 86_400_000).map((e) => new Date(e.start).toDateString()));
+  }, [myEvents, calMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openNewEvent(at?: Date) {
     const d = at ?? new Date(calCursor);
@@ -2816,33 +2836,102 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const saveEvent = (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task' = 'event') => {
     const start = new Date(e.start);
     const task = kind === 'task' ? createTask({ title: e.title, userId: user.id, due: localDay(start), source: 'manual' }) : null;
-    const ev: CalEvent = task ? { id: uid(), title: task.title, calendarId: 'work', start: e.start, end: e.end, allDay: e.allDay, notes: e.notes, remind: e.remind, taskId: task.id, workspaceId: ws.id, userId: user.id } : { ...e, id: uid(), workspaceId: ws.id, userId: user.id };
+    const { rrule, ...rest } = e;
+    const ev: CalEvent = task ? { id: uid(), title: task.title, calendarId: 'work', start: e.start, end: e.end, allDay: e.allDay, notes: e.notes, remind: e.remind, taskId: task.id, workspaceId: ws.id, userId: user.id } : startOnRule({ ...rest, ...(rrule ? { rrule } : {}), id: uid(), workspaceId: ws.id, userId: user.id }); // a repeat starts on its first date
     tried('event');
     setEvents((es) => [...es, ev]);
     setNewEventAt(null);
-    setCalCursor(start);
-    if (!mobile) setSelectedEventId(ev.id);
+    setCalCursor(new Date(ev.start));
+    if (!mobile) setSelectedEventId(ev.rrule ? (findEvent([ev], ev.id)?.id ?? ev.id) : ev.id);
     showToast({
-      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : 'Event created',
-      action: { label: 'Undo', run: () => (setEvents((es) => es.filter((x) => x.id !== ev.id)), task && setTodos((ts) => ts.filter((x) => x.id !== task.id))) },
+      text: task ? t('Task added, with {time} blocked for it', { time: fmtTime(start) }) : ev.rrule ? (ev.start === e.start ? t('Repeating event created') : t('Repeating event created. The first one is {day}', { day: fmtWeekday(ev.start) })) : t('Event created'),
+      action: { label: t('Undo'), run: () => (setEvents((es) => es.filter((x) => x.id !== ev.id)), task && setTodos((ts) => ts.filter((x) => x.id !== task.id))) },
     });
   };
+
+  /* ---------- repeating events: one date, this and following, or all ---------- */
+
+  /** A change to a series (and its second half, after "This and following"), with Undo. */
+  const applySeries = (change: SeriesChange, text: string) => {
+    const touched = new Set([...change.upserts.map((x) => x.id), ...change.deletes]);
+    const before = events.filter((x) => touched.has(x.id));
+    const put = (list: CalEvent[], from: CalEvent[]) => {
+      const byId = new Map(from.map((x) => [x.id, x]));
+      const kept = list.filter((x) => !touched.has(x.id) || byId.has(x.id)).map((x) => byId.get(x.id) ?? x);
+      return [...kept, ...from.filter((x) => !list.some((y) => y.id === x.id))];
+    };
+    setEvents((es) => put(es, change.upserts));
+    showToast({ text, action: { label: t('Undo'), run: () => setEvents((es) => put(es, before)) } });
+  };
+  /** What a change to some dates of a series did, in words. */
+  const scopeWords = (scope: Scope, what: 'saved' | 'moved' | 'times') =>
+    ({
+      saved: { one: t('Saved for this event'), following: t('Saved for this and following events'), all: t('Saved for all events') },
+      moved: { one: t('Moved this event'), following: t('Moved this and the following events'), all: t('Moved all events') },
+      times: { one: t('New times for this event'), following: t('New times for this and following events'), all: t('New times for all events') },
+    })[what][scope];
+  /** One date of a series and the series it's in, by the date's id. */
+  const seriesOf = (id: string) => {
+    const occ = findEvent(events, id);
+    const series = occ?.seriesId ? events.find((x) => x.id === occ.seriesId && x.rrule) : undefined;
+    return occ && series && occ.occurrence ? { occ, series, occurrence: occ.occurrence } : null;
+  };
+  /** Times from the editor or a drag, written the way the series writes them (an invite's all-day dates float). */
+  const asSeriesTimes = (series: CalEvent, p: Partial<CalEvent>) => ({ ...p, ...(p.start ? { start: timeLike(series, new Date(p.start)) } : {}), ...(p.end ? { end: timeLike(series, new Date(p.end)) } : {}) });
+  /** The same clock time `n` days later. */
+  const addDaysTo = (iso: string, n: number) => {
+    const d = new Date(iso);
+    d.setDate(d.getDate() + n);
+    return d;
+  };
+
+  /** Moving one event (a drag, Move to tomorrow, Extend): one date of a series asks which dates, unless it was asked already. */
+  const moveEvent = async (id: string, start: Date, end: Date, scope?: Scope, at?: ScopeAt) => {
+    const s = seriesOf(id);
+    const resized = (before: string) => new Date(before).getTime() === start.getTime();
+    const text = (before: string) => (resized(before) ? t('Now {time}', { time: fmtTimeRange(start, end) }) : t('Moved to {when}', { when: `${fmtWeekday(start)} ${fmtTime(start)}` }));
+    if (s) {
+      const pick = scope ?? (await askRepeatScope(s.occ, t('Move a repeating event'), at));
+      if (!pick) return;
+      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, { start: start.toISOString(), end: end.toISOString() }), pick, uid), pick === 'one' ? text(s.occ.start) : scopeWords(pick, resized(s.occ.start) ? 'times' : 'moved'));
+      return;
+    }
+    const before = events.find((e) => e.id === id);
+    if (!before) return;
+    setEvents((es) => es.map((e) => (e.id === id ? { ...e, start: start.toISOString(), end: end.toISOString() } : e)));
+    showToast({ text: text(before.start), action: { label: t('Undo'), run: () => setEvents((es) => es.map((e) => (e.id === id ? before : e))) } });
+  };
+
   /** Changes from the editor. Times that moved set the reminder going again (the server keeps track). */
-  const updateEvent = (id: string, e: Omit<CalEvent, 'id'>) => {
+  const updateEvent = async (id: string, e: Omit<CalEvent, 'id'>, at?: ScopeAt) => {
+    const s = seriesOf(id);
+    if (s) {
+      // A new rule (or all day, or another time zone) can't be for one date alone.
+      const scope = await askRepeatScope(s.occ, t('Change a repeating event'), at, changesRule(s.series, s.occurrence, e) ? ['following', 'all'] : ['one', 'following', 'all']);
+      if (!scope) return;
+      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, e), scope, uid), scopeWords(scope, 'saved'));
+      setEditEventId(null);
+      return;
+    }
     const before = events.find((x) => x.id === id);
     if (!before) return;
-    setEvents((es) => es.map((x) => (x.id === id ? { ...x, ...e, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind } : x)));
+    const { rrule, ...rest } = e;
+    // Repeating from now on: the event becomes a series starting on its date.
+    const repeat = rrule === undefined ? {} : rrule ? { rrule } : { rrule: undefined };
+    setEvents((es) => es.map((x) => (x.id === id ? startOnRule({ ...x, ...rest, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind, timeZone: e.timeZone, ...repeat }) : x)));
     setEditEventId(null);
-    showToast({ text: 'Event saved', action: { label: 'Undo', run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
+    if (rrule) setSelectedEventId(null);
+    showToast({ text: rrule ? t('Saved. It repeats now') : t('Event saved'), action: { label: t('Undo'), run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
   };
   const duplicateEvent = (id: string) => {
-    const e = events.find((x) => x.id === id);
+    const e = findEvent(events, id);
     if (!e) return;
-    const { inviteUid: _u, sequence: _s, occurrence: _o, rsvp: _r, organizer: _org, remindedFor: _rf, feed: _f, ...rest } = e;
+    // A date of a repeating event: a copy of that one date.
+    const { inviteUid: _u, sequence: _s, occurrence: _o, rsvp: _r, organizer: _org, remindedFor: _rf, feed: _f, rrule: _rr, exdates: _x, rdates: _rd, overrides: _ov, rsvpFrom: _fr, seriesId: _si, answers: _a, invite: _i, sendInvites: _si2, ...rest } = e;
     const copy: CalEvent = { ...rest, id: uid(), title: e.title, workspaceId: ws.id, userId: user.id };
     setEvents((es) => [...es, copy]);
     if (!mobile) setSelectedEventId(copy.id);
-    showToast({ text: `Copy of “${e.title}” added`, action: { label: 'Undo', run: () => setEvents((es) => es.filter((x) => x.id !== copy.id)) } });
+    showToast({ text: t('Copy of “{title}” added', { title: e.title }), action: { label: t('Undo'), run: () => setEvents((es) => es.filter((x) => x.id !== copy.id)) } });
   };
 
   /** My outside calendars other than holidays (links, and the demo's pretend Google and Outlook ones). */
@@ -2855,19 +2944,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         .map((c) =>
           fetch(`/api/calendars/${c.id}/refresh`, { method: 'POST' })
             .then((r) => r.json() as Promise<{ ok?: boolean; error?: string }>)
-            .catch(() => ({ ok: false, error: 'Couldn’t reach the server.' }))
+            .catch(() => ({ ok: false, error: t('Couldn’t reach the server.') }))
             .then((r) => ({ name: c.name, ...r })),
         ),
     );
     const bad = results.find((r) => !r.ok);
-    showToast({ text: bad ? `${bad.name}: ${bad.error ?? 'couldn’t update it'}` : 'Your calendars are up to date', ms: bad ? 8000 : undefined });
+    showToast({ text: bad ? `${bad.name}: ${bad.error ? t(bad.error) : t('couldn’t update it')}` : t('Your calendars are up to date'), ms: bad ? 8000 : undefined });
   };
 
   /** The standalone demo has no server to read holidays: its holiday calendar just follows the setting. */
   const demoHolidays = (country: string | null) => {
     const id = holidayCalendarId(ws.id);
     const c = holidayCountry(country ?? undefined);
-    setExtCals((cs) => [...cs.filter((x) => x.id !== id), ...(c ? [{ id, name: `Holidays in ${c.name}`, color: '#dc2626', source: 'holidays' as const, workspaceId: ws.id, readOnly: true, share: 'details' as const, country: c.code }] : [])]);
+    setExtCals((cs) => [...cs.filter((x) => x.id !== id), ...(c ? [{ id, name: t('Holidays in {country}', { country: t(c.name) }), color: '#dc2626', source: 'holidays' as const, workspaceId: ws.id, readOnly: true, share: 'details' as const, country: c.code }] : [])]);
     if (!c) setEvents((es) => es.filter((e) => e.calendarId !== id));
   };
 
@@ -2876,12 +2965,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
    * event filled in and asks for the link (the demo makes one up when the event has none).
    */
   const sendNotetakerTo = (e: CalEvent) => {
-    if (!botOn) return explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.');
+    if (!botOn) return explainOff(t('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
     const link = meetingLinkOf(e);
     const attendees = (e.guests ?? []).map((g) => g.name);
     const url = link && notetakerJoins(link.kind) ? link.url : !link && demoOk ? (/zoom/i.test(e.location ?? '') ? 'https://zoom.us/j/1234567890' : 'https://meet.google.com/abc-defg-hij') : null;
     if (!url) {
-      setSendBotSeed({ title: e.title, fromEvent: e.id, attendees, note: link ? `This is a ${MEETING_NAME[link.kind]} call, and the notetaker joins Google Meet and Zoom only.` : undefined });
+      setSendBotSeed({ title: e.title, fromEvent: e.id, attendees, note: link ? t('This is a {call} call, and the notetaker joins Google Meet and Zoom only.', { call: MEETING_NAME[link.kind] }) : undefined });
       setSendBotOpen(true);
       return;
     }
@@ -2889,27 +2978,35 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
   };
 
-  const deleteEvent = (id: string) => {
+  const deleteEvent = async (id: string, at?: ScopeAt) => {
+    const s = seriesOf(id);
+    if (s) {
+      const scope = await askRepeatScope(s.occ, t('Delete a repeating event'), at);
+      if (!scope) return;
+      setSelectedEventId(null);
+      applySeries(removeFromSeries(s.series, s.occurrence, scope), scope === 'one' ? t('Event deleted') : scope === 'following' ? t('This and following events deleted') : t('All events deleted'));
+      return;
+    }
     const snapshot = events;
     setEvents((es) => es.filter((e) => e.id !== id));
     setSelectedEventId(null);
-    showToast({ text: 'Event deleted', action: { label: 'Undo', run: () => setEvents(snapshot) } });
+    showToast({ text: t('Event deleted'), action: { label: t('Undo'), run: () => setEvents(snapshot) } });
   };
 
   const conflictsWith = (start: string, end: string) =>
-    eventsOn(myEvents, new Date(start)).filter((e) => !e.allDay && e.start < end && e.end > start);
+    eventsOn(expandEvents(myEvents, Date.parse(start) - 86_400_000, Date.parse(end) + 86_400_000), new Date(start)).filter((e) => !e.allDay && e.start < end && e.end > start);
 
   const addInvite = (threadId: string) => {
-    const t = threads.find((x) => x.id === threadId);
-    if (!t?.invite) return;
-    const from = t.messages[0].from;
+    const th = threads.find((x) => x.id === threadId);
+    if (!th?.invite) return;
+    const from = th.messages[0].from;
     const ev: CalEvent = {
       id: uid(),
-      title: t.invite.title,
+      title: th.invite.title,
       calendarId: 'clients',
-      start: t.invite.start,
-      end: t.invite.end,
-      location: t.invite.location,
+      start: th.invite.start,
+      end: th.invite.end,
+      location: th.invite.location,
       guests: isMine(from.email) ? [] : [from],
       workspaceId: ws.id,
       userId: user.id,
@@ -2917,9 +3014,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     };
     setEvents((es) => [...es, ev]);
     showToast({
-      text: 'Added to calendar',
+      text: t('Added to calendar'),
       action: {
-        label: 'View',
+        label: t('View'),
         run: () => {
           go('calendar');
           setCalCursor(new Date(ev.start));
@@ -2946,45 +3043,59 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   /** Opens the calendar on this invite's next date. */
   const showInvite = (uid: string, start: string) => {
-    const mine = events.filter((e) => e.inviteUid === uid && (e.userId ?? 'u-aqeel') === user.id).sort((a, b) => a.start.localeCompare(b.start));
-    const ev = mine.find((e) => e.end >= new Date().toISOString()) ?? mine[0];
+    const now = Date.now();
+    const mine = events.filter((e) => e.inviteUid === uid && (e.userId ?? 'u-aqeel') === user.id);
+    // A repeating one: its next date.
+    const dates = expandEvents(mine, now - 86_400_000, now + 400 * 86_400_000).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+    const ev = dates.find((e) => new Date(e.end).getTime() >= now) ?? findEvent(mine, mine[0]?.id);
     go('calendar');
     setCalCursor(new Date(ev?.start ?? start));
     if (ev) setSelectedEventId(ev.id);
   };
-  /** Yes, Maybe or No: the organiser hears it from this mailbox, and the event goes on (or off) your calendar. */
-  const answerInvite = async (t: Thread, m: Message, status: RsvpStatus): Promise<boolean> => {
+  /**
+   * Yes, Maybe or No: the organiser hears it from this mailbox, and the event goes on (or off) your calendar. A
+   * repeating invite becomes one repeating event; answering one date of it (`only`) answers that date, or that date
+   * and the following ones, and the rest keep their answer (or wait for one).
+   */
+  const answerInvite = async (th: Thread, m: Message, status: RsvpStatus, only?: { scope: Scope; occurrence: string }): Promise<boolean> => {
     const inv = m.invite!;
     const org = inv.organizer?.name.split(' ')[0];
     const tell = (sent: boolean, extra = '') =>
       showToast({
-        text: `${status === 'accepted' ? (inv.method === 'PUBLISH' ? 'Added to your calendar' : 'You’re going') : status === 'tentative' ? 'You said maybe' : 'You said no'}${sent && org ? `. ${org} knows` : ''}.${extra}`,
+        text: `${[status === 'accepted' ? (inv.method === 'PUBLISH' ? t('Added to your calendar') : t('You’re going')) : status === 'tentative' ? t('You said maybe') : t('You said no'), sent && org ? t('{name} knows', { name: org }) : ''].filter(Boolean).join('. ')}.${extra ? ` ${extra}` : ''}`,
         ms: extra ? 8000 : 5000,
-        action: status !== 'declined' ? { label: 'View', run: () => showInvite(inv.uid, inv.start) } : undefined,
+        action: status !== 'declined' ? { label: t('View'), run: () => showInvite(inv.uid, inv.start) } : undefined,
       });
     if (real) {
       try {
-        const r = await fetch('/api/mail/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: t.id, messageId: m.id, answer: status }) });
+        const r = await fetch('/api/mail/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: th.id, messageId: m.id, answer: status, ...(only && only.scope !== 'all' ? only : {}) }) });
         const d = (await r.json().catch(() => ({}))) as { error?: string; sent?: boolean; firstOnly?: boolean };
         if (!r.ok) {
-          showToast({ text: d.error ?? 'Your answer couldn’t be saved. Try again.', ms: 7000, action: r.status === 409 && wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
+          showToast({ text: d.error ?? t('Your answer couldn’t be saved. Try again.'), ms: 7000, action: r.status === 409 && wsAdmin ? { label: t('Set it up'), run: () => (setSettingsSection('email'), go('settings')) } : undefined });
           return false;
         }
-        tell(!!d.sent, d.firstOnly ? ' Only the first date is on your calendar: this kind of repeat can’t be read yet.' : '');
+        tell(!!d.sent, d.firstOnly ? t('Only the first date is on your calendar: this kind of repeat can’t be read yet.') : '');
         return true;
       } catch {
-        showToast({ text: 'No connection: your answer wasn’t sent.' });
+        showToast({ text: t('No connection: your answer wasn’t sent.') });
         return false;
       }
     }
     // The demo (no server, or the demo company): answered here, and nothing is sent.
     const at = nowIso();
-    setThreads((ts) => ts.map((x) => (x.id !== t.id ? x : { ...x, messages: x.messages.map((y) => (y.id === m.id ? { ...y, invite: { ...inv, answer: { status, at, by: user.id, sent: false } } } : y)) })));
-    setEvents((es) => [
-      ...es.filter((e) => !(e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id)),
-      ...(status === 'declined' ? [] : [{ id: uid(), title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, rsvp: status, organizer: inv.organizer } as CalEvent]),
-    ]);
-    tell(false, ' Demo: no answer is sent.');
+    const mineNow = (e: CalEvent) => e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id;
+    const made = (rsvp?: RsvpStatus): CalEvent => ({ id: uid(), title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: th.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, ...(rsvp ? { rsvp } : {}), organizer: inv.organizer, ...inviteSeries(inv) });
+    if (only && only.scope !== 'all' && inv.rrule) {
+      // Some dates of a repeating invite: the series is on the calendar, with this answer for those dates.
+      const cur = events.find((e) => mineNow(e) && e.rrule) ?? made();
+      const next = answerSeries(cur, only.occurrence, status, only.scope);
+      setEvents((es) => [...es.filter((e) => !mineNow(e)), next]);
+      tell(false, t('Demo: no answer is sent.'));
+      return true;
+    }
+    setThreads((ts) => ts.map((x) => (x.id !== th.id ? x : { ...x, messages: x.messages.map((y) => (y.id === m.id ? { ...y, invite: { ...inv, answer: { status, at, by: user.id, sent: false } } } : y)) })));
+    setEvents((es) => [...es.filter((e) => !mineNow(e)), ...(status === 'declined' ? [] : [made(status)])]);
+    tell(false, t('Demo: no answer is sent.'));
     return true;
   };
   const inviteCard = (t: Thread, m: Message) => {
@@ -3017,25 +3128,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (t.location === 'trash' || t.location === 'spam') continue;
       for (const m of t.messages) {
         const inv = m.invite;
-        if (!inv || inv.method !== 'REQUEST' || inv.cancelled || Date.parse(inv.end) < now) continue;
+        // (A repeating one may have dates to come although its first is over: the calendar draws those.)
+        if (!inv || inv.method !== 'REQUEST' || inv.cancelled || (Date.parse(inv.end) < now && !inv.rrule)) continue;
         const key = `${inv.uid}|${inv.recurrenceId ?? ''}`;
         if (seen.has(key)) continue;
         const st = inviteState(t, m);
         if (st.answer || st.onCalendar || st.cancelled || st.newer) continue;
         seen.add(key);
-        // All-day invites come as noon UTC on the first and last day: here they cover those days.
-        const day = (iso: string) => {
-          const d = new Date(iso);
-          return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-        };
-        const start = inv.allDay ? day(inv.start) : new Date(inv.start);
-        const end = inv.allDay ? new Date(day(inv.end).getTime() + 86_400_000) : new Date(inv.end);
         out.push({
           id: `inv:${t.id}:${m.id}`,
           title: inv.title,
           calendarId: 'work',
-          start: start.toISOString(),
-          end: end.toISOString(),
+          // All-day invites come as noon UTC on the first and last day: here they cover those days, wherever you are.
+          ...inviteCalendarTimes(inv, inv.allDay),
+          ...inviteSeries(inv),
           allDay: inv.allDay,
           location: inv.location,
           meetUrl: inv.url,
@@ -3052,7 +3158,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return out;
   }, [wsThreads, events]); // eslint-disable-line react-hooks/exhaustive-deps
   const calEvents = useMemo(() => (pendingInvites.length ? [...visibleEvents, ...pendingInvites] : visibleEvents), [visibleEvents, pendingInvites]);
-  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? calEvents.find((e) => e.id === selectedEventId) ?? null;
+  // One date of a repeating event is found by its id too (the id says which date).
+  const selectedEvent = findEvent(events, selectedEventId) ?? findEvent(calEvents, selectedEventId);
+  // The event being edited (one date of a repeating one: that date, with the series' repeat).
+  const editingEvent = findEvent(events, editEventId);
   /** Calendars a new event can go in (not read-only ones like links and holidays). */
   const addToCals = useMemo(() => [...CALENDARS, ...myExtCals.filter((c) => !c.readOnly)], [myExtCals]);
   /** People to invite besides teammates: the projects' guests and anyone already a guest of my events. */
@@ -3069,8 +3178,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   );
   /** The invite email behind an event (the newest one), to answer it from the calendar. */
   const inviteOf = (e: CalEvent) => {
-    if (e.id.startsWith('inv:')) {
-      const [, tid, mid] = e.id.split(':');
+    const id = e.seriesId ?? e.id; // a date of a repeating one: its series
+    if (id.startsWith('inv:')) {
+      const [, tid, mid] = id.split(':');
       const t = threads.find((x) => x.id === tid);
       const m = t?.messages.find((x) => x.id === mid);
       return t && m ? { t, m } : null;
@@ -3080,14 +3190,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const m = t && [...t.messages].reverse().find((x) => x.invite?.uid === e.inviteUid && x.invite?.method !== 'REPLY');
     return t && m ? { t, m } : null;
   };
-  const rsvpEvent = (e: CalEvent, status: RsvpStatus) => {
+  const rsvpEvent = async (e: CalEvent, status: RsvpStatus, at?: ScopeAt) => {
     const found = inviteOf(e);
-    if (!found) return showToast({ text: 'The invite email for this event isn’t here any more, so the answer can’t be sent from sprint2go.' });
+    if (!found) return showToast({ text: t('The invite email for this event isn’t here any more, so the answer can’t be sent from sprint2go.') });
+    // One date of a repeating invite: for that date, from it on, or all of them.
+    let only: { scope: Scope; occurrence: string } | undefined;
+    if (e.seriesId && e.occurrence && found.m.invite?.rrule) {
+      const scope = await askRepeatScope(e, t('Answer “{answer}” for', { answer: status === 'accepted' ? t('Yes') : status === 'tentative' ? t('Maybe') : t('No') }), at);
+      if (!scope) return;
+      only = { scope, occurrence: e.occurrence };
+    }
     if (e.id.startsWith('inv:') || status === 'declined') setSelectedEventId(null);
-    void answerInvite(found.t, found.m, status);
+    void answerInvite(found.t, found.m, status, only);
   };
-  /** What the guests answered, as the invite says it. */
+  /** What the guests answered: by email to an invite I sent (on the event), or as the invite I got says it. */
   const answersOf = (e: CalEvent) => {
+    if (e.answers) return e.answers;
     const inv = inviteOf(e)?.m.invite;
     return inv ? Object.fromEntries(inv.attendees.map((a) => [a.email.toLowerCase(), a.status])) : undefined;
   };
@@ -3099,7 +3217,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (real) {
       const r = await fetch('/api/mail/mailbox/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, accountId: a.id, moveTo }) }).catch(() => null);
       if (!r?.ok) {
-        showToast({ text: ((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? 'No connection: the mailbox wasn’t removed.' });
+        showToast({ text: ((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? t('No connection: the mailbox wasn’t removed.') });
         return false;
       }
     } else {
@@ -3108,7 +3226,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     if (activeAccount === a.id) setActiveAccount('all');
     setRemoveAcct(null);
-    showToast({ text: target ? `${a.email} removed. Its mail is in ${target.email} now` : `${a.email} and its mail removed` });
+    showToast({ text: target ? t('{email} removed. Its mail is in {target} now', { email: a.email, target: target.email }) : t('{email} and its mail removed', { email: a.email }) });
     return true;
   };
 
@@ -3193,12 +3311,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!added.length) return;
     setDrive((d) => [...d, ...added]);
     if (!['my', 'recent', 'media'].includes(driveSection)) setDriveSection('my');
-    showToast({ text: `Uploaded ${added.length} file${added.length > 1 ? 's' : ''}` });
+    showToast({ text: tn(added.length, 'Uploaded {n} file', 'Uploaded {n} files') });
   };
 
   const newFolder = () => {
     const parentId = driveSection === 'my' ? driveFolder : null;
-    const f: DriveItem = { id: uid(), name: 'Untitled folder', kind: 'folder', parentId, size: 0, modified: new Date().toISOString(), workspaceId: ws.id };
+    const f: DriveItem = { id: uid(), name: t('Untitled folder'), kind: 'folder', parentId, size: 0, modified: new Date().toISOString(), workspaceId: ws.id };
     setDrive((d) => [...d, f]);
     setDriveSection('my');
     setDriveFolder(parentId);
@@ -3208,13 +3326,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   const trashDrive = (id: string) => {
     patchDrive(id, { trashed: true });
-    showToast({ text: 'Moved to trash', action: { label: 'Undo', run: () => patchDrive(id, { trashed: false }) } });
+    showToast({ text: t('Moved to trash'), action: { label: t('Undo'), run: () => patchDrive(id, { trashed: false }) } });
   };
 
   const deleteForever = (id: string) => {
     const snapshot = drive;
     setDrive((d) => d.filter((i) => i.id !== id && i.parentId !== id));
-    showToast({ text: 'Deleted forever', action: { label: 'Undo', run: () => setDrive(snapshot) } });
+    showToast({ text: t('Deleted forever'), action: { label: t('Undo'), run: () => setDrive(snapshot) } });
   };
 
   const savedToDrive = (name: string) => wsDrive.some((i) => i.name === name && i.threadId === selectedId && !i.trashed);
@@ -3225,9 +3343,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       { id: uid(), name: a.name, kind: kindOf({ name: a.name }), parentId: null, size: parseSize(a.size), modified: msg?.date ?? new Date().toISOString(), threadId, workspaceId: ws.id },
     ]);
     showToast({
-      text: 'Saved to My Drive',
+      text: t('Saved to My Drive'),
       action: {
-        label: 'View',
+        label: t('View'),
         run: () => {
           setDriveSection('my');
           setDriveFolder(null);
@@ -3342,7 +3460,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Render ---------------- */
 
-  const title = view.kind === 'folder' ? FOLDER_TITLES[view.id] : view.kind === 'tracking' ? 'Tracking' : view.kind === 'todos' ? 'To-do' : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
+  const title = view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
   const appMode = mode === 'settings' ? lastMode : mode;
 
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
@@ -3387,19 +3505,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         if (real && (cal?.source === 'ics' || cal?.source === 'holidays')) {
           const r = (await fetch(`/api/calendars/${id}/refresh`, { method: 'POST' })
             .then((x) => x.json())
-            .catch(() => ({ ok: false, error: 'Couldn’t reach the server. Try again in a moment.' }))) as { ok?: boolean; error?: string };
-          showToast({ text: r.ok ? `${cal.name} is up to date` : `${cal.name} didn’t update. ${r.error ?? 'Try again later.'}`, ms: r.ok ? undefined : 8000 });
+            .catch(() => ({ ok: false, error: t('Couldn’t reach the server. Try again in a moment.') }))) as { ok?: boolean; error?: string };
+          showToast({ text: r.ok ? t('{name} is up to date', { name: cal.name }) : t('{name} didn’t update. {why}', { name: cal.name, why: r.error ? t(r.error) : t('Try again later.') }), ms: r.ok ? undefined : 8000 });
           return;
         }
         setExtCals((cs) => cs.map((c) => (c.id === id ? { ...c, syncedAt: nowIso() } : c)));
-        showToast({ text: 'Synced' });
+        showToast({ text: t('Synced') });
       }}
       onRemove={(id) => {
         // Another country's holidays: off this person's list (Undo puts it back).
         if (isPersonalHoliday(id)) {
           const before = holidays.regions;
           setHolidayRegions(before.filter((c) => personalHolidayId(c) !== id));
-          return showToast({ text: `${myExtCals.find((c) => c.id === id)?.name ?? 'Holidays'} removed from your calendar`, action: { label: 'Undo', run: () => setHolidayRegions(before) } });
+          return showToast({ text: t('{name} removed from your calendar', { name: myExtCals.find((c) => c.id === id)?.name ?? t('Holidays') }), action: { label: t('Undo'), run: () => setHolidayRegions(before) } });
         }
         const cal = extCals.find((c) => c.id === id);
         if (!cal) return;
@@ -3408,7 +3526,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         setEvents((es) => es.filter((e) => e.calendarId !== id));
         // A link is put back and read again by the server (its events come back with it).
         const relink = real && cal.source === 'ics';
-        showToast({ text: `${cal.name} removed`, action: { label: 'Undo', run: () => (relink ? setExtCals((cs) => [...cs, cal]) : (setExtCals(snapshot.extCals), setEvents(snapshot.events))) } });
+        showToast({ text: t('{name} removed', { name: cal.name }), action: { label: t('Undo'), run: () => (relink ? setExtCals((cs) => [...cs, cal]) : (setExtCals(snapshot.extCals), setEvents(snapshot.events))) } });
       }}
       companyName={ws.name}
       isAdmin={isAdmin}
@@ -3420,7 +3538,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const before = ws.holidays;
         patchWorkspace(ws.id, { holidays: undefined });
         if (!real) demoHolidays(null);
-        showToast({ text: 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
+        showToast({ text: t('Public holidays removed for everyone'), action: { label: t('Undo'), run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
       }}
       hidden={hiddenCals}
       busyDays={busyDays}
@@ -3457,17 +3575,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             : `${view.kind}:${view.id}`;
   const usedLabels = LABELS.filter((l) => scoped.some((t) => t.labels.includes(l.id)));
   useTitleMenu('mail', {
-    label: 'Mailboxes',
+    label: t('Mailboxes'),
     value: mailValue,
     options: [
-      { value: 'inbox:all', label: myAccounts.length > 1 ? 'All inboxes' : 'Inbox', hint: unreadIn('all'), group: 'Inboxes' },
-      ...(myAccounts.some((a) => a.kind === 'shared') ? [{ value: 'folder:assigned', label: 'Assigned to me', hint: counts.assigned ? `${counts.assigned} open` : undefined, group: 'Inboxes' }] : []),
-      ...(myAccounts.length > 1 ? myAccounts.map((a) => ({ value: `inbox:${a.id}`, label: a.kind === 'shared' || a.temp ? a.name || a.email : 'My inbox', hint: [a.email, unreadIn(a.id)].filter(Boolean).join(' · '), group: 'Inboxes' })) : []),
-      ...(['starred', 'sent', 'drafts', 'snoozed', 'scheduled'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: FOLDER_TITLES[f], hint: f === 'drafts' && counts.drafts ? `${counts.drafts}` : f === 'scheduled' && counts.scheduled ? `${counts.scheduled}` : undefined, group: 'Folders' })),
-      { value: 'track', label: 'Waiting for reply', group: 'Folders' },
-      { value: 'todos', label: 'To-do', hint: todoThreads.size ? 'Emails that asked you to do something' : undefined, group: 'Folders' },
-      ...(['archive', 'spam', 'trash'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: FOLDER_TITLES[f], group: 'Folders' })),
-      ...usedLabels.map((l) => ({ value: `label:${l.id}`, label: l.name, group: 'Labels' })),
+      { value: 'inbox:all', label: myAccounts.length > 1 ? t('All inboxes') : t('Inbox'), hint: unreadIn('all'), group: t('Inboxes') },
+      ...(myAccounts.some((a) => a.kind === 'shared') ? [{ value: 'folder:assigned', label: t('Assigned to me'), hint: counts.assigned ? tn(counts.assigned, '{n} open', '{n} open') : undefined, group: t('Inboxes') }] : []),
+      ...(myAccounts.length > 1 ? myAccounts.map((a) => ({ value: `inbox:${a.id}`, label: a.kind === 'shared' || a.temp ? a.name || a.email : t('My inbox'), hint: [a.email, unreadIn(a.id)].filter(Boolean).join(' · '), group: t('Inboxes') })) : []),
+      ...(['starred', 'sent', 'drafts', 'snoozed', 'scheduled'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: folderName(f), hint: f === 'drafts' && counts.drafts ? `${counts.drafts}` : f === 'scheduled' && counts.scheduled ? `${counts.scheduled}` : undefined, group: t('Folders') })),
+      { value: 'track', label: t('Waiting for reply'), group: t('Folders') },
+      { value: 'todos', label: t('To-do'), hint: todoThreads.size ? t('Emails that asked you to do something') : undefined, group: t('Folders') },
+      ...(['archive', 'spam', 'trash'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: folderName(f), group: t('Folders') })),
+      ...usedLabels.map((l) => ({ value: `label:${l.id}`, label: l.name, group: t('Labels') })),
       ...wsClients.filter((c) => c.domain).map((c) => ({ value: `project:${c.id}`, label: c.name, group: term.Many })),
     ],
     onChange: (v) => {
@@ -3482,20 +3600,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     },
   });
   const [mailSwipes] = useMailSwipes();
-  useAppSettings('mail', { id: 'swipes', label: 'Swipe actions', hint: swipeWords(mailSwipes), render: () => <SwipeSettings /> });
+  useAppSettings('mail', { id: 'swipes', label: t('Swipe actions'), hint: swipeWords(mailSwipes), render: () => <SwipeSettings /> });
 
   /** The phone's title switcher for each app (Mail registers its own above). */
   const mobileSwitcher = (() => {
     // Tasks registers its own switcher (TasksView, useTitleMenu).
     if (mode === 'meet')
       return {
-        label: 'Meet',
+        label: t('Meet'),
         value: meetPage.kind === 'folder' ? `folder:${meetPage.clientId}` : meetPage.kind === 'meeting' ? 'list' : meetPage.kind,
         options: [
-          { value: 'list', label: 'Meetings', group: 'Meet' },
-          { value: 'upcoming', label: 'Upcoming', group: 'Meet' },
-          { value: 'tasks', label: 'Tasks from meetings', group: 'Meet' },
-          { value: 'unfiled', label: 'Unfiled', group: 'Meet' },
+          { value: 'list', label: tx('meet', 'Meetings'), group: t('Meet') },
+          { value: 'upcoming', label: t('Upcoming'), group: t('Meet') },
+          { value: 'tasks', label: t('Tasks from meetings'), group: t('Meet') },
+          { value: 'unfiled', label: t('Unfiled'), group: t('Meet') },
           ...wsClients.map((c) => ({ value: `folder:${c.id}`, label: c.name, group: `${term.Many}` })),
         ],
         onChange: (v: string) => setMeetPage(v.startsWith('folder:') ? { kind: 'folder', clientId: v.slice(7) } : ({ kind: v } as MeetPage)),
@@ -3514,18 +3632,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       };
     if (mode === 'drive')
       return {
-        label: 'Drive',
+        label: t('Drive'),
         value: driveSection,
-        options: (
-          [
-            ['my', 'My Drive'],
-            ['recent', 'Recent'],
-            ['media', 'Photos & videos'],
-            ['email', 'From email'],
-            ['starred', 'Starred'],
-            ['trash', 'Trash'],
-          ] as const
-        ).map(([v, l]) => ({ value: v, label: l })),
+        options: DRIVE_SECTIONS.map((s) => ({ value: s.id, label: t(s.name) })),
         onChange: (v: string) => (setDriveSection(v as DriveSection), setDriveFolder(null)),
       };
     return undefined;
@@ -4145,7 +4254,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenBriefs={() => openTasks({ kind: 'briefs' })}
             onOpenGrid={() => openTasks({ kind: 'grid' })}
             threads={scoped}
-            events={myEvents}
+            events={myNear}
             meetings={wsMeetings}
             notices={myNotices}
             kudos={messages
@@ -4192,7 +4301,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? (e, join) => {
                     const byRule = botJoins(e, meetSettings.joinMode, {}, isMine);
                     setBotJoin(e.id, join === byRule ? null : join);
-                    showToast({ text: join ? `The notetaker will join “${e.title}”` : `The notetaker won’t join “${e.title}”`, action: { label: 'Undo', run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
+                    showToast({ text: join ? t('The notetaker will join “{title}”', { title: e.title }) : t('The notetaker won’t join “{title}”', { title: e.title }), action: { label: t('Undo'), run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
                   }
                 : undefined
             }
@@ -4411,8 +4520,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             summaryOff={
               server.on && !aiOn
                 ? {
-                    text: aiWhy === 'used-up' ? 'the company’s AI allowance for this month is used up.' : aiWhy === 'down' ? 'AI isn’t available right now. They start again by themselves when it’s back.' : 'AI isn’t set up for this company yet.',
-                    fix: isAdmin && aiWhy !== 'down' ? { label: aiWhy === 'used-up' ? 'Add a top-up' : 'Set up AI', run: () => (setSettingsSection(aiWhy === 'used-up' ? 'billing' : 'ai'), go('settings')) } : undefined,
+                    text: aiWhy === 'used-up' ? t('the company’s AI allowance for this month is used up.') : aiWhy === 'down' ? t('AI isn’t available right now. They start again by themselves when it’s back.') : t('AI isn’t set up for this company yet.'),
+                    fix: isAdmin && aiWhy !== 'down' ? { label: aiWhy === 'used-up' ? t('Add a top-up') : t('Set up AI'), run: () => (setSettingsSection(aiWhy === 'used-up' ? 'billing' : 'ai'), go('settings')) } : undefined,
                   }
                 : undefined
             }
@@ -4423,7 +4532,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onCreateTask={(t) => {
               const ch = channels.find((c) => c.id === chatId);
               const task = createTask({ ...t, clientId: ch?.clientId, teamId: ch?.teamId, channelId: chatId ?? undefined, source: 'chat' }, { chat: false });
-              if (chatId) setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, text: `📌 New task${t.userId !== user.id ? ` for @${firstOf(t.userId)}` : ''}`, at: nowIso(), taskId: task.id }]);
+              if (chatId) setMessages((ms) => [...ms, { id: uid(), channelId: chatId, userId: user.id, ...(t.userId !== user.id ? msg('📌 New task for @{name}', { name: firstOf(t.userId) }) : msg('📌 New task')), at: nowIso(), taskId: task.id }]);
             }}
             onOpenTask={openTask}
             onOpenClient={openClient}
@@ -4444,7 +4553,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             users={members}
             me={user.id}
             myRole={myRole}
-            events={myEvents}
+            events={myNear}
             settings={meetSettings}
             overrides={joinOverrides}
             sentEvents={sentFor}
@@ -4492,17 +4601,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         {mode === 'mail' && myAccounts.length === 0 && (
           <AppSetupCard
             icon={Mail}
-            title="Your email isn’t here yet"
+            title={t('Your email isn’t here yet')}
             body={
               isAdmin
-                ? 'Connect a mailbox to read and send email here, next to your tasks and chat. You can keep Gmail or Outlook and forward a copy, or move your email over.'
-                : 'An admin connects mailboxes for the team. Ask them to add yours, or make a temporary address for a quick sign-up in the meantime.'
+                ? t('Connect a mailbox to read and send email here, next to your tasks and chat. You can keep Gmail or Outlook and forward a copy, or move your email over.')
+                : t('An admin connects mailboxes for the team. Ask them to add yours, or make a temporary address for a quick sign-up in the meantime.')
             }
             actions={
               <>
                 {isAdmin ? (
                   <button className="primary-btn" onClick={() => setNewAcct(true)}>
-                    <Mail size={15} /> Connect a mailbox
+                    <Mail size={15} /> {t('Connect a mailbox')}
                   </button>
                 ) : (
                   <button
@@ -4513,11 +4622,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                       showToast({ text: admins.length ? t('Asked {names}', { names: fmtList(admins.map(firstOf)) }) : t('There’s no other admin to ask yet') });
                     }}
                   >
-                    Ask for a mailbox
+                    {t('Ask for a mailbox')}
                   </button>
                 )}
                 <button className="ghost-btn outline" onClick={() => setTempDialog({})}>
-                  <Timer size={15} /> Make a temporary address
+                  <Timer size={15} /> {t('Make a temporary address')}
                 </button>
               </>
             }
@@ -4527,16 +4636,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         {mode === 'mail' && myAccounts.length > 0 && !mailIn && !mailOut && (
           <section className="settings-pane view-enter mail-setup">
             <header className="settings-head">
-              <button className="icon-btn menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <button className="icon-btn menu-btn" onClick={() => setSidebarOpen(true)} aria-label={t('Open menu')}>
                 <Menu size={18} />
               </button>
-              <h1>Mail</h1>
+              <h1>{t('Mail')}</h1>
             </header>
             <div className="mail-setup-body">
               <div className="mail-setup-lead">
-                <strong>Email isn’t working here yet</strong>
-                <span>{isAdmin ? 'Mail opens as soon as your domain’s records are in place. Pick how it should work, add the records, then check.' : 'An admin is setting up email for the company. Mail opens here as soon as it works.'}</span>
-                {(mailWhy.receive || mailWhy.send) && <small>{mailWhy.receive ?? mailWhy.send}</small>}
+                <strong>{t('Email isn’t working here yet')}</strong>
+                <span>{isAdmin ? t('Mail opens as soon as your domain’s records are in place. Pick how it should work, add the records, then check.') : t('An admin is setting up email for the company. Mail opens here as soon as it works.')}</span>
+                {(mailWhy.receive || mailWhy.send) && <small>{t(mailWhy.receive ?? mailWhy.send ?? '')}</small>}
               </div>
               {isAdmin && (
                 <EmailDeliverySection ws={ws} canManage firstName={myFirst} onWorkspace={(p) => patchWorkspace(ws.id, p)} onAddAccount={() => setNewAcct(true)} onRemoveAccount={setRemoveAcct} toast={(text) => showToast({ text })} />
@@ -4551,10 +4660,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 !mailIn || !mailOut ? (
                   <div className="mail-gate">
                     <AlertTriangle size={14} />
-                    <span>{!mailIn ? `Incoming mail isn’t connected yet. ${mailWhy.receive ?? ''}` : `Compose and Reply are off here. ${mailWhy.send ?? 'Sending isn’t set up yet.'}`}</span>
+                    <span>{!mailIn ? (mailWhy.receive ? t('Incoming mail isn’t connected yet. {why}', { why: t(mailWhy.receive) }) : t('Incoming mail isn’t connected yet.')) : t('Compose and Reply are off here. {why}', { why: t(mailWhy.send ?? 'Sending isn’t set up yet.') })}</span>
                     {isAdmin && (
                       <button type="button" className="link-btn small" onClick={() => (setSettingsSection('email'), go('settings'))}>
-                        Fix it
+                        {t('Fix it')}
                       </button>
                     )}
                   </div>
@@ -4589,16 +4698,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               stays={staysInList}
               onMenu={() => setSidebarOpen(true)}
               empty={(() => {
-                if (view.kind === 'todos') return { title: 'Nothing to do from email', sub: 'Emails that ask you to do something show here until their to-dos are done.' };
-                if (view.kind === 'project') return { title: `No email with ${title} yet`, sub: `Email to and from ${title}’s address shows here.` };
-                const t = myAccounts.find((a) => a.id === activeAccount && a.temp);
-                return t
+                if (view.kind === 'todos') return { title: t('Nothing to do from email'), sub: t('Emails that ask you to do something show here until their to-dos are done.') };
+                if (view.kind === 'project') return { title: t('No email with {name} yet', { name: title }), sub: t('Email to and from {name}’s address shows here.', { name: title }) };
+                const tmp = myAccounts.find((a) => a.id === activeAccount && a.temp);
+                return tmp
                   ? {
-                      title: 'Nothing here yet',
-                      sub: `Mail sent to ${t.email} lands here. ${lifeLeft(t)}.`,
+                      title: t('Nothing here yet'),
+                      sub: t('Mail sent to {email} lands here. {left}.', { email: tmp.email, left: lifeLeft(tmp) }),
                       action: (
-                        <button className="ghost-btn sm outline" onClick={() => testTemp(t)}>
-                          <Send size={14} /> Send a test email
+                        <button className="ghost-btn sm outline" onClick={() => testTemp(tmp)}>
+                          <Send size={14} /> {t('Send a test email')}
                         </button>
                       ),
                     }
@@ -4608,7 +4717,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             <Reader
               thread={selected}
               restoreReply={restoreReply}
-              replyOff={selectedAcct && !boxReady(selectedAcct.id).send ? 'Sending isn’t set up for this mailbox yet' : undefined}
+              replyOff={selectedAcct && !boxReady(selectedAcct.id).send ? t('Sending isn’t set up for this mailbox yet') : undefined}
               onReplyOff={() => selectedAcct && replyBlocked(selectedAcct)}
               open={readerOpen}
               backLabel={title}
@@ -4624,12 +4733,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               aiOn={aiOn}
               onAiOff={() => aiOff(t('AI isn’t set up for this company yet, so it can’t summarize email. An admin can add an AI key in Settings, AI, or switch to the AI plan.'))}
               onAssign={(id, who) => {
-                const t = threads.find((x) => x.id === id);
-                const before = t?.assignee;
+                const th = threads.find((x) => x.id === id);
+                const before = th?.assignee;
                 if ((who || undefined) === before) return;
                 patchThread(id, { assignee: who || undefined });
-                if (who && who !== user.id) notify(who, 'mail', msg('{name} asked you to handle “{subject}”', { name: myFirst, subject: t?.subject ?? '' }), { app: 'mail', id });
-                showToast({ text: who ? `${who === user.id ? 'You handle' : `${firstOf(who)} handles`} this one now` : 'Nobody handles it now', action: { label: 'Undo', run: () => patchThread(id, { assignee: before }) } });
+                if (who && who !== user.id) notify(who, 'mail', msg('{name} asked you to handle “{subject}”', { name: myFirst, subject: th?.subject ?? '' }), { app: 'mail', id });
+                showToast({ text: who ? (who === user.id ? t('You handle this one now') : t('{name} handles this one now', { name: firstOf(who) })) : t('Nobody handles it now'), action: { label: t('Undo'), run: () => patchThread(id, { assignee: before }) } });
               }}
               onSnooze={(id, until, ifNoReply) => mailActions.snooze([id], until, ifNoReply)}
               onComment={(id, text) => {
@@ -4693,6 +4802,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenThread={openThread}
             onRsvp={rsvpEvent}
             answersOf={answersOf}
+            inviteNote={real ? undefined : t('Demo: invites aren’t emailed')}
             team={members}
             contacts={guestContacts}
             me={user.id}
@@ -4701,7 +4811,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenTask={openTask}
             calendarsPanel={calendarPanel}
             dialogOpen={!!connectCal}
-            canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
+            canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === (e.seriesId ?? e.id))}
             onNotetaker={botOn ? sendNotetakerTo : undefined}
             botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
             onBotJoin={
@@ -4709,37 +4819,32 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? (e, join) => {
                     const byRule = botJoins(e, meetSettings.joinMode, {}, isMine);
                     setBotJoin(e.id, join === byRule ? null : join);
-                    showToast({ text: join ? `The notetaker will join “${e.title}”` : `The notetaker won’t join “${e.title}”`, action: { label: 'Undo', run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
+                    showToast({ text: join ? t('The notetaker will join “{title}”', { title: e.title }) : t('The notetaker won’t join “{title}”', { title: e.title }), action: { label: t('Undo'), run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
                   }
                 : undefined
             }
-            onMove={(id, start, end) => {
-              const before = events.find((e) => e.id === id);
-              if (!before) return;
-              setEvents((es) => es.map((e) => (e.id === id ? { ...e, start: start.toISOString(), end: end.toISOString() } : e)));
-              const resized = new Date(before.start).getTime() === start.getTime();
-              showToast({
-                text: resized ? `Now ${fmtTime(start)} to ${fmtTime(end)}` : `Moved to ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(start)}`,
-                action: { label: 'Undo', run: () => setEvents((es) => es.map((e) => (e.id === id ? before : e))) },
-              });
-            }}
+            onMove={(id, start, end, scope) => void moveEvent(id, start, end, scope)}
             onSchedule={(taskId, start) => {
-              const t = todos.find((x) => x.id === taskId);
-              if (!t) return;
-              const ev: CalEvent = { id: uid(), title: t.title, calendarId: 'work', start: start.toISOString(), end: new Date(start.getTime() + 60 * 60_000).toISOString(), taskId, threadId: t.threadId, workspaceId: ws.id, userId: user.id };
+              const task = todos.find((x) => x.id === taskId);
+              if (!task) return;
+              const ev: CalEvent = { id: uid(), title: task.title, calendarId: 'work', start: start.toISOString(), end: new Date(start.getTime() + 60 * 60_000).toISOString(), taskId, threadId: task.threadId, workspaceId: ws.id, userId: user.id };
               setEvents((es) => [...es, ev]);
-              showToast({ text: `Blocked ${fmtTime(start)} for “${t.title}”. Drag the bottom edge to change how long`, action: { label: 'Undo', run: () => setEvents((es) => es.filter((e) => e.id !== ev.id)) } });
+              showToast({ text: t('Blocked {time} for “{title}”. Drag the bottom edge to change how long', { time: fmtTime(start), title: task.title }), action: { label: t('Undo'), run: () => setEvents((es) => es.filter((e) => e.id !== ev.id)) } });
             }}
             taskOf={(e) => {
               const t = e.taskId ? todos.find((x) => x.id === e.taskId) : undefined;
               return t ? { title: t.title, done: t.done } : null;
             }}
-            onExtend={(id, m) => setEvents((es) => es.map((e) => (e.id === id ? { ...e, end: new Date(new Date(e.end).getTime() + m * 60_000).toISOString() } : e)))}
-            onTomorrow={(id) =>
-              setEvents((es) =>
-                es.map((e) => (e.id === id ? { ...e, start: new Date(new Date(e.start).getTime() + 86_400_000).toISOString(), end: new Date(new Date(e.end).getTime() + 86_400_000).toISOString() } : e)),
-              )
-            }
+            onExtend={(id, m) => {
+              const e = findEvent(events, id);
+              if (e?.seriesId) return void moveEvent(id, new Date(e.start), new Date(new Date(e.end).getTime() + m * 60_000));
+              setEvents((es) => es.map((x) => (x.id === id ? { ...x, end: new Date(new Date(x.end).getTime() + m * 60_000).toISOString() } : x)));
+            }}
+            onTomorrow={(id) => {
+              const e = findEvent(events, id);
+              if (e?.seriesId) return void moveEvent(id, addDaysTo(e.start, 1), addDaysTo(e.end, 1));
+              setEvents((es) => es.map((x) => (x.id === id ? { ...x, start: new Date(new Date(x.start).getTime() + 86_400_000).toISOString(), end: new Date(new Date(x.end).getTime() + 86_400_000).toISOString() } : x)));
+            }}
             onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, stageIdFor(todos.find((x) => x.id === e.taskId) ?? { workspaceId: ws.id }, 'done'))}
             sentBot={(e) => {
               const mid = sentFor[e.id];
@@ -5092,29 +5197,29 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             const editing = !!tempDialog.editing;
             withAccounts(ws.id, (l) => (editing ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
             setTempDialog(null);
-            if (editing) return showToast({ text: 'Saved' });
+            if (editing) return showToast({ text: t('Saved') });
             setActiveAccount(a.id);
             setView({ kind: 'folder', id: 'inbox' });
             go('mail');
-            showToast({ text: `${a.email} is ready`, action: { label: 'Copy', run: () => void navigator.clipboard?.writeText(a.email) } });
+            showToast({ text: t('{email} is ready', { email: a.email }), action: { label: t('Copy'), run: () => void navigator.clipboard?.writeText(a.email) } });
           }}
         />
       )}
       {tempMenu && (
         <Popover anchor={tempAnchor} open onClose={() => setTempMenu(null)} width={250} title={tempMenu.email}>
           <div className="sel-pop temp-pop">
-            <button className="am-item" onClick={() => (void navigator.clipboard?.writeText(tempMenu.email), setTempMenu(null), showToast({ text: 'Address copied' }))}>
-              <Copy size={15} /> Copy address
+            <button className="am-item" onClick={() => (void navigator.clipboard?.writeText(tempMenu.email), setTempMenu(null), showToast({ text: t('Address copied') }))}>
+              <Copy size={15} /> {t('Copy address')}
             </button>
             <button className="am-item" onClick={() => (setTempDialog({ editing: tempMenu }), setTempMenu(null))}>
-              <Timer size={15} /> Who can see it, how long
+              <Timer size={15} /> {t('Who can see it, how long')}
             </button>
             <button className="am-item" onClick={() => (testTemp(tempMenu), setTempMenu(null))}>
-              <Send size={15} /> Send a test email
+              <Send size={15} /> {t('Send a test email')}
             </button>
             <div className="am-sep" />
             <button className="am-item danger" onClick={() => (deleteTemp(tempMenu), setTempMenu(null))}>
-              <Trash2 size={15} /> Delete now
+              <Trash2 size={15} /> {t('Delete now')}
             </button>
           </div>
         </Popover>
@@ -5128,13 +5233,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onCreate={(w, newUsers) => {
             newUsers.forEach(onInvite);
             setWorkspaces((list) => [...list, w]);
-            // Starter tables for what the company does, so Tables isn't empty on day one.
+            // Starter tables for what the company does, so Tables isn't empty on day one (named in the maker's language).
             const starters: Record<string, { name: string; template: TemplateId }[]> = {
-              agency: [{ name: 'Leads', template: 'leads' }, { name: 'Content pipeline', template: 'pipeline' }],
-              ecommerce: [{ name: 'Customers', template: 'leads' }, { name: 'Product launches', template: 'pipeline' }],
-              consulting: [{ name: 'Prospects', template: 'leads' }, { name: 'Engagements', template: 'tracker' }],
-              software: [{ name: 'Roadmap', template: 'pipeline' }, { name: 'Bugs', template: 'tracker' }],
-              events: [{ name: 'Sponsors', template: 'leads' }, { name: 'Vendors', template: 'tracker' }],
+              agency: [{ name: t('Leads'), template: 'leads' }, { name: t('Content pipeline'), template: 'pipeline' }],
+              ecommerce: [{ name: t('Customers'), template: 'leads' }, { name: t('Product launches'), template: 'pipeline' }],
+              consulting: [{ name: t('Prospects'), template: 'leads' }, { name: t('Engagements'), template: 'tracker' }],
+              software: [{ name: t('Roadmap'), template: 'pipeline' }, { name: t('Bugs'), template: 'tracker' }],
+              events: [{ name: t('Sponsors'), template: 'leads' }, { name: t('Vendors'), template: 'tracker' }],
             };
             const made = (starters[w.industry ?? ''] ?? []).map((d) => makeTable(d, w.id, user.id));
             if (made.length) setTables((ts) => [...ts, ...made]);
@@ -5179,18 +5284,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
       {newEventAt && <EventEditor start={newEventAt} calendars={addToCals} team={members} contacts={guestContacts} me={user.id} onSave={saveEvent} onClose={() => setNewEventAt(null)} />}
-      {editEventId && events.some((e) => e.id === editEventId) && (
+      {editingEvent && (
         <EventEditor
-          start={new Date(events.find((e) => e.id === editEventId)!.start)}
-          event={events.find((e) => e.id === editEventId)}
+          key={editingEvent.id}
+          start={new Date(editingEvent.start)}
+          event={editingEvent}
           calendars={addToCals}
           team={members}
           contacts={guestContacts}
           me={user.id}
-          onSave={(e) => updateEvent(editEventId, e)}
+          onSave={(e, _kind, at) => void updateEvent(editingEvent.id, e, at)}
           onClose={() => setEditEventId(null)}
         />
       )}
+      <ScopeHost />
       {quickNote && (
         <QuickNote
           shared={quickNote.shared}
@@ -5200,11 +5307,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             const n: Note = { id: uid(), workspaceId: ws.id, title: q.title, html: q.html, ownerId: user.id, visibility: q.clientId ? 'team' : 'private', clientId: q.clientId, createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id };
             setNotes((ns) => [n, ...ns]);
             setQuickNote(null);
-            showToast({ text: q.clientId ? `Note saved in ${wsClientsAll.find((c) => c.id === q.clientId)?.name}` : 'Note saved', action: { label: 'Open', run: () => openNote(n.id) } });
+            showToast({ text: q.clientId ? t('Note saved in {project}', { project: wsClientsAll.find((c) => c.id === q.clientId)?.name ?? '' }) : t('Note saved'), action: { label: t('Open'), run: () => openNote(n.id) } });
           }}
         />
       )}
-      {scheduling && <ScheduleTask title={scheduling.title} events={myEvents} onPick={(start, mins) => blockTask(scheduling, start, mins)} onClose={() => setScheduling(null)} />}
+      {scheduling && <ScheduleTask title={scheduling.title} events={myNear} onPick={(start, mins) => blockTask(scheduling, start, mins)} onClose={() => setScheduling(null)} />}
       {connectCal && (
         <ConnectCalendar
           me={{ id: user.id, email: user.email }}
@@ -5223,19 +5330,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             setExtCals((cs) => [...cs, ...cals]);
             setEvents((es) => [...es, ...cals.flatMap(externalEvents)]);
             setConnectCal(false);
-            showToast({ text: `${cals.length > 1 ? `${cals.length} calendars` : cals[0].name} connected` });
+            showToast({ text: cals.length > 1 ? t('{n} calendars connected', { n: cals.length }) : t('{name} connected', { name: cals[0].name }) });
           }}
           onLinked={(cal, upcoming) => {
             setConnectCal(false);
             setHiddenCals((h) => (h.has(cal.id) ? new Set([...h].filter((x) => x !== cal.id)) : h));
-            showToast({ text: upcoming ? `${cal.name} added. It updates every 30 minutes.` : `${cal.name} added, but it has nothing in the coming year. Check it’s the right calendar.`, ms: upcoming ? undefined : 9000 });
+            showToast({ text: upcoming ? t('{name} added. It updates every 30 minutes.', { name: cal.name }) : t('{name} added, but it has nothing in the coming year. Check it’s the right calendar.', { name: cal.name }), ms: upcoming ? undefined : 9000 });
           }}
           onHolidays={(country) => {
             const before = ws.holidays;
             patchWorkspace(ws.id, { holidays: country ? { country } : undefined });
             if (!real) demoHolidays(country);
             setConnectCal(false);
-            showToast({ text: country ? `Holidays in ${holidayCountry(country)?.name ?? country} now show for everyone at ${ws.name}` : 'Public holidays removed for everyone', action: { label: 'Undo', run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
+            showToast({ text: country ? t('Holidays in {country} now show for everyone at {company}', { country: t(holidayCountry(country)?.name ?? country), company: ws.name }) : t('Public holidays removed for everyone'), action: { label: t('Undo'), run: () => (patchWorkspace(ws.id, { holidays: before }), !real && demoHolidays(before?.country ?? null)) } });
           }}
         />
       )}
@@ -5317,11 +5424,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           toast={(text) => showToast({ text })}
           onClose={() => setShareFor(null)}
           onPreview={() => setSharedPreview(shareFor)}
-          onOff={() => (patchMeeting(shareFor, { share: undefined }), showToast({ text: 'Link turned off' }))}
+          onOff={() => (patchMeeting(shareFor, { share: undefined }), showToast({ text: t('Link turned off') }))}
           onSave={(opts) => {
             const m = meetings.find((x) => x.id === shareFor)!;
             patchMeeting(shareFor, { share: { token: m.share?.token ?? Math.random().toString(36).slice(2, 10), ...opts } });
-            showToast({ text: 'Link ready' });
+            showToast({ text: t('Link ready') });
           }}
         />
       )}
@@ -5370,7 +5477,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: true } : c)));
             setChanDialog(null);
             setChatId(null);
-            showToast({ text: 'Channel archived', action: { label: 'Undo', run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: false } : c))) } });
+            showToast({ text: t('Channel archived'), action: { label: t('Undo'), run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, archived: false } : c))) } });
           }}
           onSave={(d) => {
             if (chanDialog.id) {
@@ -5379,15 +5486,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               const added = d.members.filter((m) => !before?.members.includes(m));
               added.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: d.name }), { app: 'chat', id: chanDialog.id }));
               const newGuests = (d.guests ?? []).filter((g) => !before?.guests?.some((x) => x.email === g.email));
-              showToast({ text: newGuests.length ? `Saved. Invite sent to ${newGuests.map((g) => g.name).join(', ')}` : 'Channel saved' });
+              showToast({ text: newGuests.length ? t('Saved. Invite sent to {names}', { names: fmtList(newGuests.map((g) => g.name)) }) : t('Channel saved') });
             } else {
               const id = uid();
               setChannels((cs) => [...cs, { ...d, id, workspaceId: ws.id, kind: 'channel' }]);
               d.members.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: d.name }), { app: 'chat', id }));
-              setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `created #${d.name}${d.topic ? `: ${d.topic}` : ''}`, at: nowIso(), kind: 'system' }]);
+              // A system line: Message.tsx puts the author's name in front ({name}); `text` stays as older versions show it.
+              const made = d.topic ? phrase('{name} created #{channel}: {topic}', { name: myFirst, channel: d.name, topic: d.topic }) : phrase('{name} created #{channel}', { name: myFirst, channel: d.name });
+              setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `created #${d.name}${d.topic ? `: ${d.topic}` : ''}`, tr: made, at: nowIso(), kind: 'system' }]);
               setChatId(id);
               go('chat');
-              showToast({ text: `#${d.name} created${d.guests?.length ? `, invite sent to ${d.guests.length} guest${d.guests.length > 1 ? 's' : ''}` : ''}` });
+              showToast({ text: d.guests?.length ? tn(d.guests.length, '#{channel} created, invite sent to {n} guest', '#{channel} created, invite sent to {n} guests', { channel: d.name }) : t('#{channel} created', { channel: d.name }) });
             }
             setChanDialog(null);
           }}

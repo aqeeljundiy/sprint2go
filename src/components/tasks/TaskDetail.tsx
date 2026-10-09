@@ -15,7 +15,7 @@ import { term } from '../../terms';
 import { localDay } from '../../utils';
 import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../../types';
 import { copyTaskLink, doersOf } from './taskOps';
-import { t, tn } from '../../i18n';
+import { t, tn, tx } from '../../i18n';
 import { fmtTime } from '../../i18n/format';
 
 const repeats = (): { value: Repeat | ''; label: string }[] => [
@@ -120,7 +120,7 @@ export function TaskDetail({
     return list.filter(([, v]) => v > new Date().toISOString());
   })();
   const remindOptions = [
-    { value: '', label: t('No reminder') },
+    { value: '', label: tx('option', 'No reminder') },
     ...(reminder && !remindChoices.some(([, v]) => v === reminder) ? [{ value: reminder, label: remindText(reminder, today), icon: <Bell size={14} /> }] : []),
     ...remindChoices.map(([l, v]) => ({ value: v, label: l, hint: remindText(v, today), icon: <Bell size={14} /> })),
   ];
@@ -142,13 +142,13 @@ export function TaskDetail({
   const fields: Field[] = [
     {
       id: 'who',
-      label: t('Doing it'),
+      label: tx('field', 'Doing it'),
       icon: UserRound,
       filled: doers.length > 0,
-      row: <PeoplePicker value={doers} users={users} me={me} label={t('Doing it')} emptyText={t('Waiting in the team queue')} onChange={(ids) => onPatch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />,
+      row: <PeoplePicker value={doers} users={users} me={me} label={tx('field', 'Doing it')} emptyText={t('Waiting in the team queue')} onChange={(ids) => onPatch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />,
       chip: (
         <span className="td-chip-people">
-          <PeoplePicker value={doers} users={users} me={me} label={t('Doing it')} emptyText={t('Assign')} onChange={(ids) => onPatch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />
+          <PeoplePicker value={doers} users={users} me={me} label={tx('field', 'Doing it')} emptyText={t('Assign')} onChange={(ids) => onPatch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />
         </span>
       ),
     },
@@ -259,13 +259,13 @@ export function TaskDetail({
     },
     {
       id: 'checklist',
-      label: t('Checklist'),
+      label: tx('task', 'Checklist'),
       icon: ListChecks,
       filled: checklist.length > 0 || opened.includes('checklist'),
       row: null,
       chip: (
         <button type="button" className="td-chip" onClick={() => (setOpened((o) => [...o, 'checklist']), requestAnimationFrame(() => checkInput.current?.focus()))}>
-          {chipLook(ListChecks, t('Checklist'))}
+          {chipLook(ListChecks, tx('task', 'Checklist'))}
         </button>
       ),
     },
@@ -371,7 +371,7 @@ export function TaskDetail({
       {(checklist.length > 0 || opened.includes('checklist')) && (
         <section className="td-sec">
           <h3 className="td-h">
-            <ListChecks size={15} /> {t('Checklist')}
+            <ListChecks size={15} /> {tx('task', 'Checklist')}
             {checklist.length > 0 && (
               <span className="muted">
                 {checklist.filter((c) => c.done).length}/{checklist.length}

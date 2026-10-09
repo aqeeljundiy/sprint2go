@@ -10,6 +10,8 @@ import * as platform from './platform.ts';
 import { randomBytes } from 'node:crypto';
 import { MAIL_PACKS, PAUSE_DAYS_A_YEAR, addAdjustment, billingPeriod, countedMailboxes, mailboxRoom, meetHours, pauseDaysLeft, pauseDaysUsed, prorate, rp, storageGB } from '../src/data/pricing.ts';
 import type { Plan, PlanAdjustment } from '../src/types.ts';
+import { mark, msg } from '../src/i18n/index.ts';
+import { datePhrase, type Said } from './lang.ts';
 
 const DAY = 86_400_000;
 const now = () => new Date().toISOString();
@@ -57,20 +59,23 @@ const ownDomain = (email: string | undefined) => {
   return d && d.includes('.') && !FREEMAIL.includes(d.split('.')[0]) ? d : null;
 };
 type TrialRow = { id: number; user_id: string; email_domain: string | null; workspace_id: string; company: string; at: string; how: string };
-const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+/** "8 October 2026" in each reader's language. */
+const day = (iso: string) => datePhrase(iso, { tz: 'UTC', year: true });
+/** Words with the English kept as `why` (saved on the plan, and what older apps show) and `whyWords` for each reader. */
+const refused = (words: Said) => ({ ok: false as const, why: words.text, whyWords: words });
 /**
  * Whether a new company of this person gets the free trial. One per person (their sign-in) and one per company domain:
  * their own verified address's domain (they proved it with the sign-up code; gmail.com and the like don't count) and
  * any domain the new company lists that a company with a trial has proven in its DNS. An operator can allow one more
  * (grantTrial). `why` is what the person reads when it isn't available.
  */
-export function trialCheck(userId: string, email: string | undefined, domains: string[] = []): { ok: true; granted: boolean } | { ok: false; why: string } {
+export function trialCheck(userId: string, email: string | undefined, domains: string[] = []): { ok: true; granted: boolean } | { ok: false; why: string; whyWords: Said } {
   if (db.db.prepare('SELECT 1 FROM trial_grants WHERE user_id = ?').get(userId)) return { ok: true, granted: true };
   const mine = db.db.prepare('SELECT * FROM trials WHERE user_id = ? ORDER BY at LIMIT 1').get(userId) as TrialRow | undefined;
-  if (mine) return { ok: false, why: `You’ve already had a free trial, with ${mine.company} from ${day(mine.at)}. Pick a plan any time, or ask us about another trial in Settings, Help.` };
+  if (mine) return refused(msg('You’ve already had a free trial, with {company} from {date}. Pick a plan any time, or ask us about another trial in Settings, Help.', { company: mine.company, date: day(mine.at) }));
   const d = ownDomain(email);
   const byDomain = d ? (db.db.prepare('SELECT * FROM trials WHERE email_domain = ? ORDER BY at LIMIT 1').get(d) as TrialRow | undefined) : undefined;
-  if (byDomain) return { ok: false, why: `${d} already had a free trial, with ${byDomain.company} from ${day(byDomain.at)}. Pick a plan any time, or ask us about another trial in Settings, Help.` };
+  if (byDomain) return refused(msg('{domain} already had a free trial, with {company} from {date}. Pick a plan any time, or ask us about another trial in Settings, Help.', { domain: d ?? '', company: byDomain.company, date: day(byDomain.at) }));
   for (const dom of domains.map((x) => String(x).trim().toLowerCase()).filter(Boolean)) {
     let proven: { workspace_id: string } | undefined;
     try {
@@ -79,7 +84,7 @@ export function trialCheck(userId: string, email: string | undefined, domains: s
       /* no domain was ever proven here */
     }
     const had = proven && (db.db.prepare('SELECT * FROM trials WHERE workspace_id = ? LIMIT 1').get(proven.workspace_id) as TrialRow | undefined);
-    if (had) return { ok: false, why: `${dom} belongs to ${had.company}, which already had a free trial. Pick a plan any time, or ask us about another trial in Settings, Help.` };
+    if (had) return refused(msg('{domain} belongs to {company}, which already had a free trial. Pick a plan any time, or ask us about another trial in Settings, Help.', { domain: dom, company: had.company }));
   }
   return { ok: true, granted: false };
 }
@@ -100,10 +105,10 @@ export const trialsOf = (userId: string) => ({
  * A new company's plan: its trial when the owner may have one (and remembered), otherwise Free from the start, with
  * the reason on the plan for the billing page. `asked` is the plan as planFromApp shaped it.
  */
-export function trialOnCreate(asked: Plan, owner: { id: string; email?: string }, ws: { id: string; name?: string; domains?: string[] }): { plan: Plan; why?: string } {
+export function trialOnCreate(asked: Plan, owner: { id: string; email?: string }, ws: { id: string; name?: string; domains?: string[] }): { plan: Plan; why?: string; whyWords?: Said } {
   if (!asked?.trialEnds || asked.trialEnds <= now()) return { plan: asked };
   const c = trialCheck(owner.id, owner.email, ws.domains ?? []);
-  if (!c.ok) return { plan: { ...asked, tier: 'free', track: 'own', trialEnds: undefined, trialRefused: c.why }, why: c.why };
+  if (!c.ok) return { plan: { ...asked, tier: 'free', track: 'own', trialEnds: undefined, trialRefused: c.why }, why: c.why, whyWords: c.whyWords };
   recordTrial(owner.id, owner.email, ws, c.granted ? 'granted' : 'self');
   return { plan: asked };
 }
@@ -139,13 +144,25 @@ export const adjustmentLines = (plan: Plan | undefined) => (plan?.adjustments ??
 
 /* ---------- read-only: paused or suspended ---------- */
 
-/** Why nothing can be changed in this company right now, or null. Reading and exporting always work. */
-export function readOnlyWhy(ws: Ws | undefined | null): string | null {
+/** Why nothing can be changed in this company right now, or null, in words each reader sees in their language. */
+export function readOnlyWords(ws: Ws | undefined | null): Said | null {
   if (!ws) return null;
-  if (ws.suspended) return `${ws.name ?? 'This company'} is read-only for now${ws.suspended.reason ? `: ${ws.suspended.reason}` : '.'}`;
-  if (ws.plan?.paused) return `${ws.name ?? 'This company'} is paused, so it’s read-only: everyone can read and export everything. An owner can resume the plan in Settings, Plan & billing.`;
+  if (ws.suspended)
+    return ws.name
+      ? ws.suspended.reason
+        ? msg('{company} is read-only for now: {reason}', { company: ws.name, reason: ws.suspended.reason })
+        : msg('{company} is read-only for now.', { company: ws.name })
+      : ws.suspended.reason
+        ? msg('This company is read-only for now: {reason}', { reason: ws.suspended.reason })
+        : msg('This company is read-only for now.');
+  if (ws.plan?.paused)
+    return ws.name
+      ? msg('{company} is paused, so it’s read-only: everyone can read and export everything. An owner can resume the plan in Settings, Plan & billing.', { company: ws.name })
+      : msg('This company is paused, so it’s read-only: everyone can read and export everything. An owner can resume the plan in Settings, Plan & billing.');
   return null;
 }
+/** The same, in English. Reading and exporting always work. */
+export const readOnlyWhy = (ws: Ws | undefined | null): string | null => readOnlyWords(ws)?.text ?? null;
 
 /* ---------- pausing: up to 3 months a year ---------- */
 
@@ -157,7 +174,7 @@ export { pauseDaysLeft, pauseDaysUsed };
  * has been paused this year are the server's. A pause past this year's days, or of a plan nobody pays for, doesn't
  * happen (`why` says so).
  */
-export function pauseOnSave(next: any, prev: any): { paused: boolean | undefined; pauses: Pause[] | undefined; why?: string } {
+export function pauseOnSave(next: any, prev: any): { paused: boolean | undefined; pauses: Pause[] | undefined; why?: string; whyWords?: Said } {
   const pauses: Pause[] = (prev?.pauses ?? []).filter((p: Pause) => !p.to || Date.parse(p.to) > Date.now() - 400 * DAY);
   const was = !!prev?.paused;
   const want = !!next?.paused;
@@ -165,8 +182,14 @@ export function pauseOnSave(next: any, prev: any): { paused: boolean | undefined
   if (!want) return { paused: undefined, pauses: pauses.map((p) => (p.to ? p : { ...p, to: now() })) };
   const tier = next?.tier ?? prev?.tier;
   const trial = !!(prev?.trialEnds && prev.trialEnds > now());
-  if (tier === 'free' || trial) return { paused: undefined, pauses: pauses.length ? pauses : undefined, why: 'Only a paid plan can be paused: there’s nothing to stop billing on Free or during the trial.' };
-  if (pauseDaysLeft(pauses) <= 0) return { paused: undefined, pauses, why: `A plan can be paused up to 3 months a year, and this year’s ${PAUSE_DAYS_A_YEAR} days are used up.` };
+  if (tier === 'free' || trial) {
+    const w = msg('Only a paid plan can be paused: there’s nothing to stop billing on Free or during the trial.');
+    return { paused: undefined, pauses: pauses.length ? pauses : undefined, why: w.text, whyWords: w };
+  }
+  if (pauseDaysLeft(pauses) <= 0) {
+    const w = msg('A plan can be paused up to 3 months a year, and this year’s {n} days are used up.', { n: PAUSE_DAYS_A_YEAR });
+    return { paused: undefined, pauses, why: w.text, whyWords: w };
+  }
   return { paused: true, pauses: [...pauses, { from: now() }] };
 }
 
@@ -174,7 +197,7 @@ export function pauseOnSave(next: any, prev: any): { paused: boolean | undefined
  * Hourly: a pause that used up the year's days ends by itself (the company is billed again from then), and its
  * owners hear it. Returns the companies it resumed.
  */
-export function resumeExpiredPauses(save: (ws: any) => void, tell: (userIds: string[], text: string, wsId: string) => void) {
+export function resumeExpiredPauses(save: (ws: any) => void, tell: (userIds: string[], text: Said, wsId: string) => void) {
   const out: string[] = [];
   for (const ws of db.allDocs('workspaces') as any[]) {
     if (!ws.plan?.paused || pauseDaysLeft(ws.plan.pauses) > 0) continue;
@@ -182,7 +205,7 @@ export function resumeExpiredPauses(save: (ws: any) => void, tell: (userIds: str
     save({ ...ws, plan: { ...ws.plan, paused: undefined, pauses } });
     platform.event('plan.resumed', ws.id, null, `pause limit of ${PAUSE_DAYS_A_YEAR} days reached`);
     const owners = (ws.members ?? []).filter((m: any) => m.role === 'owner').map((m: any) => m.userId);
-    tell(owners, `${ws.name}’s plan was paused for ${PAUSE_DAYS_A_YEAR} days this year, the most a year allows, so it’s running again and billed from today.`, ws.id);
+    tell(owners, msg('{company}’s plan was paused for {n} days this year, the most a year allows, so it’s running again and billed from today.', { company: ws.name, n: PAUSE_DAYS_A_YEAR }), ws.id);
     out.push(ws.id);
   }
   return out;
@@ -202,7 +225,7 @@ export function periodEnd(plan: Pick<Plan, 'cycle' | 'since'>, at = new Date()) 
   return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1)).toISOString();
 }
 /** Hourly: cancelled plans whose period ended move to Free (nothing is deleted), and their owners hear it. */
-export function endCancelled(save: (ws: any) => void, tell: (userIds: string[], text: string, wsId: string) => void) {
+export function endCancelled(save: (ws: any) => void, tell: (userIds: string[], text: Said, wsId: string) => void) {
   const out: string[] = [];
   for (const ws of db.allDocs('workspaces') as any[]) {
     const at = ws.plan?.cancelAt;
@@ -210,7 +233,7 @@ export function endCancelled(save: (ws: any) => void, tell: (userIds: string[], 
     save({ ...ws, plan: { ...ws.plan, tier: 'free', track: 'own', cancelAt: undefined, paused: undefined, autoTopUp: undefined, topUps: undefined } });
     platform.event('plan.cancelled', ws.id, null, 'moved to Free at the end of the period');
     const owners = (ws.members ?? []).filter((m: any) => m.role === 'owner').map((m: any) => m.userId);
-    tell(owners, `${ws.name} is on Free now, as you asked when you cancelled. Nothing was deleted; pick a plan any time in Settings, Plan & billing.`, ws.id);
+    tell(owners, msg('{company} is on Free now, as you asked when you cancelled. Nothing was deleted; pick a plan any time in Settings, Plan & billing.', { company: ws.name }), ws.id);
     out.push(ws.id);
   }
   return out;
@@ -227,15 +250,27 @@ export function mailboxes(ws: Ws) {
  * A save that adds hosted mailboxes beyond the plan's room keeps the mailboxes as they were. Mailboxes already over
  * (after a downgrade) keep working: nothing that receives mail is ever switched off.
  */
-export function mailboxesOnSave(next: Ws, before: Ws | undefined): { accounts: any[] | undefined; why?: string } {
+export function mailboxesOnSave(next: Ws, before: Ws | undefined): { accounts: any[] | undefined; why?: string; whyWords?: Said } {
   const room = mailboxRoom(planOf(next), teamSize(next));
   const after = countedMailboxes(next.accounts ?? [], room.sharedFree);
   const was = before ? countedMailboxes(before.accounts ?? [], mailboxRoom(planOf(before), teamSize(before)).sharedFree) : 0;
   if (after <= room.total || after <= was) return { accounts: next.accounts };
-  const kind = room.sharedFree ? 'personal hosted mailboxes' : 'hosted mailboxes';
+  const vars = { n: room.total, included: room.included, added: room.addon };
+  const w = room.sharedFree
+    ? room.included
+      ? room.addon
+        ? msg('The plan has room for {n} personal hosted mailboxes ({included} with the plan, {added} added). An owner can add more in Settings, Plan & billing, Add-ons.', vars)
+        : msg('The plan has room for {n} personal hosted mailboxes ({included} with the plan). An owner can add more in Settings, Plan & billing, Add-ons.', vars)
+      : msg('The plan has room for {n} personal hosted mailboxes. An owner can add more in Settings, Plan & billing, Add-ons.', vars)
+    : room.included
+      ? room.addon
+        ? msg('The plan has room for {n} hosted mailboxes ({included} with the plan, {added} added). An owner can add more in Settings, Plan & billing, Add-ons.', vars)
+        : msg('The plan has room for {n} hosted mailboxes ({included} with the plan). An owner can add more in Settings, Plan & billing, Add-ons.', vars)
+      : msg('The plan has room for {n} hosted mailboxes. An owner can add more in Settings, Plan & billing, Add-ons.', vars);
   return {
     accounts: before?.accounts ?? (next.accounts ?? []).filter((a) => !(!!a.email && !a.temp && (!a.provider || a.provider === 'sprint2go') && !(room.sharedFree && a.kind === 'shared'))),
-    why: `The plan has room for ${room.total} ${kind}${room.included ? ` (${room.included} with the plan${room.addon ? `, ${room.addon} added` : ''})` : ''}. An owner can add more in Settings, Plan & billing, Add-ons.`,
+    why: w.text,
+    whyWords: w,
   };
 }
 
@@ -307,8 +342,8 @@ export function openOrders(wsId: string) {
 }
 /** Why credits can't be bought here right now, or null. */
 export function creditsBlocked(boosted: boolean): string | null {
-  if (!boosted) return 'Boosted sending isn’t available on this server, so there are no credits to buy.';
-  if (!platform.settings().billing?.bank?.trim()) return `Credits are paid by bank transfer, and our bank details aren’t set up yet. Write to support to buy credits.`;
+  if (!boosted) return mark('Boosted sending isn’t available on this server, so there are no credits to buy.');
+  if (!platform.settings().billing?.bank?.trim()) return mark('Credits are paid by bank transfer, and our bank details aren’t set up yet. Write to support to buy credits.');
   return null;
 }
 /**
@@ -317,10 +352,11 @@ export function creditsBlocked(boosted: boolean): string | null {
  */
 export function orderCredits(ws: any, packN: number, by: string): { error: string; status: number } | { invoice: platform.Invoice; credits: number } {
   const pack = MAIL_PACKS.find((p) => p.n === packN);
-  if (!pack) return { error: 'Pick one of the packs.', status: 400 };
-  if (openOrders(ws.id).length >= 3) return { error: 'There are already 3 credit invoices waiting for payment. Pay one (Settings, Plan & billing, Invoices), or ask us to cancel one, first.', status: 409 };
+  if (!pack) return { error: mark('Pick one of the packs.'), status: 400 };
+  if (openOrders(ws.id).length >= 3) return { error: mark('There are already 3 credit invoices waiting for payment. Pay one (Settings, Plan & billing, Invoices), or ask us to cancel one, first.'), status: 409 };
   const billTo = ws.plan?.billing ?? { company: ws.name, emails: [] };
-  const inv = platform.createInvoice({ workspaceId: ws.id, period: now().slice(0, 7), lines: [{ text: `Boosted sending: ${pack.n.toLocaleString('id-ID')} emails`, amount: pack.price }], discount: 0, dueDays: 7, billTo, by, note: `The ${pack.n.toLocaleString('id-ID')} emails are added to Boosted sending as soon as this invoice is paid.` });
+  const n = pack.n.toLocaleString('id-ID');
+  const inv = platform.createInvoice({ workspaceId: ws.id, period: now().slice(0, 7), lines: [{ ...msg('Boosted sending: {n} emails', { n }), amount: pack.price }], discount: 0, dueDays: 7, billTo, by, note: msg('The {n} emails are added to Boosted sending as soon as this invoice is paid.', { n }).text });
   db.db.prepare('INSERT INTO credit_orders (invoice_id, workspace_id, credits, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run(inv.id, ws.id, pack.n, by, now());
   const sent = platform.setInvoiceStatus(inv.id, 'sent') ?? inv;
   platform.event('credits.ordered', ws.id, by, `${pack.n} emails, ${inv.number} ${rp(inv.total)}`);
@@ -330,7 +366,7 @@ export function orderCredits(ws: any, packN: number, by: string): { error: strin
  * An invoice was marked paid: when it's a credits invoice, its credits go to the company (once). Returns the
  * company's new balance, or null when it wasn't one.
  */
-export function invoicePaid(invoiceId: string, save: (ws: any) => void, tell: (userIds: string[], text: string, wsId: string) => void): number | null {
+export function invoicePaid(invoiceId: string, save: (ws: any) => void, tell: (userIds: string[], text: Said, wsId: string) => void): number | null {
   const o = order(invoiceId);
   if (!o || o.applied_at || o.cancelled_at) return null;
   const ws = db.getDoc('workspaces', o.workspace_id) as any;
@@ -340,7 +376,7 @@ export function invoicePaid(invoiceId: string, save: (ws: any) => void, tell: (u
   save(next);
   platform.event('credits.added', ws.id, null, `${o.credits} emails, invoice ${platform.invoice(invoiceId)?.number ?? invoiceId}`);
   const admins = (ws.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId);
-  tell(admins, `Payment received: ${o.credits.toLocaleString('id-ID')} emails added to Boosted sending.`, ws.id);
+  tell(admins, msg('Payment received: {n} emails added to Boosted sending.', { n: o.credits.toLocaleString('id-ID') }), ws.id);
   return next.mailCredits;
 }
 /** A credits invoice was voided: its order is cancelled (nothing was added). */

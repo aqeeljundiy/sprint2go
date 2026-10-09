@@ -16,7 +16,7 @@ import { SmoothHeight, TabPane } from '../ui/Smooth';
 import { useCreateAction, useFocusedScreen, useTitleMenu } from '../../mobile/chrome';
 import { toastUndo } from '../../toast';
 import { term } from '../../terms';
-import { t, tn } from '../../i18n';
+import { t, tn, tx } from '../../i18n';
 import { fmtDay } from '../../i18n/format';
 
 export const TEAM_COLORS = ['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#d946ef', '#ef4444', '#f59e0b', '#64748b'];
@@ -245,7 +245,7 @@ export function TeamPage({
   const [tab, setTab] = useState<TeamTab>('members');
   const tabs: { id: TeamTab; label: string }[] = [
     { id: 'members', label: t('People') },
-    { id: 'work', label: t('Work') },
+    { id: 'work', label: tx('team', 'Work') },
     { id: 'workload', label: t('Workload') },
     ...(manage ? [{ id: 'settings' as const, label: t('Settings') }] : []),
   ];
@@ -507,7 +507,7 @@ function SettingsTab({ tm, users, isAdmin, actions, homeTemplate, onHomeTemplate
         <PersonSelect value={tm.leadId ?? ''} users={users} label={t('Lead')} extra={[{ value: '', label: t('No lead'), icon: <X size={14} /> }]} onChange={(id) => patch({ leadId: id || undefined, members: id && !tm.members.includes(id) ? [...tm.members, id] : tm.members })} />
       </div>
       <div className="team-field">
-        <span>{t('Joining')}</span>
+        <span>{tx('team', 'Joining')}</span>
         <div className="segmented sm">
           <button type="button" className={tm.join === 'open' ? 'on' : ''} onClick={() => patch({ join: 'open' })}>
             {t('Anyone can join')}
@@ -592,7 +592,7 @@ export function NewTeamDialog({ users, me, count, onCreate, onClose }: { users: 
                 <PeoplePicker value={members} users={users} me={me} label={t('People in the team')} emptyText={t('Add people')} onChange={setMembers} />
               </div>
               <div className="team-field">
-                <span>{t('Joining')}</span>
+                <span>{tx('team', 'Joining')}</span>
                 <div className="segmented sm">
                   <button type="button" className={join === 'open' ? 'on' : ''} onClick={() => setJoin('open')}>
                     {t('Anyone can join')}

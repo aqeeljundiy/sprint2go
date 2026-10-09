@@ -3,6 +3,7 @@
 // Everything here is operator-side; none of it is synced to the app's collections.
 import { createHash, randomBytes } from 'node:crypto';
 import { db, newTotpSecret, totpStep } from './db.ts';
+import { mark, type Msg } from '../src/i18n/index.ts';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS operators (email TEXT PRIMARY KEY, role TEXT NOT NULL, added_by TEXT, added_at TEXT NOT NULL, totp TEXT, totp_on INTEGER NOT NULL DEFAULT 0, disabled INTEGER NOT NULL DEFAULT 0, alerts INTEGER NOT NULL DEFAULT 1);
@@ -20,6 +21,12 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS activity_days (user_id TEXT NOT NULL, day TEXT NOT NULL, PRIMARY KEY (user_id, day));
   CREATE TABLE IF NOT EXISTS alerts_sent (kind TEXT PRIMARY KEY, at TEXT NOT NULL, text TEXT NOT NULL);
 `);
+// The console's language each operator picked (they may have no app account language).
+try {
+  db.exec('ALTER TABLE operators ADD COLUMN lang TEXT');
+} catch {
+  /* already there */
+}
 for (const col of ['op_ok TEXT', 'ua TEXT', 'ip TEXT', 'last_at TEXT']) {
   try {
     db.exec(`ALTER TABLE sessions ADD COLUMN ${col}`);
@@ -52,8 +59,10 @@ export interface Operator {
   totpOn: boolean;
   disabled: boolean;
   alerts: boolean;
+  /** The console's language they picked ('en' or 'id'); null: not picked yet. */
+  lang: 'en' | 'id' | null;
 }
-const opRow = (r: any): Operator => ({ email: r.email, role: r.role, addedBy: r.added_by, addedAt: r.added_at, totpOn: !!r.totp_on, disabled: !!r.disabled, alerts: !!r.alerts });
+const opRow = (r: any): Operator => ({ email: r.email, role: r.role, addedBy: r.added_by, addedAt: r.added_at, totpOn: !!r.totp_on, disabled: !!r.disabled, alerts: !!r.alerts, lang: r.lang === 'en' || r.lang === 'id' ? r.lang : null });
 export const operators = () => (db.prepare('SELECT * FROM operators ORDER BY added_at').all() as any[]).map(opRow);
 export function operator(email: string | undefined | null): Operator | null {
   if (!email) return null;
@@ -80,6 +89,7 @@ export function saveOperator(email: string, role: OpRole, by: string) {
 }
 export const removeOperator = (email: string) => db.prepare('UPDATE operators SET disabled = 1, totp = NULL, totp_on = 0 WHERE email = ?').run(email.toLowerCase());
 export const setOperatorAlerts = (email: string, on: boolean) => db.prepare('UPDATE operators SET alerts = ? WHERE email = ?').run(on ? 1 : 0, email.toLowerCase());
+export const setOperatorLang = (email: string, lang: 'en' | 'id') => db.prepare('UPDATE operators SET lang = ? WHERE email = ?').run(lang, email.toLowerCase());
 export const resetOperator2fa = (email: string) => db.prepare('UPDATE operators SET totp = NULL, totp_on = 0 WHERE email = ?').run(email.toLowerCase());
 
 /* ---------- operator two-step sign-in (TOTP) ---------- */
@@ -208,7 +218,7 @@ export interface Invoice {
   number: string;
   workspaceId: string;
   period: string; // YYYY-MM
-  lines: { text: string; amount: number }[];
+  lines: { text: string; amount: number; tr?: Msg }[]; // tr: the words each reader sees in their language (msg())
   subtotal: number;
   discount: number;
   tax: number;
@@ -248,7 +258,7 @@ export const invoice = (id: string) => {
   const r = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
   return r ? invRow(r) : null;
 };
-export function createInvoice(i: { workspaceId: string; period: string; lines: { text: string; amount: number }[]; discount: number; dueDays: number; billTo: Invoice['billTo']; by: string; note?: string }) {
+export function createInvoice(i: { workspaceId: string; period: string; lines: { text: string; amount: number; tr?: Msg }[]; discount: number; dueDays: number; billTo: Invoice['billTo']; by: string; note?: string }) {
   const subtotal = Math.round(i.lines.reduce((n, l) => n + l.amount, 0));
   const discount = Math.min(subtotal, Math.round(i.discount));
   const tax = Math.round((subtotal - discount) * TAX_RATE);
@@ -314,9 +324,9 @@ export function saveCoupon(c: Omit<Coupon, 'used' | 'createdAt' | 'active'> & { 
 /** Whether a code can still be used; returns why not when it can't. */
 export function couponUsable(code: string): { ok: true; coupon: Coupon } | { ok: false; error: string } {
   const c = coupon(code);
-  if (!c || !c.active) return { ok: false, error: 'That code doesn’t exist.' };
-  if (c.expiresAt && c.expiresAt < now()) return { ok: false, error: 'That code has expired.' };
-  if (c.maxUses && c.used >= c.maxUses) return { ok: false, error: 'That code has been used up.' };
+  if (!c || !c.active) return { ok: false, error: mark('That code doesn’t exist.') };
+  if (c.expiresAt && c.expiresAt < now()) return { ok: false, error: mark('That code has expired.') };
+  if (c.maxUses && c.used >= c.maxUses) return { ok: false, error: mark('That code has been used up.') };
   return { ok: true, coupon: c };
 }
 export const useCoupon = (code: string) => db.prepare('UPDATE coupons SET used = used + 1 WHERE code = ?').run(code.toUpperCase());

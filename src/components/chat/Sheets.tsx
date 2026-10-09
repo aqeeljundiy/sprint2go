@@ -10,19 +10,22 @@ import { localDay } from '../../utils';
 import { whenText } from './chatPrefs';
 import { preview } from './Message';
 import { dmOther } from './chatPrefs';
+import { mark, t } from '../../i18n';
 
-/* Small sheets chat uses in several places: emoji, a time (Send later, Remind me), forwarding, who reacted, asking first. */
+/* Small sheets chat uses in several places: emoji, a time (Send later, Remind me), forwarding, who reacted, asking first.
+   Titles, texts and buttons passed in are shown as given: callers translate them. */
 
+/** Group names are English (mark): show them with t(g.group). */
 export const EMOJI: { group: string; list: string[] }[] = [
-  { group: 'Often', list: ['👍', '❤️', '😂', '🙌', '👀', '✅', '🔥', '🙏'] },
-  { group: 'Faces', list: ['😀', '😄', '😅', '🤣', '😊', '😍', '🥳', '😎', '🤔', '😮', '😢', '😭', '😤', '😴', '🤯', '🫡', '🙃', '😬', '🤗', '🥲'] },
-  { group: 'Hands', list: ['👏', '👋', '🤝', '💪', '👌', '✌️', '🤞', '👇', '👉', '🫶', '🙋', '🤷'] },
-  { group: 'Things', list: ['🎉', '🚀', '💡', '📌', '📎', '📅', '⏰', '☕', '🍕', '💰', '📈', '🎯', '⭐', '💯', '⚠️', '❌', '➕', '❓'] },
+  { group: mark('Often'), list: ['👍', '❤️', '😂', '🙌', '👀', '✅', '🔥', '🙏'] },
+  { group: mark('Faces'), list: ['😀', '😄', '😅', '🤣', '😊', '😍', '🥳', '😎', '🤔', '😮', '😢', '😭', '😤', '😴', '🤯', '🫡', '🙃', '😬', '🤗', '🥲'] },
+  { group: mark('Hands'), list: ['👏', '👋', '🤝', '💪', '👌', '✌️', '🤞', '👇', '👉', '🫶', '🙋', '🤷'] },
+  { group: mark('Things'), list: ['🎉', '🚀', '💡', '📌', '📎', '📅', '⏰', '☕', '🍕', '💰', '📈', '🎯', '⭐', '💯', '⚠️', '❌', '➕', '❓'] },
 ];
 export const QUICK = ['👍', '❤️', '😂', '🙌', '👀', '✅'];
 
 /** The emoji to pick from, in a sheet (phones) or a centred panel (wider screens). */
-export function EmojiSheet({ title = 'Emoji', onPick, onClose }: { title?: string; onPick: (e: string) => void; onClose: () => void }) {
+export function EmojiSheet({ title = t('Emoji'), onPick, onClose }: { title?: string; onPick: (e: string) => void; onClose: () => void }) {
   return (
     <Sheet title={title} onClose={onClose} className="emoji-sheet">
       <EmojiGrid onPick={(e) => (onClose(), onPick(e))} />
@@ -34,7 +37,7 @@ export function EmojiGrid({ onPick }: { onPick: (e: string) => void }) {
     <div className="emoji-grid">
       {EMOJI.map((g) => (
         <section key={g.group}>
-          <h3>{g.group}</h3>
+          <h3>{t(g.group)}</h3>
           <div>
             {g.list.map((e) => (
               <button key={e} type="button" onClick={() => onPick(e)} aria-label={e}>
@@ -51,13 +54,13 @@ export function EmojiGrid({ onPick }: { onPick: (e: string) => void }) {
 /** The reactions on top of a message's actions: the six used most, and more. */
 export function ReactionRow({ mine, onReact, onMore }: { mine: string[]; onReact: (e: string) => void; onMore: () => void }) {
   return (
-    <div className="react-row" role="group" aria-label="React">
+    <div className="react-row" role="group" aria-label={t('React')}>
       {QUICK.map((e) => (
-        <button key={e} type="button" className={mine.includes(e) ? 'on' : ''} onClick={() => onReact(e)} aria-label={`React ${e}`} aria-pressed={mine.includes(e)}>
+        <button key={e} type="button" className={mine.includes(e) ? 'on' : ''} onClick={() => onReact(e)} aria-label={t('React {emoji}', { emoji: e })} aria-pressed={mine.includes(e)}>
           {e}
         </button>
       ))}
-      <button type="button" className="react-more" onClick={onMore} aria-label="More reactions">
+      <button type="button" className="react-more" onClick={onMore} aria-label={t('More reactions')}>
         <Plus size={18} />
       </button>
     </div>
@@ -70,17 +73,17 @@ const at = (days: number, h: number, m = 0) => {
   d.setHours(h, m, 0, 0);
   return d.toISOString();
 };
-/** Times worth offering: soon, later today, tomorrow morning, Monday morning. */
+/** Times worth offering: soon, later today, tomorrow morning, Monday morning. Called while rendering: labels are translated. */
 export function timeChoices(kind: 'send' | 'remind'): { label: string; at: string }[] {
   const now = new Date();
   const out: { label: string; at: string }[] = [];
-  if (kind === 'remind') out.push({ label: 'In 20 minutes', at: new Date(Date.now() + 20 * 60_000).toISOString() });
-  out.push({ label: 'In 1 hour', at: new Date(Date.now() + 3600_000).toISOString() });
-  if (kind === 'remind') out.push({ label: 'In 3 hours', at: new Date(Date.now() + 3 * 3600_000).toISOString() });
-  if (now.getHours() < 16) out.push({ label: 'This afternoon', at: at(0, 16) });
-  out.push({ label: 'Tomorrow morning', at: at(1, 9) });
+  if (kind === 'remind') out.push({ label: t('In 20 minutes'), at: new Date(Date.now() + 20 * 60_000).toISOString() });
+  out.push({ label: t('In 1 hour'), at: new Date(Date.now() + 3600_000).toISOString() });
+  if (kind === 'remind') out.push({ label: t('In 3 hours'), at: new Date(Date.now() + 3 * 3600_000).toISOString() });
+  if (now.getHours() < 16) out.push({ label: t('This afternoon'), at: at(0, 16) });
+  out.push({ label: t('Tomorrow morning'), at: at(1, 9) });
   const toMonday = (8 - now.getDay()) % 7 || 7;
-  if (toMonday > 1) out.push({ label: 'Monday morning', at: at(toMonday, 9) });
+  if (toMonday > 1) out.push({ label: t('Monday morning'), at: at(toMonday, 9) });
   return out;
 }
 
@@ -103,10 +106,10 @@ export function WhenSheet({ title, kind, note, onPick, onClose, footer }: { titl
         own ? (
           <>
             <button type="button" className="ghost-btn" onClick={() => setOwn(false)}>
-              Back
+              {t('Back')}
             </button>
             <button type="button" className="primary-btn" disabled={past} onClick={() => (onClose(), onPick(picked.toISOString()))}>
-              {past ? 'Pick a later time' : kind === 'send' ? `Send ${whenText(picked.toISOString())}` : `Remind me ${whenText(picked.toISOString())}`}
+              {past ? t('Pick a later time') : kind === 'send' ? t('Send {when}', { when: whenText(picked.toISOString()) }) : t('Remind me {when}', { when: whenText(picked.toISOString()) })}
             </button>
           </>
         ) : (
@@ -117,8 +120,8 @@ export function WhenSheet({ title, kind, note, onPick, onClose, footer }: { titl
       {note}
       {own ? (
         <div className="when-own">
-          <DatePicker value={day} onChange={(v) => v && setDay(v)} label="Day" clearable={false} />
-          <TimePicker value={time} onChange={setTime} label="Time" />
+          <DatePicker value={day} onChange={(v) => v && setDay(v)} label={t('Day')} clearable={false} />
+          <TimePicker value={time} onChange={setTime} label={t('Time')} />
         </div>
       ) : (
         <div className="as-list">
@@ -132,8 +135,8 @@ export function WhenSheet({ title, kind, note, onPick, onClose, footer }: { titl
           ))}
           <button type="button" className="as-item" onClick={() => setOwn(true)}>
             <span className="as-label">
-              Pick a day and time
-              <small>Any time in the next four months</small>
+              {t('Pick a day and time')}
+              <small>{t('Any time in the next four months')}</small>
             </span>
           </button>
         </div>
@@ -153,24 +156,24 @@ export function ForwardSheet({ m, channels, users, me, onForward, onClose }: { m
   const on = (x: { channelId?: string; userId?: string }) => !!to && to.channelId === x.channelId && to.userId === x.userId;
   return (
     <Sheet
-      title="Forward"
+      title={t('Forward')}
       size="tall"
       onClose={onClose}
       footer={
         <>
-          <input className="fwd-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a line (optional)" aria-label="Add a line" />
+          <input className="fwd-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('Add a line (optional)')} aria-label={t('Add a line')} />
           <button type="button" className="primary-btn" disabled={!to} onClick={() => to && (onClose(), onForward(to, note.trim()))}>
-            {to ? `Send to ${to.label}` : 'Pick where'}
+            {to ? t('Send to {name}', { name: to.label }) : t('Pick where')}
           </button>
         </>
       }
     >
-      <blockquote className="fwd-preview">{preview(m) || 'A file'}</blockquote>
+      <blockquote className="fwd-preview">{preview(m) || t('A file')}</blockquote>
       <label className="sheet-search">
         <SearchIcon size={16} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="A channel or a person" aria-label="Where to forward" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('A channel or a person')} aria-label={t('Where to forward')} />
       </label>
-      <div className="as-list" role="listbox" aria-label="Where to forward">
+      <div className="as-list" role="listbox" aria-label={t('Where to forward')}>
         {rooms.map((c) => (
           <button key={c.id} type="button" role="option" aria-selected={on({ channelId: c.id })} className={`as-item${on({ channelId: c.id }) ? ' picked' : ''}`} onClick={() => setTo({ channelId: c.id, label: `#${c.name}` })}>
             {c.private ? <Lock size={18} className="as-icon" /> : <Hash size={18} className="as-icon" />}
@@ -186,7 +189,7 @@ export function ForwardSheet({ m, channels, users, me, onForward, onClose }: { m
             </span>
           </button>
         ))}
-        {!rooms.length && !people.length && <p className="sheet-empty">Nothing called “{q}”</p>}
+        {!rooms.length && !people.length && <p className="sheet-empty">{t('Nothing called “{q}”', { q })}</p>}
       </div>
     </Sheet>
   );
@@ -199,7 +202,7 @@ export function WhoReactedSheet({ m, first, users, me, channel, onClose }: { m: 
     return [...all.filter(([e]) => e === first), ...all.filter(([e]) => e !== first)];
   }, [m.reactions, first]);
   return (
-    <Sheet title="Reactions" onClose={onClose}>
+    <Sheet title={t('Reactions')} onClose={onClose}>
       {groups.map(([emoji, who]) => (
         <section key={emoji} className="who-reacted">
           <h3>
@@ -208,7 +211,7 @@ export function WhoReactedSheet({ m, first, users, me, channel, onClose }: { m: 
           {who.map((id) => {
             const u = users.find((x) => x.id === id);
             const g = !u ? channel.guests?.find((x) => x.email === id) : undefined;
-            return <div key={id} className="pl-row">{u ? <PersonCell person={u} size={28} sub={id === me ? 'You' : u.title} /> : <PersonCell person={{ name: g?.name ?? 'Someone', email: g?.email ?? '' }} size={28} />}</div>;
+            return <div key={id} className="pl-row">{u ? <PersonCell person={u} size={28} sub={id === me ? t('You') : u.title} /> : <PersonCell person={{ name: g?.name ?? t('Someone'), email: g?.email ?? '' }} size={28} />}</div>;
           })}
         </section>
       ))}
@@ -226,7 +229,7 @@ export function ConfirmSheet({ title, text, yes, onYes, onClose }: { title: stri
       footer={
         <>
           <button type="button" className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" className="primary-btn danger" onClick={() => (onClose(), onYes())}>
             {yes}
@@ -240,30 +243,30 @@ export function ConfirmSheet({ title, text, yes, onYes, onClose }: { title: stri
 }
 
 /** A list to pick one thing from, with search: tasks, notes, table rows, Drive files. */
-export function PickSheet<T extends { id: string }>({ title, items, label, hint, icon, empty, onPick, onClose, top }: { title: string; items: T[]; label: (t: T) => string; hint?: (t: T) => string | undefined; icon?: (t: T) => ReactNode; empty: string; onPick: (t: T) => void; onClose: () => void; top?: ReactNode }) {
+export function PickSheet<T extends { id: string }>({ title, items, label, hint, icon, empty, onPick, onClose, top }: { title: string; items: T[]; label: (item: T) => string; hint?: (item: T) => string | undefined; icon?: (item: T) => ReactNode; empty: string; onPick: (item: T) => void; onClose: () => void; top?: ReactNode }) {
   const [q, setQ] = useState('');
   const s = q.trim().toLowerCase();
-  const shown = items.filter((t) => !s || `${label(t)} ${hint?.(t) ?? ''}`.toLowerCase().includes(s)).slice(0, 80);
+  const shown = items.filter((it) => !s || `${label(it)} ${hint?.(it) ?? ''}`.toLowerCase().includes(s)).slice(0, 80);
   return (
     <Sheet title={title} size="tall" onClose={onClose}>
       {items.length > 6 && (
         <label className="sheet-search">
           <SearchIcon size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label={`Search ${title.toLowerCase()}`} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search')} aria-label={t('Search {what}', { what: title.toLowerCase() })} />
         </label>
       )}
       <div className="as-list">
         {!s && top}
-        {shown.map((t) => (
-          <button key={t.id} type="button" className="as-item" onClick={() => (onClose(), onPick(t))}>
-            {icon?.(t)}
+        {shown.map((it) => (
+          <button key={it.id} type="button" className="as-item" onClick={() => (onClose(), onPick(it))}>
+            {icon?.(it)}
             <span className="as-label">
-              {label(t)}
-              {hint?.(t) && <small>{hint(t)}</small>}
+              {label(it)}
+              {hint?.(it) && <small>{hint(it)}</small>}
             </span>
           </button>
         ))}
-        {!shown.length && <p className="sheet-empty">{s ? `Nothing called “${q}”` : empty}</p>}
+        {!shown.length && <p className="sheet-empty">{s ? t('Nothing called “{q}”', { q }) : empty}</p>}
       </div>
     </Sheet>
   );
@@ -271,6 +274,6 @@ export function PickSheet<T extends { id: string }>({ title, items, label, hint,
 
 /** A conversation's name as people say it: #name, or the other person's name. */
 export function chanName(c: Channel, users: User[], me: string) {
-  if (c.kind === 'dm') return users.find((u) => u.id === dmOther(c, me))?.name ?? 'Direct message';
+  if (c.kind === 'dm') return users.find((u) => u.id === dmOther(c, me))?.name ?? t('Direct message');
   return c.category === 'shared' ? c.name : `#${c.name}`;
 }

@@ -10,7 +10,7 @@ import { relative } from '../../utils';
 import type { Todo } from '../../types';
 import { Doer } from './TaskSheets';
 import { doersOf, type TaskOps } from './taskOps';
-import { t } from '../../i18n';
+import { t, tx } from '../../i18n';
 
 export interface RowLook {
   show: (field: string) => boolean; // what this person chose rows show (Display, "On each row")
@@ -120,7 +120,7 @@ export function TaskRow({
               </span>
             )}
             {look.show('checklist') && cl.length > 0 && (
-              <span className={`tm${cl.every((x) => x.done) ? ' ok' : ''}`} title={t('Checklist')}>
+              <span className={`tm${cl.every((x) => x.done) ? ' ok' : ''}`} title={tx('task', 'Checklist')}>
                 <CheckCircle2 size={12} /> {cl.filter((x) => x.done).length}/{cl.length}
               </span>
             )}
@@ -157,7 +157,7 @@ export function TaskRow({
         )}
         {look.show('assignee') && (
           <span className="trow-pick hide-phone">
-            <PeoplePicker compact value={doersOf(task)} users={ops.users} me={ops.me} label={t('Doing it')} onChange={(ids) => ops.patch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />
+            <PeoplePicker compact value={doersOf(task)} users={ops.users} me={ops.me} label={tx('field', 'Doing it')} onChange={(ids) => ops.patch(task.id, { assignees: ids, userId: ids[0] ?? '' })} />
           </span>
         )}
         <button type="button" ref={dots} className="icon-btn sm trow-more hide-phone" aria-label={t('More for “{title}”', { title: task.title })} onClick={(e) => (e.stopPropagation(), m.openFrom(dots))}>

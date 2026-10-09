@@ -2,6 +2,8 @@
 // The server reads Google's public holiday calendars (no key needed), keeps public holidays only (not observances
 // like Valentine's Day), caches them per country and refreshes them once a day.
 
+import { mark } from '../i18n/index'; // the full path: the server loads this file. Show the names with t(name).
+
 export interface HolidayCountry {
   code: string; // ISO 3166 code
   name: string;
@@ -9,23 +11,23 @@ export interface HolidayCountry {
 }
 
 export const HOLIDAY_COUNTRIES: HolidayCountry[] = [
-  { code: 'ID', name: 'Indonesia', feed: 'indonesian' },
-  { code: 'SG', name: 'Singapore', feed: 'singapore' },
-  { code: 'MY', name: 'Malaysia', feed: 'malaysia' },
-  { code: 'PH', name: 'Philippines', feed: 'philippines' },
-  { code: 'TH', name: 'Thailand', feed: 'th' },
-  { code: 'VN', name: 'Vietnam', feed: 'vietnamese' },
-  { code: 'AU', name: 'Australia', feed: 'australian' },
-  { code: 'NZ', name: 'New Zealand', feed: 'new_zealand' },
-  { code: 'JP', name: 'Japan', feed: 'japanese' },
-  { code: 'IN', name: 'India', feed: 'indian' },
-  { code: 'HK', name: 'Hong Kong', feed: 'hong_kong' },
-  { code: 'NL', name: 'Netherlands', feed: 'dutch' },
-  { code: 'DE', name: 'Germany', feed: 'german' },
-  { code: 'FR', name: 'France', feed: 'french' },
-  { code: 'GB', name: 'United Kingdom', feed: 'uk' },
-  { code: 'US', name: 'United States', feed: 'usa' },
-  { code: 'CA', name: 'Canada', feed: 'canadian' },
+  { code: 'ID', name: mark('Indonesia'), feed: 'indonesian' },
+  { code: 'SG', name: mark('Singapore'), feed: 'singapore' },
+  { code: 'MY', name: mark('Malaysia'), feed: 'malaysia' },
+  { code: 'PH', name: mark('Philippines'), feed: 'philippines' },
+  { code: 'TH', name: mark('Thailand'), feed: 'th' },
+  { code: 'VN', name: mark('Vietnam'), feed: 'vietnamese' },
+  { code: 'AU', name: mark('Australia'), feed: 'australian' },
+  { code: 'NZ', name: mark('New Zealand'), feed: 'new_zealand' },
+  { code: 'JP', name: mark('Japan'), feed: 'japanese' },
+  { code: 'IN', name: mark('India'), feed: 'indian' },
+  { code: 'HK', name: mark('Hong Kong'), feed: 'hong_kong' },
+  { code: 'NL', name: mark('Netherlands'), feed: 'dutch' },
+  { code: 'DE', name: mark('Germany'), feed: 'german' },
+  { code: 'FR', name: mark('France'), feed: 'french' },
+  { code: 'GB', name: mark('United Kingdom'), feed: 'uk' },
+  { code: 'US', name: mark('United States'), feed: 'usa' },
+  { code: 'CA', name: mark('Canada'), feed: 'canadian' },
 ];
 
 export const holidayCountry = (code: string | undefined) => HOLIDAY_COUNTRIES.find((c) => c.code === code);

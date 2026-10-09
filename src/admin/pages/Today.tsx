@@ -3,6 +3,7 @@ import { AlertTriangle, CalendarClock, Clock, CreditCard, KeyRound, LifeBuoy, Sh
 
 import { rel, dateTime, day, duration, post, rp, rpShort } from '../api';
 import { CopyBtn, deltaOf, Empty, Failed, Loading, Page, Stat, Stats, useAct, useAdmin, useApi } from '../ui';
+import { t, tn, tx } from '../../i18n';
 
 interface TodayData {
   kpis: { mrr: number; mrrLastMonth: number | null; companies: number; newThisMonth: number; active7: number; activePrev7: number; people: number; openTickets: number; medianFirstReplyMin: number | null; satisfaction: number | null };
@@ -56,118 +57,120 @@ export function Today() {
   const { me, go, may } = useAdmin();
   const { data, error, reload } = useApi<TodayData>('today', [], 60_000);
   const act = useAct();
-  if (error) return <Page title="Today"><Failed error={error} retry={reload} /></Page>;
-  if (!data) return <Page title="Today"><Loading rows={6} /></Page>;
+  if (error) return <Page title={t('Today')}><Failed error={error} retry={reload} /></Page>;
+  if (!data) return <Page title={t('Today')}><Loading rows={6} /></Page>;
   const { kpis: k, queue: q } = data;
   const hour = new Date().getHours();
-  const hello = hour < 11 ? 'Good morning' : hour < 15 ? 'Good afternoon' : 'Good evening';
+  const name = (me.name || me.email).split(/[ @]/)[0];
+  // Indonesian greets the late afternoon ("sore") apart from the night ("malam"); English says good evening to both.
+  const hello = hour < 11 ? t('Good morning, {name}', { name }) : hour < 15 ? t('Good afternoon, {name}', { name }) : hour < 18 ? tx('late afternoon', 'Good evening, {name}', { name }) : t('Good evening, {name}', { name });
   const high = q.warnings.filter((w) => w.level === 'high');
   const normal = q.warnings.filter((w) => w.level !== 'high');
   const total = q.breaching.length + q.mine.length + q.unassigned.length + q.overdue.length + q.atRisk.length + q.trialsEnding.length + q.signups.length + q.codes.length + q.deletions.length + q.flagged.length + q.warnings.length;
   return (
-    <Page title={`${hello}, ${(me.name || me.email).split(/[ @]/)[0]}`} sub={total ? `${total} thing${total === 1 ? '' : 's'} need${total === 1 ? 's' : ''} you, most urgent first.` : 'Nothing needs you right now.'}>
+    <Page title={hello} sub={total ? tn(total, '{n} thing needs you, most urgent first.', '{n} things need you, most urgent first.') : t('Nothing needs you right now.')}>
       <Stats>
-        <Stat i={0} label="Monthly revenue" value={rpShort(k.mrr)} delta={deltaOf(k.mrr, k.mrrLastMonth, true, rpShort)} hint={k.mrrLastMonth === null ? 'booked from plans' : 'vs last month'} onClick={() => go('/admin/money/revenue')} />
-        <Stat i={1} label="Companies" value={k.companies} hint={k.newThisMonth ? `+${k.newThisMonth} this month` : 'none new this month'} onClick={() => go('/admin/companies')} />
-        <Stat i={2} label="Active people, 7 days" value={k.active7} delta={deltaOf(k.active7, k.activePrev7 || null)} hint={`of ${k.people}`} onClick={() => go('/admin/growth')} />
-        <Stat i={3} label="Open tickets" value={k.openTickets} tone={q.breaching.length ? 'bad' : undefined} hint={`first reply ${duration(k.medianFirstReplyMin)}${k.satisfaction !== null ? ` · ${k.satisfaction}% happy` : ''}`} onClick={() => go('/admin/tickets')} />
+        <Stat i={0} label={t('Monthly revenue')} value={rpShort(k.mrr)} delta={deltaOf(k.mrr, k.mrrLastMonth, true, rpShort)} hint={k.mrrLastMonth === null ? t('booked from plans') : t('vs last month')} onClick={() => go('/admin/money/revenue')} />
+        <Stat i={1} label={t('Companies')} value={k.companies} hint={k.newThisMonth ? t('+{n} this month', { n: k.newThisMonth }) : t('none new this month')} onClick={() => go('/admin/companies')} />
+        <Stat i={2} label={t('Active people, 7 days')} value={k.active7} delta={deltaOf(k.active7, k.activePrev7 || null)} hint={t('of {n}', { n: k.people })} onClick={() => go('/admin/growth')} />
+        <Stat i={3} label={t('Open tickets')} value={k.openTickets} tone={q.breaching.length ? 'bad' : undefined} hint={`${t('first reply {time}', { time: duration(k.medianFirstReplyMin) })}${k.satisfaction !== null ? ` · ${t('{n}% happy', { n: k.satisfaction })}` : ''}`} onClick={() => go('/admin/tickets')} />
       </Stats>
 
-      {total === 0 && <Empty title="All clear" text="No tickets waiting, no money late, nothing broken. New sign-ups and problems show up here first." />}
+      {total === 0 && <Empty title={t('All clear')} text={t('No tickets waiting, no money late, nothing broken. New sign-ups and problems show up here first.')} />}
 
       <div className="adm-queue">
-        <Group title="Broken right now" n={high.length}>
+        <Group title={t('Broken right now')} n={high.length}>
           {high.map((w) => (
             <Row key={w.kind} icon={<AlertTriangle size={15} />} tone="bad" title={w.text} onOpen={w.to ? () => go(w.to!) : undefined} />
           ))}
         </Group>
-        <Group title="Past the reply target" n={q.breaching.length}>
-          {q.breaching.map((t) => (
-            <Row key={t.id} icon={<Clock size={15} />} tone="bad" title={`#${t.number} ${t.subject}`} sub={`${t.company ?? t.requester} · was due ${rel(t.dueAt)}`} onOpen={() => go(`/admin/tickets/${t.id}`)}>
-              <button className="primary-btn sm" onClick={() => go(`/admin/tickets/${t.id}`)}>
-                Reply
+        <Group title={t('Past the reply target')} n={q.breaching.length}>
+          {q.breaching.map((tk) => (
+            <Row key={tk.id} icon={<Clock size={15} />} tone="bad" title={`#${tk.number} ${tk.subject}`} sub={`${tk.company ?? tk.requester} · ${t('was due {ago}', { ago: rel(tk.dueAt) })}`} onOpen={() => go(`/admin/tickets/${tk.id}`)}>
+              <button className="primary-btn sm" onClick={() => go(`/admin/tickets/${tk.id}`)}>
+                {t('Reply')}
               </button>
             </Row>
           ))}
         </Group>
-        <Group title="Your tickets" n={q.mine.length}>
-          {q.mine.map((t) => (
-            <Row key={t.id} icon={<LifeBuoy size={15} />} title={`#${t.number} ${t.subject}`} sub={`${t.company ?? t.requester} · updated ${rel(t.updatedAt)}`} onOpen={() => go(`/admin/tickets/${t.id}`)}>
-              <button className="ghost-btn sm" onClick={() => go(`/admin/tickets/${t.id}`)}>
-                Open
+        <Group title={t('Your tickets')} n={q.mine.length}>
+          {q.mine.map((tk) => (
+            <Row key={tk.id} icon={<LifeBuoy size={15} />} title={`#${tk.number} ${tk.subject}`} sub={`${tk.company ?? tk.requester} · ${t('updated {ago}', { ago: rel(tk.updatedAt) })}`} onOpen={() => go(`/admin/tickets/${tk.id}`)}>
+              <button className="ghost-btn sm" onClick={() => go(`/admin/tickets/${tk.id}`)}>
+                {t('Open')}
               </button>
             </Row>
           ))}
         </Group>
-        <Group title="Nobody on it" n={q.unassigned.length}>
-          {q.unassigned.map((t) => (
-            <Row key={t.id} icon={<LifeBuoy size={15} />} tone={t.priority === 'urgent' ? 'bad' : undefined} title={`#${t.number} ${t.subject}`} sub={`${t.company ?? t.requester} · ${rel(t.createdAt)}`} onOpen={() => go(`/admin/tickets/${t.id}`)}>
+        <Group title={t('Nobody on it')} n={q.unassigned.length}>
+          {q.unassigned.map((tk) => (
+            <Row key={tk.id} icon={<LifeBuoy size={15} />} tone={tk.priority === 'urgent' ? 'bad' : undefined} title={`#${tk.number} ${tk.subject}`} sub={`${tk.company ?? tk.requester} · ${rel(tk.createdAt)}`} onOpen={() => go(`/admin/tickets/${tk.id}`)}>
               {may('support') && (
-                <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { id: t.id, assignee: me.email }), `#${t.number} is yours`)}>
-                  Take it
+                <button className="ghost-btn sm" onClick={() => void act(() => post('ticket/update', { id: tk.id, assignee: me.email }), t('#{n} is yours', { n: tk.number }))}>
+                  {t('Take it')}
                 </button>
               )}
             </Row>
           ))}
         </Group>
-        <Group title="Invoices overdue" n={q.overdue.length}>
+        <Group title={t('Invoices overdue')} n={q.overdue.length}>
           {q.overdue.map((i) => (
-            <Row key={i.id} icon={<CreditCard size={15} />} tone="warn" title={`${i.company ?? 'A company'} owes ${rp(i.total)}`} sub={`${i.number} · due ${day(i.dueAt)}`} onOpen={() => go(`/admin/companies/${i.workspaceId}/billing`)}>
+            <Row key={i.id} icon={<CreditCard size={15} />} tone="warn" title={i.company ? t('{company} owes {amount}', { company: i.company, amount: rp(i.total) }) : t('A company owes {amount}', { amount: rp(i.total) })} sub={`${i.number} · ${t('due {day}', { day: day(i.dueAt) })}`} onOpen={() => go(`/admin/companies/${i.workspaceId}/billing`)}>
               {may('billing') && (
-                <button className="ghost-btn sm" onClick={() => void act(() => post('invoice/status', { id: i.id, status: 'sent' }), 'Reminder sent')}>
-                  Remind
+                <button className="ghost-btn sm" onClick={() => void act(() => post('invoice/status', { id: i.id, status: 'sent' }), t('Reminder sent'))}>
+                  {t('Remind')}
                 </button>
               )}
             </Row>
           ))}
         </Group>
-        <Group title="At risk" n={q.atRisk.length}>
+        <Group title={t('At risk')} n={q.atRisk.length}>
           {q.atRisk.map((c) => (
-            <Row key={c.id} icon={<TrendingDown size={15} />} tone="warn" title={c.name} sub={`Health ${c.score} · ${c.lastActive ? `last seen ${rel(c.lastActive)}` : 'never active'} · ${rpShort(c.mrr)}/month`} onOpen={() => go(`/admin/companies/${c.id}`)}>
+            <Row key={c.id} icon={<TrendingDown size={15} />} tone="warn" title={c.name} sub={[t('Health {score}', { score: c.score }), c.lastActive ? t('last seen {ago}', { ago: rel(c.lastActive) }) : t('never active'), t('{amount}/month', { amount: rpShort(c.mrr) })].join(' · ')} onOpen={() => go(`/admin/companies/${c.id}`)}>
               <button className="ghost-btn sm" onClick={() => go(`/admin/companies/${c.id}`)}>
-                Look
+                {t('Look')}
               </button>
             </Row>
           ))}
         </Group>
-        <Group title="Trials ending this week" n={q.trialsEnding.length}>
-          {q.trialsEnding.map((t) => (
-            <Row key={t.id} icon={<CalendarClock size={15} />} title={t.name} sub={`ends ${day(t.trialEnds)} · then ${rpShort(t.after)}/month`} onOpen={() => go(`/admin/companies/${t.id}`)}>
+        <Group title={t('Trials ending this week')} n={q.trialsEnding.length}>
+          {q.trialsEnding.map((c) => (
+            <Row key={c.id} icon={<CalendarClock size={15} />} title={c.name} sub={t('ends {day} · then {amount}/month', { day: day(c.trialEnds), amount: rpShort(c.after) })} onOpen={() => go(`/admin/companies/${c.id}`)}>
               {may('customers') && (
-                <button className="ghost-btn sm" onClick={() => void act(() => post('company/extend-trial', { id: t.id, days: 14 }), `${t.name}: trial +14 days`)}>
-                  +14 days
+                <button className="ghost-btn sm" onClick={() => void act(() => post('company/extend-trial', { id: c.id, days: 14 }), t('{company}: trial +14 days', { company: c.name }))}>
+                  {t('+14 days')}
                 </button>
               )}
             </Row>
           ))}
         </Group>
-        <Group title="Waiting for their sign-up code" n={q.signups.length}>
+        <Group title={t('Waiting for their sign-up code')} n={q.signups.length}>
           {q.signups.map((s) => (
-            <Row key={s.email} icon={<UserPlus size={15} />} tone={s.disposable ? 'warn' : undefined} title={`${s.name} · ${s.email}`} sub={`${s.disposable ? 'Throwaway address · ' : ''}code valid until ${dateTime(s.until)}`}>
+            <Row key={s.email} icon={<UserPlus size={15} />} tone={s.disposable ? 'warn' : undefined} title={`${s.name} · ${s.email}`} sub={s.disposable ? t('Throwaway address · code valid until {time}', { time: dateTime(s.until) }) : t('code valid until {time}', { time: dateTime(s.until) })}>
               <code className="adm-code">{s.code}</code>
-              <CopyBtn text={s.code} iconOnly label="Copy code" />
+              <CopyBtn text={s.code} iconOnly label={t('Copy code')} />
             </Row>
           ))}
         </Group>
-        <Group title="Password reset codes" n={q.codes.length}>
+        <Group title={t('Password reset codes')} n={q.codes.length}>
           {q.codes.map((c) => (
-            <Row key={c.key} icon={<KeyRound size={15} />} title={c.key.replace(/^reset:/, '')} sub={`valid until ${dateTime(c.until)}`}>
+            <Row key={c.key} icon={<KeyRound size={15} />} title={c.key.replace(/^reset:/, '')} sub={t('valid until {time}', { time: dateTime(c.until) })}>
               <code className="adm-code">{c.code}</code>
-              <CopyBtn text={c.code} iconOnly label="Copy code" />
+              <CopyBtn text={c.code} iconOnly label={t('Copy code')} />
             </Row>
           ))}
         </Group>
-        <Group title="Deletions scheduled" n={q.deletions.length}>
+        <Group title={t('Deletions scheduled')} n={q.deletions.length}>
           {q.deletions.map((d) => (
-            <Row key={d.id} icon={<Trash2 size={15} />} tone="warn" title={`${d.company ?? d.workspaceId} is deleted ${rel(d.runAt)}`} sub={`asked by ${d.requestedBy}`} onOpen={() => go(`/admin/companies/${d.workspaceId}`)} />
+            <Row key={d.id} icon={<Trash2 size={15} />} tone="warn" title={t('{company} is deleted {when}', { company: d.company ?? d.workspaceId, when: rel(d.runAt) })} sub={t('asked by {name}', { name: d.requestedBy })} onOpen={() => go(`/admin/companies/${d.workspaceId}`)} />
           ))}
         </Group>
-        <Group title="Throwaway sign-ups" n={q.flagged.length}>
+        <Group title={t('Throwaway sign-ups')} n={q.flagged.length}>
           {q.flagged.map((u) => (
             <Row key={u.id} icon={<ShieldAlert size={15} />} title={u.name} sub={u.email} onOpen={() => go(`/admin/people/${u.id}`)} />
           ))}
         </Group>
-        <Group title="Worth a look" n={normal.length}>
+        <Group title={t('Worth a look')} n={normal.length}>
           {normal.map((w) => (
             <Row key={w.kind} icon={<AlertTriangle size={15} />} tone="info" title={w.text} onOpen={w.to ? () => go(w.to!) : undefined} />
           ))}

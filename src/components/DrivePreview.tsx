@@ -4,6 +4,7 @@ import type { DriveItem } from '../types';
 import { fmtSize } from '../data/drive';
 import { fullDate } from '../utils';
 import { FileIcon } from './FileIcon';
+import { t } from '../i18n';
 
 interface Props {
   item: DriveItem;
@@ -40,11 +41,11 @@ export function DrivePreview({ item, list, onNav, onClose, onStar, onTrash, onOp
       touch.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
     },
     onTouchEnd: (e: React.TouchEvent) => {
-      const t = touch.current;
+      const start = touch.current;
       touch.current = null;
-      if (!t) return;
-      const dx = e.changedTouches[0].clientX - t.x;
-      const dy = e.changedTouches[0].clientY - t.y;
+      if (!start) return;
+      const dx = e.changedTouches[0].clientX - start.x;
+      const dy = e.changedTouches[0].clientY - start.y;
       if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
       if (dx < 0 && next) onNav(next);
       if (dx > 0 && prev) onNav(prev);
@@ -62,18 +63,18 @@ export function DrivePreview({ item, list, onNav, onClose, onStar, onTrash, onOp
           </small>
         </div>
         {item.threadId && (
-          <button className="lb-btn" onClick={() => onOpenThread(item.threadId!)} title="Open related email">
+          <button className="lb-btn" onClick={() => onOpenThread(item.threadId!)} title={t('Open related email')}>
             <Mail size={17} />
           </button>
         )}
         {isBlob && (
-          <a className="lb-btn" href={item.thumb} download={item.name} title="Download">
+          <a className="lb-btn" href={item.thumb} download={item.name} title={t('Download')}>
             <Download size={17} />
           </a>
         )}
         {!fromEmail && (
           <>
-            <button className={`lb-btn ${item.starred ? 'starred' : ''}`} onClick={() => onStar(item.id)} title="Star">
+            <button className={`lb-btn ${item.starred ? 'starred' : ''}`} onClick={() => onStar(item.id)} title={item.starred ? t('Unstar') : t('Star')}>
               <Star size={17} />
             </button>
             <button
@@ -82,13 +83,13 @@ export function DrivePreview({ item, list, onNav, onClose, onStar, onTrash, onOp
                 onTrash(item.id);
                 onClose();
               }}
-              title="Move to trash"
+              title={t('Move to trash')}
             >
               <Trash2 size={17} />
             </button>
           </>
         )}
-        <button className="lb-btn" onClick={onClose} title="Close (Esc)">
+        <button className="lb-btn" onClick={onClose} title={t('Close (Esc)')}>
           <X size={19} />
         </button>
       </header>
@@ -99,25 +100,25 @@ export function DrivePreview({ item, list, onNav, onClose, onStar, onTrash, onOp
         ) : item.thumb ? (
           <div className="lb-media" onClick={(e) => e.stopPropagation()}>
             <img src={item.thumb} alt={item.name} />
-            {item.kind === 'video' && <span className="lb-note">Sample video. Upload your own to play it here</span>}
+            {item.kind === 'video' && <span className="lb-note">{t('Sample video. Upload your own to play it here')}</span>}
           </div>
         ) : (
           <div className="lb-doc" onClick={(e) => e.stopPropagation()}>
             <FileIcon kind={item.kind} size={40} />
             <strong>{item.name}</strong>
             <span>{fmtSize(item.size)}</span>
-            <small>Previews for documents arrive with the real file server.</small>
+            <small>{t('Previews for documents arrive with the real file server.')}</small>
           </div>
         )}
       </div>
 
       {prev && (
-        <button className="lb-nav left" onClick={(e) => (e.stopPropagation(), onNav(prev))} aria-label="Previous">
+        <button className="lb-nav left" onClick={(e) => (e.stopPropagation(), onNav(prev))} aria-label={t('Previous file')}>
           <ChevronLeft size={24} />
         </button>
       )}
       {next && (
-        <button className="lb-nav right" onClick={(e) => (e.stopPropagation(), onNav(next))} aria-label="Next">
+        <button className="lb-nav right" onClick={(e) => (e.stopPropagation(), onNav(next))} aria-label={t('Next file')}>
           <ChevronRight size={24} />
         </button>
       )}

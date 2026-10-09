@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HardDrive, X } from 'lucide-react';
 import { fmtSize } from '../data/drive';
+import { t } from '../i18n';
+import { tj } from '../i18n/tj';
+import { useLang } from '../i18n/useLang';
 
 /*
  * "Ask before saving big files" (Settings, Storage): before an upload over the company's limit, a small question with
@@ -15,6 +18,7 @@ let mounted = false;
 
 function BigFileHost() {
   const [ask, setAsk] = useState<Ask | null>(null);
+  useLang(); // its own root, outside the app's: re-render on a language switch
   useEffect(() => {
     show = setAsk;
     return () => void (show = null);
@@ -26,18 +30,18 @@ function BigFileHost() {
   const pct = (n: number) => `${Math.min(100, Math.max(0.5, (n / ask.total!) * 100))}%`;
   return (
     <div className="modal-scrim" onMouseDown={() => done(false)}>
-      <div className="modal big-file-modal" role="dialog" aria-label="Save a big file" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && done(false)}>
+      <div className="modal big-file-modal" role="dialog" aria-label={t('Save a big file')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && done(false)}>
         <header className="modal-head">
           <span className="dump-title">
-            <HardDrive size={15} /> Save a big file?
+            <HardDrive size={15} /> {t('Save a big file?')}
           </span>
-          <button className="icon-btn sm" onClick={() => done(false)} aria-label="Close">
+          <button className="icon-btn sm" onClick={() => done(false)} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body">
           <p className="bf-name">
-            <strong>{ask.name}</strong> is {fmtSize(ask.size)}.
+            {tj('{file} is {size}.', { file: <strong>{ask.name}</strong>, size: fmtSize(ask.size) })}
           </p>
           {known && (
             <>
@@ -46,18 +50,18 @@ function BigFileHost() {
                 <span className="bf-this" style={{ width: pct(Math.min(ask.size, ask.left!)) }} />
               </div>
               <p className="bf-room">
-                The company has {fmtSize(ask.left!)} free of {fmtSize(ask.total!)}, shared by everyone.{' '}
-                {ask.size > ask.left! ? 'This file doesn’t fit.' : ask.size / ask.left! >= 0.05 ? `This leaves ${fmtSize(ask.left! - ask.size)}.` : ''}
+                {t('The company has {left} free of {total}, shared by everyone.', { left: fmtSize(ask.left!), total: fmtSize(ask.total!) })}{' '}
+                {ask.size > ask.left! ? t('This file doesn’t fit.') : ask.size / ask.left! >= 0.05 ? t('This leaves {rest}.', { rest: fmtSize(ask.left! - ask.size) }) : ''}
               </p>
             </>
           )}
         </div>
         <footer className="modal-foot">
           <button type="button" className="ghost-btn" onClick={() => done(false)}>
-            Don’t upload
+            {t('Don’t upload')}
           </button>
           <button type="button" className="primary-btn" autoFocus disabled={known && ask.size > ask.left!} onClick={() => done(true)}>
-            Save it here
+            {t('Save it here')}
           </button>
         </footer>
       </div>

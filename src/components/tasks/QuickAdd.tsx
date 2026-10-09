@@ -11,7 +11,7 @@ import { term } from '../../terms';
 import type { Repeat, TaskStage } from '../../types';
 import { DayPicker, dayWords, toastAdded } from './TaskSheets';
 import { quoted, type NewTask, type TaskOps } from './taskOps';
-import { t } from '../../i18n';
+import { t, tx } from '../../i18n';
 import { fmtList, fmtTime } from '../../i18n/format';
 import { useLang } from '../../i18n/useLang';
 
@@ -346,7 +346,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
           {remindAt && (
             <button type="button" className="as-item" onClick={() => pick({ remindAt: '' }, 'reminder')}>
               <span className="as-icon" />
-              <span className="as-label">{t('No reminder')}</span>
+              <span className="as-label">{tx('option', 'No reminder')}</span>
             </button>
           )}
         </div>

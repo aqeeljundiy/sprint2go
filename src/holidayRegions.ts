@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CalEvent, CalendarDef } from './types';
 import { HOLIDAY_COUNTRIES, holidayCountry } from './data/holidays';
+import { getLang, mark, t } from './i18n/index'; // the full path: the unit tests load this file
 
 /** The id of a person's own holiday calendar for a country (the company's is holidayCalendarId). */
 export const personalHolidayId = (code: string) => `hol-x-${code}`;
@@ -20,9 +21,9 @@ const load = (code: string) => {
     p = fetch(`/api/holidays/${code}`)
       .then(async (r) => {
         const d = (await r.json().catch(() => ({}))) as HolidayList & { error?: string };
-        return r.ok ? d : { holidays: [], error: d.error ?? 'The holidays couldn’t be read. They’re tried again next time.' };
+        return r.ok ? d : { holidays: [], error: d.error ?? mark('The holidays couldn’t be read. They’re tried again next time.') };
       })
-      .catch(() => ({ holidays: [], error: 'Couldn’t reach the server. They’re tried again next time.' }));
+      .catch(() => ({ holidays: [], error: mark('Couldn’t reach the server. They’re tried again next time.') })); // English here, shown with t(error)
     p.then((d) => d.error && cache.delete(code)); // a failure is tried again on the next look
     cache.set(code, p);
   }
@@ -44,6 +45,7 @@ export function useHolidayRegions({ chosen, companyCountry, live }: { chosen: st
   const regions = useMemo(() => regionsOf(chosen, companyCountry), [chosen, companyCountry]);
   const extra = useMemo(() => regions.filter((c) => c !== companyCountry), [regions, companyCountry]);
   const [lists, setLists] = useState<Record<string, HolidayList>>({});
+  const lang = getLang(); // the names and notes below are words (the app re-renders on a switch)
   const key = extra.join(',');
   useEffect(() => {
     if (!live) return;
@@ -58,21 +60,21 @@ export function useHolidayRegions({ chosen, companyCountry, live }: { chosen: st
     () =>
       extra.map((code, i) => ({
         id: personalHolidayId(code),
-        name: `Holidays in ${holidayCountry(code)!.name}`,
+        name: t('Holidays in {country}', { country: t(holidayCountry(code)!.name) }),
         color: COLORS[i % COLORS.length],
         source: 'holidays',
         readOnly: true,
         share: 'details',
         country: code,
         ...(lists[code]?.at ? { syncedAt: lists[code].at } : {}),
-        ...(lists[code]?.error ? { error: lists[code].error } : !live ? { error: 'Other countries’ holidays come from the server, so they don’t show in this preview.' } : {}),
+        ...(lists[code]?.error ? { error: t(lists[code].error!) } : !live ? { error: t('Other countries’ holidays come from the server, so they don’t show in this preview.') } : {}),
       })),
-    [key, lists, live], // eslint-disable-line react-hooks/exhaustive-deps
+    [key, lists, live, lang], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const events = useMemo<CalEvent[]>(
     () =>
       extra.flatMap((code) => {
-        const name = holidayCountry(code)!.name;
+        const name = t(holidayCountry(code)!.name);
         return (lists[code]?.holidays ?? []).map((h, i) => ({
           id: `${personalHolidayId(code)}-${h.date}-${i}`,
           calendarId: personalHolidayId(code),
@@ -81,10 +83,10 @@ export function useHolidayRegions({ chosen, companyCountry, live }: { chosen: st
           start: `${h.date}T00:00:00`,
           end: `${h.end}T00:00:00`,
           allDay: true,
-          notes: [h.regions ? `Public holiday in ${h.regions} only.` : `Public holiday in ${name}.`, h.half ? 'A half day.' : '', h.tentative ? 'The date may still change.' : ''].filter(Boolean).join(' '),
+          notes: [h.regions ? t('Public holiday in {regions} only.', { regions: h.regions }) : t('Public holiday in {country}.', { country: name }), h.half ? t('A half day.') : '', h.tentative ? t('The date may still change.') : ''].filter(Boolean).join(' '),
         }));
       }),
-    [key, lists], // eslint-disable-line react-hooks/exhaustive-deps
+    [key, lists, lang], // eslint-disable-line react-hooks/exhaustive-deps
   );
   return { regions, showCompany: !!companyCountry && regions.includes(companyCountry), calendars, events };
 }

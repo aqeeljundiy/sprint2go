@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { X } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, User } from '../types';
 import { Draft, draftEvent, draftOf, draftTimes, EventForm } from './calendar/EventForm';
+import { t } from '../i18n';
 
 interface Props {
   start: Date;
-  event?: CalEvent; // editing this one
+  event?: CalEvent; // editing this one (one date of a repeating one: that date)
   calendars: CalendarDef[];
   team: User[];
   contacts: Person[];
   me: string;
-  onSave: (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task') => void;
+  /** `at`: the Save button, where one date of a repeating event asks which dates the change is for. */
+  onSave: (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task', at?: Element) => void;
   onClose: () => void;
 }
 
@@ -19,10 +21,11 @@ interface Props {
 export function EventEditor({ start, event, calendars, team, contacts, me, onSave, onClose }: Props) {
   const [draft, setDraft] = useState<Draft>(() => (event ? draftOf(new Date(event.start), new Date(event.end), event.calendarId, event) : draftOf(start, new Date(start.getTime() + 60 * 60_000), calendars[0].id)));
   const set = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
+  const saveBtn = useRef<HTMLButtonElement>(null);
   const { ok } = draftTimes(draft);
   const valid = !!draft.title.trim() && ok;
-  const save = () => valid && onSave(draftEvent(draft), draft.kind);
-  const what = event ? 'Edit event' : draft.kind === 'task' ? 'New task' : 'New event';
+  const save = () => valid && onSave(draftEvent(draft), draft.kind, saveBtn.current ?? undefined);
+  const what = event ? t('Edit event') : draft.kind === 'task' ? t('New task') : t('New event');
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
       <div
@@ -37,7 +40,7 @@ export function EventEditor({ start, event, calendars, team, contacts, me, onSav
       >
         <header className="modal-head">
           <span>{what}</span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -47,12 +50,12 @@ export function EventEditor({ start, event, calendars, team, contacts, me, onSav
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
-          {!ok && draft.title.trim() && <span className="muted small">End must be after start</span>}
+          {!ok && draft.title.trim() && <span className="muted small">{t('End must be after start')}</span>}
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
-          <button className="primary-btn" onClick={save} disabled={!valid}>
-            {event ? 'Save' : draft.kind === 'task' ? 'Add task' : 'Save'} <kbd>⌘↵</kbd>
+          <button ref={saveBtn} className="primary-btn" onClick={save} disabled={!valid}>
+            {event ? t('Save') : draft.kind === 'task' ? t('Add task') : t('Save')} <kbd>⌘↵</kbd>
           </button>
         </footer>
       </div>

@@ -16,6 +16,7 @@ import { useLongPress } from './ui/useLongPress';
 import { SendLaterPicker } from './mail/MailPickers';
 import { TemplatesPicker } from './mail/Templates';
 import { startAtTop } from './mail/caret';
+import { t, tx } from '../i18n';
 
 export interface OutgoingFile {
   name: string;
@@ -191,7 +192,7 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
     };
   }, [phone, parked]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const title = subject.trim() || 'New message';
+  const title = subject.trim() || t('New message');
   const discard = () => {
     setClosing(true);
     setTimeout(() => onClose(null), 160);
@@ -201,20 +202,22 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
     requestAnimationFrame(() => editor.current?.focus());
   };
   const trackTitle = !external.length
-    ? 'Your team’s mail is never tracked'
+    ? t('Your team’s mail is never tracked')
     : track
-      ? `${external.length === 1 ? `${external[0].name}’s copy gets` : `Each of the ${external.length} people outside the team gets a copy with`} an invisible picture and links that pass through ${product.name}, so you see when it’s opened and which links are clicked. Teammates are never tracked. Apple Mail can load pictures by itself, so treat opens as a hint.`
-      : 'Not tracked. Turn on to see when people outside the team open it and which links they click.';
+      ? external.length === 1
+        ? t('{name}’s copy gets an invisible picture and links that pass through {product}, so you see when it’s opened and which links are clicked. Teammates are never tracked. Apple Mail can load pictures by itself, so treat opens as a hint.', { name: external[0].name, product: product.name })
+        : t('Each of the {n} people outside the team gets a copy with an invisible picture and links that pass through {product}, so you see when it’s opened and which links are clicked. Teammates are never tracked. Apple Mail can load pictures by itself, so treat opens as a hint.', { n: external.length, product: product.name })
+      : t('Not tracked. Turn on to see when people outside the team open it and which links they click.');
 
   // Parked on a phone: a pill at the bottom; tap to carry on.
   if (phone && parked)
     return (
-      <div className={`compose min compose-pill${closing ? ' closing' : ''}`} role="group" aria-label={`Draft: ${title}`}>
+      <div className={`compose min compose-pill${closing ? ' closing' : ''}`} role="group" aria-label={t('Draft: {title}', { title })}>
         <button type="button" className="cp-open" onClick={() => onPark?.(false)}>
           <PenLine size={16} />
           <span>{title}</span>
         </button>
-        <button type="button" className="icon-btn" onClick={() => close()} aria-label="Save as a draft and close" title="Save as a draft">
+        <button type="button" className="icon-btn" onClick={() => close()} aria-label={t('Save as a draft and close')} title={t('Save as a draft')}>
           <X size={18} />
         </button>
       </div>
@@ -252,25 +255,25 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         )}
         {phone ? (
           <header ref={head} className="compose-head">
-            <button type="button" className="icon-btn" onClick={() => close()} aria-label="Close and keep as a draft" title="Close (kept in Drafts)">
+            <button type="button" className="icon-btn" onClick={() => close()} aria-label={t('Close and keep as a draft')} title={t('Close (kept in Drafts)')}>
               <X size={20} />
             </button>
             <span className="compose-title">{title}</span>
-            <button type="button" className="primary-btn compose-send lp" onClick={send} disabled={!valid} aria-label="Send. Hold for Send later" {...holdSend}>
-              <Send size={16} /> Send
+            <button type="button" className="primary-btn compose-send lp" onClick={send} disabled={!valid} aria-label={t('Send. Hold for Send later')} {...holdSend}>
+              <Send size={16} /> {t('Send')}
             </button>
           </header>
         ) : (
           <header className="compose-head" onClick={() => win === 'min' && setWin('normal')}>
             <span className="compose-title">{title}</span>
             <div onClick={(e) => e.stopPropagation()}>
-              <button className="icon-btn sm" onClick={() => setWin(win === 'min' ? 'normal' : 'min')} title="Minimize">
+              <button className="icon-btn sm" onClick={() => setWin(win === 'min' ? 'normal' : 'min')} title={t('Minimize')}>
                 <Minus size={15} />
               </button>
-              <button className="icon-btn sm" onClick={() => setWin(win === 'max' ? 'normal' : 'max')} title={win === 'max' ? 'Exit full screen' : 'Full screen'}>
+              <button className="icon-btn sm" onClick={() => setWin(win === 'max' ? 'normal' : 'max')} title={win === 'max' ? t('Exit full screen') : t('Full screen')}>
                 {win === 'max' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
-              <button className="icon-btn sm" onClick={() => close()} title="Save draft & close (Esc)">
+              <button className="icon-btn sm" onClick={() => close()} title={t('Save draft & close (Esc)')}>
                 <X size={15} />
               </button>
             </div>
@@ -280,12 +283,12 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         <div className="compose-main">
           {accounts.length > 1 && (
             <label className="compose-field from-field">
-              <span>From</span>
-              <Select value={fromId} onChange={setFromId} label="From" className="sel-flat from-sel" width={340} options={accounts.map((a) => ({ value: a.id, label: `${a.name} <${a.email}>`, hint: a.kind === 'shared' ? 'Shared inbox' : undefined }))} />
+              <span>{tx('mail', 'From')}</span>
+              <Select value={fromId} onChange={setFromId} label={tx('mail', 'From')} className="sel-flat from-sel" width={340} options={accounts.map((a) => ({ value: a.id, label: `${a.name} <${a.email}>`, hint: a.kind === 'shared' ? t('Shared inbox') : undefined }))} />
             </label>
           )}
           <RecipientInput
-            label="To"
+            label={t('To')}
             value={to}
             contacts={contacts}
             autoFocus={!to.length}
@@ -305,12 +308,12 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
             </div>
           )}
           <label className="compose-field">
-            <span>Subject</span>
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="What's this about?" />
+            <span>{t('Subject')}</span>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t('What’s this about?')} />
           </label>
 
           <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
-            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder="Write something great…" onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
+            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder={t('Write something great…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
           </div>
 
           {files.length > 0 && (
@@ -320,7 +323,7 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
                   <FileText size={15} />
                   <span className="fc-name">{f.name}</span>
                   <span className="fc-size">{fmtSize(f.size)}</span>
-                  <button onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))} aria-label="Remove attachment">
+                  <button onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))} aria-label={t('Remove attachment')}>
                     <X size={13} />
                   </button>
                 </div>
@@ -347,64 +350,64 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         {phone ? (
           // The bar above the keyboard: attach, AI, templates, formatting, tracking; Discard at the end.
           <footer className="compose-foot kb-bar" onMouseDown={(e) => e.preventDefault()}>
-            <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Attach files" title="Attach files">
+            <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} aria-label={t('Attach files')} title={t('Attach files')}>
               <Paperclip size={19} />
             </button>
-            <button type="button" className={`icon-btn${aiOpen ? ' on' : ''}`} onClick={() => setAiOpen((o) => !o)} aria-pressed={aiOpen} aria-label="Write with AI" title="Write with AI">
+            <button type="button" className={`icon-btn${aiOpen ? ' on' : ''}`} onClick={() => setAiOpen((o) => !o)} aria-pressed={aiOpen} aria-label={t('Write with AI')} title={t('Write with AI')}>
               <Sparkles size={19} />
             </button>
-            <button type="button" className="icon-btn" onClick={() => setTplOpen(true)} aria-label="Templates" title="Templates">
+            <button type="button" className="icon-btn" onClick={() => setTplOpen(true)} aria-label={t('Templates')} title={t('Templates')}>
               <FileText size={19} />
             </button>
-            <button type="button" className={`icon-btn${format ? ' on' : ''}`} onClick={() => setFormat((f) => !f)} aria-pressed={format} aria-label="Formatting" title="Formatting">
+            <button type="button" className={`icon-btn${format ? ' on' : ''}`} onClick={() => setFormat((f) => !f)} aria-pressed={format} aria-label={t('Formatting')} title={t('Formatting')}>
               <Type size={19} />
             </button>
             {canTrack && (
-              <button type="button" className={`icon-btn track-icon${track ? ' on' : ''}`} disabled={!external.length} onClick={() => setTrackChoice(!track)} aria-pressed={track} aria-label={track ? 'Read tracking is on' : 'Read tracking is off'} title={trackTitle}>
+              <button type="button" className={`icon-btn track-icon${track ? ' on' : ''}`} disabled={!external.length} onClick={() => setTrackChoice(!track)} aria-pressed={track} aria-label={track ? t('Read tracking is on') : t('Read tracking is off')} title={trackTitle}>
                 {track ? <Eye size={19} /> : <EyeOff size={19} />}
               </button>
             )}
             <span className="spacer" />
-            <button type="button" className="icon-btn" onClick={discard} aria-label="Discard" title="Discard">
+            <button type="button" className="icon-btn" onClick={discard} aria-label={t('Discard')} title={t('Discard')}>
               <Trash2 size={18} />
             </button>
           </footer>
         ) : (
           <footer className="compose-foot">
-            <button ref={laterBtn} className="ghost-btn sm" disabled={!valid} onClick={() => setLaterOpen((o) => !o)} title="Send later">
-              <Clock size={14} /> Later
+            <button ref={laterBtn} className="ghost-btn sm" disabled={!valid} onClick={() => setLaterOpen((o) => !o)} title={t('Send later')}>
+              <Clock size={14} /> {t('Later')}
             </button>
             <button className="primary-btn" onClick={send} disabled={!valid}>
-              <Send size={15} /> Send <kbd>⌘↵</kbd>
+              <Send size={15} /> {t('Send')} <kbd>⌘↵</kbd>
             </button>
-            <button className="icon-btn" title="Attach files" onClick={() => fileInput.current?.click()}>
+            <button className="icon-btn" title={t('Attach files')} onClick={() => fileInput.current?.click()}>
               <Paperclip size={17} />
             </button>
-            <button className={`icon-btn ai-btn ${aiOpen ? 'on' : ''}`} title="Write with AI" onClick={() => setAiOpen((o) => !o)}>
+            <button className={`icon-btn ai-btn ${aiOpen ? 'on' : ''}`} title={t('Write with AI')} onClick={() => setAiOpen((o) => !o)}>
               <Sparkles size={17} />
             </button>
-            <button ref={tplBtn} className={`icon-btn ${tplOpen ? 'on' : ''}`} title="Templates" onClick={() => setTplOpen((o) => !o)}>
+            <button ref={tplBtn} className={`icon-btn ${tplOpen ? 'on' : ''}`} title={t('Templates')} onClick={() => setTplOpen((o) => !o)}>
               <FileText size={17} />
             </button>
             {canTrack && (
               <div className="track-split">
                 <button className={`track-toggle ${track ? 'on' : ''}`} disabled={!external.length} onClick={() => setTrackChoice(!track)} title={trackTitle}>
                   {track ? <Eye size={15} /> : <EyeOff size={15} />}
-                  <span>{track ? 'Tracking' : !external.length && to.length ? 'Teammates aren’t tracked' : 'Not tracked'}</span>
+                  <span>{track ? t('Tracking') : !external.length && to.length ? t('Teammates aren’t tracked') : t('Not tracked')}</span>
                 </button>
                 {track && (
-                  <button className={`track-more ${optsOpen ? 'on' : ''}`} onClick={() => setOptsOpen((o) => !o)} title="Choose what to track">
+                  <button className={`track-more ${optsOpen ? 'on' : ''}`} onClick={() => setOptsOpen((o) => !o)} title={t('Choose what to track')}>
                     <ChevronUp size={14} />
                   </button>
                 )}
                 {track && optsOpen && (
                   <div className="track-menu" onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), setOptsOpen(false))}>
-                    <div className="tm-title">What do you want to know?</div>
+                    <div className="tm-title">{t('What do you want to know?')}</div>
                     {(
                       [
-                        ['opens', Eye, 'Opens', 'When and how often they open it'],
-                        ['clicks', MousePointerClick, 'Link clicks', 'Which links they click'],
-                        ['notify', Bell, 'Notify me', 'The first time each person opens it'],
+                        ['opens', Eye, t('Opens'), t('When and how often they open it')],
+                        ['clicks', MousePointerClick, t('Link clicks'), t('Which links they click')],
+                        ['notify', Bell, t('Notify me'), t('The first time each person opens it')],
                       ] as const
                     ).map(([key, Icon, label, hint]) => (
                       <label key={key} className="tm-row">
@@ -418,30 +421,30 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
                     ))}
                     <div className="tm-remind">
                       <span>
-                        <strong>Remind me if no reply</strong>
-                        <small>Tells you, and moves it to “Waiting for a reply”</small>
+                        <strong>{t('Remind me if no reply')}</strong>
+                        <small>{t('Tells you, and moves it to “Waiting for reply”')}</small>
                       </span>
                       <div className="segmented">
                         {[0, 1, 3, 7].map((d) => (
                           <button key={d} className={opts.remindDays === d ? 'on' : ''} onClick={() => setOpts((o) => ({ ...o, remindDays: d }))}>
-                            {d ? `${d}d` : 'Off'}
+                            {d ? t('{n}d', { n: d }) : tx('remind', 'Off')}
                           </button>
                         ))}
                       </div>
                     </div>
-                    <div className="tm-foot">Tracking {external.map((p) => p.name.split(' ')[0]).join(', ')}. Teammates are never tracked. Apple Mail and some mail filters load pictures by themselves; those opens show as maybe automatic.</div>
+                    <div className="tm-foot">{t('Tracking {names}. Teammates are never tracked. Apple Mail and some mail filters load pictures by themselves; those opens show as maybe automatic.', { names: external.map((p) => p.name.split(' ')[0]).join(', ') })}</div>
                   </div>
                 )}
               </div>
             )}
             <span className="spacer" />
-            <button className="icon-btn" title="Discard" onClick={discard}>
+            <button className="icon-btn" title={t('Discard')} onClick={discard}>
               <Trash2 size={16} />
             </button>
           </footer>
         )}
 
-        {dragOver && <div className="drop-hint">Drop files to attach</div>}
+        {dragOver && <div className="drop-hint">{t('Drop files to attach')}</div>}
       </div>
       <SendLaterPicker open={laterOpen} onClose={() => setLaterOpen(false)} anchor={phone ? undefined : laterBtn} onPick={(at) => close(true, at)} />
       <TemplatesPicker open={tplOpen} onClose={() => setTplOpen(false)} anchor={phone ? undefined : tplBtn} userId={userId} current={ownText} onInsert={insertTemplate} />
