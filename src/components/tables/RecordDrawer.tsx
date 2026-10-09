@@ -13,6 +13,8 @@ import { cellText, fieldIcon, isComputed, isEmpty, passes, rowName, statusField,
 import { useOnePanel } from '../../onePanel';
 import { useFocusedScreen } from '../../mobile/chrome';
 import { EditSheet } from './EditSheet';
+import { t, tn, tx } from '../../i18n';
+import { tj } from '../../i18n/tj';
 
 /** What the row page can do with its fields' settings (people who may change the table's columns). */
 export interface PageEdit {
@@ -29,21 +31,21 @@ export function FieldLine({ f, row, ctx, onCell, readOnly, table, edit, dragProp
   const labelRef = useRef<HTMLButtonElement>(null);
   const [pop, setPop] = useState(false);
   const [settings, setSettings] = useState(false);
-  const t = table ?? ctx.tables.find((x) => x.id === row.tableId);
-  const v = t ? valueOf(t, f, row, ctx) : row.values[f.id];
+  const tb = table ?? ctx.tables.find((x) => x.id === row.tableId);
+  const v = tb ? valueOf(tb, f, row, ctx) : row.values[f.id];
   const Icon = fieldIcon(f.type);
   const save = (x: CellValue) => onCell(f.id, x);
   let editor: React.ReactNode;
   if (f.type === 'button') editor = <span className="tb-rd-btn"><ButtonCell f={f} row={row} ctx={ctx} /></span>;
-  else if (readOnly || isComputed(f)) editor = <span className="tb-rd-val ro"><CellView f={f} v={v} ctx={ctx} wrap />{isEmpty(v) && <span className="muted">Empty</span>}</span>;
+  else if (readOnly || isComputed(f)) editor = <span className="tb-rd-val ro"><CellView f={f} v={v} ctx={ctx} wrap />{isEmpty(v) && <span className="muted">{tx('value', 'Empty')}</span>}</span>;
   else if (f.type === 'rating') editor = <span className="tb-rd-val"><RatingInput v={v} max={f.max ?? 5} onSave={save} /></span>;
-  else if (f.type === 'date') editor = <span className="tb-rd-date"><DatePicker value={typeof v === 'string' ? v : ''} onChange={(d) => save(d || null)} label={f.name} placeholder="Empty" className="sel-flat" /></span>;
+  else if (f.type === 'date') editor = <span className="tb-rd-date"><DatePicker value={typeof v === 'string' ? v : ''} onChange={(d) => save(d || null)} label={f.name} placeholder={tx('value', 'Empty')} className="sel-flat" /></span>;
   else if (f.type === 'files')
     editor = (
       <>
         <button ref={ref} type="button" className="tb-rd-val" onClick={() => setPop(true)}>
           <CellView f={f} v={v} ctx={ctx} />
-          {isEmpty(v) && <span className="muted">Add files</span>}
+          {isEmpty(v) && <span className="muted">{t('Add files')}</span>}
         </button>
         <FilesPopover v={v} anchor={ref} open={pop} onClose={() => setPop(false)} onSave={save} title={f.name} />
       </>
@@ -62,7 +64,7 @@ export function FieldLine({ f, row, ctx, onCell, readOnly, table, edit, dragProp
       <>
         <button ref={ref} type="button" className="tb-rd-val" onClick={() => setPop(true)}>
           <CellView f={f} v={v} ctx={ctx} />
-          {cellText(f, v, { users: ctx.users, rowName: () => 'x' }) === '' && <span className="muted">Empty</span>}
+          {cellText(f, v, { users: ctx.users, rowName: () => 'x' }) === '' && <span className="muted">{tx('value', 'Empty')}</span>}
         </button>
         <PickPopover f={f} v={v} ctx={ctx} anchor={ref} open={pop} onClose={() => setPop(false)} onSave={save} />
       </>
@@ -70,13 +72,13 @@ export function FieldLine({ f, row, ctx, onCell, readOnly, table, edit, dragProp
   return (
     <div className="tb-rd-line" {...dragProps}>
       <span className="tb-rd-labelcell">
-        {edit && t ? (
+        {edit && tb ? (
           <>
-            <button ref={labelRef} type="button" className="tb-rd-label editable" title={f.description || 'Rename, change type, hide or delete'} onClick={() => setSettings((x) => !x)}>
+            <button ref={labelRef} type="button" className="tb-rd-label editable" title={f.description || t('Rename, change type, hide or delete')} onClick={() => setSettings((x) => !x)}>
               {dragProps?.draggable && <GripVertical size={13} className="tb-rd-grip" />}
               <Icon size={13} /> <span>{f.name}</span>
             </button>
-            <FieldMenu anchor={labelRef} open={settings} onClose={() => setSettings(false)} field={f} table={t} tables={edit.tables} onSave={edit.onSave} onDelete={() => edit.onDelete(f.id)} onHide={() => edit.onHide(f.id)} hideLabel="Hide on the row page" users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />
+            <FieldMenu anchor={labelRef} open={settings} onClose={() => setSettings(false)} field={f} table={tb} tables={edit.tables} onSave={edit.onSave} onDelete={() => edit.onDelete(f.id)} onHide={() => edit.onHide(f.id)} hideLabel={t('Hide on the row page')} users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />
           </>
         ) : (
           <span className="tb-rd-label" title={f.description}>
@@ -94,7 +96,7 @@ function LongText({ v, onSave, label }: { v: CellValue | undefined; onSave: (v: 
   const start = typeof v === 'string' ? v : '';
   const [text, setText] = useState(start);
   useEffect(() => setText(start), [start]);
-  return <textarea className="tb-rd-text" rows={1} value={text} aria-label={label} placeholder="Empty" onChange={(e) => setText(e.target.value)} onBlur={() => text.trim() !== start && onSave(text.trim() || null)} />;
+  return <textarea className="tb-rd-text" rows={1} value={text} aria-label={label} placeholder={tx('value', 'Empty')} onChange={(e) => setText(e.target.value)} onBlur={() => text.trim() !== start && onSave(text.trim() || null)} />;
 }
 
 /** Where a row sits among the rows shown, with the way to the one before and after. */
@@ -163,10 +165,10 @@ export function RecordDrawer(p: RecordProps) {
 }
 
 function linkedFromOf(table: DataTable, row: TableRow, ctx: CellCtx) {
-  return ctx.tables.flatMap((t) =>
-    t.fields
+  return ctx.tables.flatMap((tb) =>
+    tb.fields
       .filter((f) => f.type === 'link' && f.linkTable === table.id)
-      .flatMap((f) => ctx.rows.filter((r) => r.tableId === t.id && Array.isArray(r.values[f.id]) && (r.values[f.id] as string[]).includes(row.id)).map((r) => ({ t, f, r }))),
+      .flatMap((f) => ctx.rows.filter((r) => r.tableId === tb.id && Array.isArray(r.values[f.id]) && (r.values[f.id] as string[]).includes(row.id)).map((r) => ({ t: tb, f, r }))),
   );
 }
 
@@ -192,19 +194,19 @@ function useRowKeys(nav: RowNav | undefined, onClose?: () => void) {
   }, []);
 }
 
-function Comments({ row, ctx, me, onComment }: { row: TableRow; ctx: CellCtx; me: string; onComment: (t: string) => void }) {
+function Comments({ row, ctx, me, onComment }: { row: TableRow; ctx: CellCtx; me: string; onComment: (tb: string) => void }) {
   const [comment, setComment] = useState('');
   const userOf = (id: string): User | undefined => ctx.users.find((u) => u.id === id);
   return (
     <div className="tb-rd-sec">
-      <h4>Comments</h4>
+      <h4>{t('Comments')}</h4>
       {(row.comments ?? []).map((c) => {
         const u = userOf(c.by);
         return (
           <div key={c.id} className="tb-comment">
             {u && <Avatar person={u} size={24} />}
             <div>
-              <strong>{u?.name.split(' ')[0] ?? 'Someone'}</strong> <small className="muted">{relative(c.at)}</small>
+              <strong>{u?.name.split(' ')[0] ?? t('Someone')}</strong> <small className="muted">{relative(c.at)}</small>
               <p>{c.text}</p>
             </div>
           </div>
@@ -220,8 +222,8 @@ function Comments({ row, ctx, me, onComment }: { row: TableRow; ctx: CellCtx; me
         }}
       >
         {userOf(me) && <Avatar person={userOf(me)!} size={24} />}
-        <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Write a comment" aria-label="Write a comment" enterKeyHint="send" />
-        <button type="submit" className="icon-btn sm" disabled={!comment.trim()} aria-label="Send comment">
+        <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment')} aria-label={t('Write a comment')} enterKeyHint="send" />
+        <button type="submit" className="icon-btn sm" disabled={!comment.trim()} aria-label={t('Send comment')}>
           <Send size={15} />
         </button>
       </form>
@@ -232,39 +234,39 @@ function Comments({ row, ctx, me, onComment }: { row: TableRow; ctx: CellCtx; me
 function History({ table, row, ctx }: { table: DataTable; row: TableRow; ctx: CellCtx }) {
   const [all, setAll] = useState(false);
   if (!row.history?.length) return null;
-  const byName = (id: string) => (id === 'webhook' ? 'A webhook' : id === 'rule' ? 'A rule' : (ctx.users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone'));
-  const fieldName = (id: string) => table.fields.find((f) => f.id === id)?.name ?? 'a field';
+  const byName = (id: string) => (id === 'webhook' ? t('A webhook') : id === 'rule' ? t('A rule') : (ctx.users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone')));
+  const fieldName = (id: string) => table.fields.find((f) => f.id === id)?.name ?? t('a field');
   const show = (id: string, v: CellValue) => {
     const f = table.fields.find((x) => x.id === id);
-    return f ? cellText(f, v, { users: ctx.users, rowName: (rid) => rowName(ctx.tables.find((t) => t.id === f.linkTable) ?? table, ctx.rows.find((r) => r.id === rid)) }) || 'empty' : '';
+    return f ? cellText(f, v, { users: ctx.users, rowName: (rid) => rowName(ctx.tables.find((tb) => tb.id === f.linkTable) ?? table, ctx.rows.find((r) => r.id === rid)) }) || tx('value', 'empty') : '';
   };
   const list = [...row.history].reverse();
   return (
     <div className="tb-rd-sec">
-      <h4>History</h4>
+      <h4>{t('History')}</h4>
       <ul className="tb-history">
         {list.slice(0, all ? 50 : 5).map((h, i) => (
           <li key={i}>
-            <strong>{byName(h.by)}</strong> changed {fieldName(h.fieldId)}: <span className="muted">{show(h.fieldId, h.from)}</span> → {show(h.fieldId, h.to)} <small className="muted">· {relative(h.at)}</small>
+            {tj('{who} changed {field}: {from} → {to}', { who: <strong>{byName(h.by)}</strong>, field: fieldName(h.fieldId), from: <span className="muted">{show(h.fieldId, h.from)}</span>, to: show(h.fieldId, h.to) })} <small className="muted">· {relative(h.at)}</small>
           </li>
         ))}
       </ul>
       {list.length > 5 && (
         <button type="button" className="link-btn small" onClick={() => setAll((x) => !x)}>
-          {all ? 'Show less' : `Show ${list.length - 5} older`}
+          {all ? t('Show less') : tn(list.length - 5, 'Show {n} older', 'Show {n} older')}
         </button>
       )}
     </div>
   );
 }
 
-function Extras({ row, linkedFrom, onOpenRow }: { row: TableRow; linkedFrom: ReturnType<typeof linkedFromOf>; onOpenRow: (t: string, r: string) => void }) {
+function Extras({ row, linkedFrom, onOpenRow }: { row: TableRow; linkedFrom: ReturnType<typeof linkedFromOf>; onOpenRow: (tb: string, r: string) => void }) {
   return (
     <>
       {row.extra && Object.keys(row.extra).length > 0 && (
         <div className="tb-rd-sec">
-          <h4>Also received</h4>
-          <p className="muted small">Came in with the data but isn’t in a field. Map it in Automations to give it one.</p>
+          <h4>{t('Also received')}</h4>
+          <p className="muted small">{t('Came in with the data but isn’t in a field. Map it in Automations to give it one.')}</p>
           <dl className="tb-extra">
             {Object.entries(row.extra).map(([k, v]) => (
               <div key={k}>
@@ -277,13 +279,13 @@ function Extras({ row, linkedFrom, onOpenRow }: { row: TableRow; linkedFrom: Ret
       )}
       {linkedFrom.length > 0 && (
         <div className="tb-rd-sec">
-          <h4>Linked here</h4>
-          {linkedFrom.map(({ t, f, r }) => (
-            <button key={`${f.id}:${r.id}`} type="button" className="tb-rd-link" onClick={() => onOpenRow(t.id, r.id)}>
-              <i className="tb-dot" style={{ background: t.color }} />
-              <span>{rowName(t, r)}</span>
+          <h4>{t('Linked here')}</h4>
+          {linkedFrom.map(({ t: tb, f, r }) => (
+            <button key={`${f.id}:${r.id}`} type="button" className="tb-rd-link" onClick={() => onOpenRow(tb.id, r.id)}>
+              <i className="tb-dot" style={{ background: tb.color }} />
+              <span>{rowName(tb, r)}</span>
               <small className="muted">
-                {t.name} · {f.name}
+                {tb.name} · {f.name}
               </small>
             </button>
           ))}
@@ -316,9 +318,8 @@ function Meta({ row, ctx }: { row: TableRow; ctx: CellCtx }) {
   const u = ctx.users.find((x) => x.id === row.createdBy);
   return (
     <p className="muted small tb-rd-meta">
-      Added {relative(row.createdAt)}
-      {row.createdBy === 'webhook' ? ' from a webhook' : u ? ` by ${u.name.split(' ')[0]}` : ''}
-      {row.updatedAt !== row.createdAt ? ` · changed ${relative(row.updatedAt)}` : ''}
+      {row.createdBy === 'webhook' ? t('Added {when} from a webhook', { when: relative(row.createdAt) }) : u ? t('Added {when} by {name}', { when: relative(row.createdAt), name: u.name.split(' ')[0] }) : t('Added {when}', { when: relative(row.createdAt) })}
+      {row.updatedAt !== row.createdAt ? ` · ${t('changed {when}', { when: relative(row.updatedAt) })}` : ''}
     </p>
   );
 }
@@ -382,40 +383,40 @@ function RecordPanel({ table, row, ctx, me, onCell, onComment, onDelete, onDupli
           </span>
           {nav && nav.count > 1 && (
             <span className="tb-rd-nav">
-              <button type="button" className="icon-btn sm" disabled={!nav.prev} onClick={nav.prev} title="Previous row (K)" aria-label="Previous row">
+              <button type="button" className="icon-btn sm" disabled={!nav.prev} onClick={nav.prev} title={t('Previous row (K)')} aria-label={t('Previous row')}>
                 <ChevronUp size={16} />
               </button>
-              <button type="button" className="icon-btn sm" disabled={!nav.next} onClick={nav.next} title="Next row (J)" aria-label="Next row">
+              <button type="button" className="icon-btn sm" disabled={!nav.next} onClick={nav.next} title={t('Next row (J)')} aria-label={t('Next row')}>
                 <ChevronDown size={16} />
               </button>
               <small className="muted">
-                {nav.index + 1} of {nav.count}
+                {t('{index} of {count}', { index: nav.index + 1, count: nav.count })}
               </small>
             </span>
           )}
           <span className="spacer" />
           {onCopyLink && (
-            <button type="button" className="icon-btn sm" title="Copy a link to this row" aria-label="Copy link" onClick={onCopyLink}>
+            <button type="button" className="icon-btn sm" title={t('Copy a link to this row')} aria-label={t('Copy link')} onClick={onCopyLink}>
               <Link2 size={15} />
             </button>
           )}
           {onToggleFull && (
-            <button type="button" className="icon-btn sm tb-rd-full" title={full ? 'Open as a side panel' : 'Open as a page'} aria-label={full ? 'Open as a side panel' : 'Open as a page'} onClick={onToggleFull}>
+            <button type="button" className="icon-btn sm tb-rd-full" title={full ? t('Open as a side panel') : t('Open as a page')} aria-label={full ? t('Open as a side panel') : t('Open as a page')} onClick={onToggleFull}>
               {full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
           )}
           {!readOnly && !guest && (
             <>
-              <button type="button" className="icon-btn sm" title="Duplicate row" aria-label="Duplicate row" onClick={onDuplicate}>
+              <button type="button" className="icon-btn sm" title={t('Duplicate row')} aria-label={t('Duplicate row')} onClick={onDuplicate}>
                 <Copy size={15} />
               </button>
               <span className="tb-rd-sep" aria-hidden />
-              <button type="button" className="icon-btn sm" title="Delete row" aria-label="Delete row" onClick={() => confirm(`Delete “${rowName(table, row)}”?`) && onDelete()}>
+              <button type="button" className="icon-btn sm" title={t('Delete row')} aria-label={t('Delete row')} onClick={() => confirm(t('Delete “{name}”?', { name: rowName(table, row) })) && onDelete()}>
                 <Trash2 size={15} />
               </button>
             </>
           )}
-          <button type="button" className="icon-btn sm" onClick={onClose} aria-label="Close" title="Close (Esc)">
+          <button type="button" className="icon-btn sm" onClick={onClose} aria-label={t('Close')} title={t('Close (Esc)')}>
             <X size={16} />
           </button>
         </header>
@@ -439,7 +440,9 @@ function RecordPanel({ table, row, ctx, me, onCell, onComment, onDelete, onDupli
             <>
               <button type="button" className="link-btn small tb-rd-more" onClick={() => setShowFolded((x) => !x)} aria-expanded={showFolded}>
                 <ChevronRight size={13} className={`rot-chev ${showFolded ? 'open' : ''}`} />
-                {showFolded ? 'Hide' : 'Show'} {folded.length} {page.hideEmpty && folded.every((f) => !hiddenIds.has(f.id)) ? 'empty' : 'more'} {folded.length === 1 ? 'field' : 'fields'}
+                {page.hideEmpty && folded.every((f) => !hiddenIds.has(f.id))
+                  ? showFolded ? tn(folded.length, 'Hide {n} empty field', 'Hide {n} empty fields') : tn(folded.length, 'Show {n} empty field', 'Show {n} empty fields')
+                  : showFolded ? tn(folded.length, 'Hide {n} more field', 'Hide {n} more fields') : tn(folded.length, 'Show {n} more field', 'Show {n} more fields')}
               </button>
               <div className={`fold ${showFolded ? 'open' : ''}`}>
                 <div className="fold-in">
@@ -449,7 +452,7 @@ function RecordPanel({ table, row, ctx, me, onCell, onComment, onDelete, onDupli
                         {line(f, false)}
                         {hiddenIds.has(f.id) && onPage && (
                           <button type="button" className="link-btn small" onClick={() => onPage({ ...page, hidden: (page.hidden ?? []).filter((x) => x !== f.id) })}>
-                            Show on the page
+                            {t('Show on the page')}
                           </button>
                         )}
                       </div>
@@ -464,18 +467,18 @@ function RecordPanel({ table, row, ctx, me, onCell, onComment, onDelete, onDupli
               {onNewField && (
                 <>
                   <button ref={addRef} type="button" className="link-btn small" onClick={() => setAdding(true)}>
-                    <Plus size={13} /> Add a field
+                    <Plus size={13} /> {t('Add a field')}
                   </button>
                   {edit && <FieldMenu anchor={addRef} open={adding} onClose={() => setAdding(false)} field={null} table={table} tables={edit.tables} onSave={onNewField} users={ctx.users} channels={edit.channels} rows={ctx.rows} previewCtx={ctx} />}
                 </>
               )}
               {onLayout && (
                 <button type="button" className="link-btn small" onClick={onLayout}>
-                  <LayoutTemplate size={13} /> Page layout
+                  <LayoutTemplate size={13} /> {t('Page layout')}
                 </button>
               )}
               <label className="check-row small">
-                <input type="checkbox" checked={!!page.hideEmpty} onChange={(e) => onPage({ ...page, hideEmpty: e.target.checked })} /> Fold empty fields away
+                <input type="checkbox" checked={!!page.hideEmpty} onChange={(e) => onPage({ ...page, hideEmpty: e.target.checked })} /> {t('Fold empty fields away')}
               </label>
             </div>
           )}
@@ -520,10 +523,10 @@ function PhoneField({ f, table, row, ctx, readOnly, onEdit, onCell }: { f: Table
     );
   return (
     <div className={`tb-pf${ro ? ' ro' : ''}`}>
-      <button type="button" className="tb-pf-tap" disabled={ro} onClick={() => onEdit(f)} aria-label={`${f.name}: ${cellText(f, v, ctx) || 'empty'}${ro ? '' : ', change'}`}>
+      <button type="button" className="tb-pf-tap" disabled={ro} onClick={() => onEdit(f)} aria-label={ro ? t('{field}: {value}', { field: f.name, value: cellText(f, v, ctx) || tx('value', 'empty') }) : t('{field}: {value}, change', { field: f.name, value: cellText(f, v, ctx) || tx('value', 'empty') })}>
         {label}
         {f.description && <small className="tb-rd-desc">{f.description}</small>}
-        <span className="tb-pf-val">{isEmpty(v) ? <span className="muted">{ro ? 'Empty' : `Add ${f.name.toLowerCase()}`}</span> : <CellView f={f} v={v} ctx={ctx} wrap />}</span>
+        <span className="tb-pf-val">{isEmpty(v) ? <span className="muted">{ro ? tx('value', 'Empty') : t('Add {field}', { field: f.name.toLowerCase() })}</span> : <CellView f={f} v={v} ctx={ctx} wrap />}</span>
       </button>
       {!isEmpty(v) && <ContactActions f={f} v={v} />}
     </div>
@@ -560,8 +563,8 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
   const field = (f: TableField) => <PhoneField key={f.id} f={f} table={table} row={row} ctx={ctx} readOnly={ro(f)} onEdit={(x) => setEditing(x.id)} onCell={onCell} />;
   const more = useActionMenu(
     () => [
-      ...(onCopyLink ? [{ label: 'Copy link', icon: Link2, run: onCopyLink }] : []),
-      ...(!readOnly && !guest ? [{ label: 'Duplicate', icon: CopyPlus, run: onDuplicate }, { label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => confirm(`Delete “${rowName(table, row)}”?`) && onDelete() }] : []),
+      ...(onCopyLink ? [{ label: t('Copy link'), icon: Link2, run: onCopyLink }] : []),
+      ...(!readOnly && !guest ? [{ label: t('Duplicate'), icon: CopyPlus, run: onDuplicate }, { label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => confirm(t('Delete “{name}”?', { name: rowName(table, row) })) && onDelete() }] : []),
     ],
     { title: rowName(table, row) },
   );
@@ -579,7 +582,7 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
         <>
           <button type="button" className="tb-pf-more" onClick={() => setShowFolded((x) => !x)} aria-expanded={showFolded}>
             <ChevronRight size={15} className={`rot-chev ${showFolded ? 'open' : ''}`} />
-            {showFolded ? 'Fewer fields' : `${folded.length} more ${folded.length === 1 ? 'field' : 'fields'}`}
+            {showFolded ? t('Fewer fields') : tn(folded.length, '{n} more field', '{n} more fields')}
           </button>
           <div className={`fold ${showFolded ? 'open' : ''}`}>
             <div className="fold-in">
@@ -601,7 +604,7 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
   const footer =
     main || (nav && nav.count > 1) ? (
       <div className="tb-page-foot">
-        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.prev} onClick={nav?.prev} aria-label="Previous row">
+        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.prev} onClick={nav?.prev} aria-label={t('Previous row')}>
           <ChevronLeft size={22} />
         </button>
         {main ? (
@@ -609,9 +612,9 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
             <ButtonCell f={main} row={row} ctx={ctx} />
           </span>
         ) : (
-          <small className="muted tb-page-pos">{nav ? `${nav.index + 1} of ${nav.count}` : ''}</small>
+          <small className="muted tb-page-pos">{nav ? t('{index} of {count}', { index: nav.index + 1, count: nav.count }) : ''}</small>
         )}
-        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.next} onClick={nav?.next} aria-label="Next row">
+        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.next} onClick={nav?.next} aria-label={t('Next row')}>
           <ChevronRight size={22} />
         </button>
       </div>
@@ -623,7 +626,7 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
       className="tb-page"
       actions={
         more.open || (!readOnly && !guest) || onCopyLink ? (
-          <button ref={moreBtn} type="button" className="icon-btn" aria-label="Row options" onClick={() => more.openFrom(moreBtn)}>
+          <button ref={moreBtn} type="button" className="icon-btn" aria-label={t('Row options')} onClick={() => more.openFrom(moreBtn)}>
             <MoreHorizontal size={20} />
           </button>
         ) : undefined
@@ -634,7 +637,7 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
         {ro(table.fields[0]) ? (
           <h2 className="tb-page-title">{rowName(table, row)}</h2>
         ) : (
-          <button type="button" className="tb-page-title" onClick={() => setEditing(table.fields[0].id)} aria-label={`${table.fields[0].name}: ${rowName(table, row)}, change`}>
+          <button type="button" className="tb-page-title" onClick={() => setEditing(table.fields[0].id)} aria-label={t('{field}: {value}, change', { field: table.fields[0].name, value: rowName(table, row) })}>
             {rowName(table, row)}
           </button>
         )}
@@ -646,7 +649,7 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
               return (
                 <button key={f.id} type="button" className="tb-pin" disabled={ro(f) || isComputed(f)} onClick={() => (f.type === 'checkbox' ? onCell(f.id, !v) : setEditing(f.id))}>
                   <small>{f.name}</small>
-                  <span>{isEmpty(v) ? <span className="muted">Empty</span> : <CellView f={f} v={v} ctx={ctx} />}</span>
+                  <span>{isEmpty(v) ? <span className="muted">{tx('value', 'Empty')}</span> : <CellView f={f} v={v} ctx={ctx} />}</span>
                 </button>
               );
             })}
@@ -656,14 +659,14 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
           <>
             <div className="segmented tb-page-tabs" role="tablist">
               <button type="button" role="tab" aria-selected={tab === 'fields'} className={tab === 'fields' ? 'on' : ''} onClick={() => setTab('fields')}>
-                Fields
+                {t('Fields')}
               </button>
               <button type="button" role="tab" aria-selected={tab === 'activity'} className={tab === 'activity' ? 'on' : ''} onClick={() => setTab('activity')}>
-                Activity
+                {t('Activity')}
               </button>
               {fileFields.length > 0 && (
                 <button type="button" role="tab" aria-selected={tab === 'files'} className={tab === 'files' ? 'on' : ''} onClick={() => setTab('files')}>
-                  Files
+                  {t('Files')}
                 </button>
               )}
             </div>

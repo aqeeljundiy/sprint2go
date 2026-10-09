@@ -7,16 +7,20 @@ import { localDay, uid } from '../../utils';
 import { CellView, type CellCtx } from './Cell';
 import { groupRows, isEmpty, rowColors, rowName, valueOf, viewFields } from './fields';
 import { EmptyState } from '../ui/EmptyState';
+import { t, tn } from '../../i18n';
+import { fmtDate, fmtDay, fmtMonth, fmtWeekday, fmtWeekdayLong, weekdayNames } from '../../i18n/format';
+import { useLang } from '../../i18n/useLang';
 
 /** The fields a card or list row shows: the view's visible ones after the name, minus long and empty ones. */
-const cardFields = (t: DataTable, view: TableViewDef, n: number) => viewFields(t, view).filter((f) => f.id !== t.fields[0]?.id && f.type !== 'longtext' && f.type !== 'button' && f.id !== view.cover).slice(0, n);
+const cardFields = (tb: DataTable, view: TableViewDef, n: number) => viewFields(tb, view).filter((f) => f.id !== tb.fields[0]?.id && f.type !== 'longtext' && f.type !== 'button' && f.id !== view.cover).slice(0, n);
 
 /** A compact list: the name and a few fields on one line per row, grouped (and sub-grouped) if the view groups. */
-export function ListView({ table: t, view, rows, ctx, onOpenRow, onView }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; onOpenRow: (id: string) => void; onView: (p: Partial<TableViewDef>) => void }) {
-  const fields = cardFields(t, view, 5);
-  const gf = view.groupBy ? t.fields.find((f) => f.id === view.groupBy) : undefined;
-  const sf = gf && view.subGroupBy ? t.fields.find((f) => f.id === view.subGroupBy) : undefined;
-  const groups = useMemo(() => (gf ? groupRows(t, gf, rows, ctx) : [{ key: '*', label: '', value: null, rows }]), [gf, t, rows, ctx]);
+export function ListView({ table: tb, view, rows, ctx, onOpenRow, onView }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; onOpenRow: (id: string) => void; onView: (p: Partial<TableViewDef>) => void }) {
+  const lang = useLang(); // group names ("No status") are words: rebuild them on a language switch
+  const fields = cardFields(tb, view, 5);
+  const gf = view.groupBy ? tb.fields.find((f) => f.id === view.groupBy) : undefined;
+  const sf = gf && view.subGroupBy ? tb.fields.find((f) => f.id === view.subGroupBy) : undefined;
+  const groups = useMemo(() => (gf ? groupRows(tb, gf, rows, ctx) : [{ key: '*', label: '', value: null, rows }]), [gf, tb, rows, ctx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const collapsed = new Set(view.collapsed ?? []);
   const fold = (key: string) => onView({ collapsed: collapsed.has(key) ? [...collapsed].filter((x) => x !== key) : [...collapsed, key] });
   const toggle = (key: string, g: { label: string; color?: string; rows: TableRow[] }, sub?: boolean) => (
@@ -29,13 +33,13 @@ export function ListView({ table: t, view, rows, ctx, onOpenRow, onView }: { tab
   );
   const list = (rs: TableRow[]) =>
     rs.map((r, i) => {
-      const tint = rowColors(t, view, r, ctx);
+      const tint = rowColors(tb, view, r, ctx);
       return (
         <button key={r.id} type="button" className={`tb-list-row${tint.row ? ' tinted' : ''}`} style={{ ['--i' as string]: Math.min(i, 20), ...(tint.row ? { ['--tint' as string]: tint.row } : {}) }} onClick={() => onOpenRow(r.id)}>
-          <strong>{rowName(t, r)}</strong>
+          <strong>{rowName(tb, r)}</strong>
           <span className="tb-list-fields">
             {fields.map((f) => {
-              const v = valueOf(t, f, r, ctx);
+              const v = valueOf(tb, f, r, ctx);
               return isEmpty(v) ? null : (
                 <span key={f.id} className="tb-list-f" title={f.name} data-tinted={tint.cells[f.id] ? '' : undefined} style={tint.cells[f.id] ? { ['--tint' as string]: tint.cells[f.id] } : undefined}>
                   <CellView f={f} v={v} ctx={ctx} />
@@ -53,7 +57,7 @@ export function ListView({ table: t, view, rows, ctx, onOpenRow, onView }: { tab
           {gf && toggle(g.key, g)}
           {!collapsed.has(g.key) &&
             (sf
-              ? groupRows(t, sf, g.rows, ctx).map((sg) => {
+              ? groupRows(tb, sf, g.rows, ctx).map((sg) => {
                   const key = `${g.key}/${sg.key}`;
                   return (
                     <div key={key} className="tb-list-sub">
@@ -70,9 +74,9 @@ export function ListView({ table: t, view, rows, ctx, onOpenRow, onView }: { tab
 }
 
 /** Cards with a picture (the first image in the chosen files field), the name and a few fields. */
-export function GalleryView({ table: t, view, rows, ctx, onOpenRow, onAddRow }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; onOpenRow: (id: string) => void; onAddRow?: () => void }) {
-  const fields = cardFields(t, view, 4);
-  const cover = view.cover ? t.fields.find((f) => f.id === view.cover) : undefined;
+export function GalleryView({ table: tb, view, rows, ctx, onOpenRow, onAddRow }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; onOpenRow: (id: string) => void; onAddRow?: () => void }) {
+  const fields = cardFields(tb, view, 4);
+  const cover = view.cover ? tb.fields.find((f) => f.id === view.cover) : undefined;
   return (
     <div className="tb-gallery">
       {rows.map((r, i) => {
@@ -81,9 +85,9 @@ export function GalleryView({ table: t, view, rows, ctx, onOpenRow, onAddRow }: 
           <button key={r.id} type="button" className="tb-gcard" style={{ ['--i' as string]: Math.min(i, 24) }} onClick={() => onOpenRow(r.id)}>
             {cover && <span className="tb-gcover">{img ? <img src={img.url} alt="" /> : <ImageOff size={18} className="muted" />}</span>}
             <span className="tb-gbody">
-              <strong>{rowName(t, r)}</strong>
+              <strong>{rowName(tb, r)}</strong>
               {fields.map((f) => {
-                const v = valueOf(t, f, r, ctx);
+                const v = valueOf(tb, f, r, ctx);
                 return isEmpty(v) ? null : (
                   <span key={f.id} className="tb-gfield">
                     <small className="muted">{f.name}</small>
@@ -97,17 +101,15 @@ export function GalleryView({ table: t, view, rows, ctx, onOpenRow, onAddRow }: 
       })}
       {onAddRow && (
         <button type="button" className="tb-gcard tb-gadd" onClick={onAddRow}>
-          <Plus size={18} /> New row
+          <Plus size={18} /> {t('New row')}
         </button>
       )}
     </div>
   );
 }
 
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
 /** A month of days with each row on its date. Drag a row to another day to move it; + on a day adds one there. */
-export function CalendarView({ table: t, view, rows, ctx, onOpenRow, onCell, onAddRow, onView, onNewField, readOnly, narrow, onLongPressDay }: {
+export function CalendarView({ table: tb, view, rows, ctx, onOpenRow, onCell, onAddRow, onView, onNewField, readOnly, narrow, onLongPressDay }: {
   narrow?: boolean; // a phone or a narrow pane: dots on a month, the day's rows under it, or an agenda
   onLongPressDay?: (day: string) => void; // phones: hold a day to add a row on it
   table: DataTable;
@@ -121,7 +123,7 @@ export function CalendarView({ table: t, view, rows, ctx, onOpenRow, onCell, onA
   onNewField: (f: TableField) => void;
   readOnly?: boolean;
 }) {
-  const df = t.fields.find((f) => f.id === view.dateField) ?? t.fields.find((f) => f.type === 'date');
+  const df = tb.fields.find((f) => f.id === view.dateField) ?? tb.fields.find((f) => f.type === 'date');
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -131,25 +133,25 @@ export function CalendarView({ table: t, view, rows, ctx, onOpenRow, onCell, onA
   if (!df)
     return (
       <EmptyState
-        title="A calendar needs a date field"
-        text="Add one like Due or Follow-up; rows then sit on their dates."
+        title={t('A calendar needs a date field')}
+        text={t('Add one like Due or Follow-up; rows then sit on their dates.')}
         action={
           !readOnly && (
             <button
               className="primary-btn sm"
               onClick={() => {
-                const f: TableField = { id: uid(), name: 'Date', type: 'date' };
+                const f: TableField = { id: uid(), name: t('Date'), type: 'date' };
                 onNewField(f);
                 onView({ dateField: f.id });
               }}
             >
-              <Plus size={14} /> Add a date field
+              <Plus size={14} /> {t('Add a date field')}
             </button>
           )
         }
       />
     );
-  if (narrow) return <PhoneCalendar table={t} view={view} rows={rows} ctx={ctx} field={df} onOpenRow={onOpenRow} onAddRow={onAddRow} onLongPressDay={onLongPressDay} />;
+  if (narrow) return <PhoneCalendar table={tb} view={view} rows={rows} ctx={ctx} field={df} onOpenRow={onOpenRow} onAddRow={onAddRow} onLongPressDay={onLongPressDay} />;
   const start = new Date(month);
   start.setDate(1 - ((month.getDay() + 6) % 7)); // weeks start on Monday
   const days = Array.from({ length: 42 }, (_, i) => {
@@ -159,36 +161,33 @@ export function CalendarView({ table: t, view, rows, ctx, onOpenRow, onCell, onA
   });
   const byDay = new Map<string, TableRow[]>();
   for (const r of rows) {
-    const v = valueOf(t, df, r, ctx);
+    const v = valueOf(tb, df, r, ctx);
     if (isEmpty(v)) continue;
     const day = String(v).slice(0, 10);
     byDay.set(day, [...(byDay.get(day) ?? []), r]);
   }
   const today = localDay();
   const movable = !readOnly && df.type === 'date';
-  const undated = rows.filter((r) => isEmpty(valueOf(t, df, r, ctx))).length;
+  const undated = rows.filter((r) => isEmpty(valueOf(tb, df, r, ctx))).length;
   return (
     <div className="tb-cal">
       <div className="tb-cal-head">
-        <button className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Previous month">
+        <button className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label={t('Previous month')}>
           <ChevronLeft size={16} />
         </button>
-        <strong>{month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</strong>
-        <button className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Next month">
+        <strong>{fmtMonth(month)}</strong>
+        <button className="icon-btn sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label={t('Next month')}>
           <ChevronRight size={16} />
         </button>
         <button className="ghost-btn sm" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>
-          Today
+          {t('Today')}
         </button>
         <span className="spacer" />
-        <span className="muted small tb-cal-note">
-          By {df.name}
-          {undated ? ` · ${undated} without a date` : ''}
-        </span>
+        <span className="muted small tb-cal-note">{undated ? tn(undated, 'By {field} · {n} without a date', 'By {field} · {n} without a date', { field: df.name }) : t('By {field}', { field: df.name })}</span>
       </div>
       <div className="tb-cal-grid">
-        {WEEKDAYS.map((w) => (
-          <div key={w} className="tb-cal-wd">
+        {weekdayNames('short').map((w, i) => (
+          <div key={i} className="tb-cal-wd">
             {w}
           </div>
         ))}
@@ -211,17 +210,17 @@ export function CalendarView({ table: t, view, rows, ctx, onOpenRow, onCell, onA
             >
               <span className="tb-cal-n">{d.getDate()}</span>
               {onAddRow && df.type === 'date' && (
-                <button type="button" className="tb-cal-add" onClick={() => onAddRow({ [df.id]: key })} aria-label={`New row on ${key}`}>
+                <button type="button" className="tb-cal-add" onClick={() => onAddRow({ [df.id]: key })} aria-label={t('New row on {day}', { day: fmtDay(key) })}>
                   <Plus size={12} />
                 </button>
               )}
               <div className="tb-cal-items">
                 {list.slice(0, 4).map((r) => (
-                  <button key={r.id} type="button" className={`tb-cal-item${drag === r.id ? ' dragging' : ''}`} draggable={movable} onDragStart={(e) => (e.dataTransfer.setData('text/plain', r.id), setDrag(r.id))} onDragEnd={() => (setDrag(null), setOver(null))} onClick={() => onOpenRow(r.id)} title={rowName(t, r)}>
-                    {rowName(t, r)}
+                  <button key={r.id} type="button" className={`tb-cal-item${drag === r.id ? ' dragging' : ''}`} draggable={movable} onDragStart={(e) => (e.dataTransfer.setData('text/plain', r.id), setDrag(r.id))} onDragEnd={() => (setDrag(null), setOver(null))} onClick={() => onOpenRow(r.id)} title={rowName(tb, r)}>
+                    {rowName(tb, r)}
                   </button>
                 ))}
-                {list.length > 4 && <span className="muted small tb-cal-more">+{list.length - 4} more</span>}
+                {list.length > 4 && <span className="muted small tb-cal-more">{t('+{n} more', { n: list.length - 4 })}</span>}
               </div>
             </div>
           );
@@ -235,33 +234,33 @@ export function CalendarView({ table: t, view, rows, ctx, onOpenRow, onCell, onA
 
 const dayTitle = (key: string, today: string) => {
   const d = new Date(`${key}T12:00`);
-  const t = new Date(`${today}T12:00`);
-  const diff = Math.round((d.getTime() - t.getTime()) / 86_400_000);
-  const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  return diff === 0 ? `Today · ${date}` : diff === 1 ? `Tomorrow · ${date}` : diff === -1 ? `Yesterday · ${date}` : date;
+  const now = new Date(`${today}T12:00`);
+  const diff = Math.round((d.getTime() - now.getTime()) / 86_400_000);
+  const date = fmtWeekday(d);
+  return diff === 0 ? t('Today · {date}', { date }) : diff === 1 ? t('Tomorrow · {date}', { date }) : diff === -1 ? t('Yesterday · {date}', { date }) : date;
 };
 
-function AgendaRow({ t, view, r, ctx, end, onOpenRow }: { t: DataTable; view?: TableViewDef; r: TableRow; ctx: CellCtx; end?: TableField; onOpenRow: (id: string) => void }) {
-  const tint = view ? rowColors(t, view, r, ctx).row : undefined;
+function AgendaRow({ t: tb, view, r, ctx, end, onOpenRow }: { t: DataTable; view?: TableViewDef; r: TableRow; ctx: CellCtx; end?: TableField; onOpenRow: (id: string) => void }) {
+  const tint = view ? rowColors(tb, view, r, ctx).row : undefined;
   const until = end ? r.values[end.id] : null;
   return (
     <button type="button" className="tb-ag-row" onClick={() => onOpenRow(r.id)}>
-      <i className="tb-dot" style={{ background: tint ?? t.color }} />
-      <span className="tb-ag-name">{rowName(t, r)}</span>
-      {typeof until === 'string' && until && <small className="muted">until {new Date(`${until}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</small>}
+      <i className="tb-dot" style={{ background: tint ?? tb.color }} />
+      <span className="tb-ag-name">{rowName(tb, r)}</span>
+      {typeof until === 'string' && until && <small className="muted">{t('until {date}', { date: fmtDay(until.slice(0, 10)) })}</small>}
     </button>
   );
 }
 
 /** Rows by date, from today on: earlier ones folded on top, undated ones at the end. */
-export function Agenda({ table: t, view, rows, ctx, field, end, onOpenRow, canAdd, onAddRow }: { table: DataTable; view?: TableViewDef; rows: TableRow[]; ctx: CellCtx; field: TableField; end?: TableField; onOpenRow: (id: string) => void; canAdd?: boolean; onAddRow?: (values: Record<string, CellValue>) => void }) {
+export function Agenda({ table: tb, view, rows, ctx, field, end, onOpenRow, canAdd, onAddRow }: { table: DataTable; view?: TableViewDef; rows: TableRow[]; ctx: CellCtx; field: TableField; end?: TableField; onOpenRow: (id: string) => void; canAdd?: boolean; onAddRow?: (values: Record<string, CellValue>) => void }) {
   const today = localDay();
   const [earlier, setEarlier] = useState(false);
   const [undatedOpen, setUndatedOpen] = useState(false);
   const byDay = new Map<string, TableRow[]>();
   const undated: TableRow[] = [];
   for (const r of rows) {
-    const v = valueOf(t, field, r, ctx);
+    const v = valueOf(tb, field, r, ctx);
     if (isEmpty(v)) undated.push(r);
     else {
       const k = String(v).slice(0, 10);
@@ -275,7 +274,7 @@ export function Agenda({ table: t, view, rows, ctx, field, end, onOpenRow, canAd
     <section key={k} className="tb-ag-day">
       <h4 className={k === today ? 'today' : ''}>{dayTitle(k, today)}</h4>
       {byDay.get(k)!.map((r) => (
-        <AgendaRow key={r.id} t={t} view={view} r={r} ctx={ctx} end={end} onOpenRow={onOpenRow} />
+        <AgendaRow key={r.id} t={tb} view={view} r={r} ctx={ctx} end={end} onOpenRow={onOpenRow} />
       ))}
     </section>
   );
@@ -285,30 +284,30 @@ export function Agenda({ table: t, view, rows, ctx, field, end, onOpenRow, canAd
         <>
           <button type="button" className="tb-ag-fold" onClick={() => setEarlier((x) => !x)} aria-expanded={earlier}>
             <ChevronRight size={15} className={`rot-chev ${earlier ? 'open' : ''}`} />
-            Earlier <span className="muted small">{past.reduce((n, k) => n + byDay.get(k)!.length, 0)}</span>
+            {t('Earlier')} <span className="muted small">{past.reduce((n, k) => n + byDay.get(k)!.length, 0)}</span>
           </button>
           <div className={`fold ${earlier ? 'open' : ''}`}>
             <div className="fold-in">{past.map(day)}</div>
           </div>
         </>
       )}
-      {!next.length && <p className="muted small tb-ag-none">Nothing from today on.</p>}
+      {!next.length && <p className="muted small tb-ag-none">{t('Nothing from today on.')}</p>}
       {next.map(day)}
       {canAdd && onAddRow && field.type === 'date' && (
         <button type="button" className="tb-ag-add" onClick={() => onAddRow({ [field.id]: today })}>
-          <Plus size={16} /> New row today
+          <Plus size={16} /> {t('New row today')}
         </button>
       )}
       {undated.length > 0 && (
         <>
           <button type="button" className="tb-ag-fold" onClick={() => setUndatedOpen((x) => !x)} aria-expanded={undatedOpen}>
             <ChevronRight size={15} className={`rot-chev ${undatedOpen ? 'open' : ''}`} />
-            Without {field.name.toLowerCase()} <span className="muted small">{undated.length}</span>
+            {t('Without {field}', { field: field.name.toLowerCase() })} <span className="muted small">{undated.length}</span>
           </button>
           <div className={`fold ${undatedOpen ? 'open' : ''}`}>
             <div className="fold-in">
               {undated.map((r) => (
-                <AgendaRow key={r.id} t={t} view={view} r={r} ctx={ctx} onOpenRow={onOpenRow} />
+                <AgendaRow key={r.id} t={tb} view={view} r={r} ctx={ctx} onOpenRow={onOpenRow} />
               ))}
             </div>
           </div>
@@ -323,7 +322,7 @@ function DayCell({ day, n, out, today, picked, onPick, onHold }: { day: string; 
   const press = useLongPress(() => onHold?.(), { disabled: !onHold });
   const date = new Date(`${day}T12:00`);
   return (
-    <button type="button" className={`tb-pcal-day lp${out ? ' out' : ''}${today ? ' today' : ''}${picked ? ' on' : ''}`} aria-pressed={picked} aria-label={`${date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}${n ? `, ${n} ${n === 1 ? 'row' : 'rows'}` : ''}`} onClick={onPick} {...press}>
+    <button type="button" className={`tb-pcal-day lp${out ? ' out' : ''}${today ? ' today' : ''}${picked ? ' on' : ''}`} aria-pressed={picked} aria-label={n ? t('{date}, {rows}', { date: fmtWeekdayLong(date), rows: tn(n, '{n} row', '{n} rows') }) : fmtWeekdayLong(date)} onClick={onPick} {...press}>
       <span className="tb-pcal-n">{date.getDate()}</span>
       <span className="tb-pcal-dots" aria-hidden>
         {Array.from({ length: Math.min(3, n) }, (_, i) => (
@@ -334,7 +333,7 @@ function DayCell({ day, n, out, today, picked, onPick, onHold }: { day: string; 
   );
 }
 
-function PhoneCalendar({ table: t, view, rows, ctx, field: df, onOpenRow, onAddRow, onLongPressDay }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; field: TableField; onOpenRow: (id: string) => void; onAddRow?: (values: Record<string, CellValue>) => void; onLongPressDay?: (day: string) => void }) {
+function PhoneCalendar({ table: tb, view, rows, ctx, field: df, onOpenRow, onAddRow, onLongPressDay }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; field: TableField; onOpenRow: (id: string) => void; onAddRow?: (values: Record<string, CellValue>) => void; onLongPressDay?: (day: string) => void }) {
   const today = localDay();
   const [mode, setMode] = usePersisted<'month' | 'agenda'>(`s2g-tb-cal:${view.id}`, 'month');
   const [picked, setPicked] = useState(today);
@@ -345,11 +344,11 @@ function PhoneCalendar({ table: t, view, rows, ctx, field: df, onOpenRow, onAddR
   const byDay = useMemo(() => {
     const m = new Map<string, TableRow[]>();
     for (const r of rows) {
-      const v = valueOf(t, df, r, ctx);
+      const v = valueOf(tb, df, r, ctx);
       if (!isEmpty(v)) m.set(String(v).slice(0, 10), [...(m.get(String(v).slice(0, 10)) ?? []), r]);
     }
     return m;
-  }, [rows, df, t, ctx]);
+  }, [rows, df, tb, ctx]);
   const start = new Date(month);
   start.setDate(1 - ((month.getDay() + 6) % 7));
   const weeks = Math.ceil((((month.getDay() + 6) % 7) + new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()) / 7);
@@ -366,35 +365,35 @@ function PhoneCalendar({ table: t, view, rows, ctx, field: df, onOpenRow, onAddR
       <div className="tb-pcal-head">
         {mode === 'month' ? (
           <>
-            <button type="button" className="icon-btn" onClick={() => go(-1)} aria-label="Previous month">
+            <button type="button" className="icon-btn" onClick={() => go(-1)} aria-label={t('Previous month')}>
               <ChevronLeft size={20} />
             </button>
-            <strong className="tb-pcal-month">{month.toLocaleDateString(undefined, { month: 'long', year: month.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}</strong>
-            <button type="button" className="icon-btn" onClick={() => go(1)} aria-label="Next month">
+            <strong className="tb-pcal-month">{month.getFullYear() === new Date().getFullYear() ? fmtDate(month, { month: 'long' }) : fmtMonth(month)}</strong>
+            <button type="button" className="icon-btn" onClick={() => go(1)} aria-label={t('Next month')}>
               <ChevronRight size={20} />
             </button>
           </>
         ) : (
-          <strong>By {df.name.toLowerCase()}</strong>
+          <strong>{t('By {field}', { field: df.name.toLowerCase() })}</strong>
         )}
         <span className="spacer" />
         <div className="segmented sm">
           <button type="button" className={mode === 'month' ? 'on' : ''} onClick={() => setMode('month')}>
-            Month
+            {t('Month')}
           </button>
           <button type="button" className={mode === 'agenda' ? 'on' : ''} onClick={() => setMode('agenda')}>
-            Agenda
+            {t('Agenda')}
           </button>
         </div>
       </div>
       {mode === 'agenda' ? (
-        <Agenda table={t} view={view} rows={rows} ctx={ctx} field={df} onOpenRow={onOpenRow} canAdd={canAdd} onAddRow={onAddRow} />
+        <Agenda table={tb} view={view} rows={rows} ctx={ctx} field={df} onOpenRow={onOpenRow} canAdd={canAdd} onAddRow={onAddRow} />
       ) : (
         <>
           <div className="tb-pcal-grid">
-            {WEEKDAYS.map((w) => (
-              <span key={w} className="tb-pcal-wd" aria-hidden>
-                {w.slice(0, 1)}
+            {weekdayNames('narrow').map((w, i) => (
+              <span key={i} className="tb-pcal-wd" aria-hidden>
+                {w}
               </span>
             ))}
             {days.map((d) => {
@@ -416,12 +415,17 @@ function PhoneCalendar({ table: t, view, rows, ctx, field: df, onOpenRow, onAddR
           <div className="tb-pcal-list">
             <h4>{dayTitle(picked, today)}</h4>
             {list.map((r) => (
-              <AgendaRow key={r.id} t={t} view={view} r={r} ctx={ctx} onOpenRow={onOpenRow} />
+              <AgendaRow key={r.id} t={tb} view={view} r={r} ctx={ctx} onOpenRow={onOpenRow} />
             ))}
-            {!list.length && <p className="muted small tb-ag-none">Nothing on this day.{canAdd && onLongPressDay ? ' Hold a day to add a row on it.' : ''}</p>}
+            {!list.length && (
+              <p className="muted small tb-ag-none">
+                {t('Nothing on this day.')}
+                {canAdd && onLongPressDay ? ` ${t('Hold a day to add a row on it.')}` : ''}
+              </p>
+            )}
             {canAdd && (
               <button type="button" className="tb-ag-add" onClick={() => (onLongPressDay ? onLongPressDay(picked) : onAddRow!({ [df.id]: picked }))}>
-                <Plus size={16} /> New row on this day
+                <Plus size={16} /> {t('New row on this day')}
               </button>
             )}
           </div>
