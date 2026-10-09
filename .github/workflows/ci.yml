@@ -34,7 +34,7 @@ jobs:
       - name: Languages (Indonesian placeholders match the English, per area; docs/i18n.md)
         run: node scripts/i18n-check.mjs
       - name: Languages, finished areas (no English left, no conflicting words)
-        run: node scripts/i18n-check.mjs --strict tasks,projects,teams
+        run: node scripts/i18n-check.mjs --strict
       - name: Unit checks
         run: node --import ./server/register.mjs scripts/unit-tests.mjs
       - name: Calendar parser and repeating events (invites, calendar links, our own series)

@@ -1,6 +1,6 @@
 # sprint2go backlog
 
-Updated 9 Oct 2026. Four lists: what waits on Aqeel (an account, a key or a decision), what's being built now, what's for later, and what's done. The full history before this split is in docs/backlog-archive.md.
+Updated 10 Oct 2026. Four lists: what waits on Aqeel (an account, a key or a decision), what's being built now, what's for later, and what's done. The full history before this split is in docs/backlog-archive.md.
 
 ## Waiting on you
 
@@ -16,36 +16,29 @@ Each of these is built and switched off until its key or account exists; the app
 - **Payments**: a Xendit or Midtrans account. Bank transfer invoices work today.
 - **WhatsApp**: a Meta Business number and its app secret (`WHATSAPP_APP_SECRET`, or each company's own app secret in Settings).
 - **Desktop app**: push a `v0.x` tag to build the first release; Mac auto-update also needs an Apple Developer ID to sign the app.
-- **Decisions**: whether the GitHub repo stays public (it is, with no secrets in it; its description still says "Open source meeting platform"), whether the app gets Indonesian, the in-app word for "Shared space", and the live company name "spring2go".
+- **Decisions**: whether the GitHub repo stays public (it is, with no secrets in it; its description still says "Open source meeting platform"), the in-app word for "Shared space", the live company name "spring2go", whether the public demo keeps "Aqeel" at "Pixel & Profits", whether people who pick Indonesian get an Indonesian demo company, and the Indonesian word choices the translators flagged (docs/i18n.md).
+- **Going live with the 10 Oct local build**: say when to push. After deploying: the DKIM record for mail.sprint2go.com (value in /admin, Platform, Mail), ports 993, 143, 587 and 465 in Dokploy plus `IMAP_ENABLED=1` once the trusted certificate exists, then check on a real iPhone and Android phone (keyboard, safe areas, swipes, motion), add the connector in real Claude, and send a repeating invite to Google, Outlook and Apple calendars.
 
 ## In progress
 
-The phone redesign and every other buildable item, built locally (not pushed or deployed until Aqeel says): see docs/mobile-plan.md for the phases, the defaults used and the waves.
+Nothing running. The 10 Oct local build (below) is on local main, not pushed or deployed.
 
 ## Later
 
-- **Company logo in Gmail (BIMI)**: once the logo has been in use for 12 months (CMC) or is a registered trademark (VMC); needs the SVG, a `default._bimi` record and the certificate.
-- **Imports**: Slack export, Trello boards, Google Drive, so switching is easy.
-- **Phone mail apps (IMAP)**: built locally (IMAP, sending from mail apps, app passwords, Settings, Phone mail apps; docs/imap.md). Live needs `IMAP_ENABLED=1`, the trusted mail certificate (the Cloudflare token above) and ports 993, 143, 587 and 465 published in Dokploy; then a check with a real iPhone, Gmail and Thunderbird.
-- **Task stages per project or team**, if someone asks.
-- **The app in Indonesian**, if decided.
-- **Smaller follow-ups**: trial limits so one person can't collect many trials; "remember this device" for two-step; spotting the same calendar link added twice; choosing which regions' holidays show; rare repeat rules in invites; all-day invites in time zones beyond plus or minus 11 hours.
-- **Reported by the 9 Oct builders, not done yet**:
-  - Plan switches aren't prorated (the toast says the new price is on the next invoice).
-  - MRR in the operator console still counts every member; invoices and the billing page count active people only.
-  - Mail from addresses at mail.sprint2go.com itself isn't DKIM-signed (no key published for that name).
-  - Companies made by operators have no time zone, so they use Jakarta.
-  - Tickets made before 9 Oct may point at any file; operators can open those.
-  - Outlook.com's image proxy is detected by a commonly reported user agent, not verified against real traffic.
-  - A demo toast ("Found 3 to-dos in your email") covers content for a few seconds on phones; mail rows overflow by 3 px.
-  - Watch the motion itself (open and close animations) on a real device; builders checked layouts with animations off.
-  - Model lists were tested against fake providers only; try them with real SumoPod, Anthropic and Gemini keys. Bedrock's list needs the `bedrock:ListFoundationModels` permission.
-  - Right after the server seeds demo data, signing in can fail for a moment while the demo passwords are being saved (local only).
-- **From the demo build, not checked yet**: the demo bar's closing fade and the slide when switching companies; Settings, Help and the first-run card at phone width and in dark mode; starting a huddle or a voice note inside the demo; the time-zone helper on the live server (if it fails, the demo uses start-up dates).
-- **Demo naming**: the public demo greets "Aqeel" at "Pixel & Profits". Decide whether it should be a made-up company and person.
-- **Local mail you write still tries real delivery** (system codes no longer do). Block it locally unless a relay is set.
+- **Company logo in Gmail (BIMI)**: the upload and record are built; Gmail also needs a VMC or CMC certificate (12 months of logo use or a registered trademark) and DMARC at quarantine or reject.
+- **Still English on purpose**: the demo company's content, audit and activity logs, meeting logs, "Re:"/"Fwd:", and the reply email to an outside organiser.
+- **Not checkable without real traffic or keys**: Outlook.com's image proxy detection; model lists with real SumoPod, Anthropic and Gemini keys (Bedrock needs `bedrock:ListFoundationModels`).
+- **Huddles**: audio only; camera and screen share aren't built.
 
 ## Done
+
+**10 Oct, the local build (docs/mobile-plan.md), not live yet:**
+- sprint2go on phones: a new shell (labelled bar, docked create button, one-row top bar, More sheet, Edit the bar, admin defaults per team), touch pieces (long-press, swipes with Undo, bottom sheets, pushed screens, the keyboard), 44 px taps and 16 px fields, and every app redone: Home as "Needs you"; Tasks the Todoist way (Quick Add in English and Indonesian, Plan my day, a touch board, select many); Chat (huddle bar, Catch up, long-press menus, drafts, Send later, offline retry); Mail (title switcher, swipes, snooze, bottom actions, quick reply, assign and comments); Calendar (Schedule view, Calendars sheet, long-press drag, repeating events with invites as one series); Notes (keyboard bar, Make a task, Recently deleted, share target); Tables (cards, filter sheet, row pages, bulk edit, plus personal filters, filter groups, colour rules, templates, layouts, sub-groups and a timeline on desktop); Settings as a list; Projects, Meet, Drive, onboarding, the guest portal and the operator console.
+- Connect sprint2go to Claude and other AI apps (an MCP connector with OAuth; mail is always a draft).
+- Imports from Slack, Trello and Google Takeout, with Undo for 24 hours.
+- Phone mail apps over IMAP with app passwords (off until the certificate and ports exist).
+- The whole app, its notices and its emails in Indonesian, chosen per person, per company and per guest.
+- The backlog fixes: prorated plan switches, MRR on active people, trial limits, remember this device, holiday regions, duplicate calendar links, rare repeat rules, far time zones, stages per project or team, BIMI plumbing, DKIM for mail.sprint2go.com, operator-made companies' time zones, old ticket attachments, local mail held on the computer, and the database waiting on a lock instead of crashing.
 
 **9 Oct, demo company and no-signup demo, live:**
 - Everyone can open their own demo company (Pixel & Profits sample, made fresh in their time zone), kept apart on the server: no job, mail or operator number sees it, and AI, sending, uploads, invites and the notetaker refuse it. A bar with Reset and Hide, a "Try this" list of 8 things, a Demo badge in the switcher, and admins can turn it off for their people. Unused copies go after 30 days.
