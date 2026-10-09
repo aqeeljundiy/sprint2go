@@ -55,9 +55,12 @@
   .m-head > .m-status.s-done {
     display: none;
   }
-  .m-head .sel {
-    min-width: 0;
+  .meet-page .m-head > .sel {
     flex: 0 1 auto;
+    min-width: 0; /* a long project name shortens; "…" always stays on the row */
+  }
+  .meet-page .m-head > .m-status {
+    flex: none;
   }
   .m-more {
     display: inline-grid;
