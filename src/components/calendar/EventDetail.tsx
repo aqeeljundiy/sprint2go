@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, Repeat, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
-import type { CalEvent, CalendarDef, RsvpStatus } from '../../types';
+import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, Repeat, Send, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
+import type { CalEvent, CalendarDef, GuestAnswer, RsvpStatus } from '../../types';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../../meetingLinks';
 import { Avatar } from '../Avatar';
 import { Badge, type BadgeTone } from '../ui/Person';
@@ -10,7 +10,7 @@ import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
 import { repeatWords } from '../../repeat';
 
-export type GuestAnswer = RsvpStatus | 'needs-action' | 'delegated';
+export type { GuestAnswer };
 
 export interface DetailProps {
   event: CalEvent;
@@ -33,6 +33,8 @@ export interface DetailProps {
   onRsvp?: (s: RsvpStatus, at?: Element) => void;
   /** The guests' answers, when the invite says them (by email). */
   answers?: Record<string, GuestAnswer>;
+  /** Instead of the invite's state (the demo: nothing is emailed). */
+  inviteNote?: string;
 }
 
 const ANSWER: Record<GuestAnswer, { label: string; tone: BadgeTone }> = {
@@ -103,6 +105,15 @@ function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus, a
       ))}
     </div>
   );
+}
+
+/** What happened to the invite we email to guests (the server keeps it on the event). */
+function inviteWords(e: CalEvent) {
+  const inv = e.invite;
+  if (!inv) return 'The invite is on its way to the guests';
+  if (inv.error) return `The invite couldn’t go out: ${inv.error}`;
+  if (inv.held?.length) return `Emailed to guests here. Held on this computer for ${inv.held.length === 1 ? inv.held[0] : `${inv.held.length} outside guests`}: a local sprint2go doesn’t send mail out`;
+  return inv.sequence > 0 ? 'Guests have the latest changes by email' : 'Invite emailed to the guests';
 }
 
 function Row({ icon, children, muted, top }: { icon: ReactNode; children: ReactNode; muted?: boolean; top?: boolean }) {
@@ -206,6 +217,11 @@ function DetailBody(p: DetailProps) {
             })}
           </div>
         </div>
+      )}
+      {event.sendInvites && guests.length > 0 && !event.inviteUid && (
+        <Row icon={<Send size={16} />} muted>
+          {p.inviteNote ?? inviteWords(event)}
+        </Row>
       )}
       {typeof event.remind === 'number' && <Row icon={<AlarmClock size={16} />} muted>Reminder {remindWords(event.remind).toLowerCase()}</Row>}
       {event.notes && (

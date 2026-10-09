@@ -28,6 +28,7 @@ export interface Draft {
   remind: number | null; // minutes before the start
   tz: string | null; // the times are in this time zone (null: this device's)
   repeat: RepeatDraft;
+  sendInvites: boolean | null; // email the invite to the guests (null: an invite we got, not ours to send)
 }
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -66,6 +67,8 @@ export function draftOf(start: Date, end: Date, calendarId: string, e?: CalEvent
     remind: e?.remind ?? null,
     tz,
     repeat: repeatOf(e),
+    // New events with guests send the invite; older ones only when it was switched on.
+    sendInvites: e?.inviteUid ? null : e ? !!e.sendInvites : true,
   };
 }
 
@@ -95,6 +98,7 @@ export function draftEvent(d: Draft): Omit<CalEvent, 'id'> {
     meetUrl: link ? (/^https?:\/\//i.test(link) ? link : `https://${link}`) : undefined,
     notes: d.notes.trim() || undefined,
     guests: d.guests.length ? d.guests : undefined,
+    sendInvites: d.sendInvites && d.guests.length ? true : undefined,
     remind: d.remind ?? undefined,
     timeZone: repeats ? tz : d.tz && !d.allDay ? d.tz : undefined,
     ...(d.repeat.touched ? { rrule: d.repeat.spec ? specToRule(d.repeat.spec, draftWall(d), { floating: false, tz }) : (d.repeat.raw ?? '') } : {}),
@@ -227,6 +231,17 @@ export function EventForm({
         )}
       </div>
       {!task && <GuestPicker value={draft.guests} onChange={(guests) => set({ guests })} team={team} contacts={contacts} me={me} />}
+      <SmoothHeight>
+        {!task && draft.guests.length > 0 && draft.sendInvites !== null && (
+          // Guests get it by email (a calendar invite with Yes / Maybe / No), and its updates.
+          <div className="ev-invite">
+            <span>Email the invite to guests</span>
+            <button type="button" role="switch" aria-checked={draft.sendInvites} aria-label="Email the invite to guests" className={`switch ${draft.sendInvites ? 'on' : ''}`} onClick={() => set({ sendInvites: !draft.sendInvites })}>
+              <span />
+            </button>
+          </div>
+        )}
+      </SmoothHeight>
       <SmoothHeight>
         {quiet.some((q) => q.id !== 'allday' && shows(q.id as Extra)) && (
           <div className="ev-extras">

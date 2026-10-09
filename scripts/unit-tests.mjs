@@ -706,6 +706,119 @@ await test('Local mail: outside addresses are held on this computer (marked, nev
   process.env.MAIL_RELAY_URL = relay;
 });
 
+/* invites we send and invites we get, for repeating events (server/calendarInvites.ts, server/invites.ts) */
+
+const calInvites = await import('../server/calendarInvites.ts');
+const invitesIn = await import('../server/invites.ts');
+const icsMod = await import('../server/ics.ts');
+await test('Invites we send: a repeating event goes to its guests as one series; answers for a date land on that date; changes and cancellations follow', async () => {
+  const relay = process.env.MAIL_RELAY_URL;
+  delete process.env.MAIL_RELAY_URL; // a local server: outside guests are held here, teammates get it at once
+  try {
+  calInvites.initInvites({ broadcast: () => {} });
+  const mo = `mo.undo@${mailer.MAIL_HOST}`;
+  const ev = { id: 'ev-weekly', title: 'Weekly plan', calendarId: 'work', start: '2026-10-05T08:00:00.000Z', end: '2026-10-05T08:30:00.000Z', timeZone: 'Europe/London', rrule: 'FREQ=WEEKLY;BYDAY=MO', exdates: ['2026-10-19T08:00:00.000Z'], guests: [{ name: 'Mo', email: mo }, { name: 'Budi', email: 'budi@client.example' }], sendInvites: true, workspaceId: 'w-undo', userId: 'aj-ana' };
+  db.writeDocs('events', [ev], [], null);
+  const moThreads = () => db.allDocs('threads').filter((t) => t.accountId === 'ub-mo');
+  const before = moThreads().length;
+  await calInvites.afterEventWrite([ev], [], 'aj-ana');
+  let stored = db.getDoc('events', 'ev-weekly');
+  assert.equal(stored.invite.sequence, 0);
+  assert.deepEqual(stored.invite.to.sort(), ['budi@client.example', mo].sort());
+  assert.deepEqual(stored.invite.held, ['budi@client.example'], 'the outside guest’s copy stays on this computer');
+  const got = moThreads().slice(before)[0];
+  const card = got.messages[0].invite;
+  assert.equal(card.method, 'REQUEST');
+  assert.equal(card.rrule, 'FREQ=WEEKLY;BYDAY=MO', 'Mo’s invite card is the series');
+  assert.equal(card.tz, 'Europe/London');
+  assert.deepEqual(card.exdates, ['2026-10-19T08:00:00.000Z']);
+  assert.equal(card.uid, stored.invite.uid);
+  // Saving again without a change sends nothing.
+  await calInvites.afterEventWrite([stored], [], 'aj-ana');
+  assert.equal(moThreads().length, before + 1);
+  // Mo answers Maybe for all of it, then No for 26 October, then Yes from 2 November on: each lands on its dates.
+  const reply = async (only) =>
+    mailer.queueSend({ workspaceId: 'w-undo', accountId: 'ub-mo', threadId: '', messageId: 'r-' + Math.random(), from: { name: 'Mo', email: mo }, to: [{ name: 'Ana', email: `ana.undo@${mailer.MAIL_HOST}` }], cc: [], subject: 'Re', text: 'x', files: [], ical: { method: 'REPLY', content: icsMod.buildReply(card, { name: 'Mo', email: mo }, only.status, Date.now(), only.date ? { recurrenceId: only.date, following: only.following } : undefined) } });
+  await reply({ status: 'tentative' });
+  await reply({ status: 'declined', date: '2026-10-26T09:00:00.000Z' });
+  await reply({ status: 'accepted', date: '2026-11-02T09:00:00.000Z', following: true });
+  stored = db.getDoc('events', 'ev-weekly');
+  assert.deepEqual(stored.overrides, [{ occurrence: '2026-10-26T09:00:00.000Z', answers: { [mo]: 'declined' } }]);
+  assert.deepEqual(stored.answersFrom, [{ from: '2026-11-02T09:00:00.000Z', email: mo, status: 'accepted' }]);
+  assert.deepEqual(stored.answers, { [mo]: 'tentative' });
+  const { expandSeries } = await import('../src/repeat.ts');
+  const dates = expandSeries(stored, Date.parse('2026-10-01T00:00:00Z'), Date.parse('2026-11-10T00:00:00Z'));
+  assert.deepEqual(dates.map((d) => d.answers?.[mo]), ['tentative', 'tentative', 'declined', 'accepted', 'accepted'], 'each date shows what Mo said for it');
+  // Someone who isn't a guest can't answer for it.
+  await mailer.queueSend({ workspaceId: 'w-undo', accountId: 'ub-mo', threadId: '', messageId: 'r-x', from: { name: 'Mo', email: mo }, to: [{ name: 'Ana', email: `ana.undo@${mailer.MAIL_HOST}` }], cc: [], subject: 'Re', text: 'x', files: [], ical: { method: 'REPLY', content: icsMod.buildReply(card, { name: 'Eve', email: 'eve@else.example' }, 'accepted') } });
+  assert.equal(db.getDoc('events', 'ev-weekly').answers['eve@else.example'], undefined);
+  // An older copy from the app can't wipe what went out or the answers.
+  const guarded = calInvites.guardEvent({ ...stored, title: 'Weekly planning', invite: undefined, answers: {}, overrides: [{ occurrence: '2026-10-26T09:00:00.000Z' }] }, stored);
+  assert.equal(guarded.invite.uid, stored.invite.uid);
+  assert.deepEqual(guarded.answers, stored.answers);
+  assert.deepEqual(guarded.overrides[0].answers, { [mo]: 'declined' });
+  assert.equal(calInvites.guardEvent({ ...stored, id: 'copy' }, undefined).invite, undefined, 'a copy hasn’t been sent');
+  // A change everyone sees: an update with the next sequence. Budi taken off: a cancellation for him.
+  const moved = { ...guarded, start: '2026-10-05T09:00:00.000Z', end: '2026-10-05T09:30:00.000Z', guests: [{ name: 'Mo', email: mo }] };
+  db.writeDocs('events', [moved], [], null);
+  const n = moThreads().length;
+  await calInvites.afterEventWrite([moved], [], 'aj-ana');
+  stored = db.getDoc('events', 'ev-weekly');
+  assert.equal(stored.invite.sequence, 1);
+  assert.deepEqual(stored.invite.to, [mo]);
+  assert.deepEqual(stored.invite.held, ['budi@client.example'], 'Budi’s cancellation is held here too');
+  const update = moThreads().slice(n)[0].messages[0];
+  assert.match(update.body, /Repeats: Every week on Monday/);
+  assert.equal(update.invite.sequence, 1);
+  assert.equal(update.invite.title, 'Weekly planning');
+  const cancels = db.db.prepare("SELECT to_addr FROM outbox WHERE account_id = 'ub-ana' AND state = 'local' AND to_addr = 'budi@client.example' AND message_id LIKE 'inv-%'").all();
+  assert.equal(cancels.length, 2, 'the invite, then its cancellation');
+  // Deleted: everyone still on it hears it's off.
+  const m2 = moThreads().length;
+  await calInvites.afterEventWrite([], [stored], 'aj-ana');
+  const off = moThreads().slice(m2)[0].messages[0].invite;
+  assert.equal(off.method, 'CANCEL');
+  assert.equal(off.cancelled, true);
+  db.writeDocs('events', [], ['ev-weekly'], null);
+  } finally {
+    process.env.MAIL_RELAY_URL = relay; // (back for the checks after, even when this one fails)
+  }
+});
+
+await test('Invites we get: a repeating invite is one repeating event; a date moved, a date cancelled and an update keep what was answered', () => {
+  const inv = icsMod.parseInvite(icsMod.buildInvite({ method: 'REQUEST', uid: 'series@google.example', sequence: 0, organizer: { name: 'Nadia', email: 'nadia@kopikita.example' }, attendees: [{ name: 'Ana', email: `ana.undo@${mailer.MAIL_HOST}` }], title: 'KopiKita weekly', start: '2026-10-06T02:00:00.000Z', end: '2026-10-06T03:00:00.000Z', tz: 'Asia/Jakarta', rrule: 'FREQ=WEEKLY;BYDAY=TU', url: 'https://meet.google.com/abc-defg-hij' }));
+  const made = invitesIn.eventsFor(inv, { userId: 'aj-ana', workspaceId: 'w-undo', threadId: 't-inv', rsvp: 'accepted', mine: [`ana.undo@${mailer.MAIL_HOST}`] });
+  assert.equal(made.docs.length, 1, 'one event, not a copy per date');
+  const doc = made.docs[0];
+  assert.equal(doc.rrule, 'FREQ=WEEKLY;BYDAY=TU');
+  assert.equal(doc.timeZone, 'Asia/Jakarta');
+  assert.equal(doc.meetUrl, 'https://meet.google.com/abc-defg-hij');
+  // Ana said Maybe for 20 October only.
+  db.writeDocs('events', [{ ...doc, overrides: [{ occurrence: '2026-10-20T02:00:00.000Z', rsvp: 'tentative' }] }], [], null);
+  const acct = { id: 'ub-ana', email: `ana.undo@${mailer.MAIL_HOST}`, users: ['aj-ana'] };
+  const said = [];
+  const notify = (ids, _ws, text) => said.push(text);
+  // The organiser moves 13 October to 14:00 Jakarta.
+  invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, method: 'REQUEST', rrule: undefined, sequence: 1, recurrenceId: '2026-10-13T02:00:00.000Z', start: '2026-10-13T07:00:00.000Z', end: '2026-10-13T08:00:00.000Z' }, 't-inv', () => {}, notify);
+  let e = db.getDoc('events', doc.id);
+  assert.deepEqual(e.overrides.find((o) => o.occurrence === '2026-10-13T02:00:00.000Z'), { occurrence: '2026-10-13T02:00:00.000Z', start: '2026-10-13T07:00:00.000Z', end: '2026-10-13T08:00:00.000Z' });
+  assert.match(said.at(-1), /changed “KopiKita weekly” on one of its dates/);
+  // …and cancels 27 October.
+  invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, method: 'CANCEL', sequence: 2, recurrenceId: '2026-10-27T02:00:00.000Z', rrule: undefined }, 't-inv', () => {}, notify);
+  e = db.getDoc('events', doc.id);
+  assert.deepEqual(e.exdates, ['2026-10-27T02:00:00.000Z']);
+  // A new title for the whole series: the same event, Ana's Maybe for the 20th stays.
+  invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, title: 'KopiKita weekly sync', sequence: 3 }, 't-inv', () => {}, notify);
+  e = db.getDoc('events', doc.id);
+  assert.equal(e.title, 'KopiKita weekly sync');
+  assert.equal(e.rsvp, 'accepted');
+  assert.equal(e.overrides.find((o) => o.occurrence === '2026-10-20T02:00:00.000Z')?.rsvp, 'tentative');
+  assert.equal(invitesIn.eventsOf('series@google.example', 'w-undo', ['aj-ana']).length, 1);
+  // Cancelled altogether: off the calendar.
+  invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, method: 'CANCEL', sequence: 4 }, 't-inv', () => {}, notify);
+  assert.equal(invitesIn.eventsOf('series@google.example', 'w-undo', ['aj-ana']).length, 0);
+});
+
 await test('DKIM: mail from an address at our own mail name is signed with the platform key the console shows, and verifies', async () => {
   const { authenticate } = await import('mailauth');
   const records = await mailer.platformDkim();

@@ -28,7 +28,7 @@ import type { NotesFilter } from './components/NotesApp';
 import type { NotesApi } from './components/notes/useNoteMenu';
 import type { VaultItem } from './components/VaultApp';
 import { eventsOn, monthGrid } from './calendarUtils';
-import { answerSeries, changeSeries, changesRule, expandEvents, findEvent, removeFromSeries, timeLike, type Scope, type SeriesChange } from './repeat';
+import { answerSeries, changeSeries, changesRule, expandEvents, findEvent, removeFromSeries, startOnRule, timeLike, type Scope, type SeriesChange } from './repeat';
 import { askScope as askRepeatScope, ScopeHost, type ScopeAt } from './components/calendar/RepeatScope';
 import { botJoins, callKey, meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
 import { setHolidayDays } from './holidayDays';
@@ -2787,14 +2787,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const start = new Date(e.start);
     const task = kind === 'task' ? createTask({ title: e.title, userId: user.id, due: localDay(start), source: 'manual' }) : null;
     const { rrule, ...rest } = e;
-    const ev: CalEvent = task ? { id: uid(), title: task.title, calendarId: 'work', start: e.start, end: e.end, allDay: e.allDay, notes: e.notes, remind: e.remind, taskId: task.id, workspaceId: ws.id, userId: user.id } : { ...rest, ...(rrule ? { rrule } : {}), id: uid(), workspaceId: ws.id, userId: user.id };
+    const ev: CalEvent = task ? { id: uid(), title: task.title, calendarId: 'work', start: e.start, end: e.end, allDay: e.allDay, notes: e.notes, remind: e.remind, taskId: task.id, workspaceId: ws.id, userId: user.id } : startOnRule({ ...rest, ...(rrule ? { rrule } : {}), id: uid(), workspaceId: ws.id, userId: user.id }); // a repeat starts on its first date
     tried('event');
     setEvents((es) => [...es, ev]);
     setNewEventAt(null);
-    setCalCursor(start);
+    setCalCursor(new Date(ev.start));
     if (!mobile) setSelectedEventId(ev.rrule ? (findEvent([ev], ev.id)?.id ?? ev.id) : ev.id);
     showToast({
-      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : ev.rrule ? 'Repeating event created' : 'Event created',
+      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : ev.rrule ? (ev.start === e.start ? 'Repeating event created' : `Repeating event created. The first one is ${new Date(ev.start).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}`) : 'Event created',
       action: { label: 'Undo', run: () => (setEvents((es) => es.filter((x) => x.id !== ev.id)), task && setTodos((ts) => ts.filter((x) => x.id !== task.id))) },
     });
   };
@@ -2862,7 +2862,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const { rrule, ...rest } = e;
     // Repeating from now on: the event becomes a series starting on its date.
     const repeat = rrule === undefined ? {} : rrule ? { rrule } : { rrule: undefined };
-    setEvents((es) => es.map((x) => (x.id === id ? { ...x, ...rest, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind, timeZone: e.timeZone, ...repeat } : x)));
+    setEvents((es) => es.map((x) => (x.id === id ? startOnRule({ ...x, ...rest, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind, timeZone: e.timeZone, ...repeat }) : x)));
     setEditEventId(null);
     if (rrule) setSelectedEventId(null);
     showToast({ text: rrule ? 'Saved. It repeats now' : 'Event saved', action: { label: 'Undo', run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
@@ -4750,6 +4750,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenThread={openThread}
             onRsvp={rsvpEvent}
             answersOf={answersOf}
+            inviteNote={real ? undefined : 'Demo: invites aren’t emailed'}
             team={members}
             contacts={guestContacts}
             me={user.id}

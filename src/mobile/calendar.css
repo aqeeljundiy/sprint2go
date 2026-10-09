@@ -119,6 +119,10 @@
   .guest-add {
     min-height: 40px;
   }
+  .ev-invite {
+    min-height: var(--tap);
+    font-size: 15px;
+  }
   /* Repeat: weekday chips and the steppers at thumb size; the days share the row. */
   .rp-more {
     padding-left: 0;

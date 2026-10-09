@@ -30,7 +30,7 @@ export function QuickCreate({
   onSave: (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task') => void;
   onClose: () => void;
 }) {
-  const [rest, setRest] = useState<Omit<Draft, 'date' | 'from' | 'to'>>({ kind: 'event', title: '', allDay: false, calendarId: calendars[0].id, guests: [], location: '', meetUrl: '', notes: '', remind: null, tz: null, repeat: NO_REPEAT });
+  const [rest, setRest] = useState<Omit<Draft, 'date' | 'from' | 'to'>>({ kind: 'event', title: '', allDay: false, calendarId: calendars[0].id, guests: [], location: '', meetUrl: '', notes: '', remind: null, tz: null, repeat: NO_REPEAT, sendInvites: true });
   const [more, setMore] = useState(false);
   const s0 = wallIn(quick.start, rest.tz);
   const draft: Draft = { ...rest, date: s0.date, from: s0.time, to: wallIn(quick.end, rest.tz).time };

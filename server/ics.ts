@@ -12,7 +12,7 @@
 // in any zone (or as dates, or periods), moved or cancelled single occurrences (RECURRENCE-ID), cancelled events, and
 // Outlook's all-day events written as midnight times (X-MICROSOFT-CDO-ALLDAYEVENT).
 // The repeat rules themselves live in src/recurrence.ts (shared with the app). ics.test.ts pins it down.
-import { DAY, floating, isZone, occurrences, pad, parseRRule, parseTime, wallOccurrences, wallOf, zoneOffset, zonedToUtc, type ICalTime, type RRule } from '../src/recurrence.ts';
+import { DAY, daysInMonth, floating, isZone, occurrences, pad, parseRRule, parseTime, wallFromUtc, wallOccurrences, wallOf, WEEKDAYS, zoneOffset, zonedToUtc, type ICalTime, type RRule } from '../src/recurrence.ts';
 export { isZone, occurrences, parseRRule, wallOccurrences, zoneOffset, zonedToUtc, type ICalTime, type RRule, type SeriesTimes } from '../src/recurrence.ts';
 
 /* ---------- reading the file ---------- */
@@ -546,6 +546,7 @@ export interface IcsEvent {
   rdates?: string[]; // ISO starts of extra occurrences (RDATE, in whatever zone it was written)
   exdates?: string[]; // ISO starts of skipped occurrences, or a date ("2026-10-28") that skips that day in the event's zone
   recurrenceId?: string; // ISO original start, when this is one changed occurrence of a series
+  thisAndFuture?: boolean; // RECURRENCE-ID;RANGE=THISANDFUTURE: that date and the ones after it (an answer for them)
   overrides?: { recurrenceId: string; start: string; end: string; cancelled?: boolean }[]; // changed occurrences sent along with the series
   cancelled?: boolean; // STATUS:CANCELLED
 }
@@ -661,6 +662,7 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
     ...(rdates.length ? { rdates } : {}),
     ...(exdates.length ? { exdates } : {}),
     ...(recId ? { recurrenceId: iso(recId.at) } : {}),
+    ...(recId && prop(main, 'RECURRENCE-ID')?.params.RANGE?.toUpperCase() === 'THISANDFUTURE' ? { thisAndFuture: true } : {}),
     ...(overrides.length ? { overrides } : {}),
     ...(prop(main, 'STATUS')?.value.trim().toUpperCase() === 'CANCELLED' ? { cancelled: true } : {}),
   };
@@ -691,11 +693,19 @@ function fold(line: string): string {
 }
 const cn = (name: string) => `"${name.replace(/"/g, "'")}"`;
 
-/** The iTIP REPLY that tells the organiser's calendar who answered and how. */
-export function buildReply(ev: IcsEvent, attendee: IcsPerson, status: 'accepted' | 'tentative' | 'declined', now = Date.now()): string {
+/**
+ * The iTIP REPLY that tells the organiser's calendar who answered and how. `only`: the answer is for one date of a
+ * repeating invite (its original start), or with `following` for that date and the ones after it
+ * (RECURRENCE-ID;RANGE=THISANDFUTURE).
+ */
+export function buildReply(ev: IcsEvent, attendee: IcsPerson, status: 'accepted' | 'tentative' | 'declined', now = Date.now(), only?: { recurrenceId: string; following?: boolean }): string {
   const when = (s: string, name: string) => (ev.allDay ? `${name};VALUE=DATE:${dateOnly(s)}` : `${name}:${stamp(Date.parse(s))}`);
   // All-day: the stored end is a minute past noon on the last day; DTEND is the day after it.
   const endIso = ev.allDay ? new Date(Date.parse(ev.end) - 60_000 + DAY).toISOString() : ev.end;
+  const len = Date.parse(endIso) - Date.parse(ev.start);
+  const rid = only?.recurrenceId ?? ev.recurrenceId;
+  const start = only ? only.recurrenceId : ev.start;
+  const end = only ? (ev.allDay ? new Date(Date.parse(`${only.recurrenceId.slice(0, 10)}T00:00:00Z`) + DAY).toISOString() : new Date(Date.parse(only.recurrenceId) + len).toISOString()) : endIso;
   const lines = [
     'BEGIN:VCALENDAR',
     'PRODID:-//sprint2go//Mail//EN',
@@ -706,14 +716,149 @@ export function buildReply(ev: IcsEvent, attendee: IcsPerson, status: 'accepted'
     `UID:${ev.uid}`,
     `SEQUENCE:${ev.sequence}`,
     `DTSTAMP:${stamp(now)}`,
-    when(ev.start, 'DTSTART'),
-    when(endIso, 'DTEND'),
-    ...(ev.recurrenceId ? [when(ev.recurrenceId, 'RECURRENCE-ID')] : []),
+    when(start, 'DTSTART'),
+    when(end, 'DTEND'),
+    ...(rid ? [when(rid, only?.following ? 'RECURRENCE-ID;RANGE=THISANDFUTURE' : 'RECURRENCE-ID')] : []),
     ...(ev.organizer ? [`ORGANIZER;CN=${cn(ev.organizer.name)}:mailto:${ev.organizer.email}`] : []),
     `ATTENDEE;PARTSTAT=${status.toUpperCase()};CN=${cn(attendee.name)}:mailto:${attendee.email}`,
     `SUMMARY:${escapeText(ev.title)}`,
     `REQUEST-STATUS:2.0;Success`,
     'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+  return lines.map(fold).join('\r\n') + '\r\n';
+}
+
+/* ---------- invites we send ---------- */
+
+const offsetText = (min: number) => `${min < 0 ? '-' : '+'}${pad(Math.floor(Math.abs(min) / 60))}${pad(Math.abs(min) % 60)}`;
+/** Wall ms as an iCalendar local time, "20261005T090000". */
+const wallText = (wall: number) => floating(wall).replace(/[-:]/g, '');
+const isFloatingTime = (s: string) => !/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(s);
+
+/**
+ * A zone's clock changes as a VTIMEZONE for the year a series starts: each change (worked out from the zone itself)
+ * with its yearly rule ("the last Sunday of March"), or one part for a zone without daylight saving. So Outlook and
+ * Apple read TZID times the way Google does.
+ */
+export function vtimezone(tz: string, year: number): string[] {
+  const from = Date.UTC(year, 0, 1);
+  const days = (Date.UTC(year + 1, 0, 1) - from) / DAY;
+  const changes: { at: number; before: number; after: number }[] = [];
+  let prev = zoneOffset(tz, from);
+  for (let d = 1; d <= days; d++) {
+    const t = from + d * DAY;
+    const off = zoneOffset(tz, t);
+    if (off === prev) continue;
+    // The quarter hour it changes on (zones change on a quarter hour).
+    let lo = t - DAY;
+    let hi = t;
+    while (hi - lo > 900_000) {
+      const mid = lo + Math.floor((hi - lo) / 1_800_000) * 900_000;
+      if (zoneOffset(tz, mid) === prev) lo = mid;
+      else hi = mid;
+    }
+    changes.push({ at: hi, before: prev, after: off });
+    prev = off;
+  }
+  const lines = ['BEGIN:VTIMEZONE', `TZID:${tz}`];
+  if (!changes.length) lines.push('BEGIN:STANDARD', 'DTSTART:19700101T000000', `TZOFFSETFROM:${offsetText(prev)}`, `TZOFFSETTO:${offsetText(prev)}`, 'END:STANDARD');
+  for (const c of changes) {
+    const wall = c.at + c.before * 60_000; // the clock just before it changes
+    const d = new Date(wall);
+    const m = d.getUTCMonth() + 1;
+    const nth = d.getUTCDate() + 7 > daysInMonth(d.getUTCFullYear(), m) ? -1 : Math.ceil(d.getUTCDate() / 7);
+    const kind = c.after > c.before ? 'DAYLIGHT' : 'STANDARD';
+    lines.push(`BEGIN:${kind}`, `DTSTART:${wallText(wall)}`, `TZOFFSETFROM:${offsetText(c.before)}`, `TZOFFSETTO:${offsetText(c.after)}`, `RRULE:FREQ=YEARLY;BYMONTH=${m};BYDAY=${nth}${WEEKDAYS[d.getUTCDay()]}`, `END:${kind}`);
+  }
+  lines.push('END:VTIMEZONE');
+  return lines;
+}
+
+/** An invite we send: the event as guests see it, with who organises it and who's invited. */
+export interface InviteOut {
+  method: 'REQUEST' | 'CANCEL';
+  uid: string;
+  sequence: number; // up by one with each change guests should see
+  organizer: IcsPerson;
+  attendees: (IcsPerson & { status?: PartStat })[];
+  title: string;
+  start: string; // ISO (an all-day event: its first midnight in `tz`)
+  end: string; // ISO (an all-day event: the midnight after its last day)
+  allDay?: boolean;
+  tz?: string; // the zone its times keep (IANA): TZID times, and the dates of an all-day event
+  rrule?: string;
+  exdates?: string[]; // original starts left out (ISO), or a whole day "2026-10-28"
+  overrides?: { occurrence: string; start?: string; end?: string; title?: string; location?: string | null; description?: string | null }[];
+  location?: string;
+  description?: string;
+  url?: string; // the call link
+}
+
+/**
+ * An invite we send (iTIP REQUEST, or CANCEL when it's off or a guest was taken off): Google, Outlook and Apple show it
+ * with Yes / Maybe / No. A repeating event goes as one series: its RRULE, its left-out dates (EXDATE) and the dates
+ * changed on their own as VEVENTs of their own (RECURRENCE-ID), all on the clock of its zone (TZID, with a VTIMEZONE),
+ * so it stays at 9:00 in London across daylight saving in every calendar.
+ */
+export function buildInvite(o: InviteOut, now = Date.now()): string {
+  const tz = o.tz && isZone(o.tz) ? o.tz : null;
+  const start = Date.parse(o.start);
+  const len = Date.parse(o.end) - start;
+  /** A time's wall clock in the zone (floating times are already one). */
+  const wallAt = (s: string) => (isFloatingTime(s) ? Date.parse(`${s}Z`) : tz ? wallFromUtc(Date.parse(s), tz) : Date.parse(s));
+  const dateOf = (s: string) => (s.length === 10 ? s : floating(wallAt(s)).slice(0, 10)).replace(/-/g, '');
+  /** A time as DTSTART, DTEND, EXDATE or RECURRENCE-ID write it: a date, a TZID time, or UTC. */
+  const at = (name: string, s: string) => {
+    if (o.allDay) return `${name};VALUE=DATE:${dateOf(s)}`;
+    // A whole day left out of a timed series: that day at the series' own time.
+    const t = s.length === 10 ? `${s}T${floating(wallAt(o.start)).slice(11)}` : s;
+    if (tz) return `${name};TZID=${tz}:${wallText(t.length === 19 ? Date.parse(`${t}Z`) : wallAt(t))}`;
+    return `${name}:${stamp(t.length === 19 ? Date.parse(`${t}Z`) : Date.parse(t))}`;
+  };
+  const endOf = (s: string) => new Date(Date.parse(s) + len).toISOString();
+  const people = [
+    `ORGANIZER;CN=${cn(o.organizer.name)}:mailto:${o.organizer.email}`,
+    ...o.attendees.map((a) => `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=${(a.status ?? 'needs-action').toUpperCase()};RSVP=TRUE;CN=${cn(a.name)}:mailto:${a.email}`),
+  ];
+  const status = `STATUS:${o.method === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED'}`;
+  const text = (name: string, v: string | null | undefined) => (v ? [`${name}:${escapeText(v)}`] : []);
+  const head = (extra: string[]) => ['BEGIN:VEVENT', `UID:${o.uid}`, `SEQUENCE:${o.sequence}`, `DTSTAMP:${stamp(now)}`, ...extra];
+  const master = [
+    ...head([at('DTSTART', o.start), at('DTEND', o.end)]),
+    ...(o.rrule ? [`RRULE:${o.rrule.replace(/^RRULE:/i, '')}`] : []),
+    ...(o.rrule ? (o.exdates ?? []).map((x) => at('EXDATE', x)) : []),
+    ...text('SUMMARY', o.title),
+    ...text('LOCATION', o.location),
+    ...text('DESCRIPTION', o.description),
+    ...(o.url ? [`URL:${o.url}`] : []),
+    ...people,
+    status,
+    'TRANSP:OPAQUE',
+    'END:VEVENT',
+  ];
+  const changed = o.rrule && o.method === 'REQUEST'
+    ? (o.overrides ?? []).flatMap((x) => [
+        ...head([at('RECURRENCE-ID', x.occurrence), at('DTSTART', x.start ?? x.occurrence), at('DTEND', x.end ?? endOf(x.start ?? x.occurrence))]),
+        ...text('SUMMARY', x.title ?? o.title),
+        ...text('LOCATION', x.location === undefined ? o.location : x.location),
+        ...text('DESCRIPTION', x.description === undefined ? o.description : x.description),
+        ...(o.url ? [`URL:${o.url}`] : []),
+        ...people,
+        status,
+        'TRANSP:OPAQUE',
+        'END:VEVENT',
+      ])
+    : [];
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'PRODID:-//sprint2go//Calendar//EN',
+    'VERSION:2.0',
+    'CALSCALE:GREGORIAN',
+    `METHOD:${o.method}`,
+    ...(tz && !o.allDay ? vtimezone(tz, new Date(wallAt(o.start)).getUTCFullYear()) : []),
+    ...master,
+    ...changed,
     'END:VCALENDAR',
   ];
   return lines.map(fold).join('\r\n') + '\r\n';

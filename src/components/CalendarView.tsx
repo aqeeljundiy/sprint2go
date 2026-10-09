@@ -76,6 +76,8 @@ interface Props {
   calendarsPanel?: ReactNode;
   /** A dialog from the panel is open (Add a calendar, holidays): the Calendars sheet makes way for it. */
   dialogOpen?: boolean;
+  /** Shown instead of what happened to an emailed invite (the demo: nothing is emailed). */
+  inviteNote?: string;
 }
 
 /** The next half hour from now if `day` is today, otherwise 9:00 on that day. */
@@ -405,6 +407,7 @@ export function CalendarView(props: Props) {
           onBotJoin={props.onBotJoin ? (join) => props.onBotJoin!(selected, join) : undefined}
           onRsvp={props.onRsvp ? (s, at) => props.onRsvp!(selected, s, at) : undefined}
           answers={props.answersOf?.(selected)}
+          inviteNote={props.inviteNote}
         />
       )}
 

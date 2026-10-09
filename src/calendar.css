@@ -1487,6 +1487,14 @@ a.ghost-btn {
   border: 1.5px dashed var(--c);
   border-left-width: 3px;
 }
+/* An invite waiting for an answer, opened: still dashed, its words still readable. */
+.block-event.pending.picked {
+  background: color-mix(in srgb, var(--c) 16%, var(--surface));
+  color: var(--text);
+}
+.block-event.pending.picked .be-time {
+  color: var(--text-2);
+}
 .block-event.is-task {
   padding-left: 26px;
 }
@@ -2040,6 +2048,17 @@ a.ghost-btn {
 .sel.rp-unit {
   min-width: 96px;
 }
+/* Email the invite to guests: a plain row with its switch (no box of its own inside the form). */
+.ev-invite {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  animation: fade 0.18s ease-out backwards;
+}
 /* Which dates a change is for (the menu by the button on desktop; phones get a sheet with its title). */
 .scope-head {
   padding: 6px 10px 6px;
@@ -2194,6 +2213,7 @@ a.ghost-btn {
   .guest-chip,
   .ev-extra,
   .rp-more,
+  .ev-invite,
   .sched-own,
   .mg-list {
     animation: none;

@@ -103,10 +103,12 @@ export function occurrenceOf(e: CalEvent, occurrence: string, start?: string, en
   const o = overrideOf(e, occurrence);
   const s = start ?? o?.start ?? occurrence;
   const en = end ?? o?.end ?? endAt(e, s);
-  const { overrides: _o, exdates: _x, rdates: _r, rsvpFrom: _f, remindedFor: _m, rsvp: _a, ...base } = e;
+  const { overrides: _o, exdates: _x, rdates: _r, rsvpFrom: _f, remindedFor: _m, rsvp: _a, answersFrom: _af, ...base } = e;
   const occ: CalEvent = { ...base, id: occId(e.id, occurrence), seriesId: e.id, occurrence, start: s, end: en };
   if (o) for (const k of OVERRIDABLE) if (k in o) (occ as unknown as Record<string, unknown>)[k] = o[k] ?? undefined;
-  if (o?.answers) occ.answers = { ...e.answers, ...o.answers };
+  // Guests' answers: for the series, then "this and following" ones up to this date, then this date's own.
+  const from = (e.answersFrom ?? []).filter((x) => msOf(x.from) <= msOf(occurrence)).sort((a, b) => msOf(a.from) - msOf(b.from));
+  if (from.length || o?.answers) occ.answers = { ...e.answers, ...Object.fromEntries(from.map((x) => [x.email, x.status])), ...o?.answers };
   const rsvp = rsvpAt(e, occurrence, o);
   if (rsvp) occ.rsvp = rsvp;
   return occ;
@@ -433,7 +435,7 @@ const same = (a: unknown, b: unknown) => (empty(a) && empty(b)) || JSON.stringif
 /** No undefined fields and no empty lists: what's stored stays tidy. */
 function tidy(e: CalEvent): CalEvent {
   const out = { ...e } as Record<string, unknown>;
-  for (const k of Object.keys(out)) if (out[k] === undefined || (Array.isArray(out[k]) && !(out[k] as unknown[]).length && ['exdates', 'rdates', 'overrides', 'rsvpFrom'].includes(k))) delete out[k];
+  for (const k of Object.keys(out)) if (out[k] === undefined || (Array.isArray(out[k]) && !(out[k] as unknown[]).length && ['exdates', 'rdates', 'overrides', 'rsvpFrom', 'answersFrom'].includes(k))) delete out[k];
   return out as unknown as CalEvent;
 }
 const hasChanges = (o: EventOverride) => Object.keys(o).some((k) => k !== 'occurrence' && (o as unknown as Record<string, unknown>)[k] !== undefined);
@@ -484,6 +486,7 @@ function endBefore(series: CalEvent, occurrence: string): CalEvent | null {
     exdates: series.exdates?.filter((x) => msOf(x) < at),
     overrides: series.overrides?.filter((o) => msOf(o.occurrence) < at),
     rsvpFrom: series.rsvpFrom?.filter((r) => msOf(r.from) < at),
+    answersFrom: series.answersFrom?.filter((r) => msOf(r.from) < at),
   });
   return hasDates(cut) ? cut : null;
 }
@@ -502,9 +505,12 @@ function fromOn(series: CalEvent, occurrence: string, id: string): CalEvent {
     rrule: count ? withPart(series.rrule!, 'COUNT', String(Math.max(1, count - datesBefore(series, occurrence)))) : series.rrule,
     exdates: series.exdates?.filter((x) => msOf(x) >= at),
     overrides: series.overrides?.filter((x) => msOf(x.occurrence) >= at),
-    // An invite answered for some dates: the answer this date had is where the new part starts.
+    // An invite answered for some dates: the answer this date had is where the new part starts. The same for guests'
+    // answers to one we sent (the new part goes out as a new invite, so they're only what was known).
     rsvp: rsvpAt(series, occurrence, o),
     rsvpFrom: series.rsvpFrom?.filter((r) => msOf(r.from) > at),
+    answers: series.answers || series.answersFrom ? { ...series.answers, ...Object.fromEntries((series.answersFrom ?? []).filter((x) => msOf(x.from) <= at).sort((a, b) => msOf(a.from) - msOf(b.from)).map((x) => [x.email, x.status])) } : undefined,
+    answersFrom: series.answersFrom?.filter((r) => msOf(r.from) > at),
   });
 }
 

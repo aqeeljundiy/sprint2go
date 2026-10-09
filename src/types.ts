@@ -196,7 +196,8 @@ export interface CalEvent {
   /* Invites we send (server/calendarInvites.ts): guests get it by email, their answers come back here. */
   sendInvites?: boolean; // email the invite (and its updates) to the guests
   answers?: Record<string, GuestAnswer>; // the guests' answers, by email (lower case)
-  invite?: { uid: string; sequence: number; sentAt?: string; held?: string[]; error?: string }; // the server's: what went out last
+  answersFrom?: { from: string; email: string; status: GuestAnswer }[]; // a guest's answer for one date and the ones after it
+  invite?: { uid: string; sequence: number; sig?: string; to?: string[]; sentAt?: string; held?: string[]; error?: string }; // the server's: what went out last, to whom, and what it said
 }
 
 export type GuestAnswer = RsvpStatus | 'needs-action' | 'delegated';

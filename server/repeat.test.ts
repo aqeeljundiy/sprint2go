@@ -264,6 +264,71 @@ test('the shared rules still read invites the same way (occurrences)', () => {
   assert.deepEqual(list.map((x) => x.start), ['2026-10-05T08:00:00.000Z', '2026-10-19T08:00:00.000Z', '2026-10-26T09:00:00.000Z']);
 });
 
+test('an invite we send carries the series, and reads back as the same dates (RRULE, EXDATE, a moved date, London time)', async () => {
+  const { buildInvite, buildReply, parseInvite, vtimezone } = await import('./ics.ts');
+  const { inviteCalendarTimes, inviteSeries } = await import('../src/inviteTimes.ts');
+  const e = weekly({ exdates: ['2026-10-19T08:00:00.000Z'], overrides: [{ occurrence: '2026-11-02T09:00:00.000Z', start: '2026-11-03T14:00:00.000Z', end: '2026-11-03T15:00:00.000Z', title: 'Sync (Tuesday)' }] });
+  const ics = buildInvite(
+    { method: 'REQUEST', uid: 'ev1@sprint2go.test', sequence: 2, organizer: { name: 'Aqeel', email: 'aqeel@pnp.test' }, attendees: [{ name: 'Nadia', email: 'nadia@kopikita.test' }], title: e.title, start: e.start, end: e.end, tz: LONDON, rrule: e.rrule, exdates: e.exdates, overrides: e.overrides, url: 'https://meet.google.com/abc-defg-hij' },
+    Date.parse('2026-10-01T00:00:00Z'),
+  );
+  // What Google, Outlook and Apple read: London wall-clock times with the zone's rules, the rule, the left-out date and
+  // the moved date as its own VEVENT.
+  assert.match(ics, /METHOD:REQUEST/);
+  assert.match(ics, /DTSTART;TZID=Europe\/London:20261005T090000/);
+  assert.match(ics, /RRULE:FREQ=WEEKLY;BYDAY=MO\r\n/);
+  assert.match(ics, /EXDATE;TZID=Europe\/London:20261019T090000/);
+  assert.match(ics, /RECURRENCE-ID;TZID=Europe\/London:20261102T090000\r\nDTSTART;TZID=Europe\/London:20261103T140000/);
+  assert.match(ics, /BEGIN:VTIMEZONE\r\nTZID:Europe\/London\r\nBEGIN:DAYLIGHT\r\nDTSTART:20260329T010000\r\nTZOFFSETFROM:\+0000\r\nTZOFFSETTO:\+0100\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU/);
+  assert.match(ics, /BEGIN:STANDARD\r\nDTSTART:20261025T020000\r\nTZOFFSETFROM:\+0100\r\nTZOFFSETTO:\+0000\r\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU/);
+  assert.match(ics.replace(/\r\n /g, ''), /ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="Nadia":mailto:nadia@kopikita.test/); // (long lines fold)
+  // Read back by our own parser (the way a guest using sprint2go gets it), it's the same series.
+  const inv = parseInvite(ics)!;
+  assert.equal(inv.uid, 'ev1@sprint2go.test');
+  assert.equal(inv.sequence, 2);
+  assert.equal(inv.rrule, 'FREQ=WEEKLY;BYDAY=MO');
+  assert.equal(inv.tz, LONDON);
+  assert.equal(inv.url, 'https://meet.google.com/abc-defg-hij');
+  assert.deepEqual(inv.exdates, ['2026-10-19T08:00:00.000Z']);
+  assert.deepEqual(inv.overrides, [{ recurrenceId: '2026-11-02T09:00:00.000Z', start: '2026-11-03T14:00:00.000Z', end: '2026-11-03T15:00:00.000Z' }]);
+  const [from, to] = range('2026-10-01T00:00:00Z', '2027-01-01T00:00:00Z');
+  const ours = expandSeries(e, from, to).map((x) => x.start).sort();
+  const theirs = occurrences(inv, from, to, 100)!.map((x) => x.start).sort();
+  assert.deepEqual(theirs, ours);
+  // And as a guest's repeating event: one series, the same dates (incoming repeating invites aren't copies per date).
+  const asEvent: CalEvent = { id: 'got', title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv), ...inviteSeries(inv) };
+  assert.deepEqual(expandSeries(asEvent, from, to).map((x) => x.start).sort(), ours);
+  // A whole series off: CANCEL. Zones without daylight saving get one part.
+  assert.match(buildInvite({ method: 'CANCEL', uid: 'ev1@sprint2go.test', sequence: 3, organizer: { name: 'A', email: 'a@pnp.test' }, attendees: [], title: 'x', start: e.start, end: e.end, tz: LONDON, rrule: e.rrule }), /METHOD:CANCEL[\s\S]*STATUS:CANCELLED/);
+  assert.deepEqual(vtimezone('Asia/Jakarta', 2026), ['BEGIN:VTIMEZONE', 'TZID:Asia/Jakarta', 'BEGIN:STANDARD', 'DTSTART:19700101T000000', 'TZOFFSETFROM:+0700', 'TZOFFSETTO:+0700', 'END:STANDARD', 'END:VTIMEZONE']);
+  assert.match(vtimezone('America/New_York', 2026).join('\n'), /BYMONTH=3;BYDAY=2SU[\s\S]*BYMONTH=11;BYDAY=1SU/);
+  assert.match(vtimezone('Australia/Sydney', 2026).join('\n'), /BEGIN:STANDARD\nDTSTART:20260405T030000[\s\S]*BYMONTH=4;BYDAY=1SU[\s\S]*BEGIN:DAYLIGHT\nDTSTART:20261004T020000[\s\S]*BYMONTH=10;BYDAY=1SU/);
+  // A guest's answer to one date, and to a date and the ones after it, reads back as such.
+  const one = parseInvite(buildReply(inv, { name: 'Nadia', email: 'nadia@kopikita.test' }, 'declined', 0, { recurrenceId: '2026-10-26T09:00:00.000Z' }))!;
+  assert.equal(one.method, 'REPLY');
+  assert.equal(one.recurrenceId, '2026-10-26T09:00:00.000Z');
+  assert.equal(one.thisAndFuture, undefined);
+  assert.equal(one.attendees[0].status, 'declined');
+  const following = parseInvite(buildReply(inv, { name: 'Nadia', email: 'nadia@kopikita.test' }, 'accepted', 0, { recurrenceId: '2026-10-26T09:00:00.000Z', following: true }))!;
+  assert.equal(following.recurrenceId, '2026-10-26T09:00:00.000Z');
+  assert.equal(following.thisAndFuture, true);
+});
+
+test('an all-day repeating invite goes as dates, and comes back as the same days', async () => {
+  const { buildInvite, parseInvite } = await import('./ics.ts');
+  const { inviteCalendarTimes, inviteSeries } = await import('../src/inviteTimes.ts');
+  // Our own: midnight to midnight in London, every month on the 2nd Tuesday, the November one left out.
+  const e: CalEvent = { id: 'ad', title: 'Board day', calendarId: 'work', start: '2026-10-12T23:00:00.000Z', end: '2026-10-13T23:00:00.000Z', allDay: true, timeZone: LONDON, rrule: 'FREQ=MONTHLY;BYDAY=2TU', exdates: ['2026-11-10T00:00:00.000Z'] };
+  const ics = buildInvite({ method: 'REQUEST', uid: 'ad@sprint2go.test', sequence: 0, organizer: { name: 'A', email: 'a@pnp.test' }, attendees: [], title: e.title, start: e.start, end: e.end, allDay: true, tz: LONDON, rrule: e.rrule, exdates: e.exdates });
+  assert.match(ics, /DTSTART;VALUE=DATE:20261013\r\nDTEND;VALUE=DATE:20261014/);
+  assert.match(ics, /EXDATE;VALUE=DATE:20261110/);
+  assert.doesNotMatch(ics, /VTIMEZONE/);
+  const inv = parseInvite(ics)!;
+  const got: CalEvent = { id: 'g', title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: true, ...inviteSeries(inv) };
+  assert.equal(got.start, '2026-10-13T00:00:00');
+  assert.deepEqual(expandSeries(got, ...range('2026-10-01T00:00:00Z', '2027-01-01T00:00:00Z')).map((x) => x.start.slice(0, 10)), ['2026-10-13', '2026-12-08']);
+});
+
 test('reminders come for each date of a repeating event, once per date', async () => {
   const { eventReminders } = await import('./eventReminders.ts');
   // Every weekday at 09:00 London, a reminder 10 minutes before; one date has its own reminder (30 minutes).
