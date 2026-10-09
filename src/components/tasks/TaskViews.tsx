@@ -62,6 +62,7 @@ export function TaskViews({
   onScope,
   triage,
   top,
+  barStart,
 }: {
   ops: TaskOps;
   kind: string; // the scope's kind: mine, today, upcoming, team, project, client…
@@ -77,6 +78,7 @@ export function TaskViews({
   onScope: (s: { kind: string; id?: string }) => void;
   triage?: boolean; // a team's queue: swipe to take it or snooze it
   top?: ReactNode; // above the list (a team's workload)
+  barStart?: ReactNode; // the start of the toolbar (a project's "Open" on phones)
 }) {
   const phone = usePhone();
   const [d, setD, resetD] = useDisplay(kind === 'client' ? 'client' : kind);
@@ -227,7 +229,7 @@ export function TaskViews({
 
   /* ---------- rows ---------- */
   const cross = !['project', 'client'].includes(kind);
-  const look: RowLook = { show, project: cross, team: !['team'].includes(kind) && !phone, stage: d.group !== 'stage', avatar: !!triage || kind === 'team' || kind === 'myteams' || kind === 'all' || kind === 'project' || kind === 'client' };
+  const look: RowLook = { show, project: cross, team: kind !== 'team' && d.group !== 'team' && !phone, stage: d.group !== 'stage', avatar: !!triage || kind === 'team' || kind === 'myteams' || kind === 'all' || kind === 'project' || kind === 'client' };
   const act = (t: Todo) => {
     if (t.done) return null;
     const st = stageOf(t, ops.stages);
@@ -259,7 +261,7 @@ export function TaskViews({
         key={t.id}
         t={t}
         ops={ops}
-        look={group === 'today' || group === 'tomorrow' ? { ...look, dueWords: false } : look}
+        look={group === 'today' || group === 'tomorrow' || group === 'day' ? { ...look, dueWords: false } : look}
         selecting={selecting}
         selected={selected.includes(t.id)}
         onSelect={toggle}
@@ -366,7 +368,7 @@ export function TaskViews({
       <TaskCalendar
         tasks={open.filter((t) => t.due && t.due >= today)}
         today={today}
-        row={(t) => row(t)}
+        row={(t) => row(t, false, undefined, 'day')}
         onAdd={(due) => openAdd({ due })}
         head={
           overdueMine.length > 0 && (
@@ -423,6 +425,7 @@ export function TaskViews({
         <TabBar storageKey="task-views" className="client-tabs task-view-tabs" value={activeView?.id ?? ''} onSelect={(id) => { const v = views.find((x) => x.id === id); if (v) applyView(v); }} items={views.map((v) => ({ id: v.id, name: v.name, label: v.name }))} />
       )}
       <div className="tq-bar">
+        {barStart}
         {canPlan && (
           <button type="button" className="ghost-btn sm tq-plan" onClick={() => setPlanning(true)}>
             <Wand2 size={15} /> Plan my day
@@ -454,7 +457,7 @@ export function TaskViews({
           <SlidersHorizontal size={17} />
           {words.length > 0 && <i>{words.length}</i>}
         </button>
-        {canAdd && !phone && (
+        {canAdd && (!phone || kind === 'client') && (
           <button type="button" className="primary-btn sm tq-new" onClick={() => (inline ? setInline(false) : openAdd())} aria-expanded={inline} title="New task (N)">
             <Plus size={14} /> New task <kbd>N</kbd>
           </button>

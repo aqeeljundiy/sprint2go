@@ -440,7 +440,6 @@ export function TaskDetail({
       <aside className="drawer td-drawer" role="dialog" aria-label="Task">
         <header className="drawer-head">
           {crumbs}
-          <span className="spacer" />
           {head}
         </header>
         <div className="drawer-body">{body}</div>

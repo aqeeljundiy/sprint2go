@@ -1408,8 +1408,10 @@ button.ds-row:hover {
   gap: 2px;
 }
 .sel.td-crumb {
+  flex: 0 1 auto;
+  width: auto;
   min-width: 0;
-  max-width: 62%;
+  max-width: none;
   height: 32px;
   gap: 6px;
   padding: 0 8px;

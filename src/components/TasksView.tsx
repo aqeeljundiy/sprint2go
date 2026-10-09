@@ -689,6 +689,13 @@ export function TasksView(p: Props) {
             onViews={setViews}
             onScope={(s) => p.onScope(s as TaskScope)}
             triage={scope.kind === 'team' || scope.kind === 'myteams'}
+            barStart={
+              project && p.onOpenProject ? (
+                <button type="button" className="ghost-btn sm phone-only tq-open" onClick={() => p.onOpenProject!(project.id)}>
+                  Open the {term.one} <ChevronRight size={14} />
+                </button>
+              ) : undefined
+            }
           />
         )}
 

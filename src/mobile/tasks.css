@@ -34,7 +34,12 @@
   .tq-layout {
     flex: none;
   }
-  .tq-plan {
+  .tq-new kbd {
+    display: none;
+  }
+  .tq-plan,
+  .tq-open,
+  .tq-new {
     min-height: var(--tap);
     padding-inline: 12px;
   }

@@ -149,7 +149,7 @@ export function TaskRow({
           </div>
         </div>
         {act && <span className="trow-act">{act}</span>}
-        {look.avatar && (
+        {look.avatar && doersOf(t).length > 0 && (
           <span className="trow-who phone-only">
             <Doer t={t} ops={ops} size={24} />
           </span>
