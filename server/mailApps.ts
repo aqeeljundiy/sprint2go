@@ -63,7 +63,8 @@ export function status(): { on: boolean; missing: Missing; detail: string | null
   if (!enabledByEnv()) return { on: false, missing: 'switch', detail: null };
   if (!trustedNow()) {
     const c = certState(MAIL_HOST);
-    return { on: false, missing: 'certificate', detail: c.error?.message ?? (acmeConfigured() ? 'Let’s Encrypt hasn’t issued it yet.' : 'CF_DNS_TOKEN (the Cloudflare token) isn’t set, so Let’s Encrypt can’t issue it.') };
+    // Without the Cloudflare token there's nothing more to say; with it, Let's Encrypt's own answer when it failed.
+    return { on: false, missing: 'certificate', detail: acmeConfigured() ? c.error?.message ?? 'Let’s Encrypt hasn’t issued it yet.' : null };
   }
   if (!started) return { on: false, missing: 'ports', detail: portError };
   return { on: true, missing: null, detail: null };
@@ -201,7 +202,7 @@ const bindHost = () => process.env.IMAP_BIND ?? (production ? '0.0.0.0' : proces
 
 async function tryStart() {
   if (started || starting || !enabledByEnv()) return;
-  if (!trustedNow()) return deps.log(`Phone mail apps: waiting for a trusted certificate for ${MAIL_HOST} (${status().detail ?? 'none yet'})`);
+  if (!trustedNow()) return deps.log(`Phone mail apps: waiting for a trusted certificate for ${MAIL_HOST} (${status().detail ?? 'set CF_DNS_TOKEN or MAIL_TLS_CERT and MAIL_TLS_KEY'})`);
   starting = true;
   try {
     await imap.start(
@@ -414,6 +415,7 @@ export async function handleApi(
         on: st.on,
         missing: st.missing,
         detail: st.detail,
+        acme: acmeConfigured(),
         host: MAIL_HOST,
         ports: { imap: PORTS.imaps, imapStarttls: PORTS.imap, smtp: PORTS.submissions, smtpStarttls: PORTS.submission },
         username,

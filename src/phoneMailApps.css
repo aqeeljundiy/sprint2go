@@ -29,6 +29,10 @@
 .pm-block {
   margin-top: 28px;
 }
+/* The first block right under the intro (the notes before it are usually empty). */
+.pm > :first-child + .pm-block {
+  margin-top: 4px;
+}
 .pm-block > h3 {
   margin: 0;
 }
