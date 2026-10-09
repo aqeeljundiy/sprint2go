@@ -73,11 +73,15 @@ export function startSlidingTabs() {
       if (r.type === 'attributes') queue(t.matches?.(BARS) ? t : t.parentElement?.matches(BARS) ? t.parentElement : null);
       else {
         if (t.matches?.(BARS)) queue(t);
+        // Something inside a tab changed (a count arrived, a label switched): its width did too.
+        else queue((t.closest?.(BARS) as HTMLElement | null) ?? null);
         r.addedNodes.forEach((n) => n instanceof HTMLElement && (n.matches(BARS) ? queue(n) : scan(n)));
       }
     }
   }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-selected'] });
   // Labels change width (counts, translations) and windows resize: keep the highlight on its tab.
   addEventListener('resize', () => scan(document));
+  // The web font arrives after the first layout and makes every label a little wider.
+  void document.fonts?.ready.then(() => scan(document));
   scan(document);
 }

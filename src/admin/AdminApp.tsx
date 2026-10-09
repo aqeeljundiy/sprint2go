@@ -62,6 +62,39 @@ export function AdminApp() {
   const [toasts, setToasts] = useState<{ id: number; text: string; out?: boolean; action?: { label: string; run: () => void } }[]>([]);
   const [tick, setTick] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
+  // The nav's width: drag its edge (200 to 360 px), double-click for the default; kept on this device.
+  const NAV_MIN = 200, NAV_MAX = 360, NAV_DEFAULT = 240;
+  const [navW, setNavW] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem('s2g-adm-nav'));
+      return v >= NAV_MIN && v <= NAV_MAX ? v : NAV_DEFAULT;
+    } catch {
+      return NAV_DEFAULT;
+    }
+  });
+  const keepNavW = (w: number) => {
+    const v = Math.round(Math.min(NAV_MAX, Math.max(NAV_MIN, w)));
+    setNavW(v);
+    try {
+      localStorage.setItem('s2g-adm-nav', String(v));
+    } catch {
+      /* private window: the width just isn't remembered */
+    }
+  };
+  const startNavResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = navW;
+    document.body.classList.add('resizing', 'resizing-x');
+    const move = (ev: PointerEvent) => keepNavW(startW + ev.clientX - startX);
+    const up = () => {
+      document.body.classList.remove('resizing', 'resizing-x');
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', up);
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  };
   const [search, setSearch] = useState(false);
   const [open, setOpen] = useState(0); // new and open tickets, for the nav
   const load = useCallback(() => get('me').then(setMe, () => setMe('denied')), []);
@@ -150,7 +183,7 @@ export function AdminApp() {
 
   return (
     <AdminCtx.Provider value={ctx}>
-      <div className={`adm ${navOpen ? 'nav-open' : ''}`}>
+      <div className={`adm ${navOpen ? 'nav-open' : ''}`} style={{ ['--ad-nav' as string]: `${navW}px` }}>
         <header className="adm-topbar">
           <button className="icon-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">
             <Menu size={18} />
@@ -163,6 +196,22 @@ export function AdminApp() {
         </header>
         <div className="adm-scrim" onClick={() => setNavOpen(false)} />
         <aside className="adm-nav" aria-label="Backend">
+          <div
+            className="adm-nav-resize"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize the menu"
+            aria-valuemin={NAV_MIN}
+            aria-valuemax={NAV_MAX}
+            aria-valuenow={navW}
+            tabIndex={0}
+            title="Drag to resize · double-click for the usual width"
+            onPointerDown={startNavResize}
+            onDoubleClick={() => keepNavW(NAV_DEFAULT)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') (e.preventDefault(), keepNavW(navW + (e.key === 'ArrowRight' ? 16 : -16)));
+            }}
+          />
           <div className="adm-brand">
             <Wordmark height={20} />
             <span className="adm-brand-tag">Operator</span>
