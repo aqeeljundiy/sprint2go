@@ -11,6 +11,7 @@ import * as db from './db.ts';
 import * as sandbox from './sandbox.ts';
 import { cleanStages, stageName, stageOf, stageIdFor } from '../src/stages.ts';
 import { needsYou, updatesOf } from '../src/needsYou.ts';
+import { templateValues } from '../src/components/tables/core.ts';
 import { addDays, companyTz, localParts, zonedTime } from '../src/jobTimes.ts';
 import type { StageKind, TaskStage } from '../src/types.ts';
 
@@ -1242,7 +1243,8 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     { title: 'Add a table row', description: 'Adds a row to a table you can see. The table’s own automations run as when you add a row in sprint2go.', inputSchema: { table: z.string().describe('The table’s name or id'), values }, annotations: WRITE },
     (a, v) => {
       const t = v.table(a.table);
-      const vals = rowValues(v, t, a.values);
+      // The table's default template first (as a new row in the app), then what was asked for on top.
+      const vals = { ...templateValues(t as any, (t.templates ?? []).find((x: Doc) => x.isDefault), v.me, v.today()), ...rowValues(v, t, a.values) };
       const first = t.fields?.[0];
       if (first && (vals[first.id] === undefined || vals[first.id] === null || vals[first.id] === '')) no(`Give the row a ${first.name} (its name).`);
       const at = new Date().toISOString();

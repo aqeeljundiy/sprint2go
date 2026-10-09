@@ -164,6 +164,7 @@ try {
       { id: 'f-value', name: 'Value', type: 'money' },
     ],
     views: [],
+    templates: [{ id: 'tp-lead', name: 'New lead', isDefault: true, values: { 'f-stage': 'o-lead', 'f-owner': '@me' } }],
     createdBy: 'u-alice',
     createdAt: now(),
   });
@@ -345,6 +346,8 @@ try {
   const ar = await A('add_table_row', { table: 'Deals', values: { Name: 'Lychee Ltd', Stage: 'Won', Owner: 'Alice', Value: 1200 } });
   const row = doc('rows', ar.data?.created?.id);
   check(row?.values['f-stage'] === 'o-won' && row.values['f-owner'] === 'u-alice' && row.createdBy === 'u-alice', 'add_table_row: choices by label, people by name');
+  const tr = doc('rows', (await A('add_table_row', { table: 'Deals', values: { Name: 'Mango Co' } })).data?.created?.id);
+  check(tr?.values['f-stage'] === 'o-lead' && tr.values['f-owner'] === 'u-alice', 'add_table_row: starts from the table’s default template, as in the app');
   check((await A('add_table_row', { table: 'Deals', values: { Name: 'X', Stage: 'Maybe' } })).text.includes('Its choices: Lead, Won'), 'add_table_row: a choice that doesn’t exist is refused with the ones that do');
   await A('update_table_row', { row_id: 'r-1', values: { Stage: 'Won' } });
   check(doc('rows', 'r-1').values['f-stage'] === 'o-won' && doc('rows', 'r-1').history?.[0]?.to === 'o-won', 'update_table_row: changes a field and keeps its history');

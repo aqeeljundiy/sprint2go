@@ -59,6 +59,7 @@ export function useLongPress(onLongPress: (p: PressPoint) => void, opts: LongPre
 
   return {
     onPointerDown(e: React.PointerEvent<HTMLElement>) {
+      st.current.swallow = false; // a new press: only the click that ends a long-press is swallowed, never a later one
       if (disabled || (e.pointerType === 'mouse' && !mouse) || e.button > 0) return;
       const s = st.current;
       reset();
@@ -99,6 +100,8 @@ export function useLongPress(onLongPress: (p: PressPoint) => void, opts: LongPre
       const s = st.current;
       if (e.pointerId !== s.id) return;
       if (s.fired && o.current.onDragEnd) o.current.onDragEnd({ x: e.clientX, y: e.clientY, dx: e.clientX - s.x, dy: e.clientY - s.y });
+      // Some browsers send no click after a long-press: don't leave the swallow waiting for someone's next click.
+      if (s.swallow) window.setTimeout(() => (st.current.swallow = false), 400);
       reset();
     },
     onPointerCancel() {

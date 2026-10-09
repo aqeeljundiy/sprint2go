@@ -355,6 +355,13 @@
   border-top: 1px solid var(--line);
   margin-bottom: var(--kb, 0px);
 }
+/* With a footer, the footer rides above the keyboard and keeps the home bar's room, so the body keeps neither. */
+.push-body:has(+ .push-foot) {
+  padding-bottom: 0;
+}
+.kb-open .push-foot {
+  padding-bottom: 8px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .sheet,

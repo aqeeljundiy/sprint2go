@@ -278,11 +278,7 @@
     justify-content: center;
   }
 
-  /* The bottom: the comment bar (team mail) over the actions; typing a comment folds the actions away. The footer
-     already rides above the keyboard, so the body doesn't keep the keyboard's room as well. */
-  .mail-reader .push-body {
-    padding-bottom: 0;
-  }
+  /* The bottom: the comment bar (team mail) over the actions; typing a comment folds the actions away. */
   .mail-reader .push-foot {
     padding: 6px 8px calc(4px + env(safe-area-inset-bottom));
   }
