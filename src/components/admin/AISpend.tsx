@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Coins } from 'lucide-react';
 import type { AIJobId, AISettings, Plan, ProviderId } from '../../types';
 import { JOBS, PROVIDERS, providerOf } from '../../data/aiCatalog';
+import { prettyModelName } from '../../data/aiModels';
 import { ALLOWANCE, TOP_UP, options, priceFor, rp, seatsFor, TIER_NAME } from '../../data/pricing';
 import { server } from '../../sync';
 import { brand as product } from '../../terms';
@@ -32,13 +33,13 @@ const usdOf = (r: { inTokens: number; outTokens: number }, price: [number, numbe
 const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 
 /** What one setup would cost for the same work: each job priced on the model that setup uses for it. */
-function costWith(rows: Row[], pick: (job: AIJobId, row: Row) => { provider: string; model: string } | null) {
+function costWith(rows: Row[], pick: (job: AIJobId, row: Row) => { provider: string; model: string } | null, price: typeof priceOf = priceOf) {
   let usd = 0;
   let unpriced = 0;
   for (const r of rows) {
     const m = pick(r.job, r);
-    const price = m && priceOf(m.provider, m.model);
-    if (price) usd += usdOf(r, price);
+    const p = m && price(m.provider, m.model);
+    if (p) usd += usdOf(r, p);
     else unpriced += r.uses;
   }
   return { rp: usd * USD, usd, unpriced };
@@ -46,9 +47,11 @@ function costWith(rows: Row[], pick: (job: AIJobId, row: Row) => { provider: str
 
 /**
  * Spending: tokens and estimated cost per job on your own keys (from the server's log of every AI call),
- * and the same work priced on other setups and on sprint2go's "AI included" plan.
+ * and the same work priced on other setups and on sprint2go's "AI included" plan. `listPrice`: what a provider's own
+ * model list says a model costs, for models our catalogue has no price for.
  */
-export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AISettings; plan?: Plan; people: number; typical: Partial<Record<AIJobId, number>> }) {
+export function AISpend({ ws, ai, plan, people, typical, listPrice }: { ws: string; ai: AISettings; plan?: Plan; people: number; typical: Partial<Record<AIJobId, number>>; listPrice?: (provider: string, model: string) => [number, number] | null }) {
+  const price = (provider: string, model: string) => priceOf(provider, model) ?? listPrice?.(provider, model) ?? null;
   const [real, setReal] = useState<Row[] | null>(null);
   useEffect(() => {
     if (!server.on) return;
@@ -77,9 +80,9 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
     const uses = rs.reduce((s, r) => s + r.uses, 0);
     const inT = rs.reduce((s, r) => s + r.inTokens, 0);
     const outT = rs.reduce((s, r) => s + r.outTokens, 0);
-    const priced = rs.map((r) => ({ r, price: r.provider === 'included' ? null : priceOf(r.provider, r.model) }));
+    const priced = rs.map((r) => ({ r, price: r.provider === 'included' ? null : price(r.provider, r.model) }));
     const usd = priced.reduce((s, x) => s + (x.price ? usdOf(x.r, x.price) : 0), 0);
-    const nameOf = (model: string) => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === model || m.id.split('/').pop() === model.split('/').pop())?.name ?? model;
+    const nameOf = (model: string) => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === model || m.id.split('/').pop() === model.split('/').pop())?.name ?? prettyModelName(model);
     const models = [...new Set(rs.map((r) => (r.provider === 'included' ? `${product.name}` : nameOf(r.model))))];
     return { job: j, uses, inT, outT, usd, models, included: rs.every((r) => r.provider === 'included'), unpriced: priced.some((x) => !x.price && x.r.provider !== 'included') };
   }).filter(Boolean) as { job: (typeof JOBS)[number]; uses: number; inT: number; outT: number; usd: number; models: string[]; included: boolean; unpriced: boolean }[];
@@ -89,7 +92,7 @@ export function AISpend({ ws, ai, plan, people, typical }: { ws: string; ai: AIS
   const totalUses = byJob.reduce((s, x) => s + x.uses, 0);
 
   // The same work on each setup.
-  const now = costWith(rows, (job, r) => (r.provider === 'included' ? mapped(job) : r));
+  const now = costWith(rows, (job, r) => (r.provider === 'included' ? mapped(job) : r), price);
   const cheap = costWith(rows, (job) => ({ provider: '', model: JOBS.find((j) => j.id === job)!.rec.cheap }));
   const best = costWith(rows, (job) => ({ provider: '', model: JOBS.find((j) => j.id === job)!.rec.best }));
 

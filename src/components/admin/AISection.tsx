@@ -614,7 +614,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           </SmoothHeight>
         </div>
 
-        <AISpend ws={ws.id} ai={ai} plan={plan} people={people} typical={{ braindump: 41, ask: 118, meeting: 22, summary: 236, draft: 97, replies: 180, todos: 420, sorting: 300 }} />
+        <AISpend ws={ws.id} ai={ai} plan={plan} people={people} typical={{ braindump: 41, ask: 118, meeting: 22, summary: 236, draft: 97, replies: 180, todos: 420, sorting: 300 }} listPrice={(p, m) => lists[p]?.models.find((x) => x.id === m)?.price ?? null} />
 
         {(() => {
           // On its own keys the company picks a model per job, in plain sight; on ours alone the choice is folded away.
