@@ -174,12 +174,16 @@ try {
     return null;
   };
   const signIn = async (email) => {
-    const r = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: env.SEED_PASSWORD }) });
+    // The demo's passwords are hashed in the background on the first run: a moment after "listening", they're all there.
+    const login = () => fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: env.SEED_PASSWORD }) });
+    let r = await login();
+    for (let i = 0; i < 30 && r.status === 401; i++) (await sleep(200), (r = await login()));
     const cookie = (r.headers.get('set-cookie') ?? '').split(';')[0];
     const call = (method, path, body) => fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', cookie }, body: body === undefined ? undefined : JSON.stringify(body) });
     const j = async (r) => ({ status: r.status, text: await r.clone().text(), ...(await r.json().catch(() => ({}))) });
     return {
       ok: r.ok && cookie.startsWith('s2g='),
+      why: r.ok ? '' : `${r.status} ${await r.clone().text()}`,
       get: (path) => call('GET', path).then(j),
       post: (path, body) => call('POST', path, body).then(j),
       sync: (coll, upserts) => call('POST', '/api/sync', { coll, upserts, deletes: [] }).then(j),
@@ -187,7 +191,7 @@ try {
   };
   const aqeel = await signIn('aqeel@pixelandprofits.com');
   const dewi = await signIn('dewi@pixelandprofits.com');
-  check(aqeel.ok && dewi.ok, 'the owner and a member sign in');
+  check(aqeel.ok && dewi.ok, `the owner and a member sign in (${aqeel.why} ${dewi.why})`);
 
   /* ---------- a company adds a SumoPod key and picks from SumoPod's own list ---------- */
   const bad = await aqeel.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'sumopod', key: 'sk-wrong-000000000000' });

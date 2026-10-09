@@ -566,7 +566,7 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
       })}
       {(live.length > 0 || notListed.length > 0) && (
         <p className="adm-note adm-ai-lists">
-          {live.length > 0 && `${list(live.map((l) => l.name))}: the models ${live.length === 1 ? 'its' : 'their'} own list offers our key${oldest ? `, read ${rel(oldest)}` : ''}. `}
+          {live.length > 0 && `Models for ${list(live.map((l) => l.name))} come from ${live.length === 1 ? 'its own list' : 'their own lists'} for our ${live.length === 1 ? 'key' : 'keys'}${oldest ? `, read ${rel(oldest)}` : ''}. `}
           {notListed.map((l) => `${l.name}: ${l.note}`).join(' ')}
         </p>
       )}
