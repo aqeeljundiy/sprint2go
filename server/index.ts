@@ -47,6 +47,7 @@ import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
 import * as digest from './digest.ts';
 import * as retention from './retention.ts';
+import { companyTz, isZone } from '../src/jobTimes.ts';
 
 for (const f of ['.env', '.env.example']) if (existsSync(f)) process.loadEnvFile(f); // .env wins: values already set are kept
 const PORT = Number(process.env.PORT ?? 8787);
@@ -211,6 +212,34 @@ function portalsOf(userId: string): { workspaceId: string; clientId: string }[] 
   if (me.clientOf && !found.some((f) => f.clientId === me.clientOf!.clientId)) found.push(me.clientOf);
   return found;
 }
+/**
+ * What a customer attaches to a ticket: files they uploaded themselves (Help uploads them), never another address,
+ * since support opens what's on a ticket.
+ */
+const ticketFiles = (list: unknown, userId: string) =>
+  (Array.isArray(list) ? list : [])
+    .filter((a: any) => a && typeof a.url === 'string' && db.fileInfo(/^\/api\/files\/([a-f0-9]{32})$/.exec(a.url)?.[1] ?? '')?.by === userId)
+    .slice(0, 10)
+    .map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: String(a.url), size: a.size ? String(a.size).slice(0, 20) : undefined }));
+/**
+ * Who may open which file, kept for two minutes once it was yes: a video seeks with many requests, and each check
+ * looks through the documents that link the file. A no is never kept, so a file shared a moment ago opens at once.
+ */
+const fileOk = new Map<string, number>();
+const fileOkFresh = (key: string) => (fileOk.get(key) ?? 0) > Date.now() - 2 * 60_000;
+const fileOkNote = (key: string) => {
+  fileOk.set(key, Date.now());
+  if (fileOk.size > 5000) for (const [k, at] of fileOk) if (at < Date.now() - 2 * 60_000) fileOk.delete(k);
+};
+/** An operator opening the same ticket file again within ten minutes (a video seeking, a second tab) is one audit entry. */
+const fileOpens = new Map<string, number>();
+const firstOpenInAWhile = (key: string) => {
+  const now = Date.now();
+  if ((fileOpens.get(key) ?? 0) > now - 10 * 60_000) return false;
+  fileOpens.set(key, now);
+  if (fileOpens.size > 5000) for (const [k, at] of fileOpens) if (at < now - 10 * 60_000) fileOpens.delete(k);
+  return true;
+};
 /** Users (by id) who are people at this client, for the client's AI question limit. */
 const clientUserIds = (clientId: string) => {
   const client = db.getDoc('clients', clientId) as any;
@@ -1396,7 +1425,7 @@ createServer(async (req, res) => {
       if (!subject || !text) return json(res, 400, { error: 'Tell us what it’s about and what happened.' });
       const ws = (memberOf(me).find((w: any) => w.id === b.workspaceId) ?? memberOf(me)[0]) as any;
       const paying = ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false;
-      const attachments = (Array.isArray(b.attachments) ? b.attachments : []).filter((a: any) => a && typeof a.url === 'string' && /^\/api\/files\/[a-f0-9]{32}$/.test(a.url)).map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: a.url, size: a.size ? String(a.size) : undefined }));
+      const attachments = ticketFiles(b.attachments, me);
       const t = support.createTicket({
         subject,
         body: text,
@@ -1427,7 +1456,7 @@ createServer(async (req, res) => {
         const b = await body(req);
         const text = String(b.body ?? '').trim();
         if (!text) return json(res, 400, { error: 'Write something first.' });
-        const attachments = (Array.isArray(b.attachments) ? b.attachments : []).filter((a: any) => a && typeof a.url === 'string' && /^\/api\/files\/[a-f0-9]{32}$/.test(a.url)).map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: a.url }));
+        const attachments = ticketFiles(b.attachments, me);
         support.addMessage(t.id, { kind: 'customer', author: String(meDoc?.email ?? '').toLowerCase(), authorName: meDoc?.name ?? null, body: text, internal: false, attachments });
         support.customerReplied(t.id);
         supportNotify(t, `${meDoc?.name ?? 'A customer'} replied on #${t.number}: ${text.slice(0, 70)}`, true);
@@ -1469,7 +1498,9 @@ createServer(async (req, res) => {
       // and how many days after the due date an unpaid invoice makes the company read-only (0: never by itself).
       const s = platform.settings();
       const pay = { bank: s.billing.bank || null, payee: s.billing.name || null, graceDays: s.autoSuspendDays };
-      return json(res, 200, { pay, invoices: platform.invoices(ws.id).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, number: i.number, period: i.period, total: i.total, status: i.status, dueAt: i.dueAt, paidAt: i.paidAt, overdue: i.status === 'sent' && i.dueAt < new Date().toISOString(), credits: billing.isCreditInvoice(i.id) || undefined })) });
+      // Who this month's invoice bills so far: the people on the team who signed in or used sprint2go this month.
+      const active = billing.activePeople(ws);
+      return json(res, 200, { pay, active: { people: active.active, team: active.team }, invoices: platform.invoices(ws.id).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, number: i.number, period: i.period, total: i.total, status: i.status, dueAt: i.dueAt, paidAt: i.paidAt, overdue: i.status === 'sent' && i.dueAt < new Date().toISOString(), credits: billing.isCreditInvoice(i.id) || undefined })) });
     }
     if (p === '/api/billing/invoice' && req.method === 'GET') {
       const inv = platform.invoice(url.searchParams.get('id') ?? '');
@@ -1679,7 +1710,8 @@ createServer(async (req, res) => {
           inReplyTo: typeof b.inReplyTo === 'string' ? b.inReplyTo : undefined,
           references: Array.isArray(b.references) ? b.references.filter((x: unknown) => typeof x === 'string') : undefined,
           // Read tracking for the outside recipients, when the sender asked and the company allows it.
-          tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me } : undefined,
+          // "Remind me if no reply" comes with tracking (it's in the same menu): told once, by the server, after that many days.
+          tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me, remindDays: Number(b.trackOptions?.remindDays) || 0 } : undefined,
         };
         // Undo send (Settings, Mail): the email waits here for the sender's window before anything leaves.
         const undo = Math.min(mailer.MAX_UNDO_SECONDS, Math.max(0, Math.round(Number(b.undoSeconds) || 0)));
@@ -2202,7 +2234,21 @@ createServer(async (req, res) => {
     if (fileReq && req.method === 'GET') {
       const f = db.fileInfo(fileReq[1]);
       if (!f) return json(res, 404, { error: 'No such file.' });
-      const team = memberOf(me).some((w) => w.id === f.workspaceId);
+      // What links the file: the documents it's on (a Drive file, a message, a task, a row, a mail thread).
+      const usedOn = () => db.db.prepare("SELECT coll, data FROM docs WHERE data LIKE ? ESCAPE '\\' LIMIT 500").all(`%/api/files/${f.id}%`) as { coll: string; data: string }[];
+      // A teammate opens their own uploads, files on something they can see, and files not on anything yet. A file in
+      // a project they can't see (or a private channel, someone's mailbox) stays closed, even with the address.
+      const seen = `${me}:${f.id}`;
+      const team =
+        memberOf(me).some((w) => w.id === f.workspaceId) &&
+        (f.by === me ||
+          fileOkFresh(seen) ||
+          (() => {
+            const rows = usedOn();
+            if (!rows.length) return true;
+            const see = teamLens(me);
+            return rows.some((r) => !!see(r.coll, JSON.parse(r.data)));
+          })());
       // A guest opens their own uploads, and files on something they can see (a shared file, a message in their
       // channel, a request): never the rest of the company's files, even with the address.
       const guest =
@@ -2211,10 +2257,18 @@ createServer(async (req, res) => {
         (f.by === me ||
           (() => {
             const see = lens(me);
-            const rows = db.db.prepare("SELECT coll, data FROM docs WHERE data LIKE ? ESCAPE '\\' LIMIT 50").all(`%/api/files/${f.id}%`) as { coll: string; data: string }[];
-            return rows.some((r) => !!see(r.coll, JSON.parse(r.data)));
+            return usedOn().some((r) => !!see(r.coll, JSON.parse(r.data)));
           })());
-      if (!team && !guest) return json(res, 404, { error: 'No such file.' });
+      // Support tickets: the operators who work tickets (the support permission, past the console's two-step sign-in)
+      // open what customers attached (their own uploads, or what came with their email), and each opening is in the
+      // audit log. Whoever wrote in by email opens what they sent, in Help (those files belong to no company).
+      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.kind = 'customer' AND m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; number: number; requesterUser: string | null; requesterEmail: string }[]) : [];
+      const supportOp = !!tickets.length && !!opRecord && opRecord.totpOn && platform.permsOf(opRecord.role).includes('support') && platform.sessionVerified(token);
+      const myEmail = String(meDoc?.email ?? '').toLowerCase();
+      const requester = !supportOp && f.workspaceId === 'platform' && tickets.some((t) => t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail));
+      if (!team && !guest && !supportOp && !requester) return json(res, 404, { error: 'No such file.' });
+      if (team && f.by !== me) fileOkNote(seen);
+      if (supportOp && !/^bytes=[1-9]/.test(String(req.headers.range ?? '')) && firstOpenInAWhile(`${me}:${f.id}`)) db.audit(opRecord!.email, 'ticket.file-open', tickets[0].ticketId, `#${tickets[0].number}: ${String(f.name).slice(0, 120)}`);
       const path = db.filePath(f.id);
       if (!existsSync(path)) return json(res, 404, { error: 'The file is gone.' });
       // Streamed, with ranges, so a long video plays and seeks without loading the whole file.
@@ -2428,9 +2482,12 @@ createServer(async (req, res) => {
             // Hosted mailboxes only as many as the plan has room for.
             const boxes = billing.mailboxesOnSave({ ...(d as any), plan }, before);
             say(boxes.why);
-            return { ...d, ...own, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
+            // The company's time zone: one the clock knows, else it stays as it was.
+            const timeZone = isZone((d as any).timeZone) ? (d as any).timeZone : before.timeZone;
+            return { ...d, ...own, timeZone, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...fresh } = d as any;
+          if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
           const plan = planFromApp(fresh.plan, undefined).plan;
           if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
           const chat = retention.chatOnSave(fresh.chat, undefined);
@@ -2539,7 +2596,7 @@ createServer(async (req, res) => {
       for (const r of retentionStarted) {
         const w = db.getDoc('workspaces', r.wsId) as any;
         if (w) broadcast('workspaces', [w], []); // the admin who switched it on sees when it starts too
-        if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeText(w.name, r.period, r.from), { app: 'settings', id: 'apps' });
+        if (w) tell((w.members ?? []).filter((m: any) => m.role !== 'member').map((m: any) => m.userId), w.id, 'team', retention.noticeText(w.name, r.period, r.from, companyTz(w)), { app: 'settings', id: 'apps' });
         db.audit(String(person.email ?? me), 'chat.retention.on', r.wsId, `messages older than ${retention.periodWords(r.period)}, deleting from ${r.from.slice(0, 10)}`);
       }
       // Guests don't live in the app all day: a notice for them also goes out as an email (when this server can send).
@@ -3223,6 +3280,15 @@ setInterval(() => {
   void digest.runDigests(deps).catch((e) => console.error('[digest]', e instanceof Error ? e.message : e));
 }, 10 * 60_000);
 
+// "Remind me if no reply" on email sent with tracking: when its day comes and nobody wrote back, the sender hears once.
+setInterval(() => {
+  try {
+    readTracking.runReplyReminders();
+  } catch (e) {
+    console.error('[reminders]', e instanceof Error ? e.message : e);
+  }
+}, 5 * 60_000);
+
 // Deleting old chat messages (Settings, Apps & chat): looked at every hour, run once a day per company.
 const retentionDeps: retention.RetentionDeps = { broadcast, notify: (ids, wsId, text, link) => tell(ids, wsId, 'team', text, link) };
 const retentionTick = () => {
@@ -3269,7 +3335,7 @@ setInterval(() => {
     const account = ws?.accounts?.find((a: any) => a.id === t.accountId);
     const m = t.messages[t.messages.length - 1];
     if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
-    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
+    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null, remindDays: Number(m.trackOptions.remindDays) || 0 } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
   if (due.length) {

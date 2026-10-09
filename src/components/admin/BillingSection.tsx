@@ -10,7 +10,7 @@ import { brand as product } from '../../terms';
 
 interface Props {
   ws: Workspace;
-  people: number; // active members
+  people: number; // everyone on the team (the server says how many were active this month)
   isOwner: boolean;
   onPlan: (p: Plan) => void;
   onExport: () => void;
@@ -28,7 +28,10 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
   const [cycle, setCycle] = useState(plan.cycle);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const set = (p: Partial<Plan>) => onPlan({ ...plan, ...p });
-  const now = monthlyTotal(plan, people);
+  // Only active people are billed (signed in or used the app this month); the server counts them. Without it: everyone.
+  const [active, setActive] = useState<{ people: number; team: number } | null>(null);
+  const billed = active?.people ?? people;
+  const now = monthlyTotal(plan, billed);
   const trialDays = plan.trialEnds ? Math.max(0, Math.ceil((new Date(plan.trialEnds).getTime() - Date.now()) / 86_400_000)) : 0;
   const opts = options(track, n);
   const best = opts[0];
@@ -46,7 +49,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
     if (!server.on) return;
     fetch(`/api/billing/invoices?ws=${encodeURIComponent(ws.id)}`)
       .then((r) => (r.ok ? r.json() : { invoices: [] }))
-      .then((d: { invoices: typeof real; pay?: typeof pay }) => (setReal(d.invoices ?? []), setPay(d.pay ?? null)), () => setReal([]));
+      .then((d: { invoices: typeof real; pay?: typeof pay; active?: typeof active }) => (setReal(d.invoices ?? []), setPay(d.pay ?? null), setActive(d.active ?? null)), () => setReal([]));
   }, [ws.id, plan.cancelAt, plan.tier]);
   // What the plan has room for, and what's used: hosted mailboxes (here), meeting-bot hours (from the server).
   const room = mailboxRoom(plan, people);
@@ -106,7 +109,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
             {planName(plan)} <span className="pc-track">{plan.tier === 'free' ? 'your own AI keys' : TRACK_NAME[plan.track]}</span>
           </h3>
           <p className="muted">
-            {people} active {people === 1 ? 'person' : 'people'}
+            {active && active.team > billed ? `${billed} of ${active.team} people active this month` : `${billed} active ${billed === 1 ? 'person' : 'people'}`}
             {plan.tier !== 'free' && plan.tier !== 'small' ? ` · ${PRICES[plan.track][plan.tier].included} included` : ''} · {storageGB(plan, people) >= 1024 ? `${(storageGB(plan, people) / 1024).toFixed(0)} TB` : `${storageGB(plan, people)} GB`} storage ·{' '}
             {meetHours(plan, people) === Infinity ? 'unlimited' : meetHours(plan, people)} meeting-bot hours
           </p>
@@ -479,7 +482,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
           </TabPane>
         </div>
       )}
-      <p className="muted small">Seats billed: {seatsFor(plan.tier, people)}.</p>
+      <p className="muted small">Seats billed: {seatsFor(plan.tier, billed)}.</p>
     </>
   );
 }

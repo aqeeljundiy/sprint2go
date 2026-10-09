@@ -259,11 +259,18 @@ export async function checkAlerts(ctx: AdminCtx) {
 
 /* ---------- invoices ---------- */
 
-function invoiceLinesFor(ws: any, people: number) {
+/**
+ * A month's invoice: the plan for the people who were active that month (signed in or used sprint2go; the billing
+ * page promises only they are billed), and the add-ons. The plan line says how many were active, and of how many.
+ */
+function invoiceLinesFor(ws: any, period: string) {
   const plan: Plan = ws.plan;
+  const { active: people, team } = billing.activePeople(ws, period);
   const t = monthlyTotal(plan, people);
+  const month = new Date(`${period}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const who = `${people} active ${people === 1 ? 'person' : 'people'}${team > people ? ` of ${team} on the team` : ''}`;
   // Free has no plan line: only the add-ons it bought.
-  const lines: { text: string; amount: number }[] = plan.tier === 'free' ? [] : [{ text: `${planName(plan)} plan, ${people} ${people === 1 ? 'person' : 'people'}${plan.cycle === 'yearly' ? ', yearly (10 months)' : ''}`, amount: plan.cycle === 'yearly' ? t.base * 10 : t.base }];
+  const lines: { text: string; amount: number }[] = plan.tier === 'free' ? [] : [{ text: `${planName(plan)} plan, ${who}${plan.cycle === 'yearly' ? ', yearly (10 months)' : ''}`, amount: plan.cycle === 'yearly' ? t.base * 10 : t.base }];
   const a = plan.addons;
   if (a.mailboxes) lines.push({ text: `${a.mailboxes} hosted mailbox${a.mailboxes === 1 ? '' : 'es'}`, amount: a.mailboxes * ADDONS.mailboxes.price });
   if (a.storage50) lines.push({ text: `${a.storage50 * 50} GB extra storage`, amount: a.storage50 * ADDONS.storage50.price });
@@ -271,7 +278,8 @@ function invoiceLinesFor(ws: any, people: number) {
   if (a.branding) lines.push({ text: 'Branding add-on', amount: ADDONS.branding.price });
   if (plan.topUps) lines.push({ text: `${plan.topUps} AI top-up${plan.topUps === 1 ? '' : 's'}`, amount: plan.topUps * TOP_UP.price });
   const subtotal = lines.reduce((n, l) => n + l.amount, 0);
-  return { lines, discount: discountOf(plan, subtotal) };
+  const note = plan.tier === 'free' ? undefined : `Active people are those on your team who signed in or used sprint2go in ${month}. Guests and shared inboxes are free.`;
+  return { lines, discount: discountOf(plan, subtotal), note };
 }
 export function invoiceHtml(inv: platform.Invoice, wsName: string) {
   const b = platform.settings().billing;
@@ -1014,10 +1022,11 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const b = await body(req);
     const ws = wsById(String(b.workspaceId ?? ''));
     if (!ws?.plan) return (json(res, 404, { error: 'No such company, or it has no plan.' }), true);
-    const people = companyRows(ctx).find((c) => c.id === ws.id)?.people ?? 1;
-    const auto = invoiceLinesFor(ws, people);
-    const lines = Array.isArray(b.lines) && b.lines.length ? b.lines.map((l: any) => ({ text: String(l.text ?? '').slice(0, 200), amount: Math.round(Number(l.amount) || 0) })).filter((l: any) => l.text) : auto.lines;
-    const inv = platform.createInvoice({ workspaceId: ws.id, period: String(b.period ?? monthStart().slice(0, 7)), lines, discount: 'discount' in b ? Number(b.discount) || 0 : auto.discount, dueDays: Number(b.dueDays ?? 14), billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: b.note });
+    const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(b.period ?? '')) ? String(b.period) : monthStart().slice(0, 7);
+    const auto = invoiceLinesFor(ws, period);
+    const custom = Array.isArray(b.lines) && b.lines.length;
+    const lines = custom ? b.lines.map((l: any) => ({ text: String(l.text ?? '').slice(0, 200), amount: Math.round(Number(l.amount) || 0) })).filter((l: any) => l.text) : auto.lines;
+    const inv = platform.createInvoice({ workspaceId: ws.id, period, lines, discount: 'discount' in b ? Number(b.discount) || 0 : auto.discount, dueDays: Number(b.dueDays ?? 14), billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: b.note ?? (custom ? undefined : auto.note) });
     log('invoice.create', ws.id, `${inv.number} ${rp(inv.total)}`);
     return (json(res, 200, { id: inv.id }), true);
   }
@@ -1030,8 +1039,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     for (const c of companyRows(ctx)) {
       if (c.internal || c.state !== 'paying' || done.has(c.id)) continue;
       const ws = wsById(c.id);
-      const auto = invoiceLinesFor(ws, c.people);
-      platform.createInvoice({ workspaceId: c.id, period, lines: auto.lines, discount: auto.discount, dueDays: 14, billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email });
+      const auto = invoiceLinesFor(ws, period);
+      platform.createInvoice({ workspaceId: c.id, period, lines: auto.lines, discount: auto.discount, dueDays: 14, billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: auto.note });
       if (ws.plan.topUps) saveWs({ ...ws, plan: { ...ws.plan, topUps: 0 } }); // invoiced: the count starts again
       made++;
     }

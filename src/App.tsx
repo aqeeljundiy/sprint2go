@@ -31,7 +31,7 @@ import { botJoins, callKey, meetingLinkOf, notetakerJoins, MEETING_NAME } from '
 import { setHolidayDays } from './holidayDays';
 import { holidayCalendarId, holidayCountry } from './data/holidays';
 import { useSettings, usePersisted, usePrefsSync } from './settings';
-import { DEFAULT_TRACK_OPTIONS, isTeam } from './tracking';
+import { DEFAULT_TRACK_OPTIONS, REPLY_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
 import { live, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
@@ -688,7 +688,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number } | null>(null);
 
-  const reply = (id: string, html: string, text: string) => {
+  /** Why the mail engine didn't take an email, as a sentence that ends properly. */
+  const refusal = async (r: Response | null, fallback: string) => {
+    const why = (r ? (((await r.json().catch(() => ({}))) as { error?: string }).error ?? fallback) : 'There’s no connection.').trim();
+    return /[.!?]$/.test(why) ? why : `${why}.`;
+  };
+
+  const reply = (id: string, html: string, text: string, track = false) => {
     const t = threads.find((x) => x.id === id);
     if (!t) return;
     const acct = accountOf(t.accountId);
@@ -697,14 +703,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const to = isMine(last.from.email) ? last.to : [last.from];
     const from = senderFor(acct);
     const msgId = uid();
-    setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, date: new Date().toISOString(), body: text, html }] } : x)));
+    // Tracked like a new email: only people outside the team, and only when the company allows it.
+    const outside = to.filter((p) => !isTeam(p.email));
+    const tracked = track && ws.readTracking !== false && outside.length > 0;
+    const tracking = tracked ? Object.fromEntries(outside.map((p) => [p.email, { opens: [], clicks: [] }])) : undefined;
+    setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, date: new Date().toISOString(), body: text, html, ...(tracked ? { tracking, trackOptions: REPLY_TRACK_OPTIONS } : {}) }] } : x)));
+    /** It didn't go: the reply leaves the conversation and its words go back in the reply box, to send again or change. */
+    const notSent = (why: string) => {
+      setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
+      const back = () => setRestoreReply({ threadId: id, html, text, key: Date.now() });
+      back();
+      showToast({ text: `Reply not sent. ${why} What you wrote is back in the reply box.`, ms: 10000, action: { label: 'Open', run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
+    };
     // With the server, the mail engine sends it for real, threaded under the message it answers.
     if (server.on && acct && (!acct.provider || acct.provider === 'sprint2go')) {
       const refs = t.messages.map((m) => m.mid).filter(Boolean) as string[];
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: t.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, undoSeconds: settings.undoSend }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: t.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend }),
       }).then(
         async (r) =>
           r.ok
@@ -714,8 +731,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                   setRestoreReply({ threadId: id, html, text, key: Date.now() });
                 }),
               )
-            : showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The reply could not be sent.' }),
-        () => showToast({ text: 'No connection: the reply was not sent.' }),
+            : notSent(await refusal(r, 'The mail engine refused it.')),
+        async () => notSent(await refusal(null, '')),
       );
     } else showToast({ text: 'Reply sent' });
   };
@@ -770,6 +787,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return { thread, delivered };
   };
 
+  /**
+   * The mail engine didn't take it (the mailbox can't send yet, a sending limit, a paused company) or it never got
+   * there: nobody got it, so it isn't kept as sent. It goes back to Drafts, untracked, with the reason and a way to
+   * open it again (to change it, or to send it once the problem is fixed).
+   */
+  const notSent = (thread: Thread, m: Outgoing, why: string) => {
+    const draft = toThread(m, 'drafts');
+    setThreads((ts) => [draft, ...ts.filter((x) => x.id !== thread.id)]);
+    showToast({ text: `Not sent. ${why} It’s in Drafts.`, ms: 10000, action: { label: 'Open draft', run: () => openCompose({ draftId: draft.id, initial: m }) } });
+  };
+
   const send = (m: Outgoing) => {
     if (m.sendAt) {
       // Send later: kept as a scheduled draft until its time (the server does this for real).
@@ -803,10 +831,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify } : undefined, undoSeconds: settings.undoSend }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend }),
       }).then(
         async (r) => {
-          if (!r.ok) return showToast({ text: ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The mail could not be handed to the mail engine.' });
+          if (!r.ok) return notSent(thread, m, await refusal(r, 'The mail engine refused it.'));
           // Undo while the mail engine still has it waiting: it comes back as a draft, and nobody got it.
           await sentToast(r, 'Message sent', () =>
             takeBack(thread.id, thread.messages[0].id, () => {
@@ -815,7 +843,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }),
           );
         },
-        () => showToast({ text: 'No connection: the mail was not sent.' }),
+        async () => notSent(thread, m, await refusal(null, '')),
       );
       return;
     } else if (demoOk && thread.messages[0].tracking) simulateOpen(thread);
@@ -3560,6 +3588,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             focusId={focusMsg}
             onFocused={() => setFocusMsg(null)}
+            timeZone={ws.timeZone}
             channel={wsChannels.find((c) => c.id === chatId) ?? null}
             messages={messages.filter((m) => m.channelId === chatId)}
             users={members}
@@ -3837,6 +3866,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onStar={star}
               onMarkUnread={markUnread}
               onReply={reply}
+              canTrack={ws.readTracking !== false}
+              trackByDefault={settings.trackByDefault}
             />
           </div>
         )}

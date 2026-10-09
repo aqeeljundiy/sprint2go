@@ -2201,6 +2201,17 @@ body.resizing-x .pane-resize::after {
   opacity: 0.6;
   cursor: default;
 }
+/* The reply box: the switch on the left, Discard and Send on the right. */
+.reply-actions .track-toggle {
+  margin-right: auto;
+}
+@media (max-width: 760px) {
+  .reply-actions .track-toggle {
+    height: 40px;
+    min-width: 40px;
+    justify-content: center;
+  }
+}
 
 .seen-chip {
   display: inline-flex;

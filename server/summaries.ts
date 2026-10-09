@@ -4,7 +4,7 @@
 // No working AI: no summary, and the channel remembers why so its Summary tab can say so.
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { COMPANY_TZ, SUMMARY_TRIES, channelSchedule, settledKey, summaryDue, zonedTime, type SummaryPeriod, type SummaryRun } from '../src/jobTimes.ts';
+import { SUMMARY_TRIES, channelSchedule, companyTz, settledKey, summaryDue, zonedTime, type SummaryPeriod, type SummaryRun } from '../src/jobTimes.ts';
 
 export type SummaryInput = { channel: string; period: string; messages: { who: string; text: string; at: string; task?: string; files?: string[] }[] };
 /** What writing one summary came to: the text, AI that isn't there for this company (and why), or a failure. */
@@ -46,8 +46,11 @@ function inputFor(ch: any, period: SummaryPeriod, users: Map<string, any>, todos
 }
 
 let running = false;
-/** Writes every scheduled summary that's due. `now` can be set for tests. Returns what it did, per channel. */
-export async function runSummaries(deps: SummaryDeps, now = Date.now(), tz = COMPANY_TZ): Promise<{ channelId: string; key: string; state: SummaryRun['state'] }[]> {
+/**
+ * Writes every scheduled summary that's due, by each company's own clock (Settings, General, Time zone). `now` (and
+ * a time zone for every company) can be set for tests. Returns what it did, per channel.
+ */
+export async function runSummaries(deps: SummaryDeps, now = Date.now(), tzFor?: string): Promise<{ channelId: string; key: string; state: SummaryRun['state'] }[]> {
   if (running) return [];
   running = true;
   const out: { channelId: string; key: string; state: SummaryRun['state'] }[] = [];
@@ -59,6 +62,7 @@ export async function runSummaries(deps: SummaryDeps, now = Date.now(), tz = COM
       if (ch.archived || !ch.workspaceId) continue;
       const ws = wss.get(ch.workspaceId);
       if (!ws || ws.suspended) continue;
+      const tz = tzFor ?? companyTz(ws);
       const last = ch.summary?.last as SummaryRun | undefined;
       // A failed run waits for its retry time; then the same period is tried again.
       if (last?.state === 'failed' && (last.tries ?? 0) < SUMMARY_TRIES && last.retryAt && last.retryAt > new Date(now).toISOString()) continue;

@@ -16,6 +16,7 @@ import { caps } from '../caps';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { TIER_NAME, options, rp } from '../data/pricing';
 import { isFreemail } from '../clientView';
+import { deviceTz } from '../jobTimes';
 
 export const PROVIDERS: { id: MailProvider; name: string }[] = [
   { id: 'google', name: 'Google Workspace' },
@@ -119,6 +120,7 @@ export function Onboarding({ me, existingEmails, onCreate, onClose, preview }: P
         apps: mailOn ? apps : apps.filter((a) => a !== 'mail'),
         emailSetup: setup,
         industry,
+        timeZone: deviceTz(), // where its creator is; Settings, General changes it
         ...(agency ? { whiteLabel: { enabled: true, name: brand.name.trim(), logo: brand.logo, color: brand.color, slug: brand.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') } } : {}),
         ...(setup === 'mix' ? { mailRouting: { dailyCheck: true, ...(routingOk ? { verifiedAt: new Date().toISOString() } : {}) } } : {}),
         emailProvider: setup === 'hosted' || setup === 'none' ? undefined : provider,

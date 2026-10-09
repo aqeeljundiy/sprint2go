@@ -9,6 +9,7 @@ import { TabPane } from '../ui/Smooth';
 import { OPTION_COLORS, isComputed, opsFor } from './fields';
 import { guessType } from './csv';
 import { brand as product } from '../../terms';
+import { deviceTz } from '../../jobTimes';
 
 /** data.full_name -> Full name */
 const humanize = (k: string) => {
@@ -782,7 +783,7 @@ export function AutomationsPanel({ t, tables, users, channels, onPatch, onClose,
                             <span className="tb-act-label">When</span>
                             <PickSelect value={r.on} aria-label="When" onChange={(e) => {
                               const on = e.target.value as TableRule['on'];
-                              setRule(r.id, { on, ...(on === 'schedule' && !r.schedule ? { schedule: { days: [1, 2, 3, 4, 5], hour: 9, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta' } } : {}) });
+                              setRule(r.id, { on, ...(on === 'schedule' && !r.schedule ? { schedule: { days: [1, 2, 3, 4, 5], hour: 9, tz: deviceTz() } } : {}) });
                             }}>
                               <option value="created">A row is added</option>
                               <option value="updated">A row changes</option>
@@ -898,7 +899,7 @@ function scheduleText(r: TableRule) {
 
 /** When a scheduled rule runs, and on which rows. */
 function ScheduleEditor({ t, users, rule, onChange }: { t: DataTable; users: User[]; rule: TableRule; onChange: (p: Partial<TableRule>) => void }) {
-  const sc = rule.schedule ?? { days: [1, 2, 3, 4, 5], hour: 9, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta' };
+  const sc = rule.schedule ?? { days: [1, 2, 3, 4, 5], hour: 9, tz: deviceTz() };
   const set = (p: Partial<typeof sc>) => onChange({ schedule: { ...sc, ...p } });
   const where = rule.where ?? [];
   const setWhere = (w: typeof where) => onChange({ where: w });

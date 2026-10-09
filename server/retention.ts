@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { kindOf } from '../src/data/drive.ts';
+import { COMPANY_TZ, companyTz } from '../src/jobTimes.ts';
 
 export const RETENTION_DAYS = { '1y': 365, '90d': 90 } as const;
 export type Period = keyof typeof RETENTION_DAYS;
@@ -12,7 +13,7 @@ export const NOTICE_DAYS = 7;
 const DAY = 86_400_000;
 const isPeriod = (h: unknown): h is Period => typeof h === 'string' && h in RETENTION_DAYS;
 export const periodWords = (h: Period) => (h === '1y' ? '1 year' : '90 days');
-const dayWords = (at: string) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' });
+const dayWords = (at: string, tz: string) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: tz });
 
 /** What the server keeps about deleting (the app shows it, never sets it). */
 export interface RetentionState {
@@ -38,9 +39,9 @@ export function chatOnSave(next: any, before: any, now = Date.now()): { chat: an
   return { chat: { ...base, deleteFrom: from }, started: { from, period: want } };
 }
 
-/** The admins' notice when deleting is switched on: when it starts and what it does. */
-export const noticeText = (company: string, period: Period, from: string) =>
-  `From ${dayWords(from)}, chat messages older than ${periodWords(period)} will be deleted every day for everyone at ${company}. Pinned messages and the projects you keep stay; files stay in Drive. Change it in Settings, Apps & chat.`;
+/** The admins' notice when deleting is switched on: when it starts (the day by the company's clock) and what it does. */
+export const noticeText = (company: string, period: Period, from: string, tz = COMPANY_TZ) =>
+  `From ${dayWords(from, tz)}, chat messages older than ${periodWords(period)} will be deleted every day for everyone at ${company}. Pinned messages and the projects you keep stay; files stay in Drive. Change it in Settings, Apps & chat.`;
 
 export interface RetentionDeps {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) => void;
@@ -62,7 +63,7 @@ export function runRetention(deps: RetentionDeps, now = Date.now()) {
       const next = { ...ws, chat: { ...chat, deleteFrom: from } };
       db.writeDocs('workspaces', [next], [], null);
       deps.broadcast('workspaces', [next], []);
-      deps.notify(adminsOf(ws), ws.id, noticeText(ws.name, chat.history, from), { app: 'settings', id: 'apps' });
+      deps.notify(adminsOf(ws), ws.id, noticeText(ws.name, chat.history, from, companyTz(ws)), { app: 'settings', id: 'apps' });
       out.push({ workspaceId: ws.id, deleted: 0, files: 0, noticeOnly: true });
       continue;
     }

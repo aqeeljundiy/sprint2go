@@ -4,7 +4,7 @@
 // or daily at 9:00 their time (Settings, Notifications; daily unless they change it). Only the kinds they chose, and
 // never anything they've already seen or that an earlier email already listed.
 import * as db from './db.ts';
-import { COMPANY_TZ, DIGEST_HOUR, localParts, type DigestEvery } from '../src/jobTimes.ts';
+import { DIGEST_HOUR, companyTz, isZone, localParts, type DigestEvery } from '../src/jobTimes.ts';
 import { wants, type PushKind } from './notifyPush.ts';
 
 db.db.exec(`
@@ -34,10 +34,14 @@ const GROUP_NAME: Record<Group, string> = { messages: 'Messages and mentions', t
 const PUSH_KIND: Record<Group, PushKind> = { messages: 'messages', tasks: 'tasks', replies: 'mail', guests: 'guests', mail: 'mail' };
 
 const prefsOf = (userId: string) => ((db.getDoc('prefs', userId) as any)?.value ?? {}) as Record<string, any>;
-/** How often someone gets the email, and their time zone (both from their settings). */
+/**
+ * How often someone gets the email, and their time zone: the one their device last told us (their settings), else
+ * their company's (Settings, General; their first company when they're in several).
+ */
 export function digestPrefs(userId: string): { every: DigestEvery; tz: string } {
   const s = prefsOf(userId)[`pm-settings:${userId}`] ?? {};
-  return { every: ['off', 'hourly', 'daily'].includes(s.emailDigest) ? s.emailDigest : 'daily', tz: typeof s.timeZone === 'string' && s.timeZone ? s.timeZone : COMPANY_TZ };
+  const company = (db.allDocs('workspaces') as any[]).find((w) => (w.members ?? []).some((m: any) => m.userId === userId));
+  return { every: ['off', 'hourly', 'daily'].includes(s.emailDigest) ? s.emailDigest : 'daily', tz: isZone(s.timeZone) ? s.timeZone : companyTz(company) };
 }
 
 const q = (o: Record<string, string | undefined>) => {

@@ -74,7 +74,7 @@ export interface OpenEvent {
   /** Maybe opened by a machine, not a person: Apple Mail Privacy Protection, a security filter. Not counted. */
   auto?: 'apple' | 'scanner';
   /** Opened through the provider's picture proxy: a person opened it, the device is hidden. */
-  via?: 'gmail' | 'yahoo';
+  via?: 'gmail' | 'yahoo' | 'outlook';
 }
 
 export interface ClickEvent {
@@ -290,6 +290,9 @@ export interface Workspace {
   whiteLabel?: WhiteLabel; // an agency running the app under its own brand
   industry?: Industry; // what the company does: picks the starter tables and brief templates
   holidays?: { country: string }; // public holidays in everyone's calendar (src/data/holidays.ts)
+  /** Where the company is (an IANA name, Settings, General): when scheduled summaries are written, and the clock for
+   *  digests and table rules when a person's own isn't known. Missing: Asia/Jakarta (src/jobTimes.ts). */
+  timeZone?: string;
   createdAt?: string;
   suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string; secured?: boolean }; // WhatsApp Business (Meta Cloud API); the token and app secret stay on the server. secured: Meta's signatures can be checked, so messages are read

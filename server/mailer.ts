@@ -470,8 +470,11 @@ export interface Outgoing {
   references?: string[];
   ical?: { method: string; content: string }; // a calendar part, e.g. the REPLY to an invite
   headers?: Record<string, string>; // extra headers (Auto-Submitted on an out-of-office answer)
-  /** Read tracking (server/readTracking.ts): what to track for outside recipients, and who sent it (for the notice). */
-  tracking?: { opens: boolean; clicks: boolean; notify: boolean; by: string | null };
+  /**
+   * Read tracking (server/readTracking.ts): what to track for outside recipients, and who sent it (for the notice).
+   * `remindDays`: "Remind me if no reply", told to the sender after that many days if nobody wrote back.
+   */
+  tracking?: { opens: boolean; clicks: boolean; notify: boolean; by: string | null; remindDays?: number };
 }
 
 /** An attachment's content: one of this company's files (never another company's, whatever the address), or inline data. */
@@ -577,6 +580,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   }
   markDelivery(o.threadId, o.messageId, mid, remote.length ? 'sending' : 'sent');
   if (o.tracking) track.syncMessage(o.threadId, o.messageId, true);
+  if (o.tracking?.remindDays) track.planReminder({ workspaceId: ws.id, accountId: o.accountId, threadId: o.threadId, messageId: o.messageId, by: o.tracking.by, days: o.tracking.remindDays });
   void pump();
   return { mid, queued: remote.length, local: localCount, route };
 }

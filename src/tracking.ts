@@ -17,13 +17,15 @@ export const DEFAULT_TRACK_OPTIONS: TrackOptions = {
   remindDays: 3,
   notify: true,
 };
+/** A reply sent with tracking on (the reply box has the switch, not the menu): opens, clicks and a notice, no reminder. */
+export const REPLY_TRACK_OPTIONS: TrackOptions = { ...DEFAULT_TRACK_OPTIONS, remindDays: 0 };
 
 /** Opens a person made (a provider's picture proxy counts: it loads pictures when someone opens the email). */
 export const realOpens = (r: RecipientTracking) => r.opens.filter((o) => !o.auto);
 /** Clicks a person made, not a mail filter checking the link. */
 export const realClicks = (r: RecipientTracking) => r.clicks.filter((c) => !c.auto);
 
-const PROXY: Record<NonNullable<OpenEvent['via']>, string> = { gmail: 'Gmail', yahoo: 'Yahoo Mail' };
+export const PROXY: Record<NonNullable<OpenEvent['via']>, string> = { gmail: 'Gmail', yahoo: 'Yahoo Mail', outlook: 'Outlook' };
 /** Where an open came from, in a few words: "on iPhone", "via Gmail", or nothing when the app didn't say. */
 export function openWhere(o: OpenEvent) {
   if (o.via) return `via ${PROXY[o.via]}`;

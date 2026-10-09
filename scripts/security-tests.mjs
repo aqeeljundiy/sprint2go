@@ -8,9 +8,14 @@
 //  5. plan limits: hosted mailboxes, the notetaker's hours, Boosted credits only by invoice and only where Boosted exists
 //  6. WhatsApp: the webhook reads only posts Meta signed with the app's secret
 //  7. DKIM: an invite answer, an out-of-office answer and a routing test all leave signed for their domain
+//  8. files in projects a member can't see stay closed to her, even with the address
+//  9. support: operators with the support permission open what customers attach, in the audit log
+// 10. invoices bill the people who were active that month, and say so
+// 11. the company's time zone: only admins set it, only zones the clock knows
+// 12. mail: a refused send plans nothing; "Remind me if no reply" is noted when the email goes out
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -118,6 +123,7 @@ try {
     const call = (method, path, body, headers = {}) => fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', cookie, ...headers }, body: body === undefined ? undefined : typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) });
     return {
       ok: r.ok && cookie.startsWith('s2g='),
+      token: cookie.slice(4),
       get: (path) => call('GET', path),
       post: (path, body, headers) => call('POST', path, body, headers),
       del: (path, body) => call('DELETE', path, body),
@@ -293,6 +299,82 @@ try {
   const probe = await aqeel.post('/api/mail/routing-test', { workspaceId: 'pnp' });
   const probeMail = await waitFor(() => sunk.find((x) => x.to.some((t) => t.startsWith('s2g-check-'))));
   check(probe.ok && !!probeMail && (await signedBy(probeMail.raw)).includes(SUPPORT_DOMAIN), `a routing test leaves DKIM-signed for ${SUPPORT_DOMAIN}`);
+
+  /* ---------- 8. files in projects a member can't see ---------- */
+  const upload = (who, text, ws = 'pnp', name = 'notes.txt') => who.post('/api/upload', text, { 'content-type': 'text/plain', 'x-file-name': name, 'x-workspace': ws }).then((r) => r.json());
+  const secretFile = await upload(aqeel, 'the secret numbers', 'pnp', 'secret.txt');
+  put('drive', { id: 'dr-secret-numbers', name: 'secret.txt', kind: 'doc', parentId: 'dr-secret-folder', size: 18, modified: now(), workspaceId: 'pnp', url: secretFile.url });
+  const opensWith = (who, u) => who.get(u).then((r) => r.status);
+  check((await opensWith(dewi, secretFile.url)) === 404, 'a member can’t download a file in a project she can’t see, even with the address');
+  check((await opensWith(aqeel, secretFile.url)) === 200, 'the owner can');
+  const inChat = await upload(aqeel, 'said in the project channel', 'pnp', 'chat.txt');
+  put('messages', { id: 'msg-secret-file', channelId: 'ch-secret', userId: 'u-aqeel', text: 'here', at: now(), files: [{ name: 'chat.txt', size: 27, type: 'text/plain', url: inChat.url }] });
+  check((await opensWith(dewi, inChat.url)) === 404, 'nor one sent in its channel');
+  const loose = await upload(aqeel, 'on nothing yet');
+  check((await opensWith(dewi, loose.url)) === 200, 'a file that isn’t on anything yet opens for the team');
+  const hers = await upload(dewi, 'mine');
+  put('drive', { id: 'dr-secret-hers', name: 'hers.txt', kind: 'doc', parentId: 'dr-secret-folder', size: 4, modified: now(), workspaceId: 'pnp', url: hers.url });
+  check((await opensWith(dewi, hers.url)) === 200, 'her own upload always opens');
+  const pnpSee = doc('workspaces', 'pnp');
+  await aqeel.sync('workspaces', [{ ...pnpSee, permissions: { ...(pnpSee.permissions ?? {}), seeAllProjects: true } }]);
+  check((await opensWith(dewi, secretFile.url)) === 200, 'with “See every project” on, she can');
+  await aqeel.sync('workspaces', [{ ...doc('workspaces', 'pnp'), permissions: { ...(doc('workspaces', 'pnp').permissions ?? {}), seeAllProjects: false } }]);
+  check((await opensWith(nadia, secretFile.url)) === 404, 'and a guest never can');
+
+  /* ---------- 9. support tickets: operators open what customers attach ---------- */
+  const dimas = await signIn('dimas@elkiyagroup.com');
+  const shot = await upload(dimas, 'a screenshot', 'elk', 'shot.txt');
+  const other = await upload(dimas, 'not attached', 'elk', 'other.txt');
+  const ticket = await dimas.post('/api/support', { subject: 'Something broke', body: 'See the screenshot', workspaceId: 'elk', attachments: [{ name: 'shot.txt', url: shot.url }, { name: 'someone else’s', url: secretFile.url }] }).then((r) => r.json());
+  const attached = JSON.parse(db.prepare('SELECT attachments FROM ticket_messages WHERE ticket_id = ?').get(ticket.id)?.attachments ?? '[]');
+  check(attached.length === 1 && attached[0].url === shot.url, 'a ticket keeps only files the customer uploaded, not another address');
+  db.prepare("INSERT INTO operators (email, role, added_by, added_at, totp_on) VALUES (?, 'support', 'test', ?, 1)").run('rizky@pixelandprofits.com', now());
+  const rizky = await signIn('rizky@pixelandprofits.com');
+  check((await opensWith(rizky, shot.url)) === 404, 'an operator who hasn’t passed the console’s two-step sign-in can’t open it');
+  db.prepare('UPDATE sessions SET op_ok = ? WHERE token = ?').run(now(), createHash('sha256').update(rizky.token).digest('hex'));
+  const opens = () => db.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'ticket.file-open' AND target = ? AND operator = ?").get(ticket.id, 'rizky@pixelandprofits.com').n;
+  check((await opensWith(rizky, shot.url)) === 200 && opens() === 1, 'past it, a support operator opens what the customer attached, and it’s in the audit log');
+  await opensWith(rizky, shot.url);
+  check(opens() === 1, 'opening it again a moment later is the same entry');
+  check((await opensWith(rizky, other.url)) === 404, 'the customer’s other files stay closed');
+  db.prepare("UPDATE operators SET role = 'finance' WHERE email = ?").run('rizky@pixelandprofits.com');
+  check((await opensWith(rizky, shot.url)) === 404, 'an operator without the support permission can’t');
+  check((await opensWith(dimas, shot.url)) === 200, 'the customer still opens their own');
+
+  /* ---------- 10. invoices bill active people ---------- */
+  db.prepare("UPDATE operators SET role = 'owner' WHERE email = ?").run('rizky@pixelandprofits.com');
+  const month = now().slice(0, 7);
+  const pnpMembers = doc('workspaces', 'pnp').members.map((x) => x.userId);
+  const activeIds = new Set(db.prepare('SELECT DISTINCT user_id FROM activity_days WHERE day >= ?').all(`${month}-01`).map((r) => r.user_id));
+  const activeHere = pnpMembers.filter((id) => activeIds.has(id)).length;
+  const made = await rizky.post('/api/admin/invoice/create', { workspaceId: 'pnp' }).then((r) => r.json());
+  const inv = made.id ? db.prepare('SELECT lines, note FROM invoices WHERE id = ?').get(made.id) : null;
+  const planLine = inv ? JSON.parse(inv.lines)[0]?.text ?? '' : '';
+  check(activeHere > 0 && activeHere < pnpMembers.length && planLine.includes(`${activeHere} active ${activeHere === 1 ? 'person' : 'people'} of ${pnpMembers.length} on the team`), `the invoice bills the ${activeHere} people active this month, not all ${pnpMembers.length} (“${planLine}”)`);
+  check(/signed in or used sprint2go/.test(inv?.note ?? ''), 'and says what active means');
+  const billingPage = await aqeel.get('/api/billing/invoices?ws=pnp').then((r) => r.json());
+  check(billingPage.active?.people === activeHere && billingPage.active?.team === pnpMembers.length, 'the billing page shows the same count');
+
+  /* ---------- 11. the company's time zone ---------- */
+  await aqeel.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Europe/Amsterdam' }]);
+  check(doc('workspaces', 'pnp').timeZone === 'Europe/Amsterdam', 'an owner sets the company’s time zone');
+  await aqeel.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Mars/Olympus' }]);
+  check(doc('workspaces', 'pnp').timeZone === 'Europe/Amsterdam', 'a zone the clock doesn’t know isn’t saved');
+  await dewi.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Asia/Tokyo' }]);
+  check(doc('workspaces', 'pnp').timeZone === 'Europe/Amsterdam', 'a member can’t change it');
+
+  /* ---------- 12. mail: refused sends and reply reminders ---------- */
+  const reminders = (threadId) => db.prepare('SELECT * FROM mail_remind WHERE thread_id = ?').all(threadId);
+  const w12 = doc('workspaces', 'pnp');
+  put('workspaces', { ...w12, mailReady: { at: now(), receive: true, send: false, why: {}, mailboxes: {} } });
+  const tracked = (threadId) => ({ workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId, messageId: 'm-1', to: [{ name: 'Budi', email: 'budi@client-check.example' }], cc: [], subject: 'Proposal', text: 'Here it is', html: '<p>Here it is</p>', files: [], track: true, trackOptions: { opens: true, clicks: true, notify: true, remindDays: 3 } });
+  const refused = await aqeel.post('/api/mail/send', tracked('t-refused'));
+  check(refused.status === 409 && !!(await refused.json()).error && reminders('t-refused').length === 0, `a send the mailbox can’t do is refused with the reason, and nothing is planned (${refused.status})`);
+  canSend();
+  const sent = await aqeel.post('/api/mail/send', tracked('t-remind'));
+  const rem = reminders('t-remind')[0];
+  const days = rem ? (Date.parse(rem.due_at) - Date.now()) / 86_400_000 : 0;
+  check(sent.ok && rem?.by_user === 'u-aqeel' && rem.state === 'waiting' && days > 2.9 && days <= 3, 'a tracked email with “Remind me if no reply” is noted on the server, three days out');
 
   db.close();
 } catch (e) {
