@@ -101,6 +101,14 @@
     min-height: var(--tap);
   }
 
+  /* An event's menu and which dates a change is for: the last toast steps aside so it never covers a choice. */
+  html:has(.scope-sheet:not(.is-leaving)) .toast,
+  html:has(.cal-menu-sheet:not(.is-leaving)) .toast {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease-in;
+  }
+
   /* The editor and quick create: fields the size of a thumb. */
   .field-row > .date-sel,
   .ev-times {
@@ -115,8 +123,38 @@
   }
   .ev-kind > button,
   .ev-token,
+  .sel.ev-token,
   .guest-add {
     min-height: 40px;
+  }
+  .ev-invite {
+    min-height: var(--tap);
+    font-size: 15px;
+  }
+  /* Repeat: weekday chips and the steppers at thumb size; the days share the row. */
+  .rp-more {
+    padding-left: 0;
+  }
+  .rp-days {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
+    max-width: 336px;
+  }
+  /* Thumb-sized circles; on the narrowest phones they share the width (still one row). */
+  .rp-day {
+    justify-self: center;
+    width: min(100%, var(--tap));
+    height: auto;
+    aspect-ratio: 1;
+    font-size: 14px;
+  }
+  .rp-step .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .rp-label {
+    font-size: 14px;
   }
   .guest-chip {
     min-height: 36px;

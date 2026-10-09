@@ -414,12 +414,12 @@ function Audit() {
         { id: 'all', label: t('Everything'), test: () => true },
         { id: 'customers', label: t('Customers'), test: (e) => ['company', 'person'].includes(area(e.action)) },
         { id: 'support', label: tx('area', 'Support'), test: (e) => ['ticket', 'macro'].includes(area(e.action)) },
-        { id: 'money', label: t('Money'), test: (e) => ['invoice', 'coupon', 'pricing'].includes(area(e.action)) },
+        { id: 'money', label: tx('nav', 'Money'), test: (e) => ['invoice', 'coupon', 'pricing'].includes(area(e.action)) },
         { id: 'team', label: t('Team & platform'), test: (e) => ['team', 'settings', 'system', 'mail', 'error', 'flag', 'announcement', 'broadcast', 'maintenance'].includes(area(e.action)) },
       ]}
       empty={{ title: t('Nothing yet') }}
       cols={[
-        { key: 'at', label: t('When'), width: '130px', sort: (e) => e.at, render: (e) => <span className="muted">{dateTime(e.at)}</span> },
+        { key: 'at', label: tx('time', 'When'), width: '130px', sort: (e) => e.at, render: (e) => <span className="muted">{dateTime(e.at)}</span> },
         { key: 'who', label: t('Who'), width: 'minmax(0, 1fr)', hide: 'phone', sort: (e) => e.operator, render: (e) => <span className="adm-ellipsis">{e.operator}</span> },
         {
           key: 'what',

@@ -24,8 +24,8 @@ type Item = { id: string; label: string; icon: LucideIcon; perm?: Perm };
 const NAV: { group: string; items: Item[] }[] = [
   { get group() { return tx('nav', 'Inbox'); }, items: [{ id: 'today', get label() { return t('Today'); }, icon: Gauge }, { id: 'tickets', get label() { return t('Tickets'); }, icon: LifeBuoy }] },
   { get group() { return t('Customers'); }, items: [{ id: 'companies', get label() { return t('Companies'); }, icon: Building2 }, { id: 'people', get label() { return t('People'); }, icon: Users }] },
-  { get group() { return t('Business'); }, items: [{ id: 'money', get label() { return t('Money'); }, icon: CreditCard }, { id: 'ai', label: 'AI', icon: Sparkles }, { id: 'growth', get label() { return t('Growth'); }, icon: TrendingUp }] },
-  { get group() { return t('Run'); }, items: [{ id: 'product', get label() { return t('Product'); }, icon: Megaphone }, { id: 'platform', get label() { return t('Platform'); }, icon: ServerCog }, { id: 'team', get label() { return t('Team & settings'); }, icon: UserCog }] },
+  { get group() { return t('Business'); }, items: [{ id: 'money', get label() { return tx('nav', 'Money'); }, icon: CreditCard }, { id: 'ai', label: 'AI', icon: Sparkles }, { id: 'growth', get label() { return t('Growth'); }, icon: TrendingUp }] },
+  { get group() { return tx('nav', 'Run'); }, items: [{ id: 'product', get label() { return t('Product'); }, icon: Megaphone }, { id: 'platform', get label() { return t('Platform'); }, icon: ServerCog }, { id: 'team', get label() { return t('Team & settings'); }, icon: UserCog }] },
 ];
 
 /** /admin/<section>/<id or tab>/<tab> */

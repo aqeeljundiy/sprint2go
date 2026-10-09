@@ -5,13 +5,13 @@ import { DatePicker } from '../../components/ui/DatePicker';
 import { day, monthName, planLabel, post, rp, rpShort, STATE_LABEL, type CompanyRow } from '../api';
 import { Badge, Bars, Dialog, Empty, Failed, Field, Legend, Loading, MoneyInput, Page, Section, Stat, Stats, Switch, Table, Tabs, useAct, useAdmin, useApi, WHY } from '../ui';
 import { StateBadge } from './Companies';
-import { t, tn } from '../../i18n';
+import { t, tn, tx } from '../../i18n';
 import { fmtNumber } from '../../i18n/format';
 
 export function Money({ tab }: { tab: string }) {
   const { go } = useAdmin();
   return (
-    <Page title={t('Money')} sub={t('Booked from plans until payments are connected; bank transfers are marked paid by hand.')}>
+    <Page title={tx('nav', 'Money')} sub={t('Booked from plans until payments are connected; bank transfers are marked paid by hand.')}>
       <Tabs
         value={tab}
         onChange={(id) => go(`/admin/money/${id}`)}
@@ -51,7 +51,7 @@ function Revenue() {
   const reasons = Object.entries(data.churnReasons).sort((a, b) => b[1] - a[1]);
   const why = (k: string) => WHY.find((w) => w.value === k)?.label ?? k;
   // The bar parts and the legend share these names.
-  const MOVE = { new: t('New'), grew: t('Grew'), shrank: t('Shrank'), lost: t('Lost') };
+  const MOVE = { new: t('New'), grew: t('Grew'), shrank: t('Shrank'), lost: tx('mrr', 'Lost') };
   return (
     <>
       <Stats>

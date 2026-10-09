@@ -1,10 +1,11 @@
 import { useRef } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { eventsOn, fmtTime, monthGrid, sameDay, startOfDay } from '../../calendarUtils';
 import { EventCard, type CardKit } from './EventCard';
 import { isPending } from './calTools';
 import { useSwipeNav } from './useSwipeNav';
+import { t } from '../../i18n';
 
 /**
  * Month. On a wide screen: the grid with each day's first events. On a phone: a compact grid with a dot per event
@@ -130,6 +131,7 @@ export function MonthView({
                   {!e.allDay && <i />}
                   {!e.allDay && <span className="de-time">{fmtTime(e.start)}</span>}
                   <span className="de-title">{e.title}</span>
+                  {e.rrule && <Repeat size={11} className="de-repeat" aria-label={t('Repeats')} />}
                 </button>
               ))}
               {extra > 0 && (

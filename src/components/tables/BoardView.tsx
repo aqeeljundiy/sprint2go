@@ -2,18 +2,19 @@ import { useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, Columns3, Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { CellValue, DataTable, FieldOption, FileRef, TableField, TableRow, TableViewDef } from '../../types';
 import { CellView, type CellCtx } from './Cell';
-import { OPTION_COLORS, fieldIcon, groupRows, isComputed, isEmpty, rowColors, rowName, valueOf, viewFields, type RowGroup } from './fields';
+import { OPTION_COLORS, fieldIcon, groupRows, isComputed, isEmpty, noValue, rowColors, rowName, valueOf, viewFields, type RowGroup } from './fields';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { GroupEditor } from './ViewTools';
 import { PickSelect } from '../ui/PickSelect';
 import { Popover } from '../ui/Popover';
 import { uid } from '../../utils';
+import { t, tn } from '../../i18n';
 
 const NONE_COLOR = '#94a3b8';
 
 /** The fields a card shows: the view's choice, or a few that move a pipeline (owner, due date, value, choices). */
-export function cardFieldsOf(t: DataTable, view: TableViewDef, group?: TableField) {
-  const usable = viewFields(t, view, true).filter((f) => f.id !== t.fields[0]?.id && f.id !== group?.id && f.type !== 'button');
+export function cardFieldsOf(tb: DataTable, view: TableViewDef, group?: TableField) {
+  const usable = viewFields(tb, view, true).filter((f) => f.id !== tb.fields[0]?.id && f.id !== group?.id && f.type !== 'button');
   if (view.cardFields) return view.cardFields.map((id) => usable.find((f) => f.id === id)).filter(Boolean) as TableField[];
   const rank: Partial<Record<TableField['type'], number>> = { person: 0, date: 1, money: 2, select: 3, multi: 4, number: 5, checkbox: 6 };
   return usable
@@ -76,9 +77,9 @@ function BoardCard({ table, view, r, ctx, shown, cover, canMove, dragging, onDra
             style={{ ['--c' as string]: opt?.color ?? '#94a3b8' }}
             onClick={(e) => (e.stopPropagation(), phone.onPill(r, group))}
             onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), phone.onPill(r, group))}
-            aria-label={`${group.name}: ${opt?.label ?? 'none'}, move`}
+            aria-label={t('{field}: {value}, move', { field: group.name, value: opt?.label ?? t('none') })}
           >
-            {opt?.label ?? `No ${group.name.toLowerCase()}`}
+            {opt?.label ?? noValue(group)}
           </span>
         )}
       </button>
@@ -150,7 +151,7 @@ export function BoardView({
   const cover = view.cover ? table.fields.find((f) => f.id === view.cover && f.type === 'files') : undefined;
   const hiddenGroups = new Set(view.hiddenGroups ?? []);
   const options = group?.options ?? [];
-  const noneLabel = group ? `No ${group.name.toLowerCase()}` : 'No status';
+  const noneLabel = group ? noValue(group) : t('No status');
   const columns: { id: string; label: string; color: string }[] = [...options, { id: '', label: noneLabel, color: NONE_COLOR }];
   const listOf = (id: string, from: TableRow[] = rows) => (group ? from.filter((r) => (r.values[group.id] ?? '') === id || (!id && !options.some((o) => o.id === r.values[group.id]))) : id ? [] : from);
   const canMove = !readOnly && !!group && (!ctx.canEdit || ctx.canEdit(group.id));
@@ -177,7 +178,7 @@ export function BoardView({
     const opt: FieldOption = { id: uid(), label: name, color: OPTION_COLORS[(options.length + 1) % OPTION_COLORS.length] };
     if (group) return saveOptions([...options, opt]);
     // The first column makes the field: Status, with this as its first choice.
-    const f: TableField = { id: uid(), name: table.fields.some((x) => x.name === 'Status') ? 'Stage' : 'Status', type: 'select', options: [opt] };
+    const f: TableField = { id: uid(), name: table.fields.some((x) => x.name === t('Status')) ? t('Stage') : t('Status'), type: 'select', options: [opt] };
     onNewField(f);
     onView({ groupBy: f.id });
   };
@@ -247,11 +248,11 @@ export function BoardView({
               {list.map((r) => (
                 <BoardCard key={r.id} table={table} view={view} r={r} ctx={ctx} shown={shown} cover={cover} canMove={canMove} dragging={dragging === r.id} onDragStart={() => setDragging(r.id)} onDragEnd={() => (setDragging(null), setOver(null))} onOpen={() => onOpenRow(r.id)} phone={ph} />
               ))}
-              {!list.length && <p className="muted small tb-col-empty">{group ? (phone ? 'Nothing here' : 'Drop a card here') : 'Every row is here until you add columns.'}</p>}
+              {!list.length && <p className="muted small tb-col-empty">{group ? (phone ? t('Nothing here') : t('Drop a card here')) : t('Every row is here until you add columns.')}</p>}
             </div>
             {!readOnly && canAdd && !phone && (
               <button type="button" className="tb-col-add" onClick={() => onAddRow(values, c.label)}>
-                <Plus size={14} /> Add
+                <Plus size={14} /> {t('Add')}
               </button>
             )}
           </section>
@@ -261,14 +262,14 @@ export function BoardView({
         <section className="tb-col tb-col-new">
           {adding === null ? (
             <button type="button" className="tb-col-add" onClick={() => setAdding('')}>
-              <Plus size={14} /> Add a column
+              <Plus size={14} /> {t('Add a column')}
             </button>
           ) : (
             <input
               autoFocus
               className="tb-col-input"
               value={adding}
-              placeholder={group ? `New ${group.name.toLowerCase()}` : 'Column name, e.g. To do'}
+              placeholder={group ? t('New {field}', { field: group.name.toLowerCase() }) : t('Column name, e.g. To do')}
               onChange={(e) => setAdding(e.target.value)}
               onBlur={() => addColumn(adding)}
               onKeyDown={(e) => (e.key === 'Enter' ? addColumn(adding) : e.key === 'Escape' && setAdding(null))}
@@ -282,7 +283,7 @@ export function BoardView({
   return (
     <div className={`tb-board-wrap${phone ? ' phone' : ''}${lane ? ' laned' : ''}`} ref={wrap}>
       {phone && visible.length > 1 && (
-        <div className="tb-jump" role="tablist" aria-label="Columns">
+        <div className="tb-jump" role="tablist" aria-label={t('Columns')}>
           {visible.map((c, i) => (
             <button key={c.id || 'none'} type="button" role="tab" aria-selected={i === at} className={i === at ? 'on' : ''} onClick={() => jump(i)}>
               <i className="tb-dot" style={{ background: c.color }} />
@@ -344,12 +345,12 @@ function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions
       <strong>{c.label}</strong>
       <span className="muted small">{count}</span>
       {onAdd && (
-        <button type="button" className="icon-btn tb-col-plus" aria-label={`New row in ${c.label}`} onClick={onAdd}>
+        <button type="button" className="icon-btn tb-col-plus" aria-label={t('New row in {group}', { group: c.label })} onClick={onAdd}>
           <Plus size={17} />
         </button>
       )}
       {(editable || canHide) && (
-        <button ref={btn} type="button" className="icon-btn sm tb-col-menu" aria-label={`${c.label} options`} onClick={() => (open ? close() : (setName(c.label), setOpen(true)))}>
+        <button ref={btn} type="button" className="icon-btn sm tb-col-menu" aria-label={t('{name} options', { name: c.label })} onClick={() => (open ? close() : (setName(c.label), setOpen(true)))}>
           <MoreHorizontal size={14} />
         </button>
       )}
@@ -357,7 +358,7 @@ function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions
         <div className="tb-colmenu">
           {editable && (
             <>
-              <input className="tb-fm-name" value={name} aria-label="Column name" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && close()} />
+              <input className="tb-fm-name" value={name} aria-label={t('Column name')} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && close()} />
               <div className="tb-colors">
                 {OPTION_COLORS.map((col) => (
                   <button key={col} type="button" className={`tb-dot big${c.color === col ? ' on' : ''}`} style={{ background: col }} onClick={() => patch({ color: col })} aria-label={col} />
@@ -367,15 +368,15 @@ function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions
             </>
           )}
           <button type="button" onClick={() => (onHide(), setOpen(false))}>
-            <EyeOff size={14} /> Hide in this view
+            <EyeOff size={14} /> {t('Hide in this view')}
           </button>
           {editable && (
             <button
               type="button"
               className="danger"
-              onClick={() => confirm(`Delete “${c.label}”? Its ${count} ${count === 1 ? 'card moves' : 'cards move'} to “No ${group?.name.toLowerCase() ?? 'status'}”.`) && (onSaveOptions(options.filter((o) => o.id !== c.id)), setOpen(false))}
+              onClick={() => confirm(tn(count, 'Delete “{name}”? Its {n} card moves to “{none}”.', 'Delete “{name}”? Its {n} cards move to “{none}”.', { name: c.label, none: group ? noValue(group) : t('No status') })) && (onSaveOptions(options.filter((o) => o.id !== c.id)), setOpen(false))}
             >
-              <Trash2 size={14} /> Delete this choice
+              <Trash2 size={14} /> {t('Delete this choice')}
             </button>
           )}
         </div>
@@ -397,34 +398,35 @@ export function BoardTools({ table, view, onView, onNewField, readOnly }: { tabl
   const cardsBtn = useRef<HTMLButtonElement>(null);
   const [pop, setPop] = useState<'group' | 'cards' | null>(null);
   const shown = cardFieldsOf(table, view, group);
+  const showHidden = tn(hidden.length, 'Show {n} hidden', 'Show {n} hidden');
   return (
     <>
       {readOnly || !group ? (
         <span className="tb-board-by-text small">
-          <Columns3 size={13} /> <span className="lbl">{group ? `By ${group.name}` : 'No choice field yet'}</span>
+          <Columns3 size={13} /> <span className="lbl">{group ? t('By {field}', { field: group.name }) : t('No choice field yet')}</span>
         </span>
       ) : (
-        <button ref={groupBtn} type="button" className="ghost-btn sm on" onClick={() => setPop('group')} title="Columns come from this field">
-          <Columns3 size={13} /> <span className="lbl">By {group.name}{view.subGroupBy ? ', in lanes' : ''}</span>
+        <button ref={groupBtn} type="button" className="ghost-btn sm on" onClick={() => setPop('group')} title={t('Columns come from this field')}>
+          <Columns3 size={13} /> <span className="lbl">{view.subGroupBy ? t('By {field}, in lanes', { field: group.name }) : t('By {field}', { field: group.name })}</span>
         </button>
       )}
-      <Popover anchor={groupBtn} open={pop === 'group'} onClose={() => setPop(null)} width={320} title="Columns and swimlanes">
+      <Popover anchor={groupBtn} open={pop === 'group'} onClose={() => setPop(null)} width={320} title={t('Columns and swimlanes')}>
         <div className="tb-menu">
           <GroupEditor t={table} view={view} onView={onView} board />
           <button type="button" onClick={() => (newChoiceField(table, onNewField, onView), setPop(null))}>
-            <Plus size={14} /> New choice field for the columns
+            <Plus size={14} /> {t('New choice field for the columns')}
           </button>
         </div>
       </Popover>
       {hidden.length > 0 && (
-        <button type="button" className="link-btn small" onClick={() => onView({ hiddenGroups: [] })}>
-          <Eye size={13} /> Show {hidden.length} hidden
+        <button type="button" className="link-btn small tb-quiet" onClick={() => onView({ hiddenGroups: [] })} title={showHidden} aria-label={showHidden}>
+          <Eye size={13} /> <span className="lbl">{showHidden}</span>
         </button>
       )}
       <button ref={cardsBtn} type="button" className="ghost-btn sm" onClick={() => setPop((x) => (x === 'cards' ? null : 'cards'))}>
-        <SlidersHorizontal size={13} /> <span className="lbl">Cards</span>
+        <SlidersHorizontal size={13} /> <span className="lbl">{t('Cards')}</span>
       </button>
-      <Popover anchor={cardsBtn} open={pop === 'cards'} onClose={() => setPop(null)} width={280} align="end" title="Cards">
+      <Popover anchor={cardsBtn} open={pop === 'cards'} onClose={() => setPop(null)} width={280} align="end" title={t('Cards')}>
         <CardSettings table={table} view={view} group={group} shown={shown} onView={onView} />
       </Popover>
     </>
@@ -447,7 +449,7 @@ export function CardSettings({ table, view, group, shown, onView }: { table: Dat
   };
   return (
     <div className="tab-edit-list tb-card-set">
-      <p className="muted small">Shown on each card, in this order.</p>
+      <p className="muted small">{t('Shown on each card, in this order.')}</p>
       {ordered.map((f) => {
         const I = fieldIcon(f.type);
         const isOn = on.includes(f.id);
@@ -471,35 +473,35 @@ export function CardSettings({ table, view, group, shown, onView }: { table: Dat
             <span className="tab-edit-name">{f.name}</span>
             {isOn && (
               <>
-                <button type="button" className="icon-btn sm" disabled={on.indexOf(f.id) === 0} onClick={() => move(f.id, -1)} aria-label={`Move ${f.name} up`}>
+                <button type="button" className="icon-btn sm" disabled={on.indexOf(f.id) === 0} onClick={() => move(f.id, -1)} aria-label={t('Move {name} up', { name: f.name })}>
                   <ArrowUp size={14} />
                 </button>
-                <button type="button" className="icon-btn sm" disabled={on.indexOf(f.id) === on.length - 1} onClick={() => move(f.id, 1)} aria-label={`Move ${f.name} down`}>
+                <button type="button" className="icon-btn sm" disabled={on.indexOf(f.id) === on.length - 1} onClick={() => move(f.id, 1)} aria-label={t('Move {name} down', { name: f.name })}>
                   <ArrowDown size={14} />
                 </button>
               </>
             )}
-            <button type="button" className="icon-btn sm" onClick={() => set(isOn ? on.filter((x) => x !== f.id) : [...on, f.id])} aria-label={isOn ? `Hide ${f.name}` : `Show ${f.name}`}>
+            <button type="button" className="icon-btn sm" onClick={() => set(isOn ? on.filter((x) => x !== f.id) : [...on, f.id])} aria-label={isOn ? t('Hide {name}', { name: f.name }) : t('Show {name}', { name: f.name })}>
               {isOn ? <Eye size={13} /> : <EyeOff size={13} />}
             </button>
           </div>
         );
       })}
       <div className="tb-card-opts">
-        <span className="muted small">Size</span>
+        <span className="muted small">{t('Size')}</span>
         <div className="segmented sm">
           <button type="button" className={view.cardSize !== 'roomy' ? 'on' : ''} onClick={() => onView({ cardSize: 'compact' })}>
-            Compact
+            {t('Compact')}
           </button>
           <button type="button" className={view.cardSize === 'roomy' ? 'on' : ''} onClick={() => onView({ cardSize: 'roomy' })}>
-            With labels
+            {t('With labels')}
           </button>
         </div>
         {files.length > 0 && (
           <>
-            <span className="muted small">Picture</span>
-            <PickSelect value={view.cover ?? ''} aria-label="Card picture" onChange={(e) => onView({ cover: e.target.value || undefined })}>
-              <option value="">None</option>
+            <span className="muted small">{t('Picture')}</span>
+            <PickSelect value={view.cover ?? ''} aria-label={t('Card picture')} onChange={(e) => onView({ cover: e.target.value || undefined })}>
+              <option value="">{t('None')}</option>
               {files.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
@@ -509,7 +511,7 @@ export function CardSettings({ table, view, group, shown, onView }: { table: Dat
           </>
         )}
         <label className="check-row small tb-card-empty">
-          <input type="checkbox" checked={!!view.hideEmptyGroups} onChange={(e) => onView({ hideEmptyGroups: e.target.checked })} /> Hide columns with no cards
+          <input type="checkbox" checked={!!view.hideEmptyGroups} onChange={(e) => onView({ hideEmptyGroups: e.target.checked })} /> {t('Hide columns with no cards')}
         </label>
       </div>
     </div>
@@ -517,10 +519,11 @@ export function CardSettings({ table, view, group, shown, onView }: { table: Dat
 }
 
 /** "+ New choice field" from a board: a Stage field with three starting choices, as columns straight away. Rename them from each column's menu. */
-export function newChoiceField(t: DataTable, onNewField: (f: TableField) => void, onView: (p: Partial<TableViewDef>) => void) {
-  const base = t.fields.some((x) => x.name === 'Status') ? 'Stage' : 'Status';
-  const name = t.fields.some((x) => x.name === base) ? `${base} ${t.fields.length}` : base;
-  const f: TableField = { id: uid(), name, type: 'select', options: ['To do', 'Doing', 'Done'].map((l, i) => ({ id: uid(), label: l, color: ['#64748b', '#3b82f6', '#10b981'][i] })) };
+export function newChoiceField(tb: DataTable, onNewField: (f: TableField) => void, onView: (p: Partial<TableViewDef>) => void) {
+  // Named in the maker's language, like a template's columns; from then on they're the table's own words.
+  const base = tb.fields.some((x) => x.name === t('Status')) ? t('Stage') : t('Status');
+  const name = tb.fields.some((x) => x.name === base) ? `${base} ${tb.fields.length}` : base;
+  const f: TableField = { id: uid(), name, type: 'select', options: [t('To do'), t('Doing'), t('Done')].map((l, i) => ({ id: uid(), label: l, color: ['#64748b', '#3b82f6', '#10b981'][i] })) };
   onNewField(f);
   onView({ groupBy: f.id });
 }

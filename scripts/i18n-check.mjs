@@ -35,7 +35,7 @@ const AREAS = [
   ['home', /^src\/components\/HomeView\.tsx$|^src\/components\/home\/|^src\/needsYou\.ts$/],
   ['onboarding', /^src\/components\/Onboarding\.tsx$/],
   ['mail', /^src\/components\/(Reader|Compose|MessageList|Sidebar|RecipientInput|BlockDialog|TemplateDialog|TempAddress|TrackingDashboard|TrackingPanel|AIWriter|InviteCard)\.tsx$|^src\/components\/mail\/|^src\/(mailRules|tracking|inviteTimes|identity)\.ts$|^src\/data\/mock\.ts$/],
-  ['calendar', /^src\/components\/calendar\/|^src\/components\/(CalendarView|CalendarSidebar|EventEditor|ConnectCalendar|HolidayCountries)\.tsx$|^src\/(calendarUtils|calendarLink|holidayDays|holidayRegions)\.ts$|^src\/data\/(calendar|holidays)\.ts$/],
+  ['calendar', /^src\/components\/calendar\/|^src\/(repeat|recurrence)\.ts$|^src\/components\/(CalendarView|CalendarSidebar|EventEditor|ConnectCalendar|HolidayCountries)\.tsx$|^src\/(calendarUtils|calendarLink|holidayDays|holidayRegions)\.ts$|^src\/data\/(calendar|holidays)\.ts$/],
   ['notes', /^src\/components\/notes\/|^src\/components\/(NotesApp|RichEditor)\.tsx$|^src\/data\/notes\.ts$/],
   ['chat', /^src\/components\/(ChatApp|ChannelDialog|ChannelMaterials|ChatDraft|Huddle)\.tsx$|^src\/components\/chat\/|^src\/ice\.ts$/],
   ['meet', /^src\/components\/MeetApp\.tsx$|^src\/(meetingLinks)\.ts$|^src\/data\/languages\.ts$/],

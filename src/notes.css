@@ -654,8 +654,41 @@
 .quick-note .sheet-foot {
   align-items: center;
 }
-.qn-to {
-  max-width: 60%;
+/* Where it goes: a chip at the top, Private or a project. */
+.qn-top {
+  display: flex;
+  padding: 0 8px 6px;
+}
+.sel.qn-dest {
+  max-width: 100%;
+  min-height: 32px;
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hover);
+  box-shadow: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  transition: background 0.15s, color 0.15s;
+}
+.sel.qn-dest svg,
+.sel.qn-dest .sel-dot {
+  flex: none;
+}
+.sel.qn-dest > svg:first-child {
+  color: var(--text-2);
+}
+@media (hover: hover) {
+  .sel.qn-dest:hover {
+    background: var(--border);
+  }
+}
+.sel.qn-dest.open {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

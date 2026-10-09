@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
-import type { CalEvent, CalendarDef, RsvpStatus } from '../../types';
+import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, Repeat, Send, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
+import type { CalEvent, CalendarDef, GuestAnswer, RsvpStatus } from '../../types';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../../meetingLinks';
 import { Avatar } from '../Avatar';
 import { Badge, type BadgeTone } from '../ui/Person';
@@ -8,8 +8,10 @@ import { Sheet } from '../ui/Sheet';
 import { fromWall, isPending, startsIn, wallIn, whenLine, zoneCity } from './calTools';
 import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
+import { repeatWords } from '../../repeat';
+import { t, tn } from '../../i18n';
 
-export type GuestAnswer = RsvpStatus | 'needs-action' | 'delegated';
+export type { GuestAnswer };
 
 export interface DetailProps {
   event: CalEvent;
@@ -17,7 +19,7 @@ export interface DetailProps {
   readOnly?: boolean;
   phone: boolean;
   onClose: () => void;
-  onDelete: () => void;
+  onDelete: (at?: Element) => void; // `at`: the button (where to ask which dates of a repeating event)
   onEdit?: () => void;
   onOpenThread: (id: string) => void;
   task?: { title: string; done: boolean } | null;
@@ -29,9 +31,11 @@ export interface DetailProps {
   botWill?: boolean; // set when the notetaker joins by itself (the real one): whether it will join this event
   onBotJoin?: (join: boolean) => void;
   /** Invites: answer Yes, Maybe or No (pinned to the bottom). */
-  onRsvp?: (s: RsvpStatus) => void;
+  onRsvp?: (s: RsvpStatus, at?: Element) => void;
   /** The guests' answers, when the invite says them (by email). */
   answers?: Record<string, GuestAnswer>;
+  /** Instead of the invite's state (the demo: nothing is emailed). */
+  inviteNote?: string;
 }
 
 const ANSWER: Record<GuestAnswer, { label: string; tone: BadgeTone }> = {
@@ -59,7 +63,7 @@ export function EventDetail(p: DetailProps) {
         </button>
       )}
       {!p.readOnly && (
-        <button className="icon-btn" onClick={p.onDelete} aria-label="Delete event" title="Delete">
+        <button className="icon-btn" onClick={(e) => p.onDelete(e.currentTarget)} aria-label="Delete event" title="Delete">
           <Trash2 size={17} />
         </button>
       )}
@@ -85,7 +89,7 @@ export function EventDetail(p: DetailProps) {
   );
 }
 
-function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus) => void }) {
+function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus, at?: Element) => void }) {
   const opts: [RsvpStatus, string][] = [
     ['accepted', 'Yes'],
     ['tentative', 'Maybe'],
@@ -95,13 +99,22 @@ function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus) =
     <div className="ev-rsvp" role="group" aria-label="Going?">
       <span className="ev-rsvp-q">Going?</span>
       {opts.map(([v, l]) => (
-        <button key={v} type="button" className={`ev-rsvp-btn${value === v ? ' on' : ''}`} aria-pressed={value === v} onClick={() => onPick(v)}>
+        <button key={v} type="button" className={`ev-rsvp-btn${value === v ? ' on' : ''}`} aria-pressed={value === v} onClick={(e) => onPick(v, e.currentTarget)}>
           {value === v && <Check size={14} />}
           {l}
         </button>
       ))}
     </div>
   );
+}
+
+/** What happened to the invite we email to guests (the server keeps it on the event). */
+function inviteWords(e: CalEvent) {
+  const inv = e.invite;
+  if (!inv) return t('The invite is on its way to the guests');
+  if (inv.error) return t('The invite couldn’t go out: {why}', { why: t(inv.error) });
+  if (inv.held?.length) return t('Emailed to guests here. Held on this computer for {who}: a local sprint2go doesn’t send mail out', { who: inv.held.length === 1 ? inv.held[0] : tn(inv.held.length, '{n} outside guest', '{n} outside guests') });
+  return inv.sequence > 0 ? t('Guests have the latest changes by email') : t('Invite emailed to the guests');
 }
 
 function Row({ icon, children, muted, top }: { icon: ReactNode; children: ReactNode; muted?: boolean; top?: boolean }) {
@@ -141,6 +154,11 @@ function DetailBody(p: DetailProps) {
             const t = (w: { date: string; time: string }) => fromWall(w.date, w.time, null).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             return `${t(s)} to ${t(e)} in ${zoneCity(event.timeZone)}`;
           })()}
+        </Row>
+      )}
+      {event.rrule && (
+        <Row icon={<Repeat size={16} />} muted>
+          {repeatWords({ rrule: event.rrule, start: event.occurrence ?? event.start, timeZone: event.timeZone })}
         </Row>
       )}
       {link && !ended && (
@@ -200,6 +218,11 @@ function DetailBody(p: DetailProps) {
             })}
           </div>
         </div>
+      )}
+      {event.sendInvites && guests.length > 0 && !event.inviteUid && (
+        <Row icon={<Send size={16} />} muted>
+          {p.inviteNote ?? inviteWords(event)}
+        </Row>
       )}
       {typeof event.remind === 'number' && <Row icon={<AlarmClock size={16} />} muted>Reminder {remindWords(event.remind).toLowerCase()}</Row>}
       {event.notes && (

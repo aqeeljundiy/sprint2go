@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Mic, MicOff, Video } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Mic, MicOff, Repeat, Video } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../../meetingLinks';
 import { startsIn, upNext } from './calTools';
+import { expandEvents } from '../../repeat';
+import { t } from '../../i18n';
 
 /**
  * The next meeting, when it starts within 30 minutes: its title, how soon, Join, and whether the notetaker goes.
@@ -14,7 +16,10 @@ export function UpNext({ events, color, onOpen, botWill }: { events: CalEvent[];
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
-  const e = upNext(events, now);
+  // Repeating events: their dates around now (worked out again every ten minutes).
+  const slot = Math.floor(now / 600_000);
+  const near = useMemo(() => expandEvents(events, slot * 600_000 - 3_600_000, slot * 600_000 + 2 * 3_600_000), [events, slot]);
+  const e = upNext(near, now);
   // Keep the last one while it folds away, so the strip doesn't empty before it closes.
   const [shown, setShown] = useState<CalEvent | undefined>(e);
   useEffect(() => {
@@ -31,6 +36,7 @@ export function UpNext({ events, color, onOpen, botWill }: { events: CalEvent[];
             <button type="button" className="cu-main" onClick={() => onOpen(ev.id)}>
               <span className="cu-when">{new Date(ev.start).getTime() <= now ? 'Now' : startsIn(ev, now)}</span>
               <span className="cu-title">{ev.title}</span>
+              {ev.rrule && <Repeat size={13} className="cu-repeat" aria-label={t('Repeats')} />}
               {bot !== undefined && (bot ? <Mic size={14} className="cu-bot on" aria-label="The notetaker will join" /> : <MicOff size={14} className="cu-bot" aria-label="The notetaker won’t join" />)}
             </button>
             {link && (

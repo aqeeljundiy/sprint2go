@@ -64,6 +64,9 @@ export interface MailInvite {
   organizer?: Person;
   attendees: InviteGuest[];
   rrule?: string; // repeats, e.g. FREQ=WEEKLY;BYDAY=MO
+  rdates?: string[]; // extra dates (ISO)
+  exdates?: string[]; // skipped dates (ISO starts, or a whole day "2026-10-28")
+  overrides?: { recurrenceId: string; start: string; end: string; cancelled?: boolean }[]; // dates changed on their own, sent with the series
   recurrenceId?: string; // one changed occurrence of a repeating event
   cancelled?: boolean;
   you?: string; // the address of yours that was invited
@@ -183,7 +186,36 @@ export interface CalEvent {
   busy?: boolean; // a teammate's event shown as busy only (no title or details)
   remind?: number; // minutes before the start to remind its owner (a notification; the server sends it)
   remindedFor?: string; // the start the reminder went out for (the server's: moving the event sets it again)
-  timeZone?: string; // set in another time zone: its times are shown in that zone too ("10:00 Singapore time")
+  timeZone?: string; // set in another time zone: its times are shown in that zone too ("10:00 Singapore time"). A repeating event always has one: its dates keep that zone's clock time
+  /* Repeating events (src/repeat.ts): one event holds the whole series, and every view draws its dates from it. */
+  rrule?: string; // how it repeats, RFC 5545 without "RRULE:" (FREQ=WEEKLY;BYDAY=MO). The event's own start is the first date
+  exdates?: string[]; // dates left out (their original starts, ISO; a whole day as "2026-10-28")
+  rdates?: string[]; // extra dates (only from invites that have them)
+  overrides?: EventOverride[]; // single dates changed on their own (moved, renamed, answered)
+  rsvpFrom?: { from: string; rsvp: RsvpStatus }[]; // an invite answered "this and following": that answer from that date on
+  seriesId?: string; // one date drawn from a repeating event (never stored): the event it belongs to. `occurrence` is its original start
+  /* Invites we send (server/calendarInvites.ts): guests get it by email, their answers come back here. */
+  sendInvites?: boolean; // email the invite (and its updates) to the guests
+  answers?: Record<string, GuestAnswer>; // the guests' answers, by email (lower case)
+  answersFrom?: { from: string; email: string; status: GuestAnswer }[]; // a guest's answer for one date and the ones after it
+  invite?: { uid: string; sequence: number; sig?: string; to?: string[]; sentAt?: string; held?: string[]; error?: string }; // the server's: what went out last, to whom, and what it said
+}
+
+export type GuestAnswer = RsvpStatus | 'needs-action' | 'delegated';
+/** One date of a repeating event, changed on its own. `null` clears what the series has (no location on this date). */
+export interface EventOverride {
+  occurrence: string; // the date's original start (ISO), as the repeat makes it
+  start?: string; // moved: both times are set
+  end?: string;
+  title?: string;
+  calendarId?: string;
+  location?: string | null;
+  meetUrl?: string | null;
+  notes?: string | null;
+  guests?: Person[] | null;
+  remind?: number | null;
+  rsvp?: RsvpStatus; // my answer for this date (an invite)
+  answers?: Record<string, GuestAnswer>; // guests' answers for this date (an invite we sent)
 }
 
 export interface Label {
@@ -992,7 +1024,8 @@ export interface TableLogEntry {
   at: string;
   dir: 'in' | 'out';
   ok: boolean;
-  text: string; // what happened, in a sentence
+  text: string; // what happened, in a sentence (English)
+  tr?: Msg; // the same sentence for each reader's language (textOf)
   rowId?: string;
 }
 
@@ -1113,7 +1146,7 @@ export interface TableRow {
   updatedAt: string;
   comments?: { id: string; by: string; at: string; text: string }[];
   extra?: Record<string, unknown>; // incoming data no field was mapped to (kept, never lost)
-  runs?: { fieldId: string; at: string; by: string; ok: boolean; note: string }[]; // button presses on this row
+  runs?: { fieldId: string; at: string; by: string; ok: boolean; note: string; tr?: Msg }[]; // button presses on this row (note in English, tr for textOf)
   history?: { by: string; at: string; fieldId: string; from: CellValue; to: CellValue }[];
 }
 

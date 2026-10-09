@@ -794,7 +794,7 @@ function BillingTab({ c, reload }: { c: Full; reload: () => void }) {
       <div>
         <Section title={t('Invoices')} actions={canBill && p && p.tier !== 'free' && <button className="ghost-btn sm" onClick={() => void act(() => post('invoice/create', { workspaceId: c.id }), t('Draft invoice made')).then(reload)}><FileText size={13} /> {t('New invoice')}</button>}>
           {c.invoices.length === 0 ? (
-            <Empty title={t('No invoices yet')} text={t('Make one here, or make this month’s for every paying company from {money}.', { money: t('Money') })} />
+            <Empty title={t('No invoices yet')} text={t('Make one here, or make this month’s for every paying company from {money}.', { money: tx('nav', 'Money') })} />
           ) : (
             <div className="adm-mini-list">
               {c.invoices.map((i) => {

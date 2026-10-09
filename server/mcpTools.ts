@@ -13,7 +13,9 @@ import { cleanStages, stageName, stageOf, stageIdFor } from '../src/stages.ts';
 import { needsYou, updatesOf } from '../src/needsYou.ts';
 import { templateValues } from '../src/components/tables/core.ts';
 import { addDays, companyTz, localParts, zonedTime } from '../src/jobTimes.ts';
-import type { StageKind, TaskStage } from '../src/types.ts';
+import type { CalEvent, StageKind, TaskStage } from '../src/types.ts';
+import { expandEvents, repeatWords, specToRule, startOnRule, type RepeatSpec } from '../src/repeat.ts';
+import { parseRRule } from '../src/recurrence.ts';
 import { msg, phrase } from '../src/i18n/index.ts';
 
 export interface ToolDeps {
@@ -541,7 +543,8 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       // The same rules as Home's "Needs you" (src/needsYou.ts), so Claude and the app list the same things.
       const today = v.today();
       const tasks = v.docs('todos');
-      const events = v.myEvents();
+      // Repeating events as their dates around now (a meeting starting soon is one date of one).
+      const events = expandEvents(v.myEvents() as unknown as CalEvent[], Date.now() - 6 * 3_600_000, Date.now() + 3_600_000) as unknown as Doc[];
       const notices = v.docs('notices');
       const boxes = v.mailboxes();
       const threads = v.docs('threads').filter((t) => boxes.some((a) => a.id === t.accountId));
@@ -869,7 +872,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     'calendar_agenda',
     {
       title: 'Calendar agenda',
-      description: 'Your calendar (or a teammate’s, as much as they share) for a range of days, in the company’s time zone: events with times, place, video link and guests. Default: today and the next 6 days.',
+      description: 'Your calendar (or a teammate’s, as much as they share) for a range of days, in the company’s time zone: events with times, place, video link and guests. A repeating event shows each of its dates in the range, with how it repeats. Default: today and the next 6 days.',
       inputSchema: {
         from: day.optional().describe('First day, YYYY-MM-DD (default today)'),
         to: day.optional().describe('Last day, YYYY-MM-DD (default 6 days after from, at most 62 days)'),
@@ -889,7 +892,9 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       const who = a.person ? v.person(a.person) : v.user(v.me)!;
       const cals = new Map(v.docs('calendars').map((c) => [c.id, c]));
       const theirs = v.docs('events').filter((e) => (who.id === v.me ? e.feed === 'holidays' || v.ownerOf(e) === v.me : e.feed !== 'holidays' && v.ownerOf(e) === who.id));
-      const list = theirs.filter((e) => Date.parse(e.end) > start && Date.parse(e.start) < end).sort((x, y) => String(x.start).localeCompare(String(y.start)));
+      // A repeating event as each of its dates in these days (left-out dates left out, moved ones where they went).
+      const dated = expandEvents(theirs as unknown as CalEvent[], start, end) as unknown as Doc[];
+      const list = dated.filter((e) => Date.parse(e.end) > start && Date.parse(e.start) < end).sort((x, y) => Date.parse(x.start) - Date.parse(y.start));
       const own = who.id === v.me; // a teammate's: titles, times and places only, as their calendar shows it in the app
       return {
         whose: who.id === v.me ? 'yours' : who.name,
@@ -906,6 +911,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
           ...(e.feed === 'holidays' ? { holiday: true } : {}),
           ...(cals.get(e.calendarId)?.name ? { calendar: cals.get(e.calendarId)!.name } : {}),
           ...(e.rsvp ? { your_answer: e.rsvp } : {}),
+          ...(e.rrule ? { repeats: repeatWords({ rrule: e.rrule, start: e.occurrence ?? e.start, timeZone: e.timeZone }) } : {}),
           link: v.link('calendar', e.id),
         })),
         ...(list.length ? {} : { note: 'Nothing on the calendar in these days.' }),
@@ -1334,6 +1340,18 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         notes: z.string().max(5000).optional(),
         guests: z.array(z.string()).max(30).optional().describe('Teammates’ names or emails'),
         calendar: z.enum(['work', 'clients', 'personal']).optional().describe('Default work'),
+        repeat: z
+          .object({
+            every: z.enum(['day', 'weekday', 'week', 'month', 'year']).describe('weekday: Monday to Friday'),
+            interval: z.number().int().min(1).max(99).optional().describe('Every n of them (default 1): 2 with week is every 2 weeks'),
+            days: z.array(z.enum(['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'])).min(1).max(7).optional().describe('week: on these days (default the start’s day)'),
+            monthly: z.enum(['date', 'weekday', 'last_day', 'last_weekday']).optional().describe('month: the same date (default), the same weekday of the month (“the 2nd Tuesday”), the last day, or the last of that weekday'),
+            until: day.optional().describe('The last date it may happen, YYYY-MM-DD'),
+            times: z.number().int().min(1).max(999).optional().describe('Or: how many times in all'),
+          })
+          .optional()
+          .describe('Make it a repeating event (each date is on the calendar, with reminders and the notetaker for each)'),
+        rrule: z.string().max(300).optional().describe('Instead of repeat, for anything else: an RFC 5545 RRULE such as FREQ=MONTHLY;BYDAY=1MO,3MO'),
       },
       annotations: WRITE,
     },
@@ -1350,9 +1368,35 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       const s = parse(a.start, 'start');
       const e = a.end ? parse(a.end, 'end') : null;
       const allDay = s.allDay;
-      const end = allDay ? (e ? e.at + 86_400_000 : s.at + 86_400_000) : (e?.at ?? s.at + 60 * 60_000);
+      // All day: to the midnight after the last day (a day stays a day when the clocks change).
+      const end = allDay ? zonedTime(addDays(v.dayOf(new Date(e ? e.at : s.at).toISOString()), 1), 0, tz) : (e?.at ?? s.at + 60 * 60_000);
       if (end <= s.at) no('The event has to end after it starts.');
       if (a.video_link && !/^https:\/\/\S+$/.test(a.video_link)) no('The video link must start with https://.');
+      // Repeating: the picker's choices (as the app has them), or a rule as written. Its dates keep the company's clock.
+      let rrule: string | undefined;
+      if (a.repeat && a.rrule) no('Give repeat or rrule, not both.');
+      if (a.rrule) {
+        const raw = a.rrule.trim().replace(/^RRULE:/i, '');
+        if (!parseRRule(raw)) no('That rrule isn’t one calendars use for events: FREQ must be DAILY, WEEKLY, MONTHLY or YEARLY.');
+        rrule = raw;
+      } else if (a.repeat) {
+        const r = a.repeat;
+        const p = localParts(s.at, tz);
+        const [y, mo, d] = p.day.split('-').map(Number);
+        const wall = Date.UTC(y, mo - 1, d, allDay ? 0 : p.hour, allDay ? 0 : p.minute);
+        const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+        if (r.until && (!validDay(r.until) || r.until < p.day)) no('“until” must be a real date, on or after the start.');
+        if (r.monthly === 'last_day' && d !== last) no('“last_day” needs a start on the last day of its month.');
+        if (r.monthly === 'last_weekday' && d + 7 <= last) no('“last_weekday” needs a start in the last week of its month.');
+        const spec: RepeatSpec = {
+          freq: r.every === 'day' ? 'DAILY' : r.every === 'week' || r.every === 'weekday' ? 'WEEKLY' : r.every === 'month' ? 'MONTHLY' : 'YEARLY',
+          interval: r.every === 'weekday' ? 1 : (r.interval ?? 1),
+          ...(r.every === 'weekday' ? { days: [1, 2, 3, 4, 5] } : r.every === 'week' && r.days ? { days: r.days.map((x) => ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'].indexOf(x)) } : {}),
+          ...(r.every === 'month' ? { monthly: r.monthly === 'weekday' ? 'nth' : r.monthly === 'last_day' ? 'last' : r.monthly === 'last_weekday' ? 'lastWeekday' : 'date' } : {}),
+          ...(r.times ? { count: r.times } : r.until ? { until: r.until } : {}),
+        };
+        rrule = specToRule(spec, wall, { floating: false, tz });
+      }
       const team = new Map(v.members().map((u) => [lower(u.email), u]));
       const guests: Doc[] = [];
       const outside: string[] = [];
@@ -1364,12 +1408,13 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         const p = g.includes('@') ? team.get(lower(g))! : v.person(g);
         if (p.id !== v.me && !guests.some((x) => x.email === p.email)) guests.push({ name: p.name, email: p.email });
       }
+      // A repeating one starts on its rule's first date (made on a Friday, weekly on Mondays: the next Monday).
+      const when = startOnRule({ start: new Date(s.at).toISOString(), end: new Date(end).toISOString(), ...(rrule ? { rrule, timeZone: tz } : {}) });
       const ev = {
         id: v.newId(),
         title: a.title.trim(),
         calendarId: a.calendar ?? 'work',
-        start: new Date(s.at).toISOString(),
-        end: new Date(end).toISOString(),
+        ...when,
         ...(allDay ? { allDay: true } : {}),
         ...(a.location ? { location: a.location } : {}),
         ...(a.video_link ? { meetUrl: a.video_link } : {}),
@@ -1378,9 +1423,10 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         workspaceId: v.ctx.wsId,
         userId: v.me,
       };
-      v.save('events', [ev], `added the event “${clip(ev.title, 100)}” on ${v.when(ev.start, allDay)}`);
+      const words = ev.rrule ? repeatWords(ev) : null;
+      v.save('events', [ev], `added the event “${clip(ev.title, 100)}” on ${v.when(ev.start, allDay)}${words ? `, ${words.charAt(0).toLowerCase()}${words.slice(1)}` : ''}`);
       return {
-        created: { id: ev.id, title: ev.title, ...(allDay ? { date: v.dayOf(ev.start), all_day: true } : { start: v.when(ev.start), end: v.time(ev.end) }), ...(guests.length ? { guests: guests.map((g) => g.name) } : {}), link: v.link('calendar', ev.id) },
+        created: { id: ev.id, title: ev.title, ...(allDay ? { date: v.dayOf(ev.start), all_day: true } : { start: v.when(ev.start), end: v.time(ev.end) }), ...(words ? { repeats: words } : {}), ...(guests.length ? { guests: guests.map((g) => g.name) } : {}), link: v.link('calendar', ev.id) },
         ...(outside.length ? { not_added: outside, note: `${outside.join(', ')} ${outside.length === 1 ? 'is' : 'are'} outside the company, so not added. Invite them from sprint2go.` } : {}),
       };
     },

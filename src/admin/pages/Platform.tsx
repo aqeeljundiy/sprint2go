@@ -284,7 +284,7 @@ function Mail() {
         </Section>
         <Section title={t('Blocklists')} hint={data.ip || t('set MAIL_IP to check')}>
           {data.blocklists.length === 0 ? (
-            <Empty title={t('Not checked')} text={t('Set MAIL_IP on the server.')} />
+            <Empty title={tx('check', 'Not checked')} text={t('Set MAIL_IP on the server.')} />
           ) : (
             <Rows rows={data.blocklists.map((b) => ({ label: b.list, value: b.listed === 'unknown' ? t('No answer (some lists refuse public resolvers)') : b.listed ? t('Listed') : t('Not listed'), ok: b.listed === 'unknown' ? undefined : !b.listed }))} />
           )}
