@@ -3,6 +3,7 @@ import { Check, ChevronUp } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { addDays, eventsOn, sameDay, startOfDay, startOfWeek } from '../../calendarUtils';
 import { EventCard, type CardKit } from './EventCard';
+import { expandEvents } from '../../repeat';
 
 export interface DueTask {
   id: string;
@@ -73,18 +74,20 @@ export function ScheduleView({
     box.scrollTo({ top: Math.max(0, top), behavior: instant || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
 
+  // Repeating events: their dates in the weeks shown (more as it scrolls).
+  const dated = useMemo(() => expandEvents(events, from.getTime(), addDays(from, weeks * 7).getTime()), [events, from, weeks]);
   const days = useMemo(() => {
     const out: { day: Date; list: CalEvent[]; tasks: DueTask[] }[] = [];
     const today = new Date(now);
     for (let i = 0; i < weeks * 7; i++) {
       const day = addDays(from, i);
       const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-      const list = eventsOn(events, day).sort((a, b) => Number(!!b.allDay) - Number(!!a.allDay) || a.start.localeCompare(b.start));
+      const list = eventsOn(dated, day).sort((a, b) => Number(!!b.allDay) - Number(!!a.allDay) || a.start.localeCompare(b.start));
       const tasks = dueTasks.filter((t) => t.due === key);
       if (list.length || tasks.length || sameDay(day, today) || sameDay(day, cursor)) out.push({ day, list, tasks });
     }
     return out;
-  }, [events, from, weeks, dueTasks, now, cursor]);
+  }, [dated, from, weeks, dueTasks, now, cursor]);
 
   // Near the bottom: four more weeks.
   const end = useRef<HTMLDivElement>(null);

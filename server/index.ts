@@ -14,7 +14,8 @@ import * as aiplan from './aiplan.ts';
 import * as models from './models.ts';
 import { defaultModelOf } from '../src/data/aiModels.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
-import { DEFAULT_PERMISSIONS } from '../src/types.ts';
+import { DEFAULT_PERMISSIONS, type CalEvent } from '../src/types.ts';
+import { answerSeries } from '../src/repeat.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
 import { TOP_UP } from '../src/data/pricing.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
@@ -39,6 +40,7 @@ import * as push from './push.ts';
 import * as pushRules from './notifyPush.ts';
 import * as turn from './turn.ts';
 import * as feeds from './calendarFeeds.ts';
+import * as calendarInvites from './calendarInvites.ts';
 import { FetchError } from './safeFetch.ts';
 import * as twostep from './twostep.ts';
 import * as whatsapp from './whatsapp.ts';
@@ -1504,6 +1506,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       say(r.why);
       return r.doc;
     }
+    // Events: what went out to guests, their answers and the last reminder are the server's (calendarInvites.ts).
+    if (coll === 'events' && before) return calendarInvites.guardEvent(d, before) as db.Doc;
     if (before) return d;
     // New things carry who made them.
     if (coll === 'todos') return { ...d, createdBy: me, ...(d.createdAt ? {} : { createdAt: now }) } as db.Doc;
@@ -1513,7 +1517,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     if (coll === 'channels' && d.kind === 'channel' && !d.teamId && limited(d.workspaceId) && (db.getDoc('workspaces', String(d.workspaceId)) as any)?.chat?.whoCanCreate === 'admins') return null; // only admins start channels here
     if (coll === 'rows' || coll === 'tables' || coll === 'quotes' || coll === 'meetings') return { ...d, createdBy: me } as db.Doc;
     if (coll === 'drive') return { ...d, uploadedBy: (d as any).uploadedBy ?? me } as db.Doc;
-    if (coll === 'events') return { ...d, createdBy: (d as any).createdBy ?? me } as db.Doc;
+    if (coll === 'events') return calendarInvites.guardEvent({ ...d, createdBy: (d as any).createdBy ?? me }, undefined) as db.Doc;
     return d;
   };
   for (let i = ok.length - 1; i >= 0; i--) {
@@ -1614,6 +1618,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
   }
   if (rowsBefore) tablesEngine.afterRowWrite(tablesEnv, rowsBefore as any, ok as any, me);
   feeds.afterSync(coll, ok, delDocs);
+  // Invites to guests of events that send them: new ones, updates, cancellations (server/calendarInvites.ts).
+  if (coll === 'events' && (ok.length || delDocs.length)) void calendarInvites.afterEventWrite(ok as any[], delDocs as any[], me);
   // A deleted meeting takes its recording with it.
   if (RECORDER_URL) for (const id of botAudio) recorder(`/recordings/${id}`, { method: 'DELETE' }).catch(() => {});
   if (sbWhy) say(sbWhy);
@@ -2352,15 +2358,17 @@ createServer(async (req, res) => {
     /** A hosted mailbox that can really send, checked afresh when the last check said no; else why not. */
     const sendBlock = async (ws: any, account: any): Promise<string | null> => {
       if (account.provider && account.provider !== 'sprint2go') return `${account.email} stays with ${account.provider === 'microsoft' ? 'Microsoft' : 'Google'}, so mail from it goes out there.`;
-      if (ws.mailReady?.mailboxes?.[account.id]?.send) return null;
+      // A local server keeps mail to outside addresses on this computer anyway (mailer.keepsMailLocal): nothing to wait for.
+      if (ws.mailReady?.mailboxes?.[account.id]?.send || mailer.keepsMailLocal()) return null;
       const r = await mailer.refreshReadiness(ws.id);
       const m = r?.mailboxes[account.id];
       return m?.send ? null : `Sending isn’t set up for ${account.email} yet. ${m?.sendWhy ?? m?.why ?? ''}`.trim();
     };
     if (p === '/api/mail/invite' && req.method === 'POST') {
       // Yes, Maybe or No to an emailed invite: tells the organiser (an iCalendar REPLY from the mailbox) and puts the
-      // event in this person's calendar, or takes it off.
-      const { threadId, messageId, answer } = await body(req);
+      // event in this person's calendar, or takes it off. For one date of a repeating invite (`scope` one or
+      // following, with the date's `occurrence`): the answer is for that date, or that date and the ones after it.
+      const { threadId, messageId, answer, scope, occurrence } = await body(req);
       if (!invites.isRsvp(answer)) return json(res, 400, { error: 'Answer yes, maybe or no.' });
       const t = db.getDoc('threads', String(threadId ?? '')) as any;
       const ws = t && (memberOf(me) as any[]).find((w) => (w.accounts ?? []).some((a: any) => a.id === t.accountId));
@@ -2370,15 +2378,29 @@ createServer(async (req, res) => {
       const msg = (t.messages ?? []).find((m: any) => m.id === messageId);
       const inv = msg?.invite as invites.StoredInvite | undefined;
       if (!inv || (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH')) return json(res, 400, { error: 'There’s no invite to answer in this email.' });
+      // Some dates of a repeating invite: the date as our event writes it (an all-day one floats).
+      const only = (scope === 'one' || scope === 'following') && inv.rrule && typeof occurrence === 'string' && !Number.isNaN(Date.parse(occurrence.length === 19 ? `${occurrence}Z` : occurrence)) ? { scope: scope as 'one' | 'following', occurrence: invites.dateOfInvite(inv, occurrence.length === 19 ? `${occurrence.slice(0, 10)}T12:00:00Z` : occurrence) } : null;
       const own = new Set<string>([String(account.email).toLowerCase(), ...(ws.accounts ?? []).map((a: any) => String(a.email).toLowerCase())]);
       const tell = inv.method === 'REQUEST' && !!inv.organizer?.email && !own.has(inv.organizer.email);
       const meName = String((db.getDoc('users', me) as any)?.name ?? account.name ?? '');
+      const you = inv.you ?? String(account.email).toLowerCase();
+      // A teammate's invite (from a mailbox of this company): no email between us, the answer goes straight onto their event.
+      const teammateHears = () => {
+        const box = !tell && inv.method === 'REQUEST' && inv.organizer?.email ? (ws.accounts ?? []).find((a: any) => String(a.email).toLowerCase() === inv.organizer!.email) : null;
+        if (!box || (box.users ?? []).includes(me)) return false;
+        const reply = { ...inv, method: 'REPLY' as const, attendees: [{ name: meName || String(account.name), email: you, status: answer }], recurrenceId: only?.occurrence, ...(only?.scope === 'following' ? { thisAndFuture: true } : { thisAndFuture: undefined }) };
+        invites.applyReply(ws, box, reply, broadcast, notifyPeople);
+        return true;
+      };
       if (tell) {
         const blocked = await sendBlock(ws, account);
         if (blocked) return json(res, 409, { error: `Your answer can’t go out yet. ${blocked}` });
-        const you = inv.you ?? String(account.email).toLowerCase();
+        // (who answers: the address of ours that was invited)
         const name = account.kind === 'shared' ? String(account.name || ws.name) : meName || String(account.name);
         const said = answer === 'accepted' ? 'Accepted' : answer === 'tentative' ? 'Tentatively accepted' : 'Declined';
+        // Which dates, in words: " on Tue 13 Oct" or " from Tue 13 Oct on".
+        const day = only ? new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: inv.allDay ? 'UTC' : inv.tz && isZone(inv.tz) ? inv.tz : companyTz(ws) }).format(new Date(inv.allDay ? `${only.occurrence.slice(0, 10)}T12:00:00Z` : only.occurrence)) : '';
+        const dates = only ? (only.scope === 'one' ? ` on ${day}` : ` from ${day} on`) : '';
         try {
           await mailer.queueSend({
             workspaceId: ws.id,
@@ -2388,16 +2410,29 @@ createServer(async (req, res) => {
             from: { name, email: String(account.email).toLowerCase() },
             to: [inv.organizer!],
             cc: [],
-            subject: `${said}: ${inv.title}`,
-            text: `${name} ${answer === 'accepted' ? 'accepted' : answer === 'tentative' ? 'might come to' : 'declined'} “${inv.title}”.`,
+            subject: `${said}: ${inv.title}${dates}`,
+            text: `${name} ${answer === 'accepted' ? 'accepted' : answer === 'tentative' ? 'might come to' : 'declined'} “${inv.title}”${dates}.`,
             files: [],
             inReplyTo: msg.mid,
             references: msg.mid ? [msg.mid] : undefined,
-            ical: { method: 'REPLY', content: buildReply(inv, { name, email: you }, answer) },
+            ical: { method: 'REPLY', content: buildReply(inv, { name, email: you }, answer, Date.now(), only ? { recurrenceId: only.occurrence, following: only.scope === 'following' } : undefined) },
           });
         } catch (e) {
           return json(res, 400, { error: e instanceof Error ? e.message : 'Your answer could not be sent.' });
         }
+      }
+      const before = invites.eventsOf(inv.uid, ws.id, [me]);
+      if (only) {
+        // Some dates: the repeating event is on the calendar with this answer for them (the rest keep theirs, or wait
+        // for one); a "No" date is off the calendar. The email's own answer stays the one for all of it.
+        const cur = (before.find((e) => e.rrule) ?? invites.eventsFor(inv, { userId: me, workspaceId: ws.id, threadId: t.id, mine: [...own] }).docs[0]) as CalEvent;
+        const next = answerSeries(cur, only.occurrence, answer, only.scope) as unknown as db.Doc;
+        const gone = before.filter((e) => e.id !== next.id);
+        db.writeDocs('events', [next], gone.map((e) => e.id), me);
+        if (gone.length) broadcast('events', [], gone.map((e) => e.id), undefined, gone);
+        broadcast('events', [next], []);
+        const heard = teammateHears();
+        return json(res, 200, { sent: tell || heard, events: [next.id], firstOnly: false });
       }
       // The answer, on the email (read fresh: the send may have touched the thread).
       const fresh = (db.getDoc('threads', t.id) as any) ?? t;
@@ -2405,19 +2440,19 @@ createServer(async (req, res) => {
       const nextThread = { ...fresh, messages: fresh.messages.map((m: any) => (m.id === msg.id ? { ...m, invite: { ...m.invite, answer: { status: answer, at, by: me, sent: tell } } } : m)) };
       db.writeDocs('threads', [nextThread], [], me);
       broadcast('threads', [nextThread], []);
-      // This person's calendar: the event (each date of a repeating one), or none after No.
-      const before = invites.eventsOf(inv.uid, ws.id, [me]);
+      // This person's calendar: the event (one repeating event for a repeating invite), or none after No.
       const made = answer === 'declined' ? { docs: [] as db.Doc[], firstOnly: false } : invites.eventsFor(inv, { userId: me, workspaceId: ws.id, threadId: t.id, rsvp: answer, mine: [...own] });
       const docs = made.docs.map((d) => {
-        const same = before.find((e) => (e.occurrence ?? e.start) === ((d as any).occurrence ?? d.start));
-        return same ? { ...d, id: same.id } : d;
+        const same = before.find((e) => e.rrule && (d as any).rrule) ?? before.find((e) => (e.occurrence ?? e.start) === ((d as any).occurrence ?? d.start));
+        return same ? { ...d, id: same.id, ...(same.remind !== undefined ? { remind: same.remind } : {}), calendarId: same.calendarId ?? d.calendarId } : d;
       });
       const keep = new Set(docs.map((d) => d.id));
       const gone = before.filter((e) => !keep.has(e.id));
       db.writeDocs('events', docs, gone.map((e) => e.id), me);
       if (gone.length) broadcast('events', [], gone.map((e) => e.id), undefined, gone);
       if (docs.length) broadcast('events', docs, []);
-      return json(res, 200, { sent: tell, events: docs.map((d) => d.id), firstOnly: made.firstOnly });
+      const heard = teammateHears();
+      return json(res, 200, { sent: tell || heard, events: docs.map((d) => d.id), firstOnly: made.firstOnly });
     }
     if (p === '/api/mail/away' && req.method === 'POST') {
       // Out of office for one mailbox: its people (or an admin) set it; the server keeps it and answers mail with it.
@@ -3358,6 +3393,7 @@ createServer(async (req, res) => {
     notifyAdmins: (wsId, text) => notifyUsers((workspaces().find((w) => w.id === wsId)?.members ?? []).filter((m) => m.role !== 'member').map((m) => m.userId), text, '/settings/agency', wsId),
   });
   feeds.startCalendarFeeds({ broadcast });
+  calendarInvites.initInvites({ broadcast });
   // Phone mail apps (IMAP and SMTP submission): off unless IMAP_ENABLED=1 and the mail certificate is trusted.
   void mailApps.start({ write: (userId, coll, upserts, deletes) => applySync(userId, { coll, upserts, deletes }), memberOf: (userId) => memberOf(userId) as any, readOnlyWhy: (w) => billing.readOnlyWhy(w as any), log: (line) => console.log(line) });
 }).requestTimeout = 60 * 60_000; // a big upload on a slow line can take a while (Node's own limit is 5 minutes)
@@ -3502,7 +3538,9 @@ function tell(userIds: string[], workspaceId: string, kind: string, text: string
 /** A notice for these people (the mail engine uses it for failures and credits). */
 function notifyPeople(userIds: string[], workspaceId: string, text: string, link?: string) {
   const at = new Date().toISOString();
-  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind: 'mail', text, at, read: false, link: link?.startsWith('/settings') ? { app: 'settings', id: link.split('/')[2] } : { app: 'mail' } }));
+  // "/calendar?event=<id>": a guest's answer to an invite we sent opens that event (or that date of it).
+  const event = link?.startsWith('/calendar') ? new URLSearchParams(link.split('?')[1] ?? '').get('event') : null;
+  const notices = Array.from(new Set(userIds)).map((userId) => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind: event ? 'meeting' : 'mail', text, at, read: false, link: link?.startsWith('/settings') ? { app: 'settings', id: link.split('/')[2] } : event ? { app: 'calendar', id: event } : { app: 'mail' } }));
   if (notices.length) (db.writeDocs('notices', notices, [], null), broadcast('notices', notices, []));
 }
 
@@ -3740,7 +3778,8 @@ setInterval(() => {
   // Event reminders ("10 minutes before"): one notification to the event's owner, sent again if the event moves.
   const ring = eventReminders(db.allDocs('events') as any[], Date.parse(now));
   if (ring.length) {
-    const events = ring.map((e) => ({ ...e, remindedFor: e.start }));
+    // One date of a repeating event marks its series (the notice opens that date).
+    const events = ring.map((e) => ({ ...((e.seriesId ? db.getDoc('events', e.seriesId) : e) as any), remindedFor: e.start })).filter((e) => e.id);
     const notices = ring.map((e) => ({ id: randomBytes(6).toString('hex'), userId: e.userId, workspaceId: e.workspaceId ?? '', kind: 'meeting', text: reminderText(e, Date.parse(now)), at: now, read: false, link: { app: 'calendar', id: e.id } }));
     db.writeDocs('events', events, [], null);
     db.writeDocs('notices', notices, [], null);

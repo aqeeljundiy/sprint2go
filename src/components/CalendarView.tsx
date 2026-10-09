@@ -2,7 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { flushSync } from 'react-dom';
 import { CalendarDays, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, CopyPlus, Layers, Link2, Mail, Pencil, Plus, SkipForward, Trash2, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, RsvpStatus, User } from '../types';
-import { addDays, eventsOn, sameDay, startOfDay } from '../calendarUtils';
+import { addDays, eventsOn, monthGrid, sameDay, startOfDay } from '../calendarUtils';
+import { expandEvents, findEvent, type Scope } from '../repeat';
+import { askScope, type ScopeAt } from './calendar/RepeatScope';
 import { useCreateAction, useTitleMenu } from '../mobile/chrome';
 import { usePhone } from '../mobile/media';
 import { meetingLinkOf, MEETING_NAME } from '../meetingLinks';
@@ -19,10 +21,12 @@ import { QuickCreate } from './calendar/QuickCreate';
 import { ScheduleView, type DueTask } from './calendar/ScheduleView';
 import { TimeGrid } from './calendar/TimeGrid';
 import { UpNext } from './calendar/UpNext';
+import { t } from '../i18n';
 
 export type { CalView } from './calendar/calTools';
 
 interface Props {
+  /** Stored events: a repeating one once, as its series (each view draws its dates for the range on screen). */
   events: CalEvent[];
   calendars: CalendarDef[]; // every calendar on screen (for colours)
   addTo: CalendarDef[]; // the ones new events can go in
@@ -37,11 +41,12 @@ interface Props {
   /** Phones: the quick-create sheet's Save. */
   onSave: (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task') => void;
   onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
+  /** `at`: where to ask which dates, for one date of a repeating event. */
+  onDelete: (id: string, at?: ScopeAt) => void;
   onDuplicate: (id: string) => void;
   onOpenThread: (threadId: string) => void;
-  /** Move or resize an event (drag it, or drag its bottom edge). */
-  onMove?: (id: string, start: Date, end: Date) => void;
+  /** Move or resize an event (drag it, or drag its bottom edge). One date of a repeating event comes with which dates. */
+  onMove?: (id: string, start: Date, end: Date, scope?: Scope) => void;
   /** A task dropped on the calendar: block time for it. */
   onSchedule?: (taskId: string, start: Date) => void;
   canEdit?: (e: CalEvent) => boolean;
@@ -57,8 +62,8 @@ interface Props {
   /** The real notetaker joins by itself: whether it will join this event, and changing that for this one event. */
   botWillJoin?: (e: CalEvent) => boolean;
   onBotJoin?: (e: CalEvent, join: boolean) => void;
-  /** Invites: Yes, Maybe or No. */
-  onRsvp?: (e: CalEvent, s: RsvpStatus) => void;
+  /** Invites: Yes, Maybe or No (`at`: where to ask which dates, for one date of a repeating invite). */
+  onRsvp?: (e: CalEvent, s: RsvpStatus, at?: ScopeAt) => void;
   answersOf?: (e: CalEvent) => Record<string, GuestAnswer> | undefined;
   /** For the guest picker. */
   team: User[];
@@ -72,6 +77,8 @@ interface Props {
   calendarsPanel?: ReactNode;
   /** A dialog from the panel is open (Add a calendar, holidays): the Calendars sheet makes way for it. */
   dialogOpen?: boolean;
+  /** Shown instead of what happened to an emailed invite (the demo: nothing is emailed). */
+  inviteNote?: string;
 }
 
 /** The next half hour from now if `day` is today, otherwise 9:00 on that day. */
@@ -116,6 +123,26 @@ export function CalendarView(props: Props) {
   const color = (id: string) => calendars.find((c) => c.id === id)?.color ?? '#888';
   const step = (dir: 1 | -1) => props.onCursor(stepOf(view, cursor, dir));
 
+  /* ---------- repeating events: their dates for the range on screen ---------- */
+  // Schedule and Up next draw their own (Schedule's range grows as it scrolls).
+  const shown = useMemo(() => {
+    if (view === 'schedule') return events;
+    const from = view === 'month' ? monthGrid(cursor)[0] : days[0];
+    const to = view === 'month' ? addDays(monthGrid(cursor)[41], 1) : addDays(days[days.length - 1], 1);
+    return expandEvents(events, from.getTime(), to.getTime());
+  }, [events, view, cursor, days]);
+  // A date of a repeating event dragged somewhere stays there while the question is asked.
+  const [held, setHeld] = useState<{ id: string; start: Date; end: Date } | null>(null);
+  const onScreen = held ? shown.map((e) => (e.id === held.id ? { ...e, start: held.start.toISOString(), end: held.end.toISOString() } : e)) : shown;
+  const moveTo = async (id: string, start: Date, end: Date, at?: ScopeAt) => {
+    const e = shown.find((x) => x.id === id) ?? findEvent(events, id);
+    if (!e?.seriesId) return props.onMove?.(id, start, end);
+    setHeld({ id, start, end });
+    const scope = await askScope(e, t('Move a repeating event'), at);
+    setHeld(null);
+    if (scope) props.onMove?.(id, start, end, scope);
+  };
+
   /* ---------- phones: quick create over the grid ---------- */
   const [quick, setQuick] = useState<{ start: Date; end: Date } | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -146,7 +173,19 @@ export function CalendarView(props: Props) {
 
   /* ---------- the month title folds a mini month down ---------- */
   const [drop, setDrop] = useState(false);
-  const busy = useMemo(() => new Set(events.map((e) => new Date(e.start).toDateString())), [events]);
+  // Days with something on them, for the month the mini month shows (worked out once per month).
+  const busyOf = useMemo(() => {
+    const seen = new Map<string, Set<string>>();
+    return (month: Date) => {
+      const key = `${month.getFullYear()}-${month.getMonth()}`;
+      let s = seen.get(key);
+      if (!s) {
+        const g = monthGrid(month);
+        seen.set(key, (s = new Set(expandEvents(events, g[0].getTime(), addDays(g[41], 1).getTime()).map((e) => new Date(e.start).toDateString()))));
+      }
+      return s;
+    };
+  }, [events]);
 
   // Calendar shortcuts: T today, ←/→ step, A schedule, D/W/M views, C new event, Esc closes.
   useEffect(() => {
@@ -177,7 +216,7 @@ export function CalendarView(props: Props) {
   useEffect(() => {
     const id = new URLSearchParams(location.search).get('event');
     if (!id) return;
-    const e = events.find((x) => x.id === id);
+    const e = findEvent(events, id);
     if (e) {
       props.onCursor(new Date(e.start));
       props.onSelect(e.id);
@@ -187,6 +226,8 @@ export function CalendarView(props: Props) {
 
   /* ---------- the long-press (and right-click) menu ---------- */
   const [menu, setMenu] = useState<{ e: CalEvent; x: number; y: number } | null>(null);
+  // A choice from the menu that asks which dates asks where the menu was.
+  const menuAt = menu ? { x: menu.x, y: menu.y } : undefined;
   const editable = (e: CalEvent) => !isPending(e) && (props.canEdit?.(e) ?? true);
   const actionsFor = (e: CalEvent): SheetAction[] => {
     const link = meetingLinkOf(e);
@@ -205,7 +246,7 @@ export function CalendarView(props: Props) {
                 ['tentative', 'Maybe', CalendarDays],
                 ['declined', 'No', X],
               ] as const
-            ).map(([s, label, icon]) => ({ label, icon, run: () => props.onRsvp!(e, s) }))
+            ).map(([s, label, icon]) => ({ label, icon, run: () => props.onRsvp!(e, s, menuAt) }))
           : []),
         ...(e.threadId ? [{ label: 'Open the invite', icon: Mail, group: 'more', run: () => props.onOpenThread(e.threadId!) }] : []),
       ];
@@ -215,11 +256,11 @@ export function CalendarView(props: Props) {
         ? [
             { label: 'Edit', icon: Pencil, run: () => props.onEdit(e.id) },
             { label: 'Duplicate', icon: CopyPlus, run: () => props.onDuplicate(e.id) },
-            { label: 'Move to tomorrow', icon: SkipForward, run: () => props.onMove?.(e.id, addDays(new Date(e.start), 1), addDays(new Date(e.end), 1)) },
+            { label: 'Move to tomorrow', icon: SkipForward, run: () => void moveTo(e.id, addDays(new Date(e.start), 1), addDays(new Date(e.end), 1), menuAt) },
           ]
         : []),
       { label: link ? 'Copy call link' : 'Copy link', icon: link ? Copy : Link2, group: 'copy', run: () => void copy(link ? link.url : eventLink(e.id), link ? 'Call link copied' : 'Link copied') },
-      ...(editable(e) ? [{ label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => props.onDelete(e.id) }] : []),
+      ...(editable(e) ? [{ label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => props.onDelete(e.id, menuAt) }] : []),
     ];
   };
 
@@ -299,7 +340,7 @@ export function CalendarView(props: Props) {
       <MonthDrop
         open={drop}
         cursor={cursor}
-        busy={busy}
+        busyOf={busyOf}
         months={view === 'month'}
         onPick={(d) => {
           setDrop(false);
@@ -313,7 +354,7 @@ export function CalendarView(props: Props) {
       ) : view === 'month' ? (
         <MonthView
           cursor={cursor}
-          events={events}
+          events={onScreen}
           phone={phone}
           kit={kit}
           onCursor={props.onCursor}
@@ -324,13 +365,13 @@ export function CalendarView(props: Props) {
       ) : (
         <TimeGrid
           days={days}
-          events={events}
+          events={onScreen}
           phone={phone}
           hour={phone ? 60 : 52}
           color={color}
           selectedId={selected?.id ?? null}
           canEdit={editable}
-          onMove={props.onMove}
+          onMove={props.onMove ? (id, s, e, at) => void moveTo(id, s, e, at) : undefined}
           onSelect={(id) => select(id)}
           onSlot={(start) => create(start)}
           onDay={(d) => (props.onCursor(d), props.onView('day'))}
@@ -353,7 +394,7 @@ export function CalendarView(props: Props) {
           event={selected}
           calendar={calendars.find((c) => c.id === selected.calendarId)}
           onClose={() => props.onSelect(null)}
-          onDelete={() => props.onDelete(selected.id)}
+          onDelete={(at) => props.onDelete(selected.id, at)}
           onEdit={() => props.onEdit(selected.id)}
           readOnly={!editable(selected)}
           onNotetaker={props.onNotetaker ? () => props.onNotetaker!(selected) : undefined}
@@ -365,8 +406,9 @@ export function CalendarView(props: Props) {
           sentBot={props.sentBot?.(selected)}
           botWill={props.onBotJoin ? !!props.botWillJoin?.(selected) : undefined}
           onBotJoin={props.onBotJoin ? (join) => props.onBotJoin!(selected, join) : undefined}
-          onRsvp={props.onRsvp ? (s) => props.onRsvp!(selected, s) : undefined}
+          onRsvp={props.onRsvp ? (s, at) => props.onRsvp!(selected, s, at) : undefined}
           answers={props.answersOf?.(selected)}
+          inviteNote={props.inviteNote}
         />
       )}
 
@@ -387,7 +429,7 @@ export function CalendarView(props: Props) {
         />
       )}
 
-      <ActionSheet open={!!menu} onClose={() => setMenu(null)} title={menu?.e.title} actions={menu ? actionsFor(menu.e) : []} at={menu && !phone ? { x: menu.x, y: menu.y } : null} />
+      <ActionSheet open={!!menu} onClose={() => setMenu(null)} title={menu?.e.title} actions={menu ? actionsFor(menu.e) : []} at={menu && !phone ? { x: menu.x, y: menu.y } : null} className="cal-menu-sheet" />
 
       {calsOpen && props.calendarsPanel && (
         <Sheet title="Calendars" onClose={() => setCalsOpen(false)} size="tall" className="cal-sheet">
@@ -401,7 +443,7 @@ export function CalendarView(props: Props) {
       {allDayOf && (
         <Sheet title={`All day, ${allDayOf.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}`} onClose={() => setAllDayOf(null)} className="allday-sheet">
           <div className="allday-list">
-            {eventsOn(events, allDayOf)
+            {eventsOn(shown, allDayOf)
               .filter((e) => e.allDay)
               .map((e) => (
                 <EventCard key={e.id} e={e} kit={{ ...kit, onSelect: (id) => (setAllDayOf(null), select(id)) }} now={Date.now()} />

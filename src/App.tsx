@@ -27,7 +27,9 @@ import { templatesFor, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
 import type { NotesApi } from './components/notes/useNoteMenu';
 import type { VaultItem } from './components/VaultApp';
-import { eventsOn } from './calendarUtils';
+import { eventsOn, monthGrid } from './calendarUtils';
+import { answerSeries, changeSeries, changesRule, expandEvents, findEvent, removeFromSeries, startOnRule, timeLike, type Scope, type SeriesChange } from './repeat';
+import { askScope as askRepeatScope, ScopeHost, type ScopeAt } from './components/calendar/RepeatScope';
 import { botJoins, callKey, meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
 import { setHolidayDays } from './holidayDays';
 import { holidayCalendarId, holidayCountry } from './data/holidays';
@@ -39,7 +41,7 @@ import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped }
 import { isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
-import { inviteCalendarTimes } from './inviteTimes';
+import { inviteCalendarTimes, inviteSeries } from './inviteTimes';
 import { isPersonalHoliday, personalHolidayId, regionsToSave, useHolidayRegions } from './holidayRegions';
 import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
@@ -108,7 +110,7 @@ import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
 import { mark, msg, phrase, t, textOf, tn, tx, type Msg } from './i18n';
-import { fmtDay, fmtList } from './i18n/format';
+import { fmtDay, fmtList, fmtWeekday } from './i18n/format';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -2343,7 +2345,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const presence = (id: string): Presence => {
     if (id === user.id) {
       const now = new Date().toISOString();
-      return myEvents.some((e) => !e.allDay && e.start <= now && e.end > now) ? 'meeting' : 'active';
+      return myNear.some((e) => !e.allDay && new Date(e.start).toISOString() <= now && new Date(e.end).toISOString() > now) ? 'meeting' : 'active';
     }
     if (statuses[id]?.emoji === '🗓️') return 'meeting';
     return id === 'u-dewi' || id === 'u-bayu' ? 'away' : 'active';
@@ -2691,7 +2693,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (n.link.app === 'settings') return (setSettingsSection((n.link.id ?? 'account') as SettingsSection), go('settings'));
     if (n.link.app === 'notes' && n.link.id) return openNote(n.link.id);
     if (n.link.app === 'calendar' && n.link.id) {
-      const ev = events.find((e) => e.id === n.link!.id);
+      const ev = findEvent(events, n.link.id);
       if (ev) (setCalCursor(new Date(ev.start)), setSelectedEventId(ev.id));
     }
     go(n.link.app);
@@ -2749,11 +2751,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const share = ext ? (ext.share ?? 'busy') : 'details';
       if (share === 'private') return [];
       const first = (allUsers.find((u) => u.id === owner)?.name ?? 'Someone').split(' ')[0];
-      return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${share === 'busy' || e.busy ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined, meetUrl: undefined }];
+      const busy = share === 'busy' || !!e.busy;
+      // A repeating one keeps its dates; a date changed on its own shows only what the rest of it shows.
+      const overrides = e.overrides?.map((o) => ({ occurrence: o.occurrence, start: o.start, end: o.end, ...(!busy && o.title ? { title: `${first}: ${o.title}` } : {}), ...(!busy && o.location !== undefined ? { location: o.location } : {}) }));
+      return [{ ...e, id: `m-${e.id}`, calendarId: `mate-${owner}`, title: `${first}: ${busy ? 'Busy' : e.title}`, notes: undefined, guests: undefined, location: share === 'busy' ? undefined : e.location, threadId: undefined, meetUrl: undefined, answers: undefined, overrides }];
     });
     return [...mine, ...holidays.events.filter((e) => !hiddenCals.has(e.calendarId)), ...mates];
   }, [events, hiddenCals, ws.id, user.id, extIds, myExtCals, extCals, shownMates, allUsers, holidays.events, holidays.showCompany]);
+  /** My events as stored: a repeating one once, as its series. The calendar draws its dates for what's on screen. */
   const myEvents = useMemo(() => visibleEvents.filter((e) => !e.calendarId.startsWith('mate-')), [visibleEvents]);
+  /** My events around now, repeating ones as their dates (yesterday to two months on): Home, Meet, scheduling, who's in a meeting. */
+  const calToday = localDay();
+  const myNear = useMemo(() => {
+    const from = new Date(`${calToday}T00:00`).getTime() - 86_400_000;
+    return expandEvents(myEvents, from, from + 62 * 86_400_000);
+  }, [myEvents, calToday]);
   // The notetaker joining by itself: the server does it when the real recorder answers; the demo keeps its switches.
   const autoJoin: 'live' | 'demo' | 'off' = recorderOn && real ? 'live' : demoOk ? 'demo' : 'off';
   // (It joins from two minutes before the start until a minute after; a meeting already going gets "Send now".)
@@ -2770,7 +2782,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const out: Record<string, string> = { ...sentEvents };
     const auto = wsMeetings.filter((m) => m.auto && m.scheduledFor && m.url);
     if (!auto.length) return out;
-    for (const e of myEvents) {
+    for (const e of myNear) {
       if (out[e.id]) continue;
       const link = meetingLinkOf(e);
       const start = new Date(e.start).toISOString();
@@ -2778,8 +2790,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (hit) out[e.id] = hit.id;
     }
     return out;
-  }, [sentEvents, wsMeetings, myEvents]);
-  const busyDays = useMemo(() => new Set(myEvents.map((e) => new Date(e.start).toDateString())), [myEvents]);
+  }, [sentEvents, wsMeetings, myNear]);
+  // The side panel's mini month: days with something on them (repeating events too), for the month it shows.
+  const calMonth = `${calCursor.getFullYear()}-${calCursor.getMonth()}`;
+  const busyDays = useMemo(() => {
+    const g = monthGrid(calCursor);
+    return new Set(expandEvents(myEvents, g[0].getTime(), g[41].getTime() + 86_400_000).map((e) => new Date(e.start).toDateString()));
+  }, [myEvents, calMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openNewEvent(at?: Date) {
     const d = at ?? new Date(calCursor);
@@ -2792,29 +2809,98 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const saveEvent = (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task' = 'event') => {
     const start = new Date(e.start);
     const task = kind === 'task' ? createTask({ title: e.title, userId: user.id, due: localDay(start), source: 'manual' }) : null;
-    const ev: CalEvent = task ? { id: uid(), title: task.title, calendarId: 'work', start: e.start, end: e.end, allDay: e.allDay, notes: e.notes, remind: e.remind, taskId: task.id, workspaceId: ws.id, userId: user.id } : { ...e, id: uid(), workspaceId: ws.id, userId: user.id };
+    const { rrule, ...rest } = e;
+    const ev: CalEvent = task ? { id: uid(), title: task.title, calendarId: 'work', start: e.start, end: e.end, allDay: e.allDay, notes: e.notes, remind: e.remind, taskId: task.id, workspaceId: ws.id, userId: user.id } : startOnRule({ ...rest, ...(rrule ? { rrule } : {}), id: uid(), workspaceId: ws.id, userId: user.id }); // a repeat starts on its first date
     tried('event');
     setEvents((es) => [...es, ev]);
     setNewEventAt(null);
-    setCalCursor(start);
-    if (!mobile) setSelectedEventId(ev.id);
+    setCalCursor(new Date(ev.start));
+    if (!mobile) setSelectedEventId(ev.rrule ? (findEvent([ev], ev.id)?.id ?? ev.id) : ev.id);
     showToast({
-      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : 'Event created',
+      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : ev.rrule ? (ev.start === e.start ? t('Repeating event created') : t('Repeating event created. The first one is {day}', { day: fmtWeekday(ev.start) })) : 'Event created',
       action: { label: 'Undo', run: () => (setEvents((es) => es.filter((x) => x.id !== ev.id)), task && setTodos((ts) => ts.filter((x) => x.id !== task.id))) },
     });
   };
+
+  /* ---------- repeating events: one date, this and following, or all ---------- */
+
+  /** A change to a series (and its second half, after "This and following"), with Undo. */
+  const applySeries = (change: SeriesChange, text: string) => {
+    const touched = new Set([...change.upserts.map((x) => x.id), ...change.deletes]);
+    const before = events.filter((x) => touched.has(x.id));
+    const put = (list: CalEvent[], from: CalEvent[]) => {
+      const byId = new Map(from.map((x) => [x.id, x]));
+      const kept = list.filter((x) => !touched.has(x.id) || byId.has(x.id)).map((x) => byId.get(x.id) ?? x);
+      return [...kept, ...from.filter((x) => !list.some((y) => y.id === x.id))];
+    };
+    setEvents((es) => put(es, change.upserts));
+    showToast({ text, action: { label: t('Undo'), run: () => setEvents((es) => put(es, before)) } });
+  };
+  /** What a change to some dates of a series did, in words. */
+  const scopeWords = (scope: Scope, what: 'saved' | 'moved' | 'times') =>
+    ({
+      saved: { one: t('Saved for this event'), following: t('Saved for this and following events'), all: t('Saved for all events') },
+      moved: { one: t('Moved this event'), following: t('Moved this and the following events'), all: t('Moved all events') },
+      times: { one: t('New times for this event'), following: t('New times for this and following events'), all: t('New times for all events') },
+    })[what][scope];
+  /** One date of a series and the series it's in, by the date's id. */
+  const seriesOf = (id: string) => {
+    const occ = findEvent(events, id);
+    const series = occ?.seriesId ? events.find((x) => x.id === occ.seriesId && x.rrule) : undefined;
+    return occ && series && occ.occurrence ? { occ, series, occurrence: occ.occurrence } : null;
+  };
+  /** Times from the editor or a drag, written the way the series writes them (an invite's all-day dates float). */
+  const asSeriesTimes = (series: CalEvent, p: Partial<CalEvent>) => ({ ...p, ...(p.start ? { start: timeLike(series, new Date(p.start)) } : {}), ...(p.end ? { end: timeLike(series, new Date(p.end)) } : {}) });
+  /** The same clock time `n` days later. */
+  const addDaysTo = (iso: string, n: number) => {
+    const d = new Date(iso);
+    d.setDate(d.getDate() + n);
+    return d;
+  };
+
+  /** Moving one event (a drag, Move to tomorrow, Extend): one date of a series asks which dates, unless it was asked already. */
+  const moveEvent = async (id: string, start: Date, end: Date, scope?: Scope, at?: ScopeAt) => {
+    const s = seriesOf(id);
+    const resized = (before: string) => new Date(before).getTime() === start.getTime();
+    const text = (before: string) => (resized(before) ? `Now ${fmtTime(start)} to ${fmtTime(end)}` : `Moved to ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(start)}`);
+    if (s) {
+      const pick = scope ?? (await askRepeatScope(s.occ, t('Move a repeating event'), at));
+      if (!pick) return;
+      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, { start: start.toISOString(), end: end.toISOString() }), pick, uid), pick === 'one' ? text(s.occ.start) : scopeWords(pick, resized(s.occ.start) ? 'times' : 'moved'));
+      return;
+    }
+    const before = events.find((e) => e.id === id);
+    if (!before) return;
+    setEvents((es) => es.map((e) => (e.id === id ? { ...e, start: start.toISOString(), end: end.toISOString() } : e)));
+    showToast({ text: text(before.start), action: { label: 'Undo', run: () => setEvents((es) => es.map((e) => (e.id === id ? before : e))) } });
+  };
+
   /** Changes from the editor. Times that moved set the reminder going again (the server keeps track). */
-  const updateEvent = (id: string, e: Omit<CalEvent, 'id'>) => {
+  const updateEvent = async (id: string, e: Omit<CalEvent, 'id'>, at?: ScopeAt) => {
+    const s = seriesOf(id);
+    if (s) {
+      // A new rule (or all day, or another time zone) can't be for one date alone.
+      const scope = await askRepeatScope(s.occ, t('Change a repeating event'), at, changesRule(s.series, s.occurrence, e) ? ['following', 'all'] : ['one', 'following', 'all']);
+      if (!scope) return;
+      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, e), scope, uid), scopeWords(scope, 'saved'));
+      setEditEventId(null);
+      return;
+    }
     const before = events.find((x) => x.id === id);
     if (!before) return;
-    setEvents((es) => es.map((x) => (x.id === id ? { ...x, ...e, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind } : x)));
+    const { rrule, ...rest } = e;
+    // Repeating from now on: the event becomes a series starting on its date.
+    const repeat = rrule === undefined ? {} : rrule ? { rrule } : { rrule: undefined };
+    setEvents((es) => es.map((x) => (x.id === id ? startOnRule({ ...x, ...rest, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind, timeZone: e.timeZone, ...repeat }) : x)));
     setEditEventId(null);
-    showToast({ text: 'Event saved', action: { label: 'Undo', run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
+    if (rrule) setSelectedEventId(null);
+    showToast({ text: rrule ? t('Saved. It repeats now') : 'Event saved', action: { label: 'Undo', run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
   };
   const duplicateEvent = (id: string) => {
-    const e = events.find((x) => x.id === id);
+    const e = findEvent(events, id);
     if (!e) return;
-    const { inviteUid: _u, sequence: _s, occurrence: _o, rsvp: _r, organizer: _org, remindedFor: _rf, feed: _f, ...rest } = e;
+    // A date of a repeating event: a copy of that one date.
+    const { inviteUid: _u, sequence: _s, occurrence: _o, rsvp: _r, organizer: _org, remindedFor: _rf, feed: _f, rrule: _rr, exdates: _x, rdates: _rd, overrides: _ov, rsvpFrom: _fr, seriesId: _si, answers: _a, invite: _i, sendInvites: _si2, ...rest } = e;
     const copy: CalEvent = { ...rest, id: uid(), title: e.title, workspaceId: ws.id, userId: user.id };
     setEvents((es) => [...es, copy]);
     if (!mobile) setSelectedEventId(copy.id);
@@ -2865,7 +2951,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setSentEvents((s2) => ({ ...s2, [e.id]: 'pending' }));
   };
 
-  const deleteEvent = (id: string) => {
+  const deleteEvent = async (id: string, at?: ScopeAt) => {
+    const s = seriesOf(id);
+    if (s) {
+      const scope = await askRepeatScope(s.occ, t('Delete a repeating event'), at);
+      if (!scope) return;
+      setSelectedEventId(null);
+      applySeries(removeFromSeries(s.series, s.occurrence, scope), scope === 'one' ? 'Event deleted' : scope === 'following' ? t('This and following events deleted') : t('All events deleted'));
+      return;
+    }
     const snapshot = events;
     setEvents((es) => es.filter((e) => e.id !== id));
     setSelectedEventId(null);
@@ -2873,7 +2967,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   const conflictsWith = (start: string, end: string) =>
-    eventsOn(myEvents, new Date(start)).filter((e) => !e.allDay && e.start < end && e.end > start);
+    eventsOn(expandEvents(myEvents, Date.parse(start) - 86_400_000, Date.parse(end) + 86_400_000), new Date(start)).filter((e) => !e.allDay && e.start < end && e.end > start);
 
   const addInvite = (threadId: string) => {
     const t = threads.find((x) => x.id === threadId);
@@ -2922,14 +3016,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   /** Opens the calendar on this invite's next date. */
   const showInvite = (uid: string, start: string) => {
-    const mine = events.filter((e) => e.inviteUid === uid && (e.userId ?? 'u-aqeel') === user.id).sort((a, b) => a.start.localeCompare(b.start));
-    const ev = mine.find((e) => e.end >= new Date().toISOString()) ?? mine[0];
+    const now = Date.now();
+    const mine = events.filter((e) => e.inviteUid === uid && (e.userId ?? 'u-aqeel') === user.id);
+    // A repeating one: its next date.
+    const dates = expandEvents(mine, now - 86_400_000, now + 400 * 86_400_000).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+    const ev = dates.find((e) => new Date(e.end).getTime() >= now) ?? findEvent(mine, mine[0]?.id);
     go('calendar');
     setCalCursor(new Date(ev?.start ?? start));
     if (ev) setSelectedEventId(ev.id);
   };
-  /** Yes, Maybe or No: the organiser hears it from this mailbox, and the event goes on (or off) your calendar. */
-  const answerInvite = async (t: Thread, m: Message, status: RsvpStatus): Promise<boolean> => {
+  /**
+   * Yes, Maybe or No: the organiser hears it from this mailbox, and the event goes on (or off) your calendar. A
+   * repeating invite becomes one repeating event; answering one date of it (`only`) answers that date, or that date
+   * and the following ones, and the rest keep their answer (or wait for one).
+   */
+  const answerInvite = async (t: Thread, m: Message, status: RsvpStatus, only?: { scope: Scope; occurrence: string }): Promise<boolean> => {
     const inv = m.invite!;
     const org = inv.organizer?.name.split(' ')[0];
     const tell = (sent: boolean, extra = '') =>
@@ -2940,7 +3041,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       });
     if (real) {
       try {
-        const r = await fetch('/api/mail/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: t.id, messageId: m.id, answer: status }) });
+        const r = await fetch('/api/mail/invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: t.id, messageId: m.id, answer: status, ...(only && only.scope !== 'all' ? only : {}) }) });
         const d = (await r.json().catch(() => ({}))) as { error?: string; sent?: boolean; firstOnly?: boolean };
         if (!r.ok) {
           showToast({ text: d.error ?? 'Your answer couldn’t be saved. Try again.', ms: 7000, action: r.status === 409 && wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
@@ -2955,11 +3056,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     // The demo (no server, or the demo company): answered here, and nothing is sent.
     const at = nowIso();
+    const mineNow = (e: CalEvent) => e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id;
+    const made = (rsvp?: RsvpStatus): CalEvent => ({ id: uid(), title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, ...(rsvp ? { rsvp } : {}), organizer: inv.organizer, ...inviteSeries(inv) });
+    if (only && only.scope !== 'all' && inv.rrule) {
+      // Some dates of a repeating invite: the series is on the calendar, with this answer for those dates.
+      const cur = events.find((e) => mineNow(e) && e.rrule) ?? made();
+      const next = answerSeries(cur, only.occurrence, status, only.scope);
+      setEvents((es) => [...es.filter((e) => !mineNow(e)), next]);
+      tell(false, ' Demo: no answer is sent.');
+      return true;
+    }
     setThreads((ts) => ts.map((x) => (x.id !== t.id ? x : { ...x, messages: x.messages.map((y) => (y.id === m.id ? { ...y, invite: { ...inv, answer: { status, at, by: user.id, sent: false } } } : y)) })));
-    setEvents((es) => [
-      ...es.filter((e) => !(e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id)),
-      ...(status === 'declined' ? [] : [{ id: uid(), title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, rsvp: status, organizer: inv.organizer } as CalEvent]),
-    ]);
+    setEvents((es) => [...es.filter((e) => !mineNow(e)), ...(status === 'declined' ? [] : [made(status)])]);
     tell(false, ' Demo: no answer is sent.');
     return true;
   };
@@ -2993,25 +3101,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       if (t.location === 'trash' || t.location === 'spam') continue;
       for (const m of t.messages) {
         const inv = m.invite;
-        if (!inv || inv.method !== 'REQUEST' || inv.cancelled || Date.parse(inv.end) < now) continue;
+        // (A repeating one may have dates to come although its first is over: the calendar draws those.)
+        if (!inv || inv.method !== 'REQUEST' || inv.cancelled || (Date.parse(inv.end) < now && !inv.rrule)) continue;
         const key = `${inv.uid}|${inv.recurrenceId ?? ''}`;
         if (seen.has(key)) continue;
         const st = inviteState(t, m);
         if (st.answer || st.onCalendar || st.cancelled || st.newer) continue;
         seen.add(key);
-        // All-day invites come as noon UTC on the first and last day: here they cover those days.
-        const day = (iso: string) => {
-          const d = new Date(iso);
-          return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-        };
-        const start = inv.allDay ? day(inv.start) : new Date(inv.start);
-        const end = inv.allDay ? new Date(day(inv.end).getTime() + 86_400_000) : new Date(inv.end);
         out.push({
           id: `inv:${t.id}:${m.id}`,
           title: inv.title,
           calendarId: 'work',
-          start: start.toISOString(),
-          end: end.toISOString(),
+          // All-day invites come as noon UTC on the first and last day: here they cover those days, wherever you are.
+          ...inviteCalendarTimes(inv, inv.allDay),
+          ...inviteSeries(inv),
           allDay: inv.allDay,
           location: inv.location,
           meetUrl: inv.url,
@@ -3028,7 +3131,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return out;
   }, [wsThreads, events]); // eslint-disable-line react-hooks/exhaustive-deps
   const calEvents = useMemo(() => (pendingInvites.length ? [...visibleEvents, ...pendingInvites] : visibleEvents), [visibleEvents, pendingInvites]);
-  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? calEvents.find((e) => e.id === selectedEventId) ?? null;
+  // One date of a repeating event is found by its id too (the id says which date).
+  const selectedEvent = findEvent(events, selectedEventId) ?? findEvent(calEvents, selectedEventId);
+  // The event being edited (one date of a repeating one: that date, with the series' repeat).
+  const editingEvent = findEvent(events, editEventId);
   /** Calendars a new event can go in (not read-only ones like links and holidays). */
   const addToCals = useMemo(() => [...CALENDARS, ...myExtCals.filter((c) => !c.readOnly)], [myExtCals]);
   /** People to invite besides teammates: the projects' guests and anyone already a guest of my events. */
@@ -3045,8 +3151,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   );
   /** The invite email behind an event (the newest one), to answer it from the calendar. */
   const inviteOf = (e: CalEvent) => {
-    if (e.id.startsWith('inv:')) {
-      const [, tid, mid] = e.id.split(':');
+    const id = e.seriesId ?? e.id; // a date of a repeating one: its series
+    if (id.startsWith('inv:')) {
+      const [, tid, mid] = id.split(':');
       const t = threads.find((x) => x.id === tid);
       const m = t?.messages.find((x) => x.id === mid);
       return t && m ? { t, m } : null;
@@ -3056,14 +3163,22 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const m = t && [...t.messages].reverse().find((x) => x.invite?.uid === e.inviteUid && x.invite?.method !== 'REPLY');
     return t && m ? { t, m } : null;
   };
-  const rsvpEvent = (e: CalEvent, status: RsvpStatus) => {
+  const rsvpEvent = async (e: CalEvent, status: RsvpStatus, at?: ScopeAt) => {
     const found = inviteOf(e);
     if (!found) return showToast({ text: 'The invite email for this event isn’t here any more, so the answer can’t be sent from sprint2go.' });
+    // One date of a repeating invite: for that date, from it on, or all of them.
+    let only: { scope: Scope; occurrence: string } | undefined;
+    if (e.seriesId && e.occurrence && found.m.invite?.rrule) {
+      const scope = await askRepeatScope(e, t('Answer “{answer}” for', { answer: status === 'accepted' ? t('Yes') : status === 'tentative' ? t('Maybe') : t('No') }), at);
+      if (!scope) return;
+      only = { scope, occurrence: e.occurrence };
+    }
     if (e.id.startsWith('inv:') || status === 'declined') setSelectedEventId(null);
-    void answerInvite(found.t, found.m, status);
+    void answerInvite(found.t, found.m, status, only);
   };
-  /** What the guests answered, as the invite says it. */
+  /** What the guests answered: by email to an invite I sent (on the event), or as the invite I got says it. */
   const answersOf = (e: CalEvent) => {
+    if (e.answers) return e.answers;
     const inv = inviteOf(e)?.m.invite;
     return inv ? Object.fromEntries(inv.attendees.map((a) => [a.email.toLowerCase(), a.status])) : undefined;
   };
@@ -4112,7 +4227,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenBriefs={() => openTasks({ kind: 'briefs' })}
             onOpenGrid={() => openTasks({ kind: 'grid' })}
             threads={scoped}
-            events={myEvents}
+            events={myNear}
             meetings={wsMeetings}
             notices={myNotices}
             kudos={messages
@@ -4411,7 +4526,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             users={members}
             me={user.id}
             myRole={myRole}
-            events={myEvents}
+            events={myNear}
             settings={meetSettings}
             overrides={joinOverrides}
             sentEvents={sentFor}
@@ -4660,6 +4775,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenThread={openThread}
             onRsvp={rsvpEvent}
             answersOf={answersOf}
+            inviteNote={real ? undefined : t('Demo: invites aren’t emailed')}
             team={members}
             contacts={guestContacts}
             me={user.id}
@@ -4668,7 +4784,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenTask={openTask}
             calendarsPanel={calendarPanel}
             dialogOpen={!!connectCal}
-            canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
+            canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === (e.seriesId ?? e.id))}
             onNotetaker={botOn ? sendNotetakerTo : undefined}
             botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
             onBotJoin={
@@ -4680,16 +4796,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                   }
                 : undefined
             }
-            onMove={(id, start, end) => {
-              const before = events.find((e) => e.id === id);
-              if (!before) return;
-              setEvents((es) => es.map((e) => (e.id === id ? { ...e, start: start.toISOString(), end: end.toISOString() } : e)));
-              const resized = new Date(before.start).getTime() === start.getTime();
-              showToast({
-                text: resized ? `Now ${fmtTime(start)} to ${fmtTime(end)}` : `Moved to ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(start)}`,
-                action: { label: 'Undo', run: () => setEvents((es) => es.map((e) => (e.id === id ? before : e))) },
-              });
-            }}
+            onMove={(id, start, end, scope) => void moveEvent(id, start, end, scope)}
             onSchedule={(taskId, start) => {
               const t = todos.find((x) => x.id === taskId);
               if (!t) return;
@@ -4701,12 +4808,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               const t = e.taskId ? todos.find((x) => x.id === e.taskId) : undefined;
               return t ? { title: t.title, done: t.done } : null;
             }}
-            onExtend={(id, m) => setEvents((es) => es.map((e) => (e.id === id ? { ...e, end: new Date(new Date(e.end).getTime() + m * 60_000).toISOString() } : e)))}
-            onTomorrow={(id) =>
-              setEvents((es) =>
-                es.map((e) => (e.id === id ? { ...e, start: new Date(new Date(e.start).getTime() + 86_400_000).toISOString(), end: new Date(new Date(e.end).getTime() + 86_400_000).toISOString() } : e)),
-              )
-            }
+            onExtend={(id, m) => {
+              const e = findEvent(events, id);
+              if (e?.seriesId) return void moveEvent(id, new Date(e.start), new Date(new Date(e.end).getTime() + m * 60_000));
+              setEvents((es) => es.map((x) => (x.id === id ? { ...x, end: new Date(new Date(x.end).getTime() + m * 60_000).toISOString() } : x)));
+            }}
+            onTomorrow={(id) => {
+              const e = findEvent(events, id);
+              if (e?.seriesId) return void moveEvent(id, addDaysTo(e.start, 1), addDaysTo(e.end, 1));
+              setEvents((es) => es.map((x) => (x.id === id ? { ...x, start: new Date(new Date(x.start).getTime() + 86_400_000).toISOString(), end: new Date(new Date(x.end).getTime() + 86_400_000).toISOString() } : x)));
+            }}
             onTaskDone={(e) => e.taskId && setTaskStatus(e.taskId, stageIdFor(todos.find((x) => x.id === e.taskId) ?? { workspaceId: ws.id }, 'done'))}
             sentBot={(e) => {
               const mid = sentFor[e.id];
@@ -5146,18 +5257,20 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
       {newEventAt && <EventEditor start={newEventAt} calendars={addToCals} team={members} contacts={guestContacts} me={user.id} onSave={saveEvent} onClose={() => setNewEventAt(null)} />}
-      {editEventId && events.some((e) => e.id === editEventId) && (
+      {editingEvent && (
         <EventEditor
-          start={new Date(events.find((e) => e.id === editEventId)!.start)}
-          event={events.find((e) => e.id === editEventId)}
+          key={editingEvent.id}
+          start={new Date(editingEvent.start)}
+          event={editingEvent}
           calendars={addToCals}
           team={members}
           contacts={guestContacts}
           me={user.id}
-          onSave={(e) => updateEvent(editEventId, e)}
+          onSave={(e, _kind, at) => void updateEvent(editingEvent.id, e, at)}
           onClose={() => setEditEventId(null)}
         />
       )}
+      <ScopeHost />
       {quickNote && (
         <QuickNote
           shared={quickNote.shared}
@@ -5171,7 +5284,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           }}
         />
       )}
-      {scheduling && <ScheduleTask title={scheduling.title} events={myEvents} onPick={(start, mins) => blockTask(scheduling, start, mins)} onClose={() => setScheduling(null)} />}
+      {scheduling && <ScheduleTask title={scheduling.title} events={myNear} onPick={(start, mins) => blockTask(scheduling, start, mins)} onClose={() => setScheduling(null)} />}
       {connectCal && (
         <ConnectCalendar
           me={{ id: user.id, email: user.email }}

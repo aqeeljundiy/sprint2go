@@ -8,6 +8,7 @@ import { botJoins, callKey, meetingLinkOf, notetakerJoins, type JoinMode } from 
 import { meetHours } from '../src/data/pricing.ts';
 import { teamSize } from './aiplan.ts';
 import { readOnlyWhy } from './billing.ts';
+import { expandEvents } from '../src/repeat.ts';
 
 db.db.exec('CREATE TABLE IF NOT EXISTS autojoin (key TEXT PRIMARY KEY, event_id TEXT NOT NULL, workspace_id TEXT NOT NULL, meeting_id TEXT, outcome TEXT NOT NULL, at TEXT NOT NULL)');
 
@@ -59,7 +60,8 @@ export async function runAutoJoin(deps: AutoJoinDeps, now = Date.now()): Promise
   try {
     const wss = db.allDocs('workspaces') as any[];
     const users = new Map((db.allDocs('users') as any[]).map((u) => [u.id, u]));
-    for (const e of db.allDocs('events') as any[]) {
+    // A repeating event: its dates about to start (each one an event of its own, its id saying which date).
+    for (const e of expandEvents(db.allDocs('events') as any[], now - BEHIND, now + AHEAD) as any[]) {
       if (!e?.start || e.allDay || !e.userId || e.busy) continue;
       const start = Date.parse(e.start);
       if (!(start > now - BEHIND && start <= now + AHEAD)) continue;

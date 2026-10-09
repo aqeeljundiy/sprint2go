@@ -37,6 +37,7 @@ export function ActionSheet({
   at,
   header,
   width = 240,
+  className,
 }: {
   open: boolean;
   onClose: () => void;
@@ -46,6 +47,7 @@ export function ActionSheet({
   at?: { x: number; y: number } | null;
   header?: ReactNode; // above the list (a row of reactions, a preview)
   width?: number;
+  className?: string; // on the phone's sheet (a kind of question the page can make room for)
 }) {
   const point = useMemo(() => (at ? pointAnchor(at.x, at.y) : null), [at]);
   if (!open) return null;
@@ -72,7 +74,7 @@ export function ActionSheet({
   );
   if (isPhone() || (!anchor && !point))
     return (
-      <Sheet onClose={onClose} title={title} className="action-sheet">
+      <Sheet onClose={onClose} title={title} className={`action-sheet${className ? ` ${className}` : ''}`}>
         {header}
         {list}
       </Sheet>
