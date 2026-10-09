@@ -635,7 +635,7 @@ function BillingTab({ c, reload }: { c: Full; reload: () => void }) {
   return (
     <div className="adm-split">
       <div>
-        <Section title="Plan" hint={c.mrr ? `${rp(c.mrr)} a month` : c.after ? `${rp(c.after)} a month after ${STATE_LABEL[c.state].toLowerCase()}` : 'Rp 0'}>
+        <Section title="Plan" hint={c.mrr ? `${rp(c.mrr)} a month, for ${c.active} active ${c.active === 1 ? 'person' : 'people'}` : c.after ? `${rp(c.after)} a month after ${STATE_LABEL[c.state].toLowerCase()}` : 'Rp 0'}>
           <div className="adm-form">
             <div className="adm-grid3">
               <Field label="Plan">

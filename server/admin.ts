@@ -79,6 +79,9 @@ export function mrrOf(ws: any, people: number): { mrr: number; state: State; aft
   return { mrr: full, state: 'paying', discount };
 }
 
+/** A company's money now, for the people active this month: the same rule as its invoice and its billing page. */
+export const mrrNow = (ws: any) => mrrOf(ws, billing.activePeople(ws).active);
+
 /** 0 to 100, with the parts it's made of. Below 40 is "at risk". */
 function healthOf(c: { lastActive: string | null; people: number; state: State; openTickets: number; overdue: number; setupDone: number; setupTotal: number }) {
   const ago = c.lastActive ? (Date.now() - Date.parse(c.lastActive)) / DAY : Infinity;
@@ -108,7 +111,9 @@ function companyRows(ctx: AdminCtx) {
     const people = members.length;
     const owner = byId.get(members.find((m: any) => m.role === 'owner')?.userId);
     const lastActive = members.map((m: any) => seen.get(m.userId) ?? '').sort().pop() || null;
-    const money = mrrOf(ws, people);
+    // Monthly revenue counts the people who are active this month, the same rule as the invoice and the billing page.
+    const active = billing.activePeople(ws).active;
+    const money = mrrNow(ws);
     const projects = clients.filter((c) => c.workspaceId === ws.id);
     const guests = projects.reduce((n, c) => n + (c.people ?? []).filter((p: any) => p.status === 'joined').length, 0);
     const openTickets = tix.filter((t) => t.workspaceId === ws.id).length;
@@ -122,6 +127,7 @@ function companyRows(ctx: AdminCtx) {
       plan: ws.plan ? { tier: ws.plan.tier, track: ws.plan.track, cycle: ws.plan.cycle, trialEnds: ws.plan.trialEnds ?? null, paused: !!ws.plan.paused, comp: ws.plan.comp ?? null, discount: ws.plan.discount ?? null, addons: ws.plan.addons, billing: ws.plan.billing ?? null } : null,
       ...money,
       people,
+      active,
       guests,
       projects: projects.length,
       owner: owner ? { id: owner.id, name: owner.name, email: owner.email } : null,

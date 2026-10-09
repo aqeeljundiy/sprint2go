@@ -815,6 +815,21 @@ await test('Billing: a month bills the people on the team who signed in or used 
   assert.deepEqual(billingMod.activePeople(ws, '2026-07'), { active: 1, team: 3, period: '2026-07' }, 'nobody around: the plan still bills one');
 });
 
+await test('Operator MRR: counts the people active this month, the same rule as the invoice', async () => {
+  const adminMod = await import('../server/admin.ts');
+  const ws = { id: 'w-mrr', name: 'MRR', members: ['bp-1', 'bp-2', 'bp-3'].map((userId, i) => ({ userId, role: i ? 'member' : 'owner' })), plan: { track: 'own', tier: 'small', cycle: 'monthly', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: 'MRR', emails: [] } } };
+  const month = new Date().toISOString().slice(0, 7);
+  db.db.prepare('DELETE FROM activity_days WHERE user_id IN (?, ?, ?) AND day >= ?').run('bp-1', 'bp-2', 'bp-3', `${month}-01`);
+  const day = db.db.prepare('INSERT OR IGNORE INTO activity_days (user_id, day) VALUES (?, ?)');
+  day.run('bp-1', `${month}-01`);
+  day.run('bp-2', `${month}-01`);
+  const m = adminMod.mrrNow(ws);
+  assert.equal(m.state, 'paying');
+  assert.equal(m.mrr, adminMod.mrrOf(ws, 2).mrr, 'two of the three were active this month');
+  assert.ok(m.mrr < adminMod.mrrOf(ws, 3).mrr, 'the third, not around this month, isn’t counted');
+  assert.equal(billingMod.activePeople(ws).active, 2, 'the invoice counts the same two');
+});
+
 /* read tracking: reminders and Outlook.com's picture proxy (server/readTracking.ts) */
 
 const readTracking = await import('../server/readTracking.ts');
