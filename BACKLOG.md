@@ -39,8 +39,13 @@ Nothing running. The 9 Oct "do everything" pass is merged and live; see Done.
   - Outlook.com's image proxy is detected by a commonly reported user agent, not verified against real traffic.
   - A demo toast ("Found 3 to-dos in your email") covers content for a few seconds on phones; mail rows overflow by 3 px.
   - Watch the motion itself (open and close animations) on a real device; builders checked layouts with animations off.
+  - Model lists were tested against fake providers only; try them with real SumoPod, Anthropic and Gemini keys. Bedrock's list needs the `bedrock:ListFoundationModels` permission.
+  - Right after the server seeds demo data, signing in can fail for a moment while the demo passwords are being saved (local only).
 
 ## Done
+
+**9 Oct, after Aqeel's SumoPod note, live:**
+- Adding an AI key asks which model to use, from the provider's own list (SumoPod, OpenRouter, OpenAI, Anthropic, Gemini, DeepSeek, Mistral, Qwen, Groq, Bedrock, your own server), with "Other model id"; each key's row and every job picker show the full list; a model the provider drops falls back and Settings says so. The operator console works the same for our keys.
 
 **9 Oct, fourth round, live:**
 - One design system: `PersonCell` and `Badge`, `EmptyState`, one look for every tab bar, toolbars on one line, the title column's menu, our own time picker, dialogs never trapped inside panes, and a responsive sweep of every screen (40 px tap targets on phones, phone titles, calendar and reader bars).
