@@ -263,3 +263,24 @@ test('the shared rules still read invites the same way (occurrences)', () => {
   // A date moved past the end doesn't hide the dates after it.
   assert.deepEqual(list.map((x) => x.start), ['2026-10-05T08:00:00.000Z', '2026-10-19T08:00:00.000Z', '2026-10-26T09:00:00.000Z']);
 });
+
+test('reminders come for each date of a repeating event, once per date', async () => {
+  const { eventReminders } = await import('./eventReminders.ts');
+  // Every weekday at 09:00 London, a reminder 10 minutes before; one date has its own reminder (30 minutes).
+  const e = weekly({ rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', remind: 10, overrides: [{ occurrence: '2026-10-28T09:00:00.000Z', remind: 30 }] });
+  const at = (iso: string) => Date.parse(iso);
+  // Tuesday 27 October, 08:51 GMT (after the clocks went back): the 09:00 date is due.
+  const one = eventReminders([e], at('2026-10-27T08:51:00Z'));
+  assert.equal(one.length, 1);
+  assert.equal(one[0].start, '2026-10-27T09:00:00.000Z');
+  assert.equal(one[0].seriesId, 'ev1');
+  assert.equal(one[0].id, 'ev1~20261027T090000Z');
+  // Marked on the series: not again for that date, but the next day's comes.
+  const marked = { ...e, remindedFor: one[0].start };
+  assert.equal(eventReminders([marked], at('2026-10-27T08:55:00Z')).length, 0);
+  assert.equal(eventReminders([marked], at('2026-10-28T08:20:00Z')).length, 0, 'not yet');
+  assert.equal(eventReminders([marked], at('2026-10-28T08:31:00Z'))[0]?.start, '2026-10-28T09:00:00.000Z', 'that date’s own 30 minutes');
+  // Nothing on Saturday; a left-out date doesn't remind.
+  assert.equal(eventReminders([e], at('2026-10-31T08:51:00Z')).length, 0);
+  assert.equal(eventReminders([{ ...e, exdates: ['2026-10-27T09:00:00.000Z'] }], at('2026-10-27T08:51:00Z')).length, 0);
+});

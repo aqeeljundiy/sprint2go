@@ -318,9 +318,12 @@ export function lensFor(userId: string, sharesCompany: (otherUserId: string) => 
       if (!sharesCompany(cal.ownerId)) return null;
       const share = cal.share ?? 'busy';
       if (share === 'private') return null;
-      if (share === 'busy') return { id: d.id, calendarId: d.calendarId, userId: d.userId ?? cal.ownerId, title: 'Busy', start: d.start, end: d.end, ...(d.allDay ? { allDay: true } : {}), ...(d.feed ? { feed: d.feed } : {}), busy: true };
-      const { notes: _n, guests: _g, meetUrl: _m, threadId: _t, ...rest } = d;
-      return rest;
+      // A repeating one keeps what draws its dates (the rule, its zone, left-out and moved dates), and nothing else.
+      const times = (o: any) => ({ occurrence: o.occurrence, ...(o.start ? { start: o.start, end: o.end } : {}) });
+      const repeat = d.rrule ? { rrule: d.rrule, ...(d.timeZone ? { timeZone: d.timeZone } : {}), ...(d.exdates ? { exdates: d.exdates } : {}), ...(d.rdates ? { rdates: d.rdates } : {}) } : {};
+      if (share === 'busy') return { id: d.id, calendarId: d.calendarId, userId: d.userId ?? cal.ownerId, title: 'Busy', start: d.start, end: d.end, ...(d.allDay ? { allDay: true } : {}), ...(d.feed ? { feed: d.feed } : {}), ...repeat, ...(d.overrides ? { overrides: d.overrides.map(times) } : {}), busy: true };
+      const { notes: _n, guests: _g, meetUrl: _m, threadId: _t, answers: _a, invite: _i, ...rest } = d;
+      return d.overrides ? { ...rest, overrides: d.overrides.map((o: any) => ({ ...times(o), ...(o.title ? { title: o.title } : {}), ...(o.location !== undefined ? { location: o.location } : {}) })) } : rest;
     }
     return undefined;
   };

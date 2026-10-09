@@ -378,11 +378,11 @@ export function rebaseRule(rrule: string, fromWall: number, toWall: number, cloc
 /**
  * Where a series with a new rule starts: the first date of the rule on or after `notBefore`, keeping the rhythm the rule
  * has around `anchor` (a date the person picked it on, so "every 2 weeks" stays on that date's weeks). `anchor` when
- * nothing comes earlier.
+ * nothing comes earlier and it's a date of the rule.
  */
 export function alignStart(rrule: string, anchor: number, notBefore: number): number {
   const r = parseRRule(rrule);
-  if (!r || notBefore >= anchor) return anchor;
+  if (!r || notBefore > anchor) return anchor;
   const a = new Date(anchor);
   const hms = [a.getUTCHours(), a.getUTCMinutes(), a.getUTCSeconds()] as const;
   let back: number;
@@ -400,7 +400,22 @@ export function alignStart(rrule: string, anchor: number, notBefore: number): nu
   }
   const b = new Date(back);
   const first: ICalTime = { y: b.getUTCFullYear(), m: b.getUTCMonth() + 1, d: b.getUTCDate(), h: hms[0], mi: hms[1], s: hms[2], date: false, utc: false };
-  return wallOccurrences(first, { ...r, count: undefined, until: undefined }, notBefore, anchor, undefined, 1)[0] ?? anchor;
+  // (The anchor itself may not be a date of the rule: weekly on Monday and Wednesday, picked on a Friday. Then the next one.)
+  const to = anchor + (r.freq === 'YEARLY' ? r.interval * 366 + 31 : 400) * DAY;
+  return wallOccurrences(first, { ...r, count: undefined, until: undefined }, notBefore, to, undefined, 1)[0] ?? anchor;
+}
+
+/**
+ * A new repeating event on its first date: a start that isn't a date of its rule (weekly on Monday and Wednesday, made
+ * on a Friday) moves to the next one that is, keeping its length, so the Friday doesn't become an extra date.
+ */
+export function startOnRule<T extends Pick<CalEvent, 'start' | 'end' | 'rrule' | 'timeZone'>>(e: T): T {
+  if (!e.rrule) return e;
+  const c = clockOf(e);
+  const w = c.wall(e.start);
+  const first = alignStart(e.rrule, w, w);
+  if (first === w) return e;
+  return { ...e, start: c.iso(first), end: endAt(e, c.iso(first)) };
 }
 
 /* ---------- changing a series ---------- */

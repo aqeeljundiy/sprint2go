@@ -498,6 +498,22 @@ await test('Auto-join: only admins when "Who can record" says so', async () => {
   assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['mo', 'not-allowed']]);
   db.writeDocs('workspaces', [w], [], null);
 });
+await test('Auto-join: each date of a repeating event, and a date’s own switch', async () => {
+  // Every day at 10:10 Jakarta since a week before; the date three days on is switched off on its own.
+  const first = new Date(T0 - 7 * 86_400_000 + 70 * 60_000).toISOString();
+  db.writeDocs('events', [{ ...ajEvent('rep', 0), start: first, end: new Date(Date.parse(first) + 30 * 60_000).toISOString(), rrule: 'FREQ=DAILY', timeZone: 'Asia/Jakarta' }], [], null);
+  const off = `rep~${new Date(T0 + 3 * 86_400_000 + 70 * 60_000).toISOString().replace(/\.\d+/, '').replace(/[-:]/g, '')}`;
+  const p = db.getDoc('prefs', 'aj-ana');
+  db.writeDocs('prefs', [{ ...p, value: { 's2g-join:aj-ana': { ...p.value['s2g-join:aj-ana'], [off]: false } } }], [], null);
+  const today = await autojoin.runAutoJoin(ajDeps, T0 + 69 * 60_000);
+  assert.deepEqual(today.map((x) => [x.eventId, x.outcome]), [['rep~20261012T031000Z', 'sent']]);
+  assert.equal(ajSent.at(-1).scheduledFor, '2026-10-12T03:10:00.000Z');
+  assert.equal((await autojoin.runAutoJoin(ajDeps, T0 + 70 * 60_000)).length, 0, 'once per date');
+  const next = await autojoin.runAutoJoin(ajDeps, T0 + 86_400_000 + 69 * 60_000);
+  assert.deepEqual(next.map((x) => x.eventId), ['rep~20261013T031000Z'], 'the next day’s date too');
+  assert.equal((await autojoin.runAutoJoin(ajDeps, T0 + 3 * 86_400_000 + 69 * 60_000)).length, 0, 'not the date switched off');
+  db.writeDocs('events', [], ['rep'], null);
+});
 await test('Auto-join: the plan’s meeting-bot hours used up means no bot, and the owner hears why', async () => {
   const h = autojoin.botHours(db.getDoc('workspaces', 'w-aj'), T0);
   assert.equal(h.hours, 100, 'Studio AI: 10 hours for each of the 10 included seats');

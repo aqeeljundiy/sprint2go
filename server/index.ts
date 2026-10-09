@@ -3740,7 +3740,8 @@ setInterval(() => {
   // Event reminders ("10 minutes before"): one notification to the event's owner, sent again if the event moves.
   const ring = eventReminders(db.allDocs('events') as any[], Date.parse(now));
   if (ring.length) {
-    const events = ring.map((e) => ({ ...e, remindedFor: e.start }));
+    // One date of a repeating event marks its series (the notice opens that date).
+    const events = ring.map((e) => ({ ...((e.seriesId ? db.getDoc('events', e.seriesId) : e) as any), remindedFor: e.start })).filter((e) => e.id);
     const notices = ring.map((e) => ({ id: randomBytes(6).toString('hex'), userId: e.userId, workspaceId: e.workspaceId ?? '', kind: 'meeting', text: reminderText(e, Date.parse(now)), at: now, read: false, link: { app: 'calendar', id: e.id } }));
     db.writeDocs('events', events, [], null);
     db.writeDocs('notices', notices, [], null);

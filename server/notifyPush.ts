@@ -8,6 +8,7 @@ import * as push from './push.ts';
 import { clientPeople, companyOf } from '../src/clientView.ts';
 import { mutedFor } from './chatLater.ts';
 import { fromPerson } from '../src/mailRules.ts';
+import { expandEvents } from '../src/repeat.ts';
 
 /** What someone can switch on or off (Settings, Notifications); stored with their other settings. */
 export type PushKind = 'messages' | 'mail' | 'tasks' | 'guests' | 'meetings' | 'other';
@@ -177,7 +178,8 @@ export function eventReminders(): db.Doc[] {
   const now = Date.now();
   const at = new Date(now).toISOString();
   const out: db.Doc[] = [];
-  for (const e of db.allDocs('events') as any[]) {
+  // A repeating event: each of its dates (its id says which; the push opens that date).
+  for (const e of expandEvents(db.allDocs('events') as any[], now, now + 10 * 60_000) as any[]) {
     if (e.allDay || !e.userId || !e.start) continue;
     const start = Date.parse(e.start);
     if (!(start > now && start - now <= 10 * 60_000)) continue;
