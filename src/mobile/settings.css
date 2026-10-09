@@ -236,6 +236,22 @@
   .signature-box .tb-sep {
     display: none;
   }
+  /* Segmented choices (undo send, plan switches) fill the row and share it, so longer words ("30 dtk", "Bulanan")
+     still fit at 320 px. */
+  .settings-content .segmented:not(.sm) {
+    display: flex;
+    width: 100%;
+  }
+  .settings-content .segmented:not(.sm) > button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 8px;
+  }
+  /* AI spending: the cost column wraps its words ("tanpa harga resmi") instead of pushing the table off the screen. */
+  .spend-table td:last-child {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* An app's icon next to its name in a settings row sits on the text's middle, not above it. */

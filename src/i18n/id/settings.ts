@@ -143,6 +143,7 @@ const id: Record<string, string> = {
   'Your signature': 'Tanda tangan Anda',
   'Undo send': 'Urungkan pengiriman',
   '{n}s': '{n} dtk',
+  'undo send::Off': 'Mati',
   'Your email waits {n} seconds before it goes out, so Undo can take it back and nobody gets it.': 'Email Anda menunggu {n} detik sebelum terkirim, jadi Urungkan bisa menariknya kembali sebelum ada yang menerima.',
   'Your email goes out the moment you press Send.': 'Email Anda langsung terkirim begitu Anda menekan Kirim.',
   'Read tracking': 'Pelacakan baca',

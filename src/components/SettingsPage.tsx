@@ -41,7 +41,7 @@ import { ConnectedApps } from './ConnectedApps';
 import { ImportSection } from './imports/ImportSection';
 import { BarDefaults } from '../mobile/BarDefaults';
 import { MAIL_APPS_SECTION, PhoneMailApps } from './PhoneMailApps';
-import { LANGS, getLang, mark, t, tn, type Lang } from '../i18n';
+import { LANGS, getLang, mark, t, tn, type Lang, tx } from '../i18n';
 import { fmtDate, fmtTime } from '../i18n/format';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
@@ -614,7 +614,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <div className="segmented">
                 {[0, 5, 10, 20, 30].map((n) => (
                   <button key={n} className={s.undoSend === n ? 'on' : ''} onClick={() => update({ undoSend: n })}>
-                    {n ? t('{n}s', { n }) : t('Off')}
+                    {n ? t('{n}s', { n }) : tx('undo send', 'Off')}
                   </button>
                 ))}
               </div>

@@ -224,6 +224,20 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The guide keeps to the screen's width: its card and steps never make it wider than the section (it was cut off on
+     the right inside Settings' folds), and long record values wrap. */
+  .esg-wiz,
+  .esg-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .esg-card,
+  .esg-card > * {
+    min-width: 0;
+  }
+  .esg-card code,
+  .esg-card .esg-records {
+    overflow-wrap: anywhere;
+  }
 }
 
 /* ---------- Sign in and sign up (SignIn.tsx) ---------- */
