@@ -29,6 +29,26 @@
   }
 }
 
+/* ---------- Teams (teams/TeamsApp.tsx) ---------- */
+
+@media (max-width: 767px) {
+  /* A team's own header hides on phones like every pane header (the title says the team), except when there's a Join
+     or Ask to join to press. The shared rule that hides it uses !important, so this one has to as well. */
+  .team-page > .tasks-head:has(> .primary-btn, > .ghost-btn) {
+    display: flex !important;
+  }
+  .team-page > .tasks-head > .team-square {
+    display: none;
+  }
+  .team-page > .tasks-head > .primary-btn,
+  .team-page > .tasks-head > .ghost-btn {
+    margin-left: auto;
+  }
+  .team-page .team-row {
+    min-height: 52px;
+  }
+}
+
 /* ---------- Onboarding (Onboarding.tsx) ---------- */
 
 /* The finished preview: a short column from the top with a normal button, not a stretched one in the middle. */
@@ -200,5 +220,106 @@
   }
   .signin-switch {
     margin-top: 12px;
+  }
+}
+
+/* ---------- The demo company bar, the try-out bar and "Viewing as" (DemoCompany.tsx, Root.tsx, ClientApp.tsx) ---------- */
+
+@media (max-width: 767px) {
+  /* One line: what this is (cut short if it must be), then the buttons. It clears the phone's status bar, and the app
+     below it doesn't add that room a second time. */
+  :root {
+    --demo-bar-h: 48px;
+  }
+  .demo-bar {
+    gap: 8px;
+    height: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 6px 0 12px;
+    font-size: 13px;
+  }
+  .demo-bar-text > svg {
+    display: none;
+  }
+  .demo-bar-text > span {
+    white-space: nowrap;
+  }
+  .demo-bar .ghost-btn.sm,
+  .demo-bar .primary-btn.sm {
+    height: 40px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .demo-bar .ghost-btn.sm > svg {
+    display: none;
+  }
+  .app.with-demo-bar {
+    top: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    height: calc(100dvh - var(--demo-bar-h) - env(safe-area-inset-top));
+  }
+  .app.with-demo-bar .mobile-top {
+    padding-top: 6px;
+  }
+
+  /* "Viewing as" a guest: the same kind of strip on top instead of a pill floating over the content and the composer. */
+  .client-app .view-as-pill {
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    max-width: none;
+    height: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 6px 0 14px;
+    border-radius: 0;
+    transform: none;
+    box-shadow: none;
+    animation: demoBarIn 0.22s ease-out backwards;
+  }
+  .client-app .view-as-pill > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .client-app .view-as-pill .primary-btn.sm {
+    min-height: 40px;
+  }
+  .app.client-app:has(> .view-as-pill) {
+    top: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    height: calc(100dvh - var(--demo-bar-h) - env(safe-area-inset-top));
+  }
+  .app.client-app:has(> .view-as-pill) .mobile-top {
+    padding-top: 6px;
+  }
+  .client-app:has(.view-as-pill) .client-toast {
+    bottom: calc(var(--bar-space) + 12px);
+  }
+
+  /* News nobody asked for just now ("Found 3 to-dos in your email") drops over the top bar for a moment, like the
+     phone's own banners, instead of sitting on the list. Toasts that answer a tap stay above the bottom bar. */
+  .toast.quiet {
+    top: calc(env(safe-area-inset-top) + 6px);
+    bottom: auto;
+    animation: quietIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .is-leaving.toast.quiet {
+    animation: quietOut 0.18s ease-in forwards !important; /* beats the shared toast exit, which drops downwards */
+  }
+}
+@keyframes quietIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -16px);
+  }
+}
+@keyframes quietOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast.quiet,
+  .is-leaving.toast.quiet {
+    animation: none !important;
   }
 }

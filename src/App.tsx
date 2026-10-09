@@ -167,7 +167,8 @@ function PushedSettings({ push, onBack, children }: { push: { label: string } | 
   );
 }
 
-type Toast = { id: number; text: string; action?: { label: string; run: () => void }; ms?: number };
+/** `quiet`: news nobody asked for just now (to-dos found in the background). Phones show it over the top bar, not over content. */
+type Toast = { id: number; text: string; action?: { label: string; run: () => void }; ms?: number; quiet?: boolean };
 type ComposeState = { key: number; draftId?: string; initial?: Outgoing };
 
 interface AppProps {
@@ -1142,6 +1143,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         showToast({
           text: `✨ Found ${added} to-do${added > 1 ? 's' : ''} in your email`,
           action: { label: 'View', run: () => openTasks({ kind: 'mine' }) },
+          quiet: true,
         });
       else if (force) showToast({ text: 'No new to-dos found' });
     });
@@ -3036,8 +3038,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const tabApps: AppId[] = (ownBarOn ? savedBar : (teamBar ?? DEFAULT_BAR)).filter((id) => enabled.has(id)).slice(0, 4);
   const setTabApps = (bar: string[]) => (setSavedBar(bar as AppId[]), setOwnBar(true));
   // Focused screens that live in this file: an open mail on a phone, and a project's page (its Back goes in the top bar).
-  useFocusedScreen(mobile && mode === 'mail' && readerOpen);
-  useFocusedScreen(mobile && mode === 'projects' && projScope.kind === 'client', () => setProjScope({ kind: 'projects' }));
+  // Not while the guest view takes over the screen ("View as guest", a shared space): its own bar shows then.
+  const guestView = !!viewAs || portalKey === '*' || myPortals.some((pt) => pt.key === portalKey);
+  useFocusedScreen(mobile && mode === 'mail' && readerOpen && !guestView);
+  useFocusedScreen(mobile && mode === 'projects' && projScope.kind === 'client' && !guestView, () => setProjScope({ kind: 'projects' }));
   // The bar steps aside on focused screens and while the keyboard is up.
   const barAway = chrome.focused || kb.open;
   useEffect(() => {
@@ -4247,6 +4251,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 onHomeTemplate={(v) => patchWorkspace(ws.id, { teamHome: { ...(ws.teamHome ?? {}), [team.id]: v } })}
                 onOpenTask={openTask}
                 onBack={() => setTeamId(null)}
+                onOpen={setTeamId}
               />
             ) : (
               <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} />
@@ -4840,7 +4845,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       )}
 
       {toast && (
-        <div className="toast" role="status" key={toast.id}>
+        <div className={`toast${toast.quiet ? ' quiet' : ''}`} role="status" key={toast.id}>
           <span>{toast.text}</span>
           {toast.action && (
             <button
