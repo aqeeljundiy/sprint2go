@@ -373,8 +373,8 @@ function tellSender(row: Row, ws: any, via?: string) {
   // Sent from the app: the person who pressed Send. Sent later by the server: a personal mailbox's owner.
   const who: string[] = row.by_user ? [row.by_user] : account && account.kind !== 'shared' ? (account.users ?? []) : [];
   const t = db.getDoc('threads', row.thread_id) as any;
-  const msg = (t?.messages ?? []).find((m: any) => m.id === row.message_id);
-  const name = (msg?.to ?? []).find((p: any) => lower(p.email) === row.recipient)?.name || row.recipient;
+  const sent = (t?.messages ?? []).find((m: any) => m.id === row.message_id);
+  const name = (sent?.to ?? []).find((p: any) => lower(p.email) === row.recipient)?.name || row.recipient;
   const subject = String(t?.subject ?? '').slice(0, 120) || '(no subject)';
   const at = now();
   const notices = who

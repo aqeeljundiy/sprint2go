@@ -797,7 +797,7 @@ await test('Invites we get: a repeating invite is one repeating event; a date mo
   db.writeDocs('events', [{ ...doc, overrides: [{ occurrence: '2026-10-20T02:00:00.000Z', rsvp: 'tentative' }] }], [], null);
   const acct = { id: 'ub-ana', email: `ana.undo@${mailer.MAIL_HOST}`, users: ['aj-ana'] };
   const said = [];
-  const notify = (ids, _ws, text) => said.push(text);
+  const notify = (ids, _ws, text) => said.push(text?.text ?? text);
   // The organiser moves 13 October to 14:00 Jakarta.
   invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, method: 'REQUEST', rrule: undefined, sequence: 1, recurrenceId: '2026-10-13T02:00:00.000Z', start: '2026-10-13T07:00:00.000Z', end: '2026-10-13T08:00:00.000Z' }, 't-inv', () => {}, notify);
   let e = db.getDoc('events', doc.id);

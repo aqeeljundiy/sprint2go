@@ -3040,7 +3040,7 @@ createServer(async (req, res) => {
 
     if (p === '/api/sync' && req.method === 'POST') {
       const r = applySync(me, await body(req), { conn: String(req.headers['x-conn'] ?? ''), operator: session?.operator ?? null });
-      return json(res, r.status, r.whyWords ? { ...r.body, why: r.whyWords } : r.body);
+      return json(res, r.status, r.whyWords ? { ...r.body, why: lang.sayIn(lang.requestLang(req), r.whyWords) } : r.body);
     }
 
     // Huddles: where audio may travel. With a call relay (TURN_URLS, TURN_SECRET) each team member gets its addresses
