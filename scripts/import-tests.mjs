@@ -105,6 +105,7 @@ try {
   );
 
   const db = new DatabaseSync(join(dir, 'sprint2go.db'));
+  db.exec('PRAGMA busy_timeout = 5000'); // the server may still be saving the demo passwords
   const now = () => new Date().toISOString();
   const put = (coll, d) =>
     db.prepare('INSERT INTO docs (coll, id, data, updated_at, updated_by) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (coll, id) DO UPDATE SET data = excluded.data').run(coll, d.id, JSON.stringify(d), now());
