@@ -13,6 +13,7 @@ export interface AIConfig {
   baseUrl?: string;
   included?: boolean; // sprint2go's own key (the plan's allowance), not the company's
   onUsage?: (inTokens: number, outTokens: number) => void; // every call reports its tokens (for the cost estimate)
+  onFail?: (e: unknown) => void; // told when this provider failed (e.g. to check whether it still offers the model)
 }
 
 /** OpenAI-compatible endpoints. Claude goes through the Anthropic SDK instead. */
@@ -26,6 +27,26 @@ export const BASE_URLS: Record<string, string> = {
   mistral: 'https://api.mistral.ai/v1',
   groq: 'https://api.groq.com/openai/v1',
 };
+/** The providers' own APIs where they aren't OpenAI-compatible (their model lists). */
+export const NATIVE_URLS: Record<string, string> = {
+  anthropic: 'https://api.anthropic.com',
+  'google-native': 'https://generativelanguage.googleapis.com/v1beta',
+};
+/**
+ * Local testing only (never in production): S2G_AI_TEST_BASES, JSON like {"sumopod":"http://127.0.0.1:9000/v1"},
+ * points providers at a fake server on this machine, so adding a key, its model list and a job can be tried end to end.
+ */
+const TEST_BASES: Record<string, string> = (() => {
+  if (process.env.NODE_ENV === 'production' || !process.env.S2G_AI_TEST_BASES) return {};
+  try {
+    const m = JSON.parse(process.env.S2G_AI_TEST_BASES) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(m).filter(([, v]) => typeof v === 'string' && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(v as string))) as Record<string, string>;
+  } catch {
+    return {};
+  }
+})();
+/** Where a provider's API lives (a test base on a laptop, else the real one). */
+export const apiBase = (provider: string) => TEST_BASES[provider] ?? BASE_URLS[provider] ?? NATIVE_URLS[provider] ?? '';
 /** Company cloud accounts: their details come as JSON in the key. */
 export const CLOUD = new Set(['bedrock', 'vertex', 'azure']);
 /** Whether this server can call a provider for text. */
@@ -61,7 +82,7 @@ const schemaInSystem = (opts: Opts) => (opts.schema ? `${opts.system}\n\nReply w
 const unfence = (text: string) => text.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '');
 
 async function anthropic(ai: AIConfig, prompt: string, opts: Opts) {
-  const client = new Anthropic({ apiKey: ai.apiKey });
+  const client = new Anthropic({ apiKey: ai.apiKey, ...(TEST_BASES.anthropic ? { baseURL: TEST_BASES.anthropic } : {}) });
   const isHaiku = ai.model.startsWith('claude-haiku');
   const fallback = /^claude-(opus-5|sonnet-5-5|fable-5-1)/.test(ai.model);
   const response = await client.beta.messages.create({
@@ -229,7 +250,13 @@ function chatTarget(ai: AIConfig): { url: string; headers: Record<string, string
     const url = version === 'v1' ? `${u.origin}/openai/v1/chat/completions` : `${u.origin}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${version}`;
     return { url, headers: { 'api-key': String(c.apiKey).trim() }, model: deployment };
   }
-  const base = (ai.baseUrl || BASE_URLS[ai.provider] || '').replace(/\/$/, '');
+  const { base, headers } = openaiBase(ai);
+  return { url: `${base}/chat/completions`, headers, model: ai.model };
+}
+
+/** An OpenAI-compatible provider's base URL (checked when the company typed it) and its auth header. */
+export function openaiBase(ai: Pick<AIConfig, 'provider' | 'apiKey' | 'baseUrl'>): { base: string; headers: Record<string, string> } {
+  const base = (ai.baseUrl || apiBase(ai.provider) || '').replace(/\/$/, '');
   // A custom base URL must be a public https address: never this server, the network or a cloud metadata service.
   if (ai.baseUrl) {
     let h = '';
@@ -242,8 +269,16 @@ function chatTarget(ai: AIConfig): { url: string; headers: Record<string, string
     }
     if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h === '::1' || /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|fc|fd|fe80)/.test(h) || /^\d+\.\d+\.\d+\.\d+$/.test(h) === false && !h.includes('.')) throw new AIError('That provider address points inside the network, which isn’t allowed.', 400);
   }
-  if (!base) throw new AIError(`${ai.provider} isn't supported yet. Pick another provider for this job.`, 400);
-  return { url: `${base}/chat/completions`, headers: ai.apiKey ? { authorization: `Bearer ${ai.apiKey}` } : {}, model: ai.model };
+  if (!base || !(ai.provider in BASE_URLS || ai.provider === 'custom')) throw new AIError(`${ai.provider} isn't supported yet. Pick another provider for this job.`, 400);
+  return { base, headers: ai.apiKey ? { authorization: `Bearer ${ai.apiKey}` } : {} };
+}
+
+/** Whether an error says the provider doesn't offer that model (any more), rather than being down or rejecting the key. */
+export function isModelGone(e: unknown) {
+  const status = (e as { status?: number })?.status;
+  const msg = e instanceof Error ? e.message : String(e ?? '');
+  if (/rejected the key|busy/i.test(msg)) return false;
+  return status === 404 || /doesn.t offer|model.{0,40}(not found|does not exist|doesn.t exist|not available|unknown|invalid|not supported|no longer)|(unknown|invalid|no such) model/i.test(msg);
 }
 
 async function openaiCompatible(ai: AIConfig, prompt: string, opts: Opts, plainJson = false): Promise<string> {
@@ -271,7 +306,8 @@ async function openaiCompatible(ai: AIConfig, prompt: string, opts: Opts, plainJ
   if (res.status === 401 || res.status === 403) throw new AIError(`${ai.provider} rejected the key. Check it in Settings, AI.`, 400);
   if (res.status === 429 || res.status >= 500) throw new AIError('AI is busy, try again shortly.', 503);
   if (ai.provider === 'azure' && res.status === 404) throw new AIError('Azure doesn’t know that deployment. Check the deployment name and endpoint.', 400);
-  if (!res.ok) throw new AIError(`${ai.provider}: ${data.error?.message ?? `HTTP ${res.status}`}`);
+  if (res.status === 404) throw new AIError(`${ai.provider} doesn’t offer ${target.model}, or the key has no access to it.`, 400);
+  if (!res.ok) throw new AIError(`${ai.provider}: ${String(data.error?.message ?? `HTTP ${res.status}`).slice(0, 200)}`);
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new AIError(`${ai.provider} returned no answer (${data.choices?.[0]?.finish_reason ?? 'empty'}).`);
   return opts.schema ? unfence(text) : text;

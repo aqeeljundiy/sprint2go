@@ -844,6 +844,143 @@ await test('Read tracking: “Remind me if no reply” tells the sender once, on
   assert.equal(db.db.prepare("SELECT COUNT(*) AS n FROM mail_remind WHERE message_id IN ('never', 'too-long')").get().n, 0, 'off, or longer than a month: nothing planned');
 });
 
+/* ---------- the models a key can use (server/models.ts, src/data/aiModels.ts) ---------- */
+
+const mdl = await import('../server/models.ts');
+const am = await import('../src/data/aiModels.ts');
+const cat = await import('../src/data/aiCatalog.ts');
+const ids = (list) => list.models.map((m) => m.id);
+await test('Model lists: OpenAI’s shape (SumoPod, Groq, Mistral, a company’s own server) keeps chat models, catalogue ones first', () => {
+  const raw = mdl.parseOpenAIList({
+    object: 'list',
+    data: [
+      { id: 'kimi-k2-0905', object: 'model', owned_by: 'moonshot' },
+      { id: 'text-embedding-3-small', object: 'model' },
+      { id: 'claude-opus-5-5', object: 'model', owned_by: 'anthropic' },
+      { id: 'gemini/gemini-3.5-flash', object: 'model' },
+      { id: 'whisper-large-v3', object: 'model' },
+      { id: 'mistral-embed', capabilities: { completion_chat: false } },
+      { id: 'llama-retired', active: false },
+      { id: 'tts-1' },
+      { id: 'dall-e-3' },
+      { id: 'glm-4.6' },
+      { id: 'kimi-k2-0905' },
+    ],
+  });
+  const list = am.mergeModels('sumopod', raw);
+  assert.equal(list.source, 'live');
+  assert.deepEqual(ids(list).slice(0, 2), ['claude-opus-5-5', 'gemini/gemini-3.5-flash'], 'catalogue models first, in the catalogue’s order');
+  const opus = list.models[0];
+  assert.deepEqual([opus.name, opus.tier, opus.price, opus.recommended], ['Claude Opus 5.5', 'best', [4, 20], true], 'they keep their friendly name, tier and price');
+  const kimi = list.models.find((m) => m.id === 'kimi-k2-0905');
+  assert.deepEqual([kimi.name, kimi.price, kimi.recommended, kimi.family], ['Kimi K2 0905', null, false, 'Kimi'], 'the rest: a name from the id, price unknown');
+  assert.ok(!ids(list).some((id) => /embed|tts|dall-e|retired/.test(id)), 'no embeddings, speech output, images or retired models');
+  assert.equal(list.models.find((m) => m.id === 'whisper-large-v3')?.kind, 'speech', 'speech to text is kept for the speech job only');
+  assert.equal(ids(list).filter((x) => x === 'kimi-k2-0905').length, 1, 'once each');
+  assert.throws(() => mdl.parseOpenAIList({ error: { message: 'nope' } }), 'not a list is an error, not an empty list');
+});
+await test('Model lists: OpenRouter’s names and per-token prices (per million here); image makers dropped', () => {
+  const raw = mdl.parseOpenAIList({
+    data: [
+      { id: 'anthropic/claude-sonnet-5.5', name: 'Anthropic: Claude Sonnet 5.5', pricing: { prompt: '0.000002', completion: '0.00001' }, architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] } },
+      { id: 'qwen/qwen3-coder', name: 'Qwen: Qwen3 Coder', pricing: { prompt: '0.00000022', completion: '0.00000095' }, architecture: { output_modalities: ['text'] } },
+      { id: 'google/gemini-3-pro-image', name: 'Google: Nano Banana', pricing: { prompt: '0.000002', completion: '0.00012' }, architecture: { output_modalities: ['image', 'text'] } },
+    ],
+  });
+  const list = am.mergeModels('openrouter', raw);
+  assert.deepEqual(ids(list), ['anthropic/claude-sonnet-5.5', 'qwen/qwen3-coder']);
+  const q = list.models[1];
+  assert.equal(q.name, 'Qwen3 Coder', 'the company prefix comes off the name');
+  assert.deepEqual(q.price, [0.22, 0.95]);
+});
+await test('Model lists: Anthropic (pages) and Gemini (only models that generateContent)', () => {
+  const a = mdl.parseAnthropicList({ data: [{ type: 'model', id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5' }, { type: 'model', id: 'claude-sonnet-4-5-20250929', display_name: 'Claude Sonnet 4.5' }], has_more: true, last_id: 'claude-sonnet-4-5-20250929' });
+  assert.equal(a.next, 'claude-sonnet-4-5-20250929', 'the next page starts after the last id');
+  const al = am.mergeModels('anthropic', a.models);
+  assert.deepEqual(al.models.map((m) => m.name), ['Claude Opus 5.5', 'Claude Sonnet 4.5']);
+  const g = mdl.parseGeminiList({
+    models: [
+      { name: 'models/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+      { name: 'models/text-embedding-004', displayName: 'Text Embedding 004', supportedGenerationMethods: ['embedContent'] },
+      { name: 'models/gemini-2.5-flash-preview-tts', displayName: 'Gemini 2.5 Flash TTS', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemma-3-27b-it', displayName: 'Gemma 3 27B', supportedGenerationMethods: ['generateContent'] },
+    ],
+    nextPageToken: '',
+  });
+  assert.equal(g.next, null);
+  const gl = am.mergeModels('google', g.models);
+  assert.deepEqual(ids(gl), ['gemini-3.5-flash', 'gemma-3-27b-it'], 'no embeddings, no speech output; "models/" comes off');
+  assert.equal(gl.models[0].recommended, true);
+});
+await test('Model lists: Bedrock keeps Anthropic’s text models that are still offered', () => {
+  const raw = mdl.parseBedrockList({
+    modelSummaries: [
+      { modelId: 'anthropic.claude-sonnet-5-5', modelName: 'Claude Sonnet 5.5', providerName: 'Anthropic', outputModalities: ['TEXT'], modelLifecycle: { status: 'ACTIVE' } },
+      { modelId: 'anthropic.claude-v2', modelName: 'Claude', providerName: 'Anthropic', outputModalities: ['TEXT'], modelLifecycle: { status: 'LEGACY' } },
+      { modelId: 'amazon.titan-embed-text-v2:0', modelName: 'Titan Embeddings', providerName: 'Amazon', outputModalities: ['EMBEDDING'] },
+      { modelId: 'meta.llama4-maverick-17b-instruct-v1:0', modelName: 'Llama 4 Maverick', providerName: 'Meta', outputModalities: ['TEXT'] },
+    ],
+  });
+  assert.deepEqual(raw.map((m) => m.id), ['anthropic.claude-sonnet-5-5']);
+  assert.equal(am.mergeModels('bedrock', raw).models[0].name, 'Claude Sonnet 5.5 on Bedrock', 'the catalogue’s name');
+});
+await test('Model lists: an empty list falls back to our catalogue; readable names from ids', () => {
+  const empty = am.mergeModels('sumopod', [{ id: 'text-embedding-3-large' }]);
+  assert.equal(empty.source, 'catalog');
+  assert.ok(empty.note && empty.models.length > 3);
+  assert.equal(am.prettyModelName('claude-sonnet-4-5-20250929'), 'Claude Sonnet 4.5');
+  assert.equal(am.prettyModelName('gpt-4o-mini'), 'GPT-4o mini');
+  assert.equal(am.prettyModelName('meta-llama/llama-3.3-70b-instruct'), 'Llama 3.3 70B Instruct');
+  assert.equal(am.prettyModelName('anthropic.claude-haiku-4-5-20251001-v1:0'), 'Claude Haiku 4.5');
+  assert.ok(am.MODEL_ID.test('gemini/gemini-3.1-pro-preview') && am.MODEL_ID.test('anthropic.claude-v2:1') && !am.MODEL_ID.test('a b') && !am.MODEL_ID.test('https://x/y?z'));
+});
+await test('Model lists: a new key is tested with a small model it really offers', () => {
+  const live = am.mergeModels('custom', [{ id: 'llama3.1:70b' }, { id: 'qwen2.5:7b' }]);
+  assert.equal(mdl.testModelFor('custom', live), 'qwen2.5:7b', 'not the placeholder "custom", a small one from the list');
+  assert.equal(mdl.testModelFor('sumopod', am.mergeModels('sumopod', [{ id: 'deepseek-v4-flash' }, { id: 'claude-opus-5-5' }])), 'deepseek-v4-flash', 'the catalogue’s fast one when offered');
+  assert.equal(mdl.testModelFor('anthropic', null), 'claude-haiku-4-5', 'no list: the catalogue’s fast one');
+});
+await test('Presets never pick a catalogue model the provider doesn’t offer', () => {
+  const { presetJobs } = cat;
+  const sumo = ['deepseek-v4-flash', 'kimi-k2-0905'];
+  const jobs = presetJobs('balanced', ['sumopod'], false, { live: { sumopod: sumo }, defaults: { sumopod: 'kimi-k2-0905' } });
+  for (const [job, pick] of Object.entries(jobs)) if (job !== 'speech') assert.ok(sumo.includes(pick.model), `${job} got ${pick.model}`);
+  assert.equal(jobs.braindump.model, 'kimi-k2-0905', 'nothing of that tier offered: the key’s own model');
+  assert.equal(presetJobs('cheap', ['sumopod'], false, { live: { sumopod: sumo } }).replies.model, 'deepseek-v4-flash', 'a catalogue model it offers, where it fits');
+  assert.equal(presetJobs('balanced', ['sumopod'], false).braindump.model, 'claude-sonnet-5', 'without a list, the catalogue as before');
+});
+await test('A model the provider dropped: its jobs move to the job’s fallback, with a note for Settings', () => {
+  const ai = {
+    preset: 'custom',
+    providers: [
+      { id: 'sumopod', status: 'ok', model: 'kimi-k2-0905' },
+      { id: 'anthropic', status: 'ok', model: 'claude-sonnet-5-5' },
+    ],
+    jobs: {
+      summary: { provider: 'sumopod', model: 'glm-4.6' },
+      replies: { provider: 'sumopod', model: 'glm-4.6' },
+      ask: { provider: 'sumopod', model: 'glm-4.6', fallback: 'anthropic' },
+      draft: { provider: 'sumopod', model: 'my-own-finetune', typed: true },
+      todos: { provider: 'sumopod', model: 'kimi-k2-0905' },
+      speech: { provider: 'custom', model: 'browser' },
+    },
+    blocked: [],
+  };
+  const list = am.mergeModels('sumopod', [{ id: 'kimi-k2-0905' }, { id: 'deepseek-v4-flash' }]);
+  const next = mdl.movesFor(ai, 'sumopod', list, '2026-10-09T08:00:00.000Z');
+  assert.deepEqual(next.jobs.summary, { provider: 'sumopod', model: 'kimi-k2-0905' }, 'to the key’s own model');
+  assert.deepEqual(next.jobs.ask, { provider: 'anthropic', model: 'claude-sonnet-5-5', fallback: 'anthropic' }, 'to its fallback provider when it has one');
+  assert.deepEqual(next.jobs.draft, ai.jobs.draft, 'a model id typed in by hand isn’t on lists, so it stays');
+  assert.deepEqual(next.jobs.todos, ai.jobs.todos, 'models still offered stay');
+  assert.deepEqual(next.notes.map((n) => n.text), ['SumoPod no longer offers GLM 4.6; Ask AI moved to Claude Sonnet 5.5 on Anthropic.', 'SumoPod no longer offers GLM 4.6; summaries & catch me up and suggest replies moved to Kimi K2 0905.']);
+  assert.equal(mdl.movesFor(next, 'sumopod', list), null, 'nothing more to move');
+  assert.equal(mdl.movesFor(ai, 'sumopod', am.catalogList('sumopod')), null, 'our catalogue never moves anything');
+  // The key's own model gone too: a recommended one of the same tier takes its place.
+  const both = mdl.movesFor({ ...ai, jobs: { summary: { provider: 'sumopod', model: 'glm-4.6' } } }, 'sumopod', am.mergeModels('sumopod', [{ id: 'deepseek-v4-flash' }, { id: 'claude-opus-5-5' }]));
+  assert.equal(both.providers[0].model, 'claude-opus-5-5');
+  assert.deepEqual(both.jobs.summary, { provider: 'sumopod', model: 'claude-opus-5-5' });
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

@@ -202,18 +202,23 @@ export const JOBS: JobInfo[] = [
   { id: 'speech', name: 'Voice notes & meeting audio', hint: 'Speech to text', weight: 'Speech', accuracy: 'High', tokens: [0, 0], rec: { best: 'nova-3', balanced: 'whisper-large-v3', cheap: 'browser' }, when: 'click' },
 ];
 
-/** Rough cost of 100 uses in rupiah (null when the model's price isn't in our table). US$1 = Rp 17.500. */
-export function costPer100(job: JobInfo, providerId: ProviderId | 'included', modelId: string): number | null {
+/** Rough cost of 100 uses in rupiah (null when the model's price isn't known). US$1 = Rp 17.500. `price`: what the provider's list said. */
+export function costPer100(job: JobInfo, providerId: ProviderId | 'included', modelId: string, price?: [number, number] | null): number | null {
   if (providerId === 'included') return 0;
-  const m = providerOf(providerId)?.models.find((x) => x.id === modelId);
-  if (!m?.price) return null;
-  const usd = (job.tokens[0] * m.price[0] + job.tokens[1] * m.price[1]) / 1e6;
+  const p = providerOf(providerId)?.models.find((x) => x.id === modelId)?.price ?? price;
+  if (!p) return null;
+  const usd = (job.tokens[0] * p[0] + job.tokens[1] * p[1]) / 1e6;
   return usd * 100 * 17_500;
 }
 
-/** Fill every job from the connected providers, following a preset. Falls back to "included" when nothing fits. */
-export function presetJobs(preset: 'best' | 'balanced' | 'cheap', connected: ProviderId[], allowIncluded: boolean) {
+/**
+ * Fill every job from the connected providers, following a preset. Falls back to "included" when nothing fits.
+ * `models`: what each provider really offers (its own list) and the model each key uses by default, when known;
+ * a catalogue model the provider doesn't offer is never picked.
+ */
+export function presetJobs(preset: 'best' | 'balanced' | 'cheap', connected: ProviderId[], allowIncluded: boolean, models?: { live?: Partial<Record<string, string[] | undefined>>; defaults?: Partial<Record<string, string | undefined>> }) {
   const out: Partial<Record<AIJobId, { provider: ProviderId | 'included'; model: string }>> = {};
+  const offers = (p: ProviderId, id: string) => !models?.live?.[p] || models.live[p]!.includes(id);
   for (const job of JOBS) {
     if (job.id === 'speech') {
       const sp = connected.find((p) => p === 'deepgram' || p === 'groq');
@@ -221,15 +226,22 @@ export function presetJobs(preset: 'best' | 'balanced' | 'cheap', connected: Pro
       continue;
     }
     const want = job.rec[preset];
-    const exact = connected.find((p) => providerOf(p)?.models.some((m) => m.id === want || m.id.endsWith(want)));
+    const fits = (p: ProviderId) => providerOf(p)?.models.find((m) => (m.id === want || m.id.endsWith(want)) && offers(p, m.id));
+    const exact = connected.find((p) => fits(p));
     if (exact) {
-      out[job.id] = { provider: exact, model: providerOf(exact)!.models.find((m) => m.id === want || m.id.endsWith(want))!.id };
+      out[job.id] = { provider: exact, model: fits(exact)!.id };
       continue;
     }
-    // Nearest tier on any connected provider.
+    // Nearest tier on any connected provider, else the model that key uses by default, else the first one it offers.
     const tier = preset === 'best' ? 'best' : preset === 'balanced' ? 'balanced' : 'fast';
-    const near = connected.map((p) => ({ p, m: providerOf(p)?.models.find((m) => m.tier === tier) ?? providerOf(p)?.models[0] })).find((x) => x.m && providerOf(x.p)?.kind !== 'speech');
-    out[job.id] = near ? { provider: near.p, model: near.m!.id } : allowIncluded ? { provider: 'included', model: 'included' } : { provider: connected[0] ?? 'anthropic', model: '' };
+    const near = connected
+      .filter((p) => providerOf(p)?.kind !== 'speech')
+      .map((p) => {
+        const ms = (providerOf(p)?.models ?? []).filter((m) => offers(p, m.id));
+        return { p, m: ms.find((m) => m.tier === tier)?.id ?? models?.defaults?.[p] ?? ms[0]?.id ?? models?.live?.[p]?.[0] };
+      })
+      .find((x) => x.m);
+    out[job.id] = near ? { provider: near.p, model: near.m! } : allowIncluded ? { provider: 'included', model: 'included' } : { provider: connected[0] ?? 'anthropic', model: '' };
   }
   return out;
 }
