@@ -399,7 +399,7 @@
   }
 
   /* In a conversation the bottom belongs to the message box: toasts sit just above it. */
-  :root:has(.chat-push) .toast {
+  :root:has(.chat-push):not(:has(.chat-details)) .toast {
     bottom: calc(var(--chat-foot, 104px) + var(--kb, 0px) + env(safe-area-inset-bottom) + 8px);
   }
 
