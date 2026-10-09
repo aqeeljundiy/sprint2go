@@ -455,3 +455,59 @@ test('WKST decides which week a day belongs to (RFC 5545 example)', () => {
   assert.deepEqual(ruleDays('19970805T090000', 'FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=MO').days, ['1997-08-05', '1997-08-10', '1997-08-19', '1997-08-24']);
   assert.deepEqual(ruleDays('19970805T090000', 'FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=SU').days, ['1997-08-05', '1997-08-17', '1997-08-19', '1997-08-31']);
 });
+
+/* ---------- all-day invites, wherever the person reading them is (beyond plus or minus 11 hours too) ---------- */
+
+const FAR_ZONES = ['Pacific/Kiritimati', 'Pacific/Tongatapu', 'Pacific/Pago_Pago', 'Etc/GMT+12'];
+/** The local days (in `tz`) an event on the calendar covers, read the way a browser in that zone reads it. */
+function daysCovered(ev: { start: string; end: string }, tz: string) {
+  const read = (s: string) => {
+    if (/Z$|[+-]\d\d:\d\d$/.test(s)) return Date.parse(s); // a real instant
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/)!; // floating: that wall clock, in the browser's zone
+    return zonedToUtc(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], tz);
+  };
+  const s = read(ev.start);
+  const e = read(ev.end);
+  const out: string[] = [];
+  for (let d = Date.UTC(2026, 9, 17); d < Date.UTC(2026, 9, 30); d += 86_400_000) {
+    const day = new Date(d);
+    const from = zonedToUtc(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 0, 0, 0, tz);
+    if (s < from + 86_400_000 && e > from) out.push(day.toISOString().slice(0, 10)); // the calendar's eventsOn
+  }
+  return out;
+}
+
+test('an all-day invite stays on its dates at +14, +13, -11 and -12', async () => {
+  const { inviteCalendarTimes } = await import('../src/inviteTimes.ts');
+  const ev = parseInvite(`BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:far\nDTSTART;VALUE=DATE:20261020\nDTEND;VALUE=DATE:20261022\nSUMMARY:Offsite\nEND:VEVENT\nEND:VCALENDAR`)!;
+  const onCalendar = inviteCalendarTimes(ev, ev.allDay);
+  assert.deepEqual(onCalendar, { start: '2026-10-20T00:00:00', end: '2026-10-22T00:00:00' });
+  for (const tz of FAR_ZONES) {
+    assert.deepEqual(daysCovered(onCalendar, tz), ['2026-10-20', '2026-10-21'], `on the 20th and 21st in ${tz}`);
+    assert.equal(new Date(ev.start).toLocaleDateString('en-CA', { timeZone: 'UTC' }), '2026-10-20', 'the invite card reads its dates in UTC');
+  }
+  // What it used to put on the calendar (noon UTC): already the next day in Kiritimati and Tonga.
+  assert.deepEqual(daysCovered({ start: ev.start, end: ev.end }, 'Pacific/Kiritimati'), ['2026-10-21', '2026-10-22']);
+  // A one-day event, and a repeating one: each date stays itself.
+  const one = parseInvite(`BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:one\nDTSTART;VALUE=DATE:20261023\nSUMMARY:Day off\nEND:VEVENT\nEND:VCALENDAR`)!;
+  for (const tz of FAR_ZONES) assert.deepEqual(daysCovered(inviteCalendarTimes(one, true), tz), ['2026-10-23'], `one day in ${tz}`);
+  const weekly = parseInvite(`BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:wk\nDTSTART;VALUE=DATE:20261019\nDTEND;VALUE=DATE:20261020\nRRULE:FREQ=WEEKLY;COUNT=2\nEXDATE;VALUE=DATE:20261019\nRDATE;VALUE=DATE:20261021\nSUMMARY:Gym\nEND:VEVENT\nEND:VCALENDAR`)!;
+  const dates = occurrences(weekly, 0, Date.parse('2027-01-01'))!;
+  for (const tz of FAR_ZONES) assert.deepEqual(dates.map((o) => daysCovered(inviteCalendarTimes(o, true), tz)), [['2026-10-21'], ['2026-10-26']], `skipped, added and repeated dates in ${tz}`);
+});
+
+test('Outlook all-day events written as midnight in a far zone are the date they name', () => {
+  const outlook = (tz: string) => `BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:ol\nDTSTART;TZID=${tz}:20261020T000000\nDTEND;TZID=${tz}:20261021T000000\nX-MICROSOFT-CDO-ALLDAYEVENT:TRUE\nSUMMARY:Holiday\nEND:VEVENT\nEND:VCALENDAR`;
+  for (const tz of FAR_ZONES) {
+    const ev = parseInvite(outlook(tz))!;
+    assert.equal(ev.allDay, true, tz);
+    assert.equal(ev.start, '2026-10-20T12:00:00.000Z', `the 20th, written in ${tz}`);
+    assert.equal(ev.end, '2026-10-20T12:01:00.000Z');
+    const feed = expand(parseCalendar(outlook(tz)), Date.parse('2026-10-01'), Date.parse('2026-11-01'));
+    assert.deepEqual([feed[0].start, feed[0].end, feed[0].allDay], ['2026-10-20T00:00:00', '2026-10-21T00:00:00', true], `a calendar link reads it as the 20th too (${tz})`);
+  }
+  // Without the flag, midnight in Kiritimati is a real time: 10:00 UTC the day before.
+  const timed = parseInvite(outlook('Pacific/Kiritimati').replace('X-MICROSOFT-CDO-ALLDAYEVENT:TRUE\n', ''))!;
+  assert.equal(timed.allDay, undefined);
+  assert.equal(timed.start, '2026-10-19T10:00:00.000Z');
+});

@@ -38,6 +38,7 @@ import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped }
 import { isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
+import { inviteCalendarTimes } from './inviteTimes';
 import { OutOfOffice } from './components/OutOfOffice';
 import { caps } from './caps';
 import { EmailDeliverySection } from './components/admin/EmailDelivery';
@@ -2656,7 +2657,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setThreads((ts) => ts.map((x) => (x.id !== t.id ? x : { ...x, messages: x.messages.map((y) => (y.id === m.id ? { ...y, invite: { ...inv, answer: { status, at, by: user.id, sent: false } } } : y)) })));
     setEvents((es) => [
       ...es.filter((e) => !(e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id)),
-      ...(status === 'declined' ? [] : [{ id: uid(), title: inv.title, calendarId: 'work', start: inv.start, end: inv.end, allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, rsvp: status, organizer: inv.organizer } as CalEvent]),
+      ...(status === 'declined' ? [] : [{ id: uid(), title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: t.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, rsvp: status, organizer: inv.organizer } as CalEvent]),
     ]);
     tell(false, ' Demo: no answer is sent.');
     return true;

@@ -730,6 +730,19 @@ await test('Tickets: an attachment counts only when it was sent with its ticket 
   assert.equal(supportMod.OLD_ATTACHMENT, 'Attachment from before 9 Oct, ask the person to send it again');
 });
 
+await test('Invites: an all-day invite goes on the calendar as floating dates, so no zone moves its day', async () => {
+  const invites = await import('../server/invites.ts');
+  const { parseInvite } = await import('../server/ics.ts');
+  const inv = parseInvite('BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:allday-1\nDTSTART;VALUE=DATE:20261020\nDTEND;VALUE=DATE:20261022\nSUMMARY:Offsite\nEND:VEVENT\nEND:VCALENDAR');
+  const { docs } = invites.eventsFor(inv, { userId: 'aj-ana', workspaceId: 'w-aj', threadId: 't-x', rsvp: 'accepted', mine: ['ana@aj.example'] });
+  assert.equal(docs.length, 1);
+  assert.deepEqual([docs[0].start, docs[0].end, docs[0].allDay], ['2026-10-20T00:00:00', '2026-10-22T00:00:00', true]);
+  assert.equal(docs[0].occurrence, '2026-10-20T12:00:00.000Z', 'its date as the invite writes it, for later updates and cancellations');
+  const timed = parseInvite('BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:timed-1\nDTSTART:20261020T020000Z\nDTEND:20261020T030000Z\nSUMMARY:Call\nEND:VEVENT\nEND:VCALENDAR');
+  const t = invites.eventsFor(timed, { userId: 'aj-ana', workspaceId: 'w-aj', threadId: 't-y', rsvp: 'accepted', mine: ['ana@aj.example'] }).docs[0];
+  assert.deepEqual([t.start, t.end, t.occurrence], ['2026-10-20T02:00:00.000Z', '2026-10-20T03:00:00.000Z', undefined], 'timed invites keep their instants');
+});
+
 /* email for teammates who are away (server/digest.ts) */
 
 const digest = await import('../server/digest.ts');

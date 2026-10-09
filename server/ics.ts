@@ -9,7 +9,8 @@
 // (IANA names, Outlook's Windows names, path-style names, the file's own VTIMEZONE, "(UTC+07:00)" names), DTEND or
 // DURATION, RRULE (daily, weekly, monthly, yearly with INTERVAL, COUNT, UNTIL, BYDAY with ordinals counted from the
 // start or the end, BYMONTHDAY from the start or the end, BYMONTH, BYWEEKNO, BYYEARDAY, BYSETPOS, WKST), RDATE and EXDATE
-// in any zone (or as dates, or periods), moved or cancelled single occurrences (RECURRENCE-ID) and cancelled events.
+// in any zone (or as dates, or periods), moved or cancelled single occurrences (RECURRENCE-ID), cancelled events, and
+// Outlook's all-day events written as midnight times (X-MICROSOFT-CDO-ALLDAYEVENT).
 // No dependencies; ics.test.ts pins it down.
 
 /* ---------- reading the file ---------- */
@@ -606,6 +607,15 @@ const attendeeOf = (p: Prop | undefined): ICalAttendee | undefined => {
 /** RDATE and EXDATE values: one or more times (a PERIOD, start/end or start/duration, counts from its start). */
 const listValues = (p: Prop) => p.value.split(',').map((v) => v.split('/')[0].trim()).filter(Boolean);
 const times = (c: Component, name: string) => c.props.filter((p) => p.name === name).flatMap((p) => listValues(p).map((v) => parseTime(v, p.params)).filter(Boolean) as ICalTime[]);
+/**
+ * Outlook marks an all-day event with X-MICROSOFT-CDO-ALLDAYEVENT and may write it as midnight in a zone: read as the
+ * date it names, so a day written in Kiritimati (+14) or Pago Pago (-11) doesn't move to another date.
+ */
+const outlookAllDay = (c: Component) => /^TRUE$/i.test(prop(c, 'X-MICROSOFT-CDO-ALLDAYEVENT')?.value.trim() ?? '');
+const asDate = (p: Prop | undefined): Prop | undefined => {
+  const t = p && parseTime(p.value, p.params);
+  return t && !t.date && !t.utc && t.h === 0 && t.mi === 0 && t.s === 0 ? { ...p!, value: p!.value.trim().slice(0, 8), params: { VALUE: 'DATE' } } : p;
+};
 
 /** Reads a calendar file. Throws Error('not-ics') when it isn't one. */
 export function parseCalendar(input: string | Uint8Array): ICalendar {
@@ -613,11 +623,12 @@ export function parseCalendar(input: string | Uint8Array): ICalendar {
   const events: ICalEvent[] = [];
   for (const c of cal.children) {
     if (c.type !== 'VEVENT') continue;
-    const st = prop(c, 'DTSTART');
+    const whole = outlookAllDay(c);
+    const st = whole ? asDate(prop(c, 'DTSTART')) : prop(c, 'DTSTART');
     const start = st && parseTime(st.value, st.params);
     if (!start) continue;
-    const en = prop(c, 'DTEND');
-    const rid = prop(c, 'RECURRENCE-ID');
+    const en = whole && start.date ? asDate(prop(c, 'DTEND')) : prop(c, 'DTEND');
+    const rid = whole && start.date ? asDate(prop(c, 'RECURRENCE-ID')) : prop(c, 'RECURRENCE-ID');
     const rr = prop(c, 'RRULE');
     events.push({
       uid: prop(c, 'UID')?.value.trim() || `${st!.value}-${text(c, 'SUMMARY') ?? ''}`,
@@ -835,10 +846,12 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
   const zones = zonesOf(cal);
   const defaultTz = prop(cal, 'X-WR-TIMEZONE')?.value.trim();
   const at = (p: Prop | undefined) => inviteInstant(p, zones, defaultTz);
+  /** A time of this event: Outlook's all-day events written as midnight are the date they name. */
+  const timeOf = (ve: Component, name: string) => (outlookAllDay(ve) ? asDate(prop(ve, name)) : prop(ve, name));
   const readEvent = (ve: Component) => {
-    const s = at(prop(ve, 'DTSTART'));
+    const s = at(timeOf(ve, 'DTSTART'));
     if (!s) return null;
-    const e = at(prop(ve, 'DTEND') ?? prop(ve, 'DUE'));
+    const e = at(timeOf(ve, 'DTEND') ?? prop(ve, 'DUE'));
     const dur = durationMs(prop(ve, 'DURATION')?.value);
     let end = e?.at ?? (dur != null ? s.at + dur : s.at + (s.date ? DAY : 3_600_000));
     // All-day: DTEND is the day after the last one; stored as a minute past noon on the last day.
@@ -863,12 +876,12 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
   const conference = ['X-GOOGLE-CONFERENCE', 'X-MICROSOFT-SKYPETEAMSMEETINGURL', 'X-MICROSOFT-ONLINEMEETINGCONFLINK', 'URL'].map((n) => findMeetingLink(prop(main, n)?.value.trim())).find(Boolean);
   const url = conference ?? findMeetingLink(location) ?? findMeetingLink(description);
   const org = prop(main, 'ORGANIZER');
-  const recId = at(prop(main, 'RECURRENCE-ID'));
+  const recId = at(timeOf(main, 'RECURRENCE-ID'));
   // Skipped and extra dates, in whatever zone each was written. A date-only EXDATE on a timed event skips that day; a
   // date-only RDATE adds that day at the event's own time.
   const firstStart = prop(main, 'DTSTART');
   const first = firstStart && parseTime(firstStart.value, firstStart.params);
-  const eachValue = (name: string) => props(main, name).flatMap((p) => listValues(p).map((v) => ({ ...p, value: v })));
+  const eachValue = (name: string) => props(main, name).flatMap((p) => listValues(p).map((v) => (t.allDay && outlookAllDay(main) ? asDate({ ...p, value: v })! : { ...p, value: v })));
   const exdates = eachValue('EXDATE').flatMap((p) => {
     const x = parseTime(p.value, p.params);
     if (x?.date && !t.allDay) return [`${x.y}-${pad(x.m)}-${pad(x.d)}`];
@@ -884,7 +897,7 @@ export function parseInvite(input: Buffer | string): IcsEvent | null {
   const overrides = events
     .filter((v) => v !== main && prop(v, 'RECURRENCE-ID') && prop(v, 'UID')?.value.trim() === uid)
     .map((v) => {
-      const r = at(prop(v, 'RECURRENCE-ID'));
+      const r = at(timeOf(v, 'RECURRENCE-ID'));
       const x = readEvent(v);
       return r && x ? { recurrenceId: iso(r.at), start: iso(x.start), end: iso(x.end), ...(prop(v, 'STATUS')?.value.toUpperCase() === 'CANCELLED' ? { cancelled: true } : {}) } : null;
     })
