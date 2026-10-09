@@ -12,7 +12,7 @@ import App from './App';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, portalsFor } from './clientView';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
-import { ActingBanner, AdminApp, ClientApp, Onboarding, SharedHome } from './lazy';
+import { ActingBanner, AdminApp, ClientApp, ConnectApp, Onboarding, SharedHome } from './lazy';
 import { setPhotos } from './photos';
 import { Wordmark } from './components/Logo';
 import { AcceptInvite, SignIn, SignUp } from './components/SignIn';
@@ -33,9 +33,10 @@ export default function Root() {
   const invite = new URLSearchParams(location.search).get('invite');
   const [signingUp, setSigningUp] = useState(() => location.pathname === '/signup');
   const admin = location.pathname.startsWith('/admin'); // the operator backend: its own screens, its own API
+  const connecting = location.pathname === '/oauth/authorize'; // an AI app asks to connect (ConnectApp.tsx)
 
   // Before the app opens (sign-in, the two-step code, an invite), nobody's settings apply yet: follow the device.
-  const preApp = mode === 'signed-out' || mode === 'two-step' || !!invite;
+  const preApp = mode === 'signed-out' || mode === 'two-step' || !!invite || connecting;
   useEffect(() => {
     if (!preApp) return;
     const mq = matchMedia('(prefers-color-scheme: dark)');
@@ -63,10 +64,10 @@ export default function Root() {
       server.flags = r.flags ?? [];
       setDemo(r.demo ?? null); // their own demo company
       void loadMailInfo();
-      if (!r.suspended && !admin) await connect(applyRemote);
+      if (!r.suspended && !admin && !connecting) await connect(applyRemote); // the consent screen needs none of the app's data
       setMode('ready');
     });
-  }, [invite, admin]);
+  }, [invite, admin, connecting]);
 
   if (invite) return <AcceptInvite token={invite} onDone={() => location.replace('/')} />;
   if (mode === 'probing') return <div className="boot" />;
@@ -74,7 +75,8 @@ export default function Root() {
   if (mode === 'signed-out')
     return (
       <SignIn
-        onCreate={() => (setSigningUp(true), history.replaceState(null, '', '/signup'))}
+        onCreate={connecting ? undefined : () => (setSigningUp(true), history.replaceState(null, '', '/signup'))}
+        sub={connecting ? 'An AI app wants to connect to your sprint2go. Sign in first; you choose what it can reach next.' : undefined}
         users={[]}
         signedIn={[]}
         realPasswords
@@ -93,6 +95,7 @@ export default function Root() {
   if (mode === 'two-step' && session?.twoStep) return <TwoStepGate need={session.twoStep} email={session.email} companies={session.companies} />;
   if (mode === 'ready' && session?.suspended) return <Suspended reason={session.suspended.reason} />;
   if (admin && !trying && (mode === 'ready' || mode === 'demo')) return <AdminApp />;
+  if (connecting && mode === 'ready' && session && !session.suspended) return <ConnectApp actingAs={session.actingAs} />;
   if (mode === 'ready' && session)
     return (
       <>

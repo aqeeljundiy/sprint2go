@@ -913,6 +913,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       showToast({ text: from ? replyWhy(from) : 'Choose a mailbox that can send.', ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
       return;
     }
+    // A reply drafted in a connected AI app keeps the conversation's headers, so it lands in the same thread.
+    const replyOf = compose?.draftId ? threads.find((x) => x.id === compose.draftId)?.replyTo : undefined;
     const { thread, delivered } = deliver(m, compose?.draftId);
     setCompose(null);
     // With the server: the mail engine really sends it (our own mailboxes already have their copies).
@@ -921,7 +923,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend }),
       }).then(
         async (r) => {
           if (!r.ok) return notSent(thread, m, await refusal(r, 'The mail engine refused it.'));
@@ -991,7 +993,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const draftId = compose?.draftId;
     setCompose(null);
     if (!draft) return;
-    const t = toThread(draft, 'drafts', draftId);
+    const replyTo = draftId ? threads.find((x) => x.id === draftId)?.replyTo : undefined;
+    const t = { ...toThread(draft, 'drafts', draftId), ...(replyTo ? { replyTo } : {}) };
     setThreads((ts) => (draftId ? ts.map((x) => (x.id === draftId ? t : x)) : [t, ...ts]));
     showToast({ text: 'Draft saved', action: { label: 'Open', run: () => openCompose({ draftId: t.id, initial: draft }) } });
   };

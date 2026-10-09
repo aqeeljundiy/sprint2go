@@ -839,6 +839,16 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
         >
           <Switch on={ws.readTracking !== false} disabled={!canManage} onChange={(v) => onWorkspace({ readTracking: v })} />
         </Row>
+        <Row
+          title="Let people connect AI apps"
+          hint={
+            ws.aiApps !== false
+              ? `People can connect Claude, ChatGPT and other AI apps to ${ws.name || 'the company'}. An app sees only what its person sees, works under their name, and mail or messages to guests stay drafts they send themselves.${canManage ? '' : ' Only owners and admins change this.'}`
+              : `Off: AI apps can’t reach ${ws.name || 'the company'}, and the ones people connected stop working until it’s back on.${canManage ? '' : ' Only owners and admins change this.'}`
+          }
+        >
+          <Switch on={ws.aiApps !== false} disabled={!canManage} onChange={(v) => onWorkspace({ aiApps: v })} />
+        </Row>
       </div>
 
       <div className="set-block">

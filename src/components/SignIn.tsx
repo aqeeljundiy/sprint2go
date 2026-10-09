@@ -46,10 +46,11 @@ interface Props {
   realPasswords?: boolean; // the local server checks passwords
   onCreate?: () => void; // "Create an account" (the local server only)
   onForget: (id: string) => void;
+  sub?: string; // the line under the title when signing in is for something (connecting an AI app)
 }
 
 /** "Choose an account", like Google's account chooser. */
-export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, onCreate }: Props) {
+export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, onCreate, sub }: Props) {
   const [adding, setAdding] = useState(signedIn.length === 0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,7 +74,7 @@ export function SignIn({ signedIn, onPick, onSignIn, onForget, realPasswords, on
         ) : adding ? (
           <>
             <h1>Sign in to {product.name}</h1>
-            <p className="signin-sub">Use the email address your workspace gave you.</p>
+            <p className="signin-sub">{sub ?? 'Use the email address your workspace gave you.'}</p>
             <form onSubmit={submit} className="signin-form">
               <div className="field">
                 <label>Email</label>

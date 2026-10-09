@@ -33,6 +33,7 @@ import { HelpSection } from './HelpSection';
 import { NotificationSettings } from './NotificationSettings';
 import { TwoStepRow } from './TwoStep';
 import { DemoCompanyBlock, type DemoSettings } from './DemoCompany';
+import { ConnectedApps } from './ConnectedApps';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -475,6 +476,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <h3>Security</h3>
               <PasswordRow />
               <TwoStepRow toast={admin.toast} />
+              <ConnectedApps toast={admin.toast} />
               <DeleteAccountRow />
             </>
           )}

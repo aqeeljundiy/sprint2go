@@ -7,6 +7,7 @@ import { AlertTriangle, FolderPlus, ChevronUp, Handshake, ArrowLeft, ArrowUp, Ba
 import type { Channel, ChannelCategory, ChatLayout, ChatSection, ChatFile, ChatMessage, ChatView as ChatViewDef, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../types';
 import { localDay, relative } from '../utils';
 import { usePersisted } from '../settings';
+import { DraftNote, useChatDraft } from './ChatDraft';
 import { ai } from '../ai';
 import { Avatar } from './Avatar';
 import { Badge, PersonCell } from './ui/Person';
@@ -833,6 +834,8 @@ export function ChatView(p: ViewProps) {
     setTab('messages');
     setSinceText(null);
   }, [channel?.id]);
+  // What a connected AI app drafted for this channel (guests read it): fills the box to check and send (ChatDraft.tsx).
+  const chatDraft = useChatDraft(me, channel?.id, setText);
   useEffect(() => {
     if (!rec) return;
     const t = setInterval(() => setRec((r) => r && { ...r, secs: (Date.now() - r.start) / 1000 }), 250);
@@ -936,6 +939,7 @@ export function ChatView(p: ViewProps) {
       return;
     }
     p.onSend({ text: t });
+    chatDraft.sent();
     setText('');
     setMention(null);
   };
@@ -1551,6 +1555,7 @@ export function ChatView(p: ViewProps) {
             </span>
           </div>
         )}
+        {tab === 'messages' && canPost && <DraftNote draft={chatDraft.draft} text={text} onUse={chatDraft.use} onDiscard={chatDraft.discard} />}
         {tab === 'messages' && composer}
         </TabPane>
       </div>
