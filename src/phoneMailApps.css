@@ -1,0 +1,282 @@
+/* Settings, Phone mail apps (PhoneMailApps.tsx). Shared pieces (.set-row, .set-block, .fold, .segmented, .field)
+   do most of it; this is the note when it isn't available, the app passwords, the one-time password and the server
+   settings. The section reacts to its own width. */
+
+.pm {
+  container-type: inline-size;
+}
+.pm-loading {
+  margin: 4px 0 8px;
+}
+.pm-note {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--warn-soft, var(--hover));
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-wrap: pretty;
+  animation: pmIn 0.22s ease-out backwards;
+}
+.pm-note small {
+  color: var(--text-2);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.pm-block {
+  margin-top: 28px;
+}
+.pm-block > h3 {
+  margin: 0;
+}
+.pm-hint {
+  margin: 0 0 4px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+/* ---------- app passwords ---------- */
+
+.pm-pw strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.pm-pw strong svg {
+  flex: none;
+  color: var(--text-3);
+}
+.pm-pw small {
+  display: block;
+  margin-top: 2px;
+}
+.pm-pw > button {
+  flex: none;
+}
+.pm-add {
+  padding: 12px 0 2px;
+}
+.pm-add .primary-btn,
+.pm-add .ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The space above the form sits inside the fold, so a closed fold takes none. */
+.pm-fold-body {
+  padding-top: 12px;
+}
+.pm-form,
+.pm-made {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.pm-form .field:last-of-type {
+  margin-bottom: 8px;
+}
+.pm-form .field input {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  font: inherit;
+}
+.pm-error {
+  margin: 0 0 8px;
+  color: var(--warn);
+  font-size: 13px;
+}
+.pm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.pm-made-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pm-secret {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 4px 0 6px;
+}
+.pm-secret code {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  user-select: all;
+  overflow-wrap: anywhere;
+  animation: pmIn 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.1) backwards;
+}
+.pm-secret .ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 84px;
+  justify-content: center;
+}
+.pm-made small {
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+
+/* ---------- setting up an app ---------- */
+
+.pm-tabs {
+  margin: 10px 0 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pm-tabs::-webkit-scrollbar {
+  display: none;
+}
+.pm-steps {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.pm-steps li {
+  text-wrap: pretty;
+}
+.pm-steps li::marker {
+  color: var(--text-3);
+  font-weight: 600;
+}
+.pm-profile {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.pm-settings {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 0 16px;
+  margin: 16px 0 8px;
+  padding: 4px 16px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.pm-settings dt,
+.pm-settings dd {
+  margin: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.pm-settings dt:first-of-type,
+.pm-settings dt:first-of-type + dd {
+  border-top: 0;
+}
+.pm-settings dt {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pm-settings dd {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.pm-settings small {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.pm-settings .pm-plain {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.pm-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.pm-value code {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  color: var(--text);
+  user-select: all;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.pm-copy {
+  flex: none;
+  color: var(--text-3);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.pm-copy:hover {
+  color: var(--text);
+}
+
+@keyframes pmIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Narrow (a phone, a narrow pane): the settings stack, buttons get room for a thumb. */
+@container (max-width: 520px) {
+  .pm-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pm-settings dt {
+    padding-bottom: 2px;
+  }
+  .pm-settings dd {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .pm-pw > button,
+  .pm-actions > button,
+  .pm-add > button,
+  .pm-secret .ghost-btn,
+  .pm-profile {
+    min-height: 44px;
+  }
+  .pm-copy {
+    width: 44px;
+    height: 44px;
+  }
+  .pm-actions > button {
+    flex: 1;
+    justify-content: center;
+  }
+  .pm-form .field input {
+    font-size: 16px;
+  }
+  .pm-secret code {
+    font-size: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pm-note,
+  .pm-secret code {
+    animation: none;
+  }
+  .pm-copy {
+    transition: none;
+  }
+}
