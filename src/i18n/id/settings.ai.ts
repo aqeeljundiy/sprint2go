@@ -4,8 +4,8 @@
 // the rules for placeholders and plurals: docs/i18n.md. Check with: node scripts/i18n-check.mjs
 //
 // Words used here: job = pekerjaan, key = key, provider = penyedia, allowance = kuota, setup (preset) = setelan,
-// billing = tagihan, invoice = invoice, top-up = top-up, list price = harga resmi. Plan names (Free, Small, Studio,
-// Agency, Business) are product names and stay as they are.
+// billing = tagihan, invoice = invoice, top-up = top-up, list price = harga resmi. Plan names (Small, Studio, Agency,
+// Business) are product names and stay as they are; Free is "paket Gratis", as on the landing page.
 const id: Record<string, string> = {
   // Prices and plans (data/pricing.ts)
   'Own AI keys': 'Key AI sendiri',
@@ -231,9 +231,9 @@ const id: Record<string, string> = {
   'Your keys first; the plan’s allowance as backup': 'Key Anda dulu; kuota paket sebagai cadangan',
   'You’re on {plan} with your own keys. {link} if you’d rather not manage keys.': 'Anda memakai {plan} dengan key sendiri. {link} jika tidak ingin mengelola key.',
   'Switch to AI included': 'Beralih ke AI sudah termasuk',
-  'AI on Free': 'AI di paket Free',
+  'AI on Free': 'AI di paket Gratis',
   'Free doesn’t include AI from {product}. Add your own key above and it works right away, with no limit from us, or {link}.':
-    'Paket Free tidak termasuk AI dari {product}. Tambahkan key Anda sendiri di atas dan AI langsung bisa dipakai, tanpa batas dari kami, atau {link}.',
+    'Paket Gratis tidak termasuk AI dari {product}. Tambahkan key Anda sendiri di atas dan AI langsung bisa dipakai, tanpa batas dari kami, atau {link}.',
   'pick a plan with AI included': 'pilih paket yang sudah termasuk AI',
   'Who handles your data': 'Siapa yang mengolah data Anda',
   'Left this month': 'Sisa bulan ini',
@@ -395,16 +395,16 @@ const id: Record<string, string> = {
   '{size} storage': 'penyimpanan {size}',
   'unlimited meeting-bot hours': 'jam bot rapat tanpa batas',
   '{n} meeting-bot hours': '{n} jam bot rapat',
-  'until {date}, then Free unless you pick a plan': 'sampai {date}, lalu Free kecuali Anda memilih paket',
+  'until {date}, then Free unless you pick a plan': 'sampai {date}, lalu paket Gratis kecuali Anda memilih paket',
   'per year': 'per tahun',
   '(plan {base} + add-ons {addons})': '(paket {base} + add-on {addons})',
   'next invoice {date}': 'invoice berikutnya {date}',
   'On your next invoice': 'Di invoice berikutnya',
   '−{amount} credit': '−{amount} kredit',
   'Plan switches are prorated: you pay each plan only for the days you had it.': 'Peralihan paket dihitung prorata: Anda membayar tiap paket hanya untuk hari Anda memakainya.',
-  '{company} started on Free instead of a trial.': '{company} mulai di Free, bukan masa coba.',
+  '{company} started on Free instead of a trial.': '{company} mulai di paket Gratis, bukan masa coba.',
   'You’re trying Studio AI: every feature and the full AI allowance. When the trial ends nothing is deleted. You move to Free, and anything beyond Free waits for an upgrade.':
-    'Anda sedang mencoba Studio AI: semua fitur dan kuota AI penuh. Saat masa coba berakhir, tidak ada yang dihapus. Anda pindah ke Free, dan apa pun di luar Free menunggu sampai Anda upgrade.',
+    'Anda sedang mencoba Studio AI: semua fitur dan kuota AI penuh. Saat masa coba berakhir, tidak ada yang dihapus. Anda pindah ke paket Gratis, dan apa pun di luar paket Gratis menunggu sampai Anda upgrade.',
   'Choose a plan': 'Pilih paket',
   Monthly: 'Bulanan',
   'Yearly · 2 months free': 'Tahunan · gratis 2 bulan',
@@ -412,7 +412,7 @@ const id: Record<string, string> = {
   'Your AI provider bills you directly; {product} costs less.': 'Penyedia AI Anda menagih langsung; {product} jadi lebih murah.',
   'AI included: per person about {braindumps} brain dumps, {questions} questions, {hours} meeting hours, {summaries} summaries and {drafts} drafts a month, shared by everyone.':
     'AI sudah termasuk: per orang sekitar {braindumps} brain dump, {questions} pertanyaan, {hours} jam rapat, {summaries} ringkasan, dan {drafts} draf per bulan, dipakai bersama semua orang.',
-  'Up to 5 people can also use Free.': 'Hingga 5 orang juga bisa memakai Free.',
+  'Up to 5 people can also use Free.': 'Hingga 5 orang juga bisa memakai paket Gratis.',
   'Cheapest for {n}': 'Termurah untuk {n} orang',
   'Up to 9 people': 'Hingga 9 orang',
   'Too many people for this one': 'Terlalu banyak orang untuk paket ini',
@@ -422,8 +422,8 @@ const id: Record<string, string> = {
   'Switch to {plan}': 'Beralih ke {plan}',
   'You never pay more than the next package: if extra people make a bigger package cheaper, we move you to it and tell you. Only active people are billed. Guests and shared inboxes are always free.':
     'Anda tidak pernah membayar lebih dari paket berikutnya: jika tambahan orang membuat paket yang lebih besar jadi lebih murah, kami pindahkan Anda ke paket itu dan memberi tahu Anda. Hanya orang aktif yang ditagih. Tamu dan kotak masuk bersama selalu gratis.',
-  'Moved to Free. Nothing was deleted': 'Pindah ke Free. Tidak ada yang dihapus',
-  'Downgrade to Free': 'Turun ke Free',
+  'Moved to Free. Nothing was deleted': 'Pindah ke paket Gratis. Tidak ada yang dihapus',
+  'Downgrade to Free': 'Turun ke paket Gratis',
   'AI top-ups': 'Top-up AI',
   '{price} adds {gives}': '{price} menambah {gives}',
   'For busy months. Light jobs (reply suggestions, email to-dos) keep working on a cheap model even when the allowance runs out.':
@@ -436,7 +436,7 @@ const id: Record<string, string> = {
   'Add-ons': 'Add-on',
   '{price} a month': '{price} per bulan',
   '{used} of {n} hosted mailboxes in use ({included} come with the plan; shared inboxes are free)': '{used} dari {n} kotak surat ter-hosting terpakai ({included} termasuk paket; kotak masuk bersama gratis)',
-  '{used} of {n} hosted mailboxes in use (on Free, every hosted mailbox is an add-on)': '{used} dari {n} kotak surat ter-hosting terpakai (di Free, setiap kotak surat ter-hosting adalah add-on)',
+  '{used} of {n} hosted mailboxes in use (on Free, every hosted mailbox is an add-on)': '{used} dari {n} kotak surat ter-hosting terpakai (di paket Gratis, setiap kotak surat ter-hosting adalah add-on)',
   '{n} receive mail but can’t send until there’s room': '{n} menerima email tapi belum bisa mengirim sampai ada slot',
   '{used} of {total} notetaker hours used this month': '{used} dari {total} jam notulis terpakai bulan ini',
   '{used} of {total} notetaker hours used this month: the notetaker waits until the 1st or more hours': '{used} dari {total} jam notulis terpakai bulan ini: notulis menunggu sampai tanggal 1 atau ada tambahan jam',
@@ -512,13 +512,13 @@ const id: Record<string, string> = {
   Resume: 'Lanjutkan',
   Pause: 'Jeda',
   Cancelled: 'Dibatalkan',
-  'Moves to Free on {date}. Until then everything works as it does now, and nothing is deleted after.': 'Pindah ke Free pada {date}. Sampai saat itu semuanya berjalan seperti sekarang, dan tidak ada yang dihapus sesudahnya.',
+  'Moves to Free on {date}. Until then everything works as it does now, and nothing is deleted after.': 'Pindah ke paket Gratis pada {date}. Sampai saat itu semuanya berjalan seperti sekarang, dan tidak ada yang dihapus sesudahnya.',
   'The plan stays as it is': 'Paket tetap seperti sekarang',
   'Keep the plan': 'Pertahankan paket',
   'plan::Cancel': 'Batalkan',
   'Takes effect at the end of the period that’s paid for. Download everything first if you’d like a copy.': 'Berlaku di akhir periode yang sudah dibayar. Unduh semuanya dulu jika Anda ingin salinannya.',
   'Export everything': 'Ekspor semuanya',
-  'Cancelled. You’ll move to Free at the end of the period': 'Dibatalkan. Anda akan pindah ke Free di akhir periode',
+  'Cancelled. You’ll move to Free at the end of the period': 'Dibatalkan. Anda akan pindah ke paket Gratis di akhir periode',
   'Cancel plan': 'Batalkan paket',
   'Cancel…': 'Batalkan…',
   'Seats billed: {n}.': 'Orang yang ditagih: {n}.',

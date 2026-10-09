@@ -19,7 +19,16 @@ export const PRICES: Record<Track, Record<Exclude<Tier, 'free'>, { base: number;
   },
 };
 
-export const TIER_NAME: Record<Tier, string> = { free: 'Free', small: 'Small', studio: 'Studio', agency: 'Agency', business: 'Business' };
+/** Plan names stay as they are in both languages, except Free, which reads "Gratis" in Indonesian (as on the landing page). */
+export const TIER_NAME: Record<Tier, string> = {
+  get free() {
+    return t('Free');
+  },
+  small: 'Small',
+  studio: 'Studio',
+  agency: 'Agency',
+  business: 'Business',
+};
 /** The two tracks in the reader's language (getters: read while rendering). */
 export const TRACK_NAME: Record<Track, string> = {
   get own() {
@@ -29,7 +38,7 @@ export const TRACK_NAME: Record<Track, string> = {
     return t('AI included');
   },
 };
-export const planName = (p: Pick<Plan, 'track' | 'tier'>) => (p.tier === 'free' ? 'Free' : `${TIER_NAME[p.tier]}${p.track === 'ai' ? ' AI' : ''}`);
+export const planName = (p: Pick<Plan, 'track' | 'tier'>) => (p.tier === 'free' ? TIER_NAME.free : `${TIER_NAME[p.tier]}${p.track === 'ai' ? ' AI' : ''}`);
 
 // Names and units are getters, in the reader's language (the server reads them in English).
 export const ADDONS = {
