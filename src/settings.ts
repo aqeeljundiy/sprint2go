@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   accent: '#5b5bf6',
   density: 'comfortable',
-  undoSend: 5,
+  undoSend: 10, // the mail engine holds each email this long (server/mailer.ts); Undo lasts exactly as long
   notifyMessages: true,
   notifyNewMail: true,
   notifyTasks: true,

@@ -829,13 +829,6 @@
     border-radius: 18px 18px 0 0;
     animation: rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .invite {
-    flex-wrap: wrap;
-  }
-  .invite .primary-btn {
-    width: 100%;
-    justify-content: center;
-  }
 }
 
 /* ---------- Calendar links and public holidays ---------- */
