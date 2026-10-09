@@ -4,8 +4,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as db from './db.ts';
 import * as platform from './platform.ts';
-import { AIError, canCall, keyHint, testKey, withAI, type AIConfig } from './llm.ts';
+import { AIError, canCall, isModelGone, keyHint, testKey, withAI, type AIConfig } from './llm.ts';
+import * as models from './models.ts';
 import { CRED_FIELDS, JOBS, PROVIDERS, type JobInfo } from '../src/data/aiCatalog.ts';
+import { MODEL_ID, prettyModelName } from '../src/data/aiModels.ts';
 import { ALLOWANCE, TOP_UP, discountOf, monthlyTotal, planName, priceFor, seatsFor } from '../src/data/pricing.ts';
 import type { Plan } from '../src/types.ts';
 
@@ -65,8 +67,17 @@ export const companyName = (id: string) => {
   const n = providerName(id);
   return n.match(/\(([^)]+)\)/)?.[1] ?? n;
 };
+/** Our keys' model lists are kept under this scope (server/models.ts). */
+export const PLATFORM = 'platform';
 const modelName = (provider: string, model: string) =>
-  SPEECH_CHOICES.find((c) => c.provider === provider && c.model === model)?.name ?? PROVIDERS.find((p) => p.id === provider)?.models.find((m) => m.id === model)?.name ?? model;
+  SPEECH_CHOICES.find((c) => c.provider === provider && c.model === model)?.name ??
+  PROVIDERS.find((p) => p.id === provider)?.models.find((m) => m.id === model)?.name ??
+  models.cachedList(PLATFORM, provider)?.models.find((m) => m.id === model)?.name ??
+  anyName(model);
+/** A job's name inside a sentence: "brain dump & briefs", but "Ask AI" stays a name. */
+const inSentence = (name: string) => (/^Ask AI/.test(name) ? name : name.charAt(0).toLowerCase() + name.slice(1));
+/** A model's name without knowing the provider: the catalogue's, else one made from its id. */
+const anyName = (model: string) => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === model)?.name ?? prettyModelName(model);
 
 /** Providers our server can call for text jobs ("custom" is for a company's own server, not ours). */
 const TEXT_OK = (id: string) => id !== 'custom' && canCall(id) && PROVIDERS.find((p) => p.id === id)?.kind !== 'speech';
@@ -82,13 +93,39 @@ function defaultRoute(job: JobInfo): Route {
   const fallback = provider === 'anthropic' ? { provider: 'google', model: heavy ? 'gemini-3.1-pro' : 'gemini-3.5-flash' } : { provider: 'anthropic', model: heavy ? 'claude-sonnet-5-5' : 'claude-haiku-4-5' };
   return { primary: { provider, model }, fallback };
 }
-/** Whether a choice is one this job can use. */
+/** Whether a saved choice is one this job can use: any model id the provider could offer (new picks are checked by `offeredChoice`). */
 function validChoice(job: string, c: unknown): c is Choice {
   if (!c || typeof c !== 'object') return false;
   const { provider, model } = c as Choice;
   if (typeof provider !== 'string' || typeof model !== 'string') return false;
   if (job === 'speech') return SPEECH_CHOICES.some((x) => x.provider === provider && x.model === model);
-  return TEXT_OK(provider) && !!PROVIDERS.find((p) => p.id === provider)?.models.some((m) => m.id === model);
+  return TEXT_OK(provider) && MODEL_ID.test(model);
+}
+/** A new pick: on the provider's own list for our key, or (when there's no list) in our catalogue. */
+function offeredChoice(job: string, c: unknown): c is Choice {
+  if (!validChoice(job, c)) return false;
+  if (job === 'speech') return true;
+  const live = models.offered(PLATFORM, c.provider, c.model);
+  return live ?? !!PROVIDERS.find((p) => p.id === c.provider)?.models.some((m) => m.id === c.model);
+}
+/** A model the provider stopped offering our key (its list, as last read, doesn't have it). */
+const goneForUs = (x: Choice | null) => !!x && models.offered(PLATFORM, x.provider, x.model) === false;
+
+/** Reads our key's list again soon after a call said the model isn't there (at most every five minutes per provider). */
+const recheck = new Map<string, number>();
+function recheckOurs(provider: string) {
+  if ((recheck.get(provider) ?? 0) > Date.now() - 5 * 60_000) return;
+  recheck.set(provider, Date.now());
+  const c = config();
+  const k = keyFor(provider, c);
+  if (k) void models.listFor(PLATFORM, provider, k, { force: true, priceOf: (id) => priceOf(id, c) }).catch(() => {});
+}
+/** Our keys' lists, read (or kept) before the AI page shows the models to pick from. */
+export async function warmLists(force = false) {
+  const c = config();
+  const provs = PROVIDERS.filter((p) => TEXT_OK(p.id) && keyFor(p.id, c)).map((p) => p.id);
+  if (force) for (const p of provs) models.forget(PLATFORM, p);
+  await Promise.all(provs.map((p) => models.listFor(PLATFORM, p, keyFor(p, c), { priceOf: (id) => priceOf(id, c) })));
 }
 
 export function config() {
@@ -111,6 +148,20 @@ type Config = ReturnType<typeof config>;
 const KNOWN: Record<string, [number, number]> = { 'gpt-5': [1.25, 10], 'gpt-5-mini': [0.25, 2], 'openai/gpt-5-mini': [0.25, 2], 'claude-sonnet-5': [2, 10] };
 /** Every text model in the catalogue, once (gateways list the same model under the same id). */
 export const PRICE_MODELS = Array.from(new Set(PROVIDERS.filter((p) => p.kind !== 'speech' && p.id !== 'custom').flatMap((p) => p.models.map((m) => m.id))));
+/** Models used this month by anyone (on our keys or a company's), how often, and through which provider. */
+function usedThisMonth() {
+  return db.db
+    .prepare("SELECT model, CASE WHEN via IS NOT NULL THEN via WHEN provider = 'included' THEN 'anthropic' ELSE provider END AS prov, COUNT(*) AS uses FROM ai_usage WHERE at >= ? GROUP BY model, prov")
+    .all(monthStart()) as { model: string; prov: string; uses: number }[];
+}
+/** Every model the price list shows: the catalogue's, the ones our jobs use, ones with a price, and ones used this month. */
+function priceModelIds(c: Pick<Config, 'jobs' | 'prices'>): string[] {
+  const ids = new Set(PRICE_MODELS);
+  for (const j of JOBS) if (j.id !== 'speech') for (const x of [c.jobs[j.id].primary, c.jobs[j.id].fallback]) if (x) ids.add(x.model);
+  for (const id of Object.keys(c.prices)) ids.add(id);
+  for (const r of usedThisMonth()) if (MODEL_ID.test(r.model)) ids.add(r.model);
+  return Array.from(ids);
+}
 export const catalogPrice = (model: string): [number, number] | null => PROVIDERS.flatMap((p) => p.models).find((m) => m.id === model && m.price)?.price ?? KNOWN[model] ?? null;
 const norm = (m: string) => m.split('/').pop()!.replace(/\./g, '-').replace(/^anthropic-/, '');
 export function priceOf(model: string, c: Pick<Config, 'prices'> = config()): [number, number] | null {
@@ -202,10 +253,9 @@ async function tryKey(provider: string, key: string, baseUrl?: string): Promise<
     if (!r) return `${name} didn’t answer.`;
     return r.ok ? null : r.status === 401 || r.status === 403 ? `${name} rejected the key.` : `${name} answered with an error (${r.status}).`;
   }
-  const info = PROVIDERS.find((p) => p.id === provider)!;
-  const c = config();
-  const inUse = Object.values(c.jobs).flatMap((r) => [r.primary, r.fallback]).find((x) => x?.provider === provider)?.model;
-  const model = info.models.find((m) => m.tier === 'fast')?.id ?? inUse ?? info.models[0].id;
+  // The provider's own list says which model to test with (the catalogue's fast one when it's offered).
+  const list = await models.listWith(provider, { key, baseUrl });
+  const model = models.testModelFor(provider, list);
   try {
     await testKey({ provider, model, apiKey: key, baseUrl });
     return null;
@@ -245,8 +295,10 @@ export function ourChain(job: string): AIConfig[] {
   const out: AIConfig[] = [];
   for (const x of [r.primary, r.fallback]) {
     if (!x || !TEXT_OK(x.provider) || out.some((o) => o.provider === x.provider && o.model === x.model)) continue;
+    // A model the provider no longer offers: the fallback runs instead (the AI page says so).
+    if (goneForUs(x)) continue;
     const k = keyFor(x.provider, c);
-    if (k) out.push({ provider: x.provider, model: x.model, apiKey: k.key, baseUrl: k.baseUrl, included: true });
+    if (k) out.push({ provider: x.provider, model: x.model, apiKey: k.key, baseUrl: k.baseUrl, included: true, onFail: (e) => isModelGone(e) && recheckOurs(x.provider) });
   }
   return out;
 }
@@ -276,6 +328,11 @@ export async function runChain<T>(chain: AIConfig[], log: (cfg: AIConfig, inToke
     } catch (e) {
       last = e;
       if (cfg.included) noteResult(cfg.provider, e);
+      try {
+        cfg.onFail?.(e);
+      } catch {
+        /* only a hint */
+      }
       if (e instanceof AIError && /declined/.test(e.message)) throw e;
       if (cfg !== chain[chain.length - 1]) console.error(`[ai] ${cfg.included ? 'our ' : ''}${cfg.provider} failed, trying the next one:`, e instanceof Error ? e.message : e);
     }
@@ -355,7 +412,7 @@ export function companyView(ws: any) {
   const elig = planAI(ws);
   const route = JOBS.map((j) => {
     const r = c.jobs[j.id];
-    const live = [r.primary, r.fallback].find((x) => x && (j.id === 'speech' ? !!keyFor(x.provider, c) : TEXT_OK(x.provider) && !!keyFor(x.provider, c))) ?? null;
+    const live = [r.primary, r.fallback].find((x) => x && (j.id === 'speech' ? !!keyFor(x.provider, c) : TEXT_OK(x.provider) && !goneForUs(x) && !!keyFor(x.provider, c))) ?? null;
     const backup = live && r.fallback && live === r.primary && keyFor(r.fallback.provider, c) ? r.fallback : null;
     const pick = (x: Choice | null) => (x ? { provider: x.provider, providerName: companyName(x.provider), model: x.model, modelName: modelName(x.provider, x.model), warn: PROVIDERS.find((p) => p.id === x.provider)?.warn ?? null } : null);
     return { job: j.id, name: j.name, run: pick(live), backup: pick(backup) };
@@ -436,7 +493,7 @@ export function money(mrrOf: MrrOf, c = config()) {
     other: other.sort((a, b) => b.cost - a.cost),
     otherCost: sum(other, 'cost'),
     jobs,
-    unpriced: Array.from(unpricedUses, ([model, uses]) => ({ model, name: PROVIDERS.flatMap((p) => p.models).find((m) => m.id === model)?.name ?? model, uses })),
+    unpriced: Array.from(unpricedUses, ([model, uses]) => ({ model, name: anyName(model), uses })),
   };
 }
 
@@ -457,7 +514,7 @@ export function problems(mrrOf: MrrOf): { kind: string; text: string; level: 'hi
   const served = (db.allDocs('workspaces') as any[]).some((w) => planAI(w).ok);
   const dead = JOBS.filter((j) => j.id !== 'speech' && !ourChain(j.id).length);
   if (served && dead.length)
-    out.push({ kind: 'ai-keys', level: 'high', text: dead.length === JOBS.length - 1 ? 'Our AI has no working key: AI-plan companies can’t use AI.' : `Our AI has no working key for ${dead.slice(0, 2).map((j) => j.name.toLowerCase()).join(' and ')}${dead.length > 2 ? ` and ${dead.length - 2} more` : ''}.`, to: '/admin/ai/keys' });
+    out.push({ kind: 'ai-keys', level: 'high', text: dead.length === JOBS.length - 1 ? 'Our AI has no working key: AI-plan companies can’t use AI.' : `Our AI has no working key for ${dead.slice(0, 2).map((j) => inSentence(j.name)).join(' and ')}${dead.length > 2 ? ` and ${dead.length - 2} more` : ''}.`, to: '/admin/ai/keys' });
   const inUse = new Set(Object.values(c.jobs).flatMap((r) => [r.primary, r.fallback]).filter(Boolean).map((x) => x!.provider));
   for (const p of inUse) {
     const k = keyFor(p, c);
@@ -467,11 +524,18 @@ export function problems(mrrOf: MrrOf): { kind: string; text: string; level: 'hi
   const m = money(mrrOf, c);
   if (m.cost > 0 && m.margin < 0) out.push({ kind: 'ai-margin', level: 'normal', text: `AI costs more than the AI plan earns: ${rp(-m.margin)} short by the end of the month.`, to: '/admin/ai' });
   else if (m.losing.length) out.push({ kind: 'ai-losing', level: 'normal', text: `${m.losing.length} ${m.losing.length === 1 ? 'company’s AI costs' : 'companies’ AI costs'} more than ${m.losing.length === 1 ? 'it pays' : 'they pay'}.`, to: '/admin/ai' });
-  // Models that ran this month, or would run now (they have a key), without a price.
+  // A model a provider stopped offering our key: the job runs on its fallback (or not at all).
+  for (const j of JOBS.filter((x) => x.id !== 'speech')) {
+    const r = c.jobs[j.id];
+    if (!goneForUs(r.primary)) continue;
+    const fb = r.fallback && !goneForUs(r.fallback) && keyFor(r.fallback.provider, c) ? r.fallback : null;
+    out.push({ kind: `ai-gone:${j.id}`, level: fb ? 'normal' : 'high', text: `${companyName(r.primary.provider)} no longer offers ${modelName(r.primary.provider, r.primary.model)}: ${inSentence(j.name)} ${fb ? `runs on its fallback, ${modelName(fb.provider, fb.model)}` : 'has nothing to run on'}. Pick another model.`, to: '/admin/ai/models' });
+  }
+  // Models that ran this month (on our keys or a company's), or would run now (they have a key), without a price.
   const routed = JOBS.filter((j) => j.id !== 'speech').flatMap((j) => [c.jobs[j.id].primary, c.jobs[j.id].fallback]);
-  const missing = new Set([...m.unpriced.map((u) => u.model), ...routed.filter((y) => y && keyFor(y.provider, c) && !priceOf(y.model, c)).map((y) => y!.model)]);
+  const missing = new Set([...m.unpriced.map((u) => u.model), ...usedThisMonth().filter((u) => MODEL_ID.test(u.model) && !priceOf(u.model, c)).map((u) => u.model), ...routed.filter((y) => y && keyFor(y.provider, c) && !priceOf(y.model, c)).map((y) => y!.model)]);
   if (missing.size) {
-    const names = Array.from(missing).map((id) => PROVIDERS.flatMap((p) => p.models).find((x) => x.id === id)?.name ?? id);
+    const names = Array.from(missing).map(anyName);
     out.push({ kind: 'ai-prices', level: 'normal', text: `No price for ${names.slice(0, 2).join(' and ')}${names.length > 2 ? ` and ${names.length - 2} more` : ''}: their AI cost isn’t counted.`, to: '/admin/ai/prices' });
   }
   return out;
@@ -506,13 +570,22 @@ function overview(x: AdminBits) {
     ...rowsDb.map((r) => ({ id: r.provider, provider: r.provider, name: providerName(r.provider), source: 'saved' as const, last4: r.last4, on: !!r.enabled, inUse: !!r.enabled, baseUrl: r.base_url, addedBy: who(r.added_by), addedAt: r.added_at, jobs: used(r.provider), ...hRow(r.provider) })),
     ...(envKey() ? [{ id: ENV_ID, provider: 'anthropic', name: providerName('anthropic'), source: 'server' as const, last4: envKey().slice(-4), on: !c.envOff, inUse: !c.envOff && !rowsDb.some((r) => r.provider === 'anthropic' && r.enabled), baseUrl: null, addedBy: null, addedAt: null, jobs: used('anthropic'), ...hRow(ENV_ID) }] : []),
   ];
-  const option = (provider: string, model: string, name: string) => ({ provider, providerName: providerName(provider), model, name, price: priceOf(model, c), hasKey: !!keyFor(provider, c) });
-  const text = PROVIDERS.filter((p) => TEXT_OK(p.id)).flatMap((p) => p.models.map((mm) => option(p.id, mm.id, mm.name)));
+  const option = (provider: string, model: string, name: string, recommended = true, gone = false) => ({ provider, providerName: providerName(provider), model, name, price: priceOf(model, c), hasKey: !!keyFor(provider, c), recommended, gone });
+  // Each provider's own list for our key when it could be read (catalogue models first), else our catalogue.
+  const lists = PROVIDERS.filter((p) => TEXT_OK(p.id)).map((p) => ({ id: p.id, list: models.cachedList(PLATFORM, p.id) }));
+  const text = lists.flatMap(({ id, list }) =>
+    list && list.source === 'live' ? list.models.filter((mm) => mm.kind === 'text').map((mm) => option(id, mm.id, mm.name, mm.recommended)) : PROVIDERS.find((p) => p.id === id)!.models.map((mm) => option(id, mm.id, mm.name)),
+  );
+  // What jobs use now stays pickable, even when the provider stopped offering it.
+  for (const j of JOBS.filter((x) => x.id !== 'speech'))
+    for (const y of [c.jobs[j.id].primary, c.jobs[j.id].fallback])
+      if (y && !text.some((o) => o.provider === y.provider && o.model === y.model)) text.push(option(y.provider, y.model, `${modelName(y.provider, y.model)}${goneForUs(y) ? ' (no longer offered)' : ''}`, false, goneForUs(y)));
   const speech = SPEECH_CHOICES.map((s) => ({ ...option(s.provider, s.model, s.name), price: null }));
   const jobs = JOBS.map((j) => {
     const r = c.jobs[j.id];
-    const ok = (y: Choice | null) => !!y && !!keyFor(y.provider, c) && (j.id === 'speech' || TEXT_OK(y.provider));
+    const ok = (y: Choice | null) => !!y && !!keyFor(y.provider, c) && (j.id === 'speech' || (TEXT_OK(y.provider) && !goneForUs(y)));
     const p = j.id === 'speech' ? null : priceOf(r.primary.model, c);
+    const gone = j.id !== 'speech' && goneForUs(r.primary);
     return {
       id: j.id,
       name: j.name,
@@ -522,15 +595,19 @@ function overview(x: AdminBits) {
       primary: r.primary,
       fallback: r.fallback,
       state: ok(r.primary) ? 'ok' : ok(r.fallback) ? 'fallback' : 'none',
+      gone: gone ? `${companyName(r.primary.provider)} no longer offers ${modelName(r.primary.provider, r.primary.model)}.` : null,
       per100: p ? ((j.tokens[0] * p[0] + j.tokens[1] * p[1]) / 1e6) * c.rate * 100 : null,
       isDefault: JSON.stringify(r) === JSON.stringify(defaultRoute(j)),
     };
   });
-  const prices = PRICE_MODELS.map((id) => {
-    const provs = PROVIDERS.filter((p) => p.kind !== 'speech' && p.models.some((mm) => mm.id === id));
-    const name = provs[0].models.find((mm) => mm.id === id)!.name;
+  const monthUse = usedThisMonth();
+  const prices = priceModelIds(c).map((id) => {
+    const provs = PROVIDERS.filter((p) => p.kind !== 'speech' && p.models.some((mm) => mm.id === id)).map((p) => p.id);
+    const routes = JOBS.filter((j) => j.id !== 'speech').flatMap((j) => [c.jobs[j.id].primary, c.jobs[j.id].fallback]).filter((y) => y?.model === id).map((y) => y!.provider);
+    const via = monthUse.filter((u) => u.model === id);
     const usedBy = JOBS.filter((j) => j.id !== 'speech' && [c.jobs[j.id].primary, c.jobs[j.id].fallback].some((y) => y?.model === id)).map((j) => j.id);
-    return { model: id, name, providers: provs.map((p) => providerName(p.id)), price: priceOf(id, c), own: c.prices[id] ?? null, catalog: catalogPrice(id), usedBy };
+    const where = Array.from(new Set([...provs, ...routes, ...via.map((u) => u.prov)]));
+    return { model: id, name: modelName(where[0] ?? '', id), providers: where.map(providerName), price: priceOf(id, c), own: c.prices[id] ?? null, catalog: catalogPrice(id), usedBy, uses: via.reduce((n, u) => n + u.uses, 0) };
   });
   return {
     can: x.may('platform'),
@@ -540,6 +617,7 @@ function overview(x: AdminBits) {
     providers: PROVIDERS.map((p) => ({ id: p.id, name: p.name, kind: p.kind, keyHint: p.keyHint, needsUrl: !!p.needsUrl, warn: p.warn ?? null, supported: supported(p.id), why: NOT_FOR_US[p.id] ?? null, saved: rowsDb.some((r) => r.provider === p.id) })),
     jobs,
     options: { text, speech },
+    lists: lists.filter((l) => l.list && keyFor(l.id, c)).map(({ id, list }) => ({ provider: id, name: providerName(id), source: list!.source, fetchedAt: list!.fetchedAt, note: list!.note })),
     prices,
     rate: c.rate,
     defaultRate: DEFAULT_RATE,
@@ -550,12 +628,21 @@ function overview(x: AdminBits) {
 export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
   const { req, res, json, body } = x;
   const done = (data: unknown, status = 200) => (json(res, status, data), true);
-  if (sub === 'ai' && req.method === 'GET') return done(overview(x));
+  if (sub === 'ai' && req.method === 'GET') {
+    await warmLists().catch(() => {});
+    return done(overview(x));
+  }
   if (req.method !== 'POST' || !sub.startsWith('ai/')) return false;
   if (x.deny('platform')) return true;
   const b = await body(req);
   const provider = String(b.provider ?? '');
   const info = PROVIDERS.find((p) => p.id === provider);
+
+  // Read our keys' model lists from the providers again (they're otherwise kept about an hour).
+  if (sub === 'ai/models/refresh') {
+    await warmLists(true).catch(() => {});
+    return done({ ok: true });
+  }
 
   if (sub === 'ai/key') {
     if (!info) return done({ error: 'Pick a provider.' }, 400);
@@ -571,6 +658,7 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
       .prepare('INSERT INTO platform_ai_keys (provider, sealed, base_url, last4, enabled, added_by, added_at) VALUES (?, ?, ?, ?, 1, ?, ?) ON CONFLICT(provider) DO UPDATE SET sealed = excluded.sealed, base_url = excluded.base_url, last4 = excluded.last4, enabled = 1, added_by = excluded.added_by, added_at = excluded.added_at')
       .run(provider, db.seal(key), baseUrl ?? null, keyHint(provider, key), (db.allDocs('users') as any[]).find((u) => String(u.email ?? '').toLowerCase() === x.email)?.id ?? x.email, now());
     db.db.prepare('UPDATE platform_ai_health SET used_at = NULL, failed_at = NULL, fail_error = NULL WHERE id = ?').run(provider);
+    models.forget(PLATFORM, provider); // the new key's own list is read next time
     x.log(before ? 'ai.key.rotate' : 'ai.key.add', provider, `${providerName(provider)} •••• ${keyHint(provider, key)}${before ? ` (was •••• ${before.last4})` : ''}`);
     return done({ last4: keyHint(provider, key) });
   }
@@ -602,14 +690,20 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
     if (!r) return done({ error: 'No such key.' }, 404);
     db.db.prepare('DELETE FROM platform_ai_keys WHERE provider = ?').run(provider);
     db.db.prepare('DELETE FROM platform_ai_health WHERE id = ?').run(provider);
+    models.forget(PLATFORM, provider);
     x.log('ai.key.remove', provider, `${providerName(provider)} •••• ${r.last4}`);
     return done({ ok: true });
   }
   if (sub === 'ai/job') {
     const job = JOBS.find((j) => j.id === b.job);
     if (!job) return done({ error: 'No such job.' }, 400);
-    if (!validChoice(job.id, b.primary)) return done({ error: 'Pick a model this job can use.' }, 400);
-    const fallback = b.fallback ? (validChoice(job.id, b.fallback) ? { provider: b.fallback.provider, model: b.fallback.model } : undefined) : null;
+    // A new pick must be on the provider's list for our key (or in our catalogue when there's no list); what the job
+    // already uses may stay, so the other choice can change.
+    const cur = config().jobs[job.id];
+    const same = (a: Choice | null | undefined, y: unknown) => !!a && !!y && a.provider === (y as Choice).provider && a.model === (y as Choice).model;
+    const okPick = (y: unknown): y is Choice => offeredChoice(job.id, y) || ((same(cur.primary, y) || same(cur.fallback, y)) && validChoice(job.id, y));
+    if (!okPick(b.primary)) return done({ error: 'Pick a model this job can use.' }, 400);
+    const fallback = b.fallback ? (okPick(b.fallback) ? { provider: b.fallback.provider, model: b.fallback.model } : undefined) : null;
     if (fallback === undefined) return done({ error: 'Pick a fallback this job can use, or none.' }, 400);
     const s = saved();
     const next: Route = { primary: { provider: b.primary.provider, model: b.primary.model }, fallback };
@@ -629,8 +723,9 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
     const prices: Record<string, [number, number]> = { ...s.prices };
     const changes: string[] = [];
     const num = (v: unknown) => (typeof v === 'number' && isFinite(v) && v >= 0 && v < 10_000 ? Math.round(v * 10_000) / 10_000 : null);
+    const listed = new Set(priceModelIds(config()));
     for (const [model, v] of Object.entries((b.prices ?? {}) as Record<string, unknown>)) {
-      if (!PRICE_MODELS.includes(model)) continue;
+      if (!listed.has(model)) continue;
       const before = priceOf(model, { prices: s.prices ?? {} });
       const pair = Array.isArray(v) && num(v[0]) !== null && num(v[1]) !== null ? ([num(v[0])!, num(v[1])!] as [number, number]) : null;
       const cat = catalogPrice(model);

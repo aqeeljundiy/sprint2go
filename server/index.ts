@@ -9,8 +9,10 @@ import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Readable } from 'node:stream';
 import * as db from './db.ts';
 import * as ai from './ai.ts';
-import { AIError, keyHint, testKey, type AIConfig } from './llm.ts';
+import { AIError, isModelGone, keyHint, testKey, type AIConfig } from './llm.ts';
 import * as aiplan from './aiplan.ts';
+import * as models from './models.ts';
+import { defaultModelOf } from '../src/data/aiModels.ts';
 import { seed, RECORD_KEYS, type CollectionKey } from '../src/seed.ts';
 import { DEFAULT_PERMISSIONS } from '../src/types.ts';
 import { JOBS, PROVIDERS } from '../src/data/aiCatalog.ts';
@@ -183,7 +185,7 @@ if (process.env.S2G_PURGE_DEMO === '1' && process.env.NODE_ENV === 'production' 
 
 /* ---------- helpers ---------- */
 
-type Ws = { id: string; members: { userId: string; role: string }[]; accounts?: { id: string }[]; ai?: { jobs?: Record<string, { provider: string; model: string }>; providers?: { id: string; status: string }[]; payer?: string } };
+type Ws = { id: string; members: { userId: string; role: string }[]; accounts?: { id: string }[]; ai?: { jobs?: Record<string, { provider: string; model: string; fallback?: string; typed?: boolean }>; providers?: { id: string; status: string; model?: string }[]; payer?: string } };
 const workspaces = () => db.allDocs('workspaces') as unknown as Ws[];
 const memberOf = (userId: string) => workspaces().filter((w) => w.members.some((m) => m.userId === userId));
 const isAdminOf = (userId: string, wsId: string) => workspaces().some((w) => w.id === wsId && w.members.some((m) => m.userId === userId && m.role !== 'member'));
@@ -715,22 +717,77 @@ function aiFor(wsId: string, job: string): AIConfig[] {
   const chain: AIConfig[] = [];
   // Blocked providers are never called for this company (our AI's fallback included); a key at its cap rests.
   const may = aiLimits.allowed(ws as any);
+  // The company's own key with the model it picked, exactly as the provider names it; then the job's fallback on its
+  // own keys. A call that says the model isn't there has the provider's list read again (see `companyModels`).
+  const own = (provider: string, model: string): AIConfig | null => {
+    const k = db.loadKey(wsId, provider);
+    return k && model ? { provider, model, apiKey: k.key, baseUrl: k.baseUrl, onFail: (e) => isModelGone(e) && recheckModels(wsId, provider) } : null;
+  };
   if (pick && pick.provider !== 'included' && may(pick.provider)) {
-    const k = db.loadKey(wsId, pick.provider);
-    if (k) chain.push({ provider: pick.provider, model: pick.model, apiKey: k.key, baseUrl: k.baseUrl });
+    const first = own(pick.provider, pick.model);
+    if (first) chain.push(first);
+    const fb = ownFallback(ws!, pick, may);
+    if (fb && !chain.some((c) => c.provider === fb.provider && c.model === fb.model)) {
+      const next = own(fb.provider, fb.model);
+      if (next) chain.push(next);
+    }
   }
   if (onOurAI(ws)) chain.push(...aiplan.ourChain(job).filter((c) => may(c.provider, true)));
   if (chain.length) return chain;
-  // Otherwise any key the company saved, with that provider's model for this kind of job.
+  // Otherwise any key the company saved, with the model it uses by default (or that provider's model for this kind of job).
   const rec = JOBS.find((j) => j.id === job)?.rec;
   for (const p of ws?.ai?.providers ?? []) {
-    const k = db.loadKey(wsId, p.id);
     const info = PROVIDERS.find((x) => x.id === p.id);
-    if (!k || !info || info.kind === 'speech' || !may(p.id)) continue;
-    const wanted = [rec?.balanced, rec?.best, rec?.cheap].find((m) => info.models.some((x) => x.id === m));
-    return [{ provider: p.id, model: wanted ?? info.models.find((m) => m.tier === 'balanced')?.id ?? info.models[0].id, apiKey: k.key, baseUrl: k.baseUrl }];
+    if (!info || info.kind === 'speech' || !may(p.id)) continue;
+    const wanted = p.model ?? [rec?.balanced, rec?.best, rec?.cheap].find((m) => info.models.some((x) => x.id === m));
+    const c = own(p.id, wanted ?? info.models.find((m) => m.tier === 'balanced')?.id ?? info.models[0].id);
+    if (c) return [c];
   }
   return [];
+}
+
+/**
+ * A job's fallback on the company's own keys: the provider set as its fallback (with the model that key uses), else
+ * the picked key's default model when the job uses another one. Null when there's none.
+ */
+function ownFallback(ws: Ws, pick: { provider: string; model: string; fallback?: string }, may: (provider: string) => boolean): { provider: string; model: string } | null {
+  const conns = (ws.ai?.providers ?? []) as { id: string; status?: string; model?: string }[];
+  const usable = (id: string) => conns.find((c) => c.id === id && c.status !== 'error' && may(id) && PROVIDERS.find((x) => x.id === id)?.kind !== 'speech');
+  const fb = pick.fallback && pick.fallback !== pick.provider ? usable(pick.fallback) : undefined;
+  if (fb) {
+    const model = defaultModelOf(fb.id, fb.model, (ws.ai?.jobs ?? {}) as any);
+    if (model) return { provider: fb.id, model };
+  }
+  const same = usable(pick.provider);
+  return same?.model && same.model !== pick.model ? { provider: same.id, model: same.model } : null;
+}
+
+/* ---------- the models a company's keys can use (server/models.ts) ---------- */
+
+/** The list for one of a company's keys (kept about an hour), with its jobs moved off models the provider dropped. */
+async function companyModels(wsId: string, provider: string, force = false) {
+  const list = await models.listFor(`ws:${wsId}`, provider, db.loadKey(wsId, provider), { force, priceOf: (id) => aiplan.priceOf(id) });
+  if (list.source === 'live') moveOffGoneModels(wsId, provider, list);
+  return list;
+}
+/** Jobs on a model the provider no longer offers go to the job's fallback, with a note in Settings, AI. */
+function moveOffGoneModels(wsId: string, provider: string, list: Awaited<ReturnType<typeof models.listFor>>) {
+  const ws = db.getDoc('workspaces', wsId) as any;
+  if (!ws?.ai?.providers) return;
+  const next = models.movesFor(ws.ai, provider, list);
+  if (!next) return;
+  const doc = { ...ws, ai: next };
+  db.writeDocs('workspaces', [doc], [], null);
+  broadcast('workspaces', [doc], []);
+  console.log(`[ai] ${wsId}: ${next.notes?.[0]?.text ?? 'jobs moved to another model'}`);
+}
+/** After a call said the model isn't there: read that provider's list again (at most every five minutes per key). */
+const rechecked = new Map<string, number>();
+function recheckModels(wsId: string, provider: string) {
+  const k = `${wsId}|${provider}`;
+  if ((rechecked.get(k) ?? 0) > Date.now() - 5 * 60_000) return;
+  rechecked.set(k, Date.now());
+  void companyModels(wsId, provider, true).catch(() => {});
 }
 
 /**
@@ -2888,21 +2945,51 @@ createServer(async (req, res) => {
       if (aiLimits.blocked(db.getDoc('workspaces', workspaceId) as any).has(String(provider))) return json(res, 409, { error: 'This provider is blocked for the company (Settings, AI, Blocked providers). Unblock it first.' });
       const info = PROVIDERS.find((x) => x.id === provider);
       if (!info || typeof key !== 'string' || key.trim().length < 8) return json(res, 400, { error: 'That key looks too short.' });
+      if (baseUrl !== undefined && typeof baseUrl !== 'string') return json(res, 400, { error: 'That address doesn’t look right.' });
+      // The provider's own list of models for this key: what the company picks from next, and which model to test with.
+      const list = await models.listWith(provider, { key: key.trim(), baseUrl }, (id) => aiplan.priceOf(id));
       if (test && info.kind !== 'speech') {
         try {
-          await testKey({ provider, model: info.models.find((m) => m.tier === 'fast')?.id ?? info.models[0].id, apiKey: key.trim(), baseUrl });
+          await testKey({ provider, model: models.testModelFor(provider, list), apiKey: key.trim(), baseUrl });
         } catch (e) {
           return json(res, 400, { error: e instanceof AIError ? e.message : (e as { status?: number }).status === 401 ? 'That key was rejected. Check it and try again.' : 'The key did not work.' });
         }
       }
       db.saveKey(workspaceId, provider, key.trim(), baseUrl, me);
-      return json(res, 200, { keyLast4: keyHint(provider, key) });
+      models.remember(`ws:${workspaceId}`, provider, list);
+      // A replaced key may offer fewer models: jobs on one it doesn't move to their fallback.
+      if (list.source === 'live') moveOffGoneModels(workspaceId, provider, list);
+      return json(res, 200, { keyLast4: keyHint(provider, key), models: list });
     }
     if (p === '/api/ai/keys' && req.method === 'DELETE') {
       const { workspaceId, provider } = await body(req);
       if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can remove AI keys.' });
       db.deleteKey(workspaceId, provider);
+      models.forget(`ws:${workspaceId}`, String(provider ?? ''));
       return json(res, 200, {});
+    }
+    // The models a company's key can use, from the provider's own list (kept about an hour; refresh=1 reads it again).
+    // Admins of that company only. Names, ids and prices: never the key.
+    if (p === '/api/ai/models' && req.method === 'GET') {
+      const wsId = url.searchParams.get('workspaceId') ?? '';
+      const provider = url.searchParams.get('provider') ?? '';
+      if (!isAdminOf(me, wsId)) return json(res, 403, { error: 'Only admins can see the AI models.' });
+      if (!PROVIDERS.some((x) => x.id === provider)) return json(res, 400, { error: 'No such provider.' });
+      const force = url.searchParams.get('refresh') === '1' && !tooMany(`models:${me}`, 10, 60_000);
+      return json(res, 200, await companyModels(wsId, provider, force));
+    }
+    // One tiny call with a model on the company's key: a model id typed in (not on the provider's list), or "Run a sample".
+    if (p === '/api/ai/models/check' && req.method === 'POST') {
+      const { workspaceId, provider, model } = await body(req);
+      if (!isAdminOf(me, workspaceId)) return json(res, 403, { error: 'Only admins can try AI models.' });
+      if (session?.operator) return json(res, 403, { error: 'That would use their key: you’re signed in as them.' });
+      if (tooMany(`modelcheck:${me}`, 20, 60_000)) return json(res, 429, { error: 'That’s a lot of tries in one minute. Give it a moment.' });
+      if (aiLimits.blocked(db.getDoc('workspaces', workspaceId) as any).has(String(provider))) return json(res, 409, { error: 'This provider is blocked for the company.' });
+      const k = typeof provider === 'string' ? db.loadKey(workspaceId, provider) : null;
+      if (!k) return json(res, 409, { error: 'Add a key for this provider first.' });
+      const started = Date.now();
+      const err = await models.checkModel(provider, String(model ?? '').trim(), k);
+      return json(res, err ? 400 : 200, err ? { error: err } : { ok: true, ms: Date.now() - started });
     }
     if (p === '/api/ai/usage') {
       const wsId = url.searchParams.get('ws') ?? '';

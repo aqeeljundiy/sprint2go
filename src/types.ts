@@ -795,13 +795,16 @@ export interface ProviderConn {
   baseUrl?: string; // custom / Azure / Bedrock region
   capUsd?: number; // monthly cap (estimated spend)
   spentUsd: number; // this month, estimated from the cost log
+  model?: string; // the model this key uses by default (picked when it was added, or since)
+  typed?: boolean; // that model was typed in (not on the provider's list), checked with one call
 }
 
 export interface AISettings {
   payer: 'sprint2go' | 'own' | 'both';
   providers: ProviderConn[];
   preset: 'best' | 'balanced' | 'cheap' | 'custom';
-  jobs: Partial<Record<AIJobId, { provider: ProviderId | 'included'; model: string; fallback?: ProviderId }>>;
+  jobs: Partial<Record<AIJobId, { provider: ProviderId | 'included'; model: string; fallback?: ProviderId; typed?: boolean }>>; // typed: a model id typed in, not on the provider's list
+  notes?: { id: string; at: string; text: string }[]; // set by the server: a model a provider stopped offering, and where its jobs went
   auto: { meetingNotes: boolean; emailTodos: boolean; digests: boolean };
   blocked: ProviderId[];
   alerts: boolean;

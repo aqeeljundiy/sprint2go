@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, KeyRound, Plus, RotateCcw, Sparkles, TrendingDown } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, KeyRound, Plus, RefreshCw, RotateCcw, Sparkles, TrendingDown } from 'lucide-react';
 import { Select, type Option } from '../../components/ui/Select';
-import { CRED_FIELDS } from '../../data/aiCatalog';
+import { CRED_FIELDS, PROVIDERS } from '../../data/aiCatalog';
 import { ApiError, day, post, rel, rp, rpShort } from '../api';
 import { Badge, Confirm, Dialog, Empty, Failed, Field, Loading, Menu, MoneyInput, Page, Section, Stat, Stats, Tabs, useAct, useAdmin, useApi } from '../ui';
 
@@ -14,6 +14,8 @@ interface Opt extends Choice {
   name: string;
   price: [number, number] | null;
   hasKey: boolean;
+  recommended?: boolean; // in our catalogue
+  gone?: boolean; // the provider no longer offers it to our key
 }
 interface KeyRow {
   id: string;
@@ -41,6 +43,7 @@ interface JobRow {
   primary: Choice;
   fallback: Choice | null;
   state: 'ok' | 'fallback' | 'none';
+  gone: string | null; // "SumoPod no longer offers X."
   per100: number | null;
   isDefault: boolean;
 }
@@ -52,6 +55,14 @@ interface PriceRow {
   own: [number, number] | null;
   catalog: [number, number] | null;
   usedBy: string[];
+  uses: number; // this month, by everyone (our keys and companies' own)
+}
+interface ListInfo {
+  provider: string;
+  name: string;
+  source: 'live' | 'catalog';
+  fetchedAt: string | null;
+  note: string | null;
 }
 interface Money {
   month: string;
@@ -76,6 +87,7 @@ interface AIData {
   providers: { id: string; name: string; kind: string; keyHint: string; needsUrl: boolean; warn: string | null; supported: boolean; why: string | null; saved: boolean }[];
   jobs: JobRow[];
   options: { text: Opt[]; speech: Opt[] };
+  lists: ListInfo[];
   prices: PriceRow[];
   rate: number;
   defaultRate: number;
@@ -95,6 +107,7 @@ export function AIPage({ tab }: { tab: string }) {
   const { go } = useAdmin();
   const { data, error, reload } = useApi<AIData>('ai');
   const keyIssues = data?.problems.filter((p) => p.to === '/admin/ai/keys').length ?? 0;
+  const modelIssues = data?.problems.filter((p) => p.to === '/admin/ai/models').length ?? 0;
   const priceIssues = data ? data.problems.filter((p) => p.to === '/admin/ai/prices').length : 0;
   return (
     <Page title="AI" sub="Our keys, the model for each job, and whether the AI plan pays for itself. Only AI-plan companies, trials and free months use our keys.">
@@ -104,7 +117,7 @@ export function AIPage({ tab }: { tab: string }) {
         items={[
           { id: 'margin', label: 'Margin' },
           { id: 'keys', label: 'Our keys', count: keyIssues },
-          { id: 'models', label: 'Models per job' },
+          { id: 'models', label: 'Models per job', count: modelIssues },
           { id: 'prices', label: 'Prices', count: priceIssues },
         ]}
       />
@@ -481,14 +494,26 @@ const GROUPS: [string, string[]][] = [
 ];
 function Models({ d, reload }: { d: AIData; reload: () => void }) {
   const act = useAct();
+  const [refreshing, setRefreshing] = useState(false);
+  // Each provider's own list for our key (recommended ones first), grouped by provider; the catalogue where there's no list.
   const opts = (speech: boolean): Option[] =>
     (speech ? d.options.speech : d.options.text).map((o) => ({
       value: `${o.provider}|${o.model}`,
       label: o.name,
-      hint: !o.hasKey ? 'no key yet' : speech ? undefined : o.price ? `${usd(o.price[0])} / ${usd(o.price[1])}` : 'no price yet',
+      hint: o.gone ? 'no longer offered: pick another' : !o.hasKey ? 'no key yet' : speech ? undefined : o.price ? `${usd(o.price[0])} / ${usd(o.price[1])}` : 'no price yet',
       group: o.providerName,
-      keywords: o.providerName,
+      keywords: `${o.providerName} ${o.model}`,
     }));
+  const live = d.lists.filter((l) => l.source === 'live');
+  const oldest = live.map((l) => l.fetchedAt).filter(Boolean).sort()[0] ?? null;
+  const notListed = d.lists.filter((l) => l.source !== 'live' && l.note);
+  const gone = d.jobs.filter((j) => j.gone);
+  const refresh = () => {
+    setRefreshing(true);
+    void act(() => post('ai/models/refresh'), 'Read the providers’ model lists again')
+      .then(reload)
+      .finally(() => setRefreshing(false));
+  };
   const pick = (v: string): Choice => {
     const [provider, model] = v.split('|');
     return { provider, model };
@@ -510,14 +535,41 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
       title="Which model does each job"
       hint="For AI-plan companies. The fallback takes over when the first one fails or has no key."
       actions={
-        d.can &&
-        custom && (
-          <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset'), 'Every job is back on the recommended models').then(reload)}>
-            <RotateCcw size={13} /> Back to recommended
-          </button>
+        d.can && (
+          <>
+            {d.lists.length > 0 && (
+              <button className="ghost-btn sm" disabled={refreshing} onClick={refresh} title="Read each provider’s model list again">
+                <RefreshCw size={13} className={refreshing ? 'spin' : ''} /> {refreshing ? 'Reading lists…' : 'Check for new models'}
+              </button>
+            )}
+            {custom && (
+              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset'), 'Every job is back on the recommended models').then(reload)}>
+                <RotateCcw size={13} /> Back to recommended
+              </button>
+            )}
+          </>
         )
       }
     >
+      {Array.from(new Set(gone.map((j) => j.gone!))).map((text) => {
+        const js = gone.filter((j) => j.gone === text);
+        const words = list(js.map((j) => jobWord(j.name)));
+        const fallback = js.every((j) => j.state === 'fallback');
+        return (
+          <div key={text} className="adm-banner warn">
+            <AlertTriangle size={16} />
+            <span>
+              {text} {words.charAt(0).toUpperCase() + words.slice(1)} {fallback ? (js.length === 1 ? 'runs on its fallback' : 'run on their fallbacks') : js.length === 1 ? 'has nothing to run on' : 'run on a fallback where they have one'}. Pick another model below.
+            </span>
+          </div>
+        );
+      })}
+      {(live.length > 0 || notListed.length > 0) && (
+        <p className="adm-note adm-ai-lists">
+          {live.length > 0 && `${list(live.map((l) => l.name))}: the models ${live.length === 1 ? 'its' : 'their'} own list offers our key${oldest ? `, read ${rel(oldest)}` : ''}. `}
+          {notListed.map((l) => `${l.name}: ${l.note}`).join(' ')}
+        </p>
+      )}
       <div className="adm-ai-groups">
         {GROUPS.map(([g, ids]) => (
           <div key={g} className="adm-ai-group">
@@ -553,7 +605,9 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
                       />
                     </span>
                     <span className="adm-ai-job-state">
-                      {j.state === 'none' ? (
+                      {j.gone ? (
+                        <Badge tone={j.state === 'fallback' ? 'warn' : 'bad'}>{j.state === 'fallback' ? 'Model gone, fallback runs' : 'Model gone'}</Badge>
+                      ) : j.state === 'none' ? (
                         <Badge tone="bad">No key</Badge>
                       ) : j.state === 'fallback' ? (
                         <Badge tone="warn">Fallback in use</Badge>
@@ -587,8 +641,9 @@ function Prices({ d, reload }: { d: AIData; reload: () => void }) {
   const base = useMemo(() => draftOf(d), [d]);
   const changed = JSON.stringify(draft) !== JSON.stringify(base);
   const jobName = (id: string) => d.jobs.find((j) => j.id === id)?.name ?? id;
-  // Models a job uses first; otherwise the catalogue's order, so nothing moves when a price is filled in.
-  const rows = [...d.prices].sort((a, b) => Number(b.usedBy.length > 0) - Number(a.usedBy.length > 0));
+  // Models in use first (by our jobs, or by anyone this month); otherwise the catalogue's order, so nothing moves when a price is filled in.
+  const inUse = (p: PriceRow) => p.usedBy.length > 0 || p.uses > 0;
+  const rows = [...d.prices].sort((a, b) => Number(inUse(b)) - Number(inUse(a)));
   const custom = d.prices.some((p) => p.own) || d.rate !== d.defaultRate;
   const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
   const save = () => {
@@ -632,7 +687,7 @@ function Prices({ d, reload }: { d: AIData; reload: () => void }) {
           </div>
           {rows.map((p) => {
             const [i, o] = draft.prices[p.model] ?? ['', ''];
-            const missing = !p.price && p.usedBy.length > 0;
+            const missing = !p.price && inUse(p);
             return (
               <div key={p.model} className="adm-ai-price" role="row">
                 <span className="adm-ai-two" role="cell">
@@ -641,7 +696,9 @@ function Prices({ d, reload }: { d: AIData; reload: () => void }) {
                   </strong>
                   <small>
                     {p.providers.join(', ')}
+                    {!PROVIDERS.some((pr) => pr.models.some((m) => m.id === p.model)) ? ` · ${p.model}` : ''}
                     {p.usedBy.length ? ` · ${list(p.usedBy.map((j) => jobWord(jobName(j))), 2)}` : ''}
+                    {p.uses ? ` · ${p.uses.toLocaleString('id-ID')} ${p.uses === 1 ? 'use' : 'uses'} this month` : ''}
                     {p.own && p.catalog ? ` · list ${usd(p.catalog[0])} / ${usd(p.catalog[1])}` : ''}
                   </small>
                 </span>
