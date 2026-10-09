@@ -428,7 +428,7 @@ export function CalendarView(props: Props) {
         />
       )}
 
-      <ActionSheet open={!!menu} onClose={() => setMenu(null)} title={menu?.e.title} actions={menu ? actionsFor(menu.e) : []} at={menu && !phone ? { x: menu.x, y: menu.y } : null} />
+      <ActionSheet open={!!menu} onClose={() => setMenu(null)} title={menu?.e.title} actions={menu ? actionsFor(menu.e) : []} at={menu && !phone ? { x: menu.x, y: menu.y } : null} className="cal-menu-sheet" />
 
       {calsOpen && props.calendarsPanel && (
         <Sheet title="Calendars" onClose={() => setCalsOpen(false)} size="tall" className="cal-sheet">

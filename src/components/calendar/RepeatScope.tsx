@@ -63,6 +63,7 @@ export function ScopeHost() {
       header={ask && !isPhone() ? <div className="scope-head">{ask.title}</div> : undefined}
       at={ask?.at}
       width={260}
+      className="scope-sheet"
       actions={(ask?.options ?? []).map((s) => ({ id: s, ...label[s], hint: label[s].hint || undefined, run: () => ask?.done(s) }))}
     />
   );
