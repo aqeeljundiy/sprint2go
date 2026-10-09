@@ -21,7 +21,7 @@ import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp, storageGB } from './data/pricing';
 import { MAIL_USAGE, QUOTA, fmtSize, kindOf, parseSize } from './data/drive';
 import { fmtTime } from './calendarUtils';
-import { lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
+import { fullDate, lastMessage, uid, localDay, nextDue, addWorkdays } from './utils';
 import { templatesFor, type TaskTemplate } from './data/templates';
 import type { NotesFilter } from './components/NotesApp';
 import type { VaultItem } from './components/VaultApp';
@@ -48,7 +48,9 @@ import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { InviteMember, NewAccount, RemoveMailbox } from './components/WorkspaceForms';
 import { applyBranding } from './components/WorkspaceLogo';
 import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, type Mode } from './components/Sidebar';
-import { MessageList } from './components/MessageList';
+import { MessageList, type MailActions, type MailFilter } from './components/MessageList';
+import { needsReply, snoozePatch, wakeThread, whenWords } from './mailRules';
+import { SwipeSettings, swipeWords, useMailSwipes } from './components/mail/MailSettings';
 import { Reader } from './components/Reader';
 import { Compose, type Outgoing } from './components/Compose';
 import type { CalView } from './components/CalendarView';
@@ -66,7 +68,12 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatPages } from './components/chat/Pages';
+import { useDockRef } from './components/chat/huddleDock';
+import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
+import { chanName } from './components/chat/Sheets';
+import { preview as msgPreview } from './components/chat/Message';
 import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
 import { openSettingsList } from './components/settingsList';
@@ -76,7 +83,7 @@ import { offerInstall } from './components/InstallPrompt';
 import { BottomBar } from './mobile/BottomBar';
 import { MoreSheet } from './mobile/MoreSheet';
 import { DEFAULT_BAR, MORE_ORDER, companyBar } from './mobile/BarDefaults';
-import { useChrome, useFocusedScreen } from './mobile/chrome';
+import { useAppSettings, useChrome, useFocusedScreen, useTitleMenu } from './mobile/chrome';
 import { PHONE, TABLET, useMedia } from './mobile/media';
 import { usePullToSearch } from './mobile/usePullToSearch';
 import { useKeyboard } from './mobile/keyboard';
@@ -89,7 +96,7 @@ import { celebrate } from './components/ui/confetti';
 import type { AskScope, MeetPage } from './components/MeetApp';
 import { DEFAULT_MEETINGS, trialPlan } from './data/workspaces';
 import { DEMO_SCRIPT } from './data/team';
-import { htmlToText, textToHtml } from './sanitize';
+import { htmlToText, sanitize, textToHtml } from './sanitize';
 import { rowName } from './components/tables/core';
 import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
@@ -134,9 +141,15 @@ function writeRoute(m: Mode) {
 
 const fromMe = (t: Thread) => t.messages.some((m) => isMine(m.from.email));
 
-function inView(t: Thread, v: View, me = '') {
-  if (v.kind === 'tracking' || v.kind === 'todos') return false;
-  if (v.kind === 'label') return t.labels.includes(v.id) && t.location !== 'trash' && t.location !== 'spam';
+/** What a mail list needs to know beyond the thread: who's looking, which emails gave them to-dos, each one's project. */
+type ViewCtx = { me?: string; todo?: Set<string>; projectOf?: (t: Thread) => string | undefined };
+
+function inView(t: Thread, v: View, ctx: ViewCtx = {}) {
+  if (v.kind === 'tracking') return false;
+  const kept = t.location !== 'trash' && t.location !== 'spam';
+  if (v.kind === 'todos') return kept && !!ctx.todo?.has(t.id);
+  if (v.kind === 'project') return kept && t.location !== 'drafts' && ctx.projectOf?.(t) === v.id;
+  if (v.kind === 'label') return t.labels.includes(v.id) && kept;
   const snoozed = !!t.snoozedUntil && t.snoozedUntil > new Date().toISOString();
   switch (v.id) {
     case 'inbox':
@@ -146,7 +159,7 @@ function inView(t: Thread, v: View, me = '') {
     case 'scheduled':
       return !!t.sendAt;
     case 'assigned':
-      return t.assignee === me && t.location !== 'trash';
+      return !!ctx.me && t.assignee === ctx.me && t.location !== 'trash' && !snoozed;
     case 'drafts':
       return t.location === 'drafts' && !t.sendAt;
     case 'starred':
@@ -171,7 +184,7 @@ function PushedSettings({ push, onBack, children }: { push: { label: string } | 
 
 /** `quiet`: news nobody asked for just now (to-dos found in the background). Phones show it over the top bar, not over content. */
 type Toast = { id: number; text: string; action?: { label: string; run: () => void }; ms?: number; quiet?: boolean };
-type ComposeState = { key: number; draftId?: string; initial?: Outgoing };
+type ComposeState = { key: number; draftId?: string; initial?: Outgoing; parked?: boolean };
 
 interface AppProps {
   user: User;
@@ -289,6 +302,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const accountOf = (id: string) => allAccounts.find((a) => a.id === id);
   const senderFor = (a: Account | undefined): Person =>
     a ? { name: a.kind === 'shared' ? a.name : settings.name || a.name, email: a.email } : ME;
+  /** Team mail: a mailbox more than one person opens (a shared inbox, or one given to several). Comments live there. */
+  const teamMail = (t: Thread) => {
+    const a = accountOf(t.accountId);
+    return !!a && (a.kind === 'shared' || a.users.length > 1);
+  };
 
   useEffect(() => {
     if (myPortals.some((pt) => pt.key === portalKey)) return; // the portal brands itself
@@ -428,9 +446,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [readerOpen, setReaderOpen] = useState(false); // narrow screens: list vs reader
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [filter, setFilter] = useState<MailFilter>('all');
   const [compose, setCompose] = useState<ComposeState | null>(null);
-  const [leaving, setLeaving] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
   // Latest values for timers that fire later.
   const latest = useRef({ threads, notifyOpens: settings.notifyOpens, workspaces: allWorkspaces });
@@ -493,6 +510,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [focusMsg, setFocusMsg] = useState<string | null>(null); // a notification lands on this chat message
   const [viewAs, setViewAs] = useState<{ clientId: string; email: string } | null>(null); // "View as client"
   const [chatId, setChatId] = useState<string | null>(null);
+  const [chatPage, setChatPage] = useState<ChatPage | null>(null); // Catch up, Threads, Drafts and sent, Saved
   const [huddleId, setHuddleId] = useState<string | null>(null); // the channel whose huddle I'm in
   const [meetPage, setMeetPage] = useState<MeetPage>({ kind: 'list' });
   const [sendBotOpen, setSendBotOpen] = useState(false);
@@ -520,7 +538,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [dump, setDump] = useState<string | null>(null); // null = closed
-  const [lastRead, setLastRead] = usePersisted<Record<string, string>>(`s2g-read:${user.id}`, {});
+  // Chat's read markers and mutes (the conversation marks itself read: src/components/chat/Conversation.tsx).
+  const [lastRead] = usePersisted<Record<string, string>>(`s2g-read:${user.id}`, {});
+  const [chatMuted] = usePersisted<Record<string, string>>(`s2g-chat-muted:${user.id}`, {});
 
   useEffect(() => {
     if (!toast) return;
@@ -577,26 +597,35 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
   };
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return scoped
-      .filter((t) => inView(t, view, user.id))
-      .filter((t) => filter === 'all' || t.unread)
-      .filter(
-        (t) =>
-          !q ||
-          t.subject.toLowerCase().includes(q) ||
-          t.messages.some((m) => m.from.name.toLowerCase().includes(q) || m.from.email.includes(q) || m.body.toLowerCase().includes(q)),
-      )
-      .sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date));
-  }, [scoped, view, filter, query]);
+  // Emails that asked you to do something (the AI's to-dos from mail, not done yet): Mail's To-do list.
+  const todoThreads = useMemo(() => new Set(myTodos.filter((t) => t.threadId && !t.done).map((t) => t.threadId!)), [myTodos]);
+  // The project an email is with, by the sender's domain (as clientForThread, which is defined further down).
+  const projectOfThread = (t: Thread) => clients.find((c) => c.workspaceId === ws.id && c.domain && t.messages.some((m) => [m.from, ...m.to].some((p) => p.email.toLowerCase().endsWith('@' + c.domain))))?.id;
+  const viewCtx: ViewCtx = { me: user.id, todo: todoThreads, projectOf: projectOfThread };
+  /** Whether an email passes the chip under the title (Unread, Needs reply, Assigned to me, Attachments) and the search. */
+  const passes = (t: Thread, q = query.trim().toLowerCase()) =>
+    (filter === 'all' ||
+      (filter === 'unread' && t.unread) ||
+      (filter === 'reply' && needsReply(t, isMine)) ||
+      (filter === 'assigned' && t.assignee === user.id) ||
+      (filter === 'files' && t.messages.some((m) => m.attachments?.length))) &&
+    (!q || t.subject.toLowerCase().includes(q) || t.messages.some((m) => m.from.name.toLowerCase().includes(q) || m.from.email.includes(q) || m.body.toLowerCase().includes(q)));
+  const visible = useMemo(
+    () => scoped.filter((t) => inView(t, view, viewCtx) && passes(t)).sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date)),
+    [scoped, view, filter, query, todoThreads, clients], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  /** Whether an email would still be in this list after a change (a swipe only slides out what really leaves). */
+  const staysInList = (t: Thread, patch: Partial<Thread>) => {
+    const next = { ...t, ...patch };
+    return inView(next, view, viewCtx) && passes(next);
+  };
 
   const counts = useMemo(
     () => ({
       inbox: scoped.filter((t) => inView(t, { kind: 'folder', id: 'inbox' }) && t.unread).length,
       drafts: scoped.filter((t) => t.location === 'drafts' && !t.sendAt).length,
       scheduled: scoped.filter((t) => t.sendAt).length,
-      assigned: scoped.filter((t) => t.assignee === user.id && t.location === 'inbox').length,
+      assigned: scoped.filter((t) => inView(t, { kind: 'folder', id: 'assigned' }, { me: user.id }) && t.location === 'inbox').length,
       spam: scoped.filter((t) => t.location === 'spam' && t.unread).length,
     }),
     [scoped],
@@ -722,9 +751,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       showToast({ text: `Sending isn’t set up yet. ${mailWhy.send ?? ''}`.trim(), ms: 7000, action: wsAdmin ? { label: 'Set it up', run: () => (setSettingsSection('email'), go('settings')) } : undefined });
       return;
     }
+    // An email already being written (parked as a pill on a phone, or minimised): Compose brings it back; anything
+    // else opening over it keeps it in Drafts first, so nothing written is ever lost.
+    if (compose) {
+      if (!init && compose.parked) return void setCompose({ ...compose, parked: false });
+      const was = composeNow.current?.();
+      if (was) closeCompose(was);
+    }
     setCompose({ key: Date.now(), ...init });
     setSidebarOpen(false);
   };
+  /** What the open Compose holds right now (Compose fills this in). */
+  const composeNow = useRef<(() => Outgoing | null) | null>(null);
 
   const open = useCallback(
     (id: string) => {
@@ -733,47 +771,91 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const m = t.messages[0];
         openCompose({
           draftId: t.id,
-          initial: { to: m.to, cc: [], subject: t.subject === '(no subject)' ? '' : t.subject, html: m.html ?? m.body.replace(/\n/g, '<br>'), text: m.body, files: [], track: settings.trackByDefault, trackOptions: m.trackOptions ?? DEFAULT_TRACK_OPTIONS, fromId: t.accountId },
+          initial: { to: m.to, cc: [], bcc: m.bcc ?? [], subject: t.subject === '(no subject)' ? '' : t.subject, html: m.html ?? m.body.replace(/\n/g, '<br>'), text: m.body, files: [], track: settings.trackByDefault, trackOptions: m.trackOptions ?? DEFAULT_TRACK_OPTIONS, fromId: t.accountId },
         });
         return;
       }
       setSelectedId(id);
       setReaderOpen(true);
       setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, unread: false } : x)));
+      // Seen here: its notices (given to you, a mention) are read too, so no phone buzzes for it later.
+      if (notices.some((n) => !n.read && n.userId === user.id && n.link?.app === 'mail' && n.link.id === id)) setNotices((ns) => ns.map((n) => (!n.read && n.userId === user.id && n.link?.app === 'mail' && n.link.id === id ? { ...n, read: true } : n)));
     },
-    [threads], // eslint-disable-line react-hooks/exhaustive-deps
+    [threads, notices], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  /** Animate a thread out of the list, then move it, select its neighbour and offer undo. */
-  const move = (id: string, location: Location, text: string) => {
-    const idx = visible.findIndex((t) => t.id === id);
-    const next = visible[idx + 1] ?? visible[idx - 1];
-    const snapshot = threads;
-    setLeaving((l) => new Set(l).add(id));
-    if (selectedId === id) {
-      setSelectedId(next && next.id !== id ? next.id : null);
-      if (!next) setReaderOpen(false);
-    }
-    setTimeout(() => {
-      update(id, { location });
-      setLeaving((l) => {
-        const n = new Set(l);
-        n.delete(id);
-        return n;
-      });
-    }, 220);
-    showToast({ text, action: { label: 'Undo', run: () => setThreads(snapshot) } });
+  /**
+   * After emails leave the list: the reader moves on to the next one on desktop, and goes back to the list on phones
+   * (where the row folding away is the clearest sign it worked).
+   */
+  const leaveReader = (gone: string[]) => {
+    if (!selectedId || !gone.includes(selectedId)) return;
+    if (mobile) return setReaderOpen(false);
+    const idx = visible.findIndex((t) => t.id === selectedId);
+    const next = visible.slice(idx + 1).find((t) => !gone.includes(t.id)) ?? visible.slice(0, Math.max(0, idx)).reverse().find((t) => !gone.includes(t.id));
+    setSelectedId(next?.id ?? null);
+    if (!next) setReaderOpen(false);
   };
-
-  const archive = (id: string) => move(id, 'archive', 'Conversation archived');
-  const trash = (id: string) => move(id, 'trash', 'Moved to Trash');
-  const spam = (id: string) => move(id, 'spam', 'Reported as spam');
-  const toInbox = (id: string) => move(id, 'inbox', 'Moved to Inbox');
-  const star = (id: string) => setThreads((ts) => ts.map((t) => (t.id === id ? { ...t, starred: !t.starred } : t)));
+  /**
+   * One change to one or several emails: the list folds away whatever leaves it, the reader moves on, and the toast's
+   * Undo puts back only what this changed (not anything else that happened since).
+   */
+  const changeMail = (ids: string[], patch: (t: Thread) => Partial<Thread>, text: string | null) => {
+    const set = new Set(ids);
+    const list = threads.filter((t) => set.has(t.id));
+    if (!list.length) return;
+    const old = new Map(list.map((t) => [t.id, Object.fromEntries(Object.keys(patch(t)).map((k) => [k, t[k as keyof Thread]])) as Partial<Thread>]));
+    leaveReader(list.filter((t) => !staysInList(t, patch(t))).map((t) => t.id));
+    setThreads((ts) => ts.map((t) => (set.has(t.id) ? { ...t, ...patch(t) } : t)));
+    if (text) showToast({ text, action: { label: 'Undo', run: () => setThreads((ts) => ts.map((t) => (old.has(t.id) ? { ...t, ...old.get(t.id) } : t))) } });
+  };
+  const emails = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
+  const mailActions: MailActions = {
+    done: (ids) => changeMail(ids, () => ({ location: 'archive' }), emails(ids.length, 'Marked done. It’s in Archive', 'emails marked done')),
+    inbox: (ids) => changeMail(ids, () => ({ location: 'inbox' }), emails(ids.length, 'Moved to Inbox', 'emails moved to Inbox')),
+    trash: (ids) => changeMail(ids, () => ({ location: 'trash' }), emails(ids.length, 'Moved to Trash', 'emails moved to Trash')),
+    spam: (ids) => changeMail(ids, () => ({ location: 'spam' }), emails(ids.length, 'Reported as spam', 'emails reported as spam')),
+    star: (ids, on) => changeMail(ids, () => ({ starred: on }), ids.length > 1 ? `${ids.length} emails ${on ? 'starred' : 'unstarred'}` : null),
+    read: (ids, unread) => changeMail(ids, () => ({ unread }), ids.length > 1 ? `${ids.length} emails marked as ${unread ? 'unread' : 'read'}` : null),
+    snooze: (ids, until, ifNoReply) =>
+      changeMail(ids, (t) => snoozePatch(t, until, ifNoReply), `${emails(ids.length, 'Snoozed', 'emails snoozed')} until ${whenWords(new Date(until))}${ifNoReply ? ', if nobody replies' : ''}`),
+  };
+  const archive = (id: string) => mailActions.done([id]);
+  const trash = (id: string) => mailActions.trash([id]);
+  const spam = (id: string) => mailActions.spam([id]);
+  const toInbox = (id: string) => mailActions.inbox([id]);
+  const star = (id: string) => mailActions.star([id], !threads.find((t) => t.id === id)?.starred);
   const markUnread = (id: string) => {
     update(id, { unread: true });
     setSelectedId(null);
     setReaderOpen(false);
+  };
+  /** Where the open email sits in the list: its neighbours are the reader's previous and next. */
+  const selIdx = visible.findIndex((t) => t.id === selectedId);
+  /** A teammate by an address of theirs: their sign-in, or a personal mailbox that's theirs. */
+  const userForEmail = (email: string) => {
+    const e = email.toLowerCase();
+    return members.find((u) => u.email.toLowerCase() === e) ?? members.find((u) => ws.accounts.some((a) => a.kind === 'personal' && a.email.toLowerCase() === e && a.users.includes(u.id)));
+  };
+  /** Forward: a new email with the last message quoted under your signature, and its files attached. */
+  const forward = (t: Thread) => {
+    const m = lastMessage(t);
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const html = `<p><br></p>${settings.signature}<p><br></p><p>Forwarded message from ${esc(m.from.name)} &lt;${esc(m.from.email)}&gt;, ${esc(fullDate(m.date))}</p><blockquote>${m.html ? sanitize(m.html) : textToHtml(m.body)}</blockquote>`;
+    openCompose({
+      initial: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: /^fwd?:/i.test(t.subject) ? t.subject : `Fwd: ${t.subject}`,
+        html,
+        text: htmlToText(html),
+        files: (m.attachments ?? []).filter((a) => a.url).map((a) => ({ name: a.name, size: parseSize(a.size), url: a.url! })),
+        track: settings.trackByDefault,
+        trackOptions: DEFAULT_TRACK_OPTIONS,
+        fromId: t.accountId,
+      },
+    });
   };
 
   const replyWhy = (acct: { id: string; email: string }) => boxReady(acct.id).sendWhy ?? `Replies can’t go out from ${acct.email} yet. ${boxReady(acct.id).why ?? mailWhy.send ?? ''}`.trim();
@@ -862,6 +944,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         id: uid(),
         from: senderFor(accountOf(m.fromId)),
         to: [...m.to, ...m.cc],
+        ...(m.bcc?.length ? { bcc: m.bcc } : {}),
         date: new Date().toISOString(),
         body: m.text,
         html: m.html,
@@ -869,7 +952,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         trackOptions: m.track && (location !== 'drafts' || scheduled) ? m.trackOptions : undefined,
         tracking:
           m.track && (location !== 'drafts' || scheduled)
-            ? Object.fromEntries([...m.to, ...m.cc].filter((p) => !isTeam(p.email)).map((p) => [p.email, { opens: [], clicks: [] }]))
+            ? Object.fromEntries([...m.to, ...m.cc, ...(m.bcc ?? [])].filter((p) => !isTeam(p.email)).map((p) => [p.email, { opens: [], clicks: [] }]))
             : undefined,
       },
     ],
@@ -887,14 +970,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const direct = pool.flatMap((w) => w.accounts).filter((a) => a.email === e);
       return direct.length ? direct : pool.flatMap((w) => (w.mailAliases ?? []).filter((al) => al.address === e).flatMap((al) => w.accounts.filter((a) => al.to.includes(a.id))));
     };
-    const delivered: Thread[] = (real ? [] : [...new Map([...m.to, ...m.cc].flatMap((p) => boxesFor(p.email)).filter((a) => a.id !== m.fromId).map((a) => [a.id, a] as const)).values()])
+    const delivered: Thread[] = (real ? [] : [...new Map([...m.to, ...m.cc, ...(m.bcc ?? [])].flatMap((p) => boxesFor(p.email)).filter((a) => a.id !== m.fromId).map((a) => [a.id, a] as const)).values()])
       .map((a) => ({
         ...thread,
         id: uid(),
         accountId: a.id,
         location: 'inbox' as const,
         unread: true,
-        messages: thread.messages.map((msg) => ({ ...msg, tracking: undefined, trackOptions: undefined })),
+        messages: thread.messages.map((msg) => ({ ...msg, bcc: undefined, tracking: undefined, trackOptions: undefined })),
       }));
     setThreads((ts) => [thread, ...delivered, ...ts.filter((t) => t.id !== draftId)]);
     return { thread, delivered };
@@ -946,7 +1029,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void fetch('/api/mail/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend }),
+        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, bcc: m.bcc ?? [], subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend }),
       }).then(
         async (r) => {
           if (!r.ok) return notSent(thread, m, await refusal(r, 'The mail engine refused it.'));
@@ -1028,6 +1111,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setReaderOpen(false);
     setSidebarOpen(false);
     setQuery('');
+    if (v.kind === 'folder' && v.id === 'assigned' && filter === 'assigned') setFilter('all'); // that chip isn't there
     if (mode !== 'mail') go('mail');
   };
 
@@ -1044,8 +1128,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ts.map((t) => {
           if (!ours(t)) return t;
           if (t.sendAt && t.sendAt <= now) return { ...t, sendAt: undefined, location: 'archive', messages: t.messages.map((m) => ({ ...m, date: now })) };
-          if (t.snoozedUntil && t.snoozedUntil <= now) return { ...t, snoozedUntil: undefined, unread: true };
-          return t;
+          return wakeThread(t, now) ?? t; // the same rule as the server's (src/mailRules.ts)
         }),
       );
     };
@@ -1441,17 +1524,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const out: Record<string, number> = {};
     const fallback = new Date(Date.now() - 90 * 60_000).toISOString();
     for (const c of wsChannels) {
+      if (isMutedValue(chatMuted[c.id])) continue;
       const since = lastRead[c.id] ?? fallback;
-      const n = messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > since && (!m.parentId || m.alsoInChannel)).length;
+      const n = messages.filter((m) => m.channelId === c.id && m.userId !== user.id && !m.sendAt && m.at > since && (!m.parentId || m.alsoInChannel)).length;
       if (n) out[c.id] = n;
     }
     return out;
-  }, [wsChannels, messages, lastRead, user.id]);
-  const chatLastAt = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const m of messages) if (!out[m.channelId] || m.at > out[m.channelId]) out[m.channelId] = m.at;
-    return out;
-  }, [messages]);
+  }, [wsChannels, messages, lastRead, chatMuted, user.id]);
+  // The messages of the conversations I'm in (the chat list's last messages, Catch up, Threads, Drafts and sent).
+  const wsMessages = useMemo(() => {
+    const ids = new Set(wsChannels.map((c) => c.id));
+    return messages.filter((m) => ids.has(m.channelId));
+  }, [messages, wsChannels]);
   const chatUnreadTotal = Object.values(chatUnread).reduce((a, b) => a + b, 0);
 
   // Chat always opens on a channel (the first one, usually #general), also after switching workspace.
@@ -1474,11 +1558,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const c = job ? costPer100(JOBS.find((j) => j.id === 'digest')!, job.provider, job.model) : null;
     return c !== null && c !== undefined ? `about ${rp(c / 100)} on your own AI key` : 'a small amount on your own AI key';
   })();
-
-  // Reading a channel marks it read.
-  useEffect(() => {
-    if (mode === 'chat' && chatId) setLastRead((r) => ({ ...r, [chatId]: nowIso() }));
-  }, [mode, chatId, messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const notify = (userId: string, kind: Notice['kind'], text: string, link?: Notice['link']) => {
     if (userId === user.id) return;
@@ -1897,6 +1976,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
   const openChannel = (id: string) => {
     setChatId(id);
+    setChatPage(null);
     go('chat');
   };
   const openMeeting = (id: string) => {
@@ -2172,27 +2252,36 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return { ...f, driveId: id };
     });
 
-  const sendChat = (pl: SendPayload) => {
-    if (!chatId) return;
-    const ch = channels.find((c) => c.id === chatId);
-    if (!ch) return;
-    const files = pl.files ? saveChatFiles(pl.files, ch) : undefined;
-    const msgId = uid();
-    if (pl.voice) tried('voice');
-    setMessages((ms) => [...ms, { id: msgId, channelId: chatId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor }]);
-    const text = pl.text;
+  /** Who hears about a message as it goes out: the other side of a DM, people it mentions, whoever wrote what it answers. */
+  const chatNotices = (m: ChatMessage, ch: Channel) => {
+    const text = m.text;
     const where = ch.kind === 'dm' ? 'a message' : `#${ch.name}`;
-    if (pl.kind === 'kudos' && pl.kudosFor) notify(pl.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id, msg: msgId });
-    if (pl.parentId) {
-      const root = messages.find((m) => m.id === pl.parentId);
-      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
+    if (m.kind === 'kudos' && m.kudosFor) notify(m.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id, msg: m.id });
+    if (m.parentId) {
+      const root = messages.find((x) => x.id === m.parentId);
+      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
     }
     for (const id of ch.members) {
       if (id === user.id) continue;
       const fn = firstOf(id);
-      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || (pl.voice ? 'a voice note' : pl.files ? 'a file' : '')).slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
-      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: msgId });
+      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || msgPreview(m)).slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
+      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
     }
+  };
+  const sendChat = (pl: SendPayload) => chatId && sendChatTo(chatId, pl);
+  /** A message from me into a conversation; with `sendAt` it waits (the server sends it then, with its notices). */
+  const sendChatTo = (channelId: string, pl: SendPayload & { forwarded?: ChatMessage['forwarded'] }) => {
+    const ch = channels.find((c) => c.id === channelId);
+    if (!ch) return;
+    // Files already in Drive (shared from it) aren't saved there again.
+    const files = pl.files ? [...saveChatFiles(pl.files.filter((f) => !f.driveId), ch), ...pl.files.filter((f) => f.driveId)] : undefined;
+    const msgId = uid();
+    if (pl.voice) tried('voice');
+    const msg: ChatMessage = { id: msgId, channelId, userId: user.id, text: pl.text, at: nowIso(), parentId: pl.parentId, alsoInChannel: pl.alsoInChannel, files, voice: pl.voice, poll: pl.poll, kind: pl.kind, kudosFor: pl.kudosFor, taskId: pl.taskId, ref: pl.ref, forwarded: pl.forwarded, sendAt: pl.sendAt };
+    setMessages((ms) => [...ms, msg]);
+    if (pl.sendAt) return;
+    chatNotices(msg, ch);
+    const text = pl.text;
     // DEMO ONLY: the other person answers a DM a few seconds later, so the chat feels alive.
     if (demoOk && ch.kind === 'dm' && !pl.parentId) {
       const other = ch.members.find((m) => m !== user.id)!;
@@ -2201,6 +2290,53 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: other, text: reply, at: nowIso() }]);
       }, 3500);
     }
+  };
+  /** A message waiting to be sent goes now (Drafts and sent, "Send now"). */
+  const sendChatNow = (id: string) => {
+    const m = messages.find((x) => x.id === id);
+    const ch = m && channels.find((c) => c.id === m.channelId);
+    if (!m || !ch || !m.sendAt) return;
+    const sent: ChatMessage = { ...m, at: nowIso(), sendAt: undefined };
+    setMessages((ms) => ms.map((x) => (x.id === id ? sent : x)));
+    chatNotices(sent, ch);
+  };
+  // Without a server (and in the demo company, which the server doesn't run) messages sent later go out from here.
+  useEffect(() => {
+    if (server.on && !inSandbox) return;
+    const tick = () => {
+      const now = nowIso();
+      for (const m of messages) if (m.sendAt && m.userId === user.id && m.sendAt <= now) sendChatNow(m.id);
+    };
+    tick();
+    const t = setInterval(tick, 15_000);
+    return () => clearInterval(t);
+  }, [messages, inSandbox]); // eslint-disable-line react-hooks/exhaustive-deps
+  const editMessage = (id: string, text: string) => setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, text, edited: true } : m)));
+  const forwardMessage = (m: ChatMessage, to: { channelId?: string; userId?: string }, note: string) => {
+    const target = to.channelId ?? (to.userId ? dmWith(to.userId) : null);
+    const from = channels.find((c) => c.id === m.channelId);
+    if (!target || !from) return;
+    const who = m.guestEmail ? (from.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'A guest') : (allUsers.find((u) => u.id === m.userId)?.name ?? m.authorName ?? 'Someone');
+    // Next tick: a brand-new DM has to exist before its first message.
+    setTimeout(() => {
+      sendChatTo(target, { text: note, forwarded: { channelId: m.channelId, messageId: m.id, userId: m.userId, who, where: chanName(from, allUsers, user.id), text: m.text || msgPreview(m), at: m.at } });
+      const toCh = channels.find((c) => c.id === target);
+      showToast({ text: `Forwarded to ${toCh ? chanName(toCh, allUsers, user.id) : firstOf(to.userId)}`, action: { label: 'Open', run: () => openChannel(target) } });
+    }, 0);
+  };
+  const leaveChannel = (id: string) => {
+    const ch = channels.find((c) => c.id === id);
+    if (!ch) return;
+    setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: c.members.filter((x) => x !== user.id) } : c)));
+    if (chatId === id) setChatId(null);
+    showToast({ text: `You left ${chanName(ch, allUsers, user.id)}`, action: ch.private ? undefined : { label: 'Undo', run: () => setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...new Set([...c.members, user.id])] } : c))) } });
+  };
+  const openChatRef = (r: NonNullable<ChatMessage['ref']>) => {
+    if (r.kind === 'note') return wsNotes.some((n) => n.id === r.id) ? openNote(r.id) : showToast({ text: 'That note is private, or isn’t here any more.' });
+    if (r.kind === 'row') return r.tableId && wsTables.some((t) => t.id === r.tableId) ? openTable(r.tableId, r.id) : showToast({ text: 'You can’t open that table.' });
+    const it = wsDrive.find((d) => d.id === r.id && !d.trashed);
+    if (it) setPreview({ item: it, list: [it] });
+    else showToast({ text: 'That file isn’t in Drive any more.' });
   };
 
   const reactTo = (id: string, emoji: string) =>
@@ -2735,17 +2871,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return true;
   };
 
+  /**
+   * Opens an email inside Mail (a notification, a calendar event, search): its list underneath, so Back goes to that
+   * list. Tapped before the mail has loaded (a notification opening the app), it opens as soon as the email arrives.
+   */
+  const [pendingThread, setPendingThread] = useState<{ id: string; at: number } | null>(null);
   const openThread = (threadId: string) => {
     const t = threads.find((x) => x.id === threadId);
-    if (!t) return;
+    if (!t) return void setPendingThread({ id: threadId, at: Date.now() });
     setPreview(null);
     go('mail');
-    setView({ kind: 'folder', id: t.location });
+    if (activeAccount !== 'all' && activeAccount !== t.accountId) setActiveAccount('all');
+    const snoozedNow = !!t.snoozedUntil && t.snoozedUntil > new Date().toISOString();
+    setView({ kind: 'folder', id: snoozedNow ? 'snoozed' : t.location });
+    setFilter('all');
     setQuery('');
     setSelectedId(threadId);
     setReaderOpen(true);
     update(threadId, { unread: false });
+    setNotices((ns) => (ns.some((n) => !n.read && n.userId === user.id && n.link?.app === 'mail' && n.link.id === threadId) ? ns.map((n) => (!n.read && n.userId === user.id && n.link?.app === 'mail' && n.link.id === threadId ? { ...n, read: true } : n)) : ns));
   };
+  useEffect(() => {
+    if (!pendingThread) return;
+    if (threads.some((t) => t.id === pendingThread.id)) {
+      setPendingThread(null);
+      openThread(pendingThread.id);
+    } else if (Date.now() - pendingThread.at > 15_000) setPendingThread(null); // not one this person can open
+  }, [threads, pendingThread]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------------- Drive ---------------- */
 
@@ -2949,7 +3101,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Render ---------------- */
 
-  const title = view.kind === 'folder' ? FOLDER_TITLES[view.id] : view.kind === 'tracking' ? 'Tracking' : view.kind === 'todos' ? 'To-do' : LABELS.find((l) => l.id === view.id)?.name ?? '';
+  const title = view.kind === 'folder' ? FOLDER_TITLES[view.id] : view.kind === 'tracking' ? 'Tracking' : view.kind === 'todos' ? 'To-do' : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
   const appMode = mode === 'settings' ? lastMode : mode;
 
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
@@ -2963,25 +3115,52 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     />
   );
 
-  /** The phone's title switcher for each app. */
+  /**
+   * Mail's title switcher on phones: the inboxes (all of them, what's given to you, each mailbox with what's unread),
+   * then the folders, To-do, labels and projects. Picking a folder looks across all your inboxes.
+   */
+  const unreadIn = (id: string) => (accountUnread[id] ? `${accountUnread[id]} unread` : undefined);
+  const mailValue =
+    view.kind === 'folder' && view.id === 'inbox'
+      ? `inbox:${activeAccount}`
+      : view.kind === 'folder'
+        ? `folder:${view.id}`
+        : view.kind === 'tracking'
+          ? 'track'
+          : view.kind === 'todos'
+            ? 'todos'
+            : `${view.kind}:${view.id}`;
+  const usedLabels = LABELS.filter((l) => scoped.some((t) => t.labels.includes(l.id)));
+  useTitleMenu('mail', {
+    label: 'Mailboxes',
+    value: mailValue,
+    options: [
+      { value: 'inbox:all', label: myAccounts.length > 1 ? 'All inboxes' : 'Inbox', hint: unreadIn('all'), group: 'Inboxes' },
+      ...(myAccounts.some((a) => a.kind === 'shared') ? [{ value: 'folder:assigned', label: 'Assigned to me', hint: counts.assigned ? `${counts.assigned} open` : undefined, group: 'Inboxes' }] : []),
+      ...(myAccounts.length > 1 ? myAccounts.map((a) => ({ value: `inbox:${a.id}`, label: a.kind === 'shared' || a.temp ? a.name || a.email : 'My inbox', hint: [a.email, unreadIn(a.id)].filter(Boolean).join(' · '), group: 'Inboxes' })) : []),
+      ...(['starred', 'sent', 'drafts', 'snoozed', 'scheduled'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: FOLDER_TITLES[f], hint: f === 'drafts' && counts.drafts ? `${counts.drafts}` : f === 'scheduled' && counts.scheduled ? `${counts.scheduled}` : undefined, group: 'Folders' })),
+      { value: 'track', label: 'Waiting for reply', group: 'Folders' },
+      { value: 'todos', label: 'To-do', hint: todoThreads.size ? 'Emails that asked you to do something' : undefined, group: 'Folders' },
+      ...(['archive', 'spam', 'trash'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: FOLDER_TITLES[f], group: 'Folders' })),
+      ...usedLabels.map((l) => ({ value: `label:${l.id}`, label: l.name, group: 'Labels' })),
+      ...wsClients.filter((c) => c.domain).map((c) => ({ value: `project:${c.id}`, label: c.name, group: term.Many })),
+    ],
+    onChange: (v) => {
+      const [kind, id] = [v.slice(0, v.indexOf(':') < 0 ? v.length : v.indexOf(':')), v.slice(v.indexOf(':') + 1)];
+      if (kind === 'inbox') return (setActiveAccount(id), selectView({ kind: 'folder', id: 'inbox' }));
+      setActiveAccount('all');
+      if (kind === 'track') selectView({ kind: 'tracking', id: 'tracking' });
+      else if (kind === 'todos') selectView({ kind: 'todos', id: 'todos' });
+      else if (kind === 'folder') selectView({ kind: 'folder', id: id as FolderId });
+      else if (kind === 'label') selectView({ kind: 'label', id });
+      else if (kind === 'project') selectView({ kind: 'project', id });
+    },
+  });
+  const [mailSwipes] = useMailSwipes();
+  useAppSettings('mail', { id: 'swipes', label: 'Swipe actions', hint: swipeWords(mailSwipes), render: () => <SwipeSettings /> });
+
+  /** The phone's title switcher for each app (Mail registers its own above). */
   const mobileSwitcher = (() => {
-    if (mode === 'mail')
-      return {
-        label: 'Mailbox and folder',
-        value: view.kind === 'tracking' ? 'track' : view.kind === 'folder' ? `folder:${view.id}` : 'folder:inbox',
-        options: [
-          ...(Object.keys(FOLDER_TITLES) as FolderId[]).map((f) => ({ value: `folder:${f}`, label: FOLDER_TITLES[f], group: 'Folders' })),
-          { value: 'track', label: 'Waiting for reply', group: 'Folders' },
-          ...[{ id: 'all', email: 'All inboxes' }, ...myAccounts].map((a) => ({ value: `acct:${a.id}`, label: a.id === 'all' ? 'All inboxes' : a.email, group: 'Mailboxes' })),
-          ...wsClients.map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}` })),
-        ],
-        onChange: (v: string) => {
-          if (v === 'track') selectView({ kind: 'tracking', id: 'tracking' });
-          else if (v.startsWith('folder:')) selectView({ kind: 'folder', id: v.slice(7) as FolderId });
-          else if (v.startsWith('acct:')) (setActiveAccount(v.slice(5)), selectView({ kind: 'folder', id: 'inbox' }));
-          else openClient(v.slice(7), 'emails');
-        },
-      };
     if (mode === 'tasks') {
       const sc = taskScope;
       return {
@@ -3047,6 +3226,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- The phone shell (src/mobile/, docs/mobile-kit.md) ---------------- */
 
+  // Where the huddle's slim bar sits on phones outside its channel: its own row under the top bar (chat/huddleDock.ts).
+  const huddleDock = useDockRef();
+
   const chrome = useChrome(mode);
   const kb = useKeyboard();
   const ownBarOn = ownBar || savedBar.join() !== DEFAULT_BAR.join();
@@ -3072,10 +3254,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const at = new RegExp(`@${name}\\b`, 'i');
     let n = 0;
     for (const c of wsChannels) {
-      const u = chatUnread[c.id];
-      if (!u) continue;
-      if (c.kind === 'dm') n += u;
-      else n += messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > (lastRead[c.id] ?? fallback) && at.test(m.text)).length;
+      if (c.kind === 'dm') n += chatUnread[c.id] ?? 0;
+      // Mentions count even in a muted channel (muting stops the rest).
+      else n += messages.filter((m) => m.channelId === c.id && m.userId !== user.id && !m.sendAt && m.at > (lastRead[c.id] ?? fallback) && at.test(m.text)).length;
     }
     return n;
   }, [chatUnread, wsChannels, messages, lastRead, myFirst, user.id]);
@@ -3525,22 +3706,28 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
           ) : appMode === 'chat' ? (
           <ChatSidebar
+            variant="side"
             channels={visibleChannels}
+            messages={wsMessages}
             users={members}
             me={user.id}
+            myFirst={myFirst}
             workspaceId={ws.id}
-            current={chatId}
-            unread={chatUnread}
-            lastAt={chatLastAt}
+            current={chatPage ? null : chatId}
+            page={chatPage}
+            onPage={(pg) => (setChatPage(pg), setSidebarOpen(false))}
+            onLeave={leaveChannel}
             statuses={statuses}
             presence={presence}
             onOpen={(id) => {
               setChatId(id);
+              setChatPage(null);
               setSidebarOpen(false);
             }}
             onJoin={(id) => {
               setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, members: [...c.members, user.id] } : c)));
               setChatId(id);
+              setChatPage(null);
               setSidebarOpen(false);
             }}
             onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
@@ -3617,16 +3804,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSearch={searchHere}
           />
         )}
-        {mobile && mode === 'chat' && !chatId && (
-          <section className="mobile-list view-enter">
+        {mobile && <div className="huddle-dock top-dock" ref={huddleDock} />}
+        {mobile && mode === 'chat' && (
+          <section className="mobile-list chat-list view-enter">
             <ChatSidebar
+              variant="phone"
               channels={visibleChannels}
+              messages={wsMessages}
               users={members}
               me={user.id}
+              myFirst={myFirst}
               workspaceId={ws.id}
               current={chatId}
-              unread={chatUnread}
-              lastAt={chatLastAt}
+              page={chatPage}
+              onPage={setChatPage}
+              onLeave={leaveChannel}
               statuses={statuses}
               presence={presence}
               onOpen={setChatId}
@@ -3844,12 +4036,54 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
         )}
 
-        {mode === 'chat' && (!mobile || chatId) && (
+        {mode === 'chat' && !mobile && chatPage && (
+          <ChatPages
+            page={chatPage}
+            phone={false}
+            channels={wsChannels}
+            messages={wsMessages}
+            users={members}
+            me={user.id}
+            myFirst={myFirst}
+            onClose={() => setChatPage(null)}
+            onOpen={(id, msg) => (setChatId(id), setChatPage(null), msg && setFocusMsg(msg))}
+            onSendTo={(id, text) => sendChatTo(id, { text })}
+            onSendNow={sendChatNow}
+            onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
+            onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
+          />
+        )}
+        {mode === 'chat' && mobile && chatPage && (
+          <ChatPages
+            page={chatPage}
+            phone
+            channels={wsChannels}
+            messages={wsMessages}
+            users={members}
+            me={user.id}
+            myFirst={myFirst}
+            onClose={() => setChatPage(null)}
+            onOpen={(id, msg) => (setChatId(id), msg && setFocusMsg(msg))}
+            onSendTo={(id, text) => sendChatTo(id, { text })}
+            onSendNow={sendChatNow}
+            onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
+            onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
+          />
+        )}
+        {mode === 'chat' && (mobile ? !!chatId : !chatPage) && (
           <ChatView
+            channels={wsChannels}
+            library={{ tasks: wsTasks, notes: wsNotes, tables: wsTables, rows: wsTableRows, drive: wsDrive, newTask: (title) => createTask({ title, userId: user.id, clientId: channels.find((c) => c.id === chatId)?.clientId, channelId: chatId ?? undefined, source: 'chat' }, { chat: false }).id }}
+            onEdit={editMessage}
+            onForward={forwardMessage}
+            onOpenRef={openChatRef}
+            onOpenScheduled={() => setChatPage('drafts')}
+            onLeave={() => chatId && leaveChannel(chatId)}
             huddle={
               server.on && chatId
                 ? {
                     joined: huddleId === chatId,
+                    onOpen: () => window.dispatchEvent(new CustomEvent('s2g:huddle-open')),
                     onJoin: () => {
                       tried('voice');
                       if (huddleId && huddleId !== chatId) leaveHuddle();
@@ -4047,36 +4281,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               title={title}
               threads={visible}
               clientOf={clientForThread}
-              personName={(id) => allUsers.find((u) => u.id === id)?.name}
+              labels={LABELS}
+              personOf={(id) => allUsers.find((u) => u.id === id)}
               meId={user.id}
               me={ME}
+              teamMail={teamMail}
+              sharedMail={(t) => accountOf(t.accountId)?.kind === 'shared'}
+              assignChip={myAccounts.some((a) => a.kind === 'shared') && !(view.kind === 'folder' && view.id === 'assigned')}
               selectedId={selectedId}
               query={query}
               filter={filter}
-              leaving={leaving}
               showSnippets={settings.showSnippets}
               width={Math.min(Math.max(listW, 300), 560)}
               onWidth={setListW}
               onRefresh={refreshMail}
               onCompose={mailOut ? () => openCompose() : undefined}
+              onDrafts={() => (setActiveAccount('all'), selectView({ kind: 'folder', id: 'drafts' }))}
               updatedAt={mailLive.at}
               offline={real && mailLive.down}
               onQuery={setQuery}
               onFilter={setFilter}
               onOpen={open}
-              onStar={star}
-              onArchive={archive}
-              onTrash={trash}
-              onSnooze={(id) => {
-                const when = new Date();
-                when.setDate(when.getDate() + 1);
-                when.setHours(9, 0, 0, 0);
-                patchThread(id, { snoozedUntil: when.toISOString() });
-                if (selectedId === id) (setSelectedId(null), setReaderOpen(false));
-                showToast({ text: 'Snoozed until tomorrow 9:00', action: { label: 'Undo', run: () => patchThread(id, { snoozedUntil: undefined }) } });
-              }}
+              actions={mailActions}
+              stays={staysInList}
               onMenu={() => setSidebarOpen(true)}
               empty={(() => {
+                if (view.kind === 'todos') return { title: 'Nothing to do from email', sub: 'Emails that ask you to do something show here until their to-dos are done.' };
+                if (view.kind === 'project') return { title: `No email with ${title} yet`, sub: `Email to and from ${title}’s address shows here.` };
                 const t = myAccounts.find((a) => a.id === activeAccount && a.temp);
                 return t
                   ? {
@@ -4096,25 +4327,37 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               restoreReply={restoreReply}
               replyOff={selectedAcct && !boxReady(selectedAcct.id).send ? 'Sending isn’t set up for this mailbox yet' : undefined}
               onReplyOff={() => selectedAcct && replyBlocked(selectedAcct)}
+              open={readerOpen}
+              backLabel={title}
+              prevId={selIdx > 0 ? visible[selIdx - 1].id : undefined}
+              nextId={selIdx >= 0 && selIdx < visible.length - 1 ? visible[selIdx + 1].id : undefined}
+              onGo={open}
+              meUser={user}
               teammates={selected ? members.filter((u) => ws.accounts.find((a) => a.id === selected.accountId)?.users.includes(u.id)) : []}
+              team={!!selected && teamMail(selected)}
               shared={!!selected && ws.accounts.find((a) => a.id === selected.accountId)?.kind === 'shared'}
+              userForEmail={userForEmail}
+              presence={presence}
+              aiOn={aiOn}
+              onAiOff={() => aiOff(', so it can’t summarize email')}
               onAssign={(id, who) => {
-                patchThread(id, { assignee: who || undefined });
                 const t = threads.find((x) => x.id === id);
+                const before = t?.assignee;
+                if ((who || undefined) === before) return;
+                patchThread(id, { assignee: who || undefined });
                 if (who && who !== user.id) notify(who, 'mail', `${myFirst} asked you to handle “${t?.subject}”`, { app: 'mail', id });
-                showToast({ text: who ? `${who === user.id ? 'You’re' : `${firstOf(who)} is`} handling this one` : 'Unassigned' });
+                showToast({ text: who ? `${who === user.id ? 'You handle' : `${firstOf(who)} handles`} this one now` : 'Nobody handles it now', action: { label: 'Undo', run: () => patchThread(id, { assignee: before }) } });
               }}
-              onSnooze={(id, until) => {
-                patchThread(id, { snoozedUntil: until });
-                setSelectedId(null);
-                setReaderOpen(false);
-                showToast({ text: `Snoozed until ${new Date(until).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`, action: { label: 'Undo', run: () => patchThread(id, { snoozedUntil: undefined }) } });
-              }}
-              onNote={(id, text) => {
+              onSnooze={(id, until, ifNoReply) => mailActions.snooze([id], until, ifNoReply)}
+              onComment={(id, text) => {
                 const t = threads.find((x) => x.id === id);
                 patchThread(id, { notes: [...(t?.notes ?? []), { id: uid(), by: user.id, text, at: nowIso() }] });
-                members.filter((u) => u.id !== user.id && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).forEach((u) => notify(u.id, 'mention', `${myFirst} mentioned you in a note on “${t?.subject}”`, { app: 'mail', id }));
+                const box = accountOf(t?.accountId ?? '');
+                members
+                  .filter((u) => u.id !== user.id && box?.users.includes(u.id) && new RegExp(`@${u.name.split(' ')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text))
+                  .forEach((u) => notify(u.id, 'mention', `${myFirst} mentioned you in a comment on “${t?.subject}”`, { app: 'mail', id }));
               }}
+              onForward={forward}
               client={selected ? clientForThread(selected) : undefined}
               onClient={(id) => openClient(id, 'emails')}
               me={ME}
@@ -4531,6 +4774,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           accounts={sendable.length ? sendable : myAccounts}
           defaultFrom={activeAccount !== 'all' && sendable.some((a) => a.id === activeAccount) ? activeAccount : (sendable[0] ?? myAccounts[0])?.id}
           initial={compose.initial}
+          userId={user.id}
+          parked={!!compose.parked}
+          onPark={(parked) => setCompose((c) => (c ? { ...c, parked } : c))}
+          snapshot={composeNow}
           onSend={send}
           onClose={closeCompose}
         />
@@ -4753,7 +5000,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {sharedPreview && meetings.some((m) => m.id === sharedPreview) && (
         <SharedPage m={meetings.find((m) => m.id === sharedPreview)!} brand={ws.name} tasks={wsTasks.filter((t) => t.meetingId === sharedPreview)} users={members} onClose={() => setSharedPreview(null)} />
       )}
-      {huddleChannel?.huddle?.members.includes(user.id) && <Huddle key={huddleChannel.id} channel={huddleChannel} users={allUsers} me={user.id} onLeave={leaveHuddle} />}
+      <ChatPrefsHost me={user.id} />
+      {huddleChannel?.huddle?.members.includes(user.id) && <Huddle key={huddleChannel.id} channel={huddleChannel} users={allUsers} me={user.id} onLeave={leaveHuddle} onOpenChannel={() => openChannel(huddleChannel.id)} />}
       {askScope && (
         <Assistant
           scope={askScope}

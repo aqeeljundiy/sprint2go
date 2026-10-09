@@ -518,3 +518,694 @@
     min-height: 40px;
   }
 }
+
+/* ==========================================================================
+   The list (MessageList.tsx): chips under the title, rows with one status line, selecting several.
+   Phone rules for all of it are in src/mobile/mail.css.
+   ========================================================================== */
+
+/* The header's column is the pane's width: the chips scroll inside it instead of widening the header. */
+.list-pane .list-header {
+  grid-template-columns: minmax(0, 1fr);
+}
+/* One row under the search that is either the chips or the selection's own header, at the same height. */
+.mail-tools {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  animation: fadeIn 0.18s ease-out backwards;
+}
+.mail-chips {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* A soft edge says there's more to the right when the chips don't fit. */
+  padding-right: 24px;
+  margin-right: -12px;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.mail-chips::-webkit-scrollbar {
+  display: none;
+}
+.mail-chip {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-2);
+  background: var(--surface);
+  white-space: nowrap;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+}
+.mail-chip:hover {
+  background: var(--hover);
+}
+.mail-chip.on {
+  border-color: transparent;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.sel-head {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sel-count {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+/* Rows: the avatar is also the way to select; the unread dot sits by the name. */
+.rows > .row-li {
+  list-style: none;
+}
+.rows > .row-li + .row-li {
+  margin-top: 1px;
+}
+.mail-swipe > .swipe-face {
+  border-radius: 14px;
+}
+.mail-swipe.row-leaving {
+  animation-name: mailRowOut;
+}
+@keyframes mailRowOut {
+  0% {
+    max-height: 200px;
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+  }
+}
+.row.unread::before,
+:root[data-density='compact'] .row.unread::before {
+  content: none;
+}
+.row {
+  padding-left: 12px;
+}
+.row-av {
+  position: relative;
+  flex: none;
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+.row-av .avatar {
+  transition: transform 0.18s var(--ease), opacity 0.18s;
+}
+.row-check {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--accent);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: transform 0.18s var(--ease), opacity 0.18s;
+}
+.row-av.on .row-check {
+  opacity: 1;
+  transform: none;
+}
+.row-av.on .avatar {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.row.picked {
+  background: var(--accent-soft);
+}
+.row-from {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.row-names {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.row-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: fadeIn 0.2s ease-out backwards;
+}
+/* The status line: quiet, one line, never wider than the row. */
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.row-meta > * {
+  flex: none;
+}
+.rm-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rm-who {
+  color: var(--text-2);
+  font-weight: 550;
+}
+.rm-when {
+  color: var(--warn);
+  font-weight: 550;
+}
+.rm-draft {
+  color: var(--danger);
+  font-weight: 650;
+}
+.rm-star {
+  color: var(--star);
+}
+.rm-star svg {
+  fill: currentColor;
+}
+/* A shared inbox's mail has a coloured edge, so team mail and private mail never look alike. */
+.row.team-mail::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--info);
+  opacity: 0.75;
+}
+
+/* Several selected: their actions, at the bottom of the list. */
+.mail-bulk {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  padding: 6px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  animation: mailBulkIn 0.22s var(--ease) backwards;
+}
+@keyframes mailBulkIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.mail-bulk > button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.mail-bulk > button:hover,
+.mail-bulk > button:active {
+  background: var(--hover);
+  color: var(--text);
+}
+.list-offline {
+  display: none;
+}
+
+/* Snooze, who handles it, send later, templates: one look as a sheet and as a menu. */
+.mail-pick.in-pop {
+  padding: 4px;
+}
+.mp-title {
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+}
+.mail-pick .as-item.on {
+  background: var(--hover);
+}
+.mp-custom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 12px 4px;
+}
+.mp-custom .primary-btn {
+  grid-column: 1 / -1;
+  justify-content: center;
+}
+.mp-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 10px 12px 8px;
+  border-top: 1px solid var(--line);
+}
+.mp-toggle > span {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+}
+.mp-toggle small {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.mp-none {
+  width: 28px;
+}
+.assign-pick .dm-av {
+  flex: none;
+}
+.mtpl-row {
+  display: flex;
+  align-items: center;
+}
+.mtpl-row > .as-item {
+  flex: 1;
+  min-width: 0;
+}
+.mtpl-line {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mtpl-del {
+  flex: none;
+  color: var(--text-3);
+}
+.mtpl-save {
+  width: calc(100% - 16px);
+  margin: 6px 8px 4px;
+  justify-content: center;
+}
+.mail-swipe-settings {
+  padding: 8px 8px 24px;
+}
+.swipe-set h3 {
+  margin: 16px 12px 2px;
+  font-size: 15px;
+}
+.swipe-set .set-hint,
+.mail-swipe-settings > .set-hint {
+  display: block;
+  margin: 0 12px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mail-tools,
+  .row-dot,
+  .mail-bulk {
+    animation: none;
+  }
+  .row-check,
+  .row-av .avatar {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   The reader (Reader.tsx): one header row, the AI line, older messages folded, the team's comments in the thread.
+   ========================================================================== */
+
+/* The header: actions on the left, the people on this conversation and previous / next on the right. Its own width
+   decides how much it shows (from 1024px the reader can be about 440px wide next to the list). */
+.reader-bar {
+  container-type: inline-size;
+  gap: 4px;
+}
+.reader-bar > .toolbar {
+  min-width: 0;
+}
+.icon-btn.rb-labelled {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 8px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+.reader-bar-end {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.reader-nav {
+  display: inline-flex;
+  gap: 2px;
+}
+.reader-nav .icon-btn:disabled {
+  opacity: 0.35;
+}
+.reader-people {
+  display: inline-flex;
+  align-items: center;
+}
+.reader-people .avatar {
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.reader-people .avatar + .avatar {
+  margin-left: -6px;
+}
+.reader-people i {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+}
+.rp-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 6px;
+  border-radius: 999px;
+  transition: background 0.15s;
+}
+.rp-btn:hover {
+  background: var(--hover);
+}
+@container (max-width: 560px) {
+  .rb-labelled span {
+    display: none;
+  }
+  .icon-btn.rb-labelled {
+    width: var(--ctl-h, 32px);
+    padding: 0;
+    justify-content: center;
+  }
+}
+@container (max-width: 400px) {
+  .reader-bar-end .reader-people,
+  .reader-bar-end .rp-btn {
+    display: none;
+  }
+}
+
+.reader-in {
+  container-type: inline-size;
+}
+.thread-labels {
+  flex-wrap: wrap;
+}
+.th-who,
+.th-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px 0 6px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.th-who {
+  color: var(--text-2);
+  background: var(--hover);
+  transition: background 0.15s, color 0.15s;
+}
+.th-who:hover {
+  color: var(--text);
+  background: color-mix(in oklab, var(--text) 8%, var(--hover));
+}
+.th-who.on {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.th-when {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+/* The AI line: one sentence about the thread, tap to open the rest. */
+.ai-sum {
+  flex: 1 1 100%;
+  min-width: 0; /* the sentence shortens with "…" instead of widening the reader */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--ai) 22%, var(--border));
+  background: var(--ai-soft);
+  color: color-mix(in srgb, #7c3aed 70%, var(--text));
+  font-size: 13.5px;
+  font-weight: 550;
+  text-align: left;
+  transition: background 0.15s;
+}
+:root[data-theme='dark'] .ai-sum {
+  color: #c4b5fd;
+}
+.ai-sum > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ai-sum.has > span {
+  color: var(--text);
+  font-weight: 500;
+}
+.ai-sum:hover {
+  background: color-mix(in srgb, #8b5cf6 14%, transparent);
+}
+.ai-sum svg {
+  flex: none;
+}
+
+/* Older messages folded into one line. */
+.msg-fold {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  transition: color 0.15s;
+}
+.msg-fold::before,
+.msg-fold::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.msg-fold span {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 0.15s;
+}
+.msg-fold:hover {
+  color: var(--text);
+}
+.msg-fold:hover span {
+  background: var(--hover);
+}
+
+/* The team's comments: inside the thread, tinted, never mistaken for an email. */
+.mail-comment {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--warn-soft);
+  box-shadow: inset 3px 0 0 var(--warn-solid);
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.mc-main {
+  flex: 1;
+  min-width: 0;
+}
+.mc-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 13.5px;
+}
+.mc-head time {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.mc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+}
+.mc-text {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mc-mention {
+  color: var(--accent-text);
+  font-weight: 650;
+}
+.mc-box {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--warn-solid) 35%, var(--border));
+  background: var(--warn-soft);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.mc-box:focus-within {
+  border-color: var(--warn-solid);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--warn-solid) 18%, transparent);
+}
+.cb-icon {
+  flex: none;
+  margin-bottom: 9px;
+  color: var(--warn);
+}
+.mc-box textarea {
+  flex: 1;
+  min-width: 0;
+  max-height: 132px;
+  padding: 6px 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.mc-box textarea::placeholder {
+  color: color-mix(in oklab, var(--warn) 70%, var(--text-3));
+}
+.cb-send {
+  flex: none;
+}
+.cb-mentions {
+  position: absolute;
+  left: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  display: grid;
+  min-width: 220px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.15s ease-out;
+}
+.cb-mentions button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: left;
+  transition: background 0.12s;
+}
+.cb-mentions button.hi,
+.cb-mentions button:hover {
+  background: var(--hover);
+}
+
+/* Attachments never make the reader wider: a long file name shortens with "…". */
+.attachments > .attachment {
+  min-width: 0;
+  max-width: 100%;
+}
+.attachment > div {
+  min-width: 0;
+}
+.attachment .file-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A reader next to the list, about 440px wide: less padding, the long date gives way. */
+@container (max-width: 520px) {
+  .message-body {
+    padding-left: 16px;
+  }
+  .message-head time .rel {
+    display: none;
+  }
+}
+
+/* ---------- Compose: Cc and Bcc fold together; templates sit with the other tools ---------- */
+
+.compose-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.compose-body > .rich {
+  flex: 1;
+}
+.cc-rows {
+  display: grid;
+  animation: fadeIn 0.18s ease-out backwards;
+}
+.compose-foot .icon-btn.on {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mail-comment,
+  .cb-mentions,
+  .cc-rows {
+    animation: none;
+  }
+}

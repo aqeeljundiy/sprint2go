@@ -47,6 +47,7 @@ export function Sheet({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const downOnScrim = useRef(false);
+  const downInside = useRef(false);
 
   // Escape: only the top sheet, and only when no menu inside it is open (a menu closes first).
   useEffect(() => {
@@ -163,7 +164,21 @@ export function Sheet({
       onPointerDown={(e) => (downOnScrim.current = e.target === e.currentTarget)}
       onClick={(e) => e.target === e.currentTarget && downOnScrim.current && onClose()}
     >
-      <div ref={ref} className={`sheet sheet-${size} ${className}`} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)} tabIndex={-1}>
+      <div
+        ref={ref}
+        className={`sheet sheet-${size} ${className}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label ?? (typeof title === 'string' ? title : undefined)}
+        tabIndex={-1}
+        onPointerDown={() => (downInside.current = true)}
+        onClickCapture={(e) => {
+          // The finger that long-pressed to open the sheet lifts over it: that click isn't a tap on what's under it
+          // now (a menu item). Only taps that started in the sheet count; keyboard clicks (detail 0) always do.
+          if (!downInside.current && e.detail > 0) (e.preventDefault(), e.stopPropagation());
+          downInside.current = false;
+        }}
+      >
         <div className="sheet-grab" aria-hidden="true" />
         {(title || head) && (
           <header className="sheet-head">

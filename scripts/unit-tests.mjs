@@ -1397,6 +1397,201 @@ await test('Demo company: hidden, shown, cleaned up after a month unused, and co
   assert.equal(sandbox.stateOf('u-unit', true).state, 'none', 'made again, fresh, the next time');
 });
 
+/* ---------- chat: send later, reminders on saved messages, mutes (server/chatLater.ts) ---------- */
+
+const chatLater = await import('../server/chatLater.ts');
+{
+  const T = Date.parse('2026-10-09T10:00:00Z');
+  const at = (mins) => new Date(T + mins * 60_000).toISOString();
+  db.writeDocs('users', [{ id: 'u-cl-ann', name: 'Ann Lee', email: 'ann@cl.example' }, { id: 'u-cl-bo', name: 'Bo Tan', email: 'bo@cl.example' }, { id: 'u-cl-cy', name: 'Cy Ray', email: 'cy@cl.example' }], [], null);
+  db.writeDocs('channels', [
+    { id: 'ch-cl-dm', workspaceId: 'w-cl', kind: 'dm', name: '', members: ['u-cl-ann', 'u-cl-bo'] },
+    { id: 'ch-cl-room', workspaceId: 'w-cl', kind: 'channel', name: 'launch', members: ['u-cl-ann', 'u-cl-bo', 'u-cl-cy'] },
+  ], [], null);
+  await test('Send later: a time only while the message hasn’t gone out, at most 120 days ahead', () => {
+    const fresh = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: at(60) }, null, T);
+    assert.equal(fresh.sendAt, at(60));
+    const far = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: at(60 * 24 * 400) }, null, T);
+    assert.equal(far.sendAt, new Date(T + 120 * 86_400_000).toISOString(), 'clamped to 120 days');
+    const sent = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: at(60) }, { id: 'm1', userId: 'u-cl-ann', text: 'hi', at: at(-5) }, T);
+    assert.equal('sendAt' in sent, false, 'a message that went out can’t be made to wait again');
+    const bad = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: 'soon' }, null, T);
+    assert.equal('sendAt' in bad, false, 'a time that isn’t one is dropped');
+    const now = chatLater.guardOwnMessage({ id: 'm1', userId: 'u-cl-ann', text: 'hi', sendAt: null }, { id: 'm1', userId: 'u-cl-ann', sendAt: at(60) }, T);
+    assert.equal('sendAt' in now, false, '“Send now” clears it');
+  });
+  await test('Send later: waiting messages are their author’s alone', () => {
+    const m = { id: 'm2', userId: 'u-cl-ann', sendAt: at(5) };
+    assert.equal(chatLater.hiddenFrom(m, 'u-cl-bo'), true);
+    assert.equal(chatLater.hiddenFrom(m, 'u-cl-ann'), false);
+    assert.equal(chatLater.hiddenFrom({ id: 'm3', userId: 'u-cl-ann' }, 'u-cl-bo'), false);
+  });
+  await test('Send later: due messages go out now, with the notices a message sent then would bring', () => {
+    db.writeDocs('messages', [
+      { id: 'm-root', channelId: 'ch-cl-room', userId: 'u-cl-cy', text: 'Who has the deck?', at: at(-60) },
+      { id: 'm-dm', channelId: 'ch-cl-dm', userId: 'u-cl-ann', text: 'Morning! Call at 10?', at: at(-30), sendAt: at(-1) },
+      { id: 'm-mention', channelId: 'ch-cl-room', userId: 'u-cl-ann', text: '@Bo can you check the numbers', at: at(-30), sendAt: at(0) },
+      { id: 'm-reply', channelId: 'ch-cl-room', userId: 'u-cl-ann', text: 'I do', at: at(-30), sendAt: at(-2), parentId: 'm-root' },
+      { id: 'm-later', channelId: 'ch-cl-room', userId: 'u-cl-ann', text: 'not yet', at: at(-30), sendAt: at(30) },
+    ], [], null);
+    const out = chatLater.publishDue(T);
+    assert.deepEqual(out.messages.map((m) => m.id).sort(), ['m-dm', 'm-mention', 'm-reply']);
+    assert.ok(out.messages.every((m) => m.at === at(0) && !('sendAt' in m)), 'their time is now, and they wait no more');
+    const texts = out.notices.map((n) => `${n.userId}: ${n.text}`).sort();
+    assert.deepEqual(texts, ['u-cl-bo: Ann mentioned you in #launch: “@Bo can you check the numbers”', 'u-cl-bo: Ann messaged you: “Morning! Call at 10?”', 'u-cl-cy: Ann replied to your message in #launch: “I do”']);
+    assert.ok(out.notices.every((n) => n.kind === 'mention' && n.workspaceId === 'w-cl' && n.link.app === 'chat' && n.read === false));
+    db.writeDocs('messages', out.messages, [], null);
+    assert.deepEqual(chatLater.publishDue(T).messages, [], 'each goes out once');
+  });
+  await test('Remind me: a saved message’s reminder comes once, at its time, and an older copy of the settings can’t bring it back', () => {
+    const key = 'p-unit-saved';
+    const saved = [
+      { id: 'm-root', channelId: 'ch-cl-room', at: at(-10), remindAt: at(-1) },
+      { id: 'm-dm', channelId: 'ch-cl-dm', at: at(-10), remindAt: at(60) },
+      { id: 'm-mention', channelId: 'ch-cl-room', at: at(-10) },
+    ];
+    db.writeDocs('prefs', [{ id: 'u-cl-bo', value: { [`s2g-chat-saved:u-cl-bo`]: saved, other: key } }], [], null);
+    const out = chatLater.remindersDue(T, () => true);
+    assert.equal(out.notices.length, 1);
+    assert.equal(out.notices[0].text, 'Reminder: Cy in #launch: “Who has the deck?”');
+    assert.equal(out.notices[0].userId, 'u-cl-bo');
+    assert.deepEqual(out.notices[0].link, { app: 'chat', id: 'ch-cl-room', msg: 'm-root' });
+    const after = out.prefs[0].value['s2g-chat-saved:u-cl-bo'];
+    assert.deepEqual(after.map((x) => !!x.reminded), [true, false, false]);
+    assert.equal(out.prefs[0].value.other, key, 'the rest of their settings stay');
+    db.writeDocs('prefs', out.prefs, [], null);
+    assert.equal(chatLater.remindersDue(T, () => true).notices.length, 0, 'once');
+    const stale = { id: 'u-cl-bo', value: { 's2g-chat-saved:u-cl-bo': saved } };
+    const kept = chatLater.keepReminded(stale, db.getDoc('prefs', 'u-cl-bo'));
+    assert.equal(kept.value['s2g-chat-saved:u-cl-bo'][0].reminded, true, 'an older copy keeps it done');
+    const moved = chatLater.keepReminded({ id: 'u-cl-bo', value: { 's2g-chat-saved:u-cl-bo': [{ ...saved[0], remindAt: at(120) }] } }, db.getDoc('prefs', 'u-cl-bo'));
+    assert.equal(!!moved.value['s2g-chat-saved:u-cl-bo'][0].reminded, false, 'a new time is a new reminder');
+    db.writeDocs('prefs', [{ id: 'u-cl-cy', value: { 's2g-chat-saved:u-cl-cy': [{ id: 'm-dm', channelId: 'ch-cl-dm', remindAt: at(-1) }] } }], [], null);
+    const blind = chatLater.remindersDue(T, () => false);
+    assert.equal(blind.notices[0].text, 'Reminder: a message you saved', 'a message they can’t read isn’t quoted');
+  });
+  await test('Mute: for an hour, until a time, or for good', () => {
+    const v = { 's2g-chat-muted:u-cl-bo': { a: 'always', b: at(30), c: at(-30) } };
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'a', T), true);
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'b', T), true);
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'c', T), false, 'the hour is over');
+    assert.equal(chatLater.mutedFor(v, 'u-cl-bo', 'd', T), false);
+    assert.equal(chatLater.mutedFor(v, 'u-cl-ann', 'a', T), false, 'only their own');
+  });
+}
+
+/* ---------- Team mail: snoozes, comments, who handles it, and when a phone buzzes (src/mailRules.ts, server/mailTeam.ts, server/notifyPush.ts) ---------- */
+
+const mailRules = await import('../src/mailRules.ts');
+const mailTeam = await import('../server/mailTeam.ts');
+const pushRules = await import('../server/notifyPush.ts');
+const msg = (id, from, minsAgo = 60) => ({ id, from: { name: from.split('@')[0], email: from }, to: [], date: new Date(Date.now() - minsAgo * 60_000).toISOString(), body: 'Hello' });
+
+await test('Snooze: a due email comes back unread to the inbox; one not due stays hidden', () => {
+  const now = new Date().toISOString();
+  const t = { location: 'inbox', unread: false, snoozedUntil: new Date(Date.now() - 1000).toISOString(), messages: [msg('m1', 'client@outside.example')] };
+  const woke = mailRules.wakeThread(t, now);
+  assert.equal(woke.unread, true);
+  assert.equal(woke.location, 'inbox');
+  assert.equal('snoozedUntil' in woke, false);
+  assert.equal(mailRules.wakeThread({ ...t, snoozedUntil: new Date(Date.now() + 60_000).toISOString() }, now), null);
+  assert.equal(mailRules.wakeThread({ ...t, location: 'archive' }, now).location, 'inbox', 'snoozed from Archive (a sent email): back in the inbox');
+});
+await test('Snooze "only if no reply": comes back when nobody wrote; a reply since keeps it away, in Archive', () => {
+  const now = new Date().toISOString();
+  const due = new Date(Date.now() - 1000).toISOString();
+  const quiet = { location: 'inbox', unread: false, snoozedUntil: due, snoozeIfNoReply: 'm1', messages: [msg('m1', 'me@team.example')] };
+  const back = mailRules.wakeThread(quiet, now);
+  assert.equal(back.unread, true, 'nobody wrote: it comes back');
+  assert.equal('snoozeIfNoReply' in back, false);
+  const replied = { ...quiet, messages: [msg('m1', 'me@team.example'), msg('m2', 'me@team.example', 5)] };
+  const handled = mailRules.wakeThread(replied, now);
+  assert.equal(handled.unread, false, 'a reply from here: no comeback');
+  assert.equal(handled.location, 'archive');
+  assert.deepEqual(mailRules.snoozePatch(replied, due, true), { snoozedUntil: due, snoozeIfNoReply: 'm2' });
+  assert.equal(mailRules.snoozePatch(replied, due, false).snoozeIfNoReply, undefined);
+});
+await test('Snooze presets: exact times, only the ones that make sense now', () => {
+  const monMorning = new Date(2026, 9, 5, 8, 10); // Monday 08:10
+  const p = mailRules.snoozePresets(monMorning).map((x) => x.id);
+  assert.deepEqual(p, ['later', 'evening', 'tomorrow', 'weekend', 'week']);
+  const later = mailRules.snoozePresets(monMorning)[0].at;
+  assert.equal(later.getHours() * 60 + later.getMinutes(), 11 * 60 + 15, 'three hours on, to the next quarter');
+  const friNight = new Date(2026, 9, 9, 21, 0); // Friday 21:00
+  assert.deepEqual(mailRules.snoozePresets(friNight).map((x) => x.id), ['tomorrow', 'week']);
+  const week = mailRules.snoozePresets(friNight).find((x) => x.id === 'week').at;
+  assert.equal(week.getDay(), 1, 'next week is Monday');
+  assert.equal(week.getHours(), 9);
+});
+await test('People, not systems: newsletters and notification senders are automated', () => {
+  assert.equal(mailRules.fromPerson({ from: { email: 'nadia@kopikita.co.id' } }), true);
+  assert.equal(mailRules.fromPerson({ from: { email: 'no-reply@aws.amazon.com' } }), false);
+  assert.equal(mailRules.fromPerson({ from: { email: 'notifications@dokploy.com' } }), false);
+  assert.equal(mailRules.fromPerson({ from: { email: 'news+weekly@shop.example' } }), false);
+  assert.equal(mailRules.fromPerson({ from: { email: 'dina@figma.com' }, listUnsubscribe: { url: 'https://x', oneClick: true } }), false);
+  const mine = (e) => e.endsWith('@team.example');
+  assert.equal(mailRules.needsReply({ location: 'inbox', messages: [msg('a', 'client@outside.example')] }, mine), true);
+  assert.equal(mailRules.needsReply({ location: 'inbox', messages: [msg('a', 'client@outside.example'), msg('b', 'me@team.example')] }, mine), false, 'answered');
+  assert.equal(mailRules.needsReply({ location: 'archive', messages: [msg('a', 'client@outside.example')] }, mine), false, 'done');
+});
+await test('Comments: everyone writes their own; nobody changes or removes someone else’s', () => {
+  const acct = { id: 'box', users: ['u-ann', 'u-bob'] };
+  const before = { id: 't-c', accountId: 'box', notes: [{ id: 'n1', by: 'u-ann', text: 'Ann’s', at: '2026-10-01T10:00:00.000Z' }, { id: 'n2', by: 'u-bob', text: 'Bob’s', at: '2026-10-01T11:00:00.000Z' }] };
+  const asked = { ...before, notes: [{ id: 'n1', by: 'u-ann', text: 'Changed by Bob', at: 'x' }, { id: 'n3', by: 'u-ann', text: 'Bob pretending to be Ann', at: 'x' }, { id: 'n4', by: 'u-bob', text: '  New from Bob  ', at: 'not a date' }] };
+  const out = mailTeam.guardTeamMail(asked, before, 'u-bob', acct, '2026-10-09T00:00:00.000Z');
+  assert.deepEqual(out.notes.map((n) => [n.id, n.by, n.text]), [['n1', 'u-ann', 'Ann’s'], ['n4', 'u-bob', 'New from Bob']], 'Ann’s stays as written; Bob removed his own; the forged one is dropped');
+  assert.equal(out.notes[1].at, '2026-10-09T00:00:00.000Z', 'a bad time becomes the server’s');
+  const edit = mailTeam.guardTeamMail({ ...before, notes: [before.notes[0], { ...before.notes[1], text: 'Bob, edited' }] }, before, 'u-bob', acct);
+  assert.equal(edit.notes[1].text, 'Bob, edited', 'their author edits their own');
+});
+await test('Who handles an email: only someone with the mailbox, and the server notes who gave it to them', () => {
+  const acct = { id: 'box', users: ['u-ann', 'u-bob'] };
+  const before = { id: 't-a', accountId: 'box' };
+  const given = mailTeam.guardTeamMail({ ...before, assignee: 'u-bob', assignedBy: 'u-bob' }, before, 'u-ann', acct);
+  assert.equal(given.assignee, 'u-bob');
+  assert.equal(given.assignedBy, 'u-ann');
+  const outsider = mailTeam.guardTeamMail({ ...given, assignee: 'u-stranger' }, given, 'u-ann', acct);
+  assert.equal(outsider.assignee, 'u-bob', 'someone without the mailbox can’t be given it');
+  assert.equal(outsider.assignedBy, 'u-ann');
+  const none = mailTeam.guardTeamMail({ ...given, assignee: undefined }, given, 'u-bob', acct);
+  assert.equal('assignee' in none || 'assignedBy' in none, false);
+  const keep = mailTeam.guardTeamMail({ ...given, assignedBy: 'u-bob' }, given, 'u-bob', acct);
+  assert.equal(keep.assignedBy, 'u-ann', 'who gave it is the server’s');
+  const snooze = mailTeam.guardTeamMail({ ...before, snoozedUntil: 'soon', snoozeIfNoReply: 'm1' }, before, 'u-ann', acct);
+  assert.equal('snoozedUntil' in snooze || 'snoozeIfNoReply' in snooze, false, 'a snooze needs a real time');
+});
+await test('Mail pushes: people only, held about 20 seconds, dropped once read elsewhere; shared inboxes buzz only the assignee', async () => {
+  const sent = [];
+  pushRules.initPushRules({ active: () => false, desktop: { has: (u) => u.startsWith('u-p'), send: (u, a) => sent.push({ u, tag: a.tag }) } });
+  pushRules.setPushHold(60);
+  db.writeDocs('workspaces', [{ id: 'w-push', name: 'Push', domains: ['push.example'], members: [{ userId: 'u-pa', role: 'owner' }, { userId: 'u-pb', role: 'member' }], accounts: [{ id: 'pa', email: 'pa@push.example', kind: 'personal', users: ['u-pa'] }, { id: 'shared', email: 'hello@push.example', kind: 'shared', users: ['u-pa', 'u-pb'] }] }], [], null);
+  const arrive = (id, account, from, extra = {}) => {
+    const t = { id, accountId: account, subject: id, location: 'inbox', unread: true, starred: false, labels: [], messages: [{ ...msg(`m-${id}`, from, 0) }], ...extra };
+    db.writeDocs('threads', [t], [], null);
+    pushRules.onBroadcast('threads', [t]);
+    return t;
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  arrive('t-person', 'pa', 'client@outside.example');
+  arrive('t-robot', 'pa', 'no-reply@service.example');
+  const seen = arrive('t-seen', 'pa', 'other@outside.example');
+  assert.equal(sent.length, 0, 'nothing buzzes straight away');
+  db.writeDocs('threads', [{ ...seen, unread: false }], [], null); // read on the computer a few seconds later
+  arrive('t-shared-open', 'shared', 'lead@outside.example');
+  arrive('t-shared-mine', 'shared', 'lead2@outside.example', { assignee: 'u-pb' });
+  await sleep(150);
+  assert.deepEqual(sent.map((x) => `${x.u} ${x.tag}`).sort(), ['u-pa mail:t-person', 'u-pb mail:t-shared-mine'], 'a person’s mail, and the shared one given to Bob; not the robot, the read one or the unassigned one');
+  // A mention in a comment: held too, and dropped if the notice was read meanwhile.
+  sent.length = 0;
+  const note = (id) => ({ id, userId: 'u-pb', workspaceId: 'w-push', kind: 'mention', text: 'Ann mentioned you', at: new Date().toISOString(), read: false, link: { app: 'mail', id: 't-shared-open' } });
+  db.writeDocs('notices', [note('n-push-1'), note('n-push-2')], [], null);
+  pushRules.onBroadcast('notices', [note('n-push-1'), note('n-push-2')]);
+  db.writeDocs('notices', [{ ...note('n-push-2'), read: true }], [], null);
+  await sleep(150);
+  assert.deepEqual(sent.map((x) => x.tag), ['mail:t-shared-open'], 'one mention buzzes; the one already read doesn’t');
+  pushRules.setPushHold(20_000);
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

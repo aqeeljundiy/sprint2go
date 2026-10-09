@@ -3,7 +3,8 @@
 # security and billing checks (who may see and change what, read-only companies, plan limits, signed webhooks, DKIM),
 # the demo company and try-out checks (each person's demo company stays theirs and nothing in it leaves), the AI
 # apps connector (sign-in with OAuth and PKCE, every MCP tool, each person sees only their own, outward things are drafts),
-# the import checks (Slack, Trello and Google Drive into a company, Undo, and zips that try to get out or blow up)
+# the import checks (Slack, Trello and Google Drive into a company, Undo, and zips that try to get out or blow up),
+# the Tables checks (filters with groups, each person's own filters and sorts, templates that repeat, who may change a view)
 # and phone mail apps (IMAP and SMTP submission with app passwords, against a real IMAP client and nodemailer).
 name: CI
 on:
@@ -45,5 +46,7 @@ jobs:
         run: node scripts/mcp-tests.mjs
       - name: Imports (Slack, Trello, Google Drive, Undo, hostile zips)
         run: node scripts/import-tests.mjs
+      - name: Tables (filters, own filters and sorts, colour rules, templates, who may change a view)
+        run: node --import ./server/register.mjs scripts/tables-tests.mjs
       - name: Phone mail apps (IMAP, SMTP submission, app passwords)
         run: node scripts/imap-tests.mjs

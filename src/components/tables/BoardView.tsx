@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react';
-import { Columns3, Eye, EyeOff, GripVertical, ImageOff, List, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, Columns3, Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { CellValue, DataTable, FieldOption, FileRef, TableField, TableRow, TableViewDef } from '../../types';
 import { CellView, type CellCtx } from './Cell';
-import { OPTION_COLORS, fieldIcon, isEmpty, rowName, valueOf, viewFields } from './fields';
+import { OPTION_COLORS, fieldIcon, groupRows, isComputed, isEmpty, rowColors, rowName, valueOf, viewFields, type RowGroup } from './fields';
+import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
+import { GroupEditor } from './ViewTools';
 import { PickSelect } from '../ui/PickSelect';
 import { Popover } from '../ui/Popover';
 import { uid } from '../../utils';
@@ -20,10 +22,87 @@ export function cardFieldsOf(t: DataTable, view: TableViewDef, group?: TableFiel
     .slice(0, 4);
 }
 
+/** A card on the board: drag it (computers), long-press it for its menu (phones), tap its status pill to move it. */
+function BoardCard({ table, view, r, ctx, shown, cover, canMove, dragging, onDragStart, onDragEnd, onOpen, phone }: {
+  table: DataTable;
+  view: TableViewDef;
+  r: TableRow;
+  ctx: CellCtx;
+  shown: TableField[];
+  cover?: TableField;
+  canMove: boolean;
+  dragging: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onOpen: () => void;
+  phone?: BoardPhone;
+}) {
+  const menu = useActionMenu(() => phone?.actions(r) ?? [], { title: rowName(table, r), disabled: !phone || phone.selecting });
+  const img = cover ? ((r.values[cover.id] as FileRef[] | null) ?? []).find((x) => x.type.startsWith('image/')) : undefined;
+  const tint = view.colors?.length ? rowColors(table, view, r, ctx) : null;
+  const group = phone?.group;
+  const gv = group ? r.values[group.id] : null;
+  const opt = group?.options?.find((o) => o.id === gv);
+  const selected = !!phone?.selected.has(r.id);
+  return (
+    <div className="tb-card-wrap">
+      <button
+        type="button"
+        className={`tb-card${dragging ? ' dragging' : ''}${phone ? ' lp' : ''}${tint?.row ? ' tinted' : ''}${selected ? ' on' : ''}`}
+        style={tint?.row ? { ['--tint' as string]: tint.row } : undefined}
+        draggable={canMove && !phone}
+        onDragStart={(e) => (e.stopPropagation(), e.dataTransfer.setData('text/plain', r.id), (e.dataTransfer.effectAllowed = 'move'), onDragStart())}
+        onDragEnd={onDragEnd}
+        {...(phone ? menu.bind : {})}
+        onClick={() => (phone?.selecting ? phone.onToggle(r.id) : onOpen())}
+        aria-pressed={phone?.selecting ? selected : undefined}
+      >
+        {cover && <span className="tb-card-cover">{img ? <img src={img.url} alt="" /> : <ImageOff size={16} className="muted" />}</span>}
+        <strong>{rowName(table, r)}</strong>
+        {shown.map((f) => {
+          const v = valueOf(table, f, r, ctx);
+          return isEmpty(v) ? null : (
+            <span key={f.id} className="tb-card-f" data-tinted={tint?.cells[f.id] ? '' : undefined} style={tint?.cells[f.id] ? { ['--tint' as string]: tint.cells[f.id] } : undefined}>
+              {view.cardSize === 'roomy' && <small className="muted">{f.name}</small>}
+              <CellView f={f} v={v} ctx={ctx} />
+            </span>
+          );
+        })}
+        {phone && group && canMove && !phone.selecting && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="tb-chip tb-card-pill"
+            style={{ ['--c' as string]: opt?.color ?? '#94a3b8' }}
+            onClick={(e) => (e.stopPropagation(), phone.onPill(r, group))}
+            onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), phone.onPill(r, group))}
+            aria-label={`${group.name}: ${opt?.label ?? 'none'}, move`}
+          >
+            {opt?.label ?? `No ${group.name.toLowerCase()}`}
+          </span>
+        )}
+      </button>
+      {menu.menu}
+    </div>
+  );
+}
+
+/** What a phone (or a narrow pane) adds to the board: menus on cards, the pill that moves a card, picking several. */
+export interface BoardPhone {
+  actions: (r: TableRow) => SheetAction[];
+  onPill: (r: TableRow, f: TableField) => void;
+  selecting: boolean;
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  group?: TableField;
+}
+
 /**
- * Kanban: one column per choice of a single-choice field (Status, Stage…), plus "No status".
- * Drag cards between columns, drag columns to reorder the choices, and edit a column (its choice) from its menu.
- * With no choice field yet, everything sits in one column and adding a column makes the field.
+ * Kanban: one column per choice of a single-choice field (Status, Stage…), plus "No status". Drag cards between
+ * columns, drag columns to reorder the choices, and edit a column (its choice) from its menu. With no choice field
+ * yet, everything sits in one column and adding a column makes the field. Swimlanes split it by another field.
+ * On a phone: one column at a time with the next peeking, a strip of column names to jump, + in each header,
+ * "Move to" in a card's long-press menu and its status pill tappable in place.
  */
 export function BoardView({
   table,
@@ -39,6 +118,7 @@ export function BoardView({
   readOnly,
   canAdd = true,
   canEditColumns = true,
+  phone,
 }: {
   onNewField: (f: TableField) => void;
   onSaveField: (f: TableField) => void;
@@ -50,17 +130,21 @@ export function BoardView({
   ctx: CellCtx;
   onCell: (rowId: string, fieldId: string, v: CellValue) => void;
   onOpenRow: (id: string) => void;
-  onAddRow: (values: Record<string, CellValue>) => void;
+  onAddRow: (values: Record<string, CellValue>, label?: string) => void;
   onView: (p: Partial<TableViewDef>) => void;
   readOnly?: boolean;
+  phone?: Omit<BoardPhone, 'group'>;
 }) {
   const selects = table.fields.filter((f) => f.type === 'select');
   const group = selects.find((f) => f.id === view.groupBy) ?? selects[0];
+  const lane = view.subGroupBy ? table.fields.find((f) => f.id === view.subGroupBy && f.id !== group?.id) : undefined;
   const [over, setOver] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [colDrag, setColDrag] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null); // the new column's name being typed
-  const editable = !readOnly && canEditColumns;
+  const [at, setAt] = useState(0); // phones: the column in view
+  const wrap = useRef<HTMLDivElement>(null);
+  const editable = !readOnly && canEditColumns && !phone;
 
   const shown = cardFieldsOf(table, view, group);
   const cover = view.cover ? table.fields.find((f) => f.id === view.cover && f.type === 'files') : undefined;
@@ -68,8 +152,18 @@ export function BoardView({
   const options = group?.options ?? [];
   const noneLabel = group ? `No ${group.name.toLowerCase()}` : 'No status';
   const columns: { id: string; label: string; color: string }[] = [...options, { id: '', label: noneLabel, color: NONE_COLOR }];
-  const listOf = (id: string) => (group ? rows.filter((r) => (r.values[group.id] ?? '') === id || (!id && !options.some((o) => o.id === r.values[group.id]))) : id ? [] : rows);
+  const listOf = (id: string, from: TableRow[] = rows) => (group ? from.filter((r) => (r.values[group.id] ?? '') === id || (!id && !options.some((o) => o.id === r.values[group.id]))) : id ? [] : from);
   const canMove = !readOnly && !!group && (!ctx.canEdit || ctx.canEdit(group.id));
+  // Which columns show: hidden ones never; "No status" when it has cards (or while dragging); empty ones unless hidden.
+  const visible = columns.filter((c) => {
+    if (hiddenGroups.has(c.id)) return false;
+    const n = listOf(c.id).length;
+    if (!c.id && group && !n && dragging === null) return false;
+    if (c.id && view.hideEmptyGroups && !n && dragging === null) return false;
+    return true;
+  });
+  const lanes: RowGroup[] = lane ? groupRows(table, lane, rows, ctx) : [{ key: '*', label: '', value: null, rows }];
+  const collapsed = new Set(view.collapsed ?? []);
 
   const saveOptions = (opts: FieldOption[]) => group && onSaveField({ ...group, options: opts });
   const committing = useRef(false); // Enter adds, then the input's blur fires as it goes: add once
@@ -87,10 +181,11 @@ export function BoardView({
     onNewField(f);
     onView({ groupBy: f.id });
   };
-  const dropCard = (col: string) => {
+  const dropCard = (col: string, laneValue?: CellValue) => {
     if (dragging && canMove && group) {
       const r = rows.find((x) => x.id === dragging);
       if (r && (r.values[group.id] ?? '') !== col) onCell(dragging, group.id, col || null);
+      if (r && lane && laneValue !== undefined && !isComputed(lane) && JSON.stringify(r.values[lane.id] ?? null) !== JSON.stringify(laneValue)) onCell(dragging, lane.id, laneValue);
     }
     setOver(null);
     setDragging(null);
@@ -104,91 +199,124 @@ export function BoardView({
     setColDrag(null);
     setOver(null);
   };
-
-  // A plain render function, not a component: a new component type each render would remount the card mid-drag.
-  const card = (r: TableRow) => {
-    const img = cover ? ((r.values[cover.id] as FileRef[] | null) ?? []).find((x) => x.type.startsWith('image/')) : undefined;
-    return (
-      <button
-        key={r.id}
-        type="button"
-        className={`tb-card${dragging === r.id ? ' dragging' : ''}`}
-        draggable={canMove}
-        onDragStart={(e) => (e.stopPropagation(), e.dataTransfer.setData('text/plain', r.id), (e.dataTransfer.effectAllowed = 'move'), setDragging(r.id))}
-        onDragEnd={() => (setDragging(null), setOver(null))}
-        onClick={() => onOpenRow(r.id)}
-      >
-        {cover && <span className="tb-card-cover">{img ? <img src={img.url} alt="" /> : <ImageOff size={16} className="muted" />}</span>}
-        <strong>{rowName(table, r)}</strong>
-        {shown.map((f) => {
-          const v = valueOf(table, f, r, ctx);
-          return isEmpty(v) ? null : (
-            <span key={f.id} className="tb-card-f">
-              {view.cardSize === 'roomy' && <small className="muted">{f.name}</small>}
-              <CellView f={f} v={v} ctx={ctx} />
-            </span>
-          );
-        })}
-      </button>
-    );
+  // Phones: jump to a column (every lane moves together), and follow the one in view.
+  const jump = (i: number) => {
+    wrap.current?.querySelectorAll<HTMLElement>('.tb-board').forEach((b) => {
+      const col = b.querySelectorAll<HTMLElement>(':scope > .tb-col')[i];
+      if (col) b.scrollTo({ left: col.offsetLeft - b.offsetLeft - 16, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+    setAt(i);
   };
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (!phone) return;
+    const b = e.currentTarget;
+    const cols = [...b.querySelectorAll<HTMLElement>(':scope > .tb-col')];
+    const i = cols.findIndex((c) => c.offsetLeft - b.offsetLeft + c.offsetWidth / 2 > b.scrollLeft + 16);
+    if (i >= 0 && i !== at) setAt(i);
+  };
+  const ph: BoardPhone | undefined = phone ? { ...phone, group } : undefined;
 
-  return (
-    <div className="tb-board-wrap">
-      <div className={`tb-board${view.cardSize === 'roomy' ? ' roomy' : ''}`}>
-        {columns.map((c) => {
-          const list = listOf(c.id);
-          if (hiddenGroups.has(c.id)) return null;
-          // "No status" shows when it has cards, while dragging, or when there's no field yet; empty choices only if wanted.
-          if (!c.id && group && !list.length && dragging === null) return null;
-          if (c.id && view.hideEmptyGroups && !list.length && dragging === null) return null;
-          return (
-            <section
-              key={c.id || 'none'}
-              className={`tb-col${over === c.id ? ' over' : ''}${colDrag === c.id ? ' col-dragging' : ''}`}
-              onDragOver={(e) => (e.preventDefault(), over !== c.id && setOver(c.id))}
-              onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOver(null)}
-              onDrop={(e) => (e.preventDefault(), colDrag ? dropColumn(c.id) : dropCard(c.id))}
-            >
-              <ColumnHead c={c} count={list.length} editable={editable && !!c.id} canHide={!readOnly} group={group} options={options} onSaveOptions={saveOptions} onHide={() => onView({ hiddenGroups: [...hiddenGroups, c.id] })} onDragStart={() => setColDrag(c.id)} onDragEnd={() => (setColDrag(null), setOver(null))} />
-              <div className="tb-col-cards">
-                {list.map(card)}
-                {!list.length && <p className="muted small tb-col-empty">{group ? 'Drop a card here' : 'Every row is here until you add columns.'}</p>}
-              </div>
-              {!readOnly && canAdd && (
-                <button type="button" className="tb-col-add" onClick={() => onAddRow(c.id && group ? { [group.id]: c.id } : {})}>
-                  <Plus size={14} /> Add
-                </button>
-              )}
-            </section>
-          );
-        })}
-        {editable && (
-          <section className="tb-col tb-col-new">
-            {adding === null ? (
-              <button type="button" className="tb-col-add" onClick={() => setAdding('')}>
-                <Plus size={14} /> Add a column
+  const board = (laneRows: TableRow[], laneKey: string, laneValue?: CellValue) => (
+    <div className={`tb-board${view.cardSize === 'roomy' ? ' roomy' : ''}`} onScroll={laneKey === lanes[0].key ? onScroll : undefined}>
+      {visible.map((c) => {
+        const list = listOf(c.id, laneRows);
+        const key = `${laneKey}:${c.id}`;
+        const values = { ...(c.id && group ? { [group.id]: c.id } : {}), ...(lane && laneValue !== undefined && laneValue !== null && !isComputed(lane) ? { [lane.id]: laneValue } : {}) };
+        return (
+          <section
+            key={c.id || 'none'}
+            className={`tb-col${over === key ? ' over' : ''}${colDrag === c.id ? ' col-dragging' : ''}`}
+            onDragOver={(e) => (e.preventDefault(), over !== key && setOver(key))}
+            onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOver(null)}
+            onDrop={(e) => (e.preventDefault(), colDrag ? dropColumn(c.id) : dropCard(c.id, laneValue))}
+          >
+            <ColumnHead
+              c={c}
+              count={list.length}
+              editable={editable && !!c.id}
+              canHide={!readOnly && !phone}
+              group={group}
+              options={options}
+              onSaveOptions={saveOptions}
+              onHide={() => onView({ hiddenGroups: [...hiddenGroups, c.id] })}
+              onDragStart={() => setColDrag(c.id)}
+              onDragEnd={() => (setColDrag(null), setOver(null))}
+              onAdd={!readOnly && canAdd && phone ? () => onAddRow(values, c.label) : undefined}
+            />
+            <div className="tb-col-cards">
+              {list.map((r) => (
+                <BoardCard key={r.id} table={table} view={view} r={r} ctx={ctx} shown={shown} cover={cover} canMove={canMove} dragging={dragging === r.id} onDragStart={() => setDragging(r.id)} onDragEnd={() => (setDragging(null), setOver(null))} onOpen={() => onOpenRow(r.id)} phone={ph} />
+              ))}
+              {!list.length && <p className="muted small tb-col-empty">{group ? (phone ? 'Nothing here' : 'Drop a card here') : 'Every row is here until you add columns.'}</p>}
+            </div>
+            {!readOnly && canAdd && !phone && (
+              <button type="button" className="tb-col-add" onClick={() => onAddRow(values, c.label)}>
+                <Plus size={14} /> Add
               </button>
-            ) : (
-              <input
-                autoFocus
-                className="tb-col-input"
-                value={adding}
-                placeholder={group ? `New ${group.name.toLowerCase()}` : 'Column name, e.g. To do'}
-                onChange={(e) => setAdding(e.target.value)}
-                onBlur={() => addColumn(adding)}
-                onKeyDown={(e) => (e.key === 'Enter' ? addColumn(adding) : e.key === 'Escape' && setAdding(null))}
-              />
             )}
           </section>
-        )}
-      </div>
+        );
+      })}
+      {editable && laneKey === lanes[0].key && (
+        <section className="tb-col tb-col-new">
+          {adding === null ? (
+            <button type="button" className="tb-col-add" onClick={() => setAdding('')}>
+              <Plus size={14} /> Add a column
+            </button>
+          ) : (
+            <input
+              autoFocus
+              className="tb-col-input"
+              value={adding}
+              placeholder={group ? `New ${group.name.toLowerCase()}` : 'Column name, e.g. To do'}
+              onChange={(e) => setAdding(e.target.value)}
+              onBlur={() => addColumn(adding)}
+              onKeyDown={(e) => (e.key === 'Enter' ? addColumn(adding) : e.key === 'Escape' && setAdding(null))}
+            />
+          )}
+        </section>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={`tb-board-wrap${phone ? ' phone' : ''}${lane ? ' laned' : ''}`} ref={wrap}>
+      {phone && visible.length > 1 && (
+        <div className="tb-jump" role="tablist" aria-label="Columns">
+          {visible.map((c, i) => (
+            <button key={c.id || 'none'} type="button" role="tab" aria-selected={i === at} className={i === at ? 'on' : ''} onClick={() => jump(i)}>
+              <i className="tb-dot" style={{ background: c.color }} />
+              {c.label}
+              <small>{listOf(c.id).length}</small>
+            </button>
+          ))}
+        </div>
+      )}
+      {lane ? (
+        <div className="tb-lanes">
+          {lanes.map((l) => (
+            <section key={l.key} className="tb-lane">
+              <button type="button" className="tb-group-toggle tb-lane-head" onClick={() => onView({ collapsed: collapsed.has(`lane:${l.key}`) ? [...collapsed].filter((x) => x !== `lane:${l.key}`) : [...collapsed, `lane:${l.key}`] })} aria-expanded={!collapsed.has(`lane:${l.key}`)}>
+                <ChevronRight size={14} className={`rot-chev ${collapsed.has(`lane:${l.key}`) ? '' : 'open'}`} />
+                {l.color && <i className="tb-dot" style={{ background: l.color }} />}
+                <strong>{l.label}</strong>
+                <span className="muted small">{l.rows.length}</span>
+              </button>
+              <div className={`fold ${collapsed.has(`lane:${l.key}`) ? '' : 'open'}`}>
+                <div className="fold-in">{board(l.rows, l.key, l.value)}</div>
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        board(rows, '*')
+      )}
     </div>
   );
 }
 
 /** A column's header: its choice, how many cards, a grip to move it, and a menu to rename, recolour, hide or delete it. */
-function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions, onHide, onDragStart, onDragEnd }: {
+function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions, onHide, onDragStart, onDragEnd, onAdd }: {
   c: { id: string; label: string; color: string };
   count: number;
   editable: boolean;
@@ -199,6 +327,7 @@ function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions
   onHide: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onAdd?: () => void; // phones: + in the header
 }) {
   const btn = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -214,6 +343,11 @@ function ColumnHead({ c, count, editable, canHide, group, options, onSaveOptions
       <i className="tb-dot" style={{ background: c.color }} />
       <strong>{c.label}</strong>
       <span className="muted small">{count}</span>
+      {onAdd && (
+        <button type="button" className="icon-btn tb-col-plus" aria-label={`New row in ${c.label}`} onClick={onAdd}>
+          <Plus size={17} />
+        </button>
+      )}
       {(editable || canHide) && (
         <button ref={btn} type="button" className="icon-btn sm tb-col-menu" aria-label={`${c.label} options`} onClick={() => (open ? close() : (setName(c.label), setOpen(true)))}>
           <MoreHorizontal size={14} />
@@ -271,19 +405,14 @@ export function BoardTools({ table, view, onView, onNewField, readOnly }: { tabl
         </span>
       ) : (
         <button ref={groupBtn} type="button" className="ghost-btn sm on" onClick={() => setPop('group')} title="Columns come from this field">
-          <Columns3 size={13} /> <span className="lbl">By {group.name}</span>
+          <Columns3 size={13} /> <span className="lbl">By {group.name}{view.subGroupBy ? ', in lanes' : ''}</span>
         </button>
       )}
-      <Popover anchor={groupBtn} open={pop === 'group'} onClose={() => setPop(null)} width={260} title="Columns from">
+      <Popover anchor={groupBtn} open={pop === 'group'} onClose={() => setPop(null)} width={320} title="Columns and swimlanes">
         <div className="tb-menu">
-          <p className="muted small tb-menu-note">Each choice of this field is a column. Drag cards between them to change it.</p>
-          {selects.map((f) => (
-            <button key={f.id} type="button" className={group?.id === f.id ? 'on' : ''} onClick={() => (onView({ groupBy: f.id }), setPop(null))}>
-              <List size={14} /> {f.name}
-            </button>
-          ))}
+          <GroupEditor t={table} view={view} onView={onView} board />
           <button type="button" onClick={() => (newChoiceField(table, onNewField, onView), setPop(null))}>
-            <Plus size={14} /> New choice field
+            <Plus size={14} /> New choice field for the columns
           </button>
         </div>
       </Popover>
@@ -302,16 +431,23 @@ export function BoardTools({ table, view, onView, onNewField, readOnly }: { tabl
   );
 }
 
-function CardSettings({ table, view, group, shown, onView }: { table: DataTable; view: TableViewDef; group?: TableField; shown: TableField[]; onView: (p: Partial<TableViewDef>) => void }) {
+export function CardSettings({ table, view, group, shown, onView }: { table: DataTable; view: TableViewDef; group?: TableField; shown: TableField[]; onView: (p: Partial<TableViewDef>) => void }) {
   const usable = viewFields(table, view, true).filter((f) => f.id !== table.fields[0]?.id && f.id !== group?.id && f.type !== 'button');
   const on = shown.map((f) => f.id);
   const ordered = [...shown, ...usable.filter((f) => !on.includes(f.id))];
   const [drag, setDrag] = useState<string | null>(null);
   const files = table.fields.filter((f) => f.type === 'files');
   const set = (ids: string[]) => onView({ cardFields: ids });
+  const move = (id: string, d: -1 | 1) => {
+    const list = [...on];
+    const i = list.indexOf(id);
+    if (i + d < 0 || i + d >= list.length) return;
+    [list[i], list[i + d]] = [list[i + d], list[i]];
+    set(list);
+  };
   return (
     <div className="tab-edit-list tb-card-set">
-      <p className="muted small">Shown on each card, in this order. Drag to reorder.</p>
+      <p className="muted small">Shown on each card, in this order.</p>
       {ordered.map((f) => {
         const I = fieldIcon(f.type);
         const isOn = on.includes(f.id);
@@ -333,6 +469,16 @@ function CardSettings({ table, view, group, shown, onView }: { table: DataTable;
             {isOn ? <GripVertical size={14} className="muted tb-drag" /> : <span style={{ width: 14 }} />}
             <I size={13} className="muted" />
             <span className="tab-edit-name">{f.name}</span>
+            {isOn && (
+              <>
+                <button type="button" className="icon-btn sm" disabled={on.indexOf(f.id) === 0} onClick={() => move(f.id, -1)} aria-label={`Move ${f.name} up`}>
+                  <ArrowUp size={14} />
+                </button>
+                <button type="button" className="icon-btn sm" disabled={on.indexOf(f.id) === on.length - 1} onClick={() => move(f.id, 1)} aria-label={`Move ${f.name} down`}>
+                  <ArrowDown size={14} />
+                </button>
+              </>
+            )}
             <button type="button" className="icon-btn sm" onClick={() => set(isOn ? on.filter((x) => x !== f.id) : [...on, f.id])} aria-label={isOn ? `Hide ${f.name}` : `Show ${f.name}`}>
               {isOn ? <Eye size={13} /> : <EyeOff size={13} />}
             </button>

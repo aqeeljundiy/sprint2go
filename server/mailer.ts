@@ -472,7 +472,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const threads = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
     const existing = refs.length ? threads.find((t) => (t.messages ?? []).some((m: any) => m.mid && refs.includes(m.mid))) : undefined;
     const thread = existing
-      ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, messages: [...existing.messages, msg] }
+      ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, snoozeIfNoReply: undefined, messages: [...existing.messages, msg] }
       : { id: 't-' + randomBytes(6).toString('hex'), accountId: account.id, subject: cleanSubject(parsed.subject ?? '') || '(no subject)', location: spam ? 'spam' : 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: ws.id };
     // The source as it arrived, for mail apps over IMAP (server/imap.ts).
     keepRaw(thread.id, msg.id, raw);
@@ -498,7 +498,7 @@ export interface Outgoing {
   from: Person;
   to: Person[];
   cc: Person[];
-  bcc?: Person[]; // sent to them, named nowhere (mail apps' Bcc, through SMTP submission)
+  bcc?: Person[]; // they get it; nobody sees them in the headers (or in teammates' copies)
   subject: string;
   text: string;
   html?: string;
@@ -565,8 +565,9 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   const mid = o.mid && /^<[^<>\s]{1,250}@[^<>\s]{1,250}>$/.test(o.mid) ? o.mid : `<${randomBytes(12).toString('hex')}@${domain || MAIL_HOST}>`;
   let route: 'own' | 'boosted' = ws.mailRoute === 'boosted' && boostedAvailable() ? 'boosted' : 'own';
   const recipients = [...o.to, ...o.cc, ...(o.bcc ?? [])].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
-  // Who the email names (To and Cc): what our own mailboxes' copies show, never the Bcc.
-  const named = [...o.to, ...o.cc].map((p) => ({ ...p, email: lower(p.email) })).filter((p, i, all) => p.email && all.findIndex((x) => x.email === p.email) === i);
+  // What everyone sees as the recipients: Bcc never shows (the headers leave it out, and so do teammates' copies).
+  const hidden = new Set((o.bcc ?? []).map((p) => lower(p.email)));
+  const shown = recipients.filter((p) => !hidden.has(p.email) || [...o.to, ...o.cc].some((x) => lower(x.email) === p.email));
   const mine = localAccounts();
   const local = recipients.filter((p) => mine.has(p.email));
   const remote = recipients.filter((p) => !mine.has(p.email));
@@ -618,7 +619,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     const inline = o.files.some((f) => f.cid);
     const listed = o.files.filter((f) => !f.cid);
     const sizes = parsed.attachments.filter((a) => !(inline && a.related && a.contentId));
-    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: named, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined };
+    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
     keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);

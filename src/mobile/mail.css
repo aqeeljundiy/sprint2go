@@ -4,3 +4,596 @@
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
+
+@media (max-width: 767px) {
+  /* ---------- The list: chips under the title, three lines and a status line per email ---------- */
+
+  .mail-view {
+    border-radius: 0;
+  }
+  /* The reader is a screen pushed over the list on phones (Reader.tsx): the list stays where it was underneath, so a
+     swipe back shows it. */
+  .app.reading .mail-view > .list-pane {
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* The top bar has the title, search and the switcher; pull down to check for mail. No second header. */
+  .list-pane .list-title,
+  .list-pane .list-header > .search {
+    display: none;
+  }
+  .list-header {
+    gap: 0;
+    padding: 0 0 0 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mail-tools {
+    min-height: 52px;
+  }
+  .mail-chips {
+    gap: 2px;
+    margin-right: 0;
+    padding-right: 28px;
+  }
+  /* Chips are 44px to tap; the pill drawn inside is smaller. */
+  .mail-chip {
+    height: var(--tap);
+    padding: 0 14px;
+    border: 0;
+    background: none;
+    font-size: 14px;
+    isolation: isolate;
+  }
+  .mail-chip::before {
+    content: '';
+    position: absolute;
+    inset: 6px 0;
+    z-index: -1;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    transition: background 0.18s, border-color 0.18s;
+  }
+  .mail-chip:hover {
+    background: none;
+  }
+  .mail-chip.on::before {
+    border-color: transparent;
+    background: var(--accent-soft);
+  }
+  .sel-head {
+    padding-right: 4px;
+  }
+  .sel-head .ghost-btn {
+    min-height: var(--tap);
+  }
+  .list-offline {
+    display: block;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--warn);
+    background: var(--warn-soft);
+  }
+
+  .rows {
+    padding: 0 0 calc(24px + var(--fab-space));
+  }
+  .rows > .row-li + .row-li {
+    margin-top: 0;
+  }
+  .mail-swipe > .swipe-face {
+    border-radius: 0;
+  }
+  .row {
+    gap: 12px;
+    border-radius: 0;
+    padding: 12px 16px;
+  }
+  /* A divider between emails, from the text's edge (the picture column stays clean). */
+  .rows > .row-li + .row-li .row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 64px;
+    right: 0;
+    width: auto;
+    height: 1px;
+    border-radius: 0;
+    background: var(--line);
+  }
+  .row-av {
+    width: var(--tap);
+    height: var(--tap);
+    margin: -4px;
+  }
+  .row-av .avatar,
+  .row-check {
+    width: 36px;
+    height: 36px;
+  }
+  .row-check {
+    inset: 4px;
+  }
+  .row-from,
+  .row-subject {
+    font-size: 15px;
+  }
+  .row-snippet {
+    font-size: 14px;
+  }
+  .row-date {
+    font-size: 13px;
+  }
+  .row-meta {
+    font-size: 12.5px;
+  }
+  /* Actions live in swipes, long-press and the reader on phones: no hover tools or corner star. */
+  .row-actions,
+  .row > .star {
+    display: none;
+  }
+  .row.team-mail::after {
+    top: 0;
+    bottom: 0;
+    border-radius: 0;
+  }
+  .row.selected:not(.picked) {
+    background: color-mix(in oklab, var(--accent-soft) 55%, transparent);
+  }
+  /* A finger leaves no hover behind. */
+  @media (hover: none) {
+    .row:not(.picked):not(.selected):hover {
+      background: none;
+    }
+  }
+
+  /* Several selected: the bar takes the tab bar's place. */
+  .mail-bulk {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 35;
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+    animation: mailBulkUp 0.24s var(--ease) backwards;
+  }
+  @keyframes mailBulkUp {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  .mail-bulk > button {
+    min-height: 52px;
+    font-size: 12px;
+  }
+  .list-pane.selecting .rows {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  /* ---------- The reader: a pushed screen with one header row and the actions at the bottom ---------- */
+
+  .mail-reader .push-head {
+    gap: 2px;
+  }
+  .mail-reader .push-actions {
+    align-items: center;
+    gap: 0;
+  }
+  .mail-reader .push-actions .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .mail-reader .rp-btn {
+    min-height: var(--tap);
+    padding: 0 6px;
+  }
+  .mail-reader .reader-scroll {
+    flex: none;
+    overflow: visible;
+    padding: 16px 16px 24px;
+  }
+  .mail-reader .thread-head h2 {
+    font-size: 20px;
+  }
+  .mail-reader .thread-labels {
+    gap: 6px 8px;
+  }
+  /* How many messages: the fold says it ("3 earlier") where it matters. */
+  .mail-reader .thread-count {
+    display: none;
+  }
+  .mail-reader .thread-labels > button,
+  .mail-reader .th-when,
+  .mail-reader .ai-sum,
+  .mail-reader .ai-chip,
+  .mail-reader .smart-replies button {
+    min-height: var(--tap);
+  }
+  .mail-reader .thread-labels > button {
+    padding: 0 14px 0 10px;
+    font-size: 13px;
+  }
+  .mail-reader .rp-btn {
+    min-width: var(--tap);
+    justify-content: center;
+  }
+  /* Messages are plain sections with a line between them, not boxes inside the screen. */
+  .mail-reader .messages {
+    gap: 0;
+    margin-top: 16px;
+  }
+  .mail-reader .message {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .mail-reader .message + .message,
+  .mail-reader .mail-comment + .message,
+  .mail-reader .msg-fold + .message {
+    border-top: 1px solid var(--line);
+  }
+  .mail-reader .message-head {
+    min-height: 56px;
+    padding: 10px 0;
+    gap: 10px;
+  }
+  .mail-reader .message-body {
+    padding: 0 0 16px;
+    font-size: 15px;
+  }
+  .mail-reader .mail-comment {
+    margin: 8px 0;
+  }
+  .mail-reader .msg-fold {
+    min-height: var(--tap);
+  }
+  .mail-reader .attachment {
+    flex: 1 1 100%;
+  }
+  .mail-reader .attachment > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .mail-reader .file-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .mail-reader .att-save {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .mail-reader .smart-replies {
+    margin-top: 16px;
+  }
+  .invite {
+    flex-wrap: wrap;
+  }
+  .invite .primary-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* The bottom: the comment bar (team mail) over the actions; typing a comment folds the actions away. The footer
+     already rides above the keyboard, so the body doesn't keep the keyboard's room as well. */
+  .mail-reader .push-body {
+    padding-bottom: 0;
+  }
+  .mail-reader .push-foot {
+    padding: 6px 8px calc(4px + env(safe-area-inset-bottom));
+  }
+  .kb-open .mail-reader .push-foot {
+    padding-bottom: 6px;
+  }
+  .reader-foot {
+    display: flex;
+    flex-direction: column;
+  }
+  .reader-actions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    max-height: 64px;
+    overflow: hidden;
+    transition:
+      max-height 0.2s var(--ease),
+      opacity 0.15s;
+  }
+  .reader-foot.commenting .reader-actions {
+    max-height: 0;
+    opacity: 0;
+  }
+  .reader-actions > button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 52px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 550;
+    color: var(--text-2);
+    transition: background 0.15s, color 0.15s;
+  }
+  .reader-actions > button:active {
+    background: var(--hover);
+  }
+  .reader-actions > button.off {
+    opacity: 0.5;
+  }
+  .ra-icon {
+    position: relative;
+    display: grid;
+  }
+  .ra-dot {
+    position: absolute;
+    top: -2px;
+    right: -5px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+  .mc-box.docked {
+    margin: 0 0 6px;
+    padding: 2px 2px 2px 14px;
+    border-radius: 22px;
+    min-height: var(--tap);
+    align-items: center;
+  }
+  .mc-box.docked .cb-icon {
+    margin-bottom: 0;
+  }
+  .mc-box.docked textarea {
+    padding: 10px 0;
+  }
+  .mc-box.docked .cb-send {
+    align-self: flex-end;
+    color: var(--warn);
+  }
+  .cb-mentions {
+    left: 0;
+    right: 0;
+  }
+  .cb-mentions button {
+    min-height: var(--tap);
+  }
+
+  /* Reply: half the screen, the thread still above it; swiped up, all of it. */
+  .quick-reply.sheet {
+    height: min(58dvh, calc(100dvh - var(--kb, 0px) - 64px));
+    transition: height 0.24s var(--ease);
+  }
+  .quick-reply.sheet.grown {
+    height: calc(100dvh - var(--kb, 0px) - max(12px, env(safe-area-inset-top)) - 8px);
+  }
+  .quick-reply .sheet-head {
+    padding-right: 8px;
+  }
+  .quick-reply .sheet-body {
+    display: flex;
+    flex-direction: column;
+    padding: 0 4px;
+  }
+  .qr-editor {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .qr-editor .rich {
+    flex: 1;
+  }
+  .qr-editor .rich-body {
+    min-height: 96px;
+    padding: 8px 12px;
+  }
+  .quick-reply:not(.fmt-on) .rich-toolbar,
+  .compose.phone:not(.fmt-on) .rich-toolbar {
+    display: none;
+  }
+  .quick-reply .sheet-foot {
+    padding: 4px 8px;
+    justify-content: stretch;
+  }
+
+  /* The bar above the keyboard (quick reply and compose). */
+  .kb-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+  }
+  .kb-bar .spacer {
+    flex: 1;
+  }
+  .kb-bar .icon-btn {
+    color: var(--text-2);
+    transition: color 0.15s, background 0.15s;
+  }
+  .kb-bar .icon-btn.on {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+  }
+  .kb-bar .icon-btn:disabled {
+    opacity: 0.4;
+  }
+
+  /* ---------- Compose: the whole screen; Send top right; swipe the top down to park it as a pill ---------- */
+
+  .compose.phone,
+  .compose.phone.normal {
+    inset: 0;
+    bottom: var(--kb, 0px);
+    width: auto;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    transform: none;
+    z-index: var(--z-dialog);
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: mailSheetUp 0.3s var(--ease) backwards;
+  }
+  .kb-open .compose.phone {
+    padding-bottom: 0;
+  }
+  @keyframes mailSheetUp {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  .compose.phone.closing {
+    animation: mailSheetDown 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+  @keyframes mailSheetDown {
+    to {
+      transform: translateY(100%);
+    }
+  }
+  .compose.phone .compose-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 56px;
+    padding: max(6px, env(safe-area-inset-top)) 8px 6px 4px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    touch-action: none; /* the top is where the email is swiped down to park it */
+  }
+  .compose.phone .compose-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 650;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .compose-send {
+    padding: 0 16px;
+  }
+  .compose.phone .compose-main {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .compose.phone .compose-field,
+  .compose.phone .recip {
+    min-height: 48px;
+  }
+  .compose.phone .cc-toggle {
+    min-height: var(--tap);
+    padding: 0 12px;
+  }
+  .compose.phone .compose-foot {
+    flex: none;
+    padding: 4px 6px;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .recip-suggest {
+    left: 16px;
+    width: calc(100% - 32px);
+  }
+  .recip-suggest button {
+    min-height: 48px;
+  }
+
+  /* Parked: a pill above the tab bar; tap it to carry on writing. */
+  .compose.compose-pill {
+    flex-direction: row;
+    inset: auto 16px calc(var(--bar-space) + 12px) 16px;
+    width: auto;
+    height: 52px;
+    max-width: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 26px;
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    z-index: 36;
+    animation: pillIn 0.24s var(--ease) backwards;
+    transition: bottom 0.24s var(--ease);
+  }
+  @keyframes pillIn {
+    from {
+      opacity: 0;
+      transform: translateY(16px) scale(0.96);
+    }
+  }
+  .compose.compose-pill.closing {
+    animation: pillOut 0.16s ease-in forwards;
+  }
+  @keyframes pillOut {
+    to {
+      opacity: 0;
+      transform: translateY(16px) scale(0.96);
+    }
+  }
+  .cp-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--tap);
+    padding: 0 10px;
+    border-radius: 22px;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .cp-open svg {
+    flex: none;
+    color: var(--accent);
+  }
+  .cp-open span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- Pickers as sheets ---------- */
+
+  .mail-pick .as-item {
+    min-height: 52px;
+  }
+  .mp-toggle {
+    padding: 12px;
+  }
+  .mp-custom {
+    padding: 8px 12px;
+  }
+}
+
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .mail-bulk,
+  .compose.phone,
+  .compose.compose-pill,
+  .quick-reply.sheet {
+    animation: none;
+    transition: none;
+  }
+  .compose.phone.closing,
+  .compose.compose-pill.closing {
+    animation: s2gFadeOut 0.15s ease forwards;
+  }
+  .reader-actions {
+    transition: none;
+  }
+}

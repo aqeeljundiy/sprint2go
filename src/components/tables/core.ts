@@ -1,4 +1,4 @@
-import type { CalcKind, CellValue, DataTable, FieldType, FileRef, TableField, TableFilter, TableRow, TableViewDef, User } from '../../types';
+import type { CalcKind, CellValue, DataTable, FieldType, FileRef, RowTemplate, TableField, TableFilter, TableFilterGroup, TableRow, TableViewDef, TableViewTweak, User } from '../../types';
 import { localDay, uid } from '../../utils';
 
 /* Pure table logic, shared by the app and the server (no React, no icons). */
@@ -34,6 +34,7 @@ export interface TCtx {
   rowName: (id: string) => string;
   rows?: TableRow[];
   tables?: DataTable[];
+  me?: string; // whoever is looking: "Me" in a filter
 }
 
 /** Fields whose value is worked out, not typed: formulas, rollups, and when and by whom a row was made or changed. */
@@ -197,16 +198,169 @@ export function opsFor(t: FieldType): { op: TableFilter['op']; label: string }[]
 /** The sorts a view uses (older views had one). */
 export const sortsOf = (view: TableViewDef) => view.sorts ?? (view.sort ? [view.sort] : []);
 
-/** The rows a view shows: its filters (all or any), the search, then its sorts (or the manual order). */
+/** A condition that can be tested: its field is there and it has a value (or needs none). */
+const complete = (byId: Map<string, TableField>, flt: TableFilter) => byId.has(flt.fieldId) && (flt.op === 'empty' || flt.op === 'filled' || (flt.value ?? '') !== '');
+
+/** How many conditions a view's filter has that actually do something (groups count each of theirs). */
+export function filterCount(t: DataTable, view: Pick<TableViewDef, 'filters' | 'filterGroups'>) {
+  const byId = new Map(t.fields.map((f) => [f.id, f]));
+  return (view.filters ?? []).filter((x) => complete(byId, x)).length + (view.filterGroups ?? []).reduce((n, g) => n + g.filters.filter((x) => complete(byId, x)).length, 0);
+}
+
+/** "@today" is the day where it's read, "@me" whoever is looking. */
+function resolveFilter(flt: TableFilter, ctx: TCtx): TableFilter {
+  if (flt.value === '@today') return { ...flt, value: localDay() };
+  if (flt.value === '@me') return { ...flt, value: ctx.me ?? '' };
+  return flt;
+}
+
+/** One condition on one row. */
+export function rowPasses(t: DataTable, flt: TableFilter, r: TableRow, ctx: TCtx) {
+  const f = t.fields.find((x) => x.id === flt.fieldId);
+  return !f || passes(resolveFilter(flt, ctx), f, valueOf(t, f, r, ctx), ctx);
+}
+
+/**
+ * A view's filter as one test: its conditions and its groups (each with its own all/any), joined by the view's
+ * all/any. Null when nothing filters. `skipField` leaves out top-level conditions on one field (for counts).
+ */
+export function filterTest(t: DataTable, view: Pick<TableViewDef, 'filters' | 'filterMode' | 'filterGroups'>, ctx: TCtx, skipField?: string): ((r: TableRow) => boolean) | null {
+  const byId = new Map(t.fields.map((f) => [f.id, f]));
+  const one = (flt: TableFilter) => (r: TableRow) => passes(resolveFilter(flt, ctx), byId.get(flt.fieldId)!, valueOf(t, byId.get(flt.fieldId)!, r, ctx), ctx);
+  const items: ((r: TableRow) => boolean)[] = (view.filters ?? []).filter((flt) => complete(byId, flt) && flt.fieldId !== skipField).map(one);
+  for (const g of view.filterGroups ?? []) {
+    const tests = g.filters.filter((flt) => complete(byId, flt)).map(one);
+    if (tests.length) items.push(g.mode === 'or' ? (r) => tests.some((x) => x(r)) : (r) => tests.every((x) => x(r)));
+  }
+  if (!items.length) return null;
+  return view.filterMode === 'or' ? (r) => items.some((x) => x(r)) : (r) => items.every((x) => x(r));
+}
+
+/**
+ * The single choice that reads as a row's status: the view's grouping choice, else the one a board of this table makes
+ * columns from, else one called Status or Stage, else the first single choice. Cards show it as a pill.
+ */
+export function statusField(t: DataTable, view?: Pick<TableViewDef, 'groupBy'>) {
+  const selects = t.fields.filter((f) => f.type === 'select');
+  const board = t.views.find((v) => v.kind === 'board' && selects.some((f) => f.id === v.groupBy))?.groupBy;
+  return selects.find((f) => f.id === view?.groupBy) ?? selects.find((f) => f.id === board) ?? selects.find((f) => /^(status|stage|state)$/i.test(f.name.trim())) ?? selects[0];
+}
+
+/** A view with this person's own filters and sorts on top (what they see until they save it for everyone). */
+export function withTweak(view: TableViewDef, tw: TableViewTweak | null | undefined): TableViewDef {
+  if (!tw) return view;
+  const out = { ...view };
+  if (tw.filters) out.filters = tw.filters;
+  if (tw.filterMode) out.filterMode = tw.filterMode;
+  if (tw.filterGroups) out.filterGroups = tw.filterGroups;
+  if (tw.sorts) (out.sorts = tw.sorts), (out.sort = undefined);
+  if (tw.collapsed) out.collapsed = tw.collapsed;
+  return out;
+}
+
+/** Whether this person's filters or sorts differ from the view everyone sees. */
+export function tweakDiffers(view: TableViewDef, tw: TableViewTweak | null | undefined) {
+  if (!tw) return false;
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  // Only conditions that do something count: one still being set up (no value yet) changes nothing.
+  const norm = (x: TableFilter[] | undefined) => (x ?? []).filter((f) => f.op === 'empty' || f.op === 'filled' || (f.value ?? '') !== '').map((f) => ({ fieldId: f.fieldId, op: f.op, value: f.value ?? '' }));
+  const groups = (x: TableFilterGroup[] | undefined) => (x ?? []).map((g) => ({ mode: g.mode, f: norm(g.filters) })).filter((g) => g.f.length);
+  const mode = (m: string | undefined, fs: TableFilter[] | undefined, gs: TableFilterGroup[] | undefined) => (norm(fs).length + groups(gs).length > 1 ? (m ?? 'and') : 'and');
+  return (
+    (!!tw.filters && !same(norm(tw.filters), norm(view.filters))) ||
+    (!!tw.filterMode && mode(tw.filterMode, tw.filters ?? view.filters, tw.filterGroups ?? view.filterGroups) !== mode(view.filterMode, view.filters, view.filterGroups)) ||
+    (!!tw.filterGroups && !same(groups(tw.filterGroups), groups(view.filterGroups))) ||
+    (!!tw.sorts && !same(tw.sorts, sortsOf(view)))
+  );
+}
+
+/** The tint a view's colour rules give a row: one for the whole row, and one per field for cells. */
+export function rowColors(t: DataTable, view: TableViewDef, r: TableRow, ctx: TCtx): { row?: string; cells: Record<string, string> } {
+  const out: { row?: string; cells: Record<string, string> } = { cells: {} };
+  const byId = new Map(t.fields.map((f) => [f.id, f]));
+  for (const rule of view.colors ?? []) {
+    if (!complete(byId, rule.when) || !rowPasses(t, rule.when, r, ctx)) continue;
+    if (rule.target === 'row') out.row ??= rule.color;
+    else out.cells[rule.when.fieldId] ??= rule.color;
+  }
+  return out;
+}
+
+/**
+ * The quick values a filter sheet starts with, with how many rows each would show: the people in a person field
+ * (Me first), the choices of a single-choice field, and Overdue / Today / No date for a date field.
+ * Counts are among the rows the other conditions already let through.
+ */
+export function quickFilters(t: DataTable, view: TableViewDef, rows: TableRow[], ctx: TCtx): { field: TableField; items: { label: string; filter: TableFilter; count: number; color?: string; on: boolean }[] }[] {
+  const fields = [
+    statusField(t, view),
+    t.fields.find((f) => f.type === 'person'),
+    t.fields.find((f) => f.type === 'date'),
+  ].filter(Boolean) as TableField[];
+  const current = view.filters ?? [];
+  const isOn = (flt: TableFilter) => current.some((x) => x.fieldId === flt.fieldId && x.op === flt.op && (x.value ?? '') === (flt.value ?? ''));
+  return fields.map((f) => {
+    const test = filterTest(t, view, ctx, f.id);
+    const pool = test ? rows.filter(test) : rows;
+    const count = (flt: TableFilter) => pool.filter((r) => rowPasses(t, flt, r, ctx)).length;
+    const item = (label: string, filter: TableFilter, color?: string) => ({ label, filter, count: count(filter), color, on: isOn(filter) });
+    let items: ReturnType<typeof item>[] = [];
+    if (f.type === 'select') items = [...(f.options ?? []).map((o) => item(o.label, { fieldId: f.id, op: 'is', value: o.id }, o.color)), item(`No ${f.name.toLowerCase()}`, { fieldId: f.id, op: 'empty' })];
+    else if (f.type === 'person') {
+      const ids = [...new Set(pool.map((r) => r.values[f.id]).filter((x): x is string => typeof x === 'string' && !!x))];
+      const others = ids.filter((id) => id !== ctx.me).map((id) => item(ctx.users.find((u) => u.id === id)?.name ?? 'Someone', { fieldId: f.id, op: 'is', value: id }));
+      items = [...(ctx.me ? [item('Me', { fieldId: f.id, op: 'is', value: '@me' })] : []), ...others.sort((a, b) => b.count - a.count), item(`No ${f.name.toLowerCase()}`, { fieldId: f.id, op: 'empty' })];
+    } else if (f.type === 'date') items = [item('Overdue', { fieldId: f.id, op: 'lt', value: '@today' }), item('Today', { fieldId: f.id, op: 'is', value: '@today' }), item('Later', { fieldId: f.id, op: 'gt', value: '@today' }), item(`No ${f.name.toLowerCase()}`, { fieldId: f.id, op: 'empty' })];
+    return { field: f, items: items.filter((x) => x.count > 0 || x.on) };
+  }).filter((s) => s.items.length > 0);
+}
+
+/* ---------- row templates ---------- */
+
+/** A template's values for a new row: "@today" and "@me" filled in, only fields the table still has (and can be typed). */
+export function templateValues(t: DataTable, tpl: RowTemplate | undefined, me: string, today = localDay()): Record<string, CellValue> {
+  if (!tpl) return {};
+  const out: Record<string, CellValue> = {};
+  for (const [k, v] of Object.entries(tpl.values ?? {})) {
+    const f = t.fields.find((x) => x.id === k);
+    if (!f || isComputed(f) || f.type === 'button') continue;
+    out[k] = v === '@today' ? today : v === '@me' ? me : v;
+  }
+  return out;
+}
+
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
+
+/** "Every weekday at 09:00", "Every week on Monday at 09:00", "Every month on the 5th at 09:00". */
+export function repeatWords(r: NonNullable<RowTemplate['repeat']>) {
+  const at = `at ${String(r.hour).padStart(2, '0')}:00`;
+  const days = [...(r.days ?? [])].sort();
+  if (r.every === 'day') return days.length && days.length < 7 ? (days.join() === '1,2,3,4,5' ? `Every weekday ${at}` : `Every ${days.map((d) => WEEKDAY_NAMES[d].slice(0, 3)).join(', ')} ${at}`) : `Every day ${at}`;
+  if (r.every === 'week') return `Every week on ${(days.length ? days : [1]).map((d) => WEEKDAY_NAMES[d]).join(' and ')} ${at}`;
+  const from = new Date(`${r.from}T12:00`);
+  if (r.every === 'month') return `Every month on the ${ordinal(from.getDate())} ${at}`;
+  return `Every year on ${from.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} ${at}`;
+}
+
+/** Whether a repeating template is due now: the right day, at or after its hour, not run today, not before it starts. */
+export function templateDue(r: NonNullable<RowTemplate['repeat']>, now: { day: string; hour: number; weekday: number }, lastRun?: string) {
+  if (lastRun === now.day || now.day < r.from || now.hour < r.hour) return false;
+  const days = r.days?.length ? r.days : r.every === 'week' ? [1] : [];
+  if (r.every === 'day') return !days.length || days.includes(now.weekday);
+  if (r.every === 'week') return days.includes(now.weekday);
+  const [y, m, d] = now.day.split('-').map(Number);
+  const want = Number(r.from.slice(8, 10));
+  const last = new Date(y, m, 0).getDate(); // the 31st runs on the last day of shorter months
+  if (r.every === 'month') return d === Math.min(want, last);
+  return m === Number(r.from.slice(5, 7)) && d === Math.min(want, last);
+}
+
+/** The rows a view shows: its filters (all or any, with groups), the search, then its sorts (or the manual order). */
 export function visibleRows(t: DataTable, view: TableViewDef, rows: TableRow[], q: string, ctx: TCtx) {
   const byId = new Map(t.fields.map((f) => [f.id, f]));
-  const filters = (view.filters ?? []).filter((flt) => byId.has(flt.fieldId) && (flt.op === 'empty' || flt.op === 'filled' || (flt.value ?? '') !== ''));
-  const test = (r: TableRow, flt: TableFilter) => {
-    const f = byId.get(flt.fieldId)!;
-    const value = flt.value === '@today' ? { ...flt, value: localDay() } : flt;
-    return passes(value, f, valueOf(t, f, r, ctx), ctx);
-  };
-  let out = filters.length ? rows.filter((r) => (view.filterMode === 'or' ? filters.some((flt) => test(r, flt)) : filters.every((flt) => test(r, flt)))) : rows;
+  const test = filterTest(t, view, ctx);
+  let out = test ? rows.filter(test) : rows;
   const needle = q.trim().toLowerCase();
   if (needle) out = out.filter((r) => t.fields.some((f) => cellText(f, valueOf(t, f, r, ctx), ctx).toLowerCase().includes(needle)));
   const sorts = sortsOf(view)

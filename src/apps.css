@@ -1680,18 +1680,6 @@
   .board {
     grid-template-columns: repeat(3, 78vw);
   }
-  .chat-head {
-    padding-top: max(12px, env(safe-area-inset-top));
-  }
-  .chat-members {
-    display: none;
-  }
-  .cm-action {
-    opacity: 1;
-    position: static;
-    align-self: flex-start;
-    box-shadow: none;
-  }
   .chat-compose {
     margin-bottom: 12px;
   }

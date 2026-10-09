@@ -601,19 +601,6 @@ h4,
   .crumbs > .drive-sec-title {
     display: none;
   }
-  /* The mail reader's actions: Back stays first; the rest wrap onto a second line at the right, never off screen. */
-  .reader-bar {
-    align-items: flex-start;
-  }
-  .reader-bar > .toolbar {
-    flex: 1;
-    min-width: 0;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .reader-bar .divider {
-    display: none;
-  }
   /* Search fields: the whole field is the target (it's a label around the input). */
   .search,
   .notes-search,

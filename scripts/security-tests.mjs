@@ -13,11 +13,13 @@
 // 10. invoices bill the people who were active that month, and say so
 // 11. the company's time zone: only admins set it, only zones the clock knows
 // 12. mail: a refused send plans nothing; "Remind me if no reply" is noted when the email goes out
-// 13. two-step sign-in: "Remember this device" for 30 days, signed and bound to the person, forgotten on Forget,
+// 13. chat: a message sent later is its author's alone until its time, then goes out with its notices; a saved
+//     message's reminder comes once
+// 14. two-step sign-in: "Remember this device" for 30 days, signed and bound to the person, forgotten on Forget,
 //     "Sign out everywhere" and a password change
-// 14. free trials: one per person and per company domain, the reason on the plan, and one more when an operator allows it
-// 15. BIMI: the logo is checked for SVG Tiny PS basics, served from a stable address in a sandbox, admins only
-// 16. a project's or team's own task stages: who sets them, only lists that work, guests' approvals use them
+// 15. free trials: one per person and per company domain, the reason on the plan, and one more when an operator allows it
+// 16. BIMI: the logo is checked for SVG Tiny PS basics, served from a stable address in a sandbox, admins only
+// 17. a project's or team's own task stages: who sets them, only lists that work, guests' approvals use them
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -392,7 +394,26 @@ try {
   const days = rem ? (Date.parse(rem.due_at) - Date.now()) / 86_400_000 : 0;
   check(sent.ok && rem?.by_user === 'u-aqeel' && rem.state === 'waiting' && days > 2.9 && days <= 3, 'a tracked email with “Remind me if no reply” is noted on the server, three days out');
 
-  /* ---------- 13. two-step sign-in: "Remember this device" ---------- */
+  /* ---------- 13. chat: Send later and Remind me ---------- */
+  const inAnHour = new Date(Date.now() + 3600_000).toISOString();
+  await aqeel.sync('messages', [{ id: 'msg-later', channelId: 'ch-both', userId: 'u-aqeel', text: '@Dewi this goes out later', at: now(), sendAt: inAnHour }]);
+  check(doc('messages', 'msg-later')?.sendAt === inAnHour, 'a message can wait for its time');
+  check(!(await dewi.state()).messages.some((x) => x.id === 'msg-later') && (await aqeel.state()).messages.some((x) => x.id === 'msg-later'), 'until then only its author sees it');
+  await dewi.sync('messages', [{ ...doc('messages', 'msg-later'), reactions: { '👍': ['u-dewi'] } }]);
+  await dewi.sync('messages', [], ['msg-later']);
+  check(!!doc('messages', 'msg-later') && !doc('messages', 'msg-later').reactions, 'nobody else can touch it or delete it');
+  await aqeel.sync('messages', [{ ...doc('messages', 'msg-aqeel'), sendAt: inAnHour }]);
+  check(!doc('messages', 'msg-aqeel').sendAt, 'a message that went out can’t be made to wait again');
+  await aqeel.sync('messages', [{ ...doc('messages', 'msg-later'), sendAt: new Date(Date.now() - 1000).toISOString() }]);
+  const dewiPrefs = doc('prefs', 'u-dewi')?.value ?? {};
+  await dewi.sync('prefs', [{ id: 'u-dewi', value: { ...dewiPrefs, 's2g-chat-saved:u-dewi': [{ id: 'msg-aqeel', channelId: 'ch-both', at: now(), remindAt: new Date(Date.now() - 1000).toISOString() }] } }]);
+  const chatNotices = () => db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND json_extract(data, '$.userId') = 'u-dewi' AND json_extract(data, '$.link.app') = 'chat'").all().map((r) => JSON.parse(r.data).text);
+  const went = await waitFor(() => !doc('messages', 'msg-later').sendAt && chatNotices().some((t) => t.startsWith('Reminder:')), 400);
+  check(!!went && (await dewi.state()).messages.some((x) => x.id === 'msg-later'), 'when its time comes the server sends it, and now she sees it');
+  check(chatNotices().some((t) => t === 'Aqeel mentioned you in #both: “@Dewi this goes out later”'), 'the person it mentions hears about it');
+  check(chatNotices().filter((t) => t === 'Reminder: Aqeel in #both: “I said this”').length === 1 && doc('prefs', 'u-dewi').value['s2g-chat-saved:u-dewi'][0].reminded === true, 'a saved message’s reminder comes once, and is marked done in her settings');
+
+  /* ---------- 14. two-step sign-in: "Remember this device" ---------- */
   {
     // A TOTP code (RFC 6238) for a base32 secret, `ahead` 30-second steps from now.
     const totp = (secret, ahead = 0) => {
@@ -475,7 +496,7 @@ try {
     check((await login(dewiMail, devB.token, 'a-new-password-123')).body.twoStep === 'code', 'and the next sign-in there asks for the code');
 
   }
-  /* ---------- 14. free trials: one per person and per company domain ---------- */
+  /* ---------- 15. free trials: one per person and per company domain ---------- */
   {
     const trialWs = (id, name) => ({ workspace: { id, name, color: '#5b5bf6', domains: [], accounts: [], members: [], plan: { track: 'ai', tier: 'studio', cycle: 'monthly', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString(), addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: name, emails: [] }, since: now() } }, users: [] });
     // Aqeel's demo companies already had trials (they count from before the rule), and Dewi's address is at the same
@@ -498,7 +519,7 @@ try {
     check(!!fourth.trialRefused && doc('workspaces', 'ws-trial-3')?.plan?.tier === 'free', 'and only that one');
   }
 
-  /* ---------- 15. BIMI: the logo is checked, served from a stable address, and only admins change it ---------- */
+  /* ---------- 16. BIMI: the logo is checked, served from a stable address, and only admins change it ---------- */
   {
     const good = '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64"><title>Pixel and Profits</title><rect width="64" height="64" fill="#5b5bf6"/></svg>';
     const bad = good.replace('<rect', '<script>alert(document.cookie)</script><rect');
@@ -517,7 +538,7 @@ try {
     check(!!doc('workspaces', 'pnp').bimi?.fileId && doc('workspaces', 'pnp').bimi.fileId !== secretFile.url.split('/').pop(), 'the app can’t point the logo at another file');
   }
 
-  /* ---------- 16. a project's or team's own task stages: who sets them, only lists that work, approvals use them ---------- */
+  /* ---------- 17. a project's or team's own task stages: who sets them, only lists that work, approvals use them ---------- */
   {
     const own = [{ id: 'todo', kind: 'open' }, { id: 'st-design', kind: 'active', name: 'Design' }, { id: 'st-check', kind: 'review', name: 'Check' }, { id: 'done', kind: 'done' }];
     const nanda = await signIn('nanda@pixelandprofits.com'); // a member, not on this project's lead list

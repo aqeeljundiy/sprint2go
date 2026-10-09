@@ -1,44 +1,36 @@
-import { TabBar } from './ui/TabBar';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { SmoothHeight, TabPane } from './ui/Smooth';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
-import { companyOf } from '../clientView';
-import { AlertTriangle, FolderPlus, ChevronUp, Handshake, ArrowLeft, ArrowUp, BarChart3, ChevronDown, ChevronRight, Check, LayoutList, Pencil, Compass, FileText, Hash, Image as ImageIcon, ListChecks, Lock, Mail, Menu, MessageSquareReply, Mic, MoreHorizontal, Paperclip, HardDrive, Pin, Pause, Play, Plus, Settings, SmilePlus, Sparkles, SquareCheck, Star, Trash2, Users, Video, X, Headphones } from 'lucide-react';
-import type { Channel, ChannelCategory, ChatLayout, ChatSection, ChatFile, ChatMessage, ChatView as ChatViewDef, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../types';
-import { localDay, relative } from '../utils';
+import { FolderPlus, ChevronUp, Handshake, ChevronDown, ChevronRight, Check, LayoutList, Pencil, Compass, Hash, Lock, MoreHorizontal, Plus, Settings, Star, Trash2, Users, X, Headphones, BellOff, Bell, Link2, LogOut, MailOpen, CheckCheck, Inbox, MessagesSquare, SendHorizontal, Bookmark, ArrowLeft, ArrowRight, EyeOff, SlidersHorizontal, PenLine } from 'lucide-react';
+import type { Channel, ChannelCategory, ChatLayout, ChatMessage, ChatSection, ChatView as ChatViewDef, Status, Team, User } from '../types';
 import { usePersisted } from '../settings';
-import { DraftNote, useChatDraft } from './ChatDraft';
-import { ai } from '../ai';
 import { Avatar } from './Avatar';
-import { Badge, PersonCell } from './ui/Person';
-import { EmptyState } from './ui/EmptyState';
+import { Badge } from './ui/Person';
 import { Layer } from './ui/Layer';
-import { dueLabel } from './TasksView';
-import { stageName, stageOf } from '../stages';
-import { DatePicker } from './ui/DatePicker';
 import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE } from './ChannelDialog';
-import { ChannelMaterials } from './ChannelMaterials';
-import { personOption } from './ui/PeopleList';
-import { server, uploadFile, wasSkipped } from '../sync';
-import { channelSchedule, companyTz, nextSummaryDay, settledKey } from '../jobTimes';
 import { Sheet } from './ui/Sheet';
+import { ActionSheet, type SheetAction } from './ui/ActionSheet';
+import { useLongPress } from './ui/useLongPress';
 import { SquarePen, Search as SearchIcon } from 'lucide-react';
-import { useCreateAction, useFocusedScreen } from '../mobile/chrome';
+import { useAppSettings, useCreateAction, useTitleMenu } from '../mobile/chrome';
+import { routeBase } from '../tryOut';
+import { toast } from '../toast';
+import { dmOther, followedThreads, isMutedValue, readFallback, shortTime, TILE_NAMES, useChatState, whenText, type ChatState, type TileId } from './chat/chatPrefs';
+import { preview } from './chat/Message';
+import { ConfirmSheet, chanName } from './chat/Sheets';
 
-const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
-export const QUICK_REACTIONS = ['👍', '🔥', '🙌', '😂', '❤️', '👀', '✅', '🙏'];
+export type Presence = 'active' | 'away' | 'meeting';
+/** Pages of Chat besides the conversations: shown in the main area on wider screens, pushed full screen on phones. */
+export type ChatPage = 'catchup' | 'threads' | 'drafts' | 'saved';
+
 // "In a meeting" comes from the calendar on its own; people only set Focus, Away or their own words.
 const STATUS_PRESETS: Status[] = [
   { emoji: '🎯', text: 'Focusing, slow to reply' },
   { emoji: '🌴', text: 'Away' },
 ];
-const fmtSize = (b: number) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
-const fmtSecs = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
-
-export type Presence = 'active' | 'away' | 'meeting';
 
 const ALL_CATS: ChannelCategory[] = ['client', 'shared', 'team', 'project', 'social'];
 /** The company layout with every built-in section present. */
@@ -58,22 +50,48 @@ export function sectionPeople(sec: ChatSection, teams: Team[]) {
   return [...new Set([...(sec.access?.userIds ?? []), ...teams.filter((t) => sec.access?.teamIds.includes(t.id)).flatMap((t) => t.members)])];
 }
 
-/* ---------------- Sidebar ---------------- */
+/** Per conversation: its last message, what's unread, mentions of me, and a draft. */
+export type ConvoInfo = { last?: ChatMessage; unread: number; mentions: number; draft?: string; muted: boolean };
+export function convoInfo(channels: Channel[], messages: ChatMessage[], me: string, myFirst: string, chat: ChatState): Record<string, ConvoInfo> {
+  const out: Record<string, ConvoInfo> = {};
+  const at = new RegExp(`@${myFirst.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&')}\\b`, 'i');
+  const ids = new Set(channels.map((c) => c.id));
+  for (const c of channels) out[c.id] = { unread: 0, mentions: 0, draft: chat.drafts[c.id]?.text, muted: isMutedValue(chat.muted[c.id]) };
+  const fallback = readFallback();
+  for (const m of messages) {
+    if (!ids.has(m.channelId) || m.sendAt || (m.parentId && !m.alsoInChannel)) continue;
+    const o = out[m.channelId];
+    if (!o.last || m.at > o.last.at) o.last = m;
+    if (m.userId === me || m.kind === 'celebration') continue;
+    if (m.at > (chat.read[m.channelId] ?? fallback)) {
+      o.unread++;
+      if (at.test(m.text)) o.mentions++;
+    }
+  }
+  return out;
+}
+
+/* ---------------- Sidebar (wider screens) and the chat list (phones) ---------------- */
 
 type BuiltIn = 'default' | 'unread' | 'recent';
 
 interface SidebarProps {
   channels: Channel[]; // this workspace's channels I can see (member, or public)
+  messages: ChatMessage[]; // their messages (last message, unread, mentions, threads)
   users: User[];
   me: string;
+  myFirst: string;
   workspaceId: string;
   current: string | null;
-  unread: Record<string, number>;
-  lastAt: Record<string, string>; // channel id -> last message time
   statuses: Record<string, Status>;
   presence: (id: string) => Presence;
+  /** phone: the whole screen (tiles, unread on top, two-line rows); side: the sidebar on wider screens. */
+  variant: 'side' | 'phone';
+  page?: ChatPage | null; // the page open in the main area (wider screens)
+  onPage: (p: ChatPage) => void;
   onOpen: (id: string) => void;
   onJoin: (id: string) => void;
+  onLeave: (id: string) => void;
   onNewChannel?: () => void; // missing: only admins start channels in this company
   onNewDm: (userId: string) => void;
   onStatus: (s: Status | null) => void;
@@ -88,6 +106,8 @@ interface SidebarProps {
 }
 
 export function ChatSidebar(p: SidebarProps) {
+  const phone = p.variant === 'phone';
+  const chat = useChatState(p.me);
   const [views, setViews] = usePersisted<ChatViewDef[]>(`s2g-chat-views:${p.me}:${p.workspaceId}`, []);
   const [viewId, setViewId] = usePersisted<string>(`s2g-chat-view:${p.me}:${p.workspaceId}`, 'default');
   const [starred, setStarred] = usePersisted<string[]>(`s2g-chat-starred:${p.me}:${p.workspaceId}`, []);
@@ -95,9 +115,10 @@ export function ChatSidebar(p: SidebarProps) {
   const [editing, setEditing] = useState<ChatViewDef | null>(null);
   const [addingDm, setAddingDm] = useState(false);
   const [newMsg, setNewMsg] = useState(false); // the phone's create button: who to write to
-  useCreateAction('chat', { label: 'New message', icon: SquarePen, run: () => setNewMsg(true) });
   const [browsing, setBrowsing] = useState(false);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ id: string; at?: { x: number; y: number }; anchor?: HTMLElement } | null>(null);
+  const [rowSub, setRowSub] = useState<{ kind: 'mute' | 'move' | 'leave'; id: string; anchor?: HTMLElement; at?: { x: number; y: number } } | null>(null);
+  const [tileMenu, setTileMenu] = useState<TileId | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   // The company's Default layout: admins add, rename and order sections and place channels for everyone.
   const [newSection, setNewSection] = useState<{ name: string; channelId?: string } | null>(null);
@@ -107,6 +128,21 @@ export function ChatSidebar(p: SidebarProps) {
   const layout = fullLayout(p.layout);
   const sectionOf = (c: Channel) => sectionIdOf(layout, c);
   const [accessFor, setAccessFor] = useState<string | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const statusBtn = useRef<HTMLButtonElement>(null);
+
+  const mine = p.channels.filter((c) => c.members.includes(p.me) && !c.archived);
+  const joinable = p.channels.filter((c) => c.kind === 'channel' && !c.private && !c.archived && !c.members.includes(p.me));
+  const rooms = mine.filter((c) => c.kind === 'channel');
+  const dms = mine.filter((c) => c.kind === 'dm');
+  const dmWith = new Set(dms.flatMap((d) => d.members));
+  const star = new Set(starred);
+  const myStatus = p.statuses[p.me];
+  const custom = views.find((v) => v.id === viewId);
+  const active: BuiltIn | 'custom' = custom ? 'custom' : (['default', 'unread', 'recent'].includes(viewId) ? viewId : 'default') as BuiltIn;
+  const info = useMemo(() => convoInfo(mine, p.messages, p.me, p.myFirst, chat), [mine.map((c) => c.id).join(), p.messages, p.me, p.myFirst, chat.read, chat.drafts, chat.muted]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recency = (c: Channel) => info[c.id]?.last?.at ?? '';
+
   /** Admins can arrange everything; a channel's owner can still change its kind (its built-in section). */
   const canPlace = (c: Channel, sec: ChatSection) => p.isAdmin || (!!sec.category && p.canManage(c));
   const placeIn = (channelId: string, sectionId: string) => {
@@ -119,6 +155,10 @@ export function ChatSidebar(p: SidebarProps) {
       if ((c.category ?? 'project') !== sec.category) p.onMove(channelId, sec.category);
     } else placement[channelId] = sectionId;
     p.onLayout({ ...layout, placement });
+  };
+  const moveInView = (id: string, to: string | null) => {
+    if (!custom) return;
+    setViews(views.map((v) => (v.id === custom.id ? { ...custom, sections: custom.sections.map((x) => ({ ...x, channelIds: x.id === to ? [...new Set([...x.channelIds, id])] : x.channelIds.filter((y) => y !== id) })) } : v)));
   };
   const saveRename = () => {
     if (renaming?.name.trim()) p.onLayout({ ...layout, sections: layout.sections.map((x) => (x.id === renaming.id ? { ...x, name: renaming.name.trim() } : x)) });
@@ -145,72 +185,61 @@ export function ChatSidebar(p: SidebarProps) {
     const placement = Object.fromEntries(Object.entries(layout.placement).filter(([, s]) => s !== id));
     p.onLayout({ sections: layout.sections.filter((x) => x.id !== id), placement });
   };
-  const [statusOpen, setStatusOpen] = useState(false);
-  const [customStatus, setCustomStatus] = useState('');
-  const menuAnchor = useRef<HTMLElement | null>(null);
-  const statusBtn = useRef<HTMLButtonElement>(null);
-
-  const mine = p.channels.filter((c) => c.members.includes(p.me) && !c.archived);
-  const joinable = p.channels.filter((c) => c.kind === 'channel' && !c.private && !c.archived && !c.members.includes(p.me));
-  const rooms = mine.filter((c) => c.kind === 'channel');
-  const dms = mine.filter((c) => c.kind === 'dm');
-  const dmWith = new Set(dms.flatMap((d) => d.members));
-  const star = new Set(starred);
-  const myStatus = p.statuses[p.me];
-  const custom = views.find((v) => v.id === viewId);
-  const active: BuiltIn | 'custom' = custom ? 'custom' : (['default', 'unread', 'recent'].includes(viewId) ? viewId : 'default') as BuiltIn;
-
   const toggle = (key: string) => setCollapsed(collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key]);
-  const recency = (c: Channel) => p.lastAt[c.id] ?? '';
 
-  const row = (c: Channel) => {
-    const other = c.kind === 'dm' ? p.users.find((u) => u.id === dmOther(c, p.me)) : undefined;
-    const st = other ? p.statuses[other.id] : undefined;
-    return (
-      <div
-        key={c.id}
-        className={`nav-row ${p.current === c.id ? 'active' : ''}`}
-        draggable={c.kind === 'channel' && (active === 'custom' || (active === 'default' && (p.isAdmin || p.canManage(c))))}
-        onDragStart={(e) => {
-          e.dataTransfer.setData('text/s2g-channel', c.id);
-          e.dataTransfer.effectAllowed = 'move';
-          setDropOn(''); // dragging: show empty sections as drop targets
-        }}
-        onDragEnd={() => setDropOn(null)}
-      >
-        <button className={`nav-item ${p.current === c.id ? 'active' : ''} ${p.unread[c.id] ? 'has-unread' : ''}`} onClick={() => p.onOpen(c.id)} title={other ? other.name : `#${c.name}`}>
-          {other ? (
-            <span className="dm-av">
-              <Avatar person={other} size={20} />
-              <i className={`presence ${p.presence(other.id)}`} />
-            </span>
-          ) : c.category === 'shared' ? (
-            <Handshake size={15} />
-          ) : c.private ? (
-            <Lock size={15} />
-          ) : (
-            <Hash size={16} />
-          )}
-          <span className="sb-label">
-            {other ? other.name : c.name}
-            {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
-            {c.category === 'shared' || c.guests?.length ? <Badge small tone="warn" title={`The ${term.whos} can see this channel`}>{term.Whos}</Badge> : null}
-          </span>
-          {p.unread[c.id] ? <span className="count">{p.unread[c.id]}</span> : null}
-        </button>
-        <button
-          className="nav-more"
-          aria-label="Channel options"
-          onClick={(e) => {
-            menuAnchor.current = e.currentTarget;
-            setMenuFor(c.id);
-          }}
-        >
-          <MoreHorizontal size={14} />
-        </button>
-      </div>
-    );
+  const viewOptions = [
+    { value: 'default', label: 'Company default', hint: 'Sections your admins set for everyone', group: 'Built in' },
+    { value: 'unread', label: 'Unread first', hint: 'What needs you on top', group: 'Built in' },
+    { value: 'recent', label: 'Recent', hint: 'Latest activity first', group: 'Built in' },
+    ...views.map((v) => ({ value: v.id, label: v.name, hint: `${v.sections.length} section${v.sections.length === 1 ? '' : 's'}`, group: 'Your views' })),
+    { value: '__new', label: 'Create a view…', hint: 'Your own sections and channels', group: 'Your views', icon: <Plus size={14} /> },
+  ];
+  const pickView = (v: string) => {
+    if (v === '__new') setEditing({ id: 'v-' + Date.now().toString(36), name: 'My view', sections: [{ id: 's1', name: 'Focus', channelIds: [] }], showRest: true });
+    else setViewId(v);
   };
+
+  // The phone shell: New message on the create button, the view in the title switcher, status and tiles in its settings.
+  useCreateAction('chat', phone && { label: 'New message', icon: SquarePen, run: () => setNewMsg(true), more: [...(p.onNewChannel ? [{ label: 'New channel', icon: Hash, run: p.onNewChannel }] : []), ...(joinable.length ? [{ label: 'Browse channels', icon: Compass, run: () => setBrowsing(true) }] : [])] });
+  // On phones the title is the view: "Chat" for the company's sections.
+  useTitleMenu('chat', phone && { label: 'Chat view', value: custom ? custom.id : active, options: viewOptions.map((o) => (o.value === 'default' ? { ...o, label: 'Chat', hint: 'Your company’s sections' } : o)), onChange: pickView });
+  useAppSettings('chat', phone && { id: 'status', label: 'Your status', hint: myStatus ? `${myStatus.emoji} ${myStatus.text}` : 'Let people know if you’re focusing or away', render: () => <StatusPicker status={p.statuses[p.me]} onStatus={p.onStatus} /> });
+  useAppSettings('chat', phone && { id: 'tiles', label: 'Tiles on top', hint: 'Which ones show, and in what order', render: () => <TilesEditor me={p.me} /> });
+
+  /* ---------- tiles: what to act on, at a glance ---------- */
+  const unreadConvos = mine.filter((c) => info[c.id]?.unread && !info[c.id].muted);
+  const threads = useMemo(() => followedThreads(p.messages.filter((m) => mine.some((c) => c.id === m.channelId)), p.me, p.myFirst, chat), [p.messages, p.me, p.myFirst, chat.read]); // eslint-disable-line react-hooks/exhaustive-deps
+  const newReplies = threads.reduce((n, t) => n + t.unread, 0);
+  const draftCount = Object.keys(chat.drafts).filter((k) => mine.some((c) => k === c.id || k.startsWith(`${c.id}/`))).length;
+  const scheduled = p.messages.filter((m) => m.sendAt && m.userId === p.me).length;
+  const nextReminder = chat.saved.filter((s) => s.remindAt && !s.reminded).sort((a, b) => a.remindAt!.localeCompare(b.remindAt!))[0];
+  const live = mine.filter((c) => c.huddle?.members.length);
+  const tileState: Record<TileId, { line: string; hot: boolean; hidden?: boolean; icon: ReactNode }> = {
+    catchup: { icon: <Inbox size={18} />, line: unreadConvos.length ? `${unreadConvos.length} new` : 'Caught up', hot: unreadConvos.length > 0 },
+    threads: { icon: <MessagesSquare size={18} />, line: newReplies ? `${newReplies} new ${newReplies === 1 ? 'reply' : 'replies'}` : 'Caught up', hot: newReplies > 0 },
+    drafts: { icon: <SendHorizontal size={18} />, line: [draftCount ? `${draftCount} ${draftCount === 1 ? 'draft' : 'drafts'}` : '', scheduled ? `${scheduled} to send` : ''].filter(Boolean).join(', ') || 'Nothing waiting', hot: false },
+    saved: { icon: <Bookmark size={18} />, line: nextReminder ? `Reminder ${whenText(nextReminder.remindAt!)}` : chat.saved.length ? 'Your saved messages' : 'Nothing saved', hot: false },
+    live: { icon: <Headphones size={18} />, line: live.length ? `${chanName(live[0], p.users, p.me)}${live.length > 1 ? ` and ${live.length - 1} more` : ''}` : '', hot: true, hidden: !live.length },
+  };
+  const tiles = chat.tiles.order.filter((t) => !chat.tiles.hidden.includes(t) && !tileState[t].hidden);
+  const openTile = (t: TileId) => (t === 'live' ? live[0] && p.onOpen(live[0].id) : p.onPage(t));
+
+  /* ---------- one conversation in the list ---------- */
+  const rowActions = (c: Channel): SheetAction[] => {
+    const i = info[c.id];
+    const mutedTill = chat.mutedUntil(c.id);
+    const list: SheetAction[] = [];
+    if (i?.unread) list.push({ label: 'Mark read', icon: CheckCheck, run: () => chat.markRead(c.id) });
+    else if (i?.last && i.last.userId !== p.me) list.push({ label: 'Mark unread', icon: MailOpen, run: () => chat.markUnread(i.last!) });
+    list.push(mutedTill ? { label: 'Unmute', icon: Bell, hint: mutedTill === 'always' ? undefined : `Muted until ${whenText(mutedTill)}`, run: () => chat.unmute(c.id) } : { label: 'Mute…', icon: BellOff, run: () => setRowSub({ kind: 'mute', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
+    list.push({ label: star.has(c.id) ? 'Remove from Starred' : 'Star', icon: Star, run: () => setStarred(star.has(c.id) ? starred.filter((x) => x !== c.id) : [...starred, c.id]) });
+    list.push({ label: 'Copy link', icon: Link2, run: () => navigator.clipboard?.writeText(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(c.workspaceId)}&id=${encodeURIComponent(c.id)}`).then(() => toast({ text: 'Link copied' }), () => toast({ text: 'Couldn’t copy here' })) });
+    if (c.kind === 'channel' && (custom || layout.sections.some((sec) => canPlace(c, sec)))) list.push({ label: 'Move to section…', icon: LayoutList, run: () => setRowSub({ kind: 'move', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
+    if (c.kind === 'channel') list.push({ label: 'Channel settings', icon: Settings, run: () => p.onSettings(c.id) });
+    if (c.kind === 'channel' && !c.teamId) list.push({ label: 'Leave', icon: LogOut, danger: true, group: 'end', run: () => setRowSub({ kind: 'leave', id: c.id }) });
+    return list;
+  };
+  const row = (c: Channel) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone={phone} starred={star.has(c.id)} draggable={c.kind === 'channel' && (active === 'custom' || (active === 'default' && (p.isAdmin || p.canManage(c))))} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />;
 
   const section = (key: string, title: ReactNode, list: Channel[], extra?: ReactNode, drop?: (channelId: string) => void, mineId?: string) => {
     // Empty sections still show while dragging, so a channel can be dropped into them.
@@ -232,6 +261,7 @@ export function ChatSidebar(p: SidebarProps) {
           },
         }
       : {};
+    const n = list.reduce((sum, c) => sum + (info[c.id]?.muted ? 0 : (info[c.id]?.unread ?? 0)), 0);
     return (
       <div key={key} className={`chat-section ${dropOn === key ? 'drop-on' : ''}`} {...dropProps}>
         {renaming && renaming.id === mineId ? (
@@ -244,27 +274,21 @@ export function ChatSidebar(p: SidebarProps) {
             onKeyDown={(e) => (e.key === 'Enter' ? saveRename() : e.key === 'Escape' && setRenaming(null))}
           />
         ) : (
-          <div className="sec-head-row">
-            <button className="nav-heading sb-label sec-head" onClick={() => toggle(key)}>
-              <ChevronRight size={12} className={`rot-chev ${closed ? '' : 'open'}`} /> {title}
-              {(() => {
-                const n = list.reduce((sum, c) => sum + (p.unread[c.id] ?? 0), 0);
-                return closed && n ? <span className="sec-count unread">{n}</span> : null; // collapsed: show what you'd miss
-              })()}
-            </button>
-            {mineId && (
-              <button
-                className="nav-more sec-more"
-                aria-label="Section options"
-                onClick={(e) => {
-                  secAnchor.current = e.currentTarget;
-                  setSecMenu(mineId);
-                }}
-              >
-                <MoreHorizontal size={14} />
-              </button>
-            )}
-          </div>
+          <SectionHead
+            title={title}
+            closed={closed}
+            count={closed && n ? n : 0}
+            onToggle={() => toggle(key)}
+            onMenu={
+              mineId
+                ? (el) => {
+                    secAnchor.current = el;
+                    setSecMenu(mineId);
+                  }
+                : undefined
+            }
+            phone={phone}
+          />
         )}
         <div className={`fold ${closed ? '' : 'open'}`} aria-hidden={closed}>
           <nav className="nav">
@@ -278,94 +302,103 @@ export function ChatSidebar(p: SidebarProps) {
 
   // The channel list for the chosen view.
   const starredList = [...rooms, ...dms].filter((c) => star.has(c.id));
+  // Phones: unread direct messages and mentions first, each only once.
+  const topDms = phone ? dms.filter((c) => info[c.id]?.unread && !info[c.id].muted && !star.has(c.id)).sort((a, b) => recency(b).localeCompare(recency(a))) : [];
+  const topMentions = phone ? rooms.filter((c) => info[c.id]?.mentions && !star.has(c.id)).sort((a, b) => recency(b).localeCompare(recency(a))) : [];
+  const onTop = new Set([...topDms, ...topMentions].map((c) => c.id));
+  const restRooms = rooms.filter((c) => !star.has(c.id) && !onTop.has(c.id));
   let body: ReactNode;
   if (active === 'default') {
     body = layout.sections.map((sec) =>
       section(
         sec.id,
         sec.name,
-        rooms.filter((c) => sectionOf(c) === sec.id && !star.has(c.id)),
-        !sec.category && p.isAdmin && !rooms.some((c) => sectionOf(c) === sec.id) ? <p className="muted small sec-empty sb-label">Drag channels here, or use a channel’s … menu.</p> : undefined,
+        restRooms.filter((c) => sectionOf(c) === sec.id),
+        !phone && !sec.category && p.isAdmin && !rooms.some((c) => sectionOf(c) === sec.id) ? <p className="muted small sec-empty sb-label">Drag channels here, or use a channel’s … menu.</p> : undefined,
         (id) => placeIn(id, sec.id),
         p.isAdmin ? sec.id : undefined,
       ),
     );
   } else if (active === 'unread') {
-    const list = rooms.filter((c) => !star.has(c.id)).sort((a, b) => (p.unread[b.id] ?? 0) - (p.unread[a.id] ?? 0) || recency(b).localeCompare(recency(a)));
-    body = [section('u-unread', 'Unread', list.filter((c) => p.unread[c.id])), section('u-rest', 'Everything else', list.filter((c) => !p.unread[c.id]))];
+    const list = [...restRooms].sort((a, b) => (info[b.id]?.unread ?? 0) - (info[a.id]?.unread ?? 0) || recency(b).localeCompare(recency(a)));
+    body = [section('u-unread', 'Unread', list.filter((c) => info[c.id]?.unread)), section('u-rest', 'Everything else', list.filter((c) => !info[c.id]?.unread))];
   } else if (active === 'recent') {
-    body = section('recent', 'Most recent first', rooms.filter((c) => !star.has(c.id)).sort((a, b) => recency(b).localeCompare(recency(a))));
+    body = section('recent', 'Most recent first', [...restRooms].sort((a, b) => recency(b).localeCompare(recency(a))));
   } else if (custom) {
     const used = new Set(custom.sections.flatMap((s) => s.channelIds));
-    const moveInView = (id: string, to: string | null) =>
-      setViews(views.map((v) => (v.id === custom.id ? { ...custom, sections: custom.sections.map((x) => ({ ...x, channelIds: x.id === to ? [...new Set([...x.channelIds, id])] : x.channelIds.filter((y) => y !== id) })) } : v)));
     body = [
-      ...custom.sections.map((s) => section(`${custom.id}:${s.id}`, s.name, rooms.filter((c) => s.channelIds.includes(c.id) && !star.has(c.id)), undefined, (id) => moveInView(id, s.id))),
-      custom.showRest ? section(`${custom.id}:rest`, 'Other channels', rooms.filter((c) => !used.has(c.id) && !star.has(c.id)), undefined, (id) => moveInView(id, null)) : null,
+      ...custom.sections.map((s) => section(`${custom.id}:${s.id}`, s.name, restRooms.filter((c) => s.channelIds.includes(c.id)), undefined, (id) => moveInView(id, s.id))),
+      custom.showRest ? section(`${custom.id}:rest`, 'Other channels', restRooms.filter((c) => !used.has(c.id)), undefined, (id) => moveInView(id, null)) : null,
     ];
   }
+  const menuChannel = p.channels.find((c) => c.id === rowMenu?.id);
+  const subChannel = p.channels.find((c) => c.id === rowSub?.id);
 
-  const viewOptions = [
-    { value: 'default', label: 'Company default', hint: 'Sections your admins set for everyone', group: 'Built in' },
-    { value: 'unread', label: 'Unread first', hint: 'What needs you on top', group: 'Built in' },
-    { value: 'recent', label: 'Recent', hint: 'Latest activity first', group: 'Built in' },
-    ...views.map((v) => ({ value: v.id, label: v.name, hint: `${v.sections.length} section${v.sections.length === 1 ? '' : 's'}`, group: 'Your views' })),
-    { value: '__new', label: 'Create a view…', hint: 'Your own sections and channels', group: 'Your views', icon: <Plus size={14} /> },
-  ];
-  const menuChannel = p.channels.find((c) => c.id === menuFor);
+  const counts: Partial<Record<ChatPage, number>> = { catchup: unreadConvos.length, threads: newReplies };
+  const pages: { id: ChatPage; label: string; icon: ReactNode; line: string; n: number }[] = (['catchup', 'threads', 'drafts', 'saved'] as const).map((id) => ({ id, label: TILE_NAMES[id], icon: tileState[id].icon, line: tileState[id].line, n: counts[id] ?? 0 }));
 
   return (
     <>
-      <button ref={statusBtn} className="status-btn sb-label" onClick={() => setStatusOpen(true)}>
-        <span className="st-emoji big">{myStatus?.emoji ?? '🙂'}</span>
-        <span className="sb-label">{myStatus?.text ?? 'Set a status'}</span>
-      </button>
-      <Popover anchor={statusBtn} open={statusOpen} onClose={() => setStatusOpen(false)} width={280} title="Your status">
-        <div className="status-pop">
-          {STATUS_PRESETS.map((s) => (
-            <button key={s.text} className="sel-opt" onClick={() => (p.onStatus(s), setStatusOpen(false))}>
-              <span className="st-emoji big">{s.emoji}</span>
-              {s.text}
-            </button>
-          ))}
-          <div className="status-custom">
-            <input value={customStatus} onChange={(e) => setCustomStatus(e.target.value)} placeholder="Or type your own…" onKeyDown={(e) => e.key === 'Enter' && customStatus.trim() && (p.onStatus({ emoji: '💬', text: customStatus.trim() }), setStatusOpen(false), setCustomStatus(''))} />
-          </div>
-          {myStatus && (
-            <button className="sel-opt danger" onClick={() => (p.onStatus(null), setStatusOpen(false))}>
-              <X size={14} /> Clear status
-            </button>
-          )}
-          <p className="muted small">“In a meeting” is set for you automatically from your calendar.</p>
-        </div>
-      </Popover>
-
-      <div className="view-bar sb-label">
-        <Select
-          value={custom ? custom.id : active}
-          onChange={(v) => {
-            if (v === '__new') setEditing({ id: 'v-' + Date.now().toString(36), name: 'My view', sections: [{ id: 's1', name: 'Focus', channelIds: [] }], showRest: true });
-            else setViewId(v);
-          }}
-          options={viewOptions}
-          label="Chat view"
-          className="sel-flat"
-          width={280}
-          renderValue={(o) => (
-            <>
-              <LayoutList size={14} />
-              <span className="sel-text">View: {o?.label ?? 'Default'}</span>
-              <ChevronDown size={13} className="sel-chev" />
-            </>
-          )}
-        />
-        {custom && (
-          <button className="icon-btn sm" title="Edit this view" onClick={() => setEditing(custom)}>
-            <Pencil size={13} />
+      {!phone && (
+        <>
+          <button ref={statusBtn} className="status-btn sb-label" onClick={() => setStatusOpen(true)}>
+            <span className="st-emoji big">{myStatus?.emoji ?? '🙂'}</span>
+            <span className="sb-label">{myStatus?.text ?? 'Set a status'}</span>
           </button>
-        )}
-      </div>
+          <Popover anchor={statusBtn} open={statusOpen} onClose={() => setStatusOpen(false)} width={280} title="Your status">
+            <StatusPicker status={myStatus} onStatus={(s) => (p.onStatus(s), setStatusOpen(false))} />
+          </Popover>
+          <nav className="nav chat-pages" aria-label="Chat pages">
+            {pages.map((pg) => (
+              <button key={pg.id} className={`nav-item ${p.page === pg.id ? 'active' : ''}`} onClick={() => p.onPage(pg.id)} title={pg.line}>
+                {pg.icon}
+                <span className="sb-label">{pg.label}</span>
+                {pg.n ? <span className="count soft">{pg.n}</span> : null}
+              </button>
+            ))}
+            {live.map((c) => (
+              <button key={c.id} className="nav-item live-row" onClick={() => p.onOpen(c.id)} title={`Huddle in ${chanName(c, p.users, p.me)}`}>
+                <Headphones size={16} />
+                <span className="sb-label">Live in {chanName(c, p.users, p.me)}</span>
+                <span className="chat-live-dot" aria-hidden />
+              </button>
+            ))}
+          </nav>
+          <div className="view-bar sb-label">
+            <Select
+              value={custom ? custom.id : active}
+              onChange={pickView}
+              options={viewOptions}
+              label="Chat view"
+              className="sel-flat"
+              width={280}
+              renderValue={(o) => (
+                <>
+                  <LayoutList size={14} />
+                  <span className="sel-text">View: {o?.label ?? 'Default'}</span>
+                  <ChevronDown size={13} className="sel-chev" />
+                </>
+              )}
+            />
+            {custom && (
+              <button className="icon-btn sm" title="Edit this view" onClick={() => setEditing(custom)}>
+                <Pencil size={13} />
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
+      {phone && tiles.length > 0 && (
+        <div className="chat-tiles" role="list" aria-label="At a glance">
+          {tiles.map((t) => (
+            <Tile key={t} id={t} label={TILE_NAMES[t]} icon={tileState[t].icon} line={tileState[t].line} hot={tileState[t].hot} onOpen={() => openTile(t)} onMenu={() => setTileMenu(t)} />
+          ))}
+        </div>
+      )}
+
+      {phone && section('top-dms', 'Unread direct messages', topDms)}
+      {phone && section('top-mentions', 'Mentions', topMentions)}
       {section(
         'starred',
         <>
@@ -374,57 +407,75 @@ export function ChatSidebar(p: SidebarProps) {
         starredList,
       )}
       {body}
-      <nav className="nav">
-        {p.onNewChannel && (
-          <button className="nav-item" onClick={p.onNewChannel} title="New channel">
-            <Plus size={16} />
-            <span className="sb-label">New channel</span>
-          </button>
-        )}
-        {!custom &&
-          p.isAdmin &&
-          (newSection ? (
-            <div className="add-client sb-label">
-              <input
-                autoFocus
-                value={newSection.name}
-                onChange={(e) => setNewSection({ ...newSection, name: e.target.value })}
-                onKeyDown={(e) => (e.key === 'Enter' ? createSection() : e.key === 'Escape' && setNewSection(null))}
-                onBlur={createSection}
-                placeholder="Section name, e.g. Leadership"
-              />
-            </div>
-          ) : (
-            <button className="nav-item" onClick={() => setNewSection({ name: '' })} title="New section for everyone in the company">
-              <FolderPlus size={16} />
-              <span className="sb-label">New section</span>
+      {!phone && (
+        <nav className="nav">
+          {p.onNewChannel && (
+            <button className="nav-item" onClick={p.onNewChannel} title="New channel">
+              <Plus size={16} />
+              <span className="sb-label">New channel</span>
             </button>
-          ))}
-        {joinable.length > 0 && (
-          <button className="nav-item" onClick={() => setBrowsing((b) => !b)} title="Browse channels">
-            <Compass size={16} />
-            <span className="sb-label">Browse channels</span>
-          </button>
-        )}
-        {browsing &&
-          joinable.map((c) => (
-            <div key={c.id} className="browse-row sb-label">
-              <span>
-                <Hash size={13} /> {c.name}
-                <small>{c.topic}</small>
-              </span>
-              <button className="ghost-btn sm" onClick={() => (p.onJoin(c.id), setBrowsing(false))}>
-                Join
+          )}
+          {!custom &&
+            p.isAdmin &&
+            (newSection ? (
+              <div className="add-client sb-label">
+                <input
+                  autoFocus
+                  value={newSection.name}
+                  onChange={(e) => setNewSection({ ...newSection, name: e.target.value })}
+                  onKeyDown={(e) => (e.key === 'Enter' ? createSection() : e.key === 'Escape' && setNewSection(null))}
+                  onBlur={createSection}
+                  placeholder="Section name, e.g. Leadership"
+                />
+              </div>
+            ) : (
+              <button className="nav-item" onClick={() => setNewSection({ name: '' })} title="New section for everyone in the company">
+                <FolderPlus size={16} />
+                <span className="sb-label">New section</span>
               </button>
-            </div>
-          ))}
-      </nav>
+            ))}
+          {joinable.length > 0 && (
+            <button className="nav-item" onClick={() => setBrowsing((b) => !b)} title="Browse channels">
+              <Compass size={16} />
+              <span className="sb-label">Browse channels</span>
+            </button>
+          )}
+          {browsing &&
+            joinable.map((c) => (
+              <div key={c.id} className="browse-row sb-label">
+                <span>
+                  <Hash size={13} /> {c.name}
+                  <small>{c.topic}</small>
+                </span>
+                <button className="ghost-btn sm" onClick={() => (p.onJoin(c.id), setBrowsing(false))}>
+                  Join
+                </button>
+              </div>
+            ))}
+        </nav>
+      )}
+      {phone && newSection && (
+        <Sheet
+          title="New section"
+          onClose={() => setNewSection(null)}
+          footer={
+            <button className="primary-btn" disabled={!newSection.name.trim()} onClick={createSection}>
+              Add section
+            </button>
+          }
+        >
+          <label className="field sheet-field">
+            <span>Name, for everyone in the company</span>
+            <input autoFocus value={newSection.name} onChange={(e) => setNewSection({ ...newSection, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && createSection()} placeholder="e.g. Leadership" />
+          </label>
+        </Sheet>
+      )}
 
       {section(
         'dms',
         'Direct messages',
-        dms.filter((c) => !star.has(c.id)),
-        addingDm ? (
+        dms.filter((c) => !star.has(c.id) && !onTop.has(c.id)).sort((a, b) => (phone ? recency(b).localeCompare(recency(a)) : 0)),
+        phone ? undefined : addingDm ? (
           <div className="add-client sb-label">
             <Select
               value={null}
@@ -432,7 +483,7 @@ export function ChatSidebar(p: SidebarProps) {
               label="Message someone"
               searchable
               onChange={(v) => (p.onNewDm(v), setAddingDm(false))}
-              options={p.users.filter((u) => u.id !== p.me && !dmWith.has(u.id)).map((u) => ({ ...personOption(u), label: u.name, hint: u.title, icon: <Avatar person={u} size={22} /> }))}
+              options={p.users.filter((u) => u.id !== p.me && !dmWith.has(u.id)).map((u) => ({ value: u.id, label: u.name, hint: u.title, icon: <Avatar person={u} size={22} /> }))}
             />
           </div>
         ) : (
@@ -441,6 +492,27 @@ export function ChatSidebar(p: SidebarProps) {
             <span className="sb-label">New message</span>
           </button>
         ),
+      )}
+      {phone && joinable.length > 0 && (
+        <button className="cl-browse" onClick={() => setBrowsing(true)}>
+          <Compass size={18} /> Browse channels you can join
+        </button>
+      )}
+      {phone && browsing && (
+        <Sheet title="Browse channels" size="tall" onClose={() => setBrowsing(false)}>
+          <div className="as-list">
+            {joinable.map((c) => (
+              <button key={c.id} type="button" className="as-item" onClick={() => (setBrowsing(false), p.onJoin(c.id))}>
+                <Hash size={18} className="as-icon" />
+                <span className="as-label">
+                  {c.name}
+                  {c.topic && <small>{c.topic}</small>}
+                </span>
+                <span className="as-side">Join</span>
+              </button>
+            ))}
+          </div>
+        </Sheet>
       )}
 
       <Popover anchor={secAnchor} open={!!secMenu} onClose={() => setSecMenu(null)} width={240} title="Section">
@@ -466,6 +538,11 @@ export function ChatSidebar(p: SidebarProps) {
                 <ChevronDown size={14} /> Move down
               </button>
             )}
+            {phone && !custom && (
+              <button className="sel-opt" onClick={() => (setSecMenu(null), setNewSection({ name: '' }))}>
+                <FolderPlus size={14} /> New section
+              </button>
+            )}
             {layout.sections.find((x) => x.id === secMenu)?.category ? (
               <p className="muted small menu-note">Built-in section for {CATEGORY_ONE[layout.sections.find((x) => x.id === secMenu)!.category!].toLowerCase()} channels. You can rename and move it.</p>
             ) : (
@@ -481,97 +558,321 @@ export function ChatSidebar(p: SidebarProps) {
         )}
       </Popover>
 
+      {menuChannel && (
+        <ActionSheet
+          open
+          onClose={() => setRowMenu(null)}
+          title={phone ? undefined : chanName(menuChannel, p.users, p.me)}
+          actions={rowActions(menuChannel)}
+          anchor={rowMenu?.anchor ? { current: rowMenu.anchor } : undefined}
+          at={rowMenu?.at ?? null}
+          header={phone ? <Peek c={menuChannel} p={p} messages={p.messages} read={chat.read[menuChannel.id] ?? readFallback()} onOpen={() => (setRowMenu(null), p.onOpen(menuChannel.id))} /> : undefined}
+        />
+      )}
+      {rowSub?.kind === 'mute' && subChannel && (
+        <ActionSheet
+          open
+          onClose={() => setRowSub(null)}
+          title={`Mute ${chanName(subChannel, p.users, p.me)}`}
+          anchor={rowSub.anchor ? { current: rowSub.anchor } : undefined}
+          at={rowSub.at ?? null}
+          actions={(
+            [
+              ['hour', 'For an hour'],
+              ['tomorrow', 'Until tomorrow morning'],
+              ['always', 'Until I turn it back on'],
+            ] as const
+          ).map(([k, l]) => ({ label: l, hint: k === 'always' ? 'Mentions of you still come through' : undefined, run: () => (chat.mute(subChannel.id, k), toast({ text: `Muted ${chanName(subChannel, p.users, p.me)} ${l.toLowerCase()}` })) }))}
+        />
+      )}
+      {rowSub?.kind === 'move' && subChannel && (
+        <ActionSheet
+          open
+          onClose={() => setRowSub(null)}
+          title={custom ? `Move to a section of “${custom.name}”` : 'Move to (for everyone)'}
+          anchor={rowSub.anchor ? { current: rowSub.anchor } : undefined}
+          at={rowSub.at ?? null}
+          actions={
+            custom
+              ? custom.sections.map((s) => ({ label: s.name, checked: s.channelIds.includes(subChannel.id), run: () => moveInView(subChannel.id, s.id) }))
+              : [
+                  ...layout.sections.filter((sec) => canPlace(subChannel, sec)).map((sec) => ({ label: sec.name, checked: sectionOf(subChannel) === sec.id, run: () => placeIn(subChannel.id, sec.id) })),
+                  ...(p.isAdmin ? [{ label: 'New section…', icon: Plus, group: 'new', run: () => setNewSection({ name: '', channelId: subChannel.id }) }] : []),
+                ]
+          }
+        />
+      )}
+      {rowSub?.kind === 'leave' && subChannel && <ConfirmSheet title={`Leave ${chanName(subChannel, p.users, p.me)}?`} text={subChannel.private ? 'It’s private: someone in it has to add you back.' : 'You can join again from Browse channels.'} yes="Leave" onYes={() => p.onLeave(subChannel.id)} onClose={() => setRowSub(null)} />}
+      {tileMenu && (
+        <ActionSheet
+          open
+          onClose={() => setTileMenu(null)}
+          title={TILE_NAMES[tileMenu]}
+          actions={[
+            ...(chat.tiles.order.indexOf(tileMenu) > 0 ? [{ label: 'Move left', icon: ArrowLeft, run: () => moveTile(chat, tileMenu, -1) }] : []),
+            ...(chat.tiles.order.indexOf(tileMenu) < chat.tiles.order.length - 1 ? [{ label: 'Move right', icon: ArrowRight, run: () => moveTile(chat, tileMenu, 1) }] : []),
+            { label: 'Hide this tile', icon: EyeOff, run: () => (chat.setTiles({ ...chat.tiles, hidden: [...chat.tiles.hidden, tileMenu] }), toast({ text: `${TILE_NAMES[tileMenu]} hidden. Chat’s settings bring it back.`, action: { label: 'Undo', run: () => chat.setTiles({ ...chat.tiles, hidden: chat.tiles.hidden.filter((x) => x !== tileMenu) }) } })) },
+          ]}
+        />
+      )}
+
       {accessFor && (
         <Layer>
-        <SectionAccess
-          section={layout.sections.find((x) => x.id === accessFor)!}
-          channels={p.channels.filter((c) => c.kind === 'channel' && !c.archived && sectionOf(c) === accessFor)}
-          users={p.users}
-          teams={p.teams}
-          me={p.me}
-          onSave={(access) => {
-            p.onSectionAccess(accessFor, access);
-            setAccessFor(null);
-          }}
-          onClose={() => setAccessFor(null)}
-        />
+          <SectionAccess
+            section={layout.sections.find((x) => x.id === accessFor)!}
+            channels={p.channels.filter((c) => c.kind === 'channel' && !c.archived && sectionOf(c) === accessFor)}
+            users={p.users}
+            teams={p.teams}
+            me={p.me}
+            onSave={(access) => {
+              p.onSectionAccess(accessFor, access);
+              setAccessFor(null);
+            }}
+            onClose={() => setAccessFor(null)}
+          />
         </Layer>
       )}
 
-      <Popover anchor={menuAnchor} open={!!menuChannel} onClose={() => setMenuFor(null)} width={250} title={menuChannel ? (menuChannel.kind === 'dm' ? 'Conversation' : `#${menuChannel.name}`) : ''}>
-        {menuChannel && (
-          <div className="sel-pop">
-            <button className="sel-opt" onClick={() => (setStarred(star.has(menuChannel.id) ? starred.filter((x) => x !== menuChannel.id) : [...starred, menuChannel.id]), setMenuFor(null))}>
-              <Star size={14} /> {star.has(menuChannel.id) ? 'Remove from Starred' : 'Star'}
-            </button>
-            {custom && menuChannel.kind === 'channel' && (
-              <>
-                <div className="sel-group">Move to section in “{custom.name}”</div>
-                {custom.sections.map((s) => (
-                  <button
-                    key={s.id}
-                    className="sel-opt"
-                    onClick={() => {
-                      const next = { ...custom, sections: custom.sections.map((x) => ({ ...x, channelIds: x.id === s.id ? [...new Set([...x.channelIds, menuChannel.id])] : x.channelIds.filter((y) => y !== menuChannel.id) })) };
-                      setViews(views.map((v) => (v.id === custom.id ? next : v)));
-                      setMenuFor(null);
-                    }}
-                  >
-                    {s.name}
-                    {s.channelIds.includes(menuChannel.id) && <Check size={14} className="sel-check" />}
-                  </button>
-                ))}
-              </>
-            )}
-            {!custom && menuChannel.kind === 'channel' && (
-              <>
-                <div className="sel-group">Move to (for everyone)</div>
-                {layout.sections.filter((sec) => canPlace(menuChannel, sec)).map((sec) => (
-                  <button key={sec.id} className="sel-opt" onClick={() => (setMenuFor(null), placeIn(menuChannel.id, sec.id))}>
-                    {sec.name}
-                    {sectionOf(menuChannel) === sec.id && <Check size={14} className="sel-check" />}
-                  </button>
-                ))}
-                {p.isAdmin && (
-                  <button className="sel-opt" onClick={() => (setMenuFor(null), setNewSection({ name: '', channelId: menuChannel.id }))}>
-                    <Plus size={14} /> New section…
-                  </button>
-                )}
-                {!p.isAdmin && !p.canManage(menuChannel) && <p className="muted small menu-note">Admins arrange the company’s sidebar. For your own arrangement, choose “Create a view…” in the View menu.</p>}
-                {(p.isAdmin || p.canManage(menuChannel)) && <p className="muted small menu-note">Tip: you can also drag a channel onto another section.</p>}
-              </>
-            )}
-            {menuChannel.kind === 'channel' && (
-              <button className="sel-opt" onClick={() => (setMenuFor(null), p.onSettings(menuChannel.id))}>
-                <Settings size={14} /> Channel settings
-              </button>
-            )}
-          </div>
-        )}
-      </Popover>
-
       {editing && (
         <Layer>
-        <ViewEditor
-          view={editing}
-          channels={rooms}
-          isNew={!views.some((v) => v.id === editing.id)}
-          onClose={() => setEditing(null)}
-          onDelete={() => {
-            setViews(views.filter((v) => v.id !== editing.id));
-            setViewId('default');
-            setEditing(null);
-          }}
-          onSave={(v) => {
-            setViews(views.some((x) => x.id === v.id) ? views.map((x) => (x.id === v.id ? v : x)) : [...views, v]);
-            setViewId(v.id);
-            setEditing(null);
-          }}
-        />
+          <ViewEditor
+            view={editing}
+            channels={rooms}
+            isNew={!views.some((v) => v.id === editing.id)}
+            onClose={() => setEditing(null)}
+            onDelete={() => {
+              setViews(views.filter((v) => v.id !== editing.id));
+              setViewId('default');
+              setEditing(null);
+            }}
+            onSave={(v) => {
+              setViews(views.some((x) => x.id === v.id) ? views.map((x) => (x.id === v.id ? v : x)) : [...views, v]);
+              setViewId(v.id);
+              setEditing(null);
+            }}
+          />
         </Layer>
       )}
       {newMsg && <NewMessageSheet users={p.users} me={p.me} onPick={p.onNewDm} onNewChannel={p.onNewChannel} onClose={() => setNewMsg(false)} />}
     </>
+  );
+}
+
+const moveTile = (chat: ChatState, t: TileId, by: -1 | 1) => {
+  const order = [...chat.tiles.order];
+  const i = order.indexOf(t);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  chat.setTiles({ ...chat.tiles, order });
+};
+
+/** A section's heading: tap folds it; "…" (or a long-press on phones) for admins' section menu. */
+function SectionHead({ title, closed, count, onToggle, onMenu, phone }: { title: ReactNode; closed: boolean; count: number; onToggle: () => void; onMenu?: (el: HTMLElement) => void; phone: boolean }) {
+  const head = useRef<HTMLButtonElement>(null);
+  const press = useLongPress(() => head.current && onMenu?.(head.current), { disabled: !onMenu || !phone });
+  return (
+    <div className="sec-head-row">
+      <button ref={head} className={`nav-heading sb-label sec-head${phone && onMenu ? ' lp' : ''}`} onClick={onToggle} aria-expanded={!closed} {...(phone ? press : {})}>
+        <ChevronRight size={12} className={`rot-chev ${closed ? '' : 'open'}`} /> {title}
+        {count ? <span className="sec-count unread">{count}</span> : null}
+      </button>
+      {onMenu && !phone && (
+        <button className="nav-more sec-more" aria-label="Section options" onClick={(e) => onMenu(e.currentTarget)}>
+          <MoreHorizontal size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** One conversation: in the sidebar a single line; on phones two lines with the last message, time and what's unread. */
+function ConvoRow({ c, p, info, phone, starred, draggable, onDragState, onMenu }: { c: Channel; p: SidebarProps; info?: ConvoInfo; phone: boolean; starred: boolean; draggable: boolean; onDragState: (d: string | null) => void; onMenu: (where: { at?: { x: number; y: number }; anchor?: HTMLElement }) => void }) {
+  const other = c.kind === 'dm' ? p.users.find((u) => u.id === dmOther(c, p.me)) : undefined;
+  const st = other ? p.statuses[other.id] : undefined;
+  const press = useLongPress((pt) => onMenu({ at: { x: pt.x, y: pt.y } }), { disabled: !phone });
+  const more = useRef<HTMLButtonElement>(null);
+  const unread = !!info?.unread && !info.muted;
+  const live = !!c.huddle?.members.length;
+  const icon = other ? (
+    <span className="dm-av">
+      <Avatar person={other} size={phone ? 36 : 20} />
+      <i className={`presence ${p.presence(other.id)}`} />
+    </span>
+  ) : c.category === 'shared' ? (
+    <Handshake size={phone ? 18 : 15} />
+  ) : c.private ? (
+    <Lock size={phone ? 17 : 15} />
+  ) : (
+    <Hash size={phone ? 18 : 16} />
+  );
+  const name = other ? other.name : c.name;
+  const guestBadge = c.category === 'shared' || c.guests?.length ? <Badge small tone="warn" title={`The ${term.whos} can see this channel`}>{term.Whos}</Badge> : null;
+  if (phone) {
+    const last = info?.last;
+    const who = last ? (last.userId === p.me ? 'You' : last.guestEmail ? (c.guests?.find((g) => g.email === last.guestEmail)?.name.split(' ')[0] ?? 'Guest') : (p.users.find((u) => u.id === last.userId)?.name.split(' ')[0] ?? '')) : '';
+    return (
+      <button
+        className={`cl-row lp${unread ? ' unread' : ''}${info?.muted ? ' muted' : ''}${p.current === c.id ? ' active' : ''}`}
+        {...press}
+        onClick={() => p.onOpen(c.id)}
+        onContextMenu={(e) => (press.onContextMenu(e), e.preventDefault(), onMenu({ at: { x: e.clientX, y: e.clientY } }))}
+        aria-label={`${name}${unread ? `, ${info!.unread} unread` : ''}${info?.draft ? ', draft' : ''}`}
+      >
+        <span className={`cl-icon${other ? ' is-dm' : ''}`}>{icon}</span>
+        <span className="cl-main">
+          <span className="cl-top">
+            <span className="cl-name">
+              {name}
+              {st && <span className="st-emoji">{st.emoji}</span>}
+              {guestBadge}
+              {starred && <Star size={11} className="cl-star" aria-label="Starred" />}
+            </span>
+            {last && <time dateTime={last.at}>{shortTime(last.at)}</time>}
+          </span>
+          <span className="cl-bottom">
+            <span className="cl-preview">
+              {info?.draft ? (
+                <>
+                  <PenLine size={12} className="cl-draft-icon" aria-hidden />
+                  <em className="cl-draft">Draft:</em> {info.draft.replace(/\s+/g, ' ')}
+                </>
+              ) : last ? (
+                <>
+                  {c.kind === 'channel' || who === 'You' ? `${who}: ` : ''}
+                  {preview(last) || 'Sent something'}
+                </>
+              ) : (
+                <span className="muted">No messages yet</span>
+              )}
+            </span>
+            {live && <Headphones size={14} className="cl-live" aria-label="Huddle on now" />}
+            {info?.muted && <BellOff size={13} className="cl-muted" aria-label="Muted" />}
+            {info?.mentions ? <span className="count">{info.mentions}</span> : unread && c.kind === 'dm' ? <span className="count">{info!.unread}</span> : unread ? <span className="cl-dot" aria-hidden /> : null}
+          </span>
+        </span>
+      </button>
+    );
+  }
+  return (
+    <div
+      className={`nav-row ${p.current === c.id ? 'active' : ''}${info?.muted ? ' muted' : ''}`}
+      draggable={draggable}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/s2g-channel', c.id);
+        e.dataTransfer.effectAllowed = 'move';
+        onDragState(''); // dragging: show empty sections as drop targets
+      }}
+      onDragEnd={() => onDragState(null)}
+      onContextMenu={(e) => (e.preventDefault(), onMenu({ at: { x: e.clientX, y: e.clientY } }))}
+    >
+      <button className={`nav-item ${p.current === c.id ? 'active' : ''} ${unread ? 'has-unread' : ''}`} onClick={() => p.onOpen(c.id)} title={other ? other.name : `#${c.name}`}>
+        {icon}
+        <span className="sb-label">
+          {name}
+          {st && (
+            <span className="st-emoji" title={st.text}>
+              {st.emoji}
+            </span>
+          )}
+          {guestBadge}
+        </span>
+        {info?.draft && p.current !== c.id ? <PenLine size={13} className="nav-draft" aria-label="Draft" /> : null}
+        {live && <Headphones size={13} className="nav-live" aria-label="Huddle on now" />}
+        {info?.muted ? <BellOff size={12} className="nav-muted" aria-label="Muted" /> : info?.mentions ? <span className="count">{info.mentions}</span> : unread && c.kind === 'dm' ? <span className="count">{info!.unread}</span> : null}
+      </button>
+      <button ref={more} className="nav-more" aria-label="Conversation options" onClick={() => more.current && onMenu({ anchor: more.current })}>
+        <MoreHorizontal size={14} />
+      </button>
+    </div>
+  );
+}
+
+/** A look inside a conversation from the list, without marking it read. */
+function Peek({ c, p, messages, read, onOpen }: { c: Channel; p: SidebarProps; messages: ChatMessage[]; read: string; onOpen: () => void }) {
+  const last = messages.filter((m) => m.channelId === c.id && !m.sendAt && (!m.parentId || m.alsoInChannel)).sort((a, b) => a.at.localeCompare(b.at)).slice(-4);
+  return (
+    <button type="button" className="peek" onClick={onOpen} aria-label={`Open ${chanName(c, p.users, p.me)}`}>
+      <span className="peek-head">
+        <strong>{chanName(c, p.users, p.me)}</strong>
+        <span className="muted small">Not marked read</span>
+      </span>
+      {last.length ? (
+        last.map((m) => (
+          <span key={m.id} className={`peek-line${m.at > read && m.userId !== p.me ? ' new' : ''}`}>
+            <b>{m.userId === p.me ? 'You' : m.guestEmail ? (c.guests?.find((g) => g.email === m.guestEmail)?.name.split(' ')[0] ?? 'Guest') : (p.users.find((u) => u.id === m.userId)?.name.split(' ')[0] ?? 'Someone')}</b> {preview(m)}
+          </span>
+        ))
+      ) : (
+        <span className="peek-line muted">No messages yet</span>
+      )}
+    </button>
+  );
+}
+
+/** A tile on top of the phone's chat list: one thing to act on, with its state. Hold to move or hide it. */
+function Tile({ id, label, icon, line, hot, onOpen, onMenu }: { id: TileId; label: string; icon: ReactNode; line: string; hot: boolean; onOpen: () => void; onMenu: () => void }) {
+  const press = useLongPress(() => onMenu());
+  return (
+    <button role="listitem" className={`chat-tile lp tile-${id}${hot ? ' hot' : ''}`} {...press} onClick={onOpen} onContextMenu={(e) => (press.onContextMenu(e), e.preventDefault(), onMenu())}>
+      <span className="ct-icon">{icon}</span>
+      <span className="ct-label">{label}</span>
+      <span className="ct-line">{line}</span>
+    </button>
+  );
+}
+
+/** Your status: Focus, Away, your own words, or none. */
+function StatusPicker({ status, onStatus }: { status?: Status; onStatus: (s: Status | null) => void }) {
+  const [custom, setCustom] = useState('');
+  return (
+    <div className="status-pop">
+      {STATUS_PRESETS.map((s) => (
+        <button key={s.text} className={`sel-opt${status?.text === s.text ? ' on' : ''}`} onClick={() => onStatus(s)}>
+          <span className="st-emoji big">{s.emoji}</span>
+          {s.text}
+          {status?.text === s.text && <Check size={14} className="sel-check" />}
+        </button>
+      ))}
+      <div className="status-custom">
+        <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Or type your own…" aria-label="Your own status" onKeyDown={(e) => e.key === 'Enter' && custom.trim() && (onStatus({ emoji: '💬', text: custom.trim() }), setCustom(''))} />
+      </div>
+      {status && (
+        <button className="sel-opt danger" onClick={() => onStatus(null)}>
+          <X size={14} /> Clear status
+        </button>
+      )}
+      <p className="muted small">“In a meeting” is set for you automatically from your calendar.</p>
+    </div>
+  );
+}
+
+/** The tiles on top of the phone's chat list: show or hide each, and their order. */
+function TilesEditor({ me }: { me: string }) {
+  const chat = useChatState(me);
+  const { order, hidden } = chat.tiles;
+  return (
+    <div className="tiles-editor">
+      <p className="muted small">Tiles show what to act on in Chat. Hold a tile in the list to move or hide it there too.</p>
+      {order.map((t, i) => (
+        <div key={t} className="te-tile">
+          <SlidersHorizontal size={16} className="muted" aria-hidden />
+          <span className="te-name">
+            {TILE_NAMES[t]}
+            {t === 'live' && <small>Only while a huddle is on</small>}
+          </span>
+          <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => moveTile(chat, t, -1)} aria-label={`Move ${TILE_NAMES[t]} up`}>
+            <ChevronUp size={16} />
+          </button>
+          <button type="button" className="icon-btn sm" disabled={i === order.length - 1} onClick={() => moveTile(chat, t, 1)} aria-label={`Move ${TILE_NAMES[t]} down`}>
+            <ChevronDown size={16} />
+          </button>
+          <button type="button" role="switch" aria-checked={!hidden.includes(t)} aria-label={`Show ${TILE_NAMES[t]}`} className={`switch ${hidden.includes(t) ? '' : 'on'}`} onClick={() => chat.setTiles({ order, hidden: hidden.includes(t) ? hidden.filter((x) => x !== t) : [...hidden, t] })}>
+            <span />
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -711,1214 +1012,9 @@ function ViewEditor({ view, channels, isNew, onSave, onDelete, onClose }: { view
   );
 }
 
-/* ---------------- Conversation ---------------- */
+/* ---------------- Conversation: src/components/chat/Conversation.tsx ---------------- */
 
-export interface SendPayload {
-  text: string;
-  parentId?: string;
-  alsoInChannel?: boolean;
-  files?: ChatFile[];
-  voice?: ChatMessage['voice'];
-  poll?: ChatMessage['poll'];
-  kind?: ChatMessage['kind'];
-  kudosFor?: string;
-}
-
-interface ViewProps {
-  channel: Channel | null;
-  messages: ChatMessage[]; // the whole channel, threads included
-  users: User[];
-  me: string;
-  myRole: Role;
-  clients: Client[];
-  teams: Team[];
-  tasks: Todo[];
-  mail: Thread[];
-  drive: DriveItem[]; // files saved for this channel's client
-  statuses: Record<string, Status>;
-  presence: (id: string) => Presence;
-  gifs: boolean;
-  meetUrl?: string;
-  onSend: (p: SendPayload) => void;
-  onDelete: (id: string) => void;
-  onPin: (id: string) => void;
-  onToggleTask: (id: string) => void;
-  onChannel: (p: Partial<Channel>) => void; // bookmarks, summaries
-  summaryCost: string;
-  /** Why scheduled summaries can't be written for this company right now (no AI, allowance used up); fixed where. */
-  summaryOff?: { text: string; fix?: { label: string; run: () => void } };
-  since: string; // when I last opened this channel, before now
-  onReact: (id: string, emoji: string) => void;
-  onVote: (id: string, option: number) => void;
-  onMakeTask: (m: ChatMessage) => void;
-  onCreateTask: (t: { title: string; userId: string; due?: string }) => void;
-  onOpenTask: (id: string) => void;
-  onOpenClient: (id: string) => void;
-  onOpenTeam: (id: string) => void;
-  onOpenMail: (id: string) => void;
-  onSettings: () => void;
-  onMenu: () => void;
-  onBack?: () => void; // phones: back to the channel list
-  /** Someone at a client (their portal): messages and materials only, none of the team's tools. */
-  guest?: { canPost: boolean };
-  huddle?: { joined: boolean; onJoin: () => void }; // a quick voice call in this channel
-  /** Land on this message (from a notification): open its thread if it's a reply, scroll to it and highlight it. */
-  focusId?: string | null;
-  onFocused?: () => void;
-  /** The company's time zone (Settings, General): when scheduled summaries are written. */
-  timeZone?: string;
-}
-
-/** "@Rizky" → <b>@Rizky</b>; links clickable; keeps everything else as text. */
-function Text({ text, users }: { text: string; users: User[] }) {
-  const names = users.map((u) => u.name.split(' ')[0]).join('|');
-  const re = new RegExp(`(${names ? `@(?:${names})\\b|` : ''}https?://\\S+)`, 'g');
-  const parts = text.split(re);
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.startsWith('@') ? (
-          <b key={i} className="mention">
-            {p}
-          </b>
-        ) : /^https?:\/\//.test(p) ? (
-          <a key={i} href={p} target="_blank" rel="noreferrer">
-            {p}
-          </a>
-        ) : (
-          p
-        ),
-      )}
-    </>
-  );
-}
-
-const COMMANDS = [
-  { cmd: '/task', hint: 'Make a task: /task Send the deck @Rizky friday' },
-  { cmd: '/remind', hint: 'Remind yourself: /remind call Nadia tomorrow' },
-];
-
-const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-function dueIn(text: string): { due?: string; rest: string } {
-  const t = text.toLowerCase();
-  const d = new Date();
-  let hit = '';
-  if (/\btomorrow\b/.test(t)) (d.setDate(d.getDate() + 1), (hit = 'tomorrow'));
-  else if (/\bnext week\b/.test(t)) (d.setDate(d.getDate() + 7), (hit = 'next week'));
-  else if (/\btoday\b/.test(t)) hit = 'today';
-  else {
-    const i = DAYS.findIndex((x) => new RegExp(`\\b${x}\\b`).test(t));
-    if (i >= 0) {
-      d.setDate(d.getDate() + (((i - d.getDay() + 7) % 7) || 7));
-      hit = DAYS[i];
-    }
-  }
-  if (!hit) return { rest: text };
-  const due = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return { due, rest: text.replace(new RegExp(`\\s*(by|on|due)?\\s*${hit}\\b`, 'i'), '').trim() };
-}
-
-export function ChatView(p: ViewProps) {
-  const { channel, users, me } = p;
-  useFocusedScreen(!!p.onBack); // phones: a channel (and its threads) takes the whole screen, the tab bar steps aside
-  const [text, setText] = useState('');
-  const [mention, setMention] = useState<string | null>(null);
-  const [tab, setTab] = useState<'messages' | 'materials' | 'tasks' | 'pinned' | 'summary' | 'about'>('messages');
-  const [summarizing, setSummarizing] = useState<'period' | 'since' | null>(null);
-  const [sinceText, setSinceText] = useState<string | null>(null);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskWho, setTaskWho] = useState('');
-  const [taskDue, setTaskDue] = useState('');
-  const [threadId, setThreadId] = useState<string | null>(null);
-  const [plusOpen, setPlusOpen] = useState(false);
-  const [kudos, setKudos] = useState<{ who: string; text: string } | null>(null);
-  const [rec, setRec] = useState<{ start: number; secs: number; stream?: MediaStream; recorder?: MediaRecorder; chunks: Blob[] } | null>(null);
-  const [reactFor, setReactFor] = useState<string | null>(null);
-  const reactAnchor = useRef<HTMLElement | null>(null);
-  const scroll = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLTextAreaElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const plusBtn = useRef<HTMLButtonElement>(null);
-  const person = (id: string) => users.find((u) => u.id === id);
-  const client = channel?.clientId ? p.clients.find((c) => c.id === channel.clientId) : undefined;
-  const team = channel?.teamId ? p.teams.find((t) => t.id === channel.teamId) : undefined;
-  const sorted = useMemo(() => [...p.messages].sort((a, b) => a.at.localeCompare(b.at)), [p.messages]);
-  const top = sorted.filter((m) => !m.parentId || m.alsoInChannel);
-  const replies = (id: string) => sorted.filter((m) => m.parentId === id);
-  const guest = p.guest;
-  useEffect(() => {
-    if (!p.focusId) return;
-    const target = p.messages.find((m) => m.id === p.focusId);
-    if (!target) return;
-    setTab('messages');
-    if (target.parentId) setThreadId(target.parentId);
-    const t = setTimeout(() => {
-      const el = document.querySelector(`[data-msg="${p.focusId}"]`);
-      if (el) {
-        el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-        el.classList.add('flash');
-        setTimeout(() => el.classList.remove('flash'), 2200);
-      }
-      p.onFocused?.();
-    }, 250);
-    return () => clearTimeout(t);
-  }, [p.focusId, p.messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const canPost = guest ? guest.canPost : !channel || channel.postPolicy !== 'admins' || p.myRole !== 'member' || channel.ownerId === me;
-  const thread = threadId ? p.messages.find((m) => m.id === threadId) : undefined;
-
-  useEffect(() => {
-    scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
-  }, [channel?.id, top.length]);
-  useEffect(() => {
-    input.current?.focus();
-    setText('');
-    setThreadId(null);
-    setKudos(null);
-    setTab('messages');
-    setSinceText(null);
-  }, [channel?.id]);
-  // What a connected AI app drafted for this channel (guests read it): fills the box to check and send (ChatDraft.tsx).
-  const chatDraft = useChatDraft(me, channel?.id, setText);
-  useEffect(() => {
-    if (!rec) return;
-    const t = setInterval(() => setRec((r) => r && { ...r, secs: (Date.now() - r.start) / 1000 }), 250);
-    return () => clearInterval(t);
-  }, [rec?.start]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const suggestions = useMemo(
-    () => (mention === null ? [] : users.filter((u) => u.id !== me && u.name.toLowerCase().startsWith(mention.toLowerCase())).slice(0, 5)),
-    [mention, users, me],
-  );
-  const slash = !guest && text.startsWith('/') && !text.includes(' ') ? COMMANDS.filter((c) => c.cmd.startsWith(text.toLowerCase())) : [];
-
-  if (!channel)
-    return (
-      <section className="chat-pane chat-empty view-enter">
-        <EmptyState icon={<Hash size={22} />} title="Pick a channel or person" text={`${term.One} channels keep every conversation about a ${term.one} in one place.`} />
-      </section>
-    );
-
-  const other = channel.kind === 'dm' ? person(dmOther(channel, me)) : undefined;
-  const title = other ? other.name : channel.category === 'shared' ? channel.name : `#${channel.name}`;
-  const chanFiles = p.messages.flatMap((m) => (m.files ?? []).map((f) => ({ f, m })));
-  const chanTasks = p.tasks.filter((t) => t.kind !== 'brief' && (t.channelId === channel.id || (client && t.clientId === client.id) || (team && t.teamId === team.id)));
-  const pinned = sorted.filter((m) => m.pinned);
-  const links = sorted.flatMap((m) =>
-    (m.text.match(/https?:\/\/[^\s)]+/g) ?? []).map((url, i) => ({
-      key: m.id + i,
-      url,
-      at: m.at,
-      who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
-    })),
-  ).reverse();
-
-  // The schedule the server runs (server/summaries.ts): when the next one comes, and what happened to the last one.
-  const schedule = channelSchedule(channel);
-  const lastRun = channel.summary?.last;
-  const nextDay = nextSummaryDay(schedule, settledKey(lastRun), Date.now(), companyTz({ timeZone: p.timeZone }), !!lastRun);
-  const nextRun = () => (!nextDay ? '' : nextDay === localDay() ? 'today' : new Date(`${nextDay}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }));
-  const lastMissed = lastRun && (lastRun.state === 'off' || lastRun.state === 'failed') && lastRun.key === settledKey(lastRun) ? lastRun : null;
-  const lastRetrying = lastRun?.state === 'failed' && !settledKey(lastRun) ? lastRun : null;
-  /** AI summary of a period (this month / week / day) or of what I missed. Only on click, or on the schedule. */
-  const summarize = async (kind: 'period' | 'since') => {
-    setSummarizing(kind);
-    const sch = schedule === 'off' ? 'monthly' : schedule;
-    const from = kind === 'since' ? p.since : new Date(Date.now() - (sch === 'daily' ? 1 : sch === 'weekly' ? 7 : 31) * 86_400_000).toISOString();
-    const msgs = sorted.filter((m) => m.at > from).map((m) => ({
-      who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'),
-      text: m.voice?.transcript ?? m.text,
-      at: m.at,
-      task: m.taskId ? p.tasks.find((t) => t.id === m.taskId)?.title : undefined,
-      files: m.files?.map((f) => f.name),
-    }));
-    const text = await ai.catchUp(title, msgs, person(me)?.name.split(' ')[0] ?? 'me');
-    if (kind === 'since') setSinceText(text);
-    else {
-      const period = sch === 'daily' ? 'Today' : sch === 'weekly' ? 'This week' : new Date().toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' so far';
-      p.onChannel({ summary: { schedule, post: channel.summary?.post ?? false, history: [{ id: Math.random().toString(36).slice(2), text, period, at: new Date().toISOString(), auto: false, by: me }, ...(channel.summary?.history ?? [])] } });
-      if (channel.summary?.post) p.onSend({ text: `📝 Summary (${period}): ${text}` });
-    }
-    setSummarizing(null);
-  };
-  const mentioned = (t: string) => users.find((u) => u.id !== me && new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(t));
-
-  /** Slash commands run here; everything else is a message. */
-  const runCommand = (raw: string): boolean => {
-    if (guest) return false;
-    const [cmd, ...rest] = raw.split(' ');
-    const arg = rest.join(' ').trim();
-    switch (cmd.toLowerCase()) {
-      case '/task': {
-        if (!arg) return true;
-        const who = mentioned(arg);
-        const { due, rest: t } = dueIn(arg.replace(/@\w+\s*/g, ''));
-        p.onCreateTask({ title: t.charAt(0).toUpperCase() + t.slice(1), userId: who?.id ?? me, due });
-        return true;
-      }
-      case '/remind': {
-        if (!arg) return true;
-        const { due, rest: t } = dueIn(arg);
-        p.onCreateTask({ title: t.charAt(0).toUpperCase() + t.slice(1), userId: me, due: due ?? undefined });
-        return true;
-      }
-      case '/kudos': {
-        const who = mentioned(arg);
-        if (who) p.onSend({ text: arg.replace(/@\w+\s*/, '').trim(), kind: 'kudos', kudosFor: who.id });
-        else setKudos({ who: '', text: arg });
-        return true;
-      }
-      case '/meet':
-        p.onSend({ text: `📹 Join the call: ${p.meetUrl ?? 'https://meet.sprint2go.com/' + channel.name}` });
-        return true;
-    }
-    return false;
-  };
-
-  const send = () => {
-    const t = text.trim();
-    if (!t) return;
-    if (t.startsWith('/') && runCommand(t)) {
-      setText('');
-      return;
-    }
-    p.onSend({ text: t });
-    chatDraft.sent();
-    setText('');
-    setMention(null);
-  };
-  const pickMention = (u: User) => {
-    setText((t) => t.replace(/@(\w*)$/, `@${u.name.split(' ')[0]} `));
-    setMention(null);
-    input.current?.focus();
-  };
-  const onFiles = async (list: FileList | null) => {
-    if (!list?.length) return;
-    // To the server first, so the file is there for everyone and after a reload (a data URL in the demo).
-    const files: ChatFile[] = [];
-    for (const f of [...list]) {
-      try {
-        const up = await uploadFile(f, channel.workspaceId);
-        files.push({ name: f.name, size: f.size, type: up.type, url: up.url });
-      } catch (e) {
-        if (wasSkipped(e)) continue; // they chose not to upload a big file
-        // On a real server a file only this browser has would look sent but nobody else could open it: say why instead.
-        if (server.on) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { error: `${f.name}: ${(e as Error).message}` } }));
-        else files.push({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', url: URL.createObjectURL(f) });
-      }
-    }
-    if (!files.length) return;
-    p.onSend({ text: text.trim(), files });
-    setText('');
-  };
-
-  // Voice notes: the browser's recorder when allowed; otherwise a timed demo note.
-  const startRec = async () => {
-    setPlusOpen(false);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => chunks.push(e.data);
-      recorder.start();
-      setRec({ start: Date.now(), secs: 0, stream, recorder, chunks });
-    } catch {
-      setRec({ start: Date.now(), secs: 0, chunks: [] });
-    }
-  };
-  const stopRec = (keep: boolean) => {
-    if (!rec) return;
-    const secs = Math.max(1, Math.round((Date.now() - rec.start) / 1000));
-    const finish = (url?: string) => {
-      rec.stream?.getTracks().forEach((t) => t.stop());
-      if (keep) p.onSend({ text: '', voice: { seconds: secs, url } });
-      setRec(null);
-    };
-    if (rec.recorder && rec.recorder.state !== 'inactive') {
-      rec.recorder.onstop = () => {
-        const blob = new Blob(rec.chunks, { type: 'audio/webm' });
-        void uploadFile(blob, channel.workspaceId, 'voice-note.webm').then((up) => finish(up.url)).catch(() => finish(URL.createObjectURL(blob)));
-      };
-      rec.recorder.stop();
-    } else finish();
-  };
-
-  const authorOf = (m: ChatMessage) => {
-    if (m.guestEmail) {
-      const g = channel.guests?.find((x) => x.email === m.guestEmail);
-      return { name: `${g?.name ?? m.guestEmail}${m.via === 'whatsapp' ? ' · WhatsApp' : ''}`, guest: true, person: { name: g?.name ?? m.guestEmail, email: m.guestEmail } };
-    }
-    const u = person(m.userId);
-    // Brought in by an import from someone who isn't a member here: their name from the other app.
-    if (!u && m.authorName) return { name: m.authorName, guest: false, former: true, person: { name: m.authorName, email: m.authorName } };
-    return { name: m.userId === me ? 'You' : (u?.name ?? 'Someone'), guest: false, person: u };
-  };
-
-  const message = (m: ChatMessage, grouped: boolean, inThread = false) => {
-    if (m.kind === 'celebration')
-      return (
-        <div key={m.id} className="chat-celebration">
-          <span>🎉 {m.text}</span>
-          <time>{relative(m.at)}</time>
-        </div>
-      );
-    if (m.kind === 'summary')
-      return (
-        <div key={m.id} data-msg={m.id} className="chat-summary">
-          <div className="chat-summary-head">
-            <Sparkles size={13} aria-hidden /> Summary{m.summaryOf ? `, ${m.summaryOf}` : ''}
-            <time>{relative(m.at)}</time>
-          </div>
-          <p>{m.text}</p>
-        </div>
-      );
-    if (m.kind === 'system')
-      return (
-        <div key={m.id} className="chat-celebration system">
-          <span>
-            {authorOf(m).name} {m.text}
-          </span>
-          <time>{relative(m.at)}</time>
-        </div>
-      );
-    const a = authorOf(m);
-    const task = m.taskId ? p.tasks.find((t) => t.id === m.taskId) : undefined;
-    const reps = inThread ? [] : replies(m.id);
-    const st = !a.guest ? p.statuses[m.userId] : undefined;
-    return (
-      <div key={m.id} data-msg={m.id} className={`chat-msg ${grouped ? 'grouped' : ''} ${m.kind === 'kudos' ? 'kudos-msg' : ''}`}>
-        {grouped ? <span className="cm-gutter" /> : a.person ? <Avatar person={a.person} size={34} /> : <span className="cm-gutter" />}
-        <div className="cm-body">
-          {!grouped && (
-            <div className="cm-head">
-              <strong>{a.name}</strong>
-              {'former' in a && a.former && <Badge small>{m.userId.startsWith('former:bot:') ? 'App' : 'Former member'}</Badge>}
-              {a.guest && <Badge small tone="warn">Guest{(() => { const co = companyOf(a.person?.email ?? '', client?.people?.find((x) => x.email === a.person?.email)?.company, client); return co ? ` · ${co}` : ''; })()}</Badge>}
-              {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
-              <time>{relative(m.at)}</time>
-              {m.parentId && m.alsoInChannel && !inThread && <span className="muted small">replied in a thread</span>}
-            </div>
-          )}
-          {m.kind === 'kudos' ? (
-            <div className="kudos-card">
-              <span className="kudos-emoji">🙌</span>
-              <span>
-                <strong>Kudos to {m.kudosFor === me ? 'you' : person(m.kudosFor ?? '')?.name}</strong>
-                {m.text && <span> {m.text}</span>}
-              </span>
-            </div>
-          ) : (
-            m.text && (
-              <div className="cm-text">
-                <Text text={m.text} users={users} />
-              </div>
-            )
-          )}
-          {m.voice && <VoiceNote voice={m.voice} />}
-          {m.poll && (
-            <div className="poll">
-              <div className="poll-q">
-                <BarChart3 size={14} /> {m.poll.question}
-              </div>
-              {m.poll.options.map((o, i) => {
-                const total = m.poll!.options.reduce((s, x) => s + x.votes.length, 0) || 1;
-                const mineVote = o.votes.includes(me);
-                return (
-                  <button key={i} className={`poll-opt ${mineVote ? 'on' : ''}`} onClick={() => p.onVote(m.id, i)}>
-                    <span className="poll-fill" style={{ width: `${(o.votes.length / total) * 100}%` }} />
-                    <span className="poll-text">{o.text}</span>
-                    <span className="poll-votes">
-                      {o.votes.slice(0, 3).map((v) => person(v) && <Avatar key={v} person={person(v)!} size={16} />)}
-                      {o.votes.length}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {m.files?.map((f) => (
-            <a key={f.name} className="chat-file" href={f.url} target="_blank" rel="noreferrer" onClick={(e) => !f.url && e.preventDefault()}>
-              <span className="cf-icon">{f.type.startsWith('video') ? <Video size={16} /> : f.type.startsWith('image') ? <ImageIcon size={16} /> : <FileText size={16} />}</span>
-              <span className="cf-text">
-                <strong>{f.name}</strong>
-                <small>
-                  {fmtSize(f.size)}
-                  {f.missing ? ` · ${f.missing}` : f.url && !f.driveId ? '' : client ? ` · saved to Drive › ${client.name}` : ' · saved to Drive'}
-                </small>
-              </span>
-            </a>
-          ))}
-          {task && (
-            <button className={`cm-task ${task.done ? 'done' : ''}`} onClick={() => p.onOpenTask(task.id)}>
-              <SquareCheck size={14} />
-              <span>{task.title}</span>
-              <em>
-                {stageName(stageOf(task))} · {person(task.userId)?.name.split(' ')[0] ?? 'team queue'}
-              </em>
-            </button>
-          )}
-          {m.reactions && Object.keys(m.reactions).some((k) => m.reactions![k].length) && (
-            <div className="reactions">
-              {Object.entries(m.reactions)
-                .filter(([, who]) => who.length)
-                .map(([emoji, who]) => (
-                  <button key={emoji} className={`reaction ${who.includes(me) ? 'on' : ''}`} onClick={() => p.onReact(m.id, emoji)} title={who.map((w) => (w === me ? 'You' : person(w)?.name.split(' ')[0])).join(', ')}>
-                    {emoji} <b>{who.length}</b>
-                  </button>
-                ))}
-              <button
-                className="reaction add"
-                onClick={(e) => {
-                  reactAnchor.current = e.currentTarget;
-                  setReactFor(m.id);
-                }}
-                aria-label="Add reaction"
-              >
-                <SmilePlus size={13} />
-              </button>
-            </div>
-          )}
-          {reps.length > 0 && (
-            <button className="thread-link" onClick={() => setThreadId(m.id)}>
-              <span className="tl-avs">{[...new Set(reps.map((r) => r.userId))].slice(0, 3).map((u) => person(u) && <Avatar key={u} person={person(u)!} size={18} />)}</span>
-              <b>
-                {reps.length} repl{reps.length === 1 ? 'y' : 'ies'}
-              </b>
-              <span className="muted">Last reply {relative(reps[reps.length - 1].at)}</span>
-            </button>
-          )}
-        </div>
-        <div className="cm-tools">
-          {!guest && (
-            <button
-              title="React"
-              onClick={(e) => {
-                reactAnchor.current = e.currentTarget;
-                setReactFor(m.id);
-              }}
-            >
-              <SmilePlus size={15} />
-            </button>
-          )}
-          {!inThread && (
-            <button title="Reply in thread" onClick={() => setThreadId(m.id)}>
-              <MessageSquareReply size={15} />
-            </button>
-          )}
-          {!inThread && !guest && (
-            <button title={m.pinned ? 'Unpin' : 'Pin to the channel'} onClick={() => p.onPin(m.id)}>
-              <Pin size={15} className={m.pinned ? 'pinned' : ''} />
-            </button>
-          )}
-          {!guest && !task && m.kind !== 'kudos' && m.text && (
-            <button title="Turn into a task" onClick={() => p.onMakeTask(m)}>
-              <ListChecks size={15} />
-            </button>
-          )}
-          {!guest && m.userId === me && !m.guestEmail && (
-            <button title="Delete" onClick={() => p.onDelete(m.id)}>
-              <Trash2 size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // Group consecutive messages by the same person within 5 minutes.
-  let prev: ChatMessage | null = null;
-  let prevDay = '';
-
-  const composer = canPost ? (
-    <div className="chat-compose">
-      {suggestions.length > 0 && (
-        <div className="mention-pop">
-          {suggestions.map((u) => (
-            <button key={u.id} onMouseDown={(e) => (e.preventDefault(), pickMention(u))}>
-              <Avatar person={u} size={22} /> {u.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {slash.length > 0 && (
-        <div className="mention-pop">
-          {slash.map((c) => (
-            <button key={c.cmd} onMouseDown={(e) => (e.preventDefault(), setText(c.cmd + ' '), input.current?.focus())}>
-              <b>{c.cmd}</b> <span className="muted small">{c.hint}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      {rec ? (
-        <div className="rec-bar">
-          <span className="rec-dot" /> Recording {fmtSecs(rec.secs)}
-          {!rec.recorder && <span className="muted small">(demo: microphone not available here)</span>}
-          <span className="spacer" />
-          <button className="ghost-btn sm" onClick={() => stopRec(false)}>
-            Cancel
-          </button>
-          <button className="primary-btn sm" onClick={() => stopRec(true)}>
-            Send voice note
-          </button>
-        </div>
-      ) : (
-        <>
-          <button ref={plusBtn} className="icon-btn compose-plus" onClick={() => setPlusOpen((o) => !o)} aria-label="More: files, voice, poll, kudos">
-            <Plus size={18} />
-          </button>
-          <textarea
-            ref={input}
-            id="chat-input"
-            rows={1}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              const m = /@(\w*)$/.exec(e.target.value);
-              setMention(m ? m[1] : null);
-            }}
-            onPaste={(e) => e.clipboardData.files.length && (e.preventDefault(), onFiles(e.clipboardData.files))}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (suggestions.length && mention !== null) pickMention(suggestions[0]);
-                else if (slash.length === 1 && text.trim() === slash[0].cmd.slice(0, text.trim().length) && text.trim() !== slash[0].cmd) setText(slash[0].cmd + ' ');
-                else send();
-              }
-              if (e.key === 'Escape') setMention(null);
-            }}
-            placeholder={guest ? `Message ${title}` : `Message ${title}  ·  type / for commands`}
-          />
-
-          {text.trim() || guest ? (
-            <button className="ai-send chat-send" onClick={send} aria-label="Send" disabled={!text.trim()}>
-              <ArrowUp size={16} />
-            </button>
-          ) : (
-            <button className="icon-btn mic-btn" onClick={startRec} aria-label="Record a voice note">
-              <Mic size={18} />
-            </button>
-          )}
-        </>
-      )}
-      <input ref={fileInput} type="file" multiple hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
-      <Popover anchor={plusBtn} open={plusOpen} onClose={() => setPlusOpen(false)} width={240} title="Add to message">
-        <div className="sel-pop">
-          <button className="sel-opt" onClick={() => (setPlusOpen(false), fileInput.current?.click())}>
-            <Paperclip size={15} /> Upload a file
-          </button>
-          {!guest && (
-            <>
-              <button className="sel-opt" onClick={startRec}>
-                <Mic size={15} /> Record a voice note
-              </button>
-              <button className="sel-opt" onClick={() => (setPlusOpen(false), setKudos({ who: '', text: '' }))}>
-                <span>🙌</span> Give kudos
-              </button>
-              <button className="sel-opt" onClick={() => (setPlusOpen(false), runCommand('/meet'))}>
-                <Video size={15} /> Share the meeting link
-              </button>
-            </>
-          )}
-        </div>
-      </Popover>
-
-    </div>
-  ) : (
-    <div className="chat-locked">
-      <Lock size={14} /> Only admins post in #{channel.name}. You can still react and reply in threads.
-    </div>
-  );
-
-  return (
-    <section className={`chat-pane view-enter ${thread ? 'with-panel' : ''}`}>
-      <div className="chat-main">
-        <header className="chat-head">
-          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
-            <Menu size={18} />
-          </button>
-          {p.onBack && (
-            <button className="icon-btn back-btn" onClick={p.onBack} aria-label="Back to channels">
-              <ArrowLeft size={20} />
-            </button>
-          )}
-          {other && (
-            <span className="dm-av">
-              <Avatar person={other} size={28} />
-              <i className={`presence ${p.presence(other.id)}`} />
-            </span>
-          )}
-          <div className="th-text">
-            <h1>
-              {channel.category === 'shared' && !other ? <Handshake size={16} /> : channel.private && !other && <Lock size={15} />} {title}
-              {other && p.statuses[other.id] && <span className="st-emoji">{p.statuses[other.id].emoji}</span>}
-            </h1>
-            <p>
-              {other ? (p.statuses[other.id]?.text ?? other.title) : (channel.topic ?? (client ? `${client.name} ${term.one} channel` : ''))}
-              {channel.guests?.length ? ` · ${channel.guests.length} guest${channel.guests.length > 1 ? 's' : ''}` : ''}
-              {channel.sharedWith ? ` · shared with ${channel.sharedWith.workspaceName}${channel.sharedWith.status === 'pending' ? ' (waiting)' : ''}` : ''}
-            </p>
-          </div>
-          {p.huddle && !guest && (
-            <button className={`ghost-btn sm huddle-btn${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.onJoin} title={p.huddle.joined ? 'You’re in this huddle' : 'Talk, right here'} disabled={p.huddle.joined}>
-              <Headphones size={14} />
-              <span className="lbl">{p.huddle.joined ? 'In the huddle' : channel.huddle?.members.length ? `Join huddle · ${channel.huddle.members.length}` : 'Huddle'}</span>
-            </button>
-          )}
-          {channel.kind === 'channel' && !guest && (
-            <button className="chat-members" onClick={p.onSettings} title="People and settings">
-              {channel.members.slice(0, 4).map((id) => person(id) && <Avatar key={id} person={person(id)!} size={24} />)}
-              <span>{channel.members.length + (channel.guests?.length ?? 0)}</span>
-            </button>
-          )}
-          {channel.kind === 'channel' && !guest && (
-            <button className="icon-btn sm" onClick={p.onSettings} title="Channel settings">
-              <Settings size={16} />
-            </button>
-          )}
-
-        </header>
-
-        <TabBar
-          storageKey="channel-tabs"
-          className="chan-tabs"
-          value={tab}
-          onSelect={(id) => setTab(id as typeof tab)}
-          fixed={['messages']}
-          items={(
-            [
-              ['messages', 'Messages', null],
-              ['materials', 'Materials', (channel.materials?.items.length ?? channel.bookmarks?.length ?? 0) + chanFiles.length + p.drive.length + new Set(links.map((l) => l.url)).size],
-              ['tasks', 'Tasks', chanTasks.filter((t) => !t.done && !!t.due && t.due < localDay()).length], // late only
-              ['pinned', 'Pinned', pinned.length],
-              ['summary', 'Summary', null],
-              ['about', other ? 'Profile' : 'About', null],
-            ] as const
-          )
-            .filter(([id]) => !guest || id === 'messages' || id === 'materials')
-            .map(([id, l, n]) => ({
-              id,
-              name: l,
-              label: (
-                <>
-                  {l}
-                  {id === 'tasks' && n ? <span>{n}</span> : null}
-                </>
-              ),
-            }))}
-        />
-
-        <TabPane key={tab}>
-        {tab === 'materials' && (
-          <>
-            <p className="space-used chan-space">
-              <HardDrive size={14} /> {chanFiles.length ? <>Files shared here use <b>{fmtSize(chanFiles.reduce((s2, x) => s2 + x.f.size, 0))}</b> of team storage</> : 'Files, links and docs for this channel, in folders if you like'}
-              {p.drive.length ? <span className="muted"> · {fmtSize(p.drive.reduce((s2, d) => s2 + d.size, 0))} in {client?.name}’s Drive folder</span> : null}
-            </p>
-            <ChannelMaterials
-              channel={channel}
-              users={users}
-              me={me}
-              chatFiles={[
-                ...chanFiles.map(({ f, m }) => ({ key: `file:${m.id}:${f.name}`, name: f.name, type: f.type, size: f.size, url: f.url, who: m.guestEmail ? (channel.guests?.find((g) => g.email === m.guestEmail)?.name ?? 'Guest') : (person(m.userId)?.name.split(' ')[0] ?? 'Someone'), at: m.at, where: 'in chat' })),
-                ...p.drive.map((d) => ({ key: `drive:${d.id}`, name: d.name, type: d.kind === 'image' ? 'image/' : d.kind === 'video' ? 'video/' : 'application/', size: d.size, url: undefined, who: '', at: d.modified, where: client ? `in ${client.name}’s Drive folder` : 'in Drive' })),
-              ]}
-              chatLinks={links}
-              onChannel={p.onChannel}
-              readOnly={!!guest}
-            />
-          </>
-        )}
-
-        {tab === 'tasks' && (
-          <div className="chan-pane">
-            <p className="muted small">
-              {client ? `Tasks for ${client.name}, plus anything added here.` : team ? `${team.name}’s tasks, plus anything added here.` : `This channel’s own to-do list.`}
-            </p>
-            <div className="todo-add task-add">
-              <Plus size={16} />
-              <input
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && taskTitle.trim() && (p.onCreateTask({ title: taskTitle.trim(), userId: taskWho || me, due: taskDue || undefined }), setTaskTitle(''), setTaskDue(''))}
-                placeholder={`Add to ${title}’s list…`}
-              />
-              <Select value={taskWho || me} onChange={setTaskWho} label="Assign to" className="sel-flat" options={users.map((u) => ({ ...personOption(u), label: u.id === me ? 'Me' : u.name, icon: <Avatar person={u} size={18} /> }))} />
-              <DatePicker value={taskDue} onChange={setTaskDue} label="Due" placeholder="Due" className="sel-flat" />
-              <button className="primary-btn sm" disabled={!taskTitle.trim()} onClick={() => (p.onCreateTask({ title: taskTitle.trim(), userId: taskWho || me, due: taskDue || undefined }), setTaskTitle(''), setTaskDue(''))}>
-                Add
-              </button>
-            </div>
-            {[false, true].map((done) => {
-              const list = chanTasks.filter((t) => t.done === done).sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'));
-              if (!list.length) return null;
-              return (
-                <div key={String(done)} className="todo-group">
-                  <div className="d-heading">
-                    {done ? 'Done' : 'Open'} <span>{list.length}</span>
-                  </div>
-                  {list.map((t) => (
-                    <div key={t.id} className={`task ${t.done ? 'done' : ''}`}>
-                      <button className="todo-check" onClick={() => p.onToggleTask(t.id)} aria-label="Toggle done">
-                        {t.done && <span>✓</span>}
-                      </button>
-                      <button className="task-title-btn" onClick={() => p.onOpenTask(t.id)}>
-                        {t.title}
-                      </button>
-                      {t.due && !t.done && <span className={`due ${dueLabel(t.due).cls}`}>{dueLabel(t.due).text}</span>}
-                      {person(t.userId) ? <Avatar person={person(t.userId)!} size={22} /> : <span className="avatar-empty sm">?</span>}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-            {!chanTasks.length && <EmptyState compact text="Nothing on this list yet. Add one above, or type /task in a message." />}
-          </div>
-        )}
-
-        {tab === 'summary' && (
-          <div className="chan-pane">
-            <div className="sum-head">
-              <span>
-                <strong>{schedule !== 'off' ? `Updated ${schedule === 'monthly' ? 'every month' : schedule === 'weekly' ? 'every week' : 'every day with new messages'}` : 'No automatic summary'}</strong>
-                <small className="muted">
-                  {schedule === 'off' ? `Each summary uses ${p.summaryCost}` : p.summaryOff ? 'Paused until AI works for this company' : `Next: ${nextRun()} · skipped when nothing happened · each uses ${p.summaryCost}`}
-                </small>
-              </span>
-              <Select
-                value={schedule}
-                onChange={(v) => p.onChannel({ summary: { ...channel.summary, schedule: v, post: channel.summary?.post ?? false, history: channel.summary?.history ?? [] } })}
-                label="Summary schedule"
-                className="sel-flat"
-                options={[
-                  { value: 'monthly', label: 'Monthly' },
-                  { value: 'weekly', label: 'Weekly' },
-                  { value: 'daily', label: 'Daily' },
-                  { value: 'off', label: 'Off' },
-                ]}
-              />
-            </div>
-            <div className="sum-actions">
-              <button className="primary-btn sm" disabled={!!summarizing} onClick={() => summarize('period')}>
-                <Sparkles size={14} /> {summarizing === 'period' ? 'Writing…' : 'Update now'}
-              </button>
-              <button className="ghost-btn sm" disabled={!!summarizing} onClick={() => summarize('since')}>
-                {summarizing === 'since' ? 'Reading…' : `Since my last visit (${relative(p.since)})`}
-              </button>
-              <label className="check-row small">
-                <input type="checkbox" checked={channel.summary?.post ?? false} onChange={(e) => p.onChannel({ summary: { ...channel.summary, schedule, post: e.target.checked, history: channel.summary?.history ?? [] } })} /> Post new summaries in the channel
-              </label>
-            </div>
-            {schedule !== 'off' && (p.summaryOff || lastMissed || lastRetrying) && (
-              <div className="sum-off" role="status">
-                <AlertTriangle size={15} aria-hidden />
-                <span>
-                  {p.summaryOff
-                    ? `Scheduled summaries can’t be written: ${p.summaryOff.text}`
-                    : lastRetrying
-                      ? `The ${lastRetrying.label ?? 'latest'} summary couldn’t be written yet (${lastRetrying.why ?? 'the AI service failed'}). It’s tried again by itself${lastRetrying.retryAt ? ` at ${new Date(lastRetrying.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}.`
-                      : `The ${lastMissed!.label ?? 'last'} summary wasn’t written: ${lastMissed!.why ?? 'the AI service failed'}`}{' '}
-                  {p.summaryOff?.fix && (
-                    <button className="link-btn" onClick={p.summaryOff.fix.run}>
-                      {p.summaryOff.fix.label}
-                    </button>
-                  )}
-                </span>
-              </div>
-            )}
-            {sinceText && (
-              <div className="sum-card since">
-                <div className="sum-meta">Since your last visit</div>
-                <p>{sinceText}</p>
-              </div>
-            )}
-            {(channel.summary?.history ?? []).map((h) => (
-              <div key={h.id} className="sum-card">
-                <div className="sum-meta">
-                  {h.period} · {h.auto ? 'scheduled' : `asked by ${person(h.by ?? '')?.name.split(' ')[0] ?? 'someone'}`} · {relative(h.at)}
-                </div>
-                <p>{h.text}</p>
-              </div>
-            ))}
-            {!(channel.summary?.history ?? []).length && !sinceText && <EmptyState compact text="No summaries yet. Click “Update now” for the first one." />}
-          </div>
-        )}
-
-        {tab === 'about' && <ChannelAbout {...p} channel={channel} client={client} team={team} other={other} />}
-
-        {tab === 'pinned' && (
-          <div className="chan-pane">
-            {pinned.map((m) => message(m, false))}
-            {!pinned.length && <EmptyState compact text="Nothing pinned. Hover a message and click the pin to keep it here: briefs, links, decisions." />}
-          </div>
-        )}
-
-        {tab === 'messages' && (
-        <div className="chat-scroll" ref={scroll}>
-          {top.map((m) => {
-            const day = new Date(m.at).toDateString();
-            const showDay = day !== prevDay;
-            const grouped = !!(!showDay && prev && prev.userId === m.userId && prev.kind !== 'celebration' && m.kind !== 'kudos' && new Date(m.at).getTime() - new Date(prev.at).getTime() < 5 * 60_000);
-            prev = m;
-            prevDay = day;
-            return (
-              <div key={m.id}>
-                {showDay && (
-                  <div className="chat-day">
-                    <span>{new Date(m.at).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-                  </div>
-                )}
-                {message(m, grouped)}
-              </div>
-            );
-          })}
-          {top.length === 0 && <p className="chat-start">This is the start of {title}. Say hello 👋</p>}
-        </div>
-
-        )}
-        {tab === 'messages' && kudos && (
-          <div className="inline-sheet">
-            <div className="is-head">
-              🙌 Give kudos
-              <button className="icon-btn sm" onClick={() => setKudos(null)} aria-label="Close">
-                <X size={14} />
-              </button>
-            </div>
-            <Select value={kudos.who || null} onChange={(v) => setKudos({ ...kudos, who: v })} placeholder="Who?" label="Who gets kudos" options={users.filter((u) => u.id !== me).map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={22} /> }))} />
-            <input className="is-input" value={kudos.text} onChange={(e) => setKudos({ ...kudos, text: e.target.value })} placeholder="For what? e.g. saving the KopiKita invoice" />
-            <div className="is-foot">
-              <span className="muted small">Shows on everyone’s Home under Wins this week.</span>
-              <span className="spacer" />
-              <button className="primary-btn sm" disabled={!kudos.who} onClick={() => (p.onSend({ text: kudos.text.trim(), kind: 'kudos', kudosFor: kudos.who }), setKudos(null))}>
-                Send kudos
-              </button>
-            </div>
-          </div>
-        )}
-        {tab === 'messages' && channel.category === 'shared' && !guest && (
-          <div className="shared-note">
-            <Handshake size={14} />
-            <span>
-              {channel.guests?.length ? `${channel.guests.map((g) => g.name.split(' ')[0]).join(', ')} can read this channel.` : `Shared with ${client?.name ?? 'guests'}. Invite people in channel settings.`} Keep internal talk in your team’s own channel.
-            </span>
-          </div>
-        )}
-        {tab === 'messages' && canPost && <DraftNote draft={chatDraft.draft} text={text} onUse={chatDraft.use} onDiscard={chatDraft.discard} />}
-        {tab === 'messages' && composer}
-        </TabPane>
-      </div>
-
-      {thread && (
-        <ThreadPanel
-          root={thread}
-          replies={replies(thread.id)}
-          render={(m) => message(m, false, true)}
-          channelName={title}
-          canPost={true}
-          onClose={() => setThreadId(null)}
-          onSend={(t, also) => p.onSend({ text: t, parentId: thread.id, alsoInChannel: also })}
-        />
-      )}
-
-      <Popover anchor={reactAnchor} open={!!reactFor} onClose={() => setReactFor(null)} width={292} title="React">
-        <div className="react-grid">
-          {QUICK_REACTIONS.map((e) => (
-            <button key={e} onClick={() => (p.onReact(reactFor!, e), setReactFor(null))}>
-              {e}
-            </button>
-          ))}
-        </div>
-      </Popover>
-    </section>
-  );
-}
-
-function VoiceNote({ voice }: { voice: NonNullable<ChatMessage['voice']> }) {
-  const [playing, setPlaying] = useState(false);
-  const [showText, setShowText] = useState(false);
-  const [text, setText] = useState(voice.transcript ?? '');
-  const [transcribing, setTranscribing] = useState(false);
-  const audio = useRef<HTMLAudioElement | null>(null);
-  const bars = useMemo(() => Array.from({ length: 28 }, (_, i) => 6 + Math.abs(Math.sin(i * 1.7 + voice.seconds)) * 18), [voice.seconds]);
-  const toggle = () => {
-    if (voice.url) {
-      if (!audio.current) {
-        audio.current = new Audio(voice.url);
-        audio.current.onended = () => setPlaying(false);
-      }
-      if (playing) audio.current.pause();
-      else audio.current.play().catch(() => setPlaying(false));
-    } else if (!playing) setTimeout(() => setPlaying(false), Math.min(voice.seconds, 6) * 1000);
-    setPlaying(!playing);
-  };
-  return (
-    <div className="voice">
-      <button className="voice-play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
-        {playing ? <Pause size={14} /> : <Play size={14} />}
-      </button>
-      <span className={`voice-wave ${playing ? 'playing' : ''}`}>
-        {bars.map((h, i) => (
-          <i key={i} style={{ height: h, animationDelay: `${i * 40}ms` }} />
-        ))}
-      </span>
-      <span className="voice-len">{fmtSecs(voice.seconds)}</span>
-      {text ? (
-        <button className="link-btn small" onClick={() => setShowText((s) => !s)}>
-          {showText ? 'Hide text' : 'Show text'}
-        </button>
-      ) : (
-        <button
-          className="link-btn small"
-          disabled={transcribing}
-          title="Turns speech into text with the AI your company picked. Only when someone asks"
-          onClick={() => {
-            setTranscribing(true);
-            setTimeout(() => {
-              setText('Demo transcript: once an AI provider is connected, the real words of this voice note appear here.');
-              setShowText(true);
-              setTranscribing(false);
-            }, 1200);
-          }}
-        >
-          <Sparkles size={11} /> {transcribing ? 'Transcribing…' : 'Transcribe'}
-        </button>
-      )}
-      {showText && text && <p className="voice-text">{text}</p>}
-    </div>
-  );
-}
-
-function ThreadPanel({
-  root,
-  replies,
-  render,
-  channelName,
-  canPost,
-  onClose,
-  onSend,
-}: {
-  root: ChatMessage;
-  replies: ChatMessage[];
-  render: (m: ChatMessage) => ReactNode;
-  channelName: string;
-  canPost: boolean;
-  onClose: () => void;
-  onSend: (text: string, alsoInChannel: boolean) => void;
-}) {
-  const [text, setText] = useState('');
-  const [also, setAlso] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: 'end' });
-  }, [replies.length]);
-  const send = () => {
-    if (!text.trim()) return;
-    onSend(text.trim(), also);
-    setText('');
-    setAlso(false);
-  };
-  return (
-    <aside className="chat-side">
-      <header className="cs-head">
-        <strong>Thread</strong>
-        <span className="muted small">{channelName}</span>
-        <span className="spacer" />
-        <button className="icon-btn sm" onClick={onClose} aria-label="Close thread">
-          <X size={16} />
-        </button>
-      </header>
-      <div className="cs-body">
-        {render(root)}
-        <div className="thread-count">
-          {replies.length} repl{replies.length === 1 ? 'y' : 'ies'}
-        </div>
-        {replies.map((m) => render(m))}
-        <div ref={end} />
-      </div>
-      {canPost && (
-        <div className="thread-compose">
-          <textarea autoFocus rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())} placeholder="Reply…" />
-          <div className="tc-foot">
-            <label className="check-row small">
-              <input type="checkbox" checked={also} onChange={(e) => setAlso(e.target.checked)} /> Also send to {channelName}
-            </label>
-            <button className="ai-send chat-send" onClick={send} disabled={!text.trim()} aria-label="Send reply">
-              <ArrowUp size={16} />
-            </button>
-          </div>
-        </div>
-      )}
-    </aside>
-  );
-}
-
-/* ---------------- Info panel: everything about this channel's client or team ---------------- */
-
-/** The About tab: purpose, client, team, owner, access, briefs, people, client contacts and client emails. */
-function ChannelAbout(p: ViewProps & { channel: Channel; client?: Client; team?: Team; other?: User }) {
-  const { channel, client, team, other } = p;
-  const person = (id: string) => p.users.find((u) => u.id === id);
-
-  const emails = client?.domain ? p.mail.filter((t) => t.messages.some((m) => [m.from, ...m.to].some((x) => x.email.toLowerCase().endsWith('@' + client.domain)))) : [];
-  const contacts = client?.domain
-    ? [...new Map(p.mail.flatMap((t) => t.messages.flatMap((m) => [m.from, ...m.to])).filter((x) => x.email.toLowerCase().endsWith('@' + client.domain)).map((x) => [x.email.toLowerCase(), x])).values()]
-    : [];
-  const lastContact = (email: string) =>
-    p.mail
-      .flatMap((t) => t.messages)
-      .filter((m) => [m.from, ...m.to].some((x) => x.email.toLowerCase() === email))
-      .map((m) => m.date)
-      .sort()
-      .pop();
-  const briefs = p.tasks.filter((t) => t.kind === 'brief' && !t.done && client && t.clientId === client.id);
-
-  return (
-    <div className="chan-pane about-pane">
-        {
-          (other ? (
-            <div className="profile">
-              <Avatar person={other} size={64} />
-              <strong>{other.name}</strong>
-              <span className="muted">{other.title}</span>
-              {p.statuses[other.id] && (
-                <span className="profile-status">
-                  {p.statuses[other.id].emoji} {p.statuses[other.id].text}
-                </span>
-              )}
-              <a href={`mailto:${other.email}`}>{other.email}</a>
-              <span className="muted small">Local time {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: companyTz({ timeZone: p.timeZone }), timeZoneName: 'short' })}</span>
-            </div>
-          ) : (
-            <dl className="fields about-fields">
-              <dt>Purpose</dt>
-              <dd>{channel.topic ?? 'Not set'}</dd>
-              <dt>Category</dt>
-              <dd>{CATEGORY_ONE[channel.category ?? 'project']}</dd>
-              {client && (
-                <>
-                  <dt>{term.One}</dt>
-                  <dd>
-                    <button className="link-btn" onClick={() => p.onOpenClient(client.id)}>
-                      {client.name}
-                    </button>
-                    {client.domain && <span className="muted small">@{client.domain}</span>}
-                  </dd>
-                  <dt>Account owner</dt>
-                  <dd>{person(client.ownerId)?.name ?? 'Not set'}</dd>
-                </>
-              )}
-              {team && (
-                <>
-                  <dt>Team</dt>
-                  <dd>
-                    <button className="link-btn" onClick={() => p.onOpenTeam(team.id)}>
-                      {team.name}
-                    </button>
-                  </dd>
-                  <dt>Team lead</dt>
-                  <dd>{person(team.leadId ?? '')?.name ?? 'Not set'}</dd>
-                </>
-              )}
-              <dt>Channel owner</dt>
-              <dd>{person(channel.ownerId ?? '')?.name ?? 'Not set'}</dd>
-              <dt>Access</dt>
-              <dd>
-                {channel.private ? 'Private, invite only' : 'Public in the company'}
-                {channel.postPolicy === 'admins' ? ' · announcements' : ''}
-              </dd>
-              {briefs.length > 0 && (
-                <>
-                  <dt>Briefs</dt>
-                  <dd className="col">
-                    {briefs.map((b) => (
-                      <button key={b.id} className="brief-chip" onClick={() => p.onOpenTask(b.id)}>
-                        <FileText size={11} /> {b.title}
-                      </button>
-                    ))}
-                  </dd>
-                </>
-              )}
-            </dl>
-          ))}
-
-        {client && (
-          <div className="te-list">
-            <div className="d-heading">Emails with {client.name}</div>
-            {emails.length === 0 && <EmptyState compact text={<>No emails with @{client?.domain} in inboxes you can open.</>} />}
-            {emails.map((t) => {
-              const last = t.messages[t.messages.length - 1];
-              return (
-                <button key={t.id} className="te-row simple" onClick={() => p.onOpenMail(t.id)}>
-                  <Avatar person={last.from} size={28} />
-                  <div className="te-main">
-                    <strong>{t.subject}</strong>
-                    <small>
-                      {last.from.name} · {relative(last.date)}
-                    </small>
-                  </div>
-                </button>
-              );
-            })}
-            <p className="muted small">Only emails from inboxes you’re allowed to open are shown.</p>
-          </div>
-        )}
-
-        {!other && (
-          <div className="people-list">
-            <div className="d-heading">People</div>
-            <div className="sel-group">Team · {channel.members.length}</div>
-            {channel.members.map((id) => {
-              const u = person(id);
-              return (
-                u && (
-                  <div key={id} className="pl-row">
-                    <PersonCell
-                      person={u}
-                      avatar={
-                        <span className="dm-av">
-                          <Avatar person={u} size={28} />
-                          <i className={`presence ${p.presence(id)}`} />
-                        </span>
-                      }
-                      badges={
-                        <>
-                          {id === p.me && <Badge tone="accent">You</Badge>}
-                          {channel.ownerId === id && <Badge>Owner</Badge>}
-                        </>
-                      }
-                      sub={p.statuses[id] ? `${p.statuses[id].emoji} ${p.statuses[id].text}` : u.title || u.email}
-                    />
-                  </div>
-                )
-              );
-            })}
-            {!!channel.guests?.length && <div className="sel-group">Guests · {channel.guests.length}</div>}
-            {channel.guests?.map((g) => (
-              <div key={g.email} className="pl-row">
-                <PersonCell
-                  person={g}
-                  size={28}
-                  badges={<Badge tone="warn">Guest</Badge>}
-                  sub={[companyOf(g.email, client?.people?.find((x) => x.email === g.email)?.company, client), g.email, g.status === 'joined' ? 'joined' : 'invite sent'].filter(Boolean).join(' · ')}
-                />
-              </div>
-            ))}
-            {contacts.length > 0 && <div className="sel-group">Contacts at {client?.name} · from emails</div>}
-            {contacts.map((c) => (
-              <div key={c.email} className="pl-row">
-                <PersonCell person={c} size={28} sub={`${c.email}${lastContact(c.email.toLowerCase()) ? ` · last email ${relative(lastContact(c.email.toLowerCase())!)}` : ''}`} />
-                <a className="icon-btn sm" href={`mailto:${c.email}`} title="Email">
-                  <Mail size={14} />
-                </a>
-              </div>
-            ))}
-            <button className="ghost-btn sm" onClick={p.onSettings}>
-              <Users size={14} /> Add people or guests
-            </button>
-          </div>
-        )}
-
-    </div>
-  );
-}
+export { ChatView, type SendPayload } from './chat/Conversation';
 
 /** Who is in every channel of a section: people and whole teams. */
 function SectionAccess({ section, channels, users, teams, me, onSave, onClose }: { section: ChatSection; channels: Channel[]; users: User[]; teams: Team[]; me: string; onSave: (a: { userIds: string[]; teamIds: string[] }) => void; onClose: () => void }) {
