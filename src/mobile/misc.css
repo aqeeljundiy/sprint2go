@@ -186,3 +186,34 @@
     white-space: nowrap;
   }
 }
+
+/* ---------- Sign in and sign up (SignIn.tsx) ---------- */
+
+@media (max-width: 767px) {
+  /* No desktop card on a phone: the form sits on the page, a little below the top, with nothing framing it. */
+  .signin {
+    align-content: start;
+    padding: max(10vh, calc(env(safe-area-inset-top) + 32px)) 20px calc(24px + env(safe-area-inset-bottom));
+  }
+  .signin-card:not(.cn-card) {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  /* Create an account, Sign in, Forgot your password: tap targets, not 17 px of text. */
+  .signin-switch .link-btn,
+  .signin-forgot {
+    position: relative;
+  }
+  .signin-switch .link-btn::after,
+  .signin-forgot::after {
+    content: '';
+    position: absolute;
+    inset: -14px -8px;
+  }
+  .signin-switch {
+    margin-top: 12px;
+  }
+}
