@@ -845,7 +845,7 @@ const id: Record<string, string> = {
 
   // Filter, sort, fields, group and colours (ViewTools.tsx)
   'Me (whoever is looking)': 'Saya (siapa pun yang melihat)',
-  'A date': 'Pilih tanggal',
+  'A date': 'Tanggal',
   'Remove condition': 'Hapus syarat',
   'filter::Where': 'Jika',
   'filter::and': 'dan',
@@ -872,7 +872,7 @@ const id: Record<string, string> = {
   'Show all': 'Tampilkan semua',
   'Hide all': 'Sembunyikan semua',
   'Columns from': 'Kolom dari',
-  'No grouping': 'Tanpa pengelompokan',
+  'No grouping': 'Tanpa grup',
   'Swimlanes by': 'Lajur per',
   'Then by': 'Lalu per',
   'Then group by': 'Lalu kelompokkan per',
