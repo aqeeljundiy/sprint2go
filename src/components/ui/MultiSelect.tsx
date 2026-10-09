@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
 import { Popover } from './Popover';
 import type { Option } from './Select';
+import { t, tn } from '../../i18n';
+import { fmtList } from '../../i18n/format';
 
 /** "Indonesia", "Indonesia and Singapore", "Indonesia and 2 more". */
 export function summaryOf(labels: string[], none: string) {
   if (!labels.length) return none;
   if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return `${labels[0]} and ${labels.length - 1} more`;
+  if (labels.length === 2) return fmtList(labels);
+  return tn(labels.length - 1, '{first} and {n} more', '{first} and {n} more', { first: labels[0] });
 }
 
 /**
@@ -22,7 +24,7 @@ export function MultiSelect<V extends string = string>({
   onChange,
   label,
   title,
-  none = 'None',
+  none = t('None'),
   searchable,
   width = 260,
   className = '',
@@ -97,11 +99,11 @@ export function MultiSelect<V extends string = string>({
           {showSearch && (
             <label className="sel-search">
               <Search size={14} />
-              <input value={q} onChange={(e) => (setQ(e.target.value), setHi(0))} placeholder="Search…" />
+              <input value={q} onChange={(e) => (setQ(e.target.value), setHi(0))} placeholder={t('Search…')} />
             </label>
           )}
           <ul role="listbox" aria-multiselectable="true" tabIndex={-1} aria-label={label}>
-            {shown.length === 0 && <li className="sel-empty">No matches</li>}
+            {shown.length === 0 && <li className="sel-empty">{t('No matches')}</li>}
             {shown.map((o, i) => {
               const head = o.group && o.group !== lastGroup ? o.group : null;
               lastGroup = o.group;

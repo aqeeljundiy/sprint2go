@@ -2,17 +2,18 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { haptic } from './useLongPress';
 import { toastUndo } from '../../toast';
+import { t } from '../../i18n';
 
 export interface SwipeAction {
   id: string;
-  label: string; // shown under the icon while swiping ("Done")
+  label: string; // shown under the icon while swiping ("Done"); translated here, so English or already translated
   icon: LucideIcon;
   tone?: 'accent' | 'ok' | 'warn' | 'danger' | 'neutral';
   /** Does it. Return a function that undoes it to get an Undo toast. */
   run: () => void | (() => void);
   /** The row leaves the list (Done, Delete, Move): it slides out, then folds away (render the list with useLeaving). */
   removes?: boolean;
-  /** The toast's words, past tense ("Marked done"). Defaults to the label. */
+  /** The toast's words, past tense ("Marked done"). Defaults to the label. Translated here too. */
   done?: string;
 }
 
@@ -76,7 +77,7 @@ export function SwipeRow({
     if (!a) return setDx(0);
     const doIt = () => {
       const undo = a.run();
-      if (typeof undo === 'function') toastUndo(a.done ?? a.label, undo);
+      if (typeof undo === 'function') toastUndo(t(a.done ?? a.label), undo);
     };
     if (a.removes) {
       setGone(g.current.dx > 0 ? 1 : -1);
@@ -98,7 +99,7 @@ export function SwipeRow({
       {side !== 0 && shown && (
         <div className={`swipe-under ${side > 0 ? 'from-start' : 'from-end'} tone-${armed || gone ? tone : 'neutral'}${armed ? ' armed' : ''}`} aria-hidden="true">
           {Icon && <Icon size={20} />}
-          <span>{shown.label}</span>
+          <span>{t(shown.label)}</span>
         </div>
       )}
       <div

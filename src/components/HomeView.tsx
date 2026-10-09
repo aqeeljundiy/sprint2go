@@ -4,7 +4,10 @@ import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, FileText, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search, Megaphone } from 'lucide-react';
 import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, Todo, User } from '../types';
-import { fmtTime } from '../calendarUtils';
+import { fmtDay, fmtTime, fmtWeekday, fmtWeekdayLong } from '../i18n/format';
+import { mark, t, textOf, tn, tx } from '../i18n';
+import { tj } from '../i18n/tj';
+import { useLang } from '../i18n/useLang';
 import { isMine } from '../identity';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
@@ -17,7 +20,7 @@ import { EmptyState } from './ui/EmptyState';
 import { useAppSettings, useCreateAction } from '../mobile/chrome';
 import { usePhone } from '../mobile/media';
 import { needsYou, updatesOf } from '../needsYou';
-import { dueText } from '../taskDates';
+import { addDays } from '../taskDates';
 import { CustomiseList, LiveCalls, MeetingStrip, NeedsList, TodayBlock, Updates } from './home/HomeParts';
 
 type CardId =
@@ -43,55 +46,65 @@ interface Layout {
   cards: { id: CardId; size: Size }[];
 }
 
+/** A name and a hint, read in the person's language each time they're shown (mark() lets the check find the words). */
+const named = (name: string, hint: string) => ({
+  get name() {
+    return t(name);
+  },
+  get hint() {
+    return t(hint);
+  },
+});
+
 const CARD_INFO: Record<CardId, { name: string; hint: string }> = {
-  briefing: { name: 'Briefing', hint: 'A short summary of your day' },
-  dump: { name: 'Brain dump', hint: 'Type what’s on your mind' },
-  pulse: { name: 'Company numbers', hint: 'Late, not picked up, done this week' },
-  risk: { get name() { return `${term.Many} at risk`; }, get hint() { return `Late or stuck work per ${term.one}`; } },
-  lateByTeam: { name: 'Teams', hint: 'Open and late work per team' },
-  workload: { name: 'Workload', hint: 'How busy each person is' },
-  waiting: { name: 'Waiting on you', hint: 'Already at the top, in Needs you' },
-  teamQueue: { name: 'Team queue', hint: 'Tasks nobody has picked up yet' },
-  briefs: { name: 'Briefs', hint: 'Bigger jobs and their progress' },
-  mytasks: { name: 'My tasks', hint: 'Your queue, in order' },
-  today: { name: 'Today', hint: 'Your next meetings' },
-  unread: { name: 'Unread mail', hint: 'Mail waiting for you' },
-  foryou: { name: 'For you', hint: 'Mentions and assignments' },
-  meetings: { name: 'From meetings', hint: 'Action items without an owner' },
-  clients: { get name() { return `${term.Many}`; }, get hint() { return `Every ${term.one} at a glance`; } },
-  wins: { name: 'Wins this week', hint: 'What the team finished' },
+  briefing: named(mark('Briefing'), mark('A short summary of your day')),
+  dump: named(mark('Brain dump'), mark('Type what’s on your mind')),
+  pulse: named(mark('Company numbers'), mark('Late, not picked up, done this week')),
+  risk: { get name() { return t('{Projects} at risk', { projects: term.many }); }, get hint() { return t('Late or stuck work per {project}', { project: term.one }); } },
+  lateByTeam: named(mark('Teams'), mark('Open and late work per team')),
+  workload: named(mark('Workload'), mark('How busy each person is')),
+  waiting: named(mark('Waiting on you'), mark('Already at the top, in Needs you')),
+  teamQueue: named(mark('Team queue'), mark('Tasks nobody has picked up yet')),
+  briefs: named(mark('Briefs'), mark('Bigger jobs and their progress')),
+  mytasks: named(mark('My tasks'), mark('Your queue, in order')),
+  today: named(mark('Today'), mark('Your next meetings')),
+  unread: named(mark('Unread mail'), mark('Mail waiting for you')),
+  foryou: named(mark('For you'), mark('Mentions and assignments')),
+  meetings: named(mark('From meetings'), mark('Action items without an owner')),
+  clients: { get name() { return term.Many; }, get hint() { return t('Every {project} at a glance', { project: term.one }); } },
+  wins: named(mark('Wins this week'), mark('What the team finished')),
 };
 
 const TEMPLATES: Record<HomeTemplateId, { name: string; hint: string; cards: [CardId, Size][] }> = {
   founder: {
-    name: 'Founder / C-level',
-    hint: 'What’s happening across the whole company',
+    get name() { return t('Founder / C-level'); },
+    get hint() { return t('What’s happening across the whole company'); },
     cards: [['risk', 'm'], ['lateByTeam', 'm'], ['workload', 'm'], ['briefs', 'm']],
   },
   lead: {
-    name: 'Team lead',
-    hint: 'Your team’s queue and who is busy',
+    get name() { return t('Team lead'); },
+    get hint() { return t('Your team’s queue and who is busy'); },
     cards: [['mytasks', 'm'], ['workload', 'm'], ['today', 'm'], ['briefs', 'm']],
   },
   maker: {
-    name: 'Designer / Editor',
-    hint: 'Your queue and the briefs behind it',
+    get name() { return t('Designer / Editor'); },
+    get hint() { return t('Your queue and the briefs behind it'); },
     cards: [['mytasks', 'l'], ['briefs', 'm'], ['today', 'm']],
   },
   account: {
-    name: 'Account manager',
-    get hint() { return `Your ${term.many}, their emails and meetings`; },
+    get name() { return t('Account manager'); },
+    get hint() { return t('Your {projects}, their emails and meetings', { projects: term.many }); },
     cards: [['clients', 'l'], ['unread', 'm'], ['meetings', 'm']],
   },
   finance: {
-    name: 'Finance / Admin',
-    hint: 'Payments, invoices and deadlines',
+    get name() { return t('Finance / Admin'); },
+    get hint() { return t('Payments, invoices and deadlines'); },
     cards: [['mytasks', 'l'], ['unread', 'm'], ['today', 'm']],
   },
 };
 export const HOME_TEMPLATES = TEMPLATES;
 
-const fromTemplate = (t: HomeTemplateId): Layout => ({ template: t, cards: TEMPLATES[t].cards.map(([id, size]) => ({ id, size })) });
+const fromTemplate = (tpl: HomeTemplateId): Layout => ({ template: tpl, cards: TEMPLATES[tpl].cards.map(([id, size]) => ({ id, size })) });
 
 interface Props {
   me: User;
@@ -152,15 +165,16 @@ interface Props {
 function guessTemplate(p: Props): HomeTemplateId {
   if (p.defaultTemplate) return p.defaultTemplate;
   if (p.isOwner) return 'founder';
-  if (p.teams.some((t) => t.leadId === p.me.id)) return 'lead';
-  const t = p.teams.find((x) => x.members.includes(p.me.id))?.name.toLowerCase() ?? '';
-  if (/finance|admin|ops/.test(t)) return 'finance';
-  if (/account|client|sales/.test(t)) return 'account';
+  if (p.teams.some((tm) => tm.leadId === p.me.id)) return 'lead';
+  const team = p.teams.find((x) => x.members.includes(p.me.id))?.name.toLowerCase() ?? '';
+  if (/finance|admin|ops/.test(team)) return 'finance';
+  if (/account|client|sales/.test(team)) return 'account';
   return 'maker';
 }
 
 export function HomeView(p: Props) {
-  useCreateAction('home', p.ai !== false && { label: 'Brain dump', icon: Sparkles, run: () => p.onDump() });
+  useCreateAction('home', p.ai !== false && { label: t('Brain dump'), icon: Sparkles, run: () => p.onDump() });
+  const lang = useLang(); // the memos below write words
   const [dump, setDump] = useState('');
   const [editing, setEditing] = useState(false);
   const [dragId, setDragId] = useState<CardId | null>(null);
@@ -172,7 +186,19 @@ export function HomeView(p: Props) {
   const weekAhead = localDay(new Date(Date.now() + 7 * 86_400_000));
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const hour = new Date().getHours();
-  const greeting = hour < 11 ? 'Good morning' : hour < 15 ? 'Good afternoon' : hour < 19 ? 'Good evening' : 'Working late';
+  // English: morning until 11, afternoon until 15, evening until 19, then working late. Indonesian has its own split
+  // (pagi, siang, sore until 18, malam): from 18 to 19 English still says evening while Indonesian says malam.
+  const name = p.firstName;
+  const greeting =
+    hour < 11
+      ? t('Good morning, {name}.', { name })
+      : hour < 15
+        ? t('Good afternoon, {name}.', { name })
+        : hour < 18
+          ? t('Good evening, {name}.', { name })
+          : hour < 19
+            ? tx('after 6 pm', 'Good evening, {name}.', { name })
+            : t('Working late, {name}.', { name });
 
   const d = useMemo(() => {
     const work = p.tasks.filter((t) => !isBrief(t));
@@ -208,17 +234,20 @@ export function HomeView(p: Props) {
     });
     const queue = open.filter((t) => !t.userId && (p.isOwner || myTeams.some((tm) => tm.id === t.teamId)));
     const waiting: { key: string; text: string; sub: string; run: () => void; tone?: 'warn' }[] = [
-      ...queue.map((t) => ({ key: 'q' + t.id, text: `Pick someone for “${t.title}”`, sub: p.teams.find((x) => x.id === t.teamId)?.name ?? 'Team queue', run: () => p.onOpenTask(t.id) })),
+      ...queue.map((tk) => ({ key: 'q' + tk.id, text: t('Pick someone for “{title}”', { title: tk.title }), sub: p.teams.find((x) => x.id === tk.teamId)?.name ?? t('Team queue'), run: () => p.onOpenTask(tk.id) })),
       ...work
-        .filter((t) => t.createdBy === p.me.id && t.userId && t.userId !== p.me.id && late(t))
-        .map((t) => ({ key: 'l' + t.id, text: `“${t.title}” is late`, sub: `with ${p.users.find((u) => u.id === t.userId)?.name.split(' ')[0] ?? 'someone'}`, run: () => p.onOpenTask(t.id), tone: 'warn' as const })),
+        .filter((tk) => tk.createdBy === p.me.id && tk.userId && tk.userId !== p.me.id && late(tk))
+        .map((tk) => {
+          const who = p.users.find((u) => u.id === tk.userId)?.name.split(' ')[0];
+          return { key: 'l' + tk.id, text: t('“{title}” is late', { title: tk.title }), sub: who ? t('with {name}', { name: who }) : t('with someone'), run: () => p.onOpenTask(tk.id), tone: 'warn' as const };
+        }),
       ...briefs
-        .filter((b) => b.userId === p.me.id && work.filter((t) => t.briefId === b.id).length > 0 && work.filter((t) => t.briefId === b.id).every((t) => t.done))
-        .map((b) => ({ key: 'b' + b.id, text: `All tasks done in “${b.title}”`, sub: 'Review and close the brief', run: () => p.onOpenTask(b.id) })),
-      ...mine.filter((t) => t.priority === 'high' && t.due && t.due <= today).map((t) => ({ key: 'm' + t.id, text: t.title, sub: 'High priority, due now', run: () => p.onOpenTask(t.id), tone: 'warn' as const })),
+        .filter((b) => b.userId === p.me.id && work.filter((tk) => tk.briefId === b.id).length > 0 && work.filter((tk) => tk.briefId === b.id).every((tk) => tk.done))
+        .map((b) => ({ key: 'b' + b.id, text: t('All tasks done in “{title}”', { title: b.title }), sub: t('Review and close the brief'), run: () => p.onOpenTask(b.id) })),
+      ...mine.filter((tk) => tk.priority === 'high' && tk.due && tk.due <= today).map((tk) => ({ key: 'm' + tk.id, text: tk.title, sub: t('High priority, due now'), run: () => p.onOpenTask(tk.id), tone: 'warn' as const })),
     ];
     return { open, late, mine, briefs, myBriefs, doneWeek, unread, todayEvents, pendingActions, risk, byTeam, people, queue, waiting, myTeams };
-  }, [p.tasks, p.threads, p.events, p.meetings, p.clients, p.teams, p.users, p.me.id, p.isOwner]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p.tasks, p.threads, p.events, p.meetings, p.clients, p.teams, p.users, p.me.id, p.isOwner, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Needs you: the same rules as the Home badge and the AI connector (src/needsYou.ts). It looks again every half
   // minute, so the meeting strip comes and goes on time.
@@ -234,7 +263,7 @@ export function HomeView(p: Props) {
         today,
         now: Date.now(),
         tasks: p.tasks,
-        stageKind: (t) => kindOf(t as Todo),
+        stageKind: (tk) => kindOf(tk as Todo),
         teams: p.teams,
         clients: p.clients,
         isOwner: p.isOwner,
@@ -243,10 +272,10 @@ export function HomeView(p: Props) {
         threads: p.threads,
         mine: isMine,
         notices: p.notices,
-        dayWords: (day) => dueText(day, today).replace(/^Yesterday$/, 'yesterday'),
+        dayWords: (day) => (day === addDays(today, -1) ? t('yesterday') : fmtDay(day)), // "Was due yesterday", "Was due 6 Oct"
         minutes: (iso) => fmtTime(iso),
       }),
-    [p.tasks, p.events, p.threads, p.notices, p.teams, p.clients, p.users, p.me.id, p.isOwner, clock, today], // eslint-disable-line react-hooks/exhaustive-deps
+    [p.tasks, p.events, p.threads, p.notices, p.teams, p.clients, p.users, p.me.id, p.isOwner, clock, today, lang], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const strip = needs.filter((x) => x.group === 'now');
   const needList = needs.filter((x) => x.group === 'needs');
@@ -262,27 +291,32 @@ export function HomeView(p: Props) {
   const myToday = d.mine.filter((t) => t.due === today);
   if (layout.template === 'founder') {
     const late = d.open.filter(d.late).length;
-    if (late) brief.push(`${late} task${late > 1 ? 's are' : ' is'} late across the company${d.risk[0] ? `, most at ${d.risk[0].c.name}` : ''}.`);
-    if (d.queue.length) brief.push(`${d.queue.length} task${d.queue.length > 1 ? 's' : ''} waiting for someone to pick up.`);
-    if (d.doneWeek.length) brief.push(`The team finished ${d.doneWeek.length} this week.`);
+    if (late)
+      brief.push(
+        d.risk[0]
+          ? tn(late, '{n} task is late across the company, most at {project}.', '{n} tasks are late across the company, most at {project}.', { project: d.risk[0].c.name })
+          : tn(late, '{n} task is late across the company.', '{n} tasks are late across the company.'),
+      );
+    if (d.queue.length) brief.push(tn(d.queue.length, '{n} task waiting for someone to pick up.', '{n} tasks waiting for someone to pick up.'));
+    if (d.doneWeek.length) brief.push(tn(d.doneWeek.length, 'The team finished {n} this week.', 'The team finished {n} this week.'));
   } else {
-    if (myLate.length) brief.push(`${myLate.length} of your task${myLate.length > 1 ? 's are' : ' is'} overdue, starting with “${myLate[0].title}”.`);
-    if (myToday.length) brief.push(`${myToday.length} due today.`);
-    if (d.myTeams.length && d.queue.length) brief.push(`${d.queue.length} in your team’s queue without a person.`);
+    if (myLate.length) brief.push(tn(myLate.length, '{n} of your tasks is overdue, starting with “{title}”.', '{n} of your tasks are overdue, starting with “{title}”.', { title: myLate[0].title }));
+    if (myToday.length) brief.push(tn(myToday.length, '{n} due today.', '{n} due today.'));
+    if (d.myTeams.length && d.queue.length) brief.push(tn(d.queue.length, '{n} in your team’s queue without a person.', '{n} in your team’s queue without a person.'));
   }
-  if (d.unread.length) brief.push(`${d.unread.length} unread email${d.unread.length > 1 ? 's' : ''}.`);
-  if (d.todayEvents.length) brief.push(`Next up: ${d.todayEvents[0].title} at ${fmtTime(d.todayEvents[0].start)}.`);
-  if (!brief.length) brief.push('Nothing urgent. A good day to get ahead.');
+  if (d.unread.length) brief.push(tn(d.unread.length, '{n} unread email.', '{n} unread emails.'));
+  if (d.todayEvents.length) brief.push(t('Next up: {title} at {time}.', { title: d.todayEvents[0].title, time: fmtTime(d.todayEvents[0].start) }));
+  if (!brief.length) brief.push(t('Nothing urgent. A good day to get ahead.'));
 
-  const taskRow = (t: Todo) => {
-    const due = t.due ? dueLabel(t.due) : null;
-    const c = p.clients.find((c) => c.id === t.clientId);
-    const br = p.tasks.find((x) => x.id === t.briefId);
+  const taskRow = (tk: Todo) => {
+    const due = tk.due ? dueLabel(tk.due) : null;
+    const c = p.clients.find((c) => c.id === tk.clientId);
+    const br = p.tasks.find((x) => x.id === tk.briefId);
     return (
-      <li key={t.id} className="home-task">
-        <button className="todo-check" onClick={() => p.onToggleTask(t.id)} aria-label="Mark done" />
-        <button className="ht-title" onClick={() => p.onOpenTask(t.id)}>
-          {t.title}
+      <li key={tk.id} className="home-task">
+        <button className="todo-check" onClick={() => p.onToggleTask(tk.id)} aria-label={t('Mark done')} />
+        <button className="ht-title" onClick={() => p.onOpenTask(tk.id)}>
+          {tk.title}
           {br && <small className="ht-brief">{br.title}</small>}
         </button>
         {c && (
@@ -318,23 +352,23 @@ export function HomeView(p: Props) {
             setDump('');
           }}
         >
-          <input id="home-dump" value={dump} onChange={(e) => setDump(e.target.value)} placeholder={`What’s on your mind? ${term.Many}, who does what, by when…`} />
+          <input id="home-dump" value={dump} onChange={(e) => setDump(e.target.value)} placeholder={t('What’s on your mind? {Projects}, who does what, by when…', { projects: term.many })} />
           <button className="primary-btn sm" type="submit">
-            <Sparkles size={14} /> Brain dump
+            <Sparkles size={14} /> {t('Brain dump')}
           </button>
         </form>
       ),
     },
     pulse: {
       icon: <LayoutGrid size={15} />,
-      link: [`${term.Many} × teams`, p.onOpenGrid],
+      link: [t('{Projects} × teams', { projects: term.many }), p.onOpenGrid],
       body: () => (
         <div className="pulse">
           {(
             [
-              ['Late', d.open.filter(d.late).length, 'warn', p.onOpenGrid],
-              ['Not picked up', d.open.filter((t) => !t.userId).length, '', p.onOpenGrid],
-              ['Done this week', d.doneWeek.length, 'go', p.onOpenTasks],
+              [t('Late'), d.open.filter(d.late).length, 'warn', p.onOpenGrid],
+              [t('Not picked up'), d.open.filter((tk) => !tk.userId).length, '', p.onOpenGrid],
+              [t('Done this week'), d.doneWeek.length, 'go', p.onOpenTasks],
             ] as const
           )
             .filter(([, n]) => n > 0)
@@ -351,7 +385,7 @@ export function HomeView(p: Props) {
       icon: <AlertTriangle size={15} />,
       body: () =>
         d.risk.length === 0 ? (
-          empty(`No ${term.one} has late or stuck work.`)
+          empty(t('No {project} has late or stuck work.', { project: term.one }))
         ) : (
           <ul className="home-list">
             {d.risk.slice(0, 5).map(({ c, late, waiting }) => (
@@ -360,9 +394,9 @@ export function HomeView(p: Props) {
                   <ProjectBadge p={c} kind="client-dot sm" />
                   <strong>{c.name}</strong>
                   <span className="risk-why">
-                    {late ? <b className="late">{late} late</b> : null}
+                    {late ? <b className="late">{tn(late, '{n} late', '{n} late')}</b> : null}
                     {late && waiting ? ' · ' : ''}
-                    {waiting ? `${waiting} not picked up` : ''}
+                    {waiting ? tn(waiting, '{n} not picked up', '{n} not picked up') : ''}
                   </span>
                 </button>
               </li>
@@ -374,7 +408,7 @@ export function HomeView(p: Props) {
       icon: <Users size={15} />,
       body: () =>
         d.byTeam.every((x) => !x.late && !x.waiting) ? (
-          empty('No team has late or unassigned work.')
+          empty(t('No team has late or unassigned work.'))
         ) : (
         <ul className="home-list">
           {d.byTeam.filter((x) => x.late || x.waiting).map(({ tm, late, waiting }) => (
@@ -383,9 +417,9 @@ export function HomeView(p: Props) {
                 <span className="team-square" style={{ background: tm.color }} />
                 <span className="tr-name">{tm.name}</span>
                 <span className="tr-num">
-                  {late ? <b className="late">{late} late</b> : null}
+                  {late ? <b className="late">{tn(late, '{n} late', '{n} late')}</b> : null}
                   {late && waiting ? ' · ' : ''}
-                  {waiting ? <em>{waiting} not picked up</em> : null}
+                  {waiting ? <em>{tn(waiting, '{n} not picked up', '{n} not picked up')}</em> : null}
                 </span>
               </button>
             </li>
@@ -403,11 +437,9 @@ export function HomeView(p: Props) {
               <div key={u.id} className="load">
                 <Avatar person={u} size={26} />
                 <span className="load-text">
-                  <strong>{u.id === p.me.id ? 'You' : u.name.split(' ')[0]}</strong>
+                  <strong>{u.id === p.me.id ? t('You') : u.name.split(' ')[0]}</strong>
                   {bar(open, max, late > 0)}
-                  <small>
-                    {open} open · {week} this week{late ? ` · ${late} late` : ''}
-                  </small>
+                  <small>{late ? t('{open} open · {week} this week · {late} late', { open, week, late }) : t('{open} open · {week} this week', { open, week })}</small>
                 </span>
               </div>
             ))}
@@ -419,7 +451,7 @@ export function HomeView(p: Props) {
       icon: <AlertTriangle size={15} />,
       body: () =>
         d.waiting.length === 0 ? (
-          empty('Nothing is waiting on you.')
+          empty(t('Nothing is waiting on you.'))
         ) : (
           <ul className="home-list">
             {d.waiting.slice(0, 6).map((w) => (
@@ -437,26 +469,26 @@ export function HomeView(p: Props) {
       icon: <Inbox size={15} />,
       body: () =>
         d.queue.length === 0 ? (
-          empty('Every task has a person. Nice.')
+          empty(t('Every task has a person. Nice.'))
         ) : (
           <ul className="home-list">
-            {d.queue.slice(0, 6).map((t) => {
-              const tm = p.teams.find((x) => x.id === t.teamId);
+            {d.queue.slice(0, 6).map((tk) => {
+              const tm = p.teams.find((x) => x.id === tk.teamId);
               return (
-                <li key={t.id} className="queue-row">
-                  <button className="ht-title" onClick={() => p.onOpenTask(t.id)}>
-                    {t.title}
+                <li key={tk.id} className="queue-row">
+                  <button className="ht-title" onClick={() => p.onOpenTask(tk.id)}>
+                    {tk.title}
                     <small className="ht-brief">
                       {tm?.name}
-                      {t.due ? ` · ${dueLabel(t.due).text}` : ''}
+                      {tk.due ? ` · ${dueLabel(tk.due).text}` : ''}
                     </small>
                   </button>
                   <Select
                     value=""
                     options={peopleOptions(p.users.filter((u) => !tm || tm.members.includes(u.id)), p.me.id, false)}
-                    onChange={(v) => p.onAssign(t.id, v)}
-                    label="Assign"
-                    placeholder="Assign"
+                    onChange={(v) => p.onAssign(tk.id, v)}
+                    label={t('Assign')}
+                    placeholder={t('Assign')}
                     className="sel-flat"
                   />
                 </li>
@@ -467,16 +499,16 @@ export function HomeView(p: Props) {
     },
     briefs: {
       icon: <FileText size={15} />,
-      link: ['All briefs', p.onOpenBriefs],
+      link: [t('All briefs'), p.onOpenBriefs],
       body: () => {
         const list = layout.template === 'founder' ? d.briefs : d.myBriefs;
         return list.length === 0 ? (
-          empty('No open briefs.')
+          empty(t('No open briefs.'))
         ) : (
           <ul className="home-list">
             {list.slice(0, 4).map((b) => {
-              const subs = p.tasks.filter((t) => t.briefId === b.id);
-              const done = subs.filter((t) => t.done).length;
+              const subs = p.tasks.filter((tk) => tk.briefId === b.id);
+              const done = subs.filter((tk) => tk.done).length;
               const owner = p.users.find((u) => u.id === b.userId);
               return (
                 <li key={b.id}>
@@ -497,17 +529,17 @@ export function HomeView(p: Props) {
     },
     mytasks: {
       icon: <ListChecks size={15} />,
-      link: ['All tasks', p.onOpenTasks],
+      link: [t('All tasks'), p.onOpenTasks],
       show: p.enabled.has('tasks'),
-      body: () => (d.mine.length === 0 ? empty('Nothing on your plate. 🎉') : <ul className="home-list">{d.mine.slice(0, 7).map(taskRow)}</ul>),
+      body: () => (d.mine.length === 0 ? empty(t('Nothing on your plate. 🎉')) : <ul className="home-list">{d.mine.slice(0, 7).map(taskRow)}</ul>),
     },
     today: {
       icon: <CalendarDays size={15} />,
-      link: ['Calendar', () => p.onOpenCalendar()],
+      link: [t('Calendar'), () => p.onOpenCalendar()],
       show: p.enabled.has('calendar'),
       body: () =>
         d.todayEvents.length === 0 ? (
-          empty('No more meetings today.')
+          empty(t('No more meetings today.'))
         ) : (
           <ul className="home-list">
             {d.todayEvents.map((e) => (
@@ -523,22 +555,22 @@ export function HomeView(p: Props) {
     },
     unread: {
       icon: <Inbox size={15} />,
-      link: ['Inbox', p.onOpenMail],
+      link: [t('Inbox'), p.onOpenMail],
       show: p.enabled.has('mail'),
       body: () =>
         d.unread.length === 0 ? (
-          empty('Inbox zero.')
+          empty(t('Inbox zero.'))
         ) : (
           <ul className="home-list">
-            {d.unread.slice(0, 5).map((t) => {
-              const last = t.messages[t.messages.length - 1];
+            {d.unread.slice(0, 5).map((th) => {
+              const last = th.messages[th.messages.length - 1];
               return (
-                <li key={t.id}>
-                  <button className="home-mail" onClick={() => p.onOpenThread(t.id)}>
+                <li key={th.id}>
+                  <button className="home-mail" onClick={() => p.onOpenThread(th.id)}>
                     <Avatar person={last.from} size={26} />
                     <span>
                       <strong>{last.from.name}</strong>
-                      <small>{t.subject}</small>
+                      <small>{th.subject}</small>
                     </span>
                   </button>
                 </li>
@@ -552,13 +584,13 @@ export function HomeView(p: Props) {
       body: () => {
         const fresh = p.notices.filter((n) => !n.read).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 4);
         return fresh.length === 0 ? (
-          empty('You’re all caught up.')
+          empty(t('You’re all caught up.'))
         ) : (
           <ul className="home-list">
             {fresh.map((n) => (
               <li key={n.id}>
                 <button className="home-notice" onClick={() => p.onNotice(n)}>
-                  <span>{n.text}</span>
+                  <span>{textOf(n)}</span>
                   <time>{relative(n.at)}</time>
                 </button>
               </li>
@@ -572,14 +604,14 @@ export function HomeView(p: Props) {
       show: p.enabled.has('meet'),
       body: () =>
         d.pendingActions.length === 0 ? (
-          empty('Every meeting action item has an owner.')
+          empty(t('Every meeting action item has an owner.'))
         ) : (
           <ul className="home-list">
             {d.pendingActions.slice(0, 4).map(({ m, a }, i) => (
               <li key={i}>
                 <button className="home-notice" onClick={() => p.onOpenMeeting(m.id)}>
                   <span>
-                    {a.title} <em className="muted">· {a.owner ?? 'no owner'}</em>
+                    {a.title} <em className="muted">· {a.owner ?? t('no owner')}</em>
                   </span>
                   <time>{m.title}</time>
                 </button>
@@ -593,7 +625,7 @@ export function HomeView(p: Props) {
       body: () => (
         <div className="client-tiles">
           {p.clients.map((c) => {
-            const open = d.open.filter((t) => t.clientId === c.id);
+            const open = d.open.filter((tk) => tk.clientId === c.id);
             const late = open.filter(d.late).length;
             return (
               <button key={c.id} className="client-tile" onClick={() => p.onOpenClient(c.id)}>
@@ -602,16 +634,16 @@ export function HomeView(p: Props) {
                   <strong>{c.name}</strong>
                   <small>
                     {late ? (
-                      <b className="late">{late} late</b>
+                      <b className="late">{tn(late, '{n} late', '{n} late')}</b>
                     ) : open.length ? (
                       (() => {
-                        const next = open.filter((t) => t.due).sort((a, b) => (a.due ?? '').localeCompare(b.due ?? ''))[0] ?? open[0];
-                        return `Next: ${next.title}${next.due ? `, ${dueWord(next.due)}` : ''}`;
+                        const next = open.filter((tk) => tk.due).sort((a, b) => (a.due ?? '').localeCompare(b.due ?? ''))[0] ?? open[0];
+                        return next.due ? t('Next: {title}, {when}', { title: next.title, when: dueWord(next.due) }) : t('Next: {title}', { title: next.title });
                       })()
                     ) : c.status === 'lead' ? (
-                      'Lead: nothing scheduled'
+                      t('Lead: nothing scheduled')
                     ) : (
-                      'Nothing open'
+                      t('Nothing open')
                     )}
                   </small>
                 </span>
@@ -625,7 +657,7 @@ export function HomeView(p: Props) {
       icon: <PartyPopper size={15} />,
       body: () =>
         d.doneWeek.length === 0 && p.kudos.length === 0 ? (
-          empty('Nothing finished yet this week.')
+          empty(t('Nothing finished yet this week.'))
         ) : (
           <ul className="home-list">
             {p.kudos.slice(0, 3).map((k) => {
@@ -635,23 +667,24 @@ export function HomeView(p: Props) {
                 <li key={k.id} className="win kudos-win">
                   <span className="kudos-emoji sm">🙌</span>
                   <span className="ht-title">
-                    Kudos to {to ? (to.id === p.me.id ? 'you' : to.name.split(' ')[0]) : 'someone'}
+                    {to?.id === p.me.id ? t('Kudos to you') : t('Kudos to {name}', { name: to ? to.name.split(' ')[0] : t('someone') })}
                     <small className="ht-brief">
-                      {k.text ? `“${k.text}” · ` : ''}from {from ? (from.id === p.me.id ? 'you' : from.name.split(' ')[0]) : 'someone'} · {relative(k.at)}
+                      {k.text ? `“${k.text}” · ` : ''}
+                      {from?.id === p.me.id ? t('from you') : t('from {name}', { name: from ? from.name.split(' ')[0] : t('someone') })} · {relative(k.at)}
                     </small>
                   </span>
                 </li>
               );
             })}
-            {d.doneWeek.slice(0, 5).map((t) => {
-              const who = p.users.find((u) => u.id === (t.doneBy ?? t.userId));
+            {d.doneWeek.slice(0, 5).map((tk) => {
+              const who = p.users.find((u) => u.id === (tk.doneBy ?? tk.userId));
               return (
-                <li key={t.id} className="win">
+                <li key={tk.id} className="win">
                   {who && <Avatar person={who} size={22} />}
-                  <button className="ht-title" onClick={() => p.onOpenTask(t.id)}>
-                    {t.title}
+                  <button className="ht-title" onClick={() => p.onOpenTask(tk.id)}>
+                    {tk.title}
                     <small className="ht-brief">
-                      {who ? (who.id === p.me.id ? 'You' : who.name.split(' ')[0]) : 'Someone'} · {t.doneAt ? relative(t.doneAt) : ''}
+                      {who ? (who.id === p.me.id ? t('You') : who.name.split(' ')[0]) : t('Someone')} · {tk.doneAt ? relative(tk.doneAt) : ''}
                     </small>
                   </button>
                   <Check size={14} className="win-check" />
@@ -692,25 +725,21 @@ export function HomeView(p: Props) {
         <Select<HomeTemplateId>
           value={layout.template}
           options={(Object.keys(TEMPLATES) as HomeTemplateId[]).map((id) => ({ value: id, label: TEMPLATES[id].name, hint: TEMPLATES[id].hint }))}
-          onChange={(t) => setLayout(fromTemplate(t))}
-          label="Start from"
-          renderValue={(o) => (
-            <span className="sel-text">
-              Start from: <b>{o?.label}</b>
-            </span>
-          )}
+          onChange={(tpl) => setLayout(fromTemplate(tpl))}
+          label={t('Start from')}
+          renderValue={(o) => <span className="sel-text">{tj('Start from: {template}', { template: <b>{o?.label}</b> })}</span>}
         />
       }
       onReset={() => setSaved(null)}
     />
   );
-  useAppSettings('home', { id: 'customise', label: 'Customise Home', hint: 'Which cards show, and in what order', render: () => <HomeCustomise storageKey={`s2g-home:${p.me.id}:${p.workspaceId}`} fallback={guessTemplate(p)} enabled={p.enabled} /> });
+  useAppSettings('home', { id: 'customise', label: t('Customise Home'), hint: t('Which cards show, and in what order'), render: () => <HomeCustomise storageKey={`s2g-home:${p.me.id}:${p.workspaceId}`} fallback={guessTemplate(p)} enabled={p.enabled} /> });
 
   // Finish setting up (admins): only what's left to do.
   const todo = (p.setup ?? []).filter((x) => !x.done);
   const setupCard = todo.length > 0 && (
     <section className="setup-card">
-      <h2>Finish setting up</h2>
+      <h2>{t('Finish setting up')}</h2>
       <ul>
         {todo.map((x) => (
           <li key={x.key}>
@@ -720,7 +749,7 @@ export function HomeView(p: Props) {
               <small>{x.hint}</small>
             </button>
             <button type="button" className="ghost-btn sm" onClick={x.onOpen}>
-              Set up
+              {t('Set up')}
             </button>
           </li>
         ))}
@@ -732,17 +761,15 @@ export function HomeView(p: Props) {
     <section className="home-pane view-enter">
       <div className="home-scroll">
         <header className="home-head">
-          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
+          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label={t('Open menu')}>
             <Menu size={18} />
           </button>
           <div className="home-head-text">
-            <p className="home-date">{new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-            <h1>
-              {greeting}, {p.firstName}.
-            </h1>
+            <p className="home-date">{fmtWeekdayLong(new Date())}</p>
+            <h1>{greeting}</h1>
           </div>
           <button className={`ghost-btn sm customise-btn ${editing ? 'on' : ''}`} onClick={() => setEditing((e) => !e)}>
-            {editing ? <Check size={14} /> : <Settings2 size={14} />} {editing ? 'Done' : 'Customise'}
+            {editing ? <Check size={14} /> : <Settings2 size={14} />} {editing ? t('Done') : t('Customise')}
           </button>
         </header>
 
@@ -750,35 +777,35 @@ export function HomeView(p: Props) {
         {editing && (
           <div className="home-edit">
             <div className="he-row">
-              <span className="he-label">Start from</span>
+              <span className="he-label">{t('Start from')}</span>
               <Select<HomeTemplateId>
                 value={layout.template}
                 options={(Object.keys(TEMPLATES) as HomeTemplateId[]).map((id) => ({ value: id, label: TEMPLATES[id].name, hint: TEMPLATES[id].hint }))}
-                onChange={(t) => setLayout(fromTemplate(t))}
-                label="Home template"
+                onChange={(tpl) => setLayout(fromTemplate(tpl))}
+                label={t('Home template')}
                 width={300}
               />
               <Select<CardId>
                 value={null}
                 options={missing.map((id) => ({ value: id, label: CARD_INFO[id].name, hint: CARD_INFO[id].hint, icon: <Plus size={14} /> }))}
                 onChange={(id) => setLayout({ ...layout, cards: [...layout.cards, { id, size: 'm' }] })}
-                placeholder={missing.length ? 'Add a card' : 'All cards added'}
+                placeholder={missing.length ? t('Add a card') : t('All cards added')}
                 disabled={!missing.length}
-                label="Add a card"
+                label={t('Add a card')}
                 width={300}
               />
               <button className="link-btn" onClick={() => setSaved(null)}>
-                Reset
+                {t('Reset')}
               </button>
             </div>
-            <p className="muted small">Drag cards to reorder, or use the arrows. Make a card wide or narrow, or remove it. Only your Home changes.</p>
+            <p className="muted small">{t('Drag cards to reorder, or use the arrows. Make a card wide or narrow, or remove it. Only your Home changes.')}</p>
           </div>
         )}
         </SmoothHeight>
 
         <button className="home-search" onClick={p.onSearch}>
           <Search size={16} />
-          <span>Jump to a {term.one}, task, person or file, or ask anything</span>
+          <span>{t('Jump to a {project}, task, person or file, or ask anything', { project: term.one })}</span>
           <kbd>⌘K</kbd>
         </button>
 
@@ -789,7 +816,7 @@ export function HomeView(p: Props) {
               {n.text}
               {n.link && (
                 <a href={n.link} target="_blank" rel="noreferrer">
-                  Read more
+                  {t('Read more')}
                 </a>
               )}
             </span>
@@ -797,7 +824,7 @@ export function HomeView(p: Props) {
               <button
                 type="button"
                 className="icon-btn sm"
-                aria-label="Dismiss"
+                aria-label={t('Dismiss')}
                 onClick={(e) => {
                   const card = (e.currentTarget as HTMLElement).closest('.news-card');
                   card?.classList.add('leaving');
@@ -818,9 +845,9 @@ export function HomeView(p: Props) {
         {p.calls && p.onJoinHuddle && <LiveCalls calls={p.calls} onJoin={p.onJoinHuddle} />}
 
         <div className="home-top">
-          <section className={`hsec needs${needList.length ? '' : ' clear'}`} aria-label="Needs you">
+          <section className={`hsec needs${needList.length ? '' : ' clear'}`} aria-label={t('Needs you')}>
             <h2 className="hsec-h">
-              <span>{needList.length ? 'Needs you' : 'You’re clear for now'}</span>
+              <span>{needList.length ? t('Needs you') : t('You’re clear for now')}</span>
             </h2>
             <SmoothHeight>
               {needList.length ? (
@@ -847,10 +874,10 @@ export function HomeView(p: Props) {
               ) : (
                 <p className="hsec-empty">
                   {laterToday[0]
-                    ? `Next: ${laterToday[0].title} at ${fmtTime(laterToday[0].start)}.`
+                    ? t('Next: {title} at {time}.', { title: laterToday[0].title, time: fmtTime(laterToday[0].start) })
                     : (() => {
-                        const next = d.mine.find((t) => t.due && t.due > today);
-                        return next ? `Next on your list: “${next.title}”, ${dueWord(next.due!)}.` : 'Nothing waiting on you. A good time to get ahead.';
+                        const next = d.mine.find((tk) => tk.due && tk.due > today);
+                        return next ? t('Next on your list: “{title}”, {when}.', { title: next.title, when: dueWord(next.due!) }) : t('Nothing waiting on you. A good time to get ahead.');
                       })()}
                 </p>
               )}
@@ -900,20 +927,20 @@ export function HomeView(p: Props) {
                   )}
                   {editing && (
                     <span className="card-tools">
-                      <button className="icon-btn sm phone-only" onClick={() => move(c.id, i - 1)} disabled={i === 0} aria-label="Move up">
+                      <button className="icon-btn sm phone-only" onClick={() => move(c.id, i - 1)} disabled={i === 0} aria-label={t('Move up')}>
                         <ArrowUp size={14} />
                       </button>
-                      <button className="icon-btn sm phone-only" onClick={() => move(c.id, i + 1)} disabled={i === visible.length - 1} aria-label="Move down">
+                      <button className="icon-btn sm phone-only" onClick={() => move(c.id, i + 1)} disabled={i === visible.length - 1} aria-label={t('Move down')}>
                         <ArrowDown size={14} />
                       </button>
                       <button
                         className="icon-btn sm hide-phone"
                         onClick={() => setLayout({ ...layout, cards: layout.cards.map((x) => (x.id === c.id ? { ...x, size: x.size === 'l' ? 'm' : 'l' } : x)) })}
-                        title={c.size === 'l' ? 'Make narrow' : 'Make wide'}
+                        title={c.size === 'l' ? t('Make narrow') : t('Make wide')}
                       >
                         {c.size === 'l' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                       </button>
-                      <button className="icon-btn sm" onClick={() => setLayout({ ...layout, cards: layout.cards.filter((x) => x.id !== c.id) })} title="Remove card">
+                      <button className="icon-btn sm" onClick={() => setLayout({ ...layout, cards: layout.cards.filter((x) => x.id !== c.id) })} title={t('Remove card')}>
                         <X size={14} />
                       </button>
                     </span>
@@ -926,12 +953,12 @@ export function HomeView(p: Props) {
         </div>
         {phone && (
           <button type="button" className="ghost-btn home-customise" onClick={() => setCustomising(true)}>
-            <Settings2 size={16} /> Customise Home
+            <Settings2 size={16} /> {t('Customise Home')}
           </button>
         )}
       </div>
       {customising && (
-        <Sheet onClose={() => setCustomising(false)} title="Customise Home" size="tall" head={<button type="button" className="primary-btn sm" onClick={() => setCustomising(false)}>Done</button>}>
+        <Sheet onClose={() => setCustomising(false)} title={t('Customise Home')} size="tall" head={<button type="button" className="primary-btn sm" onClick={() => setCustomising(false)}>{t('Done')}</button>}>
           {customise}
         </Sheet>
       )}
@@ -939,10 +966,13 @@ export function HomeView(p: Props) {
   );
 }
 
-/** "today", "tomorrow" read lower-case mid-sentence; dates keep their capitals. */
-const dueWord = (d: string) => {
-  const t = dueLabel(d).text;
-  return /^[A-Z][a-z]{2},/.test(t) ? t : t.toLowerCase();
+/** A due day read mid-sentence ("Next: Logo, tomorrow"): "today", "tomorrow", "overdue", else the date ("Thu 8 Oct"). */
+const dueWord = (day: string) => {
+  const today = localDay();
+  if (day < today) return t('overdue');
+  if (day === today) return t('today');
+  if (day === addDays(today, 1)) return t('tomorrow');
+  return fmtWeekday(day);
 };
 const NEEDS_APP: Partial<Record<CardId, string>> = { dump: 'tasks', mytasks: 'tasks', today: 'calendar', unread: 'mail', meetings: 'meet' };
 
@@ -976,13 +1006,9 @@ function HomeCustomise({ storageKey, fallback, enabled }: { storageKey: string; 
           <Select<HomeTemplateId>
             value={layout.template}
             options={(Object.keys(TEMPLATES) as HomeTemplateId[]).map((id) => ({ value: id, label: TEMPLATES[id].name, hint: TEMPLATES[id].hint }))}
-            onChange={(t) => setSaved(fromTemplate(t))}
-            label="Start from"
-            renderValue={(o) => (
-              <span className="sel-text">
-                Start from: <b>{o?.label}</b>
-              </span>
-            )}
+            onChange={(tpl) => setSaved(fromTemplate(tpl))}
+            label={t('Start from')}
+            renderValue={(o) => <span className="sel-text">{tj('Start from: {template}', { template: <b>{o?.label}</b> })}</span>}
           />
         }
         onReset={() => setSaved(null)}

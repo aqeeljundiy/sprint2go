@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft } from 'lucide-react';
 import { useFocusedScreen } from '../../mobile/chrome';
+import { t } from '../../i18n';
 
 /**
  * A full screen pushed over the current one, with Back: a channel's details, a thread, an app's settings. It slides in
@@ -13,7 +14,7 @@ import { useFocusedScreen } from '../../mobile/chrome';
 export function PushScreen({
   title,
   onBack,
-  backLabel = 'Back',
+  backLabel,
   actions,
   footer,
   children,
@@ -108,12 +109,14 @@ export function PushScreen({
     };
   }, []);
 
+  // A plain Back (an arrow alone) unless it names the screen it goes back to.
+  const named = backLabel && backLabel !== 'Back' && backLabel !== t('Back') ? backLabel : null;
   return createPortal(
     <div ref={ref} className={`push-screen ${className}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
       <header className="push-head">
-        <button type="button" className="push-back" onClick={() => backRef.current()} aria-label={backLabel === 'Back' ? 'Back' : `Back to ${backLabel}`}>
+        <button type="button" className="push-back" onClick={() => backRef.current()} aria-label={named ? t('Back to {screen}', { screen: named }) : t('Back')}>
           <ChevronLeft size={22} />
-          {backLabel !== 'Back' && <span>{backLabel}</span>}
+          {named && <span>{named}</span>}
         </button>
         <h1 className="push-title">{title}</h1>
         <div className="push-actions">{actions}</div>

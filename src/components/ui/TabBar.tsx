@@ -2,6 +2,7 @@ import { createContext, useContext, useRef, useState, type ReactNode } from 'rea
 import { ArrowDown, ArrowUp, Eye, EyeOff, GripVertical, MoreHorizontal } from 'lucide-react';
 import { usePersisted } from '../../settings';
 import { Popover } from './Popover';
+import { t } from '../../i18n';
 
 export interface TabPrefs {
   order: string[];
@@ -63,13 +64,13 @@ export function TabBar({
   const setPrefs = (p: TabPrefs) => (onOrder ? onOrder(p) : setMine(p));
   const all = arrange(items, prefs);
   const hidden = new Set((prefs?.hidden ?? []).filter((id) => !fixed.includes(id)));
-  const shown = all.filter((t) => !hidden.has(t.id) || t.id === value);
+  const shown = all.filter((tab) => !hidden.has(tab.id) || tab.id === value);
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<{ id: string; after: boolean } | null>(null);
   const [editing, setEditing] = useState(false);
   const editRef = useRef<HTMLButtonElement>(null);
 
-  const ids = all.map((t) => t.id);
+  const ids = all.map((tab) => tab.id);
   const save = (nextIds: string[], nextHidden = [...hidden]) => setPrefs({ order: nextIds, hidden: nextHidden });
   const move = (id: string, to: number) => {
     const rest = ids.filter((x) => x !== id);
@@ -91,23 +92,23 @@ export function TabBar({
     if (h.has(id)) h.delete(id);
     else h.add(id);
     save(ids, [...h]);
-    if (h.has(id) && id === value) onSelect(all.find((t) => !h.has(t.id))?.id ?? value);
+    if (h.has(id) && id === value) onSelect(all.find((tab) => !h.has(tab.id))?.id ?? value);
   };
 
   return (
     <div className={`${className} tab-bar`} role={role} onDragOver={(e) => drag && e.preventDefault()} onDrop={(e) => (e.preventDefault(), drop())}>
-      {shown.map((t) => (
+      {shown.map((tab) => (
         <button
-          key={t.id}
+          key={tab.id}
           role="tab"
-          aria-selected={value === t.id}
-          className={`${value === t.id ? 'on' : ''}${drag === t.id ? ' tab-dragging' : ''}${over?.id === t.id && drag !== t.id ? (over.after ? ' drop-after' : ' drop-before') : ''}`}
-          title={t.title}
+          aria-selected={value === tab.id}
+          className={`${value === tab.id ? 'on' : ''}${drag === tab.id ? ' tab-dragging' : ''}${over?.id === tab.id && drag !== tab.id ? (over.after ? ' drop-after' : ' drop-before') : ''}`}
+          title={tab.title}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', t.id);
-            setDrag(t.id);
+            e.dataTransfer.setData('text/plain', tab.id);
+            setDrag(tab.id);
           }}
           onDragEnd={() => (setDrag(null), setOver(null))}
           onDragOver={(e) => {
@@ -115,44 +116,44 @@ export function TabBar({
             e.preventDefault();
             const r = e.currentTarget.getBoundingClientRect();
             const after = e.clientX > r.left + r.width / 2;
-            if (over?.id !== t.id || over.after !== after) setOver({ id: t.id, after });
+            if (over?.id !== tab.id || over.after !== after) setOver({ id: tab.id, after });
           }}
-          onClick={() => onSelect(t.id)}
+          onClick={() => onSelect(tab.id)}
         >
-          {t.label}
+          {tab.label}
         </button>
       ))}
       {extra}
-      <button ref={editRef} type="button" className="tab-edit" onClick={() => setEditing(true)} title="Arrange tabs" aria-label="Arrange tabs">
+      <button ref={editRef} type="button" className="tab-edit" onClick={() => setEditing(true)} title={t('Arrange tabs')} aria-label={t('Arrange tabs')}>
         <MoreHorizontal size={15} />
       </button>
-      <Popover anchor={editRef} open={editing} onClose={() => setEditing(false)} width={260} align="end" title="Arrange tabs">
+      <Popover anchor={editRef} open={editing} onClose={() => setEditing(false)} width={260} align="end" title={t('Arrange tabs')}>
         <div className="tab-edit-list">
-          <p className="muted small">{canHide ? 'Drag tabs to move them, or use the arrows. Hidden tabs stay one click away here.' : 'Drag tabs to move them, or use the arrows. The order is the same for everyone.'}</p>
-          {all.map((t, i) => (
-            <div key={t.id} className={`tab-edit-row${hidden.has(t.id) ? ' off' : ''}`}>
+          <p className="muted small">{canHide ? t('Drag tabs to move them, or use the arrows. Hidden tabs stay one click away here.') : t('Drag tabs to move them, or use the arrows. The order is the same for everyone.')}</p>
+          {all.map((tab, i) => (
+            <div key={tab.id} className={`tab-edit-row${hidden.has(tab.id) ? ' off' : ''}`}>
               <GripVertical size={14} className="muted" />
-              <span className="tab-edit-name">{t.name ?? t.label}</span>
-              <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(t.id, i - 1)} aria-label="Move up">
+              <span className="tab-edit-name">{tab.name ?? tab.label}</span>
+              <button type="button" className="icon-btn sm" disabled={i === 0} onClick={() => move(tab.id, i - 1)} aria-label={t('Move up')}>
                 <ArrowUp size={13} />
               </button>
-              <button type="button" className="icon-btn sm" disabled={i === all.length - 1} onClick={() => move(t.id, i + 1)} aria-label="Move down">
+              <button type="button" className="icon-btn sm" disabled={i === all.length - 1} onClick={() => move(tab.id, i + 1)} aria-label={t('Move down')}>
                 <ArrowDown size={13} />
               </button>
-              {canHide && <button type="button" className="icon-btn sm" disabled={fixed.includes(t.id)} onClick={() => toggleHidden(t.id)} aria-label={hidden.has(t.id) ? `Show ${t.name ?? ''}` : `Hide ${t.name ?? ''}`} title={fixed.includes(t.id) ? 'Always shown' : hidden.has(t.id) ? 'Show' : 'Hide'}>
-                {hidden.has(t.id) ? <EyeOff size={13} /> : <Eye size={13} />}
+              {canHide && <button type="button" className="icon-btn sm" disabled={fixed.includes(tab.id)} onClick={() => toggleHidden(tab.id)} aria-label={hidden.has(tab.id) ? t('Show {tab}', { tab: tab.name ?? '' }) : t('Hide {tab}', { tab: tab.name ?? '' })} title={fixed.includes(tab.id) ? t('Always shown') : hidden.has(tab.id) ? t('Show') : t('Hide')}>
+                {hidden.has(tab.id) ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>}
             </div>
           ))}
           <div className="tab-edit-foot">
             {!onOrder && (mine || shared.defaults[storageKey]) && (
               <button type="button" className="link-btn small" onClick={() => (setMine(null), setEditing(false))}>
-                {shared.defaults[storageKey] ? 'Use the company’s order' : 'Back to the usual order'}
+                {shared.defaults[storageKey] ? t('Use the company’s order') : t('Back to the usual order')}
               </button>
             )}
             {!onOrder && shared.canSet && (
               <button type="button" className="link-btn small" onClick={() => (shared.set(storageKey, { order: ids, hidden: [...hidden] }), setEditing(false))}>
-                Make this everyone’s order
+                {t('Make this everyone’s order')}
               </button>
             )}
           </div>

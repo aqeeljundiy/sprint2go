@@ -4,8 +4,10 @@ import { Check, Copy, Download, ShieldCheck, X } from 'lucide-react';
 import { SmoothHeight, TabPane, useLeaving } from './ui/Smooth';
 import { brand as product } from '../terms';
 import { server, signOut } from '../sync';
-import { BrandMark } from './SignIn';
+import { BrandMark, LangSwitch } from './SignIn';
 import { Badge } from './ui/Person';
+import { mark, t, tn } from '../i18n';
+import { fmtDay, fmtList } from '../i18n/format';
 
 /*
  * Two-step sign-in: after the password, a 6-digit code from an authenticator app (or one of ten backup codes).
@@ -36,7 +38,8 @@ export interface RememberedDevice {
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
   const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const d = (await r.json().catch(() => ({}))) as T & { error?: string; restart?: boolean };
-  if (!r.ok) throw Object.assign(new Error(d.error ?? 'Something went wrong. Try again.'), { restart: !!d.restart });
+  // The server's message stays English here; the screens show it with t(error).
+  if (!r.ok) throw Object.assign(new Error(d.error ?? mark('Something went wrong. Try again.')), { restart: !!d.restart });
   return d;
 }
 export const loadTwoStep = (): Promise<TwoStepStatus | null> =>
@@ -44,10 +47,21 @@ export const loadTwoStep = (): Promise<TwoStepStatus | null> =>
     .then((r) => (r.ok ? (r.json() as Promise<TwoStepStatus>) : null))
     .catch(() => null);
 
-const day = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
-const list = (names: string[]) => (names.length < 2 ? names[0] ?? 'Your company' : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+const day = (iso: string) => fmtDay(iso); // "16 Oct", with the year when it isn't this one
+/** The server names a remembered device in English ("Chrome on Mac", "A browser"): the words read in the person's language. */
+const deviceLabel = (name: string) => {
+  const app = (a: string) => (a === 'sprint2go app' ? t('sprint2go app') : a);
+  const m = /^(.+) on (.+)$/.exec(name);
+  return m ? t('{app} on {os}', { app: app(m[1]), os: m[2] }) : name === 'A browser' ? t('A browser') : app(name);
+};
+const list = (names: string[]) => (names.length ? fmtList(names) : t('Your company'));
 /** "Pixel & Profits requires it from 16 Oct" or "...requires it now". */
-export const requiredText = (r: NonNullable<TwoStepStatus['required']>) => `${list(r.companies)} require${r.companies.length === 1 ? 's' : ''} it ${r.from > new Date().toISOString() ? `from ${day(r.from)}` : 'now'}`;
+export const requiredText = (r: NonNullable<TwoStepStatus['required']>) => {
+  const n = r.companies.length || 1; // no names: "Your company requires it"
+  return r.from > new Date().toISOString()
+    ? tn(n, '{companies} requires it from {date}', '{companies} require it from {date}', { companies: list(r.companies), date: day(r.from) })
+    : tn(n, '{companies} requires it now', '{companies} require it now', { companies: list(r.companies) });
+};
 
 /* ---------- the code field: 6 digits from the app, or a backup code ---------- */
 
@@ -71,7 +85,7 @@ export function CodeField({ backup, value, onChange, onComplete, autoFocus, comp
       autoComplete="off"
       autoCapitalize="off"
       spellCheck={false}
-      aria-label="Backup code"
+      aria-label={t('Backup code')}
     />
   ) : (
     <input
@@ -87,7 +101,7 @@ export function CodeField({ backup, value, onChange, onComplete, autoFocus, comp
         if (v.length === 6 && value.length < 6) onComplete?.(v);
       }}
       placeholder="000000"
-      aria-label="Six-digit code"
+      aria-label={t('Six-digit code')}
     />
   );
 }
@@ -111,25 +125,25 @@ function ScanStep({ setup, onEnabled }: { setup: Setup | null; onEnabled: (codes
   return (
     <div className="ts-step">
       <div className="ts-scan">
-        <div className="ts-qr">{setup ? <img src={setup.qr} alt="QR code to scan with your authenticator app" width={168} height={168} /> : <span className="ts-qr-wait" aria-label="Making your code" />}</div>
+        <div className="ts-qr">{setup ? <img src={setup.qr} alt={t('QR code to scan with your authenticator app')} width={168} height={168} /> : <span className="ts-qr-wait" aria-label={t('Making your code')} />}</div>
         <ol className="ts-how">
-          <li>Open an authenticator app on your phone, like Google Authenticator, Microsoft Authenticator or 1Password.</li>
-          <li>Add an account and scan this code.</li>
-          <li>Type the 6-digit code it shows.</li>
+          <li>{t('Open an authenticator app on your phone, like Google Authenticator, Microsoft Authenticator or 1Password.')}</li>
+          <li>{t('Add an account and scan this code.')}</li>
+          <li>{t('Type the 6-digit code it shows.')}</li>
         </ol>
       </div>
       <div className="ts-key">
         {setup ? (
           <>
-            <span>Can’t scan it? Enter this key instead:</span>
+            <span>{t('Can’t scan it? Enter this key instead:')}</span>
             <span className="ts-key-row">
               <code className="mono">{setup.secret.replace(/(.{4})/g, '$1 ').trim()}</code>
-              <button type="button" className="icon-btn sm" aria-label="Copy the key" title={copied ? 'Copied' : 'Copy'} onClick={() => void navigator.clipboard?.writeText(setup.secret).then(() => setCopied(true))}>
+              <button type="button" className="icon-btn sm" aria-label={t('Copy the key')} title={copied ? t('Copied') : t('Copy')} onClick={() => void navigator.clipboard?.writeText(setup.secret).then(() => setCopied(true))}>
                 {copied ? <Check size={14} /> : <Copy size={14} />}
               </button>
             </span>
             <a className="link-btn small ts-open-app" href={setup.otpauth}>
-              Or open it in an authenticator app on this phone
+              {t('Or open it in an authenticator app on this phone')}
             </a>
           </>
         ) : (
@@ -144,9 +158,9 @@ function ScanStep({ setup, onEnabled }: { setup: Setup | null; onEnabled: (codes
         }}
       >
         <CodeField backup={false} value={code} onChange={setCode} onComplete={submit} autoFocus={!!setup} />
-        {error && <p className="signin-error">{error}</p>}
+        {error && <p className="signin-error">{t(error)}</p>}
         <button className="primary-btn ts-submit" disabled={!setup || !codeReady(code, false) || busy}>
-          {busy ? 'Checking…' : 'Turn on'}
+          {busy ? t('Checking…') : t('Turn on')}
         </button>
       </form>
     </div>
@@ -157,7 +171,7 @@ function ScanStep({ setup, onEnabled }: { setup: Setup | null; onEnabled: (codes
 export function BackupCodes({ codes, onDone, doneLabel, renewed }: { codes: string[]; onDone: () => void; doneLabel: string; renewed?: boolean }) {
   const [copied, setCopied] = useState(false);
   const download = () => {
-    const text = `${product.name} backup codes\nEach code works once, when you can’t use your authenticator app.\n\n${codes.join('\n')}\n`;
+    const text = `${t('{product} backup codes', { product: product.name })}\n${t('Each code works once, when you can’t use your authenticator app.')}\n\n${codes.join('\n')}\n`;
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
     Object.assign(document.createElement('a'), { href: url, download: `${product.name.toLowerCase().replace(/\s+/g, '-')}-backup-codes.txt` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -166,13 +180,13 @@ export function BackupCodes({ codes, onDone, doneLabel, renewed }: { codes: stri
     <div className="ts-step">
       {!renewed && (
         <p className="ts-lead">
-          <Check size={16} /> Two-step sign-in is on.
+          <Check size={16} /> {t('Two-step sign-in is on.')}
         </p>
       )}
       <p className="ts-text">
-        {renewed ? 'Your old backup codes no longer work. ' : 'If you ever can’t use your phone, sign in with one of these codes. '}Each works once. Keep them somewhere safe, like your password manager: you won’t see them again.
+        {renewed ? t('Your old backup codes no longer work.') : t('If you ever can’t use your phone, sign in with one of these codes.')} {t('Each works once. Keep them somewhere safe, like your password manager: you won’t see them again.')}
       </p>
-      <ul className="ts-backup" aria-label="Backup codes">
+      <ul className="ts-backup" aria-label={t('Backup codes')}>
         {codes.map((c) => (
           <li key={c}>
             <code className="mono">{c}</code>
@@ -181,10 +195,10 @@ export function BackupCodes({ codes, onDone, doneLabel, renewed }: { codes: stri
       </ul>
       <div className="ts-backup-actions">
         <button type="button" className="ghost-btn outline sm" onClick={() => void navigator.clipboard?.writeText(codes.join('\n')).then(() => setCopied(true))}>
-          {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
+          {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? t('Copied') : t('Copy')}
         </button>
         <button type="button" className="ghost-btn outline sm" onClick={download}>
-          <Download size={14} /> Download
+          <Download size={14} /> {t('Download')}
         </button>
       </div>
       <button type="button" className="primary-btn ts-submit" onClick={onDone}>
@@ -216,14 +230,14 @@ function ProveStep({ text, action, onProof }: { text: string; action: string; on
         submit();
       }}
     >
-      <p className="ts-text">{backup ? 'Enter one of your backup codes. It gets used up.' : text}</p>
+      <p className="ts-text">{backup ? t('Enter one of your backup codes. It gets used up.') : text}</p>
       <CodeField backup={backup} value={code} onChange={setCode} onComplete={submit} autoFocus />
-      {error && <p className="signin-error">{error}</p>}
+      {error && <p className="signin-error">{t(error)}</p>}
       <button type="button" className="link-btn small ts-switch" onClick={() => (setBackup((b) => !b), setCode(''), setError(null))}>
-        {backup ? 'Use the code from your app' : 'Use a backup code'}
+        {backup ? t('Use the code from your app') : t('Use a backup code')}
       </button>
       <button className="primary-btn ts-submit" disabled={!codeReady(code, backup) || busy}>
-        {busy ? 'Checking…' : action}
+        {busy ? t('Checking…') : action}
       </button>
     </form>
   );
@@ -245,8 +259,8 @@ export function SetupFlow({ again, onEnabled, onDone, doneLabel }: { again?: boo
   return (
     <SmoothHeight>
       <TabPane key={step}>
-        {step === 'prove' && <ProveStep text="First, a code from the app you use now (or a backup code), so we know it’s you." action="Continue" onProof={(c) => start(c)} />}
-        {step === 'scan' && (error ? <p className="signin-error">{error}</p> : <ScanStep setup={setup} onEnabled={(c) => (setCodes(c), setStep('codes'), onEnabled?.())} />)}
+        {step === 'prove' && <ProveStep text={t('First, a code from the app you use now (or a backup code), so we know it’s you.')} action={t('Continue')} onProof={(c) => start(c)} />}
+        {step === 'scan' && (error ? <p className="signin-error">{t(error)}</p> :<ScanStep setup={setup} onEnabled={(c) => (setCodes(c), setStep('codes'), onEnabled?.())} />)}
         {step === 'codes' && <BackupCodes codes={codes} onDone={onDone} doneLabel={doneLabel} />}
       </TabPane>
     </SmoothHeight>
@@ -265,6 +279,7 @@ export function TwoStepGate({ need, email, companies }: { need: 'code' | 'setup'
         </span>
         {need === 'code' ? <CodeGate email={email} /> : <SetupGate companies={companies ?? []} />}
       </div>
+      <LangSwitch />
     </div>
   );
 }
@@ -277,8 +292,8 @@ function RememberBox({ on, onChange }: { on: boolean; onChange: (v: boolean) => 
         <Check size={11} strokeWidth={3} />
       </span>
       <span>
-        Remember this device for 30 days
-        <small>Only on a device that’s yours. You can forget it in Settings, Account.</small>
+        {t('Remember this device for 30 days')}
+        <small>{t('Only on a device that’s yours. You can forget it in Settings, Account.')}</small>
       </span>
     </button>
   );
@@ -301,13 +316,19 @@ function CodeGate({ email }: { email?: string }) {
   };
   return (
     <>
-      <h1>{backup ? 'Use a backup code' : 'Enter your code'}</h1>
-      <p className="signin-sub">{backup ? 'One of the ten codes you saved when you turned on two-step sign-in. Each works once.' : `Open your authenticator app and enter the 6-digit code for ${product.name}${email ? ` (${email})` : ''}.`}</p>
+      <h1>{backup ? t('Use a backup code') : t('Enter your code')}</h1>
+      <p className="signin-sub">
+        {backup
+          ? t('One of the ten codes you saved when you turned on two-step sign-in. Each works once.')
+          : email
+            ? t('Open your authenticator app and enter the 6-digit code for {product} ({email}).', { product: product.name, email })
+            : t('Open your authenticator app and enter the 6-digit code for {product}.', { product: product.name })}
+      </p>
       {restart ? (
         <>
-          <p className="signin-error">{error}</p>
+          <p className="signin-error">{error && t(error)}</p>
           <button className="primary-btn signin-btn" onClick={() => location.reload()}>
-            Sign in again
+            {t('Sign in again')}
           </button>
         </>
       ) : (
@@ -319,20 +340,20 @@ function CodeGate({ email }: { email?: string }) {
           }}
         >
           <CodeField backup={backup} value={code} onChange={setCode} onComplete={submit} autoFocus />
-          {error && <p className="signin-error">{error}</p>}
+          {error && <p className="signin-error">{t(error)}</p>}
           <RememberBox on={remember} onChange={setRemember} />
           <button className="primary-btn signin-btn" disabled={!codeReady(code, backup) || busy}>
-            {busy ? 'Checking…' : 'Continue'}
+            {busy ? t('Checking…') : t('Continue')}
           </button>
           <button type="button" className="link-btn small ts-switch" onClick={() => (setBackup((b) => !b), setCode(''), setError(null))}>
-            {backup ? 'Use the code from your app' : 'Use a backup code'}
+            {backup ? t('Use the code from your app') : t('Use a backup code')}
           </button>
         </form>
       )}
       <p className="signin-switch">
-        Lost your phone and your backup codes? An admin at your company can reset two-step sign-in for you.{' '}
+        {t('Lost your phone and your backup codes? An admin at your company can reset two-step sign-in for you.')}{' '}
         <button type="button" className="link-btn" onClick={() => void signOut()}>
-          Sign out
+          {t('Sign out')}
         </button>
       </p>
     </>
@@ -343,18 +364,23 @@ function SetupGate({ companies }: { companies: string[] }) {
   const [done, setDone] = useState(false);
   return (
     <>
-      <h1>{done ? 'Save your backup codes' : 'Set up two-step sign-in'}</h1>
+      <h1>{done ? t('Save your backup codes') : t('Set up two-step sign-in')}</h1>
       {!done && (
         <p className="signin-sub">
-          {list(companies)} require{companies.length === 1 ? 's' : ''} a code from an authenticator app each time you sign in, so a stolen password isn’t enough. It takes a minute.
+          {tn(
+            companies.length || 1, // no names: "Your company requires"
+            '{companies} requires a code from an authenticator app each time you sign in, so a stolen password isn’t enough. It takes a minute.',
+            '{companies} require a code from an authenticator app each time you sign in, so a stolen password isn’t enough. It takes a minute.',
+            { companies: list(companies) },
+          )}
         </p>
       )}
       <div className="ts-gate-body">
-        <SetupFlow onEnabled={() => setDone(true)} onDone={() => location.reload()} doneLabel={`I’ve saved them, open ${product.name}`} />
+        <SetupFlow onEnabled={() => setDone(true)} onDone={() => location.reload()} doneLabel={t('I’ve saved them, open {product}', { product: product.name })} />
       </div>
       <p className="signin-switch">
         <button type="button" className="link-btn" onClick={() => void signOut()}>
-          Sign out
+          {t('Sign out')}
         </button>
       </p>
     </>
@@ -378,11 +404,11 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
     return (
       <div className="set-row">
         <span>
-          <strong>Two-step sign-in</strong>
-          <small>Works when you sign in with a password. This demo has no sign-in.</small>
+          <strong>{t('Two-step sign-in')}</strong>
+          <small>{t('Works when you sign in with a password. This demo has no sign-in.')}</small>
         </span>
         <button type="button" className="ghost-btn outline" disabled>
-          Turn on
+          {t('Turn on')}
         </button>
       </div>
     );
@@ -393,28 +419,28 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
       <div className="set-row ts-row">
         <span>
           <strong>
-            Two-step sign-in {s?.on && <Badge tone="good">On</Badge>}
-            {s && !s.on && s.required && <Badge tone="warn">Required</Badge>}
+            {t('Two-step sign-in')} {s?.on && <Badge tone="good">{t('On')}</Badge>}
+            {s && !s.on && s.required && <Badge tone="warn">{t('Required')}</Badge>}
           </strong>
           <small>
             {!st
-              ? 'Checking…'
+              ? t('Checking…')
               : st === 'failed'
-                ? 'Couldn’t check right now.'
+                ? t('Couldn’t check right now.')
                 : st.on
-                  ? `On since ${day(st.since!)}. ${low ? `Only ${st.backupLeft} backup code${st.backupLeft === 1 ? '' : 's'} left: get new ones.` : `${st.backupLeft} backup codes left.`}`
+                  ? `${t('On since {date}.', { date: day(st.since!) })} ${low ? tn(st.backupLeft, 'Only {n} backup code left: get new ones.', 'Only {n} backup codes left: get new ones.') : tn(st.backupLeft, '{n} backup code left.', '{n} backup codes left.')}`
                   : st.required
-                    ? `${requiredText(st.required)}. A code from an authenticator app each time you sign in, so a stolen password isn’t enough.`
-                    : 'A code from an authenticator app each time you sign in, so a stolen password isn’t enough.'}
+                    ? `${requiredText(st.required)}. ${t('A code from an authenticator app each time you sign in, so a stolen password isn’t enough.')}`
+                    : t('A code from an authenticator app each time you sign in, so a stolen password isn’t enough.')}
           </small>
         </span>
         {s?.on ? (
           <button type="button" className={`ghost-btn outline ${manage ? 'on' : ''}`} onClick={() => setManage((m) => !m)} aria-expanded={manage}>
-            Manage
+            {t('Manage')}
           </button>
         ) : (
           <button type="button" className={s?.required ? 'primary-btn sm' : 'ghost-btn outline'} disabled={!s} onClick={() => setDialog('on')}>
-            Turn on
+            {t('Turn on')}
           </button>
         )}
       </div>
@@ -423,30 +449,30 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
           <div className="ts-manage">
             <div className="ts-manage-row">
               <span>
-                <strong>Backup codes</strong>
-                <small>Ten new ones; the old ones stop working.</small>
+                <strong>{t('Backup codes')}</strong>
+                <small>{t('Ten new ones; the old ones stop working.')}</small>
               </span>
               <button type="button" className={`ghost-btn sm ${low ? 'outline' : ''}`} onClick={() => setDialog('backup')}>
-                Get new codes
+                {t('Get new codes')}
               </button>
             </div>
             <div className="ts-manage-row">
               <span>
-                <strong>New phone</strong>
-                <small>Move two-step sign-in to another app or phone.</small>
+                <strong>{t('New phone')}</strong>
+                <small>{t('Move two-step sign-in to another app or phone.')}</small>
               </span>
               <button type="button" className="ghost-btn sm" onClick={() => setDialog('again')}>
-                Set up again
+                {t('Set up again')}
               </button>
             </div>
             <RememberedDevices devices={s?.devices ?? []} onChanged={(text) => (load(), text && toast?.(text))} />
             <div className="ts-manage-row">
               <span>
-                <strong>Turn off</strong>
-                <small>{s?.required ? `${requiredText(s.required)}, so it stays on.` : 'Sign in with just your password again.'}</small>
+                <strong>{t('Turn off')}</strong>
+                <small>{s?.required ? t('{required}, so it stays on.', { required: requiredText(s.required) }) : t('Sign in with just your password again.')}</small>
               </span>
               <button type="button" className="ghost-btn sm danger" disabled={!!s?.required} onClick={() => setDialog('off')}>
-                Turn off
+                {t('Turn off')}
               </button>
             </div>
           </div>
@@ -476,39 +502,37 @@ function RememberedDevices({ devices, onChanged }: { devices: RememberedDevice[]
     setBusy(id);
     setError(null);
     post('/api/2fa/devices/forget', id === 'all' ? { all: true } : { id })
-      .then(() => onChanged(id === 'all' ? 'Every remembered device asks for the code again' : 'That device asks for the code again'))
+      .then(() => onChanged(id === 'all' ? t('Every remembered device asks for the code again') : t('That device asks for the code again')))
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(null));
   };
   return (
     <div className="ts-manage-row ts-devices">
       <span>
-        <strong>Remembered devices</strong>
-        <small>{devices.length ? 'These sign in with just your password until the date shown. Forget any you don’t use.' : 'None. Tick “Remember this device” when you enter a code to skip it for 30 days on that device.'}</small>
+        <strong>{t('Remembered devices')}</strong>
+        <small>{devices.length ? t('These sign in with just your password until the date shown. Forget any you don’t use.') : t('None. Tick “Remember this device” when you enter a code to skip it for 30 days on that device.')}</small>
         {rows.length > 0 && (
           <ul className="ts-device-list">
             {rows.map(({ item: d, leaving }) => (
               <li key={d.id} className={leaving ? 'row-leaving' : ''}>
                 <span>
                   <strong>
-                    {d.name} {d.current && <Badge tone="info">This device</Badge>}
+                    {deviceLabel(d.name)} {d.current && <Badge tone="info">{t('This device')}</Badge>}
                   </strong>
-                  <small>
-                    Since {day(d.createdAt)} · last used {day(d.usedAt)} · until {day(d.expiresAt)}
-                  </small>
+                  <small>{t('Since {created} · last used {used} · until {expires}', { created: day(d.createdAt), used: day(d.usedAt), expires: day(d.expiresAt) })}</small>
                 </span>
                 <button type="button" className="ghost-btn sm" disabled={!!busy} onClick={() => forget(d.id)}>
-                  Forget
+                  {t('Forget')}
                 </button>
               </li>
             ))}
           </ul>
         )}
-        {error && <small className="signin-error">{error}</small>}
+        {error && <small className="signin-error">{t(error)}</small>}
       </span>
       {devices.length > 1 && (
         <button type="button" className="ghost-btn sm" disabled={!!busy} onClick={() => forget('all')}>
-          Forget all
+          {t('Forget all')}
         </button>
       )}
     </div>
@@ -524,46 +548,55 @@ function SignOutEverywhere({ hasDevices, onDone }: { hasDevices: boolean; onDone
     setBusy(true);
     setError(null);
     post('/api/2fa/signout-everywhere')
-      .then(() => (setSure(false), onDone('Signed out everywhere else. You’re still signed in here.')))
+      .then(() => (setSure(false), onDone(t('Signed out everywhere else. You’re still signed in here.'))))
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
   return (
     <div className="set-row ts-row">
       <span>
-        <strong>Sign out everywhere</strong>
-        <small>{sure ? `Every other phone, computer and browser signed in as you signs out${hasDevices ? ', and remembered devices ask for the code again' : ''}. You stay signed in here.` : 'Lost a phone, or signed in on a computer that isn’t yours? End every other session.'}</small>
-        {error && <small className="signin-error">{error}</small>}
+        <strong>{t('Sign out everywhere')}</strong>
+        <small>
+          {!sure
+            ? t('Lost a phone, or signed in on a computer that isn’t yours? End every other session.')
+            : hasDevices
+              ? t('Every other phone, computer and browser signed in as you signs out, and remembered devices ask for the code again. You stay signed in here.')
+              : t('Every other phone, computer and browser signed in as you signs out. You stay signed in here.')}
+        </small>
+        {error && <small className="signin-error">{t(error)}</small>}
       </span>
       <span className="ts-sure">
         {sure && (
           <button type="button" className="ghost-btn sm" onClick={() => setSure(false)} disabled={busy}>
-            Cancel
+            {t('Cancel')}
           </button>
         )}
         <button type="button" className={`ghost-btn ${sure ? 'sm danger' : 'outline'}`} onClick={() => (sure ? go() : setSure(true))} disabled={busy}>
-          {busy ? 'Signing out…' : sure ? 'Sign out everywhere else' : 'Sign out everywhere'}
+          {busy ? t('Signing out…') : sure ? t('Sign out everywhere else') : t('Sign out everywhere')}
         </button>
       </span>
     </div>
   );
 }
 
-const TITLES: Record<DialogMode, string> = { on: 'Turn on two-step sign-in', again: 'Set up on a new phone', backup: 'New backup codes', off: 'Turn off two-step sign-in' };
+// A function, so the titles are in the language shown now.
+const titleOf = (mode: DialogMode) =>
+  ({ on: t('Turn on two-step sign-in'), again: t('Set up on a new phone'), backup: t('New backup codes'), off: t('Turn off two-step sign-in') })[mode];
 
 function TwoStepDialog({ mode, onClose, onChanged }: { mode: DialogMode; onClose: () => void; onChanged: (toast?: string) => void }) {
   const [codes, setCodes] = useState<string[] | null>(null);
   const [locked, setLocked] = useState(false); // backup codes on screen: only Done or the close button closes it
   const [pw, setPw] = useState('');
+  const title = titleOf(mode);
   // On the page body: Settings' scrolling pane would otherwise hold a fixed overlay inside itself.
   return createPortal(
     <div className="modal-scrim" onMouseDown={() => !locked && onClose()}>
-      <div className="modal ts-modal" role="dialog" aria-label={TITLES[mode]} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !locked && onClose()}>
+      <div className="modal ts-modal" role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !locked && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <ShieldCheck size={15} /> {TITLES[mode]}
+            <ShieldCheck size={15} /> {title}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -571,30 +604,30 @@ function TwoStepDialog({ mode, onClose, onChanged }: { mode: DialogMode; onClose
           {(mode === 'on' || mode === 'again') && (
             <SetupFlow
               again={mode === 'again'}
-              onEnabled={() => (setLocked(true), onChanged(mode === 'again' ? 'Two-step sign-in moved to your new app' : undefined))}
+              onEnabled={() => (setLocked(true), onChanged(mode === 'again' ? t('Two-step sign-in moved to your new app') : undefined))}
               onDone={onClose}
-              doneLabel="I’ve saved them"
+              doneLabel={t('I’ve saved them')}
             />
           )}
           {mode === 'backup' && (
             <SmoothHeight>
               <TabPane key={codes ? 'codes' : 'prove'}>
                 {codes ? (
-                  <BackupCodes codes={codes} renewed onDone={onClose} doneLabel="I’ve saved them" />
+                  <BackupCodes codes={codes} renewed onDone={onClose} doneLabel={t('I’ve saved them')} />
                 ) : (
-                  <ProveStep text="Enter a code from your authenticator app to make new backup codes." action="Make new codes" onProof={(code) => post<{ backupCodes: string[] }>('/api/2fa/backup', { code }).then((d) => (setCodes(d.backupCodes), setLocked(true), onChanged()))} />
+                  <ProveStep text={t('Enter a code from your authenticator app to make new backup codes.')} action={t('Make new codes')} onProof={(code) => post<{ backupCodes: string[] }>('/api/2fa/backup', { code }).then((d) => (setCodes(d.backupCodes), setLocked(true), onChanged()))} />
                 )}
               </TabPane>
             </SmoothHeight>
           )}
           {mode === 'off' && (
             <div className="ts-step">
-              <p className="ts-text">Signing in will only need your password. Your password and a code from your app, to be sure it’s you:</p>
+              <p className="ts-text">{t('Signing in will only need your password. Your password and a code from your app, to be sure it’s you:')}</p>
               <div className="field">
-                <label>Password</label>
+                <label>{t('Password')}</label>
                 <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus />
               </div>
-              <ProveStep text="And the 6-digit code from your authenticator app." action="Turn off" onProof={(code) => post('/api/2fa/off', { password: pw, code }).then(() => (onChanged('Two-step sign-in is off'), onClose()))} />
+              <ProveStep text={t('And the 6-digit code from your authenticator app.')} action={t('Turn off')} onProof={(code) => post('/api/2fa/off', { password: pw, code }).then(() => (onChanged(t('Two-step sign-in is off')), onClose()))} />
             </div>
           )}
         </div>

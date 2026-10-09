@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, Plus, Search } from 'lucide-react';
 import { Popover } from './Popover';
+import { t } from '../../i18n';
 
 export interface Option<V extends string = string> {
   value: V;
@@ -20,7 +21,7 @@ export function Select<V extends string = string>({
   value,
   options,
   onChange,
-  placeholder = 'Choose…',
+  placeholder = t('Choose…'),
   label,
   title,
   compact,
@@ -138,13 +139,13 @@ export function Select<V extends string = string>({
           {showSearch && (
             <label className="sel-search">
               <Search size={14} />
-              <input autoFocus value={q} onChange={(e) => (setQ(e.target.value), setHi(0))} placeholder="Search…" />
+              <input autoFocus value={q} onChange={(e) => (setQ(e.target.value), setHi(0))} placeholder={t('Search…')} />
             </label>
           )}
           <ul role="listbox" tabIndex={-1} ref={(el) => {
               if (!showSearch) el?.focus();
             }} aria-label={label}>
-            {shown.length === 0 && !create && <li className="sel-empty">No matches</li>}
+            {shown.length === 0 && !create && <li className="sel-empty">{t('No matches')}</li>}
             {shown.map((o, i) => {
               const head = o.group && o.group !== lastGroup ? o.group : null;
               lastGroup = o.group;
@@ -182,10 +183,10 @@ export function Select<V extends string = string>({
                     if (e.key === 'Enter') (e.preventDefault(), finishCreate());
                     if (e.key === 'Escape') (e.preventDefault(), setMaking(null));
                   }}
-                  placeholder={create.placeholder ?? 'Name'}
+                  placeholder={create.placeholder ?? t('Name')}
                 />
                 <button type="button" className="primary-btn sm" disabled={!making.trim()} onClick={finishCreate}>
-                  Add
+                  {t('Add')}
                 </button>
               </div>
             ) : (
