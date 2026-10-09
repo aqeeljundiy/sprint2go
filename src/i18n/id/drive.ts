@@ -3,6 +3,77 @@
 // The key is the exact English text in the code; the value is how it reads in Indonesian. Tone, the glossary and
 // the rules for placeholders and plurals: docs/i18n.md. Check with: node scripts/i18n-check.mjs
 const id: Record<string, string> = {
+  // Sections and the sidebar (DriveSidebar)
+  'My Drive': 'Drive saya',
+  Recent: 'Terbaru',
+  'Photos & videos': 'Foto & video',
+  'From email': 'Dari email',
+  Starred: 'Berbintang',
+  Trash: 'Sampah',
+  'Upload files': 'Unggah file',
+  'New folder': 'Folder baru',
+  Storage: 'Penyimpanan',
+  'Running low. Free up space or add storage in Settings.': 'Hampir penuh. Kosongkan ruang atau tambah penyimpanan di Pengaturan.',
+
+  // The list (DriveView)
+  'Open menu': 'Buka menu',
+  'Search results': 'Hasil pencarian',
+  'Search in Drive': 'Cari di Drive',
+  'Clear search': 'Kosongkan pencarian',
+  Grid: 'Petak',
+  List: 'Daftar',
+  Name: 'Nama',
+  Modified: 'Diubah',
+  Size: 'Ukuran',
+  Folders: 'Folder',
+  Files: 'File',
+  '{n} items': '{n} item',
+  'Attachments from your emails appear here automatically.': 'Lampiran dari email Anda otomatis muncul di sini.',
+  'Items in trash are deleted forever after 30 days.': 'Isi sampah dihapus permanen setelah 30 hari.',
+  'No files found': 'File tidak ditemukan',
+  'Trash is empty': 'Sampah kosong',
+  'Nothing here yet': 'Belum ada apa-apa di sini',
+  'Nothing matches “{q}”.': 'Tidak ada yang cocok dengan “{q}”.',
+  'Drag files here or press Upload.': 'Seret file ke sini atau tekan Unggah.',
+  'Drop to upload': 'Lepas untuk mengunggah',
+  'to {folder}': 'ke {folder}',
+  'to My Drive': 'ke Drive saya',
+  'More for {name}': 'Tindakan lain untuk {name}',
+
+  // A file's actions (buttons, long-press, right-click and "…")
+  Restore: 'Pulihkan',
+  'Delete forever': 'Hapus permanen',
+  'Open email': 'Buka email',
+  'Open the email': 'Buka email',
+  Star: 'Beri bintang',
+  Unstar: 'Hapus bintang',
+  'Move to trash': 'Pindahkan ke sampah',
+
+  // The preview (DrivePreview)
+  'Open related email': 'Buka email terkait',
+  'Close (Esc)': 'Tutup (Esc)',
+  'Previous file': 'File sebelumnya',
+  'Next file': 'File berikutnya',
+  'Sample video. Upload your own to play it here': 'Video contoh. Unggah video Anda sendiri untuk memutarnya di sini',
+  'Previews for documents arrive with the real file server.': 'Pratinjau dokumen akan tersedia setelah server file aktif.',
+
+  // Asking before a big upload (BigFileDialog); the storage sentences are the same as the imports' (settings.imports.ts)
+  'Save a big file': 'Simpan file besar',
+  'Save a big file?': 'Simpan file besar?',
+  '{file} is {size}.': '{file} berukuran {size}.',
+  'The company has {left} free of {total}, shared by everyone.': 'Ruang kosong perusahaan {left} dari {total}, dipakai bersama oleh semua orang.',
+  'This leaves {rest}.': 'Sisanya {rest}.',
+  'This file doesn’t fit.': 'File ini tidak muat.',
+  'Don’t upload': 'Jangan unggah',
+  'Save it here': 'Simpan di sini',
+
+  // Drive's lines in App.tsx (toasts, a new folder's name, the upload count). Toasts already show t(text).
+  'Moved to trash': 'Dipindahkan ke sampah',
+  'Deleted forever': 'Dihapus permanen',
+  'Saved to My Drive': 'Tersimpan di Drive saya',
+  'Untitled folder': 'Folder tanpa judul',
+  'Uploaded {n} files': '{n} file diunggah',
+  'That file isn’t in Drive any more.': 'File itu sudah tidak ada di Drive.',
 };
 
 export default id;
