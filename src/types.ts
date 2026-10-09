@@ -182,7 +182,35 @@ export interface CalEvent {
   busy?: boolean; // a teammate's event shown as busy only (no title or details)
   remind?: number; // minutes before the start to remind its owner (a notification; the server sends it)
   remindedFor?: string; // the start the reminder went out for (the server's: moving the event sets it again)
-  timeZone?: string; // set in another time zone: its times are shown in that zone too ("10:00 Singapore time")
+  timeZone?: string; // set in another time zone: its times are shown in that zone too ("10:00 Singapore time"). A repeating event always has one: its dates keep that zone's clock time
+  /* Repeating events (src/repeat.ts): one event holds the whole series, and every view draws its dates from it. */
+  rrule?: string; // how it repeats, RFC 5545 without "RRULE:" (FREQ=WEEKLY;BYDAY=MO). The event's own start is the first date
+  exdates?: string[]; // dates left out (their original starts, ISO; a whole day as "2026-10-28")
+  rdates?: string[]; // extra dates (only from invites that have them)
+  overrides?: EventOverride[]; // single dates changed on their own (moved, renamed, answered)
+  rsvpFrom?: { from: string; rsvp: RsvpStatus }[]; // an invite answered "this and following": that answer from that date on
+  seriesId?: string; // one date drawn from a repeating event (never stored): the event it belongs to. `occurrence` is its original start
+  /* Invites we send (server/calendarInvites.ts): guests get it by email, their answers come back here. */
+  sendInvites?: boolean; // email the invite (and its updates) to the guests
+  answers?: Record<string, GuestAnswer>; // the guests' answers, by email (lower case)
+  invite?: { uid: string; sequence: number; sentAt?: string; held?: string[]; error?: string }; // the server's: what went out last
+}
+
+export type GuestAnswer = RsvpStatus | 'needs-action' | 'delegated';
+/** One date of a repeating event, changed on its own. `null` clears what the series has (no location on this date). */
+export interface EventOverride {
+  occurrence: string; // the date's original start (ISO), as the repeat makes it
+  start?: string; // moved: both times are set
+  end?: string;
+  title?: string;
+  calendarId?: string;
+  location?: string | null;
+  meetUrl?: string | null;
+  notes?: string | null;
+  guests?: Person[] | null;
+  remind?: number | null;
+  rsvp?: RsvpStatus; // my answer for this date (an invite)
+  answers?: Record<string, GuestAnswer>; // guests' answers for this date (an invite we sent)
 }
 
 export interface Label {
