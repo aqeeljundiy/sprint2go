@@ -4,3 +4,123 @@
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
+
+/* Each file and folder has one list of actions (DriveView's DriveItemCard): long-press or "…" on phones, right-click
+   or the buttons that show on hover on desktop. */
+.d-more {
+  display: none;
+}
+.lp .rename-input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media (max-width: 767px) {
+  /* One row on top: search and the grid/list switch. A folder's path, when you're in one, goes on its own line. */
+  .drive-head {
+    flex-wrap: wrap;
+    gap: 8px;
+    row-gap: 0;
+    padding: 10px 16px;
+  }
+  .drive-head .crumbs {
+    order: 3;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .drive-head .crumbs:has(.crumb-wrap),
+  .drive-head .crumbs:has(h1:not(.drive-sec-title)) {
+    margin-top: 8px;
+  }
+  .drive-search {
+    order: 1;
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+  .drive-head .icon-seg {
+    order: 2;
+    flex: none;
+  }
+  .crumbs h1,
+  .crumb {
+    font-size: 18px;
+  }
+  .drive-scroll {
+    padding: 14px 16px 24px;
+  }
+  /* Folders are a list (their names need the width); files stay two across. */
+  .folder-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .file-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .media-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+  }
+  .media-grid .file-card {
+    border-radius: 4px;
+  }
+
+  /* No star and trash buttons sitting on every thumbnail (and no one-tap delete): "…" and long-press instead. */
+  .d-actions {
+    display: none;
+  }
+  .d-more {
+    display: inline-grid;
+    flex: none;
+    color: var(--text-2);
+  }
+  /* On a file, "…" sits on the picture's corner so the name keeps the card's width. The visible circle is 32 px; the
+     tap area around it is 44. */
+  .file-card .d-more {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    border-radius: 50%;
+    color: var(--text);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(6px);
+  }
+  .file-card .d-more::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+  .media-grid .file-card .d-more {
+    top: 4px;
+    right: 4px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.42);
+    box-shadow: none;
+  }
+  .folder-card {
+    min-height: 56px;
+    padding: 6px 2px 6px 12px;
+  }
+  .d-tr {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 52px;
+    padding: 4px 4px 4px 14px;
+  }
+  .d-th {
+    min-height: 0;
+    padding: 9px 14px;
+  }
+
+  /* Don't lift on hover: a phone keeps the last tap's hover. */
+  .folder-card:hover,
+  .file-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}

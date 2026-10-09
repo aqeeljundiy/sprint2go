@@ -1923,48 +1923,7 @@ body.resizing-x .pane-resize::after {
     animation: sheetUp 0.3s var(--ease);
   }
 
-  /* Drive */
-  .drive-head {
-    flex-wrap: wrap;
-    padding: 12px 16px;
-    padding-top: max(12px, env(safe-area-inset-top));
-  }
-  .drive-search {
-    order: 5;
-    width: 100%;
-  }
-  .crumbs h1,
-  .crumb {
-    font-size: 18px;
-  }
-  .drive-scroll {
-    padding: 14px 16px 96px;
-  }
-  .folder-grid,
-  .file-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-  .media-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 3px;
-  }
-  .media-grid .file-card {
-    border-radius: 4px;
-  }
-  .d-actions {
-    opacity: 1;
-    transform: none;
-  }
-  .media-grid .d-actions {
-    display: none;
-  }
-  .folder-card .d-actions {
-    display: none;
-  }
-  .d-tr {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
+  /* Drive: src/mobile/drive.css */
   .lb-stage {
     padding: 8px 8px 64px;
   }
