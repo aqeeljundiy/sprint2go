@@ -34,6 +34,7 @@ const LEAVING = [
   '.inline-sheet',
   '.paused-banner',
   '.demo-bar',
+  '.task-bulk',
   '.mail-bulk',
 ].join(',');
 

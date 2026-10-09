@@ -10,6 +10,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as db from './db.ts';
 import * as sandbox from './sandbox.ts';
 import { cleanStages, stageName, stageOf, stageIdFor } from '../src/stages.ts';
+import { needsYou, updatesOf } from '../src/needsYou.ts';
 import { addDays, companyTz, localParts, zonedTime } from '../src/jobTimes.ts';
 import type { StageKind, TaskStage } from '../src/types.ts';
 
@@ -529,52 +530,49 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     'needs_me',
     {
       title: 'What needs me',
-      description: 'What needs you now, most urgent first, the same list as sprint2go’s Home: meetings starting soon, work waiting for your review, new guest requests, your late tasks and tasks due today, team queues you run, work you handed out that is late, client mail waiting for a reply, finished briefs to close. Also your unread notifications.',
+      description: 'What needs you now, most urgent first, the same list as sprint2go’s Home: meetings starting soon, work waiting for your review, guests asking for changes, new guest requests, mentions, guests writing, news about your own open tasks, your late tasks and tasks due today, team queues you run, work you handed out that is late, client mail waiting for a reply, finished briefs to close. Also your other unread notifications.',
       inputSchema: {},
       annotations: READ,
     },
     (_a, v) => {
-      const me = v.me;
+      // The same rules as Home's "Needs you" (src/needsYou.ts), so Claude and the app list the same things.
       const today = v.today();
-      const kind = (t: Doc) => stageOf(t as any, v.stagesFor(t)).kind;
       const tasks = v.docs('todos');
-      const work = tasks.filter((t) => t.kind !== 'brief');
-      const open = work.filter((t) => !t.done);
-      const late = (t: Doc) => !t.done && !!t.due && t.due < today;
-      const mine = open.filter((t) => doers(t).includes(me));
-      const leads = v.docs('teams').filter((t) => t.leadId === me);
-      const queue = open.filter((t) => !t.userId && (v.role() === 'owner' || leads.some((tm) => tm.id === t.teamId)));
-      const projectName = (id: string) => v.docs('clients').find((c) => c.id === id)?.name ?? 'a client';
-      const now = Date.now();
-      const item = (rank: number, kind: string, why: string, t: Doc) => ({ rank, kind, why, ...taskLine(v, t) });
-      const items: (Doc & { rank: number })[] = [
-        ...v
-          .myEvents()
-          .filter((e) => !e.allDay && Date.parse(e.end) > now && Date.parse(e.start) <= now + 45 * 60_000)
-          .map((e) => ({ rank: 100, kind: 'meeting', why: Date.parse(e.start) <= now ? 'Happening now' : `Starts at ${v.time(e.start)}`, id: e.id, title: e.title, ...(e.meetUrl ? { join: e.meetUrl } : {}), link: v.link('calendar', e.id) })),
-        ...open.filter((t) => kind(t) === 'review' && t.supervisorId === me).map((t) => item(90, 'review', `${v.firstOf(doers(t)[0]) || 'Someone'} finished it, waiting for your review`, t)),
-        ...open.filter((t) => t.source === 'request' && kind(t) === 'open' && (doers(t).includes(me) || (!t.userId && leads.some((tm) => tm.id === t.teamId)))).map((t) => item(85, 'request', `New request from ${projectName(t.clientId)}`, t)),
-        ...mine.filter(late).map((t) => item(80, 'late', `Late: was due ${t.due}`, t)),
-        ...mine.filter((t) => t.due === today && kind(t) !== 'review').map((t) => item(70, 'due today', 'Due today', t)),
-        ...queue.map((t) => item(60, 'team queue', `${v.docs('teams').find((x) => x.id === t.teamId)?.name ?? 'Team'} queue, nobody on it yet`, t)),
-        ...work.filter((t) => t.createdBy === me && t.userId && !doers(t).includes(me) && late(t)).map((t) => item(50, 'delegated', `Late with ${v.firstOf(t.userId)}`, t)),
-        ...v
-          .docs('threads')
-          .filter((t) => v.mailboxes().some((a) => a.id === t.accountId) && t.location === 'inbox' && t.unread && lastOf(t).from && !v.mine(lastOf(t).from.email))
-          .filter((t) => v.docs('clients').some((c) => c.domain && lower(lastOf(t).from.email).endsWith('@' + lower(c.domain))))
-          .map((t) => ({ rank: 45, kind: 'mail', why: `${lastOf(t).from.name || lastOf(t).from.email} is waiting for a reply`, ...threadLine(v, t) })),
-        ...tasks
-          .filter((b) => b.kind === 'brief' && !b.done && b.userId === me && work.some((t) => t.briefId === b.id) && work.filter((t) => t.briefId === b.id).every((t) => t.done))
-          .map((b) => item(30, 'brief', 'Every task is done, close the brief', b)),
-      ];
-      items.sort((a, b) => b.rank - a.rank || String(a.due ?? '').localeCompare(String(b.due ?? '')));
-      const notices = v
-        .docs('notices')
-        .filter((n) => !n.read)
-        .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+      const events = v.myEvents();
+      const notices = v.docs('notices');
+      const boxes = v.mailboxes();
+      const threads = v.docs('threads').filter((t) => boxes.some((a) => a.id === t.accountId));
+      const items = needsYou({
+        me: v.me,
+        today,
+        now: Date.now(),
+        tasks: tasks as any,
+        stageKind: (t) => stageOf(t as any, v.stagesFor(t as any)).kind,
+        teams: v.docs('teams') as any,
+        clients: v.docs('clients') as any,
+        isOwner: v.role() === 'owner',
+        firstName: (id) => v.firstOf(id),
+        events: events as any,
+        threads: threads.map((t) => ({ ...t, messages: (t.messages ?? []).filter((m: Doc) => m.from?.email) })) as any,
+        mine: v.mine,
+        notices: notices as any,
+        minutes: (iso) => v.time(iso),
+      });
+      const WORD: Partial<Record<string, string>> = { today: 'due today', queue: 'team queue', guest: 'guest reply', changes: 'changes asked', assigned: 'about your task' };
+      const needs = items.slice(0, 40).map((x) => {
+        const head = { kind: WORD[x.kind] ?? x.kind, why: x.sub };
+        const e = x.eventId ? events.find((ev) => ev.id === x.eventId) : undefined;
+        if (e) return { ...head, id: e.id, title: e.title, ...(e.meetUrl ? { join: e.meetUrl } : {}), link: v.link('calendar', e.id) };
+        const t = x.taskId && x.kind !== 'assigned' ? tasks.find((d) => d.id === x.taskId) : undefined;
+        if (t) return { ...head, ...taskLine(v, t) };
+        const th = x.threadId ? threads.find((d) => d.id === x.threadId) : undefined;
+        if (th) return { ...head, ...threadLine(v, th) };
+        return { ...head, text: x.text, at: v.when(x.at), ...(x.link?.app ? { link: v.link(x.link.app === 'settings' ? 'settings' : x.link.app, x.link.id, x.link.msg) } : {}) };
+      });
+      const rest = updatesOf(notices as any[], items)
         .slice(0, 15)
         .map((n) => ({ text: n.text, at: v.when(n.at), ...(n.link?.app ? { link: v.link(n.link.app === 'settings' ? 'settings' : n.link.app, n.link.id, n.link.msg) } : {}) }));
-      return { today, needs_you: items.slice(0, 40).map(({ rank: _r, ...x }) => x), unread_notifications: notices, ...(items.length || notices.length ? {} : { note: 'Nothing needs you right now.' }) };
+      return { today, needs_you: needs, unread_notifications: rest, ...(needs.length || rest.length ? {} : { note: 'Nothing needs you right now.' }) };
     },
   );
 

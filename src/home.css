@@ -1,0 +1,498 @@
+/* ==========================================================================
+   Home: the meeting strip, live calls, Needs you, Today, Updates and Customise
+   (src/components/HomeView.tsx, src/components/home/HomeParts.tsx). Phones: src/mobile/home.css.
+   ========================================================================== */
+
+.home-top {
+  display: grid;
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+@media (min-width: 1100px) {
+  .home-top:has(> .htoday) {
+    grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
+  }
+}
+.hsec {
+  padding: 12px 14px 8px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.hsec + .hsec,
+.home-top + .hsec,
+.hsec + .setup-card {
+  margin-top: 14px;
+}
+.home-top > .hsec + .hsec {
+  margin-top: 0; /* the grid's gap spaces them */
+}
+.hsec-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.hsec-h > span {
+  flex: 1;
+  min-width: 0;
+}
+.hsec-empty {
+  margin: 2px 0 8px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.hsec-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0 2px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Needs you ---------- */
+.ny-list {
+  display: grid;
+}
+.ny-swipe + .ny-swipe {
+  border-top: 1px solid var(--line);
+}
+.ny-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 2px;
+  background: var(--surface);
+}
+.ny-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--text-2);
+}
+.ny-row.k-late .ny-icon,
+.ny-row.k-delegated .ny-icon,
+.ny-row.k-changes .ny-icon {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.ny-row.k-review .ny-icon,
+.ny-row.k-request .ny-icon,
+.ny-row.k-assigned .ny-icon,
+.ny-row.k-queue .ny-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ny-row.k-mention .ny-icon,
+.ny-row.k-guest .ny-icon,
+.ny-row.k-mail .ny-icon {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.ny-row.k-brief .ny-icon {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.ny-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ny-text strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.ny-text small {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ny-act {
+  flex: none;
+}
+.ny-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.ny-btn:hover {
+  background: color-mix(in oklab, var(--accent) 14%, var(--hover));
+}
+.ny-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+.ny-btn.primary:hover {
+  background: var(--accent-hover);
+}
+.sel.ny-assign {
+  height: 32px;
+}
+.ny-more {
+  margin: 6px 0 4px 46px;
+}
+
+/* ---------- A meeting about to start, a huddle going on ---------- */
+.upn,
+.hcall {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.upn {
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+.hcall {
+  background: color-mix(in oklab, var(--ok-solid) 8%, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ok-solid) 24%, transparent);
+}
+.upn-icon,
+.hcall-icon {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+}
+.hcall-icon {
+  background: var(--ok-solid);
+}
+.hcall-live {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: hcallLive 1.6s ease-in-out infinite; /* live status: the one thing that moves by itself */
+}
+@keyframes hcallLive {
+  50% {
+    opacity: 0.35;
+  }
+}
+.upn-text,
+.hcall-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.upn-text {
+  cursor: pointer;
+}
+.upn-text strong,
+.hcall-text strong {
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upn-text small {
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.hcall-text small {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upn-bot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.upn-sent {
+  flex: none;
+  color: var(--ok);
+  font-size: 12.5px;
+}
+.upn-join {
+  text-decoration: none;
+}
+.hcall-faces {
+  flex: none;
+  display: flex;
+}
+.hcall-faces > * + * {
+  margin-left: -6px;
+}
+.hcall-faces .avatar {
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* ---------- Today ---------- */
+.htd-events {
+  display: grid;
+}
+.htd-ev {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  border-bottom: 1px solid var(--line);
+}
+.htd-events:last-child .htd-ev:last-child {
+  border-bottom: 0;
+}
+.htd-ev time {
+  flex: none;
+  width: 64px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.htd-ev-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.htd-tasks {
+  display: grid;
+}
+.htd-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  background: var(--surface);
+}
+.htd-title {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 4px 0 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+.htd-title small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.htd-title small i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.htd-task.ticking .htd-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.htd-task.ticking .ring {
+  animation: ringPop 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---------- Updates (phones: the bell's place) ---------- */
+.hupd-list {
+  display: grid;
+}
+.hupd-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 2px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hupd-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.hupd-text time {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* ---------- Customise (a list, on phones) ---------- */
+.hcust {
+  display: grid;
+  gap: 4px;
+  padding: 0 4px 12px;
+}
+.hcust-tpl {
+  padding: 0 8px 8px;
+}
+.hcust-tpl .sel {
+  width: 100%;
+}
+.hcust-list {
+  display: grid;
+}
+.hcust-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--line);
+  transition: opacity 0.18s ease;
+}
+.hcust-row.off {
+  opacity: 0.72;
+}
+.hcust-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hcust-name {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.hcust-name small {
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.hcust-moves {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+.hcust-reset {
+  justify-self: start;
+  margin: 12px 8px 0;
+}
+.hcust-page {
+  padding: 8px 8px 32px;
+}
+.home-customise {
+  display: flex;
+  margin: 16px auto 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hsec,
+  .upn,
+  .hcall,
+  .hcall-live,
+  .htd-task.ticking .ring {
+    animation: none;
+  }
+  .ny-btn,
+  .htd-title,
+  .hcust-row {
+    transition: none;
+  }
+}

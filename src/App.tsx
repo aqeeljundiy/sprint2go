@@ -85,6 +85,8 @@ import { Sheet } from './components/ui/Sheet';
 import { offerInstall } from './components/InstallPrompt';
 import { BottomBar } from './mobile/BottomBar';
 import { MoreSheet } from './mobile/MoreSheet';
+import { duplicateOf } from './components/tasks/taskOps';
+import { needsCount, needsYou } from './needsYou';
 import { DEFAULT_BAR, MORE_ORDER, companyBar } from './mobile/BarDefaults';
 import { useAppSettings, useChrome, useFocusedScreen, useTitleMenu } from './mobile/chrome';
 import { PHONE, TABLET, useMedia } from './mobile/media';
@@ -185,8 +187,8 @@ function PushedSettings({ push, onBack, children }: { push: { label: string } | 
   );
 }
 
-/** `quiet`: news nobody asked for just now (to-dos found in the background). Phones show it over the top bar, not over content. `more`: a second button (Open next to Undo). */
-type Toast = { id: number; text: string; action?: { label: string; run: () => void }; more?: { label: string; run: () => void }; ms?: number; quiet?: boolean };
+/** `quiet`: news nobody asked for just now (to-dos found in the background). Phones show it over the top bar, not over content. */
+type Toast = { id: number; text: string; action?: { label: string; run: () => void }; also?: { label: string; run: () => void }; ms?: number; quiet?: boolean };
 type ComposeState = { key: number; draftId?: string; initial?: Outgoing; parked?: boolean };
 
 interface AppProps {
@@ -488,7 +490,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [messages, setMessages] = useStored('messages');
   const [notices, setNotices] = useStored('notices');
   const [meetings, setMeetings] = useStored('meetings');
-  const [taskScope, setTaskScope] = useState<TaskScope>({ kind: 'mine' });
+  const [taskScope, setTaskScope] = usePersisted<TaskScope>('s2g-task-scope', { kind: 'mine' }); // the last one used, on this device
   // The Projects app: all projects, past ones, or one project's hub.
   const [projScope, setProjScope] = useState<TaskScope>({ kind: 'projects' });
   const [projNew, setProjNew] = useState(0); // bumps to open the "new project" form
@@ -1270,10 +1272,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const t = todos.find((x) => x.id === id);
     if (t) setTaskStatus(id, stageIdFor(t, t.done ? 'open' : 'done'));
   };
-  const deleteTodo = (id: string) => {
+  /** Deletes tasks, with Undo (quiet: no toast, e.g. undoing an add that just happened). */
+  const deleteTodo = (ids: string | string[], quiet = false) => {
+    const gone = new Set(Array.isArray(ids) ? ids : [ids]);
     const snapshot = todos;
-    setTodos((list) => list.filter((t) => t.id !== id));
-    showToast({ text: 'To-do deleted', action: { label: 'Undo', run: () => setTodos(snapshot) } });
+    setTodos((list) => list.filter((t) => !gone.has(t.id)));
+    if (!quiet) showToast({ text: gone.size === 1 ? 'Task deleted' : `${gone.size} tasks deleted`, action: { label: 'Undo', run: () => setTodos(snapshot) } });
   };
   /** A task gets a time: how long, then a free slot (the Schedule sheet). From the task's panel, its row and Calendar. */
   const todoToCalendar = (t: Todo) => setScheduling(t);
@@ -1668,6 +1672,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       checklist?: Todo['checklist'];
       repeat?: Todo['repeat'];
       noteId?: string;
+      assignees?: string[]; // everyone doing it (Quick Add's "+dewi +rizky"); userId is the first
+      remindAt?: string;
+      status?: TaskStatus;
+      notes?: string;
     },
     tell: { chat?: boolean; email?: boolean } = {},
   ) => {
@@ -1686,7 +1694,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       due: t.due,
       priority: t.priority ?? 'normal',
       done: false,
-      status: stageIdFor({ workspaceId: ws.id }, t.kind === 'brief' ? 'active' : 'open'),
+      // A stage it was given (Quick Add's /stage, a board column) when it's one of its own stages (its project's or team's, else the company's).
+      status: t.status && stagesForTask({ workspaceId: ws.id, clientId: t.clientId, teamId: t.teamId }).some((s) => s.id === t.status && s.kind !== 'done') ? t.status : stageIdFor({ workspaceId: ws.id, clientId: t.clientId, teamId: t.teamId }, t.kind === 'brief' ? 'active' : 'open'),
       source: t.source,
       createdBy: user.id,
       workspaceId: ws.id,
@@ -1694,8 +1703,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       checklist: t.checklist,
       repeat: t.repeat,
       noteId: t.noteId,
+      ...(t.remindAt ? { remindAt: t.remindAt, reminded: false } : {}),
+      ...(t.notes ? { notes: t.notes } : {}),
       createdAt: nowIso(),
-      assignees: t.userId ? [t.userId] : [],
+      assignees: t.assignees?.length ? t.assignees : t.userId ? [t.userId] : [],
       supervisorId: user.id, // whoever assigns it supervises it, unless someone changes it
       history: [{ id: uid(), at: nowIso(), by: user.id, kind: 'created', text: `created this${t.noteId ? ' from a note' : ''}${{ ai: ' from an email', manual: '', braindump: ' from a brain dump', chat: ' from chat', meeting: ' from a meeting', request: ' from a request', import: ' from an import' }[t.source]}${t.userId && t.userId !== user.id ? ` for ${firstOf(t.userId)}` : ''}` }],
     };
@@ -1705,11 +1716,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const tm = wsTeams.find((x) => x.id === t.teamId);
       if (tm?.leadId && tm.leadId !== user.id) notify(tm.leadId, 'task', `New in ${tm.name}’s queue: ${describe(task)}. Pick someone for it.`, { app: 'tasks', id: task.id });
     }
-    if (t.userId && t.userId !== user.id) {
-      notify(t.userId, 'task', `${myFirst} assigned you ${describe(task)}`, { app: 'tasks', id: task.id });
-      if (tell.chat) postChat(dmWith(t.userId), `📌 New task for you: ${describe(task)}`, task.id);
+    for (const who of (task.assignees ?? []).filter((x) => x !== user.id)) {
+      notify(who, 'task', `${myFirst} assigned you ${describe(task)}`, { app: 'tasks', id: task.id });
+      if (tell.chat) postChat(dmWith(who), `📌 New task for you: ${describe(task)}`, task.id);
       if (tell.email)
-        emailTeammate(t.userId, `New task: ${task.title}`, `Hi ${firstOf(t.userId)},\n\nI've assigned you a task: ${describe(task)}.\n\nYou'll find it in ${product.name} under Tasks.`);
+        emailTeammate(who, `New task: ${task.title}`, `Hi ${firstOf(who)},\n\nI've assigned you a task: ${describe(task)}.\n\nYou'll find it in ${product.name} under Tasks.`);
     }
     return task;
   };
@@ -2167,7 +2178,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (!n) return;
     const copy: Note = { ...n, id: uid(), title: n.title ? `${n.title} (copy)` : '', ownerId: user.id, visibility: n.visibility, pinned: false, html: n.html.replace(/<span class="note-task"[^>]*><\/span>/g, ''), createdAt: nowIso(), updatedAt: nowIso(), updatedBy: user.id, deletedAt: undefined, deletedBy: undefined };
     setNotes((ns) => [copy, ...ns]);
-    showToast({ text: 'Copy made', more: { label: 'Open', run: () => openNote(copy.id) }, action: { label: 'Undo', run: () => setNotes((ns) => ns.filter((x) => x.id !== copy.id)) } });
+    showToast({ text: 'Copy made', also: { label: 'Open', run: () => openNote(copy.id) }, action: { label: 'Undo', run: () => setNotes((ns) => ns.filter((x) => x.id !== copy.id)) } });
   };
   const openNote = (id: string, find?: string) => (setNoteId(id), setNoteOpenAt({ find }), go('notes'));
   const notesApi: NotesApi = {
@@ -3428,25 +3439,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** The phone's title switcher for each app (Mail registers its own above). */
   const mobileSwitcher = (() => {
-    if (mode === 'tasks') {
-      const sc = taskScope;
-      return {
-        label: 'Which tasks',
-        value: sc.kind === 'client' ? `client:${sc.id}` : sc.kind === 'team' ? `team:${sc.id}` : sc.kind,
-        options: [
-          { value: 'mine', label: 'My tasks', group: 'Views' },
-          { value: 'supervising', label: 'Supervising', group: 'Views' },
-          { value: 'myteams', label: 'My teams', group: 'Views' },
-          { value: 'myclients', label: `My ${term.many}`, group: 'Views' },
-          { value: 'delegated', label: 'Assigned by me', group: 'Views' },
-          { value: 'briefs', label: 'Briefs', group: 'Views' },
-          ...(isAdmin ? [{ value: 'all', label: 'Everything', group: 'Views' }] : []),
-          ...wsTeams.filter((t) => isAdmin || myTeamIds.includes(t.id)).map((t) => ({ value: `team:${t.id}`, label: t.name, group: 'Teams' })),
-          ...wsClients.filter((c) => isAdmin || myClientIds.includes(c.id)).map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}` })),
-        ],
-        onChange: (v: string) => setTaskScope(v.startsWith('client:') ? { kind: 'client', id: v.slice(7) } : v.startsWith('team:') ? { kind: 'team', id: v.slice(5) } : ({ kind: v } as TaskScope)),
-      };
-    }
+    // Tasks registers its own switcher (TasksView, useTitleMenu).
     if (mode === 'meet')
       return {
         label: 'Meet',
@@ -3527,8 +3520,28 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     return n;
   }, [chatUnread, wsChannels, messages, lastRead, myFirst, user.id]);
-  const unreadNotices = myNotices.filter((n) => !n.read).length;
-  const barBadge = (id: AppId) => (id === 'home' ? unreadNotices : id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : 0);
+  // Home's badge: what's in its "Needs you" list (src/needsYou.ts, the same rules Home and the AI connector use).
+  const needsBadge = useMemo(
+    () =>
+      needsCount(
+        needsYou({
+          me: user.id,
+          today: localDay(),
+          now: Date.now(),
+          tasks: wsTasks,
+          stageKind: (t) => stageKind(t as Todo),
+          teams: wsTeams,
+          clients: wsClients,
+          isOwner: ws.members.some((m) => m.userId === user.id && m.role === 'owner'),
+          firstName: (id) => firstOf(id),
+          threads: scoped,
+          mine: isMine,
+          notices: myNotices,
+        }),
+      ),
+    [wsTasks, wsTeams, wsClients, scoped, myNotices, user.id, ws.members], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const barBadge = (id: AppId) => (id === 'home' ? needsBadge : id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : 0);
   // Search: inside the app on screen when it has things to search, with "All apps" one tap away.
   const [searchScope, setSearchScope] = useState<AppId | null>(null);
   const openSearch = (scope: AppId | null) => (setSearchScope(scope), setPaletteOpen(true));
@@ -4106,6 +4119,38 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenClient={openClient}
             onOpenMeeting={openMeeting}
             onNotice={openNotice}
+            onStart={(id) => {
+              const t = todos.find((x) => x.id === id);
+              if (t) setTaskStatus(id, stageIdFor(t, 'active'));
+            }}
+            onReschedule={(id, day) => patchTask(id, { due: day || undefined })}
+            onReadNotices={(ids) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)))}
+            onAllNotices={() => setNoticesOpen(true)}
+            calls={wsChannels
+              .filter((c) => c.huddle && c.huddle.members.some((m) => m !== user.id) && huddleId !== c.id)
+              .map((c) => ({ id: c.id, name: c.name, people: c.huddle!.members.filter((m) => m !== user.id).map((m) => allUsers.find((u) => u.id === m)).filter((u): u is User => !!u) }))}
+            onJoinHuddle={
+              server.on
+                ? (id) => {
+                    if (huddleId && huddleId !== id) leaveHuddle();
+                    setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, huddle: { by: c.huddle?.by ?? user.id, at: c.huddle?.at ?? nowIso(), members: [...new Set([...(c.huddle?.members ?? []), user.id])] } } : c)));
+                    setHuddleId(id);
+                    openChannel(id);
+                  }
+                : (id) => openChannel(id)
+            }
+            botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
+            onBotJoin={
+              autoJoin === 'live'
+                ? (e, join) => {
+                    const byRule = botJoins(e, meetSettings.joinMode, {}, isMine);
+                    setBotJoin(e.id, join === byRule ? null : join);
+                    showToast({ text: join ? `The notetaker will join “${e.title}”` : `The notetaker won’t join “${e.title}”`, action: { label: 'Undo', run: () => setBotJoin(e.id, e.id in joinOverrides ? joinOverrides[e.id] : null) } });
+                  }
+                : undefined
+            }
+            onSendNotetaker={botOn && autoJoin !== 'live' ? sendNotetakerTo : undefined}
+            notetakerSent={sentFor}
             onMenu={() => setSidebarOpen(true)}
             news={news.filter((n) => !newsSeen.includes(n.id))}
             onDismissNews={(id) => setNewsSeen((s) => [...s.slice(-50), id])}
@@ -4204,11 +4249,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             threads={wsThreads}
             channels={wsChannels}
             meetings={wsMeetings}
-            onAdd={(t) => {
-              const task = createTask({ ...t, source: 'manual' }, { chat: true });
-              if (task.userId && task.userId !== user.id) showToast({ text: `Assigned to ${firstOf(task.userId)}, they’ve been notified` });
-              else if (!task.userId) showToast({ text: `Added to ${wsTeams.find((x) => x.id === task.teamId)?.name ?? 'the'} queue` });
-            }}
+            onAdd={(t) => createTask({ ...t, source: 'manual' }, { chat: true }).id}
+            onOpenProject={enabled.has('projects') ? (id) => openClient(id) : undefined}
+            onPastProjects={enabled.has('projects') ? () => (setProjScope({ kind: 'past' }), go('projects')) : undefined}
             onStatus={setTaskStatus}
             onPatch={patchTask}
             onDelete={deleteTodo}
@@ -4931,8 +4974,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onApp={(id) => go(id as AppId)}
           current={mode}
           recent={recentLinks}
-          notices={unreadNotices}
-          onNotices={() => (setMoreOpen(false), setNoticesOpen(true))}
           onAsk={toggleAsk}
           onAccount={() => (mode !== 'settings' && openSettingsList(), go('settings'))}
           editing={editingBar}
@@ -5184,6 +5225,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           })()}
           onSendBack={sendBack}
           onSaveTemplate={saveTemplate}
+          onDuplicate={(t) => {
+            const copy = createTask({ ...duplicateOf(t), source: 'manual' });
+            showToast({ text: `Duplicated “${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}”`, action: { label: 'Open', run: () => setTaskOpen(copy.id) } });
+          }}
           onOpenChannel={(clientId) => {
             const ch = channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId && c.category !== 'shared') ?? channels.find((c) => c.workspaceId === ws.id && c.clientId === clientId);
             if (ch) (setTaskOpen(null), openChannel(ch.id));
@@ -5359,16 +5404,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {toast && (
         <div className={`toast${toast.quiet ? ' quiet' : ''}`} role="status" key={toast.id}>
           <span>{toast.text}</span>
-          {toast.more && (
-            <button
-              onClick={() => {
-                toast.more!.run();
-                setToast(null);
-              }}
-            >
-              {toast.more.label}
-            </button>
-          )}
           {toast.action && (
             <button
               onClick={() => {
@@ -5377,6 +5412,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               }}
             >
               {toast.action.label === 'Undo' && <Undo2 size={14} />} {toast.action.label}
+            </button>
+          )}
+          {toast.also && (
+            <button
+              onClick={() => {
+                toast.also!.run();
+                setToast(null);
+              }}
+            >
+              {toast.also.label}
             </button>
           )}
         </div>

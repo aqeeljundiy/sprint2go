@@ -90,12 +90,15 @@ useFocusedScreen(open, () => close());     // no Back of its own: one appears in
 Wired today: mail reader (App.tsx), chat channel (ChatView), note editor (NoteEditor), table record (RecordDrawer),
 project page (App.tsx, with Back), and every PushScreen.
 
-**Badges**: Home, Mail and Chat (`barBadge` in App.tsx). Home counts unread notifications for now; the Home builder
-replaces it with the "Needs you" count. Chat counts direct messages and mentions. More's grid shows the same counts and a
+**Badges**: Home, Mail and Chat (`barBadge` in App.tsx). Home counts its "Needs you" list (`src/needsYou.ts`, the same
+rules as the AI connector's needs_me). Chat counts direct messages and mentions. More's grid shows the same counts and a
 green dot with a word when something is live (Meet: Recording).
 
-**More's "Notifications" row** is there until Home folds the bell's contents in (the bell is gone from the phone's top
-bar; the guest portal keeps its own).
+**Notifications on phones** live on Home: the ones that ask something of you are in Needs you, the rest in Updates, with
+"All notifications" for the full list. More has no Notifications row (`MoreSheet` still takes `onNotices` for a screen
+without Home); the guest portal keeps its own bell.
+
+**Toasts with two actions**: `toast({ text, action, also })` shows a second button (Quick Add's Undo and Open).
 
 ## 4. The touch pieces
 

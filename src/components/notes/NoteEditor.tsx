@@ -122,7 +122,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
     if (l.block) text.current?.pill(l.block, t.id);
     toast({
       text: `Task made: “${t.title}”`,
-      more: { label: 'Open', run: () => p.onOpenTask(t.id) },
+      also: { label: 'Open', run: () => p.onOpenTask(t.id) },
       action: { label: 'Undo', run: () => (p.onUndoTask(t.id), text.current?.unpill(t.id)) },
     });
   };

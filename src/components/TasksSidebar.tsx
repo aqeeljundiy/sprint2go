@@ -1,7 +1,7 @@
 import { ProjectBadge } from './ProjectBadge';
 import { useState } from 'react';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Users } from 'lucide-react';
+import { Archive, CalendarRange, Eye, FileText, Inbox, LayoutGrid, Layers, Plus, Send, Sparkles, Building2, Sun, Users } from 'lucide-react';
 import type { Client, Team, Todo } from '../types';
 import { doers, isBrief, type TaskScope } from './TasksView';
 import { kindOf } from '../stages';
@@ -60,7 +60,9 @@ export function TasksSidebar({ scope, tasks, clients: allClients, teams: allTeam
       <nav className="nav">
         {(
           [
-            [{ kind: 'mine' }, Inbox, 'My tasks', open.filter((t) => doers(t).includes(me) && urgent(t)).length],
+            [{ kind: 'mine' }, Inbox, 'My tasks', 0],
+            [{ kind: 'today' }, Sun, 'Today', open.filter((t) => doers(t).includes(me) && urgent(t)).length],
+            [{ kind: 'upcoming' }, CalendarRange, 'Upcoming', 0],
             [{ kind: 'supervising' }, Eye, 'Supervising', open.filter((t) => t.supervisorId === me && kindOf(t) === 'review').length],
             [{ kind: 'myteams' }, Users, 'My teams', 0],
             [{ kind: 'myclients' }, Building2, `My ${term.many}`, 0],

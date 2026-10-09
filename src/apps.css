@@ -1643,28 +1643,6 @@
     border: 0;
     box-shadow: none;
   }
-  .home-scroll {
-    padding: 16px 16px 96px;
-    padding-top: max(16px, env(safe-area-inset-top));
-  }
-  .home-grid {
-    grid-template-columns: 1fr;
-  }
-  .home-dump {
-    flex-wrap: wrap;
-    border-radius: 18px;
-    padding: 8px 8px 8px 14px;
-  }
-  .home-dump input {
-    flex-basis: calc(100% - 40px);
-  }
-  .home-dump .primary-btn {
-    width: 100%;
-    justify-content: center;
-  }
-  .tasks-pane .tracking-head .segmented {
-    display: none;
-  }
   .task-add {
     flex-wrap: wrap;
   }
@@ -1676,9 +1654,6 @@
   }
   .task-meta .src {
     display: none;
-  }
-  .board {
-    grid-template-columns: repeat(3, 78vw);
   }
   .chat-compose {
     margin-bottom: 12px;

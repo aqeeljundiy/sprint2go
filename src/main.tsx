@@ -17,6 +17,7 @@ import './tables.css';
 import './teams.css';
 import './polish.css';
 import './tasks.css';
+import './home.css';
 import './mail.css';
 import './admin.css';
 import './notify.css';

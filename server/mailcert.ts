@@ -41,8 +41,12 @@ const fileConfigured = () => !!process.env.MAIL_TLS_CERT && !!process.env.MAIL_T
 let current: Tls | null = null;
 let fileStamp = 0;
 let lastError: CertState['error'] = null;
-let listener: ((tls: Tls) => void) | null = null;
-export const onCertChange = (fn: (tls: Tls) => void) => (listener = fn);
+// The SMTP server (mailer.ts) and the mail apps' servers (mailApps.ts) each take a renewed certificate.
+const listeners: ((tls: Tls) => void)[] = [];
+export const onCertChange = (fn: (tls: Tls) => void) => void listeners.push(fn);
+const tell = (tls: Tls) => listeners.forEach((fn) => fn(tls));
+/** The certificate being served now (null before loadTls, or without openssl). */
+export const currentTls = () => current;
 
 /** The leaf and what it says about itself, or null when the PEM doesn't parse. */
 function inspect(certPem: Buffer | string, host: string) {
@@ -182,7 +186,7 @@ export async function ensureAcme(host: string, log: (line: string) => void, forc
     writeFileSync(acmeFiles.cert, cert);
     lastError = null;
     current = { key: Buffer.from(key), cert: Buffer.from(cert), source: 'acme' };
-    listener?.(current);
+    tell(current);
     const info = inspect(cert, host);
     log(`[mail] New certificate for ${host} from Let's Encrypt${info ? `, valid until ${info.validTo.toISOString().slice(0, 10)}` : ''}`);
     return true;
@@ -203,7 +207,7 @@ function rereadFiles(host: string) {
   if (!existsSync(k) || !existsSync(c)) return;
   if (Math.max(statSync(k).mtimeMs, statSync(c).mtimeMs) <= fileStamp) return;
   const next = loadTls(host);
-  if (next) listener?.(next);
+  if (next) tell(next);
 }
 
 /** Checks the certificate soon after the start and twice a day. Without CF_DNS_TOKEN or the files it does nothing. */

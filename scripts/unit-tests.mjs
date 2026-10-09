@@ -1439,6 +1439,187 @@ await test('Notes: view-only notes stay as their owner left them; sharing and de
   assert.deepEqual(expiredNotes([{ id: 'old', deletedAt: '2026-10-01T00:00:00Z' }, { id: 'new', deletedAt: '2026-11-10T00:00:00Z' }, { id: 'live' }], now).map((n) => n.id), ['old'], 'gone for good after 30 days');
 });
 
+/* ---------- Tasks: due-date colours, rescheduling, Quick Add (src/taskDates.ts, src/quickAdd.ts) ---------- */
+
+const td = await import('../src/taskDates.ts');
+const qa = await import('../src/quickAdd.ts');
+const TODAY = '2026-10-09'; // a Friday
+await test('Task dates: each due date gets its colour (red overdue, green today, amber tomorrow, purple this week, grey later)', () => {
+  assert.equal(td.dateTone('2026-10-08', TODAY), 'overdue');
+  assert.equal(td.dateTone('2025-12-31', TODAY), 'overdue');
+  assert.equal(td.dateTone(TODAY, TODAY), 'today');
+  assert.equal(td.dateTone('2026-10-10', TODAY), 'tomorrow');
+  assert.equal(td.dateTone('2026-10-11', TODAY), 'week');
+  assert.equal(td.dateTone('2026-10-15', TODAY), 'week', 'six days on is still this week');
+  assert.equal(td.dateTone('2026-10-16', TODAY), 'later');
+  assert.equal(td.dateTone('2026-01-01', '2025-12-31'), 'tomorrow', 'across the new year');
+  assert.equal(td.dateGroup(undefined, TODAY), 'none');
+});
+await test('Task dates: the words on a row', () => {
+  assert.equal(td.dueText('2026-10-08', TODAY), 'Yesterday');
+  assert.equal(td.dueText(TODAY, TODAY), 'Today');
+  assert.equal(td.dueText('2026-10-10', TODAY), 'Tomorrow');
+  assert.equal(td.dueText('2026-10-12', TODAY), 'Monday');
+  assert.equal(td.dueText('2026-10-02', TODAY), '2 Oct');
+  assert.equal(td.dueText('2027-02-01', TODAY), '1 Feb 2027');
+  assert.equal(td.dayHeading('2026-10-09', TODAY), 'Today · Fri 9 Oct');
+  assert.equal(td.addMonths('2026-01-31', 1), '2026-02-28', 'kept inside the month');
+  assert.equal(td.weekStart('2026-10-11'), '2026-10-05', 'weeks start on Monday');
+});
+await test('Task dates: reschedule choices and Reschedule all (with its Undo)', () => {
+  const c = td.dayChoices(TODAY, '2026-10-01');
+  assert.deepEqual(c.map((x) => x.id), ['today', 'tomorrow', 'nextweek', 'none'], 'on a Friday there is no "this weekend" (tomorrow is Saturday)');
+  assert.equal(c.find((x) => x.id === 'nextweek').day, '2026-10-12');
+  assert.equal(c.find((x) => x.id === 'nextweek').hint, 'Mon 12 Oct');
+  const wed = td.dayChoices('2026-10-07');
+  assert.deepEqual(wed.map((x) => x.id), ['today', 'tomorrow', 'weekend', 'nextweek'], 'midweek: this weekend; no "No date" without one');
+  assert.equal(wed.find((x) => x.id === 'weekend').day, '2026-10-10');
+  const r = td.reschedule([{ id: 'a', due: '2026-10-01' }, { id: 'b', due: '2026-10-05' }, { id: 'c', due: TODAY }], TODAY);
+  assert.deepEqual(r.patches, [{ id: 'a', due: TODAY }, { id: 'b', due: TODAY }], 'the one already on that day stays');
+  assert.deepEqual(r.undo, [{ id: 'a', due: '2026-10-01' }, { id: 'b', due: '2026-10-05' }]);
+  assert.deepEqual(td.reschedule([{ id: 'a', due: '2026-10-01' }], '').patches, [{ id: 'a', due: undefined }], 'No date clears it');
+});
+await test('Task dates: snoozing a team-queue task says exactly when it comes back', () => {
+  const s = td.snoozeChoices(new Date(2026, 9, 9, 10, 2));
+  assert.deepEqual(s.map((x) => x.id), ['hour', 'evening', 'tomorrow', 'nextweek']);
+  assert.equal(s[0].hint, 'Today, 11:05', 'an hour on, rounded up to five minutes');
+  assert.equal(s[1].hint, 'Today, 18:00');
+  assert.equal(s[2].hint, 'Tomorrow, 09:00');
+  assert.equal(s[3].hint, 'Mon 12 Oct, 09:00');
+  assert.deepEqual(td.snoozeChoices(new Date(2026, 9, 9, 17, 0)).map((x) => x.id), ['hour', 'tomorrow', 'nextweek'], 'late in the day: no "this evening"');
+});
+const qctx = {
+  today: TODAY,
+  now: new Date(2026, 9, 9, 10, 0),
+  projects: [{ id: 'c-kopi', name: 'Kopi Harian' }, { id: 'c-elk', name: 'Elkiya Group' }],
+  people: [{ id: 'u-dewi', name: 'Dewi Lestari' }, { id: 'u-rizky', name: 'Rizky Pratama' }],
+  stages: [{ id: 'todo', name: 'To do' }, { id: 'doing', name: 'In progress' }, { id: 'review', name: 'Review' }],
+};
+await test('Quick Add: reads the date and time, project, person and priority, and leaves the title', () => {
+  const r = qa.parseQuickAdd('Send invoice tomorrow 3pm #kopi +dewi p1', qctx);
+  assert.equal(r.title, 'Send invoice');
+  assert.equal(r.due, '2026-10-10');
+  assert.equal(r.time, '15:00');
+  assert.equal(r.clientId, 'c-kopi');
+  assert.deepEqual(r.assignees, ['u-dewi']);
+  assert.equal(r.priority, 'high');
+  assert.equal(new Date(r.remindAt).getHours(), 15, 'a time with the date reminds then');
+  assert.deepEqual(r.tokens.map((t) => [t.kind, t.text, t.label]), [
+    ['date', 'tomorrow 3pm', 'Tomorrow 15:00'],
+    ['project', '#kopi', 'Kopi Harian'],
+    ['person', '+dewi', 'Dewi'],
+    ['priority', 'p1', 'P1'],
+  ]);
+  assert.equal(r.tokens[0].keys.length, 2, 'the date and its time are one highlight');
+});
+await test('Quick Add: weekdays, "next", "in 2 weeks", dates and stages', () => {
+  const p = (t) => qa.parseQuickAdd(t, qctx);
+  assert.equal(p('Review contract by Friday').due, TODAY, 'a weekday is that day or the next one');
+  assert.equal(p('Review contract by Friday').title, 'Review contract', '"by" goes with the date');
+  assert.equal(p('Plan next friday').due, '2026-10-16', 'next friday is the one in next week');
+  assert.equal(p('Plan next week').due, '2026-10-12');
+  assert.equal(p('Report in 2 weeks').due, '2026-10-23');
+  assert.equal(p('Launch 13 oct').due, '2026-10-13');
+  assert.equal(p('Launch oct 13').due, '2026-10-13');
+  assert.equal(p('Launch 31/12').due, '2026-12-31');
+  assert.equal(p('Launch 1 sep').due, '2027-09-01', 'a date already past this year is next year');
+  assert.equal(p('Ship it /review').stageId, 'review');
+  assert.equal(p('Ship it /prog').stageId, 'doing', 'a stage by the start of its name');
+  assert.equal(p('Meet 9am').due, '2026-10-10', 'a time already gone today is tomorrow');
+  assert.equal(p('Meet 2pm').due, TODAY);
+});
+await test('Quick Add: repeats, reminders, and words that only look like tokens', () => {
+  const p = (t, off) => qa.parseQuickAdd(t, { ...qctx, off });
+  const mon = p('Call Dimas every Monday');
+  assert.equal(mon.repeat, 'weekly');
+  assert.equal(mon.due, '2026-10-12', 'the first one on Monday');
+  assert.equal(p('Pay rent every month').repeat, 'monthly');
+  assert.equal(p('Pay rent every month').due, TODAY, 'a repeat starts today');
+  assert.equal(p('Standup every weekday').repeat, 'weekdays');
+  const rem = p('Check ads !2h');
+  assert.equal(rem.title, 'Check ads');
+  assert.equal(new Date(rem.remindAt).getHours(), 12);
+  assert.equal(new Date(p('Call !3pm').remindAt).getHours(), 15);
+  const keep = p('Ask about #unknown and +nobody, see mp3 p5');
+  assert.equal(keep.title, 'Ask about #unknown and +nobody, see mp3 p5', 'nothing unknown is taken out');
+  assert.equal(keep.tokens.length, 0);
+  // Tapping a highlight turns it back into words, and nothing inside it is read again.
+  const once = p('Create monthly report');
+  assert.equal(once.repeat, 'monthly');
+  const plain = p('Create monthly report', [once.tokens[0].key]);
+  assert.equal(plain.repeat, undefined);
+  assert.equal(plain.title, 'Create monthly report');
+  const next = p('Plan next friday');
+  assert.equal(p('Plan next friday', next.tokens[0].keys).due, undefined, '"friday" inside "next friday" stays words too');
+  assert.equal(p('Plan next friday, then call', next.tokens[0].keys).due, undefined, 'still off after typing more');
+});
+await test('Quick Add: suggestions follow the word being typed', () => {
+  assert.deepEqual(qa.triggerAt('Send #ko', 8), { char: '#', query: 'ko', start: 5 });
+  assert.deepEqual(qa.triggerAt('Ask +', 5), { char: '+', query: '', start: 4 });
+  assert.equal(qa.triggerAt('Send it', 7), null);
+  assert.equal(qa.asToken('#', 'Kopi Harian'), '#Kopi-Harian');
+  assert.equal(qa.parseQuickAdd('Brief #Kopi-Harian', qctx).clientId, 'c-kopi', 'what a suggestion puts in is read back');
+});
+
+/* ---------- Needs you (src/needsYou.ts): Home and the connector's needs_me ---------- */
+
+const ny = await import('../src/needsYou.ts');
+await test('Needs you: what needs me, in order, with notifications folded in and the badge counting the list', () => {
+  const now = new Date(2026, 9, 9, 10, 0).getTime();
+  const task = (id, x) => ({ id, title: id, done: false, userId: 'me', assignees: ['me'], status: 'todo', ...x });
+  const kinds = { r: 'review' };
+  const list = ny.needsYou({
+    me: 'me',
+    today: TODAY,
+    now,
+    tasks: [
+      task('late', { due: '2026-10-07' }),
+      task('today', { due: TODAY }),
+      task('review', { userId: 'dewi', assignees: ['dewi'], supervisorId: 'me', status: 'r' }),
+      task('queue', { userId: '', assignees: [], teamId: 'design' }),
+      task('handed', { userId: 'dewi', assignees: ['dewi'], createdBy: 'me', due: '2026-10-01' }),
+      task('fresh', { due: '2026-10-20' }),
+      task('done', { done: true, due: '2026-10-01' }),
+    ],
+    stageKind: (t) => kinds[t.status] ?? 'open',
+    teams: [{ id: 'design', name: 'Design', leadId: 'me' }],
+    clients: [{ id: 'c', name: 'Kopi', domain: 'kopi.id' }],
+    isOwner: false,
+    firstName: (id) => ({ dewi: 'Dewi' })[id] ?? '',
+    events: [
+      { id: 'soon', title: 'Standup', start: new Date(now + 12 * 60_000).toISOString(), end: new Date(now + 40 * 60_000).toISOString() },
+      { id: 'later', title: 'Lunch', start: new Date(now + 3 * 3_600_000).toISOString(), end: new Date(now + 4 * 3_600_000).toISOString() },
+    ],
+    threads: [{ id: 'th', subject: 'Invoice?', location: 'inbox', unread: true, messages: [{ from: { name: 'Nadia', email: 'nadia@kopi.id' } }] }],
+    mine: (e) => e === 'me@agency.id',
+    notices: [
+      { id: 'n1', kind: 'task', text: 'Dewi finished “review”. Ready for your review', at: '2026-10-09T01:00:00Z', read: false, link: { app: 'tasks', id: 'review' } },
+      { id: 'n2', kind: 'mention', text: 'Rizky mentioned you in #design', at: '2026-10-09T02:00:00Z', read: false, link: { app: 'chat', id: 'ch' } },
+      { id: 'n3', kind: 'task', text: 'Dewi assigned you “fresh”', at: '2026-10-09T01:30:00Z', read: false, link: { app: 'tasks', id: 'fresh' } },
+      { id: 'n4', kind: 'done', text: 'Dewi finished “logo”', at: '2026-10-09T01:40:00Z', read: false, link: { app: 'tasks', id: 'gone' } },
+      { id: 'n5', kind: 'mention', text: 'old', at: '2026-10-08T01:00:00Z', read: true },
+    ],
+  });
+  assert.deepEqual(list.map((x) => x.kind), ['meeting', 'review', 'mention', 'assigned', 'late', 'today', 'queue', 'delegated', 'mail']);
+  assert.equal(list[0].group, 'now');
+  assert.equal(list[0].sub, 'In 12 min');
+  assert.deepEqual(list.find((x) => x.kind === 'review').noticeIds, ['n1'], 'the "ready for review" notice joins the review');
+  assert.equal(list.find((x) => x.kind === 'today').group, 'today');
+  assert.equal(ny.needsCount(list), 7, 'the badge: not the meeting, not today');
+  assert.deepEqual(ny.updatesOf([{ id: 'n4', read: false, at: '1' }, { id: 'n2', read: false, at: '2' }, { id: 'n5', read: true, at: '0' }], list).map((n) => n.id), ['n4'], 'what is left is news');
+});
+await test('Needs you: a meeting leaves 5 minutes after it starts; the owner sees every queue', () => {
+  const now = Date.parse('2026-10-09T03:00:00Z');
+  const base = { me: 'me', today: TODAY, now, stageKind: () => 'open', clients: [], firstName: () => '', teams: [{ id: 't', name: 'Ops' }] };
+  const ev = (mins) => [{ id: 'e', title: 'Call', start: new Date(now + mins * 60_000).toISOString(), end: new Date(now + (mins + 30) * 60_000).toISOString() }];
+  assert.equal(ny.needsYou({ ...base, tasks: [], isOwner: false, events: ev(-4) })[0]?.sub, 'Happening now');
+  assert.equal(ny.needsYou({ ...base, tasks: [], isOwner: false, events: ev(-6) }).length, 0);
+  assert.equal(ny.needsYou({ ...base, tasks: [], isOwner: false, events: ev(31) }).length, 0);
+  const q = [{ id: 'q', title: 'q', done: false, userId: '', teamId: 't' }];
+  assert.equal(ny.needsYou({ ...base, tasks: q, isOwner: false }).length, 0);
+  assert.equal(ny.needsYou({ ...base, tasks: q, isOwner: true })[0].kind, 'queue');
+});
+
 /* ---------- chat: send later, reminders on saved messages, mutes (server/chatLater.ts) ---------- */
 
 const chatLater = await import('../server/chatLater.ts');

@@ -459,27 +459,6 @@ span.person-cell > :first-child {
   .tool-row > .spacer {
     display: none;
   }
-  .task-toolbar > .sel.sel-flat,
-  .quick-chips > button:not(.link-btn) {
-    height: 40px;
-  }
-  .task-toolbar > .link-btn {
-    min-height: 40px;
-  }
-  /* The quick filters are one row you can swipe, not three wrapped rows. */
-  .task-toolbar > .quick-chips {
-    flex: 1 1 100%;
-    min-width: 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .task-toolbar > .quick-chips::-webkit-scrollbar {
-    display: none;
-  }
-  .task-toolbar > .quick-chips > button {
-    flex: none;
-  }
 }
 
 /* ---------- Rows that leave ---------- */
