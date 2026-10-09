@@ -14,16 +14,13 @@ Each of these is built and switched off until its key or account exists; the app
 - **Boosted sending (Amazon SES)**: an AWS account with SES out of the sandbox, and `SES_KEY`, `SES_SECRET`, `SES_REGION`.
 - **Google and Microsoft**: sign-in with Google/Microsoft and two-way calendar and mailbox sync need their OAuth apps. Calendar links (.ics) work without them.
 - **Payments**: a Xendit or Midtrans account. Bank transfer invoices work today.
-- **WhatsApp**: a Meta Business number and its app secret.
+- **WhatsApp**: a Meta Business number and its app secret (`WHATSAPP_APP_SECRET`, or each company's own app secret in Settings).
 - **Desktop app**: push a `v0.x` tag to build the first release; Mac auto-update also needs an Apple Developer ID to sign the app.
 - **Decisions**: whether the GitHub repo stays public (it is, with no secrets in it; its description still says "Open source meeting platform"), whether the app gets Indonesian, the in-app word for "Shared space", and the live company name "spring2go".
 
-## In progress (started 9 Oct)
+## In progress
 
-- **One design system**: one person row with a proper badge pill, one empty state, the title column's menu, Search, filter and Grouped by on one line, one look for every tab bar, our own date and time pickers in the event editor, and a responsive sweep of every screen at 375, 768, 1024 and 1440 in both themes. More screenshots from Aqeel go here.
-- **Jobs the settings promise**: the notetaker joining calls by itself, channel summaries on their schedule, a real Undo send, email digests for teammates who are away, and deleting old chat messages when a company asks for it.
-- **Security and billing**: WhatsApp webhook signatures, project visibility on the server, add-ons and pausing enforced, no free Boosted credits, no invented card on the billing page, the AI caps and alerts, DKIM on every message we send, one iCalendar parser, and a check of every route's permissions.
-- **Read tracking that's real**: a pixel and signed link redirects per recipient, honest about Apple's and Gmail's automatic opens.
+Nothing running. The 9 Oct "do everything" pass is merged and live; see Done.
 
 ## Later
 
@@ -33,8 +30,25 @@ Each of these is built and switched off until its key or account exists; the app
 - **Task stages per project or team**, if someone asks.
 - **The app in Indonesian**, if decided.
 - **Smaller follow-ups**: trial limits so one person can't collect many trials; "remember this device" for two-step; spotting the same calendar link added twice; choosing which regions' holidays show; rare repeat rules in invites; all-day invites in time zones beyond plus or minus 11 hours.
+- **Reported by the 9 Oct builders, not done yet**:
+  - Plan switches aren't prorated (the toast says the new price is on the next invoice).
+  - MRR in the operator console still counts every member; invoices and the billing page count active people only.
+  - Mail from addresses at mail.sprint2go.com itself isn't DKIM-signed (no key published for that name).
+  - Companies made by operators have no time zone, so they use Jakarta.
+  - Tickets made before 9 Oct may point at any file; operators can open those.
+  - Outlook.com's image proxy is detected by a commonly reported user agent, not verified against real traffic.
+  - A demo toast ("Found 3 to-dos in your email") covers content for a few seconds on phones; mail rows overflow by 3 px.
+  - Watch the motion itself (open and close animations) on a real device; builders checked layouts with animations off.
 
 ## Done
+
+**9 Oct, fourth round, live:**
+- One design system: `PersonCell` and `Badge`, `EmptyState`, one look for every tab bar, toolbars on one line, the title column's menu, our own time picker, dialogs never trapped inside panes, and a responsive sweep of every screen (40 px tap targets on phones, phone titles, calendar and reader bars).
+- Server jobs: the notetaker joins Meet and Zoom calls from calendars by itself, channel summaries on their schedule, a real Undo send (mail waits for the undo window), email digests for teammates who are away, and deleting old chat messages with a week's notice.
+- Security and billing: WhatsApp webhook signatures, project visibility on the server, add-ons and pausing enforced, Boosted credits only through a paid invoice, no invented card, AI caps, alerts and blocked providers enforced, one iCalendar parser, and a dozen access holes closed (checked by scripts/security-tests.mjs in CI).
+- DKIM: every message we send is really signed (mailauth 7 only reads `signatureData`; before, signatures came back empty).
+- Read tracking for real: a picture and signed links per outside recipient, honest about Gmail's, Outlook's and Apple's automatic opens, a company switch, tracked replies and "remind me if no reply" on the server.
+- Follow-ups: members open only files they can see, operators open ticket attachments (audited), invoices bill active people only, a refused send goes back to Drafts, a company time zone.
 
 **9 Oct, third round (the "do everything" pass), live:**
 - Sign-up and reset codes and guest notices go out from no-reply@sprint2go.com through our own mail server.
