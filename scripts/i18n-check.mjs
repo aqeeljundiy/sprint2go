@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The language check (docs/i18n.md). Finds the English text the code translates (t, tn, tx, tj, mark, msg) and
+// The language check (docs/i18n.md). Finds the English text the code translates (t, tn, tx, tj, mark, msg, phrase) and
 // compares it with the Indonesian dictionaries in src/i18n/id/<area>.ts.
 //
 //   node scripts/i18n-check.mjs                 per area: words used, translated, missing; fails on placeholder problems
@@ -11,7 +11,7 @@
 //
 // Fails (exit 1) on: a {placeholder} in the Indonesian that the English doesn't have or the other way round, and
 // t('… {name} …', { … }) called without a value for a placeholder. Missing words are fine while builders work.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseSync, Visitor } from 'rolldown/utils';
@@ -73,7 +73,7 @@ const errors = [];
 const warnings = [];
 const dynamic = []; // t(something) whose text can't be read here
 const todo = []; // { file, line, text, how }
-const TRANSLATED = new Set(['t', 'tn', 'tx', 'tj', 'mark', 'msg']);
+const TRANSLATED = new Set(['t', 'tn', 'tx', 'tj', 'mark', 'msg', 'phrase']);
 const TEXTY = /^(title|placeholder|aria-label|label|text|alt|hint|sub|confirm|description|desc|heading|tooltip|empty|emptyText|cta|action|okLabel|cancelLabel|subtitle|note|help|why|error|question|body|name|value)$/;
 const looksLikeWords = (s) => /[A-Za-z]{2}/.test(s) && (/\s/.test(s.trim()) || /^[A-Z][a-z]/.test(s.trim())) && !/^[a-z0-9-]+(\s[a-z0-9-]+)*$/.test(s.trim()) && !/^(https?:|mailto:|\/|#|\.)/.test(s.trim()) && !/^[A-Z][a-zA-Z]+(\.[A-Za-z]+)+/.test(s.trim());
 
@@ -111,7 +111,8 @@ for (const file of files) {
       const a = node.arguments;
       const keys = [];
       let vars = null;
-      if (name === 't' || name === 'tj' || name === 'mark' || name === 'msg') keys.push(strOf(a[0])), (vars = a[1]);
+      let one = null;
+      if (name === 't' || name === 'tj' || name === 'mark' || name === 'msg' || name === 'phrase') keys.push(strOf(a[0])), (vars = a[1]);
       else if (name === 'tx') {
         const ctx = strOf(a[0]);
         const text = strOf(a[1]);
@@ -119,11 +120,7 @@ for (const file of files) {
         vars = a[2];
       } else if (name === 'tn') {
         keys.push(strOf(a[2]));
-        const one = strOf(a[1]);
-        if (one !== null && keys[0] !== null) {
-          const [h1, h2] = [holes(one), holes(keys[0])];
-          if ([...h1].some((h) => !h2.has(h))) errors.push(`${file}:${line} tn(): the singular "${one}" has a {placeholder} the plural "${keys[0]}" doesn't`);
-        }
+        one = strOf(a[1]); // English only (the dictionary is keyed by the plural), but its placeholders need values too
         vars = a[3];
       }
       for (const k of keys) {
@@ -133,7 +130,7 @@ for (const file of files) {
         }
         use(k, file, line, area);
         // Every placeholder needs a value: t('Hello {name}') without { name } shows "{name}".
-        const need = [...holes(k.includes('::') ? k.slice(k.indexOf('::') + 2) : k)].filter((h) => !(name === 'tn' && h === 'n'));
+        const need = [...new Set([...holes(k.includes('::') ? k.slice(k.indexOf('::') + 2) : k), ...(one ? holes(one) : [])])].filter((h) => !(name === 'tn' && h === 'n'));
         if (!need.length || name === 'mark') continue;
         if (!vars) {
           errors.push(`${file}:${line} ${name}('${k}') has {${need.join('}, {')}} but no values`);
@@ -174,6 +171,33 @@ for (const file of files) {
   }
 }
 
+/* ---------- files the server and the scripts load: Node can't import a folder or React ---------- */
+
+{
+  const reached = new Set();
+  const find = (from, spec) => {
+    if (!spec.startsWith('.')) return null;
+    const base = join(from, '..', spec);
+    for (const c of [base, base + '.ts', base + '.tsx', join(base, 'index.ts')]) if (existsSync(c) && statSync(c).isFile()) return c;
+    return null;
+  };
+  const visit = (file) => {
+    if (reached.has(file)) return;
+    reached.add(file);
+    const src = readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/^\s*(?:import|export)\s+(type\s+)?(?:[^'";]*?\sfrom\s+)?['"]([^'"]+)['"]/gm)) {
+      if (m[1]) continue; // type-only: erased
+      const to = find(file, m[2]);
+      if (!to) continue;
+      const rel = relative(ROOT, file).split('\\').join('/');
+      if (rel.startsWith('src/') && /(^|\/)i18n$/.test(m[2])) errors.push(`${rel} imports '${m[2]}': the server loads this file, so import '${m[2]}/index' (and '${m[2]}/format'), docs/i18n.md`);
+      if (rel.startsWith('src/') && /i18n\/(tj|useLang)$/.test(m[2])) errors.push(`${rel} imports '${m[2]}': the server loads this file, and that one needs React`);
+      visit(to);
+    }
+  };
+  for (const dir of ['server', 'scripts']) for (const f of readdirSync(join(ROOT, dir))) if (/\.(ts|mjs)$/.test(f) && !f.endsWith('.test.ts')) visit(join(ROOT, dir, f));
+}
+
 /* ---------- the dictionaries ---------- */
 
 const idDir = join(ROOT, 'src', 'i18n', 'id');
@@ -181,13 +205,14 @@ const areaFiles = readdirSync(idDir).filter((f) => f.endsWith('.ts') && f !== 'i
 const indexSrc = readFileSync(join(idDir, 'index.ts'), 'utf8');
 const dict = new Map(); // key -> [{ area, value }]
 for (const f of areaFiles) {
-  const area = f.replace(/\.ts$/, '');
-  if (!new RegExp(`from '\\./${area}'`).test(indexSrc)) errors.push(`src/i18n/id/${f} isn't imported in src/i18n/id/index.ts`);
+  // An area can split its words into parts: settings.ts, settings.ai.ts… (all of them are the settings area).
+  const area = f.replace(/\.ts$/, '').split('.')[0];
+  if (!indexSrc.includes(`from './${f.replace(/\.ts$/, '')}'`)) errors.push(`src/i18n/id/${f} isn't imported in src/i18n/id/index.ts`);
   if (!AREAS.some(([a]) => a === area) && area !== 'common') warnings.push(`src/i18n/id/${f}: no files map to "${area}" in scripts/i18n-check.mjs`);
   const entries = (await import(pathToFileURL(join(idDir, f)).href)).default;
   for (const [k, v] of Object.entries(entries)) {
     if (!dict.has(k)) dict.set(k, []);
-    dict.get(k).push({ area, value: v });
+    dict.get(k).push({ area, file: f, value: v });
     const en = k.includes('::') ? k.slice(k.indexOf('::') + 2) : k;
     if (typeof v !== 'string' || !v.trim()) {
       errors.push(`${area}: "${k}" has an empty Indonesian text`);
@@ -203,7 +228,7 @@ for (const f of areaFiles) {
 }
 for (const [k, list] of dict) {
   const values = new Set(list.map((x) => x.value));
-  if (values.size > 1) warnings.push(`"${k}" means different things in ${list.map((x) => `${x.area} ("${x.value}")`).join(' and ')}: the last area loaded wins everywhere. Use tx('context', …) for one of them.`);
+  if (values.size > 1) warnings.push(`"${k}" means different things in ${list.map((x) => `id/${x.file} ("${x.value}")`).join(' and ')}: the last file loaded wins everywhere. Use tx('context', …) for one of them.`);
 }
 
 /* ---------- the report ---------- */

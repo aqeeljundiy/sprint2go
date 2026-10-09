@@ -3,6 +3,7 @@ import type { AppId, Team, Workspace } from '../types';
 import { APPS } from '../components/AppRail';
 import { Sheet } from '../components/ui/Sheet';
 import { EditBar } from './EditBar';
+import { t } from '../i18n';
 
 /** The bar everyone starts with on phones, unless their company or team set another. */
 export const DEFAULT_BAR: AppId[] = ['home', 'mail', 'chat', 'tasks'];
@@ -35,13 +36,13 @@ export function BarDefaults({ ws, teams, canManage, onWorkspace }: { ws: Workspa
     else delete next[barKey(teamId)];
     onWorkspace({ tabDefaults: next });
   };
-  const rows = [{ id: '', name: 'Everyone', hint: 'Unless their team has its own' }, ...teams.filter((t) => t.workspaceId === ws.id).map((t) => ({ id: t.id, name: t.name, hint: barOf(t.id) ? 'Its own bar' : 'Same as everyone' }))];
+  const rows = [{ id: '', name: t('Everyone'), hint: t('Unless their team has its own') }, ...teams.filter((tm) => tm.workspaceId === ws.id).map((tm) => ({ id: tm.id, name: tm.name, hint: barOf(tm.id) ? t('Its own bar') : t('Same as everyone') }))];
   const icons = (bar: string[]) => bar.map((id) => APPS.find((a) => a.id === id)).filter((a): a is (typeof APPS)[number] => !!a);
   const editingTeam = editing === null ? undefined : editing || undefined;
   return (
     <div className="set-block bar-defaults">
-      <h3>Phone bar</h3>
-      <p className="set-intro">The four apps at the bottom of everyone’s phone. People can still change their own.</p>
+      <h3>{t('Phone bar')}</h3>
+      <p className="set-intro">{t('The four apps at the bottom of everyone’s phone. People can still change their own.')}</p>
       {rows.map((r) => {
         const bar = barOf(r.id || undefined) ?? (r.id ? (barOf() ?? DEFAULT_BAR) : DEFAULT_BAR);
         return (
@@ -56,7 +57,7 @@ export function BarDefaults({ ws, teams, canManage, onWorkspace }: { ws: Workspa
               ))}
             </span>
             <button type="button" className="ghost-btn sm" disabled={!canManage} onClick={() => setEditing(r.id)}>
-              Change
+              {t('Change')}
             </button>
           </div>
         );
@@ -64,17 +65,17 @@ export function BarDefaults({ ws, teams, canManage, onWorkspace }: { ws: Workspa
       {editing !== null && (
         <Sheet
           onClose={() => setEditing(null)}
-          title={editing ? `Phone bar for ${rows.find((r) => r.id === editing)?.name ?? 'the team'}` : 'Phone bar for everyone'}
+          title={editing ? t('Phone bar for {team}', { team: rows.find((r) => r.id === editing)?.name ?? t('the team') }) : t('Phone bar for everyone')}
           head={
             <button type="button" className="primary-btn sm" onClick={() => setEditing(null)}>
-              Done
+              {t('Done')}
             </button>
           }
         >
           <EditBar apps={apps} bar={barOf(editingTeam) ?? (editingTeam ? (barOf() ?? DEFAULT_BAR) : DEFAULT_BAR)} onChange={(bar) => save(editingTeam, bar)} />
           {barOf(editingTeam) && (
             <button type="button" className="link-btn small more-reset" onClick={() => (save(editingTeam, null), setEditing(null))}>
-              {editingTeam ? 'Use the same bar as everyone' : 'Back to Home, Mail, Chat and Tasks'}
+              {editingTeam ? t('Use the same bar as everyone') : t('Back to Home, Mail, Chat and Tasks')}
             </button>
           )}
         </Sheet>

@@ -4,9 +4,11 @@ import { Brain, Building2, CalendarPlus, Check, FileText, Hash, ListChecks, Mail
 import { lsKey } from '../settings';
 import { APPS } from './AppRail';
 import type { AppId } from '../types';
+import { mark, t } from '../i18n';
 
 export interface PaletteItem {
   id: string;
+  /** Which list it's in, in English ('Tasks', 'Needs you'…): code compares it, and it's shown with t(). */
   group: string;
   title: string;
   sub?: string;
@@ -18,6 +20,8 @@ export interface PaletteItem {
 
 /** Which app each kind of result belongs to, for searching inside one app and for grouping results by app. */
 const GROUP_APP: Record<string, AppId> = { Tasks: 'tasks', Emails: 'mail', Channels: 'chat', Messages: 'chat', Notes: 'notes', Meetings: 'meet', Rows: 'tables', Files: 'drive' };
+// The groups' words, for the language check (they're shown with t(group)).
+mark('Needs you'), mark('Actions'), mark('Go to'), mark('Recent'), mark('Apps'), mark('People'), mark('Emails'), mark('Channels'), mark('Messages'), mark('Meetings'), mark('Rows'), mark('Files');
 export const appOf = (i: PaletteItem): AppId | undefined => i.app ?? (i.group === term.Many ? 'projects' : GROUP_APP[i.group]);
 const appName = (id: AppId) => APPS.find((a) => a.id === id)?.name ?? id;
 /** Apps that have something to search in them (the others open search across all apps). */
@@ -63,33 +67,33 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
   // In one app, or one kind of thing (People, Projects, Files, Notes), or everywhere.
   const [scope, setScope] = useState<AppId | null>(startScope);
   const [kind, setKind] = useState<string | null>(null);
-  const KINDS = ['People', term.Many, 'Files', 'Notes'];
+  const KINDS = ['People', term.Many, 'Files', 'Notes']; // shown with t()
   const items = useMemo(() => all.filter((i) => (!scope || appOf(i) === scope) && (!kind || i.group === kind)), [all, scope, kind]);
   const narrow = (s: AppId | null, k: string | null) => (setScope(s), setKind(k), input.current?.focus());
 
   const results = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) {
+    const typed = q.trim().toLowerCase();
+    if (!typed) {
       // One kind of thing picked: all of them, recent ones first.
       if (kind) return [...items].sort((a, b) => Number(recent.includes(b.id)) - Number(recent.includes(a.id))).slice(0, 40);
       // Nothing typed: what needs you, where you were recently, and the common actions.
       const needs = scope && scope !== 'tasks' ? [] : items.filter((i) => i.group === 'Needs you').slice(0, 5);
       const recents = recent.map((id) => items.find((i) => i.id === id && i.group !== 'Needs you')).filter((i): i is PaletteItem => !!i).slice(0, 6).map((i) => ({ ...i, group: 'Recent' }));
       // Inside one app with little history yet: its latest things, so there's something to tap before typing.
-      const latest = scope && recents.length < 3 ? items.filter((i) => i.group !== 'Actions' && i.group !== 'Needs you' && !recents.some((r) => r.id === i.id)).slice(0, 5 - recents.length).map((i) => ({ ...i, group: `Latest in ${appName(scope)}` })) : [];
+      const latest = scope && recents.length < 3 ? items.filter((i) => i.group !== 'Actions' && i.group !== 'Needs you' && !recents.some((r) => r.id === i.id)).slice(0, 5 - recents.length).map((i) => ({ ...i, group: t('Latest in {app}', { app: appName(scope) }) })) : [];
       return [...needs, ...recents, ...latest, ...items.filter((i) => i.group === 'Actions')];
     }
     // Every word must match somewhere; titles that start with what you typed come first.
-    const words = t.split(/\s+/).filter(Boolean);
+    const words = typed.split(/\s+/).filter(Boolean);
     const scored = items
       .filter((i) => i.group !== 'Needs you')
       .map((i) => {
         const title = i.title.toLowerCase().replace(/^#/, '');
-        const hay = `${title} ${(i.sub ?? '').toLowerCase()} ${i.group.toLowerCase()}`;
+        const hay = `${title} ${(i.sub ?? '').toLowerCase()} ${i.group.toLowerCase()} ${t(i.group).toLowerCase()}`;
         const deep = (i.keywords ?? '').toLowerCase();
         const onTop = words.every((w) => hay.includes(w));
         if (!onTop && !words.every((w) => hay.includes(w) || deep.includes(w))) return null;
-        let score = (title.startsWith(t) ? 100 : 0) + (title.split(/[\s:·-]+/).some((x) => x.startsWith(words[0])) ? 40 : 0) + (title.includes(t) ? 20 : 0) + (recent.includes(i.id) ? 15 : 0) - Math.min(title.length, 60) / 10;
+        let score = (title.startsWith(typed) ? 100 : 0) + (title.split(/[\s:·-]+/).some((x) => x.startsWith(words[0])) ? 40 : 0) + (title.includes(typed) ? 20 : 0) + (recent.includes(i.id) ? 15 : 0) - Math.min(title.length, 60) / 10;
         if (onTop) return { i, score };
         // Found inside: show where, and rank under things that match by name.
         const at = Math.max(0, deep.indexOf(words.find((w) => deep.includes(w))!));
@@ -129,7 +133,7 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
   let lastGroup = '';
   return (
     <div className="palette-scrim" onMouseDown={onClose}>
-      <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Search">
+      <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label={t('Search')}>
         <label className="palette-input">
           <Search size={18} />
           <input
@@ -137,7 +141,7 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
             value={q}
             onChange={(e) => setQ(e.target.value)}
             ref={input}
-            placeholder={scope ? `Search ${appName(scope)}` : kind ? `Search ${kind.toLowerCase()}` : `Search or jump to an app, ${term.one} or person`}
+            placeholder={scope ? t('Search {app}', { app: appName(scope) }) : kind ? t('Search {kind}', { kind: t(kind).toLowerCase() }) : t('Search or jump to an app, {project} or person', { project: term.one })}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
@@ -152,10 +156,10 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
           />
           <kbd>esc</kbd>
           <button type="button" className="palette-close" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
         </label>
-        <div className="palette-chips" role="toolbar" aria-label="Search in">
+        <div className="palette-chips" role="toolbar" aria-label={t('Search in')}>
           {startScope && (
             <button type="button" className={scope === startScope && !kind ? 'on' : ''} aria-pressed={scope === startScope && !kind} onClick={() => narrow(startScope, null)}>
               {scope === startScope && !kind && <Check size={13} />}
@@ -164,12 +168,12 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
           )}
           <button type="button" className={!scope && !kind ? 'on' : ''} aria-pressed={!scope && !kind} onClick={() => narrow(null, null)}>
             {!scope && !kind && <Check size={13} />}
-            All apps
+            {t('All apps')}
           </button>
           {KINDS.map((k) => (
             <button key={k} type="button" className={kind === k ? 'on' : ''} aria-pressed={kind === k} onClick={() => narrow(null, kind === k ? null : k)}>
               {kind === k && <Check size={13} />}
-              {k}
+              {t(k)}
             </button>
           ))}
         </div>
@@ -177,21 +181,21 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
           {results.length === 0 &&
             (scope && q.trim() ? (
               <li className="palette-empty">
-                Nothing in {appName(scope)} matches “{q}”.{' '}
+                {t('Nothing in {app} matches “{q}”.', { app: appName(scope), q })}{' '}
                 <button type="button" className="link-btn" onClick={() => narrow(null, null)}>
-                  Search all apps
+                  {t('Search all apps')}
                 </button>
               </li>
             ) : q.trim() ? (
-              <li className="palette-empty">Nothing matches “{q}”. Try a {term.who}, a person or a few words from a task.</li>
+              <li className="palette-empty">{t('Nothing matches “{q}”. Try a {who}, a person or a few words from a task.', { q, who: term.who })}</li>
             ) : (
-              <li className="palette-empty">{scope ? `Type to search ${appName(scope)}.` : 'Type to search.'}</li>
+              <li className="palette-empty">{scope ? t('Type to search {app}.', { app: appName(scope) }) : t('Type to search.')}</li>
             ))}
           {results.map((r, idx) => {
             const head = r.group !== lastGroup ? (lastGroup = r.group) : null;
             return (
               <li key={r.id}>
-                {head && <div className="palette-group">{head}</div>}
+                {head && <div className="palette-group">{t(head)}</div>}
                 <button className={idx === hi ? 'hi' : ''} onMouseEnter={() => setHi(idx)} onClick={() => run(r)}>
                   <r.icon size={16} />
                   <span className="pi-title">{r.title}</span>

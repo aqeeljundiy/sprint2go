@@ -1,7 +1,7 @@
 // What a company calls the things it works on. "Projects" by default (any kind of work), or "Clients" for
 // agencies that prefer it (Settings, General). Inside the code they're still "clients"; only the words change.
 import { hasBranding } from './data/pricing';
-import { t } from './i18n';
+import { t } from './i18n/index'; // the full path: the server imports this file too
 
 export type TermWord = 'project' | 'client';
 

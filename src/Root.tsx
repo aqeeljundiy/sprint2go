@@ -22,7 +22,9 @@ import { brand as product, brandOf, setBrandName } from './terms';
 import { registerStages } from './stages';
 import { applyPricing, type PricingOverride } from './data/pricing';
 import { loadCaps } from './caps';
-import { deviceLang, setLang } from './i18n';
+import { deviceLang, setLang, t, tn } from './i18n';
+import { fmtList } from './i18n/format';
+import { tj } from './i18n/tj';
 import { useAppLanguage } from './i18n/useLang';
 
 /**
@@ -82,7 +84,7 @@ export default function Root() {
     return (
       <SignIn
         onCreate={connecting ? undefined : () => (setSigningUp(true), history.replaceState(null, '', '/signup'))}
-        sub={connecting ? 'An AI app wants to connect to your sprint2go. Sign in first; you choose what it can reach next.' : undefined}
+        sub={connecting ? t('An AI app wants to connect to your sprint2go. Sign in first; you choose what it can reach next.') : undefined}
         users={[]}
         signedIn={[]}
         realPasswords
@@ -116,7 +118,9 @@ export default function Root() {
         {!session.actingAs && !!session.suspendedIn?.length && (
           <div className="op-banner warn" role="status">
             <span>
-              {session.suspendedIn.map((w) => w.name).join(', ')} {session.suspendedIn.length === 1 ? 'is' : 'are'} suspended{session.suspendedIn[0].reason ? `: ${session.suspendedIn[0].reason}` : ''}. Everything stays, nothing can be changed until it is lifted.
+              {session.suspendedIn[0].reason
+                ? tn(session.suspendedIn.length, '{names} is suspended: {reason}. Everything stays, nothing can be changed until it is lifted.', '{names} are suspended: {reason}. Everything stays, nothing can be changed until it is lifted.', { names: fmtList(session.suspendedIn.map((w) => w.name)), reason: session.suspendedIn[0].reason })
+                : tn(session.suspendedIn.length, '{names} is suspended. Everything stays, nothing can be changed until it is lifted.', '{names} are suspended. Everything stays, nothing can be changed until it is lifted.', { names: fmtList(session.suspendedIn.map((w) => w.name)) })}
             </span>
           </div>
         )}
@@ -131,10 +135,10 @@ function Suspended({ reason }: { reason: string }) {
     <div className="signin">
       <div className="signin-card">
         <Wordmark height={30} />
-        <h1>This account is suspended</h1>
-        <p className="signin-sub">{reason || 'Contact support to find out why.'}</p>
+        <h1>{t('This account is suspended')}</h1>
+        <p className="signin-sub">{reason || t('Contact support to find out why.')}</p>
         <button className="primary-btn signin-btn" onClick={() => void signOut()}>
-          Sign out
+          {t('Sign out')}
         </button>
       </div>
     </div>
@@ -204,11 +208,11 @@ function PausedBanner({ workspaces, me }: { workspaces: Workspace[]; me: string 
   return (
     <div className="op-banner warn paused-banner" role="status">
       <span>
-        {paused.map((w) => w.name).join(', ')} {paused.length === 1 ? 'is' : 'are'} paused: everyone can read and export everything, and nothing new is saved, sent or asked of AI.{' '}
-        {paused.some((w) => w.members.some((m) => m.userId === me && m.role === 'owner')) ? 'Resume the plan in Settings, Plan & billing.' : 'An owner can resume the plan in Settings, Plan & billing.'}
+        {tn(paused.length, '{names} is paused: everyone can read and export everything, and nothing new is saved, sent or asked of AI.', '{names} are paused: everyone can read and export everything, and nothing new is saved, sent or asked of AI.', { names: fmtList(paused.map((w) => w.name)) })}{' '}
+        {paused.some((w) => w.members.some((m) => m.userId === me && m.role === 'owner')) ? t('Resume the plan in Settings, Plan & billing.') : t('An owner can resume the plan in Settings, Plan & billing.')}
       </span>
       <button type="button" className="ghost-btn sm" onClick={close}>
-        Got it
+        {t('Got it')}
       </button>
     </div>
   );
@@ -234,7 +238,7 @@ function DemoRoot() {
         onForget={(id) => setSignedIn((s) => s.filter((x) => x !== id))}
         onSignIn={(email) => {
           const u = users.find((x) => x.email.toLowerCase() === email.toLowerCase());
-          if (!u) return `No ${product.name} user with that email. Ask your company admin to invite you.`;
+          if (!u) return t('No {product} user with that email. Ask your company admin to invite you.', { product: product.name });
           setSignedIn((s) => (s.includes(u.id) ? s : [...s, u.id]));
           setCurrent(u.id);
           return null;
@@ -276,22 +280,22 @@ function TryBar() {
       <DemoBar
         text={
           <>
-            <strong>You’re trying {product.name}.</strong> Nothing is saved on our server.
+            <strong>{t('You’re trying {product}.', { product: product.name })}</strong> {t('Nothing is saved on our server.')}
           </>
         }
       >
         <a className="primary-btn sm" href="/signup" onClick={endTryOut}>
-          Sign up free
+          {t('Sign up free')}
         </a>
         <button type="button" className="ghost-btn sm" onClick={() => setAsking(true)}>
-          Start over
+          {t('Start over')}
         </button>
       </DemoBar>
       {asking && (
         <ResetDemoDialog
-          title="Start the try-out over?"
-          text="Everything you changed here goes, and the demo begins again. Nothing was saved anywhere else."
-          confirm="Start over"
+          title={t('Start the try-out over?')}
+          text={t('Everything you changed here goes, and the demo begins again. Nothing was saved anywhere else.')}
+          confirm={t('Start over')}
           onReset={async () => (startOver(), true)}
           onClose={() => setAsking(false)}
         />
@@ -304,10 +308,10 @@ function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
   return (
     <div className="signin">
       <div className="signin-card">
-        <h1>No workspace yet</h1>
-        <p className="signin-sub">{email} isn’t in any workspace. Ask an admin to invite you.</p>
+        <h1>{t('No workspace yet')}</h1>
+        <p className="signin-sub">{t('{email} isn’t in any workspace. Ask an admin to invite you.', { email })}</p>
         <button className="primary-btn signin-btn" onClick={onBack}>
-          Back
+          {t('Back')}
         </button>
       </div>
     </div>
@@ -333,23 +337,26 @@ function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }
     <div className="signin">
       <div className="signin-card">
         <Wordmark height={30} />
-        <h1>Welcome, {me.name.split(' ')[0]}</h1>
-        <p className="signin-sub">Set up your company in about a minute: name and logo, which apps you want, your email and your team.</p>
+        <h1>{t('Welcome, {name}', { name: me.name.split(' ')[0] })}</h1>
+        <p className="signin-sub">{t('Set up your company in about a minute: name and logo, which apps you want, your email and your team.')}</p>
         <button className="primary-btn signin-btn" onClick={() => setOpen(true)}>
-          Set up my company
+          {t('Set up my company')}
         </button>
         {demo?.allowed && demo.state !== 'on' && (
           <button type="button" className="ghost-btn outline signin-btn" onClick={() => void lookAround()} disabled={opening === 'busy'}>
-            {opening === 'busy' ? 'Opening the demo company…' : demo.state === 'hidden' ? 'Show the demo company' : 'Look around a demo company first'}
+            {opening === 'busy' ? t('Opening the demo company…') : demo.state === 'hidden' ? t('Show the demo company') : t('Look around a demo company first')}
           </button>
         )}
         {opening && opening !== 'busy' && <p className="signin-error">{opening}</p>}
         <p className="signin-switch">
-          Joining a team instead? Ask them to invite {me.email}, then{' '}
-          <button type="button" className="link-btn" onClick={() => void signOut()}>
-            sign out
-          </button>{' '}
-          and open their link.
+          {tj('Joining a team instead? Ask them to invite {email}, then {signOut} and open their link.', {
+            email: me.email,
+            signOut: (
+              <button type="button" className="link-btn" onClick={() => void signOut()}>
+                {t('sign out')}
+              </button>
+            ),
+          })}
         </p>
       </div>
       {open && (
@@ -360,7 +367,10 @@ function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }
           onCreate={async (w, newUsers) => {
             const r = await fetch('/api/workspace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspace: w, users: newUsers }) });
             if (r.ok) location.replace('/');
-            else alert(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t create the workspace. Try again.');
+            else {
+              const why = ((await r.json().catch(() => ({}))) as { error?: string }).error;
+              alert(why ? t(why) : t('Couldn’t create the workspace. Try again.'));
+            }
           }}
         />
       )}
@@ -408,7 +418,10 @@ function ClientRoot({ me }: { me: User }) {
         onCreate={async (w, newUsers) => {
           const r = await fetch('/api/workspace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspace: w, users: newUsers }) });
           if (r.ok) location.reload();
-          else alert(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t create the workspace. Try again.');
+          else {
+            const why = ((await r.json().catch(() => ({}))) as { error?: string }).error;
+            alert(why ? t(why) : t('Couldn’t create the workspace. Try again.'));
+          }
         }}
       />
     )
@@ -466,7 +479,7 @@ function ClientRoot({ me }: { me: User }) {
       onReadNotices={() => setNotices((ns) => ns.map((n) => (inbox.includes(n.userId) ? { ...n, read: true } : n)))}
       onSignOut={() => void signOut()}
       account={{ me: self, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => setUsers((list) => list.map((u) => (u.id === me.id ? { ...u, ...patch } : u))) }}
-      switcher={<WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} onHome={portals.length > 1 ? () => setKey('') : undefined} onAdd={() => setStarting(true)} addLabel="Start your own workspace (free)" />}
+      switcher={<WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} onHome={portals.length > 1 ? () => setKey('') : undefined} onAdd={() => setStarting(true)} addLabel={t('Start your own workspace (free)')} />}
       mobileSwitch={{ workspaces: [], onWorkspace: () => {}, portals, current: portal.key, onPortal: setKey, onShared: portals.length > 1 ? () => setKey('') : undefined, onAdd: () => setStarting(true) }}
     />
     {start /* "Start your own workspace" from the switcher */}

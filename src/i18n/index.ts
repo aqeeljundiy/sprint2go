@@ -67,20 +67,30 @@ export function tn(count: number, one: string, other: string, vars?: Vars): stri
  */
 export const mark = (text: string) => text;
 
-/** What to translate later: the English text (with {placeholders}) and its values. */
-export type Msg = { key: string; vars?: Vars };
+/** What to translate later: the English text (with {placeholders}) and its values, which can be phrases themselves. */
+export type Msg = { key: string; vars?: MsgVars };
+export type MsgVars = { [name: string]: string | number | Msg };
+
+const plain = (vars: MsgVars, say: (m: Msg) => string): Vars => Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, typeof v === 'object' ? say(v) : v]));
+const english = (m: Msg): string => fill(m.key, m.vars ? plain(m.vars, english) : {});
+const local = (m: Msg): string => t(m.key, m.vars ? plain(m.vars, local) : undefined);
 
 /**
  * Words saved now and read later, maybe by someone who reads another language (a notice for a colleague): `text` is the
  * English (for push notifications, emails and older app versions), `tr` lets each reader see it in their own language.
  * Spread it into what you save: { ...msg('{name} assigned you {task}', { name, task }), userId, … }.
+ * A value can be a phrase() that is translated too: msg('{name} assigned you {task}', { name, task: phrase('“{title}”, due {due}', …) }).
  */
-export function msg(key: string, vars?: Vars): { text: string; tr: Msg } {
-  return { text: vars ? fill(key, vars) : key, tr: vars ? { key, vars } : { key } };
+export function msg(key: string, vars?: MsgVars): { text: string; tr: Msg } {
+  const tr = vars ? { key, vars } : { key };
+  return { text: english(tr), tr };
 }
 
+/** A part of a msg() that is translated on its own when it's read (a task described with its project and date). */
+export const phrase = (key: string, vars?: MsgVars): Msg => (vars ? { key, vars } : { key });
+
 /** The text of something saved with msg(), in the reader's language; as it was saved when it has no `tr`. */
-export const textOf = (x: { text: string; tr?: Msg }) => (x.tr?.key ? t(x.tr.key, x.tr.vars) : x.text);
+export const textOf = (x: { text: string; tr?: Msg }) => (x.tr?.key ? local(x.tr) : x.text);
 
 /** The active language. */
 export const getLang = () => current;

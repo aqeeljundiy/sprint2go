@@ -6,6 +6,7 @@ import { startPresence } from './presence';
 import { askBigFile } from './components/BigFileDialog';
 import { store } from './store';
 import { isSandboxId, type DemoState } from './sandbox';
+import { t } from './i18n';
 
 type Doc = { id: string; [k: string]: unknown };
 
@@ -246,7 +247,7 @@ export function pushChange<K extends CollectionKey>(k: K, value: Collections[K])
         // or a plan limit): say why. It sends back what it stored, so the screen shows that.
         const { saved, why } = (await r.json().catch(() => ({ saved: upserts.length }))) as { saved?: number; why?: string };
         if (why) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: why } }));
-        else if (typeof saved === 'number' && saved < upserts.length) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: 'Part of that change isn’t allowed for your role, so it was left out.' } }));
+        else if (typeof saved === 'number' && saved < upserts.length) window.dispatchEvent(new CustomEvent('s2g:save-failed', { detail: { coll: k, error: t('Part of that change isn’t allowed for your role, so it was left out.') } }));
       })
       .catch(() => {
         synced[k] = before; // tried again with the next change, when the connection is back, or on Retry
@@ -297,7 +298,7 @@ const asDataUrl = (file: Blob) =>
   new Promise<string>((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(String(r.result));
-    r.onerror = () => rej(new Error('Couldn’t read the file'));
+    r.onerror = () => rej(new Error(t('Couldn’t read the file')));
     r.readAsDataURL(file);
   });
 
@@ -311,20 +312,23 @@ export async function uploadFile(file: File | Blob, workspaceId: string, name = 
   // DEMO ONLY: the demo company keeps small files (a voice note, a screenshot) inside its own documents, never as
   // uploads on our server, so they count toward nobody's storage and go with a Reset.
   if (isSandboxId(workspaceId)) {
-    if (file.size > SANDBOX_FILE) throw new Error(`The demo company keeps files up to ${size(SANDBOX_FILE)}, and nothing in it is saved as a real upload.`);
+    if (file.size > SANDBOX_FILE) throw new Error(t('The demo company keeps files up to {size}, and nothing in it is saved as a real upload.', { size: size(SANDBOX_FILE) }));
     return { url: await asDataUrl(file), name, type, size: file.size };
   }
   if (file.size >= 10 * MB) {
     const room = await roomFor(workspaceId);
     if (room) {
-      if (file.size > room.maxUpload) throw new Error(`Files up to ${size(room.maxUpload)}.`);
-      if (server.on && file.size > room.left) throw new Error(`It doesn’t fit: the company has ${size(room.left)} left of its ${size(room.total)}. An admin can add more in Settings, Plan & billing.`);
+      if (file.size > room.maxUpload) throw new Error(t('Files up to {size}.', { size: size(room.maxUpload) }));
+      if (server.on && file.size > room.left) throw new Error(t('It doesn’t fit: the company has {left} left of its {total}. An admin can add more in Settings, Plan & billing.', { left: size(room.left), total: size(room.total) }));
       if (room.askOverMb > 0 && file.size > room.askOverMb * MB && !(await askBigFile({ name, size: file.size, left: room.total ? room.left : null, total: room.total || null }))) throw new UploadSkipped(name);
     }
   }
   if (!server.on) return { url: await asDataUrl(file), name, type, size: file.size };
   const r = await fetch('/api/upload', { method: 'POST', headers: { 'content-type': type, 'x-file-name': encodeURIComponent(name), 'x-workspace': workspaceId }, body: file });
-  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'The upload failed.');
+  if (!r.ok) {
+    const why = ((await r.json().catch(() => ({}))) as { error?: string }).error;
+    throw new Error(why ? t(why) : t('The upload failed.'));
+  }
   const d = (await r.json()) as { url: string; name: string; type: string; size: number };
   return d;
 }

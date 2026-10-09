@@ -2,6 +2,7 @@
 // in it. Nothing in it is real and nothing leaves it (the server keeps it apart from the real companies: see
 // server/sandbox.ts). This file is shared by the app and the server: the ids, the "Try this" list, and how a copy is
 // made from the demo data (src/seed.ts).
+import { mark } from './i18n/index'; // the full path: the server imports this file too
 import type { Collections, CollectionKey } from './seed';
 import { holidayCalendarId } from './data/holidays';
 
@@ -34,15 +35,16 @@ export interface DemoState {
 }
 
 /** "Try this": concrete things to do in the demo company, ticked off when the person really does them there. */
+// Shown with t(label) and t(hint): mark() lets the language check find the words (docs/i18n.md).
 export const TRY_THIS = [
-  { key: 'reply', label: 'Reply to a client email', hint: 'Nadia at KopiKita asked to move the review call' },
-  { key: 'email-task', label: 'Turn an email into a task', hint: 'Open an email and press Make a task' },
-  { key: 'stage', label: 'Move a task to another stage', hint: 'Drag a card on the board, or change its stage' },
-  { key: 'ask', label: 'Ask AI about a project', hint: 'For example: what’s late at KopiKita?' },
-  { key: 'guest', label: 'See what a guest sees', hint: 'Open a project and press View as guest' },
-  { key: 'voice', label: 'Start a huddle or send a voice note', hint: 'In any channel or direct message' },
-  { key: 'event', label: 'Add a calendar event', hint: 'Click a free slot in your week' },
-  { key: 'meeting', label: 'Read a meeting’s notes', hint: 'The KopiKita weekly sync has notes and a transcript' },
+  { key: 'reply', label: mark('Reply to a client email'), hint: mark('Nadia at KopiKita asked to move the review call') },
+  { key: 'email-task', label: mark('Turn an email into a task'), hint: mark('Open an email and press Make a task') },
+  { key: 'stage', label: mark('Move a task to another stage'), hint: mark('Drag a card on the board, or change its stage') },
+  { key: 'ask', label: mark('Ask AI about a project'), hint: mark('For example: what’s late at KopiKita?') },
+  { key: 'guest', label: mark('See what a guest sees'), hint: mark('Open a project and press View as guest') },
+  { key: 'voice', label: mark('Start a huddle or send a voice note'), hint: mark('In any channel or direct message') },
+  { key: 'event', label: mark('Add a calendar event'), hint: mark('Click a free slot in your week') },
+  { key: 'meeting', label: mark('Read a meeting’s notes'), hint: mark('The KopiKita weekly sync has notes and a transcript') },
 ] as const;
 export type TryKey = (typeof TRY_THIS)[number]['key'];
 export const TRY_KEYS = TRY_THIS.map((t) => t.key) as TryKey[];

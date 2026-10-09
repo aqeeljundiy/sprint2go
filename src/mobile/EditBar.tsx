@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GripVertical, Menu as MenuIcon, type LucideIcon } from 'lucide-react';
 import { useLongPress } from '../components/ui/useLongPress';
+import { t } from '../i18n';
 
 export interface EditApp {
   id: string;
@@ -97,15 +98,15 @@ export function EditBar({ apps, bar, onChange }: { apps: EditApp[]; bar: string[
         ))}
         <span>
           <MenuIcon size={18} />
-          More
+          {t('More')}
         </span>
       </div>
-      <p className="bar-edit-hint">{touch ? 'Hold an app and drag it.' : 'Drag an app by its handle.'} The four above the line are on the bar; the rest are in More.</p>
+      <p className="bar-edit-hint">{touch ? t('Hold an app and drag it. The four above the line are on the bar; the rest are in More.') : t('Drag an app by its handle. The four above the line are on the bar; the rest are in More.')}</p>
       <div className="bar-list" style={{ height: items.length * ROW }} role="list">
         {items.map((id, i) =>
           id === MORE ? (
             <div key={MORE} className="bar-cut" role="separator" style={{ transform: `translateY(${i * ROW}px)` }}>
-              <span>In More</span>
+              <span>{t('In More')}</span>
             </div>
           ) : (
             <BarRow
@@ -135,7 +136,7 @@ function BarRow({ app, y, lifted, onBar, onStart, onMove, onEnd, onMouse, onKey 
       style={{ transform: `translateY(${y}px)` }}
       role="listitem"
       tabIndex={0}
-      aria-label={`${app.name}, ${onBar ? 'on the bar' : 'in More'}. Alt and arrow keys move it.`}
+      aria-label={onBar ? t('{app}, on the bar. Alt and arrow keys move it.', { app: app.name }) : t('{app}, in More. Alt and arrow keys move it.', { app: app.name })}
       onKeyDown={(e) => {
         if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
         e.preventDefault();

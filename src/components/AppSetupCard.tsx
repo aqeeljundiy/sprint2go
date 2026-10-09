@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { EyeOff, type LucideIcon } from 'lucide-react';
+import { t } from '../i18n';
 
 /**
  * What an app shows when it isn't set up for this person yet (instead of an empty screen): what it's for, the one
@@ -17,7 +18,7 @@ export function AppSetupCard({ icon: Icon, title, body, actions, onHide }: { ico
         <div className="app-setup-actions">{actions}</div>
         {onHide && (
           <button className="link-btn app-setup-hide" onClick={onHide}>
-            <EyeOff size={13} /> Hide this app for me
+            <EyeOff size={13} /> {t('Hide this app for me')}
           </button>
         )}
       </div>

@@ -6,6 +6,7 @@ import type { AppId, Notice } from './types';
 import { desktop, pushState } from './push';
 import { server } from './sync';
 import { brand as product } from './terms';
+import { t } from './i18n';
 
 type Target = { app: string; ws?: string; id?: string; msg?: string; notice?: string };
 
@@ -97,7 +98,7 @@ export function usePushBridge(p: { userId: string; wsId: string; workspaceIds: s
     addEventListener('s2g:alert', onAlert);
     // A new version of the desktop app downloaded in the background: a quiet offer to restart (it also installs on quit).
     const stop = d.onUpdateReady?.((info) =>
-      latest.current.toast({ text: `A new version of the ${product.name} app is ready${info.version ? ` (${info.version})` : ''}. Restart to update.`, action: { label: 'Restart', run: () => d.restartToUpdate?.() }, ms: 60_000 }),
+      latest.current.toast({ text: info.version ? t('A new version of the {product} app is ready ({version}). Restart to update.', { product: product.name, version: info.version }) : t('A new version of the {product} app is ready. Restart to update.', { product: product.name }), action: { label: t('Restart'), run: () => d.restartToUpdate?.() }, ms: 60_000 }),
     );
     return () => {
       removeEventListener('s2g:alert', onAlert);

@@ -4,6 +4,8 @@ import { server, setDemo } from '../sync';
 import { TRY_THIS, type DemoState, type TryKey } from '../sandbox';
 import { Layer } from './ui/Layer';
 import { Badge } from './ui/Person';
+import { t } from '../i18n';
+import { tj } from '../i18n/tj';
 
 /*
  * The demo company (src/sandbox.ts): the slim bar that sits on top of it, the "Try this" list on its Home, the Reset
@@ -25,7 +27,7 @@ export function useDemoState(): DemoState | null {
 const post = (path: string, body?: object) =>
   fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-conn': server.conn }, body: JSON.stringify(body ?? {}) }).then(
     async (r) => ({ ok: r.ok, data: (await r.json().catch(() => ({}))) as { error?: string; demo?: DemoState; workspaceId?: string } }),
-    () => ({ ok: false, data: { error: 'No connection. Try again.' } as { error?: string; demo?: DemoState; workspaceId?: string } }),
+    () => ({ ok: false, data: { error: t('No connection. Try again.') } as { error?: string; demo?: DemoState; workspaceId?: string } }),
   );
 const zone = () => {
   try {
@@ -38,21 +40,21 @@ const zone = () => {
 /** Opens their demo company: made the first time (with this week's dates in their time zone), shown again if hidden. */
 export async function openDemoCompany(): Promise<{ workspaceId?: string; error?: string }> {
   const r = await post('/api/sandbox', { tz: zone() });
-  if (!r.ok) return { error: r.data.error ?? 'The demo company couldn’t be opened. Try again.' };
+  if (!r.ok) return { error: r.data.error ? t(r.data.error) : t('The demo company couldn’t be opened. Try again.') };
   if (r.data.demo) setDemo(r.data.demo);
   return { workspaceId: r.data.workspaceId };
 }
 /** Makes it again from the start. */
 export async function resetDemoCompany(): Promise<string | null> {
   const r = await post('/api/sandbox/reset', { tz: zone() });
-  if (!r.ok) return r.data.error ?? 'The demo company couldn’t be reset. Try again.';
+  if (!r.ok) return r.data.error ? t(r.data.error) : t('The demo company couldn’t be reset. Try again.');
   if (r.data.demo) setDemo(r.data.demo);
   return null;
 }
 /** Out of the switcher; it stays as it is until it's shown again (or a month goes by unused). */
 export async function hideDemoCompany(): Promise<string | null> {
   const r = await post('/api/sandbox/hide');
-  if (!r.ok) return r.data.error ?? 'The demo company couldn’t be hidden. Try again.';
+  if (!r.ok) return r.data.error ? t(r.data.error) : t('The demo company couldn’t be hidden. Try again.');
   if (r.data.demo) setDemo(r.data.demo);
   return null;
 }
@@ -76,17 +78,13 @@ export function DemoBar({ text, children }: { text: ReactNode; children?: ReactN
 export function DemoCompanyBar({ onReset, onHide, busy }: { onReset: () => void; onHide: () => void; busy?: boolean }) {
   return (
     <DemoBar
-      text={
-        <>
-          <strong>Demo company:</strong> nothing here is real and nothing leaves it.
-        </>
-      }
+      text={tj('{demo} nothing here is real and nothing leaves it.', { demo: <strong>{t('Demo company:')}</strong> })}
     >
       <button type="button" className="ghost-btn sm" onClick={onReset} disabled={busy}>
-        <RotateCcw size={13} /> Reset
+        <RotateCcw size={13} /> {t('Reset')}
       </button>
       <button type="button" className="ghost-btn sm" onClick={onHide} disabled={busy}>
-        <EyeOff size={13} /> Hide
+        <EyeOff size={13} /> {t('Hide')}
       </button>
     </DemoBar>
   );
@@ -96,9 +94,9 @@ export function DemoCompanyBar({ onReset, onHide, busy }: { onReset: () => void;
 export function ResetDemoDialog({
   onReset,
   onClose,
-  title = 'Start the demo company over?',
-  text = 'Everything you changed in it goes, and it comes back as new, with this week’s dates. Your real companies don’t change.',
-  confirm = 'Start over',
+  title = t('Start the demo company over?'),
+  text = t('Everything you changed in it goes, and it comes back as new, with this week’s dates. Your real companies don’t change.'),
+  confirm = t('Start over'),
 }: {
   onReset: () => Promise<boolean>;
   onClose: () => void;
@@ -113,7 +111,7 @@ export function ResetDemoDialog({
         <div className="modal demo-reset" role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !busy && onClose()}>
           <header className="modal-head">
             <span>{title}</span>
-            <button className="icon-btn sm" onClick={onClose} disabled={busy} aria-label="Close">
+            <button className="icon-btn sm" onClick={onClose} disabled={busy} aria-label={t('Close')}>
               <X size={15} />
             </button>
           </header>
@@ -122,7 +120,7 @@ export function ResetDemoDialog({
           </div>
           <footer className="modal-foot">
             <button type="button" className="ghost-btn" onClick={onClose} disabled={busy}>
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               type="button"
@@ -134,7 +132,7 @@ export function ResetDemoDialog({
                 if (!(await onReset())) setBusy(false);
               }}
             >
-              {busy ? <Loader2 size={15} className="spin" /> : <RotateCcw size={15} />} {busy ? 'Starting over…' : confirm}
+              {busy ? <Loader2 size={15} className="spin" /> : <RotateCcw size={15} />} {busy ? t('Starting over…') : confirm}
             </button>
           </footer>
         </div>
@@ -148,20 +146,20 @@ export function ResetDemoDialog({
  * where to go; nothing advances by itself. Closing it keeps the ticks (Help & support shows it again).
  */
 export function TryList({ tried, onGo, onClose, onDone }: { tried: TryKey[]; onGo: (key: TryKey) => void; onClose: () => void; onDone?: { label: string; run: () => void } }) {
-  const all = TRY_THIS.every((t) => tried.includes(t.key));
+  const all = TRY_THIS.every((x) => tried.includes(x.key));
   return (
-    <section className="setup-card try-card" aria-label="Try this in the demo company">
+    <section className="setup-card try-card" aria-label={t('Try this in the demo company')}>
       <header className="try-head">
-        <h2>{all ? 'You’ve tried it all' : 'Try this'}</h2>
+        <h2>{all ? t('You’ve tried it all') : t('Try this')}</h2>
         <Badge tone="info" small>
-          Demo
+          {t('Demo')}
         </Badge>
         <span className="spacer" />
         <button
           type="button"
           className="icon-btn sm"
-          aria-label="Close the list"
-          title="Close the list"
+          aria-label={t('Close the list')}
+          title={t('Close the list')}
           onClick={(e) => {
             const card = (e.currentTarget as HTMLElement).closest('.try-card');
             if (!card || matchMedia('(prefers-reduced-motion: reduce)').matches) return onClose();
@@ -174,7 +172,7 @@ export function TryList({ tried, onGo, onClose, onDone }: { tried: TryKey[]; onG
       </header>
       {all ? (
         <div className="try-done">
-          <p>Everything here works the same in a real company, with your own people, email and clients.</p>
+          <p>{t('Everything here works the same in a real company, with your own people, email and clients.')}</p>
           {onDone && (
             <button type="button" className="primary-btn sm" onClick={onDone.run}>
               {onDone.label}
@@ -183,18 +181,18 @@ export function TryList({ tried, onGo, onClose, onDone }: { tried: TryKey[]; onG
         </div>
       ) : (
         <ul>
-          {TRY_THIS.map((t) => {
-            const done = tried.includes(t.key);
+          {TRY_THIS.map((x) => {
+            const done = tried.includes(x.key);
             return (
-              <li key={t.key} className={done ? 'done' : ''}>
+              <li key={x.key} className={done ? 'done' : ''}>
                 <span className="setup-mark">{done ? <Check size={13} /> : null}</span>
-                <button type="button" className="setup-text" onClick={() => onGo(t.key)}>
-                  <strong>{t.label}</strong>
-                  <small>{done ? 'Done' : t.hint}</small>
+                <button type="button" className="setup-text" onClick={() => onGo(x.key)}>
+                  <strong>{t(x.label)}</strong>
+                  <small>{done ? t('Done') : t(x.hint)}</small>
                 </button>
                 {!done && (
-                  <button type="button" className="ghost-btn sm" onClick={() => onGo(t.key)}>
-                    Show me
+                  <button type="button" className="ghost-btn sm" onClick={() => onGo(x.key)}>
+                    {t('Show me')}
                   </button>
                 )}
               </li>
@@ -212,15 +210,15 @@ export function DemoInvite({ onOpen, onClose, busy }: { onOpen: () => void; onCl
     <div className="news-card demo-invite" role="note">
       <FlaskConical size={16} />
       <span>
-        <strong>Look around a demo company first.</strong> A sample agency with mail, chat, tasks and projects to try things in. It’s yours alone, and nothing in it is real.
+        <strong>{t('Look around a demo company first.')}</strong> {t('A sample agency with mail, chat, tasks and projects to try things in. It’s yours alone, and nothing in it is real.')}
         <button type="button" className="link-btn" onClick={onOpen} disabled={busy}>
-          {busy ? 'Opening…' : 'Open the demo company'}
+          {busy ? t('Opening…') : t('Open the demo company')}
         </button>
       </span>
       <button
         type="button"
         className="icon-btn sm"
-        aria-label="Dismiss"
+        aria-label={t('Dismiss')}
         onClick={(e) => {
           const card = (e.currentTarget as HTMLElement).closest('.news-card');
           card?.classList.add('leaving');
@@ -250,24 +248,24 @@ export function DemoCompanyBlock({ d }: { d: DemoSettings }) {
   if (!d.allowed && d.state !== 'on') return null;
   return (
     <div className="set-block demo-block">
-      <h3>Demo company</h3>
-      <p className="small muted">{d.allowed ? 'A sample agency with mail, chat, tasks and projects, just for you. Nothing in it is real and nothing leaves it.' : 'Your company switched the demo company off.'}</p>
+      <h3>{t('Demo company')}</h3>
+      <p className="small muted">{d.allowed ? t('A sample agency with mail, chat, tasks and projects, just for you. Nothing in it is real and nothing leaves it.') : t('Your company switched the demo company off.')}</p>
       {d.allowed && (
         <div className="demo-block-actions">
           {d.state === 'on' ? (
             <>
               {!d.inDemo && (
                 <button type="button" className="ghost-btn outline sm" onClick={d.onOpen}>
-                  Go to the demo company
+                  {t('Go to the demo company')}
                 </button>
               )}
               <button type="button" className="ghost-btn outline sm" onClick={d.onList}>
-                {d.listOff ? 'Show the Try this list' : 'Open the Try this list'}
+                {d.listOff ? t('Show the Try this list') : t('Open the Try this list')}
               </button>
             </>
           ) : (
             <button type="button" className="ghost-btn outline sm" onClick={d.onOpen} disabled={d.busy}>
-              {d.busy ? <Loader2 size={13} className="spin" /> : <FlaskConical size={13} />} {d.state === 'hidden' ? 'Show the demo company' : 'Open the demo company'}
+              {d.busy ? <Loader2 size={13} className="spin" /> : <FlaskConical size={13} />} {d.state === 'hidden' ? t('Show the demo company') : t('Open the demo company')}
             </button>
           )}
         </div>

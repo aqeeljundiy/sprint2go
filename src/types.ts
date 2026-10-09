@@ -1,3 +1,4 @@
+import { mark, type Msg } from './i18n/index';
 import type { SandboxMark } from './sandbox';
 import type { SummaryRun } from './jobTimes';
 
@@ -345,13 +346,14 @@ export interface DomainCheck {
 }
 
 export type Industry = 'agency' | 'ecommerce' | 'consulting' | 'software' | 'events' | 'other';
+/** Shown with t(name) and t(hint) (docs/i18n.md). */
 export const INDUSTRIES: { id: Industry; name: string; hint: string }[] = [
-  { id: 'agency', name: 'Agency or studio', hint: 'Clients, campaigns, content' },
-  { id: 'ecommerce', name: 'Brand or online shop', hint: 'Products, launches, suppliers' },
-  { id: 'consulting', name: 'Consulting or services', hint: 'Prospects, proposals, engagements' },
-  { id: 'software', name: 'Software or startup', hint: 'Releases, bugs, customers' },
-  { id: 'events', name: 'Events', hint: 'Venues, vendors, sponsors' },
-  { id: 'other', name: 'Something else', hint: 'Start plain' },
+  { id: 'agency', name: mark('Agency or studio'), hint: mark('Clients, campaigns, content') },
+  { id: 'ecommerce', name: mark('Brand or online shop'), hint: mark('Products, launches, suppliers') },
+  { id: 'consulting', name: mark('Consulting or services'), hint: mark('Prospects, proposals, engagements') },
+  { id: 'software', name: mark('Software or startup'), hint: mark('Releases, bugs, customers') },
+  { id: 'events', name: mark('Events'), hint: mark('Venues, vendors, sponsors') },
+  { id: 'other', name: mark('Something else'), hint: mark('Start plain') },
 ];
 
 /** A quote or contract for a project: lines of work with prices; the guest accepts by typing their name, and it becomes a brief. */
@@ -692,7 +694,7 @@ export interface Notice {
   fromGuest?: boolean; // written by a guest (set by the server), for the "Guests" choice in Settings, Notifications
   event?: 'opened'; // someone opened an email you sent (server/readTracking.ts): also a toast while you're in the app
   /** The words to show each reader in their own language (msg() and textOf() in src/i18n): `text` is the English. */
-  tr?: { key: string; vars?: Record<string, string | number> };
+  tr?: Msg;
 }
 
 export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';

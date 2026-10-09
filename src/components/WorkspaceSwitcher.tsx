@@ -4,6 +4,7 @@ import type { Client, Workspace } from '../types';
 import { WorkspaceLogo } from './WorkspaceLogo';
 import { Badge } from './ui/Person';
 import { isSandbox } from '../sandbox';
+import { t, tn } from '../i18n';
 
 interface Props {
   workspaces: Workspace[];
@@ -22,7 +23,7 @@ interface Props {
   demo?: { busy?: boolean; onOpen: () => void } | null;
 }
 
-export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd, onSettings, portals = [], currentPortal, onPortal, onHome, addLabel = 'Add a workspace', demo }: Props) {
+export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd, onSettings, portals = [], currentPortal, onPortal, onHome, addLabel = t('Add a workspace'), demo }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -48,18 +49,18 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
 
   return (
     <div className="ws-switch" ref={ref}>
-      <button className={`ws-current ${open ? 'on' : ''}`} onClick={() => setOpen((o) => !o)} title="Switch workspace">
+      <button className={`ws-current ${open ? 'on' : ''}`} onClick={() => setOpen((o) => !o)} title={t('Switch workspace')}>
         <WorkspaceLogo ws={current} size={30} />
         <span className="sb-label ws-name">
           <strong>{current.name}</strong>
-          <small>{currentPortal ? `Shared space` : isSandbox(current) ? 'Demo company' : (current.domains[0] ?? 'Workspace')}</small>
+          <small>{currentPortal ? t('Shared space') : isSandbox(current) ? t('Demo company') : (current.domains[0] ?? t('Workspace'))}</small>
         </span>
         <ChevronsUpDown size={15} className="sb-label ws-chev" />
       </button>
 
       {open && (
         <div className="ws-menu" role="menu">
-          {workspaces.length > 0 && <div className="ws-menu-title">Workspaces</div>}
+          {workspaces.length > 0 && <div className="ws-menu-title">{t('Workspaces')}</div>}
           {workspaces.map((w, i) => (
             <button key={w.id} className={`ws-item ${w.id === current.id && !currentPortal ? 'on' : ''}`} onClick={() => pick(() => onSwitch(w.id))}>
               <WorkspaceLogo ws={w} size={32} />
@@ -68,12 +69,14 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
                   <strong>{w.name}</strong>
                   {isSandbox(w) && (
                     <Badge tone="info" small>
-                      Demo
+                      {t('Demo')}
                     </Badge>
                   )}
                 </span>
                 <small>
-                  {isSandbox(w) ? 'Your own copy to try things in' : `${w.accounts.filter((a) => !a.temp).length} account${w.accounts.filter((a) => !a.temp).length === 1 ? '' : 's'} · ${w.domains[0] ?? 'no domain'}`}
+                  {isSandbox(w)
+                    ? t('Your own copy to try things in')
+                    : `${tn(w.accounts.filter((a) => !a.temp).length, '{n} account', '{n} accounts')} · ${w.domains[0] ?? t('no domain')}`}
                 </small>
               </span>
               {unread[w.id] ? <span className="ws-unread">{unread[w.id]}</span> : null}
@@ -87,21 +90,21 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
               </span>
               <span className="ws-name">
                 <span className="ws-name-line">
-                  <strong>{demo.busy ? 'Making your demo company…' : 'Demo company'}</strong>
+                  <strong>{demo.busy ? t('Making your demo company…') : t('Demo company')}</strong>
                   <Badge tone="info" small>
-                    Demo
+                    {t('Demo')}
                   </Badge>
                 </span>
-                <small>A sample agency to try everything in, just for you</small>
+                <small>{t('A sample agency to try everything in, just for you')}</small>
               </span>
             </button>
           )}
           {portals.length > 0 && (
             <>
-              <div className="ws-menu-title">Shared with you</div>
+              <div className="ws-menu-title">{t('Shared with you')}</div>
               {onHome && (
                 <button className="am-item" onClick={() => pick(onHome)}>
-                  <LayoutGrid size={16} /> See everything shared with you
+                  <LayoutGrid size={16} /> {t('See everything shared with you')}
                 </button>
               )}
               {portals.map((pt) => (
@@ -109,7 +112,7 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
                   <WorkspaceLogo ws={pt.ws} size={32} />
                   <span className="ws-name">
                     <strong>{pt.ws.name}</strong>
-                    <small>Shared space · {pt.client.name}</small>
+                    <small>{t('Shared space · {name}', { name: pt.client.name })}</small>
                   </span>
                   {pt.unread ? <span className="ws-unread">{pt.unread}</span> : null}
                   {pt.key === currentPortal && <Check size={16} className="ws-check" />}
@@ -125,7 +128,7 @@ export function WorkspaceSwitcher({ workspaces, current, unread, onSwitch, onAdd
           )}
           {onSettings && !currentPortal && (
             <button className="am-item" onClick={() => pick(onSettings)}>
-              <Settings2 size={16} /> Workspace settings
+              <Settings2 size={16} /> {t('Workspace settings')}
             </button>
           )}
         </div>

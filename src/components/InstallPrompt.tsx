@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { MoreVertical, Plus, Share, X } from 'lucide-react';
 import { brand as product } from '../terms';
 import { PHONE } from '../mobile/media';
+import { t } from '../i18n';
+import { tj } from '../i18n/tj';
 
 type BIP = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
 
@@ -95,41 +97,41 @@ export function InstallPrompt() {
 
   return (
     <div className="install-scrim" onMouseDown={later}>
-      <div className="install-sheet" role="dialog" aria-label={`Install ${product.name}`} onMouseDown={(e) => e.stopPropagation()}>
-        <button className="icon-btn sm install-x" onClick={later} aria-label="Not now">
+      <div className="install-sheet" role="dialog" aria-label={t('Install {product}', { product: product.name })} onMouseDown={(e) => e.stopPropagation()}>
+        <button className="icon-btn sm install-x" onClick={later} aria-label={t('Not now')}>
           <X size={16} />
         </button>
         <img src="/icon-192.png" alt="" className="install-icon" />
-        <h2>Get the {product.name} app</h2>
-        <p>Add it to your home screen. It opens full screen with its own icon, like any app, and keeps you signed in. No app store needed.</p>
+        <h2>{t('Get the {product} app', { product: product.name })}</h2>
+        <p>{t('Add it to your home screen. It opens full screen with its own icon, like any app, and keeps you signed in. No app store needed.')}</p>
         {deferred ? (
           <button className="primary-btn install-go" onClick={() => void install()}>
-            Install {product.name}
+            {t('Install {product}', { product: product.name })}
           </button>
         ) : ios ? (
           <ol className="install-steps">
             <li>
-              <span>1</span> <i className="install-step">Tap <Share size={16} /> <b>Share</b> in Safari’s toolbar</i>
+              <span>1</span> <i className="install-step">{tj('Tap {share} in Safari’s toolbar', { share: <><Share size={16} /> <b>{t('Share')}</b></> })}</i>
             </li>
             <li>
-              <span>2</span> <i className="install-step">Choose <Plus size={16} /> <b>Add to Home Screen</b></i>
+              <span>2</span> <i className="install-step">{tj('Choose {add}', { add: <><Plus size={16} /> <b>{t('Add to Home Screen')}</b></> })}</i>
             </li>
             <li>
-              <span>3</span> <i className="install-step">Tap <b>Add</b></i>
+              <span>3</span> <i className="install-step">{tj('Tap {add}', { add: <b>{t('Add')}</b> })}</i>
             </li>
           </ol>
         ) : (
           <ol className="install-steps">
             <li>
-              <span>1</span> <i className="install-step">Open your browser menu <MoreVertical size={16} /></i>
+              <span>1</span> <i className="install-step">{tj('Open your browser menu {icon}', { icon: <MoreVertical size={16} /> })}</i>
             </li>
             <li>
-              <span>2</span> <i className="install-step">Choose <b>Install app</b> or <b>Add to Home screen</b></i>
+              <span>2</span> <i className="install-step">{tj('Choose {install} or {add}', { install: <b>{t('Install app')}</b>, add: <b>{t('Add to Home screen')}</b> })}</i>
             </li>
           </ol>
         )}
         <button className="ghost-btn install-later" onClick={later}>
-          {deferred ? 'Not now' : 'Got it'}
+          {deferred ? t('Not now') : t('Got it')}
         </button>
       </div>
     </div>

@@ -58,7 +58,7 @@ import { CalendarSidebar } from './components/CalendarSidebar';
 import { AccountMenu, type SettingsSection } from './components/AccountMenu';
 import { DriveSidebar } from './components/DriveSidebar';
 import { DrivePreview } from './components/DrivePreview';
-import { AppRail, APPS } from './components/AppRail';
+import { AppRail, APPS, appWord } from './components/AppRail';
 import { AppSettingsButton, appSettingsLinks } from './components/AppSettings';
 import { Avatar } from './components/Avatar';
 import { Notifications } from './components/Notifications';
@@ -103,7 +103,9 @@ import { rowName } from './components/tables/core';
 import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
-import { useAppLanguage } from './i18n/useLang';
+import { useAppLanguage, useLang } from './i18n/useLang';
+import { msg, phrase, t, textOf, tn, type Msg } from './i18n';
+import { fmtDay, fmtList } from './i18n/format';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -241,6 +243,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   setBrandName(brandOf(ws)); // white label: an agency's name in place of ours
   setTermWord(ws?.terms?.word); // "Projects" or "Clients", before anything below renders words
   useAppLanguage(settings.language, ws?.language); // theirs, else the company's, else the device's (docs/i18n.md)
+  const lang = useLang(); // for the memos below that build words
   registerStages(allWorkspaces, ws?.id); // each company's task stages, so every screen reads a task's stage from its company
   // Companies this person is a client of (same sign-in): their portals sit in the workspace switcher.
   const [portalKey, setPortalKey] = usePersisted(`s2g-portal:${user.id}`, '');
@@ -251,8 +254,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       (link) =>
         link &&
         showToast({
-          text: `${u.name.split(' ')[0]} can join with their invite link`,
-          action: { label: 'Copy link', run: () => void navigator.clipboard?.writeText(link) },
+          text: t('{name} can join with their invite link', { name: u.name.split(' ')[0] }),
+          action: { label: t('Copy link'), run: () => void navigator.clipboard?.writeText(link) },
           ms: 20000,
         }),
     );
@@ -554,15 +557,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** A feature that depends on something not set up: say what's missing (and where to fix it, for admins). */
   const explainOff = (text: string, fix?: SettingsSection) =>
-    showToast({ text, ms: 7000, action: fix && ws.members.some((m) => m.userId === user.id && m.role !== 'member') ? { label: 'Set it up', run: () => (setSettingsSection(fix), go('settings')) } : undefined });
-  const aiOff = (what: string) =>
+    showToast({ text, ms: 7000, action: fix && ws.members.some((m) => m.userId === user.id && m.role !== 'member') ? { label: t('Set it up'), run: () => (setSettingsSection(fix), go('settings')) } : undefined });
+  /** AI is off: why, in one sentence (`notSetUp`: what it means where it was asked for, when AI isn't set up). */
+  const aiOff = (notSetUp = t('AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.')) =>
     aiWhy === 'used-up'
-      ? explainOff('The company’s AI allowance for this month is used up. An admin can add a top-up in Settings, Plan & billing.', 'billing')
+      ? explainOff(t('The company’s AI allowance for this month is used up. An admin can add a top-up in Settings, Plan & billing.'), 'billing')
       : aiWhy === 'down'
-        ? explainOff('AI isn’t available right now. We’ve been told; try again in a few minutes.')
-        : explainOff(`AI isn’t set up for this company yet${what}. An admin can add an AI key in Settings, AI, or switch to the AI plan.`, 'ai');
-  const openDump = (t: string) => (aiOn ? setDump(t) : aiOff(', so the brain dump can’t turn notes into tasks'));
-  const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : aiOff(''));
+        ? explainOff(t('AI isn’t available right now. We’ve been told; try again in a few minutes.'))
+        : explainOff(notSetUp, 'ai');
+  const openDump = (text: string) => (aiOn ? setDump(text) : aiOff(t('AI isn’t set up for this company yet, so the brain dump can’t turn notes into tasks. An admin can add an AI key in Settings, AI, or switch to the AI plan.')));
+  const openAsk = (scope: AskScope) => (aiOn ? setAskScope(scope) : aiOff());
   const botOn = !server.on || caps.demo || inSandbox || recorderOn;
   const openSendBot = () => (botOn ? (setSendBotSeed(null), setSendBotOpen(true)) : explainOff('The meeting notetaker isn’t available yet. Recordings and notes start working as soon as it is.'));
   const calendarsOn = !server.on || caps.demo || inSandbox || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
@@ -597,7 +601,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     try {
       await resync(['threads', 'workspaces']);
     } catch {
-      showToast({ text: 'Couldn’t reach the server. Check your connection, then try again.' });
+      showToast({ text: t('Couldn’t reach the server. Check your connection, then try again.') });
     }
   };
 
@@ -687,7 +691,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (err) return showToast({ text: err });
     if (other) switchWorkspace(other.id);
     await reloadAll().catch(() => {});
-    showToast({ text: 'The demo company is hidden. Help & support brings it back.', ms: 7000, action: { label: 'Undo', run: () => void openDemo() } });
+    showToast({ text: t('The demo company is hidden. Help & support brings it back.'), ms: 7000, action: { label: t('Undo'), run: () => void openDemo() } });
   };
   const resetDemo = async (): Promise<boolean> => {
     const err = await resetDemoCompany();
@@ -695,7 +699,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     await reloadAll().catch(() => {});
     setResettingDemo(false);
     go('home');
-    showToast({ text: 'The demo company is new again' });
+    showToast({ text: t('The demo company is new again') });
     return true;
   };
   /** In the switcher until it's made: "Demo company". Hidden ones come back from Help & support, not from here. */
@@ -1150,7 +1154,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       setTodos((ts) => ts.map((t) => (due.some((d) => d.id === t.id) ? { ...t, reminded: true } : t)));
       setNotices((ns) => [
         ...due.flatMap((t) =>
-          (t.assignees?.length ? t.assignees : [t.userId || t.createdBy || '']).filter(Boolean).map((who) => ({ id: uid(), userId: who, workspaceId: t.workspaceId ?? '', kind: 'task' as const, text: `Reminder: “${t.title}”${t.due ? `, due ${dueWords(t.due)}` : ''}`, at: now, read: false, link: { app: 'tasks' as const, id: t.id } })),
+          (t.assignees?.length ? t.assignees : [t.userId || t.createdBy || '']).filter(Boolean).map((who) => ({ id: uid(), userId: who, workspaceId: t.workspaceId ?? '', kind: 'task' as const, ...(t.due ? msg('Reminder: “{title}”, due {due}', { title: t.title, due: phrase(dueWords(t.due)) }) : msg('Reminder: “{title}”', { title: t.title })), at: now, read: false, link: { app: 'tasks' as const, id: t.id } })),
         ),
         ...ns,
       ]);
@@ -1387,10 +1391,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Someone wants an app the company switched off: every owner and admin gets a notification with a way to switch it on. */
   const askForApp = (id: AppId) => {
     const admins = ws.members.filter((m) => m.role !== 'member' && m.userId !== user.id).map((m) => m.userId);
-    const name = APPS.find((a) => a.id === id)?.name ?? id;
-    admins.forEach((a) => notify(a, 'task', `${myFirst} asked to switch on ${name} for ${ws.name}`, { app: 'settings', id: 'apps' }));
+    admins.forEach((a) => notify(a, 'task', msg('{name} asked to switch on {app} for {company}', { name: myFirst, app: phrase(appWord(id)), company: ws.name }), { app: 'settings', id: 'apps' }));
     setAskedApps((l) => [...l, id]);
-    showToast({ text: admins.length ? `Asked ${admins.map(firstOf).join(', ')}` : 'There’s no other admin to ask yet' });
+    showToast({ text: admins.length ? t('Asked {names}', { names: fmtList(admins.map(firstOf)) }) : t('There’s no other admin to ask yet') });
   };
   useEffect(() => {
     if (mode !== 'settings' && !enabled.has(mode)) setMode('home');
@@ -1417,8 +1420,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // What the server didn't keep, and a session that ended elsewhere.
   useEffect(() => {
-    const failed = (e: Event) => showToast({ text: (e as CustomEvent<{ error?: string }>).detail.error ?? 'That change couldn’t be saved.', ms: 7000 });
-    const out = () => showToast({ text: 'You were signed out (your password changed, or the session ended). Sign in again.', action: { label: 'Sign in', run: () => location.reload() }, ms: 20000 });
+    const failed = (e: Event) => {
+      const why = (e as CustomEvent<{ error?: string }>).detail.error;
+      showToast({ text: why ? t(why) : t('That change couldn’t be saved.'), ms: 7000 });
+    };
+    const out = () => showToast({ text: t('You were signed out (your password changed, or the session ended). Sign in again.'), action: { label: t('Sign in'), run: () => location.reload() }, ms: 20000 });
     window.addEventListener('s2g:save-failed', failed);
     window.addEventListener('s2g:signed-out', out);
     return () => (window.removeEventListener('s2g:save-failed', failed), window.removeEventListener('s2g:signed-out', out));
@@ -1431,7 +1437,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     saveQuote(sent);
     const client = wsClientsAll.find((c) => c.id === q.clientId);
     // The guests who can accept hear about it in their shared space.
-    (client ? clientPeople(client, channels) : []).filter((x) => x.status !== 'pending' && x.role === 'approver').forEach((x) => notify(clientInbox(x.email), 'task', `${ws.name} sent you a quote: ${q.title}`, { app: 'projects', id: q.clientId }));
+    (client ? clientPeople(client, channels) : []).filter((x) => x.status !== 'pending' && x.role === 'approver').forEach((x) => notify(clientInbox(x.email), 'task', msg('{company} sent you a quote: {title}', { company: ws.name, title: q.title }), { app: 'projects', id: q.clientId }));
     showToast({ text: client ? `Sent to ${client.name}. They see it in their shared space.` : 'Sent' });
   };
   /** An accepted quote becomes a brief: one task per line, due by its days (or spaced a few days apart). */
@@ -1447,7 +1453,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const decideQuote = (email: string) => (id: string, status: 'accepted' | 'declined', text: string) => {
     setQuotes((qs) => qs.map((x) => (x.id === id && x.status === 'sent' ? { ...x, status, decidedAt: nowIso(), decidedBy: email, signature: status === 'accepted' ? text || email : undefined, note: status === 'declined' && text ? text : undefined } : x)));
     const q = quotes.find((x) => x.id === id);
-    if (q) notify(q.createdBy, 'task', `${email} ${status} your quote “${q.title}”`, { app: 'projects', id: q.clientId });
+    if (q) notify(q.createdBy, 'task', status === 'accepted' ? msg('{who} accepted your quote “{title}”', { who: email, title: q.title }) : msg('{who} declined your quote “{title}”', { who: email, title: q.title }), { app: 'projects', id: q.clientId });
   };
   // A quote accepted by a guest: tell its author (notices to teammates come from the app that saw the change).
   const seenQuotes = useRef(new Map<string, string>());
@@ -1565,9 +1571,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return c !== null && c !== undefined ? `about ${rp(c / 100)} on your own AI key` : 'a small amount on your own AI key';
   })();
 
-  const notify = (userId: string, kind: Notice['kind'], text: string, link?: Notice['link']) => {
+  /** A notice for someone else. Its words come from msg(), so each reader sees them in their own language (docs/i18n.md). */
+  const notify = (userId: string, kind: Notice['kind'], words: { text: string; tr: Msg }, link?: Notice['link']) => {
     if (userId === user.id) return;
-    setNotices((ns) => [{ id: uid(), userId, workspaceId: ws.id, kind, text, at: nowIso(), read: false, link }, ...ns]);
+    setNotices((ns) => [{ id: uid(), userId, workspaceId: ws.id, kind, ...words, at: nowIso(), read: false, link }, ...ns]);
   };
 
   /** Saves this company's teams. A new team gets its own channel; people added to a team join it and hear about it. */
@@ -1579,7 +1586,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     });
     t.forEach((tm) => {
       const before = wsTeams.find((x) => x.id === tm.id);
-      tm.members.filter((m) => m !== user.id && !before?.members.includes(m)).forEach((m) => notify(m, 'team', `${user.name} added you to ${tm.name}`, { app: 'teams', id: tm.id }));
+      tm.members.filter((m) => m !== user.id && !before?.members.includes(m)).forEach((m) => notify(m, 'team', msg('{name} added you to {team}', { name: user.name, team: tm.name }), { app: 'teams', id: tm.id }));
       setChannels((cs) => cs.map((c) => (c.teamId === tm.id ? { ...c, members: [...new Set([...c.members, ...tm.members])] } : c)));
     });
     setTeams((all) => [...all.filter((x) => x.workspaceId !== ws.id), ...t]);
@@ -1594,7 +1601,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       }
       saveTeams(wsTeams.map((x) => (x.id === t.id ? { ...x, requests: [...(x.requests ?? []).filter((r) => r.userId !== user.id), { userId: user.id, at: nowIso() }] } : x)));
       const to = t.leadId ? [t.leadId] : ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
-      to.forEach((id) => notify(id, 'team', `${user.name} asked to join ${t.name}`, { app: 'teams', id: t.id }));
+      to.forEach((id) => notify(id, 'team', msg('{name} asked to join {team}', { name: user.name, team: t.name }), { app: 'teams', id: t.id }));
       showToast({ text: t.leadId ? `Asked ${firstOf(t.leadId)} to add you` : 'Asked an admin to add you' });
     },
     leave: (t) => {
@@ -1634,6 +1641,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const describe = (t: Pick<Todo, 'title' | 'clientId' | 'due'>) => {
     const c = wsClients.find((x) => x.id === t.clientId);
     return `“${t.title}”${c ? ` for ${c.name}` : ''}${t.due ? `, due ${dueWords(t.due)}` : ''}`;
+  };
+  /** The same for a notice: a phrase each reader sees in their own language. */
+  const describeP = (task: Pick<Todo, 'title' | 'clientId' | 'due'>) => {
+    const c = wsClients.find((x) => x.id === task.clientId);
+    const title = task.title;
+    if (c && task.due) return phrase('“{title}” for {project}, due {due}', { title, project: c.name, due: phrase(dueWords(task.due)) });
+    if (c) return phrase('“{title}” for {project}', { title, project: c.name });
+    if (task.due) return phrase('“{title}”, due {due}', { title, due: phrase(dueWords(task.due)) });
+    return phrase('“{title}”', { title });
   };
 
   const createTask = (
@@ -1695,10 +1711,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // Not assigned yet: tell the team lead it's waiting in their queue.
     if (!t.userId && t.teamId) {
       const tm = wsTeams.find((x) => x.id === t.teamId);
-      if (tm?.leadId && tm.leadId !== user.id) notify(tm.leadId, 'task', `New in ${tm.name}’s queue: ${describe(task)}. Pick someone for it.`, { app: 'tasks', id: task.id });
+      if (tm?.leadId && tm.leadId !== user.id) notify(tm.leadId, 'task', msg('New in {team}’s queue: {task}. Pick someone for it.', { team: tm.name, task: describeP(task) }), { app: 'tasks', id: task.id });
     }
     for (const who of (task.assignees ?? []).filter((x) => x !== user.id)) {
-      notify(who, 'task', `${myFirst} assigned you ${describe(task)}`, { app: 'tasks', id: task.id });
+      notify(who, 'task', msg('{name} assigned you {task}', { name: myFirst, task: describeP(task) }), { app: 'tasks', id: task.id });
       if (tell.chat) postChat(dmWith(who), `📌 New task for you: ${describe(task)}`, task.id);
       if (tell.email)
         emailTeammate(who, `New task: ${task.title}`, `Hi ${firstOf(who)},\n\nI've assigned you a task: ${describe(task)}.\n\nYou'll find it in ${product.name} under Tasks.`);
@@ -1741,7 +1757,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     if (needsReview) {
       setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, status, done: false } : x)));
-      notify(t.supervisorId!, 'task', `${myFirst} finished ${describe(t)}. Ready for your review`, { app: 'tasks', id });
+      notify(t.supervisorId!, 'task', msg('{name} finished {task}. Ready for your review', { name: myFirst, task: describeP(t) }), { app: 'tasks', id });
       if (!quiet) showToast({ text: `Sent to ${firstOf(t.supervisorId)} for review` });
       return;
     }
@@ -1771,15 +1787,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       ),
     );
     // Requests: the client sees each status change.
-    if (t.requestedBy && requestStatus(t).label !== requestStatus({ ...t, status, done }).label) tellClient(t, `Your request “${t.title}” is now: ${requestStatus({ ...t, status, done }).label}`);
-    else if (t.visibleToClient && done && !t.done) tellClient(t, `“${t.title}” is done`);
+    if (t.requestedBy && requestStatus(t).label !== requestStatus({ ...t, status, done }).label) tellClient(t, msg('Your request “{title}” is now: {status}', { title: t.title, status: phrase(requestStatus({ ...t, status, done }).label) }));
+    else if (t.visibleToClient && done && !t.done) tellClient(t, msg('“{title}” is done', { title: t.title }));
     if (done && !t.done) {
       const tell = new Set([t.supervisorId ?? t.createdBy, ...(t.followers ?? []), ...(from.kind === 'review' ? doersOf(t) : [])].filter((x): x is string => !!x && x !== user.id));
-      tell.forEach((uid2) => notify(uid2, 'done', from.kind === 'review' ? `${myFirst} approved ${describe(t)}` : `${myFirst} finished ${describe(t)}`, { app: 'tasks', id: t.id }));
+      tell.forEach((uid2) => notify(uid2, 'done', from.kind === 'review' ? msg('{name} approved {task}', { name: myFirst, task: describeP(t) }) : msg('{name} finished {task}', { name: myFirst, task: describeP(t) }), { app: 'tasks', id: t.id }));
       // Finishing the last task of a brief tells the person in charge.
       const br = t.briefId ? todos.find((x) => x.id === t.briefId) : undefined;
       if (br && br.userId !== user.id && todos.filter((x) => x.briefId === br.id && x.id !== id).every((x) => x.done))
-        notify(br.userId, 'done', `All tasks in the brief “${br.title}” are done`, { app: 'tasks', id: br.id });
+        notify(br.userId, 'done', msg('All tasks in the brief “{title}” are done', { title: br.title }), { app: 'tasks', id: br.id });
       // Celebrate in the client's (or team's) channel, and with a little confetti for the person who finished it.
       if (ws.chat?.celebrations !== false && !isBrief(t)) {
         const ch = channels.find((c) => c.workspaceId === ws.id && !c.archived && c.kind === 'channel' && c.category !== 'shared' && ((t.clientId && c.clientId === t.clientId) || (!t.clientId && t.teamId && c.teamId === t.teamId)));
@@ -1822,12 +1838,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       const removed = before.filter((x) => !patch.assignees!.includes(x));
       if (added.length || removed.length)
         logTask(id, 'assigned', [added.length ? `added ${added.map(firstOf).join(', ')}` : '', removed.length ? `removed ${removed.map(firstOf).join(', ')}` : ''].filter(Boolean).join(' and '));
-      added.filter((x) => x !== user.id).forEach((x) => notify(x, 'task', `${myFirst} assigned you ${describe(t)}`, { app: 'tasks', id }));
+      added.filter((x) => x !== user.id).forEach((x) => notify(x, 'task', msg('{name} assigned you {task}', { name: myFirst, task: describeP(t) }), { app: 'tasks', id }));
       if (added.length === 1 && added[0] !== user.id) showToast({ text: `Assigned to ${firstOf(added[0])}` });
     }
     if (patch.supervisorId && patch.supervisorId !== t.supervisorId) {
       logTask(id, 'supervisor', `made ${patch.supervisorId === user.id ? 'themselves' : firstOf(patch.supervisorId)} the supervisor`);
-      if (patch.supervisorId !== user.id) notify(patch.supervisorId, 'task', `${myFirst} asked you to supervise ${describe(t)}`, { app: 'tasks', id });
+      if (patch.supervisorId !== user.id) notify(patch.supervisorId, 'task', msg('{name} asked you to supervise {task}', { name: myFirst, task: describeP(t) }), { app: 'tasks', id });
     }
     if ('repeat' in patch && patch.repeat !== t.repeat) logTask(id, 'edit', patch.repeat ? `set it to repeat ${patch.repeat === 'weekdays' ? 'every weekday' : patch.repeat}` : 'stopped it repeating');
     if ('due' in patch && patch.due !== t.due) logTask(id, 'due', patch.due ? `moved the due date ${t.due ? `from ${dueLabel(t.due).text} ` : ''}to ${dueLabel(patch.due).text}` : 'removed the due date');
@@ -1844,10 +1860,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}) }] } : x)));
     if (toClient) {
       const c = clients.find((x) => x.id === t.clientId);
-      tellClient(t, `${c ? teamLabel(user, accessFor(ws, c), ws.name) : myFirst} replied on “${t.title}”: “${text.slice(0, 80)}”`);
+      tellClient(t, msg('{name} replied on “{title}”: “{text}”', { name: c ? teamLabel(user, accessFor(ws, c), ws.name) : myFirst, title: t.title, text: text.slice(0, 80) }));
     }
     const tell = new Set([...doersOf(t), t.supervisorId, ...(t.followers ?? []), ...members.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id)].filter((x): x is string => !!x && x !== user.id));
-    tell.forEach((x) => notify(x, 'task', `${myFirst} commented on “${t.title}”: “${text.slice(0, 80)}”`, { app: 'tasks', id }));
+    tell.forEach((x) => notify(x, 'task', msg('{name} commented on “{title}”: “{text}”', { name: myFirst, title: t.title, text: text.slice(0, 80) }), { app: 'tasks', id }));
   };
 
   /** The supervisor sends a finished task back with a note. */
@@ -1858,7 +1874,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     logTask(id, 'review', `sent it back: “${note}”`);
     doersOf(t)
       .filter((x) => x !== user.id)
-      .forEach((x) => notify(x, 'task', `${myFirst} sent back “${t.title}”: “${note.slice(0, 80)}”`, { app: 'tasks', id }));
+      .forEach((x) => notify(x, 'task', msg('{name} sent back “{title}”: “{note}”', { name: myFirst, title: t.title, note: note.slice(0, 80) }), { app: 'tasks', id }));
     showToast({ text: 'Sent back with your note' });
   };
 
@@ -1922,7 +1938,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     patchWorkspace(ws.id, { chat: { ...(ws.chat ?? { gifs: false, celebrations: true, whoCanCreate: 'everyone' }), layout: { ...layout, sections: layout.sections.map((x) => (x.id === sectionId ? next : x)) } } });
     const inSection = channels.filter((c) => c.workspaceId === ws.id && c.kind === 'channel' && !c.archived && sectionIdOf(layout, c) === sectionId);
     setChannels((cs) => cs.map((c) => (inSection.some((x) => x.id === c.id) ? { ...c, members: [...new Set([...c.members.filter((m) => !removed.includes(m) || m === c.ownerId), ...after])] } : c)));
-    after.filter((x) => !before.includes(x) && x !== user.id).forEach((x) => notify(x, 'mention', `${myFirst} gave you access to the ${sec.name} channels`, { app: 'chat' }));
+    after.filter((x) => !before.includes(x) && x !== user.id).forEach((x) => notify(x, 'mention', msg('{name} gave you access to the {section} channels', { name: myFirst, section: sec.name }), { app: 'chat' }));
     showToast({ text: `${after.length} ${after.length === 1 ? 'person has' : 'people have'} access to ${sec.name} (${inSection.length} channel${inSection.length === 1 ? '' : 's'})` });
   };
   // Section access stays up to date: channels moved or created in a section, and new team members, get the right people.
@@ -2033,7 +2049,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // Teammates added to a project hear about it (and it shows in their sidebar from now on).
     if (before && patch.members)
       for (const m of patch.members.filter((x) => x.userId !== user.id && !(before.members ?? []).some((y) => y.userId === x.userId)))
-        notify(m.userId, 'task', `${user.name.split(' ')[0]} added you to ${before.name}${m.role === 'lead' ? ' as lead' : ''}`, { app: 'projects', id: id });
+        notify(m.userId, 'task', m.role === 'lead' ? msg('{name} added you to {project} as lead', { name: user.name.split(' ')[0], project: before.name }) : msg('{name} added you to {project}', { name: user.name.split(' ')[0], project: before.name }), { app: 'projects', id: id });
   };
   /** With the local server: a link where a client person sets their password and signs in to their portal. */
   const makeClientInvite = (clientId: string) => async (p: { name: string; email: string }) => {
@@ -2134,23 +2150,23 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const openNote = (id: string) => (setNoteId(id), go('notes'));
 
   /** Tells the client people who should know (the requester, or everyone at the client for shared work). */
-  const tellClient = (t: Todo, text: string) => {
+  const tellClient = (t: Todo, words: { text: string; tr: Msg }) => {
     const c = clients.find((x) => x.id === t.clientId);
     if (!c) return;
     const to = t.requestedBy ? [t.requestedBy] : clientPeople(c, channels).filter((p) => p.status !== 'pending').map((p) => p.email);
-    setNotices((ns) => [...to.map((e) => ({ id: uid(), userId: clientInbox(e), workspaceId: ws.id, kind: 'task' as const, text, at: nowIso(), read: false, link: { app: 'tasks' as const, id: t.id } })), ...ns]);
+    setNotices((ns) => [...to.map((e) => ({ id: uid(), userId: clientInbox(e), workspaceId: ws.id, kind: 'task' as const, ...words, at: nowIso(), read: false, link: { app: 'tasks' as const, id: t.id } })), ...ns]);
   };
 
   /** Inviting from the demo company: it says it's the demo, and where to invite people for real. */
   const demoNoInvites = () => {
     const realWs = workspaces.find((w) => !isSandbox(w));
-    showToast({ text: 'This is the demo company, so nobody is invited from here. Invite your team in your real company.', ms: 7000, action: realWs ? { label: `Go to ${realWs.name}`, run: () => switchWorkspace(realWs.id) } : undefined });
+    showToast({ text: t('This is the demo company, so nobody is invited from here. Invite your team in your real company.'), ms: 7000, action: realWs ? { label: t('Go to {name}', { name: realWs.name }), run: () => switchWorkspace(realWs.id) } : undefined });
   };
   /** Free covers 5 people: the 6th invite shows the price at that moment instead of a wall. */
   const openInvite = () => {
     if (inSandbox) return demoNoInvites();
     if (ws.plan?.tier === 'free' && members.length >= 5) {
-      showToast({ text: 'Free covers 5 people. Add more on Small for Rp 39.000 per person a month', action: { label: 'See plans', run: () => (setSettingsSection('billing'), go('settings')) }, ms: 8000 });
+      showToast({ text: t('Free covers 5 people. Add more on Small for {price} per person a month', { price: rp(39_000) }), action: { label: t('See plans'), run: () => (setSettingsSection('billing'), go('settings')) }, ms: 8000 });
       return;
     }
     setInviting(true);
@@ -2229,9 +2245,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       a.download = `${ws.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-export-${nowIso().slice(0, 10)}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
-      showToast({ text: 'Export downloaded' });
+      showToast({ text: t('Export downloaded') });
     } catch {
-      showToast({ text: 'Your browser blocked the download' });
+      showToast({ text: t('Your browser blocked the download') });
     }
   };
 
@@ -2243,7 +2259,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const u: User = existing ?? { id: uid(), name: name.charAt(0).toUpperCase() + name.slice(1), email, title: 'Invited', color: ['#0ea5e9', '#f97316', '#8b5cf6', '#10b981'][allUsers.length % 4] };
     if (!existing) onInvite(u);
     if (!ws.members.some((m) => m.userId === u.id)) patchWorkspace(ws.id, { members: [...ws.members, { userId: u.id, role: 'member' }] });
-    showToast({ text: `Invited ${u.name} (${email})` });
+    showToast({ text: t('Invited {name} ({email})', { name: u.name, email }) });
     return u;
   };
 
@@ -2268,17 +2284,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Who hears about a message as it goes out: the other side of a DM, people it mentions, whoever wrote what it answers. */
   const chatNotices = (m: ChatMessage, ch: Channel) => {
     const text = m.text;
-    const where = ch.kind === 'dm' ? 'a message' : `#${ch.name}`;
-    if (m.kind === 'kudos' && m.kudosFor) notify(m.kudosFor, 'mention', `🙌 ${myFirst} gave you kudos in ${where}${text ? `: “${text.slice(0, 80)}”` : ''}`, { app: 'chat', id: ch.id, msg: m.id });
+    const where = ch.kind === 'dm' ? phrase('a message') : `#${ch.name}`;
+    if (m.kind === 'kudos' && m.kudosFor) notify(m.kudosFor, 'mention', text ? msg('🙌 {name} gave you kudos in {where}: “{text}”', { name: myFirst, where, text: text.slice(0, 80) }) : msg('🙌 {name} gave you kudos in {where}', { name: myFirst, where }), { app: 'chat', id: ch.id, msg: m.id });
     if (m.parentId) {
       const root = messages.find((x) => x.id === m.parentId);
-      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', `${myFirst} replied to your message in ${where}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
+      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', msg('{name} replied to your message in {where}: “{text}”', { name: myFirst, where, text: text.slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
     }
     for (const id of ch.members) {
       if (id === user.id) continue;
       const fn = firstOf(id);
-      if (ch.kind === 'dm') notify(id, 'mention', `${myFirst} messaged you: “${(text || msgPreview(m)).slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
-      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', `${myFirst} mentioned you in #${ch.name}: “${text.slice(0, 80)}”`, { app: 'chat', id: ch.id, msg: m.id });
+      if (ch.kind === 'dm') notify(id, 'mention', msg('{name} messaged you: “{text}”', { name: myFirst, text: (text || msgPreview(m)).slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
+      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', msg('{name} mentioned you in #{channel}: “{text}”', { name: myFirst, channel: ch.name, text: text.slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
     }
   };
   const sendChat = (pl: SendPayload) => chatId && sendChatTo(chatId, pl);
@@ -2473,7 +2489,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       };
       setMeetings((ms) => ms.map((x) => (x.id === id ? { ...next, log: [...(x.log ?? []), ...(filed.filedBy === 'rule' ? [{ message: `Filed in ${wsClients.find((c) => c.id === filed.clientId)?.name} by rule`, at: nowIso() }] : filed.filedBy === 'ai' ? [{ message: `Filed in ${wsClients.find((c) => c.id === filed.clientId)?.name} by AI`, at: nowIso() }] : []), { message: `Kept: ${keep === 'video' ? 'video, audio and notes' : keep === 'audio' ? 'audio and notes' : 'notes and transcript only'}`, at: nowIso() }, { message: 'Done', at: nowIso() }] } : x)));
       if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) later(id, 60, () => next.actions.forEach((_, i) => meetingActionToTask(next, i, true)));
-      notify(current.createdBy ?? user.id, 'meeting', `Notes are ready for “${next.title}” · ${actions.length} action item${actions.length === 1 ? '' : 's'}`, { app: 'meet', id });
+      notify(current.createdBy ?? user.id, 'meeting', actions.length === 1 ? msg('Notes are ready for “{title}” · 1 action item', { title: next.title }) : msg('Notes are ready for “{title}” · {n} action items', { title: next.title, n: actions.length }), { app: 'meet', id });
       if (current.createdBy !== user.id) return;
       showToast({ text: `Notes ready for “${next.title}”`, action: { label: 'Open', run: () => openMeeting(id) } });
     });
@@ -2488,7 +2504,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         // Notes written again (another language, say): AI tasks from the old notes that nobody touched make way for the new ones.
         setTodos((ts) => ts.filter((t) => !(t.meetingId === m.id && t.source === 'meeting' && !t.done && !t.notes && t.createdBy === user.id)));
         if (meetSettings.autoTasks !== false && ws.ai?.auto.meetingNotes !== false) m.actions.forEach((_, i) => meetingActionToTask(m, i, true));
-        notify(user.id, 'meeting', `Notes are ready for “${m.title}” · ${m.actions.length} action item${m.actions.length === 1 ? '' : 's'}`, { app: 'meet', id: m.id });
+        notify(user.id, 'meeting', m.actions.length === 1 ? msg('Notes are ready for “{title}” · 1 action item', { title: m.title }) : msg('Notes are ready for “{title}” · {n} action items', { title: m.title, n: m.actions.length }), { app: 'meet', id: m.id });
         showToast({ text: `Notes ready for “${m.title}”`, action: { label: 'Open', run: () => openMeeting(m.id) } });
       });
   }, [meetings]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2612,7 +2628,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     for (const n of opened) {
       if (openedSeen.current.has(n.id)) continue;
       openedSeen.current.add(n.id);
-      if (!n.read && Date.now() - Date.parse(n.at) < 120_000) showToast({ text: n.text, action: { label: 'View', run: () => openNotice(n) } });
+      if (!n.read && Date.now() - Date.parse(n.at) < 120_000) showToast({ text: textOf(n), action: { label: t('View'), run: () => openNotice(n) } });
     }
   }, [myNotices]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3302,10 +3318,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       }
       if (r.kind === 'note') {
         const n = wsNotes.find((x) => x.id === r.id);
-        return n && { id: `n-${n.id}`, label: n.title || 'Untitled note', hint: 'Note', icon: FileText, run: () => openNote(n.id) };
+        return n && { id: `n-${n.id}`, label: n.title || t('Untitled note'), hint: t('Note'), icon: FileText, run: () => openNote(n.id) };
       }
-      const t = wsTables.find((x) => x.id === r.id);
-      return t && { id: `t-${t.id}`, label: t.name, hint: 'Table', icon: Table2, run: () => (openTable(t.id), go('tables')) };
+      const tb = wsTables.find((x) => x.id === r.id);
+      return tb && { id: `t-${tb.id}`, label: tb.name, hint: t('Table'), icon: Table2, run: () => (openTable(tb.id), go('tables')) };
     })
     .filter((x): x is NonNullable<typeof x> => !!x)
     .slice(0, 5);
@@ -3324,17 +3340,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [newMessage, setNewMessage] = useState(false);
   const [taskAdd, setTaskAdd] = useState(0); // bumps to open Tasks' new task field
   const makeLinks = [
-    ...(enabled.has('mail') && mailOut ? [{ id: 'email', label: 'Email', icon: PenLine, run: () => openCompose() }] : []),
-    ...(enabled.has('chat') ? [{ id: 'message', label: 'Message', icon: MessagesSquare, run: () => setNewMessage(true) }] : []),
-    ...(enabled.has('tasks') ? [{ id: 'task', label: 'Task', icon: ListChecks, run: () => (openTasks({ kind: 'mine' }), setTaskAdd((n) => n + 1)) }] : []),
-    ...(enabled.has('calendar') ? [{ id: 'event', label: 'Event', icon: CalendarPlus, run: () => (go('calendar'), openNewEvent()) }] : []),
-    ...(enabled.has('notes') ? [{ id: 'note', label: 'Note', icon: FileText, run: () => newNote() }] : []),
-    ...(enabled.has('drive') ? [{ id: 'upload', label: 'Upload', icon: Upload, run: () => (go('drive'), fileInput.current?.click()) }] : []),
+    ...(enabled.has('mail') && mailOut ? [{ id: 'email', label: t('Email'), icon: PenLine, run: () => openCompose() }] : []),
+    ...(enabled.has('chat') ? [{ id: 'message', label: t('Message'), icon: MessagesSquare, run: () => setNewMessage(true) }] : []),
+    ...(enabled.has('tasks') ? [{ id: 'task', label: t('Task'), icon: ListChecks, run: () => (openTasks({ kind: 'mine' }), setTaskAdd((n) => n + 1)) }] : []),
+    ...(enabled.has('calendar') ? [{ id: 'event', label: t('Event'), icon: CalendarPlus, run: () => (go('calendar'), openNewEvent()) }] : []),
+    ...(enabled.has('notes') ? [{ id: 'note', label: t('Note'), icon: FileText, run: () => newNote() }] : []),
+    ...(enabled.has('drive') ? [{ id: 'upload', label: t('Upload'), icon: Upload, run: () => (go('drive'), fileInput.current?.click()) }] : []),
   ];
   const meetLive = wsMeetings.some((m) => m.status === 'joining' || m.status === 'waiting_room' || m.status === 'recording');
   const moreApps = MORE_ORDER.filter((id) => enabled.has(id) && !tabApps.includes(id)).map((id) => {
     const a = APPS.find((x) => x.id === id)!;
-    return { id, name: a.name, icon: a.icon, badge: barBadge(id), live: id === 'meet' && meetLive ? 'Recording' : undefined };
+    return { id, name: a.name, icon: a.icon, badge: barBadge(id), live: id === 'meet' && meetLive ? t('Recording') : undefined };
   });
   // Edit the bar lists the apps in More's order (Calendar first), after the ones on the bar.
   const enabledForBar = MORE_ORDER.filter((id) => enabled.has(id)).map((id) => APPS.find((a) => a.id === id)!).map((a) => ({ id: a.id, name: a.name, icon: a.icon }));
@@ -3345,13 +3361,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const deepItems = useMemo<PaletteItem[]>(() => {
     const chanIds = new Set(wsChannels.map((c) => c.id));
     const rows = wsTableRows.slice(0, 3000).map((r) => {
-      const t = wsTables.find((x) => x.id === r.tableId);
-      const name = t ? rowName(t, r) : 'Row';
+      const tb = wsTables.find((x) => x.id === r.tableId);
+      const name = tb ? rowName(tb, r) : t('Row');
       const cells = (Object.values(r.values) as unknown[])
         .flatMap((v) => (Array.isArray(v) ? (v as unknown[]) : [v]))
         .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
         .join(' ');
-      return { id: 'row-' + r.id, group: 'Rows', title: name || 'Untitled row', sub: t?.name, icon: Table2, keywords: cells.slice(0, 1200), run: () => openTable(r.tableId, r.id) };
+      return { id: 'row-' + r.id, group: 'Rows', title: name || t('Untitled row'), sub: tb?.name, icon: Table2, keywords: cells.slice(0, 1200), run: () => openTable(r.tableId, r.id) };
     });
     const msgs = messages
       .filter((m) => chanIds.has(m.channelId) && m.text)
@@ -3359,27 +3375,27 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       .reverse()
       .map((m) => {
         const c = wsChannels.find((x) => x.id === m.channelId)!;
-        return { id: 'msg-' + m.id, group: 'Messages', title: m.text.replace(/\s+/g, ' ').slice(0, 90), sub: `${c.kind === 'dm' ? 'Direct message' : '#' + c.name} · ${firstOf(m.userId)}`, icon: MessagesSquare, keywords: m.text.slice(0, 1500), run: () => (setFocusMsg(m.id), openChannel(m.channelId)) };
+        return { id: 'msg-' + m.id, group: 'Messages', title: m.text.replace(/\s+/g, ' ').slice(0, 90), sub: `${c.kind === 'dm' ? t('Direct message') : '#' + c.name} · ${firstOf(m.userId)}`, icon: MessagesSquare, keywords: m.text.slice(0, 1500), run: () => (setFocusMsg(m.id), openChannel(m.channelId)) };
       });
     return [...rows, ...msgs];
-  }, [wsTableRows, wsTables, messages, wsChannels]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wsTableRows, wsTables, messages, wsChannels, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const paletteItems: PaletteItem[] = [
     // What needs you, so an empty search is already useful.
     ...wsTasks
       .filter((t) => !t.done && ((stageKind(t) === 'review' && t.supervisorId === user.id) || (doersOf(t).includes(user.id) && !!t.due && t.due <= today0)))
-      .map((t) => ({ id: 'n-' + t.id, group: 'Needs you', title: t.title, sub: stageKind(t) === 'review' ? 'Waiting for your review' : t.due! < today0 ? 'Late' : 'Due today', icon: ListChecks, run: () => openTask(t.id) })),
-    { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, app: 'tasks' as const, run: () => openDump('') },
-    ...(enabled.has('mail') && mailOut ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, app: 'mail' as const, run: () => openCompose() }] : []),
-    { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, app: 'tasks' as const, run: () => (openTasks({ kind: 'mine' }), setTaskAdd((n) => n + 1)) },
-    ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, app: 'calendar' as const, run: () => { go('calendar'); openNewEvent(); } }] : []),
+      .map((task) => ({ id: 'n-' + task.id, group: 'Needs you', title: task.title, sub: stageKind(task) === 'review' ? t('Waiting for your review') : task.due! < today0 ? t('Late') : t('Due today'), icon: ListChecks, run: () => openTask(task.id) })),
+    { id: 'a-dump', group: 'Actions', title: t('Brain dump'), sub: t('Turn your thoughts into assigned tasks'), icon: Brain, app: 'tasks' as const, run: () => openDump('') },
+    ...(enabled.has('mail') && mailOut ? [{ id: 'a-compose', group: 'Actions', title: t('Compose email'), icon: PenLine, app: 'mail' as const, run: () => openCompose() }] : []),
+    { id: 'a-task', group: 'Actions', title: t('New task'), icon: ListChecks, app: 'tasks' as const, run: () => (openTasks({ kind: 'mine' }), setTaskAdd((n) => n + 1)) },
+    ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: t('New event'), icon: CalendarPlus, app: 'calendar' as const, run: () => { go('calendar'); openNewEvent(); } }] : []),
     ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
-    ...wsClientsAll.map((c) => ({ id: 'c-' + c.id, group: `${term.Many}`, title: c.name, sub: c.status === 'ended' ? `Past ${term.one}` : c.domain, icon: Building2, run: () => openClient(c.id) })),
-    ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.userId ? firstOf(t.userId) : 'nobody yet'].filter(Boolean).join(' · '), icon: ListChecks, keywords: [t.notes, t.context].filter(Boolean).join(' ').slice(0, 1500), run: () => openTask(t.id) })),
+    ...wsClientsAll.map((c) => ({ id: 'c-' + c.id, group: `${term.Many}`, title: c.name, sub: c.status === 'ended' ? t('Past {project}', { project: term.one }) : c.domain, icon: Building2, run: () => openClient(c.id) })),
+    ...wsTasks.filter((task) => !task.done).map((task) => ({ id: 't-' + task.id, group: 'Tasks', title: task.title, sub: [wsClients.find((c) => c.id === task.clientId)?.name, task.userId ? firstOf(task.userId) : t('nobody yet')].filter(Boolean).join(' · '), icon: ListChecks, keywords: [task.notes, task.context].filter(Boolean).join(' ').slice(0, 1500), run: () => openTask(task.id) })),
     ...members.filter((u) => u.id !== user.id).map((u) => ({ id: 'p-' + u.id, group: 'People', title: u.name, sub: u.title || u.email, icon: UserIcon, run: () => openChannel(dmWith(u.id)) })),
     ...wsChannels.filter((c) => c.kind === 'channel').map((c) => ({ id: 'ch-' + c.id, group: 'Channels', title: '#' + c.name, icon: Hash, run: () => openChannel(c.id) })),
-    ...wsThreads.slice(0, 200).map((t) => ({ id: 'm-' + t.id, group: 'Emails', title: t.subject, sub: t.messages[t.messages.length - 1].from.name, icon: Mail, keywords: t.messages.slice(-2).map((m) => m.body).join(' ').slice(0, 1500), run: () => openThread(t.id) })),
-    ...wsNotes.map((n) => ({ id: 'no-' + n.id, group: 'Notes', title: n.title || 'Untitled note', sub: wsClientsAll.find((c) => c.id === n.clientId)?.name, icon: FileText, keywords: htmlToText(n.html).slice(0, 2000), run: () => openNote(n.id) })),
+    ...wsThreads.slice(0, 200).map((th) => ({ id: 'm-' + th.id, group: 'Emails', title: th.subject, sub: th.messages[th.messages.length - 1].from.name, icon: Mail, keywords: th.messages.slice(-2).map((m) => m.body).join(' ').slice(0, 1500), run: () => openThread(th.id) })),
+    ...wsNotes.map((n) => ({ id: 'no-' + n.id, group: 'Notes', title: n.title || t('Untitled note'), sub: wsClientsAll.find((c) => c.id === n.clientId)?.name, icon: FileText, keywords: htmlToText(n.html).slice(0, 2000), run: () => openNote(n.id) })),
     ...wsMeetings.map((m) => ({ id: 'mt-' + m.id, group: 'Meetings', title: m.title, icon: Video, keywords: [m.summary, ...(m.keyPoints ?? []), ...(m.decisions ?? []), ...(m.transcript ?? []).map((l) => l.text)].join(' ').slice(0, 6000), run: () => openMeeting(m.id) })),
     ...deepItems,
     ...wsDrive.filter((i) => i.kind !== 'folder' && !i.trashed).map((i) => ({ id: 'f-' + i.id, group: 'Files', title: i.name, icon: FileText, run: () => { go('drive'); setPreview({ item: i, list: [i] }); } })),
@@ -3506,7 +3522,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         }
         account={
           <div className="account-wrap">
-            <button className={`rail-avatar ${accountOpen || mode === 'settings' ? 'on' : ''}`} onClick={() => setAccountOpen((o) => !o)} title={`${ME.name} · account & settings`}>
+            <button className={`rail-avatar ${accountOpen || mode === 'settings' ? 'on' : ''}`} onClick={() => setAccountOpen((o) => !o)} title={t('{name} · account & settings', { name: ME.name })}>
               <Avatar person={ME} size={32} />
             </button>
             {accountOpen && (
@@ -3540,7 +3556,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       />
       <Sidebar
         mode={appMode}
-        title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[appMode]}
+        title={({ home: t('Home'), mail: t('Mail'), chat: t('Chat'), tasks: t('Tasks'), calendar: t('Calendar'), notes: t('Notes'), drive: t('Drive'), meet: t('Meet'), vault: t('Vault'), settings: t('Settings') } as Record<string, string>)[appMode]}
         collapsed={collapsed && !mobile}
         onCollapse={setCollapsed}
         settings={appSettings(appMode, 'sidebar')}
@@ -3563,7 +3579,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             demo={demoEntry}
           />
             <button className="ghost-btn outline sm" onClick={() => go('settings')}>
-              Settings
+              {t('Settings')}
             </button>
           </div>
         }
@@ -3803,7 +3819,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       <main className="main" key={`${ws.id}:${mode}`}>
         {mobile && (
           <MobileTop
-            title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', projects: term.Many, teams: 'Teams', tables: 'Tables', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[mode] ?? ''}
+            title={mode === 'settings' ? t('Settings') : (APPS.find((a) => a.id === mode)?.name ?? '')}
             menu={chrome.title ?? mobileSwitcher}
             settings={settingsRows}
             back={chrome.back}
@@ -3901,11 +3917,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onAssign={(id, uid2) => patchTask(id, { userId: uid2 })}
             onSearch={() => setPaletteOpen(true)}
             onNudge={(id) => {
-              const t = todos.find((x) => x.id === id);
-              if (!t) return;
-              doersOf(t).filter((x) => x !== user.id).forEach((x) => notify(x, 'task', `${myFirst} is checking on “${t.title}”${t.due ? `, it was due ${dueWords(t.due)}` : ''}`, { app: 'tasks', id }));
+              const task = todos.find((x) => x.id === id);
+              if (!task) return;
+              doersOf(task).filter((x) => x !== user.id).forEach((x) => notify(x, 'task', task.due ? msg('{name} is checking on “{title}”, it was due {due}', { name: myFirst, title: task.title, due: phrase(dueWords(task.due)) }) : msg('{name} is checking on “{title}”', { name: myFirst, title: task.title }), { app: 'tasks', id }));
               logTask(id, 'comment', 'sent a reminder');
-              showToast({ text: `Reminded ${doersOf(t).map(firstOf).join(', ')}` });
+              showToast({ text: t('Reminded {names}', { names: fmtList(doersOf(task).map(firstOf)) }) });
             }}
             onOpenTask={openTask}
             onOpenTeam={(id) => openTasks({ kind: 'team', id })}
@@ -3973,10 +3989,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 <TryList
                   tried={ws.sandbox.tried ?? []}
                   onGo={goTry}
-                  onClose={() => (patchWorkspace(ws.id, { sandbox: { ...ws.sandbox!, listOff: true } }), showToast({ text: 'The list is in Help & support whenever you want it' }))}
+                  onClose={() => (patchWorkspace(ws.id, { sandbox: { ...ws.sandbox!, listOff: true } }), showToast({ text: t('The list is in Help & support whenever you want it') }))}
                   onDone={(() => {
                     const realWs = workspaces.find((w) => !isSandbox(w));
-                    return realWs ? { label: `Go to ${realWs.name}`, run: () => switchWorkspace(realWs.id) } : { label: 'Set up your company', run: () => setNewWs(true) };
+                    return realWs ? { label: t('Go to {name}', { name: realWs.name }), run: () => switchWorkspace(realWs.id) } : { label: t('Set up your company'), run: () => setNewWs(true) };
                   })()}
                 />
               ) : !inSandbox && demo?.allowed && demo.state === 'none' && !demoInviteOff && !allWsTasks.length && !wsClientsAll.length ? (
@@ -3988,14 +4004,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 ? [
                     {
                       key: 'email',
-                      label: 'Email',
-                      hint: ws.emailSetup === 'none' ? 'Mail is off for this company' : mailIn && mailOut ? 'Receiving and sending work' : `${mailIn ? 'Receiving works. ' : ''}${mailOut ? 'Sending works. ' : ''}${(!mailIn ? mailWhy.receive : mailWhy.send) ?? 'Add the records for your domain'}`,
+                      label: t('Email'),
+                      hint:
+                        ws.emailSetup === 'none'
+                          ? t('Mail is off for this company')
+                          : mailIn && mailOut
+                            ? t('Receiving and sending work')
+                            : [mailIn ? t('Receiving works.') : '', mailOut ? t('Sending works.') : '', t((!mailIn ? mailWhy.receive : mailWhy.send) ?? 'Add the records for your domain')].filter(Boolean).join(' '),
                       done: ws.emailSetup === 'none' || (mailIn && mailOut),
                       onOpen: () => (setSettingsSection('email'), go('settings')),
                     },
-                    { key: 'people', label: 'Your team', hint: ws.members.length > 1 ? `${ws.members.length} people in` : 'Invite the people you work with', done: ws.members.length > 1, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
-                    { key: 'brand', label: 'Logo and colour', hint: ws.logo ? 'Set' : 'Your logo on the app and in shared spaces', done: !!ws.logo, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
-                    { key: 'plan', label: 'Plan', hint: ws.plan?.payment ? 'Payment set up' : ws.plan?.trialEnds ? `Trial ends ${new Date(ws.plan.trialEnds).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}; pick a plan before then` : 'Pick a plan', done: !!ws.plan?.payment || ws.plan?.tier === 'free', onOpen: () => (setSettingsSection('billing'), go('settings')) },
+                    { key: 'people', label: t('Your team'), hint: ws.members.length > 1 ? tn(ws.members.length, '{n} person in', '{n} people in') : t('Invite the people you work with'), done: ws.members.length > 1, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
+                    { key: 'brand', label: t('Logo and colour'), hint: ws.logo ? t('Set') : t('Your logo on the app and in shared spaces'), done: !!ws.logo, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
+                    { key: 'plan', label: t('Plan'), hint: ws.plan?.payment ? t('Payment set up') : ws.plan?.trialEnds ? t('Trial ends {date}; pick a plan before then', { date: fmtDay(ws.plan.trialEnds) }) : t('Pick a plan'), done: !!ws.plan?.payment || ws.plan?.tier === 'free', onOpen: () => (setSettingsSection('billing'), go('settings')) },
                   ]
                 : undefined
             }
@@ -4271,8 +4292,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                     className="primary-btn"
                     onClick={() => {
                       const admins = ws.members.filter((m) => m.role !== 'member' && m.userId !== user.id).map((m) => m.userId);
-                      admins.forEach((a) => notify(a, 'mail', `${myFirst} asked for a mailbox in ${ws.name}`, { app: 'settings', id: 'workspace' }));
-                      showToast({ text: admins.length ? `Asked ${admins.map(firstOf).join(', ')}` : 'There’s no other admin to ask yet' });
+                      admins.forEach((a) => notify(a, 'mail', msg('{name} asked for a mailbox in {company}', { name: myFirst, company: ws.name }), { app: 'settings', id: 'workspace' }));
+                      showToast({ text: admins.length ? t('Asked {names}', { names: fmtList(admins.map(firstOf)) }) : t('There’s no other admin to ask yet') });
                     }}
                   >
                     Ask for a mailbox
@@ -4384,13 +4405,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               userForEmail={userForEmail}
               presence={presence}
               aiOn={aiOn}
-              onAiOff={() => aiOff(', so it can’t summarize email')}
+              onAiOff={() => aiOff(t('AI isn’t set up for this company yet, so it can’t summarize email. An admin can add an AI key in Settings, AI, or switch to the AI plan.'))}
               onAssign={(id, who) => {
                 const t = threads.find((x) => x.id === id);
                 const before = t?.assignee;
                 if ((who || undefined) === before) return;
                 patchThread(id, { assignee: who || undefined });
-                if (who && who !== user.id) notify(who, 'mail', `${myFirst} asked you to handle “${t?.subject}”`, { app: 'mail', id });
+                if (who && who !== user.id) notify(who, 'mail', msg('{name} asked you to handle “{subject}”', { name: myFirst, subject: t?.subject ?? '' }), { app: 'mail', id });
                 showToast({ text: who ? `${who === user.id ? 'You handle' : `${firstOf(who)} handles`} this one now` : 'Nobody handles it now', action: { label: 'Undo', run: () => patchThread(id, { assignee: before }) } });
               }}
               onSnooze={(id, until, ifNoReply) => mailActions.snooze([id], until, ifNoReply)}
@@ -4400,7 +4421,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 const box = accountOf(t?.accountId ?? '');
                 members
                   .filter((u) => u.id !== user.id && box?.users.includes(u.id) && new RegExp(`@${u.name.split(' ')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text))
-                  .forEach((u) => notify(u.id, 'mention', `${myFirst} mentioned you in a comment on “${t?.subject}”`, { app: 'mail', id }));
+                  .forEach((u) => notify(u.id, 'mention', msg('{name} mentioned you in a comment on “{subject}”', { name: myFirst, subject: t?.subject ?? '' }), { app: 'mail', id }));
               }}
               onForward={forward}
               client={selected ? clientForThread(selected) : undefined}
@@ -4681,19 +4702,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 members: ws.members.filter((m) => m.userId !== uid2),
                 accounts: ws.accounts.map((a) => ({ ...a, users: a.users.filter((x) => x !== uid2) })),
               });
-              showToast({ text: 'Removed from the workspace' });
+              showToast({ text: t('Removed from the workspace') });
             }}
             blocked={blocked}
             onUnblock={(id) => {
               setBlocked((b) => b.filter((x) => x.id !== id));
-              showToast({ text: 'Unblocked. Their email will arrive again' });
+              showToast({ text: t('Unblocked. Their email will arrive again') });
             }}
             onAccess={(accountId, users) => {
               const before = ws.accounts.find((x) => x.id === accountId)?.users ?? [];
               patchWorkspace(ws.id, { accounts: ws.accounts.map((x) => (x.id === accountId ? { ...x, users } : x)) });
               const added = users.find((x) => !before.includes(x));
-              const name = (id: string) => allUsers.find((u) => u.id === id)?.name.split(' ')[0] ?? 'They';
-              showToast({ text: added ? `${name(added)} can now open this inbox` : `${name(before.find((x) => !users.includes(x))!)} no longer has access` });
+              const name = (id: string) => allUsers.find((u) => u.id === id)?.name.split(' ')[0] ?? t('They');
+              showToast({ text: added ? t('{name} can now open this inbox', { name: name(added) }) : t('{name} no longer has access', { name: name(before.find((x) => !users.includes(x))!) }) });
             }}
             admin={{
               people: members.length,
@@ -4718,14 +4739,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 setWorkspaces((list) => list.filter((w) => w.id !== ws.id));
                 if (rest[0]) setWsId(rest[0].id);
                 go('home');
-                showToast({ text: `${ws.name} deleted` });
+                showToast({ text: t('{name} deleted', { name: ws.name }) });
               },
               toast: (text) => showToast({ text }),
               tasks: allWsTasks,
               onMoveTasks: (moves) => {
                 const by = new Map(moves.map((m) => [m.id, m.patch]));
                 setTodos((ts) => ts.map((t) => (by.has(t.id) ? { ...t, ...by.get(t.id) } : t)));
-                if (moves.length) showToast({ text: `Moved ${moves.length} task${moves.length === 1 ? '' : 's'}` });
+                if (moves.length) showToast({ text: tn(moves.length, 'Moved {n} task', 'Moved {n} tasks') });
               },
             }}
             onRemoveAccount={(id) => setRemoveAcct(ws.accounts.find((a) => a.id === id) ?? null)}
@@ -4739,7 +4760,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                     return null;
                   }
                   const r = await fetch('/api/mail/away', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, accountId: a.id, away }) }).catch(() => null);
-                  return r?.ok ? null : (((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error ?? 'No connection. Try again.');
+                  const why = r?.ok ? null : ((await r?.json().catch(() => ({}))) as { error?: string } | undefined)?.error;
+                  return r?.ok ? null : why ? t(why) : t('No connection. Try again.');
                 }}
               />
             }
@@ -4780,12 +4802,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             apps: enabledForBar,
             bar: tabApps,
             onChange: setTabApps,
-            reset: ownBarOn ? { label: teamBar ? 'Use the company’s bar' : 'Back to the usual bar', run: () => (setSavedBar(DEFAULT_BAR), setOwnBar(false)) } : undefined,
+            reset: ownBarOn ? { label: teamBar ? t('Use the company’s bar') : t('Back to the usual bar'), run: () => (setSavedBar(DEFAULT_BAR), setOwnBar(false)) } : undefined,
           }}
         />
       )}
       {noticesOpen && mobile && (
-        <Sheet onClose={() => setNoticesOpen(false)} label="Notifications" className="notices-sheet" size="tall">
+        <Sheet onClose={() => setNoticesOpen(false)} label={t('Notifications')} className="notices-sheet" size="tall">
           <Notifications notices={myNotices} onOpen={openNotice} onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))} onClose={() => setNoticesOpen(false)} />
         </Sheet>
       )}
@@ -4891,7 +4913,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             setSelectedId(null);
             setView({ kind: 'folder', id: 'inbox' });
             go('home');
-            showToast({ text: `${w.name} is ready${newUsers.length ? `, ${newUsers.length} invite${newUsers.length > 1 ? 's' : ''} sent` : ''}` });
+            showToast({ text: newUsers.length ? tn(newUsers.length, '{name} is ready, {n} invite sent', '{name} is ready, {n} invites sent', { name: w.name }) : t('{name} is ready', { name: w.name }) });
           }}
         />
       )}
@@ -4903,7 +4925,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onAdd={(a) => {
             patchWorkspace(ws.id, { accounts: [...ws.accounts, a] });
             setNewAcct(false);
-            showToast({ text: `${a.email} added` });
+            showToast({ text: t('{email} added', { email: a.email }) });
           }}
         />
       )}
@@ -4919,7 +4941,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               accounts: [...ws.accounts.map((a) => (shared.includes(a.id) ? { ...a, users: [...a.users, u.id] } : a)), ...(box ? [box] : [])],
             });
             setInviting(false);
-            showToast({ text: `Invited ${u.name}. They can sign in as ${u.email}` });
+            showToast({ text: t('Invited {name}. They can sign in as {email}', { name: u.name, email: u.email }) });
           }}
         />
       )}
@@ -5096,13 +5118,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               const before = channels.find((c) => c.id === chanDialog.id);
               setChannels((cs) => cs.map((c) => (c.id === chanDialog.id ? { ...c, ...d } : c)));
               const added = d.members.filter((m) => !before?.members.includes(m));
-              added.forEach((m) => notify(m, 'mention', `${myFirst} added you to #${d.name}`, { app: 'chat', id: chanDialog.id }));
+              added.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: d.name }), { app: 'chat', id: chanDialog.id }));
               const newGuests = (d.guests ?? []).filter((g) => !before?.guests?.some((x) => x.email === g.email));
               showToast({ text: newGuests.length ? `Saved. Invite sent to ${newGuests.map((g) => g.name).join(', ')}` : 'Channel saved' });
             } else {
               const id = uid();
               setChannels((cs) => [...cs, { ...d, id, workspaceId: ws.id, kind: 'channel' }]);
-              d.members.forEach((m) => notify(m, 'mention', `${myFirst} added you to #${d.name}`, { app: 'chat', id }));
+              d.members.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: d.name }), { app: 'chat', id }));
               setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `created #${d.name}${d.topic ? `: ${d.topic}` : ''}`, at: nowIso(), kind: 'system' }]);
               setChatId(id);
               go('chat');
@@ -5153,12 +5175,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           items={paletteItems}
           scope={searchScope}
           recentKey={`s2g-palette-recent:${user.id}:${ws.id}`}
-          queryActions={(q) => [
-            { id: 'q-task', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Create task “${q}”`, sub: 'Assigned to you', icon: ListChecks, run: () => { const t = createTask({ title: q.charAt(0).toUpperCase() + q.slice(1), userId: user.id, source: 'manual' }); showToast({ text: 'Task created', action: { label: 'Open', run: () => openTask(t.id) } }); } },
-            { id: 'q-project', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `New ${term.one} “${q}”`, sub: `Opens its page: tasks, chat, files, logins…`, icon: Briefcase, run: () => { const c = createProject(q.charAt(0).toUpperCase() + q.slice(1)); openClient(c.id); } },
-            { id: 'q-note', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `New note “${q}”`, sub: 'Only you can see it until you share it', icon: FileText, run: () => newNote(q.charAt(0).toUpperCase() + q.slice(1)) },
-            { id: 'q-ask', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Ask AI: “${q}”`, sub: 'Answers from your mail, chat, meetings and tasks', icon: Sparkles, run: () => { setAskSeed(q); setAskScope({ kind: 'all' }); } },
-          ]}
+          queryActions={(q) => {
+            const group = t('Do with “{words}”', { words: q.length > 40 ? q.slice(0, 40) + '…' : q });
+            return [
+              { id: 'q-task', group, title: t('Create task “{name}”', { name: q }), sub: t('Assigned to you'), icon: ListChecks, run: () => { const task = createTask({ title: q.charAt(0).toUpperCase() + q.slice(1), userId: user.id, source: 'manual' }); showToast({ text: t('Task created'), action: { label: t('Open'), run: () => openTask(task.id) } }); } },
+              { id: 'q-project', group, title: t('New {project} “{name}”', { project: term.one, name: q }), sub: t('Opens its page: tasks, chat, files, logins…'), icon: Briefcase, run: () => { const c = createProject(q.charAt(0).toUpperCase() + q.slice(1)); openClient(c.id); } },
+              { id: 'q-note', group, title: t('New note “{name}”', { name: q }), sub: t('Only you can see it until you share it'), icon: FileText, run: () => newNote(q.charAt(0).toUpperCase() + q.slice(1)) },
+              { id: 'q-ask', group, title: t('Ask AI: “{question}”', { question: q }), sub: t('Answers from your mail, chat, meetings and tasks'), icon: Sparkles, run: () => { setAskSeed(q); setAskScope({ kind: 'all' }); } },
+            ];
+          }}
           onClose={() => (setPaletteOpen(false), setSearchScope(null))}
         />
       )}
@@ -5175,7 +5200,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
       {toast && (
         <div className={`toast${toast.quiet ? ' quiet' : ''}`} role="status" key={toast.id}>
-          <span>{toast.text}</span>
+          <span>{t(toast.text)}</span>
           {toast.action && (
             <button
               onClick={() => {
@@ -5183,7 +5208,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 setToast(null);
               }}
             >
-              {toast.action.label === 'Undo' && <Undo2 size={14} />} {toast.action.label}
+              {(toast.action.label === 'Undo' || toast.action.label === t('Undo')) && <Undo2 size={14} />} {t(toast.action.label)}
             </button>
           )}
           {toast.also && (
@@ -5193,7 +5218,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 setToast(null);
               }}
             >
-              {toast.also.label}
+              {t(toast.also.label)}
             </button>
           )}
         </div>
