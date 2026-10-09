@@ -616,10 +616,6 @@ h4,
   .crumbs > .drive-sec-title {
     display: none;
   }
-  /* The top bar already says "Settings": no second title under it. */
-  .settings-head {
-    display: none;
-  }
   /* The mail reader's actions: Back stays first; the rest wrap onto a second line at the right, never off screen. */
   .reader-bar {
     align-items: flex-start;

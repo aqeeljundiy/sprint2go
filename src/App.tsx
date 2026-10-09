@@ -67,6 +67,7 @@ import type { DumpResult } from './components/BrainDump';
 import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
+import { openSettingsList } from './components/settingsList';
 import { PushScreen } from './components/ui/PushScreen';
 import { Sheet } from './components/ui/Sheet';
 import { offerInstall } from './components/InstallPrompt';
@@ -4449,7 +4450,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           notices={unreadNotices}
           onNotices={() => (setMoreOpen(false), setNoticesOpen(true))}
           onAsk={toggleAsk}
-          onAccount={() => go('settings')}
+          onAccount={() => (mode !== 'settings' && openSettingsList(), go('settings'))}
           editing={editingBar}
           onEditing={setEditingBar}
           edit={{
