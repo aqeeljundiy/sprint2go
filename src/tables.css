@@ -3809,3 +3809,9 @@
     width: 84px;
   }
 }
+/* While rows are picked, the last ones can still scroll clear of the floating bar. */
+.tb-pane:has(> .tb-bulkbar:not(.phone)) .tb-grid,
+.tb-pane:has(> .tb-bulkbar:not(.phone)) .tb-crd-scroll,
+.tb-pane:has(> .tb-bulkbar:not(.phone)) .tb-list {
+  padding-bottom: 88px;
+}
