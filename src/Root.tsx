@@ -443,6 +443,7 @@ function ClientRoot({ me }: { me: User }) {
   });
   const inbox = [me.id, clientInbox(me.email)];
   return (
+    <>
     <ClientApp
       ws={ws}
       client={client}
@@ -459,6 +460,9 @@ function ClientRoot({ me }: { me: User }) {
       onSignOut={() => void signOut()}
       account={{ me: self, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => setUsers((list) => list.map((u) => (u.id === me.id ? { ...u, ...patch } : u))) }}
       switcher={<WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} onHome={portals.length > 1 ? () => setKey('') : undefined} onAdd={() => setStarting(true)} addLabel="Start your own workspace (free)" />}
+      mobileSwitch={{ workspaces: [], onWorkspace: () => {}, portals, current: portal.key, onPortal: setKey, onShared: portals.length > 1 ? () => setKey('') : undefined, onAdd: () => setStarting(true) }}
     />
+    {start /* "Start your own workspace" from the switcher */}
+    </>
   );
 }

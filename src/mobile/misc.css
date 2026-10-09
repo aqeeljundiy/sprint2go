@@ -6,41 +6,26 @@
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
 
-/* The guest portal's bottom bar: its look from before Phase 0, kept until the guest portal is redone (Phase 8). The
-   team app's bar (.tabbar with .tabbar-pill) is in shell.css. */
+/* ---------- The guest portal (ClientApp.tsx) ---------- */
+
+/* Phones: the team app's bar in a shorter form (only what's shared with them, More only when it can't fit), and their
+   account as an avatar at the end of the top bar. */
 @media (max-width: 767px) {
+  .mobile-top .mt-account {
+    flex: none;
+    padding: 0;
+    border-radius: 50%;
+  }
+  /* Five longer names than the team's (Messages, Approvals) next to the create button: a little more room each. */
   .tabbar.guest-bar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-    column-gap: 0;
-    padding: 0 0 env(safe-area-inset-bottom);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    border-top: 1px solid var(--border);
-    backdrop-filter: saturate(1.4) blur(16px);
+    padding-left: 10px;
+    padding-right: 10px;
   }
-  .guest-bar button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    min-width: 0;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-3);
-    transition: color 0.2s;
+  .guest-bar .tabbar-pill {
+    padding: 2px;
   }
-  .guest-bar button.on {
-    color: var(--accent);
-  }
-  .guest-bar .tab-icon {
-    width: 52px;
-    height: 28px;
-    border-radius: 14px;
-    transition: background 0.25s var(--ease);
-  }
-  .guest-bar button.on .tab-icon {
-    background: var(--accent-soft);
+  .guest-bar .tab-label {
+    letter-spacing: -0.015em;
   }
 }
 

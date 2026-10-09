@@ -3226,7 +3226,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         onSignOut={onSignOut}
         account={{ me: user, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => (patch.name !== undefined && updateSettings({ name: patch.name, title: patch.title ?? settings.title, avatarColor: patch.color ?? settings.avatarColor }), onUpdateUser(patch)) }}
         switcher={<WorkspaceSwitcher onHome={myPortals.length > 1 ? () => setPortalKey('*') : undefined} workspaces={workspaces} current={pws} currentPortal={portal.key} unread={wsUnread} portals={portalItems} onPortal={setPortalKey} onSwitch={(id) => (setPortalKey(''), switchWorkspace(id))} />}
-        mobileSwitch={{ workspaces: [...workspaces, pws], onWorkspace: (id) => id !== pws.id && (setPortalKey(''), switchWorkspace(id)) }}
+        mobileSwitch={{ workspaces, onWorkspace: (id) => (setPortalKey(''), switchWorkspace(id)), portals: portalItems, current: portal.key, onPortal: setPortalKey, onShared: myPortals.length > 1 ? () => setPortalKey('*') : undefined, onAdd: () => (setPortalKey(''), setNewWs(true)) }}
       />
     );
   }
