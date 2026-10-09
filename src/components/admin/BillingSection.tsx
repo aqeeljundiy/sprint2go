@@ -169,6 +169,11 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
           )}
         </div>
       </div>
+      {plan.tier === 'free' && plan.trialRefused && (
+        <p className="trial-note">
+          <Sparkles size={14} /> {ws.name} started on Free instead of a trial. {plan.trialRefused}
+        </p>
+      )}
       {plan.trialEnds && (
         <p className="trial-note">
           <Sparkles size={14} /> You’re trying Studio AI: every feature and the full AI allowance. When the trial ends nothing is deleted. You move to Free, and anything beyond Free waits for an upgrade.

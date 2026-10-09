@@ -111,6 +111,7 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 
 platform.bootstrapOperators();
 admin.loadPricing();
+billing.rememberExistingTrials(); // trials companies had before "one per person" count too
 // Companies that had "Require two-step sign-in" on before it did anything: their days start now, and people hear.
 const clocksStarted = twostep.startClocks();
 if (clocksStarted.length) setTimeout(() => clocksStarted.forEach((id) => tellTwoStepRequired(id, null)), 5_000);
@@ -886,7 +887,7 @@ function planFromApp(next: any, prev: any): { plan: any; why?: string } {
   // How the company pays is ours to record (bank transfer until a card processor exists); the app can't invent a card.
   const { cancel: _c, ...rest } = next;
   // Prorated switches are the server's (billing.adjustmentsOnSave adds a new one): the app can't add, change or drop them.
-  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt, adjustments: prev?.adjustments }, why: pause.why };
+  return { plan: { ...rest, addons, comp: prev?.comp, discount: prev?.discount, trialEnds, topUps: topUps || undefined, payment: prev?.payment, paused: pause.paused, pauses: pause.pauses, cancelAt, adjustments: prev?.adjustments, trialRefused: next.tier === 'free' ? prev?.trialRefused : undefined }, why: pause.why };
 }
 
 const routes: Record<string, (b: any) => Promise<unknown>> = {
@@ -2158,7 +2159,9 @@ createServer(async (req, res) => {
       const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...wClean } = w as any;
       if (!DEMO) wClean.mailRouting = serverRouting(wClean.mailRouting, undefined);
       if (wClean.mailRoute === 'boosted' && !mailer.boostedAvailable()) wClean.mailRoute = 'own';
-      const draft = { ...wClean, plan: planFromApp(wClean.plan, undefined).plan, whiteLabel: ownAddress(wClean.whiteLabel, undefined), security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
+      // One free trial per person and per company domain (server/billing.ts): otherwise the company starts on Free.
+      const trial = billing.trialOnCreate(planFromApp(wClean.plan, undefined).plan, { id: me, email: String((db.getDoc('users', me) as any)?.email ?? '') }, { id: wClean.id, name: String(w.name).trim(), domains: wClean.domains });
+      const draft = { ...wClean, plan: trial.plan, whiteLabel: ownAddress(wClean.whiteLabel, undefined), security: twostep.securityOnSave(undefined, wClean.security, true, twostep.isOn(me)).security, name: String(w.name).trim().slice(0, 80), members, accounts };
       // Hosted mailboxes beyond what the plan has room for aren't made (the trial has room for everyone it starts with).
       const ws = { ...draft, accounts: billing.mailboxesOnSave(draft, undefined).accounts ?? [] };
       const general = { id: 'ch-' + randomBytes(5).toString('hex'), workspaceId: ws.id, kind: 'channel', name: 'general', members: members.map((m) => m.userId), topic: 'Everyone at ' + ws.name };
@@ -2167,12 +2170,16 @@ createServer(async (req, res) => {
       db.writeDocs('workspaces', [ws], [], me);
       db.writeDocs('channels', [general], [], me);
       platform.event('company.created', ws.id, me);
+      if (trial.why) {
+        platform.event('trial.refused', ws.id, me, trial.why.slice(0, 200));
+        notifyUsers([me], `${ws.name} starts on Free. ${trial.why}`, '/settings/billing', ws.id);
+      }
       soonReadiness(ws.id);
       if (people.length) platform.event('team.invited', ws.id, me, `${people.length} at creation`);
       broadcast('users', people, []);
       broadcast('workspaces', [ws], []);
       broadcast('channels', [general], []);
-      return json(res, 200, { id: ws.id });
+      return json(res, 200, { id: ws.id, ...(trial.why ? { trialRefused: trial.why } : {}) });
     }
 
     // An admin invites someone: they get a link to set their own password.
@@ -2670,7 +2677,10 @@ createServer(async (req, res) => {
           }
           const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, ...fresh } = d as any;
           if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
-          const plan = planFromApp(fresh.plan, undefined).plan;
+          // One free trial per person and per company domain, as for /api/workspace.
+          const trial = billing.trialOnCreate(planFromApp(fresh.plan, undefined).plan, { id: me, email: String(person.email ?? '') }, { id: String(fresh.id), name: String(fresh.name ?? ''), domains: fresh.domains });
+          if (trial.why) say(`${fresh.name ?? 'The new company'} starts on Free. ${trial.why}`);
+          const plan = trial.plan;
           if (!DEMO) fresh.mailRouting = serverRouting(fresh.mailRouting, undefined);
           const chat = retention.chatOnSave(fresh.chat, undefined);
           if (chat.started) retentionStarted.push({ wsId: d.id, ...chat.started });
@@ -2839,6 +2849,11 @@ createServer(async (req, res) => {
         if (e instanceof FetchError) return json(res, 400, { error: e.message });
         throw e;
       }
+    }
+    // Whether a new company of this person gets the free trial (Onboarding says so before it's made).
+    if (p === '/api/trial' && req.method === 'GET') {
+      const c = billing.trialCheck(me, String(meDoc?.email ?? ''), [url.searchParams.get('domain') ?? ''].filter(Boolean));
+      return json(res, 200, c.ok ? { available: true } : { available: false, why: c.why });
     }
     // A country's public holidays for someone who chose to see them (Calendar, Public holidays, "Countries you see").
     const holidayReq = p.match(/^\/api\/holidays\/([A-Z]{2})$/);

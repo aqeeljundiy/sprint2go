@@ -521,6 +521,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const timeZone = isZone(b.timeZone) ? String(b.timeZone) : undefined;
     const ws = { id: 'ws-' + randomBytes(5).toString('hex'), name, color: colors[Math.floor(Math.random() * colors.length)], domains: [], accounts: [], members: [{ userId: owner.id, role: 'owner' }], plan, timeZone, createdAt: now(), createdBy: 'operator' };
     saveWs(ws);
+    // An operator's trial is theirs to give; it still counts as the owner's trial for the companies they make later.
+    if (plan.trialEnds) billing.recordTrial(owner.id, mail, ws, 'operator');
     platform.event('company.created', ws.id, owner.id, `by ${email}`);
     const link = db.hasLogin(owner.id) ? null : `${ctx.publicUrl}/?invite=${db.newInvite(owner.id, mail)}`;
     log('company.create', ws.id, `${name} for ${mail}, ${tier} ${track}${plan.trialEnds ? `, trial ${trialDays} days` : ''}${timeZone ? `, ${timeZone}` : ''}`);
@@ -753,6 +755,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
           suspended: u.suspended ?? null,
           hasLogin: db.hasLogin(u.id),
           twoStep: twostep.isOn(u.id),
+          trial: billing.trialsOf(u.id),
           lastSeen: db.lastSeen().get(u.id) ?? null,
           operator: platform.operator(emailOf(u))?.role ?? null,
           disposable: platform.isDisposable(emailOf(u)),
@@ -777,6 +780,16 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     ctx.codes.set(`reset:${emailOf(u)}`, { code, until: Date.now() + 15 * 60_000, tries: 0 } as any);
     log('person.reset-code', u.id, emailOf(u));
     return (json(res, 200, { code, until: new Date(Date.now() + 15 * 60_000).toISOString() }), true);
+  }
+  // One more free trial for someone who already had theirs: their next new company starts on it.
+  if (sub === 'person/trial-grant' && POST) {
+    if (deny('customers')) return true;
+    const b = await body(req);
+    const u = db.getDoc('users', String(b.userId ?? '')) as any;
+    if (!u) return (json(res, 404, { error: 'No such person.' }), true);
+    billing.grantTrial(u.id, email, b.note ? String(b.note).slice(0, 200) : undefined);
+    log('person.trial-grant', u.id, `${emailOf(u)}${b.note ? `: ${b.note}` : ''}`);
+    return (json(res, 200, { ok: true }), true);
   }
   // Lost their phone and their backup codes: two-step sign-in comes off, they're signed out everywhere, and told by email.
   if (sub === 'person/2fa-reset' && POST) {

@@ -772,6 +772,7 @@ export interface Plan {
   cancelAt?: string; // cancelled: the plan moves to Free then, at the end of the period that's paid for (the server's)
   cancel?: boolean; // the app asks to cancel (true) or to keep the plan (false); the server turns it into cancelAt
   adjustments?: PlanAdjustment[]; // the server's: prorated plan switches waiting for the next invoice
+  trialRefused?: string; // the server's: why this company started on Free instead of a trial (one per person and domain)
 }
 
 /**

@@ -1030,6 +1030,35 @@ await test('Plan switch: the server records it on the plan and the next invoice 
   assert.ok(r.carry < 0 && r.carry > -5_000_000, 'the rest of the credit is carried');
 });
 
+await test('Trials: one per person and per company domain; an operator can allow one more', async () => {
+  await import('../server/domains.ts'); // the proven-domain table
+  const trialPlanOf = () => ({ ...P('studio'), track: 'ai', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString() });
+  const first = billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr1', name: 'Trial One' });
+  assert.ok(first.plan.trialEnds && !first.why, 'the first company gets the trial');
+  const again = billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr2', name: 'Trial Two' });
+  assert.equal(again.plan.tier, 'free');
+  assert.equal(again.plan.trialEnds, undefined);
+  assert.match(again.why, /^You’ve already had a free trial, with Trial One from \d+ \w+ \d{4}\. Pick a plan any time, or ask us about another trial in Settings, Help\.$/);
+  assert.equal(again.plan.trialRefused, again.why, 'the billing page can say why');
+  // Another login at the same company domain: no second trial either.
+  const colleague = billingMod.trialCheck('tr-bo', 'bo@trial-co.example');
+  assert.equal(colleague.ok, false);
+  assert.match(colleague.why, /^trial-co\.example already had a free trial, with Trial One/);
+  // A shared mail service says nothing about the company: someone else at gmail.com still gets theirs.
+  billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-gm1', email: 'one@gmail.com' }, { id: 'w-tr3', name: 'Gmail One' });
+  assert.equal(billingMod.trialCheck('tr-gm2', 'two@gmail.com').ok, true);
+  // A domain another company with a trial has proven in its DNS counts too.
+  db.db.prepare("INSERT OR REPLACE INTO mail_domains (domain, workspace_id, selector, private_key, public_key, created_at, verified_at, verified_how) VALUES ('proven-co.example', 'w-tr1', 's2g', 'x', 'y', ?, ?, 'txt')").run(new Date().toISOString(), new Date().toISOString());
+  assert.match(billingMod.trialCheck('tr-new', 'new@gmail.com', ['proven-co.example']).why, /proven-co\.example belongs to Trial One, which already had a free trial/);
+  // An operator allows one more: the next company gets it, and the allowance is used up.
+  billingMod.grantTrial('tr-ana', 'ops@example.com');
+  assert.ok(billingMod.trialOnCreate(trialPlanOf(), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr4', name: 'Trial Four' }).plan.trialEnds);
+  assert.equal(billingMod.trialCheck('tr-ana', 'ana@trial-co.example').ok, false);
+  assert.deepEqual(billingMod.trialsOf('tr-ana').trials.map((t) => [t.company, t.how]), [['Trial One', 'self'], ['Trial Four', 'granted']]);
+  // A plan without a trial (Free, or a paid plan) is left as it is.
+  assert.equal(billingMod.trialOnCreate(P('free'), { id: 'tr-ana', email: 'ana@trial-co.example' }, { id: 'w-tr5', name: 'X' }).why, undefined);
+});
+
 /* read tracking: reminders and Outlook.com's picture proxy (server/readTracking.ts) */
 
 const readTracking = await import('../server/readTracking.ts');

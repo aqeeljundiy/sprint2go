@@ -15,6 +15,7 @@
 // 12. mail: a refused send plans nothing; "Remind me if no reply" is noted when the email goes out
 // 13. two-step sign-in: "Remember this device" for 30 days, signed and bound to the person, forgotten on Forget,
 //     "Sign out everywhere" and a password change
+// 14. free trials: one per person and per company domain, the reason on the plan, and one more when an operator allows it
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -472,6 +473,29 @@ try {
     check((await login(dewiMail, devB.token, 'a-new-password-123')).body.twoStep === 'code', 'and the next sign-in there asks for the code');
 
   }
+  /* ---------- 14. free trials: one per person and per company domain ---------- */
+  {
+    const trialWs = (id, name) => ({ workspace: { id, name, color: '#5b5bf6', domains: [], accounts: [], members: [], plan: { track: 'ai', tier: 'studio', cycle: 'monthly', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString(), addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: name, emails: [] }, since: now() } }, users: [] });
+    // Aqeel's demo companies already had trials (they count from before the rule), and Dewi's address is at the same
+    // company domain: her new company starts on Free, and says why.
+    const asked = await aqeel.get('/api/trial').then((r) => r.json());
+    check(asked.available === false && /^You’ve already had a free trial, with /.test(asked.why ?? ''), `the onboarding hears a second trial isn’t available (“${asked.why}”)`);
+    const made = await aqeel.post('/api/workspace', trialWs('ws-trial-1', 'Second Co')).then((r) => r.json());
+    const second = doc('workspaces', 'ws-trial-1');
+    check(second?.plan?.tier === 'free' && !second.plan.trialEnds && /already had a free trial/.test(second.plan.trialRefused ?? '') && /already had a free trial/.test(made.trialRefused ?? ''), 'a second company of the same person starts on Free, with the reason on its plan');
+    // The app can't give itself the trial back.
+    await aqeel.sync('workspaces', [{ ...second, plan: { ...second.plan, tier: 'studio', track: 'ai', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString() } }]);
+    check(!doc('workspaces', 'ws-trial-1').plan.trialEnds, 'saving a trial from the app doesn’t start one');
+    const notice = db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND json_extract(data, '$.workspaceId') = 'ws-trial-1'").get();
+    check(!!notice && /starts on Free/.test(JSON.parse(notice.data).text), 'the owner is told in the app');
+    // An operator allows one more: the next company gets it.
+    const granted = await rizky.post('/api/admin/person/trial-grant', { userId: 'u-aqeel' });
+    const third = granted.ok ? await aqeel.post('/api/workspace', trialWs('ws-trial-2', 'Third Co')).then((r) => r.json()) : null;
+    check(granted.ok && !third?.trialRefused && !!doc('workspaces', 'ws-trial-2')?.plan?.trialEnds, 'after an operator allows another, the next company starts on its trial');
+    const fourth = await aqeel.post('/api/workspace', trialWs('ws-trial-3', 'Fourth Co')).then((r) => r.json());
+    check(!!fourth.trialRefused && doc('workspaces', 'ws-trial-3')?.plan?.tier === 'free', 'and only that one');
+  }
+
   db.close();
 } catch (e) {
   check(false, `unexpected: ${e instanceof Error ? e.stack : e}`);
