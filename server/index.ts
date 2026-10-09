@@ -1182,6 +1182,14 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
     res.setHeader('content-type', 'application/manifest+json');
     return res.end(JSON.stringify({ name: wl.name, short_name: wl.name.slice(0, 12), id: '/', start_url: '/?source=app', scope: '/', display: 'standalone', background_color: '#f5f6f8', theme_color: wl.color ?? branded.color, share_target: { action: '/notes/new', method: 'GET', params: { title: 'title', text: 'text', url: 'url' } }, icons: icon ? [{ src: '/brand-icon', sizes: '512x512', type: String(icon).slice(5, String(icon).indexOf(';')) || 'image/png', purpose: 'any' }] : [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }));
   }
+  // Ours, in Indonesian for a browser that asks for it (a manifest is fetched without cookies: Accept-Language only).
+  if (path === '/manifest.webmanifest' && !site && lang.browserLang(req.headers['accept-language']) === 'id' && existsSync(join(DIST, 'manifest.webmanifest'))) {
+    const m = JSON.parse(readFileSync(join(DIST, 'manifest.webmanifest'), 'utf8'));
+    const words = lang.inLang('id', () => ({ description: t('Mail, chat, tasks, calendar, files, meetings and passwords for your team in one app.'), names: { Mail: t('Mail'), Chat: t('Chat'), Tasks: t('Tasks'), Calendar: t('Calendar') } as Record<string, string> }));
+    res.setHeader('content-type', 'application/manifest+json');
+    res.setHeader('vary', 'accept-language');
+    return res.end(JSON.stringify({ ...m, lang: 'id', description: words.description, shortcuts: (m.shortcuts ?? []).map((s: any) => ({ ...s, name: words.names[s.name] ?? s.name })) }));
+  }
   if (path === '/brand-icon' && branded) {
     const icon: string | undefined = branded.whiteLabel.logo ?? branded.logo;
     const m = icon?.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);

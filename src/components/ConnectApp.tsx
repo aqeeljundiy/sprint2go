@@ -7,6 +7,8 @@ import { EmptyState } from './ui/EmptyState';
 import { Badge } from './ui/Person';
 import { signOut } from '../sync';
 import '../connector.css';
+import { t } from '../i18n';
+import { tj } from '../i18n/tj';
 
 interface Company {
   id: string;
@@ -48,7 +50,7 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
         setPick(d.companies.find((c) => !c.off)?.id ?? '');
         setStep('ask');
       })
-      .catch(() => (setError({ text: 'Couldn’t reach sprint2go. Check your connection, then reload this page.' }), setStep('error')));
+      .catch(() => (setError({ text: t('Couldn’t reach sprint2go. Check your connection, then reload this page.') }), setStep('error')));
   }, [query]);
 
   const answer = async (allow: boolean) => {
@@ -58,7 +60,7 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
     try {
       const r = await fetch('/api/oauth/consent', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, workspaceId: pick, allow }) });
       const d = (await r.json().catch(() => ({}))) as { redirect?: string; error?: string };
-      if (!d.redirect) throw new Error(d.error ?? 'That didn’t work. Try again.');
+      if (!d.redirect) throw new Error(d.error ?? t('That didn’t work. Try again.'));
       setGoing({ allowed: allow, to: d.redirect });
       setStep('going');
       // A moment to read "Connected" before the app takes over.
@@ -71,7 +73,7 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
 
   const open = ask?.companies.filter((c) => !c.off) ?? [];
   const company = ask?.companies.find((c) => c.id === pick);
-  const app = ask?.app.name ?? 'The app';
+  const app = ask?.app.name ?? t('The app');
   /** Up and down move through the companies that can be picked, like any list of choices. */
   const keys = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -89,22 +91,22 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
         <BrandMark />
         <SmoothHeight className="cn-body">
           <TabPane key={step}>
-            {step === 'loading' && <p className="cn-wait muted small">Checking what the app asked for…</p>}
+            {step === 'loading' && <p className="cn-wait muted small">{t('Checking what the app asked for…')}</p>}
 
             {step === 'error' && (
               <div className="cn-center">
                 <span className="cn-icon warn">
                   <X size={20} />
                 </span>
-                <h1>This link can’t be used</h1>
+                <h1>{t('This link can’t be used')}</h1>
                 <p className="signin-sub">{error?.text}</p>
                 {error?.redirect ? (
                   <button className="primary-btn signin-btn" onClick={() => location.assign(error.redirect!)}>
-                    Back to the app
+                    {t('Back to the app')}
                   </button>
                 ) : (
                   <a className="primary-btn signin-btn" href="/">
-                    Open sprint2go
+                    {t('Open sprint2go')}
                   </a>
                 )}
               </div>
@@ -113,10 +115,10 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
             {step === 'going' && going && (
               <div className="cn-center">
                 <span className={`cn-icon ${going.allowed ? 'good' : ''} cn-pop`}>{going.allowed ? <Check size={20} /> : <X size={20} />}</span>
-                <h1>{going.allowed ? `${app} is connected` : 'Cancelled'}</h1>
-                <p className="signin-sub">{going.allowed ? `Taking you back to ${app}. It can now reach ${company?.name ?? 'your company'} as you.` : `Nothing was shared. Taking you back to ${app}.`}</p>
+                <h1>{going.allowed ? t('{app} is connected', { app }) : t('Cancelled')}</h1>
+                <p className="signin-sub">{going.allowed ? (company ? t('Taking you back to {app}. It can now reach {company} as you.', { app, company: company.name }) : t('Taking you back to {app}. It can now reach your company as you.', { app })) : t('Nothing was shared. Taking you back to {app}.', { app })}</p>
                 <button className="link-btn" onClick={() => location.assign(going.to)}>
-                  Go back now
+                  {t('Go back now')}
                 </button>
               </div>
             )}
@@ -127,18 +129,15 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
                   <span className="cn-icon">
                     <Plug size={20} />
                   </span>
-                  <h1>Connect {app} to sprint2go</h1>
-                  <p className="signin-sub">
-                    {app}
-                    {ask.app.host ? ` (${ask.app.host})` : ''} wants to work in sprint2go as you. Nothing is shared until you allow it.
-                  </p>
+                  <h1>{t('Connect {app} to sprint2go', { app })}</h1>
+                  <p className="signin-sub">{t('{app} wants to work in sprint2go as you. Nothing is shared until you allow it.', { app: ask.app.host ? `${app} (${ask.app.host})` : app })}</p>
                 </div>
 
                 {open.length === 0 && !ask.companies.length ? (
-                  <EmptyState compact title="Nothing to connect yet" text="AI apps connect to a company you’re on the team of. Guests of a project can’t connect them." />
+                  <EmptyState compact title={t('Nothing to connect yet')} text={t('AI apps connect to a company you’re on the team of. Guests of a project can’t connect them.')} />
                 ) : (
                   <section className="cn-section">
-                    <h2 id="cn-which">Which company it can reach</h2>
+                    <h2 id="cn-which">{t('Which company it can reach')}</h2>
                     <div className="cn-companies" role="radiogroup" aria-labelledby="cn-which" ref={list} onKeyDown={keys}>
                       {ask.companies.map((c) => (
                         <button
@@ -155,9 +154,9 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
                           <WorkspaceLogo ws={{ name: c.name, logo: c.logo, color: c.color ?? '#64748b' }} size={32} />
                           <span className="cn-company-text">
                             <strong>
-                              {c.name} {c.demo && <Badge small>Demo</Badge>}
+                              {c.name} {c.demo && <Badge small>{t('Demo')}</Badge>}
                             </strong>
-                            {c.off ? <small>Its admins switched AI apps off</small> : c.demo ? <small>Your private demo company: nothing in it is real</small> : null}
+                            {c.off ? <small>{t('Its admins switched AI apps off')}</small> : c.demo ? <small>{t('Your private demo company: nothing in it is real')}</small> : null}
                           </span>
                           <span className="cn-radio" aria-hidden="true" />
                         </button>
@@ -168,44 +167,48 @@ export function ConnectApp({ actingAs }: { actingAs?: string }) {
 
                 {company && (
                   <section className="cn-section">
-                    <h2>What it can do in {company.name}</h2>
+                    <h2>{t('What it can do in {company}', { company: company.name })}</h2>
                     <ul className="cn-can">
                       <li>
                         <Eye size={16} />
-                        <span>Read what you can read: what needs you, your mail, tasks, chat, calendar, notes and tables.</span>
+                        <span>{t('Read what you can read: what needs you, your mail, tasks, chat, calendar, notes and tables.')}</span>
                       </li>
                       <li>
                         <PenLine size={16} />
-                        <span>Make and change tasks, notes and table rows, post in team channels and add events, all as you.</span>
+                        <span>{t('Make and change tasks, notes and table rows, post in team channels and add events, all as you.')}</span>
                       </li>
                       <li>
                         <Mail size={16} />
-                        <span>Email and messages to guests stay drafts. You send them yourself, in sprint2go.</span>
+                        <span>{t('Email and messages to guests stay drafts. You send them yourself, in sprint2go.')}</span>
                       </li>
                       <li>
                         <Lock size={16} />
-                        <span>It never sees more than you do. Disconnect it any time in Settings, Account.</span>
+                        <span>{t('It never sees more than you do. Disconnect it any time in Settings, Account.')}</span>
                       </li>
                     </ul>
                   </section>
                 )}
 
-                {actingAs && <p className="signin-error">You’re signed in as this person from the operator console, so you can’t connect apps for them.</p>}
+                {actingAs && <p className="signin-error">{t('You’re signed in as this person from the operator console, so you can’t connect apps for them.')}</p>}
                 {error && <p className="signin-error">{error.text}</p>}
 
                 <div className="cn-actions">
                   <button className="ghost-btn" disabled={busy} onClick={() => void answer(false)}>
-                    Cancel
+                    {t('Cancel')}
                   </button>
                   <button className="primary-btn" disabled={busy || !company || !!actingAs} onClick={() => void answer(true)}>
-                    {busy ? 'Connecting…' : 'Allow'}
+                    {busy ? t('Connecting…') : t('Allow')}
                   </button>
                 </div>
                 <p className="signin-switch cn-who">
-                  Signed in as {ask.me.email || ask.me.name}.{' '}
-                  <button type="button" className="link-btn" onClick={() => void signOut()}>
-                    Not you?
-                  </button>
+                  {tj('Signed in as {email}. {notYou}', {
+                    email: ask.me.email || ask.me.name,
+                    notYou: (
+                      <button type="button" className="link-btn" onClick={() => void signOut()}>
+                        {t('Not you?')}
+                      </button>
+                    ),
+                  })}
                 </p>
               </>
             )}

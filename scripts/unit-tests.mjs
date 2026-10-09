@@ -1815,6 +1815,48 @@ await test('Mail pushes: people only, held about 20 seconds, dropped once read e
   pushRules.setPushHold(20_000);
 });
 
+/* ---------- each reader's language (server/lang.ts, docs/i18n.md) ---------- */
+
+const lang = await import('../server/lang.ts');
+const { textOf } = await import('../src/i18n/index.ts');
+db.writeDocs('workspaces', [{ id: 'w-lang-id', name: 'Kopi Nusantara', language: 'id', members: [{ userId: 'u-lang-co', role: 'owner' }] }, { id: 'w-lang-en', name: 'Plain Co', members: [{ userId: 'u-lang-en', role: 'owner' }, { userId: 'u-lang-own', role: 'member' }] }], [], null);
+db.writeDocs('users', [{ id: 'u-lang-co', name: 'Sari Dewi', email: 'sari@kopi.example' }, { id: 'u-lang-en', name: 'Ann Lee', email: 'ann@plain.example' }, { id: 'u-lang-own', name: 'Budi', email: 'budi@plain.example' }], [], null);
+db.writeDocs('prefs', [{ id: 'u-lang-own', value: { 'pm-settings:u-lang-own': { language: 'id' } } }], [], null);
+await test('Language: a person’s own pick, else the company’s default, else English', () => {
+  assert.equal(lang.langOf('u-lang-own'), 'id', 'their own pick wins');
+  assert.equal(lang.langOf('u-lang-co'), 'id', 'the company’s default');
+  assert.equal(lang.langOf('u-lang-en'), 'en', 'neither: English');
+  assert.equal(lang.langOfEmail('nobody@else.example', 'w-lang-id'), 'id', 'an invitee: the company’s default');
+  assert.equal(lang.browserLang('en-US,en;q=0.9,id;q=0.8'), 'en');
+  assert.equal(lang.browserLang('id-ID,id;q=0.9'), 'id');
+  assert.equal(lang.requestLang({ headers: { cookie: 's2g-lang=id', 'accept-language': 'en' } }), 'id', 'the screen’s language first');
+  assert.equal(lang.requestLang({ headers: { 'accept-language': 'id-ID' } }), 'id', 'else the browser’s');
+});
+await test('Language: a notice reads in Indonesian for an Indonesian reader and in English otherwise', () => {
+  const ev = { id: 'e1', title: 'Standup', start: new Date(Date.parse('2026-10-09T09:10:00Z')).toISOString(), end: '2026-10-09T09:30:00Z', remind: 10, userId: 'u-lang-own' };
+  return import('../server/eventReminders.ts').then(({ reminderWords: rw }) => {
+    const n = rw(ev, Date.parse('2026-10-09T09:00:00Z'));
+    assert.equal(n.text, '“Standup” starts in 10 minutes', 'saved in English');
+    assert.equal(lang.inLang('id', () => textOf(n)), '“Standup” dimulai 10 menit lagi');
+    assert.equal(lang.inLang(lang.langOf('u-lang-en'), () => textOf(n)), '“Standup” starts in 10 minutes');
+    const r = retention.noticeWords('Kopi Nusantara', '90d', '2026-10-16T05:00:00Z', 'Asia/Jakarta');
+    assert.match(lang.inLang('id', () => textOf(r)), /^Mulai 16 Oktober, .*90 hari/);
+    assert.match(r.text, /^From 16 October, chat messages older than 90 days/);
+  });
+});
+await test('Language: an email comes out in Indonesian for an Indonesian reader and in English otherwise', async () => {
+  const digest = await import('../server/digest.ts');
+  const item = { key: 'n:x', group: 'messages', ...(await import('../src/i18n/index.ts')).msg('{name} messaged you: {quote}', { name: 'Mo', quote: '“lunch?”' }), url: 'https://app.example/chat', at: new Date().toISOString(), workspaceId: 'w-lang-id' };
+  const id = digest.compose('Budi Santoso', 'Kopi Nusantara', [item], 'https://app.example', lang.langOf('u-lang-own'));
+  assert.equal(id.subject, '1 hal menunggu Anda di Kopi Nusantara');
+  assert.match(id.text, /^Halo Budi, selama Anda tidak ada:/);
+  assert.match(id.text, /Mo mengirimi Anda pesan: “lunch\?”/);
+  assert.match(id.html, /Ubah seberapa sering/);
+  const en = digest.compose('Ann Lee', 'Plain Co', [item], 'https://app.example', lang.langOf('u-lang-en'));
+  assert.equal(en.subject, '1 thing waiting for you in Plain Co');
+  assert.match(en.text, /Mo messaged you: “lunch\?”/);
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');
