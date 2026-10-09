@@ -452,7 +452,7 @@
   .tab-icon i {
     position: absolute;
     top: -4px;
-    left: 13px;
+    left: calc(50% + 3px);
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
@@ -759,6 +759,18 @@
   height: 1px;
   margin: 4px 12px;
   background: var(--border);
+}
+
+/* The install prompt's steps: each one's words wrap as a line of text, icons inline. */
+.install-step {
+  flex: 1;
+  min-width: 0;
+  font-style: normal;
+}
+.install-step svg {
+  display: inline;
+  vertical-align: -3px;
+  margin: 0 2px;
 }
 
 /* Pull a list down to search (phones). */

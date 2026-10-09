@@ -767,7 +767,7 @@ export function ClientApp(p: Props) {
       </main>
 
       {mobile && (
-        <nav className="tabbar">
+        <nav className="tabbar guest-bar">
           {MODES.slice(0, 5).map(([id, label, Icon, n]) => (
             <button key={id} className={mode === id ? 'on' : ''} onClick={() => go(id)}>
               <span className="tab-icon">

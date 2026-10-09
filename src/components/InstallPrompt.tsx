@@ -109,22 +109,22 @@ export function InstallPrompt() {
         ) : ios ? (
           <ol className="install-steps">
             <li>
-              <span>1</span> Tap <Share size={16} /> <b>Share</b> in Safari’s toolbar
+              <span>1</span> <i className="install-step">Tap <Share size={16} /> <b>Share</b> in Safari’s toolbar</i>
             </li>
             <li>
-              <span>2</span> Choose <Plus size={16} /> <b>Add to Home Screen</b>
+              <span>2</span> <i className="install-step">Choose <Plus size={16} /> <b>Add to Home Screen</b></i>
             </li>
             <li>
-              <span>3</span> Tap <b>Add</b>
+              <span>3</span> <i className="install-step">Tap <b>Add</b></i>
             </li>
           </ol>
         ) : (
           <ol className="install-steps">
             <li>
-              <span>1</span> Open your browser menu <MoreVertical size={16} />
+              <span>1</span> <i className="install-step">Open your browser menu <MoreVertical size={16} /></i>
             </li>
             <li>
-              <span>2</span> Choose <b>Install app</b> or <b>Add to Home screen</b>
+              <span>2</span> <i className="install-step">Choose <b>Install app</b> or <b>Add to Home screen</b></i>
             </li>
           </ol>
         )}
