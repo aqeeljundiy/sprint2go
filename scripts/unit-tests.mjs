@@ -1000,6 +1000,97 @@ await test('Our AI: until operators pick, each job uses the recommended model on
   }
 });
 
+/* ---------- the demo company (src/sandbox.ts, server/sandbox.ts) ---------- */
+
+const sbx = await import('../src/sandbox.ts');
+const { seed } = await import('../src/seed.ts');
+await test('Demo company: a copy of the sample company, every id in the person’s own space, the person in the owner’s seat', () => {
+  const built = sbx.buildSandbox(seed(), { id: 'u-maria', name: 'María José' }, '2026-10-09T08:00:00.000Z');
+  const ws = built.workspaces[0];
+  assert.equal(ws.id, 'demo-u-maria');
+  assert.deepEqual(ws.sandbox, { owner: 'u-maria', createdAt: '2026-10-09T08:00:00.000Z', tried: [] });
+  assert.deepEqual(ws.members[0], { userId: 'u-maria', role: 'owner' }, 'the person owns it');
+  assert.ok(ws.members.length > 1 && ws.members.slice(1).every((m) => m.userId.startsWith('demo-u-maria-')), 'the teammates are the demo’s own people');
+  const json = JSON.stringify(built);
+  assert.ok(!/"u-aqeel"|"pnp"|"elk"/.test(json), 'nothing points at the demo’s own ids any more');
+  for (const [coll, docs] of Object.entries(built)) for (const d of docs) if (coll !== 'workspaces') assert.ok(d.id.startsWith('demo-u-maria-') || coll === 'calendars', `${coll} ${d.id} is in their space`);
+  assert.ok(built.threads.length && built.threads.every((t) => ws.accounts.some((a) => a.id === t.accountId)), 'mail only in its own mailboxes');
+  assert.ok(built.messages.every((m) => built.channels.some((c) => c.id === m.channelId)), 'chat only in its own channels');
+  assert.ok(built.todos.every((t) => t.workspaceId === ws.id) && built.events.every((e) => e.workspaceId === ws.id), 'tasks and events say whose they are');
+  assert.ok(!built.clients.some((c) => /Kopi Harian|Supplements/.test(c.name)), 'the other company stays out');
+  assert.ok(!built.calendars.some((c) => c.source === 'google'), 'no pretend Google account in their name');
+  assert.ok(built.calendars.some((c) => c.id === 'hol-demo-u-maria'), 'the holiday calendar has the name the app looks for');
+  assert.ok(!/Aqeel/.test(json) && /Hi María,/.test(json) && /maria@pixelandprofits\.com/.test(json), 'the seat’s name and address are theirs');
+  assert.ok(built.users.every((u) => u.id.startsWith('demo-u-maria-')) && !built.users.some((u) => u.id === 'u-maria'), 'their own profile stays their real one');
+});
+await test('Demo company: ids that start with demo- are the demo’s, whatever the company', () => {
+  assert.equal(sbx.isSandboxId('demo-u-1'), true);
+  assert.equal(sbx.isSandboxId('pnp'), false);
+  assert.equal(sbx.isSandbox({ id: 'pnp' }), false);
+  assert.equal(sbx.isSandbox({ id: 'demo-u-1' }), true);
+});
+
+const sandbox = await import('../server/sandbox.ts');
+await test('Demo company: made fresh in the person’s time zone (this week’s standup at 9:30 their time)', async () => {
+  await sandbox.make('u-unit', { name: 'Unit Tester' }, 'Asia/Jakarta');
+  const docs = sandbox.docsOf('u-unit');
+  const standup = docs.events.find((e) => e.title === 'Daily standup');
+  const local = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(standup.start));
+  assert.equal(local, '09:30');
+  const week = (d) => {
+    const x = new Date(d);
+    x.setUTCHours(0, 0, 0, 0);
+    return Math.floor((x.getTime() - Date.UTC(2026, 0, 5)) / (7 * 86_400_000));
+  };
+  assert.ok(docs.events.some((e) => e.title === 'Daily standup' && Math.abs(week(e.start) - week(Date.now())) <= 1), 'in this week (or the next)');
+  const recent = docs.threads.flatMap((t) => t.messages).map((m) => Date.parse(m.date)).sort((a, b) => b - a)[0];
+  assert.ok(Date.now() - recent < 60 * 60_000, 'the newest email arrived within the hour');
+  assert.equal(db.allDocs('workspaces').filter((w) => String(w.id).startsWith('demo-')).length, 0, 'nothing of it is a real document');
+  assert.equal(sandbox.info('u-unit').hidden, false);
+  // Someone on the other side of the world gets their own 9:30.
+  await sandbox.make('u-unit-ny', { name: 'New York' }, 'America/New_York');
+  const ny = sandbox.docsOf('u-unit-ny').events.find((e) => e.title === 'Daily standup');
+  assert.equal(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ny.start)), '09:30');
+  sandbox.remove('u-unit-ny');
+});
+await test('Demo company: the owner changes anything in it; nothing moves out, nobody new comes in, and it stays small', () => {
+  const ws = sandbox.getDoc('u-unit', 'workspaces', 'demo-u-unit');
+  const task = { id: 'unit-task', title: 'Mine', workspaceId: 'demo-u-unit' };
+  assert.equal(sandbox.belongs('u-unit', 'todos', task, false), true, 'a new task in it belongs in it');
+  assert.equal(sandbox.belongs('u-other', 'todos', task, false), false, 'never in someone else’s');
+  assert.equal(sandbox.belongs('u-unit', 'todos', { id: 'x', workspaceId: 'w-real' }, false), false, 'a real company’s stays real');
+  assert.equal(sandbox.belongs('u-unit', 'todos', { ...task, id: 'real-one' }, true), false, 'an id a real document has stays real');
+  const r1 = sandbox.write('u-unit', 'todos', [task], []);
+  assert.equal(r1.saved.length, 1);
+  const r2 = sandbox.write('u-unit', 'todos', [{ ...task, workspaceId: 'w-real' }], []);
+  assert.deepEqual([r2.saved.length, r2.refused], [0, ['unit-task']], 'it can’t move into a real company');
+  const r3 = sandbox.write('u-unit', 'users', [{ id: 'demo-u-unit-new', name: 'Someone' }], []);
+  assert.equal(r3.saved.length, 0, 'no new people');
+  const r4 = sandbox.write('u-unit', 'workspaces', [{ ...ws, name: 'Renamed', members: [], sandbox: { owner: 'u-evil', createdAt: '2000-01-01', tried: ['reply', 'nope'], listOff: true } }], []);
+  const after = r4.saved[0];
+  assert.equal(after.name, 'Renamed');
+  assert.deepEqual(after.members, [{ userId: 'u-unit', role: 'owner' }], 'they stay its owner');
+  assert.deepEqual(after.sandbox, { owner: 'u-unit', createdAt: ws.sandbox.createdAt, tried: ['reply'], listOff: true }, 'whose it is stays; only real "Try this" keys');
+  const big = sandbox.write('u-unit', 'messages', [{ id: 'unit-big', channelId: sandbox.docsOf('u-unit').channels[0].id, text: 'x'.repeat(3_100_000) }], []);
+  assert.equal(big.saved.length, 0, 'a huge document isn’t kept');
+  assert.match(big.why ?? '', /small files/);
+  const del = sandbox.write('u-unit', 'workspaces', [], ['demo-u-unit']);
+  assert.equal(del.deleted.length, 0, 'the company itself isn’t deleted by a save (Reset and Hide do that)');
+});
+await test('Demo company: hidden, shown, cleaned up after a month unused, and counted only for operators', () => {
+  sandbox.setHidden('u-unit', true);
+  assert.equal(sandbox.stateOf('u-unit', true).state, 'hidden');
+  sandbox.setHidden('u-unit', false);
+  assert.equal(sandbox.stateOf('u-unit', true).state, 'on');
+  assert.equal(sandbox.stats().total, 1);
+  assert.deepEqual(sandbox.cleanup(), [], 'used today: kept');
+  db.db.prepare('UPDATE sandboxes SET used_at = ? WHERE owner = ?').run(new Date(Date.now() - 31 * 86_400_000).toISOString(), 'u-unit');
+  assert.deepEqual(sandbox.cleanup(), ['u-unit'], 'unused for a month: gone');
+  assert.equal(sandbox.info('u-unit'), null);
+  assert.deepEqual(sandbox.docsOf('u-unit'), {}, 'with everything in it');
+  assert.equal(sandbox.stateOf('u-unit', true).state, 'none', 'made again, fresh, the next time');
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

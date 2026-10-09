@@ -1,3 +1,4 @@
+import type { SandboxMark } from './sandbox';
 import type { SummaryRun } from './jobTimes';
 
 export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed' | 'scheduled' | 'assigned';
@@ -298,6 +299,10 @@ export interface Workspace {
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string; secured?: boolean }; // WhatsApp Business (Meta Cloud API); the token and app secret stay on the server. secured: Meta's signatures can be checked, so messages are read
   /** Read tracking on mail to people outside the company (Settings, Security & data). Off: nobody can track. */
   readTracking?: boolean;
+  /** "Let our people open the demo company" (Settings, Apps & chat). Missing: on. */
+  demoCompany?: boolean;
+  /** Set on someone's own demo company only (src/sandbox.ts): whose it is, and their "Try this" list. */
+  sandbox?: SandboxMark;
 }
 
 /** The company's own brand in place of sprint2go: for its team and, above all, for its clients at its own address. */
