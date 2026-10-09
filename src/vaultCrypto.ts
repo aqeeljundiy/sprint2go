@@ -9,6 +9,7 @@
  *   throwaway key pair, then HKDF, then AES-GCM), so sharing never reveals anyone's private key.
  * - 2FA codes are worked out here too, from the decrypted secret.
  */
+import { t } from './i18n/index';
 
 const te = new TextEncoder();
 const td = new TextDecoder();
@@ -122,7 +123,7 @@ function base32(secret: string) {
   let bits = '';
   for (const ch of clean) {
     const v = alphabet.indexOf(ch);
-    if (v < 0) throw new Error('Not a valid 2FA secret');
+    if (v < 0) throw new Error(t('Not a valid 2FA secret'));
     bits += v.toString(2).padStart(5, '0');
   }
   return Uint8Array.from(bits.match(/.{8}/g) ?? [], (b) => parseInt(b, 2));
