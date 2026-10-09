@@ -1,0 +1,10 @@
+[
+  {
+    "type": "message",
+    "user": "U02BOB",
+    "text": "This one is gone from Slack",
+    "ts": "1767690000.000100",
+    "files": [{ "id": "F03GONE", "name": "gone.docx", "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 1000, "url_private_download": "{FILES}/files/missing.docx" }]
+  },
+  { "type": "message", "subtype": "channel_leave", "user": "U07QUIET", "text": "<@U07QUIET> has left the channel", "ts": "1767690100.000100" }
+]

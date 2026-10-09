@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SmoothHeight, useLeaving } from './ui/Smooth';
 import { term, brand as product } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy, FolderInput } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import { DEFAULT_PERMISSIONS } from '../types';
 import type { AISettings, AppId, BlockRule, CalendarDef, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, Todo, User, Workspace } from '../types';
@@ -34,6 +34,7 @@ import { NotificationSettings } from './NotificationSettings';
 import { TwoStepRow } from './TwoStep';
 import { DemoCompanyBlock, type DemoSettings } from './DemoCompany';
 import { ConnectedApps } from './ConnectedApps';
+import { ImportSection } from './imports/ImportSection';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -49,6 +50,7 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'billing', name: 'Plan & billing', icon: CreditCard, group: 'Company' },
   { id: 'storage', name: 'Storage', icon: HardDrive, group: 'Company' },
   { id: 'security', name: 'Security & data', icon: ShieldCheck, group: 'Company' },
+  { id: 'import', name: 'Import', icon: FolderInput, group: 'Company' },
   { id: 'account', name: 'Account', icon: UserRound, group: 'You' },
   { id: 'appearance', name: 'Appearance', icon: Palette, group: 'You' },
   { id: 'myapps', name: 'Your apps', icon: LayoutGrid, group: 'You' },
@@ -80,7 +82,7 @@ function zoneOptions(current: string): Option[] {
 }
 
 /** Settings the demo company leaves out: they reach the real world (billing, AI keys, mail delivery, brand, security). */
-const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security'];
+const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security', 'import'];
 
 const SHORTCUTS: [string, string[]][] = [
   ['Compose', ['C']],
@@ -182,7 +184,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
   // The demo company has no money, keys, mail delivery or sign-in rules of its own: those are the real company's.
-  const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')) && !(demo?.inDemo && DEMO_OUT.includes(x.id)));
+  const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')) && (canManage || x.id !== 'import') && !(demo?.inDemo && DEMO_OUT.includes(x.id)));
   const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
 
   return (
@@ -712,6 +714,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {!sections.some((x) => x.id === section) && <p className="muted">{demo?.inDemo && DEMO_OUT.includes(section) ? 'The demo company has no billing, AI keys, mail delivery, brand or sign-in rules of its own: they’re set in your real company.' : 'Ask an admin about this.'}</p>}
           {section === 'ai' && sections.some((x) => x.id === 'ai') && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'billing' && sections.some((x) => x.id === 'billing') && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
+          {section === 'import' && sections.some((x) => x.id === 'import') && <ImportSection ws={ws} members={wsUsers} projects={admin.projects} toast={admin.toast} />}
           {section === 'security' && <SecuritySection ws={ws} me={me} isOwner={myRole === 'owner'} canManage={canManage} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} onAccount={() => onSection('account')} users={wsUsers} toast={admin.toast} />}
         </div>
       </div>

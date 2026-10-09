@@ -1,0 +1,4 @@
+[
+  { "id": "C01GENERAL", "name": "general", "created": 1767000000, "creator": "U01ALICE", "is_archived": false, "is_general": true, "members": ["U01ALICE", "U02BOB", "U03DANA", "U04EVAN", "U05FAY"], "topic": { "value": "Company-wide" }, "purpose": { "value": "Everyone at Acme" } },
+  { "id": "C02DESIGN", "name": "design", "created": 1767100000, "creator": "U02BOB", "is_archived": false, "members": ["U02BOB", "U03DANA"], "topic": { "value": "" }, "purpose": { "value": "Mockups, and links for <#C01GENERAL|general>" } }
+]

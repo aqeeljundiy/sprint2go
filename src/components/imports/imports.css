@@ -1,0 +1,503 @@
+/* Imports (Settings, Import and the import dialog): src/components/imports/. */
+
+/* ---------- Settings, Import ---------- */
+.imp-source .ghost-btn,
+.imp-job .ghost-btn {
+  flex: none;
+  min-width: 76px;
+  justify-content: center;
+}
+.imp-job .acct-info {
+  gap: 2px;
+}
+.imp-job .acct-info strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.imp-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.imp-job .imp-bar {
+  margin-top: 6px;
+}
+.imp-undo-hint {
+  color: var(--text-3);
+}
+.imp-recent .imp-job {
+  animation: tabIn 0.24s var(--ease) backwards;
+}
+@media (max-width: 760px) {
+  .imp-source,
+  .imp-job {
+    min-height: 56px;
+  }
+  .imp-source .ghost-btn,
+  .imp-job .ghost-btn {
+    min-height: 40px;
+  }
+}
+
+/* ---------- the dialog ---------- */
+.modal.imp-modal {
+  width: min(620px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The body scrolls; the title and the buttons stay in view. */
+.imp-modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  gap: 14px;
+  padding-top: 12px;
+}
+.imp-modal .modal-head,
+.imp-modal .modal-foot {
+  flex: none;
+}
+.imp-step {
+  container: imp / inline-size;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Where you are: Upload, Check, Import. */
+.imp-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.imp-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s ease;
+}
+.imp-step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  background: var(--hover);
+  color: var(--text-3);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+.imp-steps li.on {
+  color: var(--text);
+}
+.imp-steps li.on .imp-step-n {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+.imp-steps li.done {
+  color: var(--text-2);
+}
+.imp-steps li.done .imp-step-n {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.imp-lead {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.imp-how {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.imp-how li::marker {
+  color: var(--text-3);
+  font-weight: 600;
+}
+.imp-drop {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 28px 20px;
+  border-radius: 14px;
+  border: 1.5px dashed color-mix(in srgb, var(--text-3) 50%, transparent);
+  color: var(--text-2);
+  text-align: center;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.imp-drop:hover,
+.imp-drop:focus-visible,
+.imp-drop.over {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.imp-drop strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.imp-drop small {
+  max-width: 380px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.imp-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.imp-note.warn {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.imp-line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.imp-line.muted {
+  color: var(--text-3);
+}
+.imp-line.warn-text {
+  color: var(--warn);
+}
+
+/* Uploading, reading and running: a file, a phase and a bar. */
+.imp-live {
+  display: grid;
+  gap: 10px;
+  padding: 8px 0 4px;
+}
+.imp-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text-3);
+}
+.imp-file > span {
+  display: grid;
+  min-width: 0;
+}
+.imp-file strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.imp-file small {
+  font-size: 12px;
+}
+.imp-phase {
+  margin: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.imp-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+}
+.imp-bar > span {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(0.02);
+  transition: transform 0.4s var(--ease);
+}
+/* Still working out how far: a short stripe moves across (live status, the one thing allowed to move by itself). */
+.imp-bar.unknown > span {
+  right: auto;
+  width: 30%;
+  transform: none;
+  animation: impSweep 1.2s ease-in-out infinite;
+}
+@keyframes impSweep {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+/* ---------- the preview ---------- */
+.imp-preview {
+  display: grid;
+  gap: 18px;
+}
+.imp-sec {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.imp-sec h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+/* A list inside the dialog: rows split by a line, no box of their own. */
+.imp-list {
+  display: grid;
+  max-height: min(300px, 40vh);
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  overscroll-behavior: contain;
+}
+.imp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  transition: opacity 0.18s ease;
+}
+.imp-row.off .imp-row-text,
+.imp-row.off .imp-row-icon {
+  opacity: 0.5;
+}
+.imp-row-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--text-2);
+}
+.imp-row-text {
+  flex: 1;
+  display: grid;
+  min-width: 0;
+}
+.imp-row-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.imp-row-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.imp-row .switch {
+  flex: none;
+}
+.imp-row > .person-cell {
+  flex: 1;
+  min-width: 0;
+}
+.imp-arrow {
+  flex: none;
+  color: var(--text-3);
+}
+/* A dropdown in a row is a plain field: the row is the frame. */
+.imp-field {
+  flex: none;
+  max-width: 100%;
+}
+.imp-map .imp-field,
+.imp-person .imp-field {
+  width: min(260px, 48%);
+}
+.imp-mapped {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.imp-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.imp-fold-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  min-height: 32px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: color 0.15s ease;
+}
+.imp-fold-btn:hover {
+  color: var(--text);
+}
+.imp-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+}
+.imp-toggle span {
+  display: grid;
+  gap: 2px;
+}
+.imp-toggle small {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.imp-seg {
+  justify-self: start;
+}
+.imp-room {
+  display: grid;
+  gap: 6px;
+}
+.imp-room .bf-this {
+  transition:
+    width 0.25s var(--ease),
+    background-color 0.2s ease;
+}
+.imp-room .bf-this.over {
+  background: var(--danger);
+}
+
+/* ---------- the end: what came over, what didn't, Undo ---------- */
+.imp-summary {
+  display: grid;
+  gap: 16px;
+}
+.imp-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.imp-result svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-3);
+}
+.imp-result.ok svg {
+  color: var(--ok);
+}
+.imp-result.bad svg {
+  color: var(--danger);
+}
+.imp-missing .imp-row {
+  min-height: 44px;
+}
+.imp-missing .imp-row-text small {
+  white-space: normal;
+}
+.imp-undo {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.imp-confirm {
+  display: grid;
+  gap: 10px;
+  animation: tabIn 0.22s var(--ease) backwards;
+}
+.imp-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* The dialog on a narrow screen (a phone, or a narrow window): a row's dropdown goes under its name. */
+@container imp (max-width: 460px) {
+  .imp-map,
+  .imp-person {
+    flex-wrap: wrap;
+    padding: 8px 2px;
+  }
+  .imp-map .imp-row-text,
+  .imp-person > .person-cell {
+    flex: 1 1 calc(100% - 40px);
+  }
+  .imp-arrow {
+    display: none;
+  }
+  .imp-map .imp-field,
+  .imp-person .imp-field {
+    width: 100%;
+  }
+}
+@media (max-width: 760px) {
+  .imp-modal .modal-foot {
+    flex-wrap: wrap;
+  }
+  .imp-modal .modal-foot > button {
+    min-height: 40px;
+  }
+  .imp-drop {
+    padding: 22px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .imp-bar > span,
+  .imp-room .bf-this,
+  .imp-steps li,
+  .imp-step-n,
+  .imp-drop,
+  .imp-row {
+    transition: none;
+  }
+  .imp-bar.unknown > span {
+    animation: none;
+    left: 0;
+    width: 40%;
+    opacity: 0.6;
+  }
+  .imp-recent .imp-job,
+  .imp-confirm {
+    animation: none;
+  }
+}

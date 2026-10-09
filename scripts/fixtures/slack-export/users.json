@@ -1,0 +1,9 @@
+[
+  { "id": "U01ALICE", "name": "alice", "real_name": "Alice Martin", "profile": { "email": "alice@acme.test", "real_name": "Alice Martin", "display_name": "alice" } },
+  { "id": "U02BOB", "name": "bob", "real_name": "Bob Stone", "profile": { "email": "bob@acme.test", "real_name": "Bob Stone", "display_name": "bob" } },
+  { "id": "U03DANA", "name": "dana", "real_name": "Dana Field", "profile": { "email": "dana@elsewhere.test", "real_name": "Dana Field", "display_name": "dana" } },
+  { "id": "U04EVAN", "name": "evan", "real_name": "Evan Old", "deleted": true, "profile": { "email": "evan@acme.test", "real_name": "Evan Old" } },
+  { "id": "U05FAY", "name": "fay", "real_name": "Fay Contractor", "profile": { "email": "fay@contractor.test", "real_name": "Fay Contractor" } },
+  { "id": "U06BOT", "name": "deploybot", "real_name": "Deploy Bot", "is_bot": true, "profile": { "real_name": "Deploy Bot" } },
+  { "id": "U07QUIET", "name": "quiet", "real_name": "Quiet Person", "profile": { "email": "quiet@acme.test", "real_name": "Quiet Person" } }
+]

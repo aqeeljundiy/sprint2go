@@ -1,0 +1,57 @@
+{
+  "id": "66f9e0000000000000000b01",
+  "name": "Website relaunch",
+  "desc": "The new acme.test",
+  "closed": false,
+  "labels": [
+    { "id": "66f9e0000000000000000a01", "name": "Urgent", "color": "red" },
+    { "id": "66f9e0000000000000000a02", "name": "Design", "color": "blue" },
+    { "id": "66f9e0000000000000000a03", "name": "", "color": "green" }
+  ],
+  "lists": [
+    { "id": "66f9e0000000000000000101", "name": "To Do", "closed": false, "pos": 1024 },
+    { "id": "66f9e0000000000000000102", "name": "Doing", "closed": false, "pos": 2048 },
+    { "id": "66f9e0000000000000000103", "name": "Waiting on client", "closed": false, "pos": 3072 },
+    { "id": "66f9e0000000000000000104", "name": "Shipped", "closed": false, "pos": 4096 },
+    { "id": "66f9e0000000000000000105", "name": "Old ideas", "closed": true, "pos": 5120 }
+  ],
+  "members": [
+    { "id": "66f9e0000000000000000d01", "fullName": "Alice Martin", "username": "alicem" },
+    { "id": "66f9e0000000000000000d02", "fullName": "Quinn Ray", "username": "quinnray" },
+    { "id": "66f9e0000000000000000d03", "fullName": "Carol Admin", "username": "carol" }
+  ],
+  "cards": [
+    {
+      "id": "66f9e0000000000000000c01",
+      "name": "Write homepage copy",
+      "desc": "Hero, about and pricing sections.",
+      "closed": false,
+      "idList": "66f9e0000000000000000101",
+      "idLabels": ["66f9e0000000000000000a01", "66f9e0000000000000000a03"],
+      "labels": [{ "id": "66f9e0000000000000000a01", "name": "Urgent", "color": "red" }, { "id": "66f9e0000000000000000a03", "name": "", "color": "green" }],
+      "idMembers": ["66f9e0000000000000000d01", "66f9e0000000000000000d02"],
+      "idChecklists": ["66f9e0000000000000000e01", "66f9e0000000000000000e02"],
+      "due": "2026-11-02T10:00:00.000Z",
+      "dueComplete": false,
+      "pos": 16384,
+      "dateLastActivity": "2026-10-02T08:00:00.000Z",
+      "attachments": [{ "id": "66f9e0000000000000000f01", "name": "Brief", "url": "https://docs.example.test/brief", "isUpload": false }]
+    },
+    { "id": "66f9e0000000000000000c02", "name": "Design mockups", "desc": "", "closed": false, "idList": "66f9e0000000000000000102", "idLabels": ["66f9e0000000000000000a02"], "labels": [{ "id": "66f9e0000000000000000a02", "name": "Design", "color": "blue" }], "idMembers": ["66f9e0000000000000000d03"], "due": null, "pos": 16384, "dateLastActivity": "2026-10-03T08:00:00.000Z", "attachments": [] },
+    { "id": "66f9e0000000000000000c03", "name": "Logo sign-off", "desc": "Waiting for the client's answer", "closed": false, "idList": "66f9e0000000000000000103", "idLabels": [], "idMembers": [], "due": null, "pos": 16384, "dateLastActivity": "2026-10-04T08:00:00.000Z" },
+    { "id": "66f9e0000000000000000c04", "name": "Kick-off call", "desc": "", "closed": false, "idList": "66f9e0000000000000000104", "idLabels": [], "idMembers": ["66f9e0000000000000000d01"], "due": "2026-09-15T03:00:00.000Z", "dueComplete": true, "pos": 16384, "dateLastActivity": "2026-09-15T09:00:00.000Z" },
+    { "id": "66f9e0000000000000000c05", "name": "Set up analytics", "desc": "", "closed": false, "idList": "66f9e0000000000000000102", "idLabels": [], "idMembers": [], "due": "2026-10-01T03:00:00.000Z", "dueComplete": true, "pos": 32768, "dateLastActivity": "2026-10-01T09:00:00.000Z" },
+    { "id": "66f9e0000000000000000c06", "name": "Archived card", "desc": "", "closed": true, "idList": "66f9e0000000000000000101", "idLabels": [], "idMembers": [], "due": null, "pos": 65536 },
+    { "id": "66f9e0000000000000000c07", "name": "Idea in an archived list", "desc": "", "closed": false, "idList": "66f9e0000000000000000105", "idLabels": [], "idMembers": [], "due": null, "pos": 16384 }
+  ],
+  "checklists": [
+    { "id": "66f9e0000000000000000e01", "name": "Sections", "idCard": "66f9e0000000000000000c01", "pos": 1, "checkItems": [{ "id": "1", "name": "Hero", "state": "complete", "pos": 1 }, { "id": "2", "name": "About", "state": "incomplete", "pos": 2 }] },
+    { "id": "66f9e0000000000000000e02", "name": "Review", "idCard": "66f9e0000000000000000c01", "pos": 2, "checkItems": [{ "id": "3", "name": "Legal", "state": "incomplete", "pos": 1 }] }
+  ],
+  "actions": [
+    { "id": "66f9e0000000000000000901", "type": "createCard", "date": "2026-09-30T02:00:00.000Z", "idMemberCreator": "66f9e0000000000000000d01", "data": { "card": { "id": "66f9e0000000000000000c01", "name": "Write homepage copy" } } },
+    { "id": "66f9e0000000000000000902", "type": "commentCard", "date": "2026-10-01T04:00:00.000Z", "idMemberCreator": "66f9e0000000000000000d02", "memberCreator": { "id": "66f9e0000000000000000d02", "fullName": "Quinn Ray", "username": "quinnray" }, "data": { "text": "Can we add a pricing table?", "card": { "id": "66f9e0000000000000000c01" } } },
+    { "id": "66f9e0000000000000000903", "type": "commentCard", "date": "2026-10-01T05:00:00.000Z", "idMemberCreator": "66f9e0000000000000000d01", "memberCreator": { "id": "66f9e0000000000000000d01", "fullName": "Alice Martin", "username": "alicem" }, "data": { "text": "Yes, below the hero.", "card": { "id": "66f9e0000000000000000c01" } } },
+    { "id": "66f9e0000000000000000904", "type": "commentCard", "date": "2026-10-02T05:00:00.000Z", "idMemberCreator": "66f9e0000000000000000d09", "memberCreator": { "id": "66f9e0000000000000000d09", "fullName": "Former Freelancer", "username": "freelancer" }, "data": { "text": "Mockups attached in Figma", "card": { "id": "66f9e0000000000000000c02" } } }
+  ]
+}
