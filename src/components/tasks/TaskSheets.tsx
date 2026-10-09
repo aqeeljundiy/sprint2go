@@ -4,7 +4,7 @@ import { Sheet } from '../ui/Sheet';
 import { PeopleList } from '../ui/PeopleList';
 import { Avatar } from '../Avatar';
 import { dayChoices, dueText, reschedule, snoozeChoices, type DayChoice } from '../../taskDates';
-import { stageName, stageOf, toneOf } from '../../stages';
+import { columnOf, ownStageForColumn, stageName, stageOf, stagesForTask, toneOf } from '../../stages';
 import { term } from '../../terms';
 import { toast, toastUndo } from '../../toast';
 import { MonthGrid } from './MonthGrid';
@@ -57,13 +57,21 @@ export function useTaskSheets(ops: TaskOps, opts: { onDone?: () => void; snooze?
     const n = r.patches.length;
     toastUndo(`${one ? quoted(one.title) : `${n} task${n === 1 ? '' : 's'}`} moved to ${dayWords(day, ops.today)}`, () => r.undo.forEach((u) => ops.patch(u.id, { due: u.due })));
   };
+  // One task: its own stages. Several: their stages when they share them, else the page's, each going to its own
+  // stage of that kind (tasks from projects with stages of their own).
+  const stageList = (() => {
+    if (!list.length) return ops.stages;
+    const lists = list.map((t) => stagesForTask(t));
+    return lists.every((l) => l === lists[0]) ? lists[0] : ops.stages;
+  })();
   const toStage = (id: TaskStatus) => {
-    const before = list.map((t) => ({ id: t.id, s: stageOf(t, ops.stages).id }));
-    const moving = before.filter((b) => b.s !== id);
-    moving.forEach((b) => ops.status(b.id, id, true));
+    const col = stageList.find((x) => x.id === id);
+    if (!col) return;
+    const before = list.map((t) => ({ id: t.id, s: stageOf(t).id, to: ownStageForColumn(t, col).id }));
+    const moving = before.filter((b) => b.s !== b.to);
+    moving.forEach((b) => ops.status(b.id, b.to, true));
     finish();
-    const st = ops.stages.find((x) => x.id === id);
-    if (moving.length && st) toastUndo(`${one ? quoted(one.title) : `${moving.length} task${moving.length === 1 ? '' : 's'}`} moved to ${stageName(st)}`, () => moving.forEach((b) => ops.status(b.id, b.s, true)));
+    if (moving.length) toastUndo(`${one ? quoted(one.title) : `${moving.length} task${moving.length === 1 ? '' : 's'}`} moved to ${stageName(col)}`, () => moving.forEach((b) => ops.status(b.id, b.s, true)));
   };
   const toProject = (clientId: string) => {
     const before = list.map((t) => ({ id: t.id, c: t.clientId }));
@@ -90,14 +98,14 @@ export function useTaskSheets(ops: TaskOps, opts: { onDone?: () => void; snooze?
         </Sheet>
       );
     else if (s.kind === 'move' || s.kind === 'stage') {
-      const cur = new Set(list.map((t) => stageOf(t, ops.stages).id));
+      const cur = new Set(list.map((t) => columnOf(t, stageList).id));
       const curP = new Set(list.map((t) => t.clientId ?? ''));
       node = (
         <Sheet onClose={close} title={one ? 'Move to' : `Move ${count}`} className="task-sheet" size={s.kind === 'move' && ops.clients.length > 6 ? 'tall' : 'auto'}>
           {sub}
           <div className="as-group">Stage</div>
           <div className="as-list">
-            {ops.stages.map((st) => (
+            {stageList.map((st) => (
               <button key={st.id} type="button" className={`as-item${cur.size === 1 && cur.has(st.id) ? ' on' : ''}`} onClick={() => toStage(st.id)}>
                 <span className="as-icon ts-dot">
                   <span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />

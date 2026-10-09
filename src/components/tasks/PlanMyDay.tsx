@@ -32,7 +32,7 @@ export function PlanMyDay({ ops, tasks, onClose }: { ops: TaskOps; tasks: Todo[]
     const step: Step = { id: t.id, did, before: t.due };
     if (did === 'today' && t.due !== ops.today) ops.patch(t.id, { due: ops.today });
     if (did === 'moved' && day !== undefined) ops.patch(t.id, { due: day || undefined });
-    if (did === 'done') ops.status(t.id, stageIdFor(t, 'done', ops.stages), true);
+    if (did === 'done') ops.status(t.id, stageIdFor(t, 'done'), true);
     setPicking(false);
     setSteps((s) => [...s, step]);
   };
@@ -41,7 +41,7 @@ export function PlanMyDay({ ops, tasks, onClose }: { ops: TaskOps; tasks: Todo[]
     if (!last) return;
     const x = ops.tasks.find((y) => y.id === last.id);
     if (x && (last.did === 'today' || last.did === 'moved')) ops.patch(x.id, { due: last.before });
-    if (x && last.did === 'done') ops.status(x.id, stageIdFor(x, 'open', ops.stages), true);
+    if (x && last.did === 'done') ops.status(x.id, stageIdFor(x, 'open'), true);
     setSteps((s) => s.slice(0, -1));
   };
 

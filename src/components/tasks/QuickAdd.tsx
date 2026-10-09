@@ -6,9 +6,9 @@ import { PeopleList } from '../ui/PeopleList';
 import { Avatar } from '../Avatar';
 import { asToken, parseQuickAdd, remindText, triggerAt, type QuickToken } from '../../quickAdd';
 import { addDays, dateTone, dayDate, dueText } from '../../taskDates';
-import { stageName, toneOf } from '../../stages';
+import { stageName, stagesForTask, toneOf } from '../../stages';
 import { term } from '../../terms';
-import type { Repeat } from '../../types';
+import type { Repeat, TaskStage } from '../../types';
 import { DayPicker, dayWords, toastAdded } from './TaskSheets';
 import { quoted, type NewTask, type TaskOps } from './taskOps';
 
@@ -49,21 +49,25 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
   const [picker, setPicker] = useState<PickerId | null>(null);
   const [hi, setHi] = useState(0);
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const stages = ops.stages;
   const projects = useMemo(() => ops.clients.filter((c) => c.status !== 'ended'), [ops.clients]);
-
-  const parsed = useMemo(
-    () =>
-      parseQuickAdd(text, {
-        today: ops.today,
-        projects: projects.map((c) => ({ id: c.id, name: c.name })),
-        people: ops.users.map((u) => ({ id: u.id, name: u.name })),
-        stages: stages.map((s) => ({ id: s.id, name: stageName(s) })),
-        off,
-      }),
-    [text, off, ops.today, projects, ops.users, stages],
-  );
   const has = (k: keyof Picks) => Object.prototype.hasOwnProperty.call(picks, k);
+
+  // "/stage" reads the stages of where the task goes: its project's or team's own, else the company's. The project
+  // can come from the same text ("#kopi"), so it reads once for the project, then with that project's stages.
+  const read = (list: TaskStage[]) =>
+    parseQuickAdd(text, {
+      today: ops.today,
+      projects: projects.map((c) => ({ id: c.id, name: c.name })),
+      people: ops.users.map((u) => ({ id: u.id, name: u.name })),
+      stages: list.map((s) => ({ id: s.id, name: stageName(s) })),
+      off,
+    });
+  const stagesOfTarget = (clientId?: string) => stagesForTask({ workspaceId: ops.wsId, clientId, teamId: defaults.teamId });
+  const pickedClient = has('clientId') ? picks.clientId || undefined : undefined;
+  const first = useMemo(() => read(stagesOfTarget(pickedClient ?? defaults.clientId)), [text, off, ops.today, projects, ops.users, pickedClient, defaults.clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const target = has('clientId') ? pickedClient : (first.clientId ?? defaults.clientId);
+  const stages = stagesOfTarget(target);
+  const parsed = useMemo(() => (stages === stagesOfTarget(pickedClient ?? defaults.clientId) ? first : read(stages)), [first, stages]); // eslint-disable-line react-hooks/exhaustive-deps
   const due = has('due') ? picks.due || undefined : (parsed.due ?? defaults.due);
   const assignees = picks.assignees ?? (parsed.assignees.length ? parsed.assignees : defaults.userId === '' ? [] : [defaults.userId ?? ops.me]);
   const clientId = has('clientId') ? picks.clientId || undefined : (parsed.clientId ?? defaults.clientId);

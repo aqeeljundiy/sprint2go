@@ -4,7 +4,7 @@ import { CheckCircle2, ChevronDown, MessageSquare, Plus, Repeat as RepeatIcon } 
 import { useLongPress } from '../ui/useLongPress';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { dateTone, dueText } from '../../taskDates';
-import { stageName, stageOf, toneOf } from '../../stages';
+import { columnOf, ownStageForColumn, stageName, stageOf, toneOf } from '../../stages';
 import { toastUndo } from '../../toast';
 import { usePhone } from '../../mobile/media';
 import type { Todo } from '../../types';
@@ -45,15 +45,19 @@ export function TaskBoard({
   dragRef.current = drag;
   const [mouseDrag, setMouseDrag] = useState<string | null>(null);
   const [current, setCurrent] = useState(0);
-  const cols = ops.stages.map((s) => ({ s, items: tasks.filter((t) => stageOf(t, ops.stages).id === s.id) }));
+  // The page's columns (a project's or team's own stages on its page, else the company's); a task with stages of its
+  // own sits in its own stage when the board has it, else the column of the same kind.
+  const cols = ops.stages.map((s) => ({ s, items: tasks.filter((t) => columnOf(t, ops.stages).id === s.id) }));
 
   const colAt = (x: number, y: number) => (document.elementsFromPoint(x, y).find((el) => el instanceof HTMLElement && el.classList.contains('tcol')) as HTMLElement | undefined)?.dataset.stage ?? null;
-  const moveTo = (t: Todo, to: string) => {
-    const from = stageOf(t, ops.stages).id;
-    if (from === to) return;
-    ops.status(t.id, to, true);
-    const st = ops.stages.find((s) => s.id === to);
-    if (st) toastUndo(`${quoted(t.title)} moved to ${stageName(st)}`, () => ops.status(t.id, from, true));
+  const moveTo = (t: Todo, colId: string) => {
+    const col = ops.stages.find((s) => s.id === colId);
+    if (!col) return;
+    const from = stageOf(t).id;
+    const to = ownStageForColumn(t, col); // its own stage of that kind when its stages differ from the board's
+    if (from === to.id) return;
+    ops.status(t.id, to.id, true);
+    toastUndo(`${quoted(t.title)} moved to ${stageName(to)}`, () => ops.status(t.id, from, true));
   };
 
   // While a card is held at the board's edge, the board moves one column that way, then waits a moment before the
@@ -236,7 +240,7 @@ function BoardCard({
       },
     },
   );
-  const st = stageOf(t, ops.stages);
+  const st = stageOf(t);
   const tone = t.due && !t.done ? dateTone(t.due, ops.today) : null;
   const cl = t.checklist ?? [];
   const comments = (t.history ?? []).filter((h) => h.kind === 'comment').length;

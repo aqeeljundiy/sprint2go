@@ -11,7 +11,7 @@ import { useAppSettings, useCreateAction } from '../../mobile/chrome';
 import { usePhone } from '../../mobile/media';
 import { usePersisted } from '../../settings';
 import { DATE_GROUPS, clock, dateGroup, dueText, isoDay } from '../../taskDates';
-import { firstOf, stageIdFor, stageName, stageOf, toneOf } from '../../stages';
+import { columnOf, firstOf, stageIdFor, stageName, stageOf, stagesForTask, toneOf } from '../../stages';
 import { term } from '../../terms';
 import { toast, toastUndo } from '../../toast';
 import type { Todo } from '../../types';
@@ -89,7 +89,7 @@ export function TaskViews({
   const show = (f: string) => fields.includes(f);
   const [swipes, setSwipes] = usePersisted<{ right: SwipeChoice; left: SwipeChoice }>('s2g-task-swipes', { right: 'complete', left: 'schedule' });
   const [snoozed, setSnoozed] = usePersisted<Record<string, string>>(`s2g-queue-snooze:${ops.me}`, {});
-  const kindOf = (t: Todo) => stageOf(t, ops.stages).kind;
+  const kindOf = (t: Todo) => stageOf(t).kind; // each task's own stages
   const today = ops.today;
 
   /* ---------- which tasks, in which order ---------- */
@@ -178,10 +178,10 @@ export function TaskViews({
     hint: 'What a swipe right and a swipe left do on a task',
     render: () => <SwipeSettings value={swipes} onChange={setSwipes} />,
   });
-  const done = (t: Todo) => stageIdFor(t, 'done', ops.stages);
+  const done = (t: Todo) => stageIdFor(t, 'done');
   const [ticking, setTicking] = useState<string[]>([]);
   const tick = (t: Todo) => {
-    if (t.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return ops.status(t.id, stageIdFor(t, t.done ? 'open' : 'done', ops.stages));
+    if (t.done || matchMedia('(prefers-reduced-motion: reduce)').matches) return ops.status(t.id, stageIdFor(t, t.done ? 'open' : 'done'));
     setTicking((x) => [...x, t.id]);
     setTimeout(() => {
       ops.status(t.id, done(t));
@@ -191,7 +191,7 @@ export function TaskViews({
   const swipeOf = (which: SwipeChoice, t: Todo): SwipeAction | null => {
     if (which === 'complete') {
       const review = kindOf(t) === 'review' && t.supervisorId === ops.me;
-      if (t.done) return { id: 'reopen', label: 'Reopen', icon: Check, tone: 'neutral', run: () => ops.status(t.id, stageIdFor(t, 'open', ops.stages)) };
+      if (t.done) return { id: 'reopen', label: 'Reopen', icon: Check, tone: 'neutral', run: () => ops.status(t.id, stageIdFor(t, 'open')) };
       return { id: 'done', label: review ? 'Approve' : 'Done', icon: Check, tone: 'ok', removes: !d.completed, run: () => ops.status(t.id, done(t)) };
     }
     if (which === 'schedule') return { id: 'schedule', label: 'Schedule', icon: CalendarDays, tone: 'warn', run: () => sheets.open('schedule', [t.id]) };
@@ -208,7 +208,7 @@ export function TaskViews({
     return { start: a ? [a] : [], end: b ? [b] : [] };
   };
   const menuFor = (t: Todo, board = false): SheetAction[] => {
-    const st = stageOf(t, ops.stages);
+    const st = stageOf(t);
     const who = doersOf(t).map((id) => (id === ops.me ? 'You' : ops.users.find((u) => u.id === id)?.name.split(' ')[0])).filter(Boolean);
     return [
       ...(!board && layout === 'list' ? [{ label: 'Select', icon: CheckSquare, run: () => toggle(t.id) }] : []),
@@ -232,7 +232,7 @@ export function TaskViews({
   const look: RowLook = { show, project: cross, team: kind !== 'team' && d.group !== 'team' && !phone, stage: d.group !== 'stage', avatar: !!triage || kind === 'team' || kind === 'myteams' || kind === 'all' || kind === 'project' || kind === 'client' };
   const act = (t: Todo) => {
     if (t.done) return null;
-    const st = stageOf(t, ops.stages);
+    const st = stageOf(t);
     if (st.kind === 'review' && t.supervisorId === ops.me)
       return (
         <button type="button" className="row-act primary" onClick={() => ops.status(t.id, done(t))}>
@@ -245,7 +245,7 @@ export function TaskViews({
           Take it
         </button>
       );
-    const active = firstOf('active', ops.stages);
+    const active = firstOf('active', stagesForTask(t));
     if (t.source === 'request' && st.kind === 'open' && active)
       return (
         <button type="button" className="row-act" onClick={() => ops.status(t.id, active.id)}>
@@ -289,7 +289,7 @@ export function TaskViews({
       }
       return DATE_GROUPS.filter((x) => by.has(x.id)).map((x) => ({ key: x.id, label: x.label as ReactNode, items: by.get(x.id)!, reschedule: x.id === 'overdue' }));
     }
-    const keyOf = (t: Todo) => (g === 'client' ? (t.clientId ?? '') : g === 'team' ? (t.teamId ?? '') : g === 'stage' ? stageOf(t, ops.stages).id : (doersOf(t)[0] ?? ''));
+    const keyOf = (t: Todo) => (g === 'client' ? (t.clientId ?? '') : g === 'team' ? (t.teamId ?? '') : g === 'stage' ? columnOf(t, ops.stages).id : (doersOf(t)[0] ?? ''));
     const by = new Map<string, Todo[]>();
     for (const t of open) by.set(keyOf(t), [...(by.get(keyOf(t)) ?? []), t]);
     const out = [...by.entries()].map(([k, items]) => {
@@ -521,7 +521,7 @@ export function TaskViews({
           onPriority={() => sheets.open('priority', selected)}
           onComplete={() => {
             const list = selected.map((id) => ops.tasks.find((t) => t.id === id)).filter((t): t is Todo => !!t && !t.done);
-            const before = list.map((t) => ({ id: t.id, s: stageOf(t, ops.stages).id }));
+            const before = list.map((t) => ({ id: t.id, s: stageOf(t).id }));
             list.forEach((t) => ops.status(t.id, done(t), true));
             stopSelecting();
             const text = `${list.length} task${list.length === 1 ? '' : 's'} done`;

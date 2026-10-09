@@ -4,6 +4,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as db from './db.ts';
 import * as platform from './platform.ts';
+import { activePeople } from './billing.ts';
 import { AIError, canCall, isModelGone, keyHint, testKey, withAI, type AIConfig } from './llm.ts';
 import * as models from './models.ts';
 import { CRED_FIELDS, JOBS, PROVIDERS, type JobInfo } from '../src/data/aiCatalog.ts';
@@ -527,7 +528,7 @@ export function money(mrrOf: MrrOf, c = config()) {
   const earning: { id: string; name: string; plan: string; earned: number; cost: number; forecast: number }[] = [];
   const other: { id: string; name: string; why: 'trial' | 'comp' | 'internal' | 'other'; cost: number }[] = [];
   for (const ws of db.allDocs('workspaces') as any[]) {
-    const people = teamSize(ws);
+    const people = activePeople(ws).active; // what the invoice bills: the people active this month
     const cost = costOf(byWs.get(ws.id) ?? [], c).rp;
     const internal = set.homeWorkspace === ws.id || set.internal.includes(ws.id);
     const elig = planAI(ws);

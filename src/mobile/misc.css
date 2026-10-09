@@ -6,40 +6,357 @@
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
 
-/* The guest portal's bottom bar: its look from before Phase 0, kept until the guest portal is redone (Phase 8). The
-   team app's bar (.tabbar with .tabbar-pill) is in shell.css. */
+/* ---------- The guest portal (ClientApp.tsx) ---------- */
+
+/* Phones: the team app's bar in a shorter form (only what's shared with them, More only when it can't fit), and their
+   account as an avatar at the end of the top bar. */
 @media (max-width: 767px) {
+  .mobile-top .mt-account {
+    flex: none;
+    padding: 0;
+    border-radius: 50%;
+  }
+  /* Five longer names than the team's (Messages, Approvals) next to the create button: a little more room each. */
   .tabbar.guest-bar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-    column-gap: 0;
-    padding: 0 0 env(safe-area-inset-bottom);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    border-top: 1px solid var(--border);
-    backdrop-filter: saturate(1.4) blur(16px);
+    padding-left: 10px;
+    padding-right: 10px;
   }
-  .guest-bar button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    min-width: 0;
+  .guest-bar .tabbar-pill {
+    padding: 2px;
+  }
+  .guest-bar .tab-label {
+    letter-spacing: -0.015em;
+  }
+}
+
+/* ---------- Teams (teams/TeamsApp.tsx) ---------- */
+
+@media (max-width: 767px) {
+  /* A team's own header hides on phones like every pane header (the title says the team), except when there's a Join
+     or Ask to join to press. The shared rule that hides it uses !important, so this one has to as well. */
+  .team-page > .tasks-head:has(> .primary-btn, > .ghost-btn) {
+    display: flex !important;
+  }
+  .team-page > .tasks-head > .team-square {
+    display: none;
+  }
+  .team-page > .tasks-head > .primary-btn,
+  .team-page > .tasks-head > .ghost-btn {
+    margin-left: auto;
+  }
+  .team-page .team-row {
+    min-height: 52px;
+  }
+}
+
+/* ---------- The operator console (/admin, admin.css): desktop-first, usable on a phone ---------- */
+
+@media (max-width: 767px) {
+  /* Section tabs and filter rows wrap onto a second line instead of running off the edge (the highlight follows). */
+  .adm-main .client-tabs,
+  .adm-main .segmented {
+    flex-wrap: wrap;
+    overflow: visible;
+    row-gap: 4px;
+  }
+  /* A filter row that wraps loses its one grey track (it would be a blob): each choice is its own chip instead. */
+  .adm-main .segmented {
+    gap: 6px;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .adm-main .segmented > button:not(.on) {
+    background: var(--hover);
+  }
+  /* The small labels: big enough to read. */
+  .adm-main .adm-count,
+  .adm-main .adm-sort,
+  .adm-main .adm-flag,
+  .adm-main small,
+  .adm-main em,
+  .adm-main .grow {
     font-size: 12px;
-    font-weight: 500;
-    color: var(--text-3);
-    transition: color 0.2s;
   }
-  .guest-bar button.on {
-    color: var(--accent);
+  .adm-main .adm-sort {
+    min-height: 36px;
   }
-  .guest-bar .tab-icon {
-    width: 52px;
-    height: 28px;
-    border-radius: 14px;
-    transition: background 0.25s var(--ease);
+}
+
+/* ---------- Onboarding (Onboarding.tsx) ---------- */
+
+/* The finished preview: a short column from the top with a normal button, not a stretched one in the middle. */
+.ob-done {
+  align-content: start;
+}
+.ob-done .primary-btn {
+  align-self: start;
+}
+
+@media (max-width: 767px) {
+  .onboard {
+    padding: 0;
   }
-  .guest-bar button.on .tab-icon {
-    background: var(--accent-soft);
+  .onboard-card {
+    max-height: 100dvh;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+  .onboard-body {
+    padding: 18px 16px 24px;
+  }
+  .ob-done {
+    padding-top: 56px;
+  }
+
+  /* The steps: numbers, with only the current step named, then Close at the end of the same row. The preview note
+     goes on its own line under them, so nothing sits on top of anything. */
+  .onboard-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    row-gap: 4px;
+    padding: max(8px, env(safe-area-inset-top)) 6px 8px 16px;
+  }
+  .ob-steps {
+    grid-column: 1;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .ob-steps > span {
+    flex: none;
+    gap: 6px;
+  }
+  .ob-steps > span:not(.on) .ob-step-name {
+    display: none;
+  }
+  .ob-steps > span.on {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 14px;
+  }
+  .ob-steps .on .ob-step-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ob-steps b {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+  .onboard-head > .ob-close {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .ob-preview-tag {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+    margin: 0;
+  }
+
+  /* Brand colours (here and in Settings): one row of nine, no lonely swatch on a second line. */
+  .accent-row {
+    gap: 6px;
+  }
+
+  /* Invite your team: email on top with Remove beside it, then name and role. */
+  .ob-person {
+    grid-template-columns: minmax(0, 1fr) auto var(--tap);
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .ob-person > input:nth-child(2) {
+    grid-column: 1 / 3;
+    grid-row: 1;
+  }
+  .ob-person > .icon-btn {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .ob-person > input:nth-child(1) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .ob-person > .sel:nth-child(3) {
+    grid-column: 2 / 4;
+    grid-row: 2;
+  }
+  .ob-person > .sel:nth-child(4) {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  /* Choice chips (the email provider here and in Settings, out of office): big enough to tap. */
+  .aw-tones > button {
+    min-height: 40px;
+  }
+
+  /* The email setup guide's steps (here and in Settings, Email delivery): numbers, and the current step by name. */
+  .esg-steps {
+    overflow: visible;
+  }
+  .esg-steps button {
+    flex: none;
+    min-height: var(--tap);
+    padding: 0 12px;
+  }
+  .esg-steps button:not(.on) {
+    width: var(--tap);
+    padding: 0;
+    justify-content: center;
+  }
+  .esg-steps button:not(.on) span {
+    display: none;
+  }
+  .esg-steps button.on {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .esg-steps button.on span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* ---------- Sign in and sign up (SignIn.tsx) ---------- */
+
+@media (max-width: 767px) {
+  /* No desktop card on a phone: the form sits on the page, a little below the top, with nothing framing it. */
+  .signin {
+    align-content: start;
+    padding: max(10vh, calc(env(safe-area-inset-top) + 32px)) 20px calc(24px + env(safe-area-inset-bottom));
+  }
+  .signin-card:not(.cn-card) {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  /* Create an account, Sign in, Forgot your password: tap targets, not 17 px of text. */
+  .signin-switch .link-btn,
+  .signin-forgot {
+    position: relative;
+  }
+  .signin-switch .link-btn::after,
+  .signin-forgot::after {
+    content: '';
+    position: absolute;
+    inset: -14px -8px;
+  }
+  .signin-switch {
+    margin-top: 12px;
+  }
+}
+
+/* ---------- The demo company bar, the try-out bar and "Viewing as" (DemoCompany.tsx, Root.tsx, ClientApp.tsx) ---------- */
+
+@media (max-width: 767px) {
+  /* One line: what this is (cut short if it must be), then the buttons. It clears the phone's status bar, and the app
+     below it doesn't add that room a second time. */
+  :root {
+    --demo-bar-h: 48px;
+  }
+  .demo-bar {
+    gap: 8px;
+    height: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 6px 0 12px;
+    font-size: 13px;
+  }
+  .demo-bar-text > svg {
+    display: none;
+  }
+  .demo-bar-text > span {
+    white-space: nowrap;
+  }
+  .demo-bar .ghost-btn.sm,
+  .demo-bar .primary-btn.sm {
+    height: 40px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .demo-bar .ghost-btn.sm > svg {
+    display: none;
+  }
+  .app.with-demo-bar {
+    top: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    height: calc(100dvh - var(--demo-bar-h) - env(safe-area-inset-top));
+  }
+  .app.with-demo-bar .mobile-top {
+    padding-top: 6px;
+  }
+
+  /* "Viewing as" a guest: the same kind of strip on top instead of a pill floating over the content and the composer. */
+  .client-app .view-as-pill {
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    max-width: none;
+    height: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 6px 0 14px;
+    border-radius: 0;
+    transform: none;
+    box-shadow: none;
+    animation: demoBarIn 0.22s ease-out backwards;
+  }
+  .client-app .view-as-pill > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .client-app .view-as-pill .primary-btn.sm {
+    min-height: 40px;
+  }
+  .app.client-app:has(> .view-as-pill) {
+    top: calc(var(--demo-bar-h) + env(safe-area-inset-top));
+    height: calc(100dvh - var(--demo-bar-h) - env(safe-area-inset-top));
+  }
+  .app.client-app:has(> .view-as-pill) .mobile-top {
+    padding-top: 6px;
+  }
+  .client-app:has(.view-as-pill) .client-toast {
+    bottom: calc(var(--bar-space) + 12px);
+  }
+
+  /* News nobody asked for just now ("Found 3 to-dos in your email") drops over the top bar for a moment, like the
+     phone's own banners, instead of sitting on the list. Toasts that answer a tap stay above the bottom bar. */
+  .toast.quiet {
+    top: calc(env(safe-area-inset-top) + 6px);
+    bottom: auto;
+    animation: quietIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .is-leaving.toast.quiet {
+    animation: quietOut 0.18s ease-in forwards !important; /* beats the shared toast exit, which drops downwards */
+  }
+}
+@keyframes quietIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -16px);
+  }
+}
+@keyframes quietOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast.quiet,
+  .is-leaving.toast.quiet {
+    animation: none !important;
+  }
+  .client-app .view-as-pill {
+    animation: none;
   }
 }

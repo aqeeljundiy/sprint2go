@@ -4,7 +4,7 @@ import { SwipeRow, type SwipeAction } from '../ui/SwipeRow';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { PeoplePicker } from '../ui/PeoplePicker';
 import { dateTone, dueText } from '../../taskDates';
-import { firstOf, stageBadge, stageOf, toneOf } from '../../stages';
+import { firstOf, stageBadge, stageOf, stagesForTask, toneOf } from '../../stages';
 import { holidayOn } from '../../holidayDays';
 import { relative } from '../../utils';
 import type { Todo } from '../../types';
@@ -56,7 +56,7 @@ export function TaskRow({
   act?: ReactNode;
   note?: string;
 }) {
-  const st = stageOf(t, ops.stages);
+  const st = stageOf(t); // its own stages (its project's or team's, when they have their own)
   const m = useActionMenu(menu, { title: t.title });
   const dots = useRef<HTMLButtonElement>(null);
   const done = t.done || ticking;
@@ -66,7 +66,7 @@ export function TaskRow({
   const comments = look.show('comments') ? (t.history ?? []).filter((h) => h.kind === 'comment').length : 0;
   const cl = t.checklist ?? [];
   const brief = look.show('brief') && t.briefId ? ops.tasks.find((x) => x.id === t.briefId) : undefined;
-  const showStage = look.stage && !t.done && st.kind !== 'done' && st !== firstOf('open', ops.stages);
+  const showStage = look.stage && !t.done && st.kind !== 'done' && st !== firstOf('open', stagesForTask(t));
   const hol = t.due && !t.done && tone !== 'overdue' ? holidayOn(t.due) : '';
   const last = t.history?.at(-1)?.at ?? t.createdAt;
   return (

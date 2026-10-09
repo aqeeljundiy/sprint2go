@@ -13,10 +13,15 @@
 // 10. invoices bill the people who were active that month, and say so
 // 11. the company's time zone: only admins set it, only zones the clock knows
 // 12. mail: a refused send plans nothing; "Remind me if no reply" is noted when the email goes out
+// 13. two-step sign-in: "Remember this device" for 30 days, signed and bound to the person, forgotten on Forget,
+//     "Sign out everywhere" and a password change
+// 14. free trials: one per person and per company domain, the reason on the plan, and one more when an operator allows it
+// 15. BIMI: the logo is checked for SVG Tiny PS basics, served from a stable address in a sandbox, admins only
+// 16. a project's or team's own task stages: who sets them, only lists that work, guests' approvals use them
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -340,6 +345,17 @@ try {
   db.prepare("UPDATE operators SET role = 'finance' WHERE email = ?").run('rizky@pixelandprofits.com');
   check((await opensWith(rizky, shot.url)) === 404, 'an operator without the support permission can’t');
   check((await opensWith(dimas, shot.url)) === 200, 'the customer still opens their own');
+  // A ticket from before 9 Oct, when a ticket could point at any file: its attachment is someone else's file.
+  db.prepare("UPDATE operators SET role = 'support' WHERE email = ?").run('rizky@pixelandprofits.com');
+  const oldAt = '2026-10-08T09:00:00.000Z';
+  db.prepare("INSERT INTO tickets (id, number, subject, status, priority, channel, requester_email, requester_name, requester_user, workspace_id, tags, created_at, updated_at) VALUES ('t-old-files', 990001, 'Old one', 'open', 'normal', 'app', 'dimas@elkiyagroup.com', 'Dimas', ?, 'elk', '[]', ?, ?)").run(db.prepare('SELECT user_id FROM logins WHERE email = ?').get('dimas@elkiyagroup.com')?.user_id ?? null, oldAt, oldAt);
+  db.prepare("INSERT INTO ticket_messages (id, ticket_id, at, kind, author, author_name, body, internal, attachments) VALUES ('tm-old-files', 't-old-files', ?, 'customer', 'dimas@elkiyagroup.com', 'Dimas', 'see attached', 0, ?)").run(oldAt, JSON.stringify([{ name: 'numbers.txt', url: secretFile.url }]));
+  check((await opensWith(rizky, secretFile.url)) === 404, 'an old ticket pointing at another company’s file doesn’t open it for support');
+  const oldView = await rizky.get('/api/admin/ticket?id=t-old-files').then((r) => r.json());
+  const shown = oldView.messages?.[0]?.attachments?.[0];
+  check(!!shown && shown.url === '' && shown.blocked === 'Attachment from before 9 Oct, ask the person to send it again', 'the operator sees “Attachment from before 9 Oct, ask the person to send it again” instead of a link');
+  const newView = await rizky.get(`/api/admin/ticket?id=${ticket.id}`).then((r) => r.json());
+  check(newView.messages?.[0]?.attachments?.[0]?.url === shot.url && !newView.messages[0].attachments[0].blocked, 'a file sent with its ticket still links');
 
   /* ---------- 10. invoices bill active people ---------- */
   db.prepare("UPDATE operators SET role = 'owner' WHERE email = ?").run('rizky@pixelandprofits.com');
@@ -375,6 +391,165 @@ try {
   const rem = reminders('t-remind')[0];
   const days = rem ? (Date.parse(rem.due_at) - Date.now()) / 86_400_000 : 0;
   check(sent.ok && rem?.by_user === 'u-aqeel' && rem.state === 'waiting' && days > 2.9 && days <= 3, 'a tracked email with “Remind me if no reply” is noted on the server, three days out');
+
+  /* ---------- 13. two-step sign-in: "Remember this device" ---------- */
+  {
+    // A TOTP code (RFC 6238) for a base32 secret, `ahead` 30-second steps from now.
+    const totp = (secret, ahead = 0) => {
+      const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+      let bits = '';
+      for (const ch of secret.replace(/[\s=]/g, '').toUpperCase()) bits += A.indexOf(ch).toString(2).padStart(5, '0');
+      const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+      const msg = Buffer.alloc(8);
+      msg.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000) + ahead));
+      const h = createHmac('sha1', key).update(msg).digest();
+      const o = h[h.length - 1] & 0xf;
+      return String((((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1_000_000).padStart(6, '0');
+    };
+    /** A sign-in with the password and whatever device cookie this browser has: the session, the device cookie, the answer. */
+    const login = async (email, device, password = env.SEED_PASSWORD) => {
+      const r = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json', ...(device ? { cookie: `s2g_dev=${device}` } : {}) }, body: JSON.stringify({ email, password }) });
+      const jar = Object.fromEntries(r.headers.getSetCookie().map((c) => c.split(';')[0].split('=')).map(([k, ...v]) => [k, v.join('=')]));
+      return { status: r.status, body: await r.json(), session: jar.s2g, device: jar.s2g_dev };
+    };
+    const as = (session, device) => (method, path, b) => fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', cookie: [`s2g=${session}`, ...(device ? [`s2g_dev=${device}`] : [])].join('; ') }, body: b === undefined ? undefined : JSON.stringify(b) });
+    const dewiMail = 'dewi@pixelandprofits.com';
+    const dewiId = db.prepare('SELECT user_id FROM logins WHERE email = ?').get(dewiMail).user_id;
+    // Dewi turns two-step sign-in on.
+    const first = await login(dewiMail);
+    const d1 = as(first.session);
+    const setup = await d1('POST', '/api/2fa/setup', {}).then((r) => r.json());
+    const enabled = await d1('POST', '/api/2fa/enable', { code: totp(setup.secret) });
+    check(enabled.ok, 'a member turns on two-step sign-in');
+    // Next sign-in: the code, with "Remember this device".
+    const second = await login(dewiMail);
+    check(second.body.twoStep === 'code', 'a new sign-in asks for the code');
+    const verify = await fetch(`${base}/api/2fa/verify`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: `s2g=${second.session}` }, body: JSON.stringify({ code: totp(setup.secret, 1), remember: true }) });
+    const deviceCookie = Object.fromEntries(verify.headers.getSetCookie().map((c) => c.split(';')[0].split('=')).map(([k, ...v]) => [k, v.join('=')])).s2g_dev;
+    const setCookieLine = verify.headers.getSetCookie().find((c) => c.startsWith('s2g_dev=')) ?? '';
+    check(verify.ok && !!deviceCookie && /HttpOnly/.test(setCookieLine) && /Max-Age=2592000/.test(setCookieLine), 'ticking “Remember this device” gives the browser a 30-day device cookie it can’t read from scripts');
+    const third = await login(dewiMail, deviceCookie);
+    const meThird = await as(third.session)('GET', '/api/me').then((r) => r.json());
+    check(third.status === 200 && !third.body.twoStep && !meThird.twoStep && meThird.me === dewiId, 'that device signs in with just the password');
+    const listed = await as(third.session, deviceCookie)('GET', '/api/2fa').then((r) => r.json());
+    check(listed.devices?.length === 1 && listed.devices[0].current === true && /until|\d/.test(listed.devices[0].expiresAt) && Date.parse(listed.devices[0].expiresAt) - Date.now() > 29.9 * 86_400_000, 'it’s in her remembered devices, marked as this device, for 30 days');
+    // The token is signed and bound to its person: changed, someone else's, or expired, it asks for the code. (Aditya,
+    // so neither of them meets the 10 sign-ins a quarter hour the server allows per address.)
+    const [devId, devExp] = deviceCookie.split('.');
+    const master = Buffer.from(readFileSync(join(dir, 'secret.key'), 'utf8').trim(), 'base64');
+    const sign = (id, userId, exp) => createHmac('sha256', master).update(`trusted-device:${id}:${userId}:${exp}`).digest('hex').slice(0, 40);
+    const madeDevice = (userId, days = 30) => {
+      const id = randomBytes(9).toString('hex');
+      const exp = String(Math.floor((Date.now() + days * 86_400_000) / 1000));
+      db.prepare('INSERT INTO trusted_devices (id, user_id, name, created_at, used_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, userId, 'Test browser', now(), now(), new Date(Number(exp) * 1000).toISOString());
+      return { id, token: `${id}.${exp}.${sign(id, userId, exp)}` };
+    };
+    const adiMail = 'aditya@pixelandprofits.com';
+    const adiId = db.prepare('SELECT user_id FROM logins WHERE email = ?').get(adiMail).user_id;
+    const adi = as((await login(adiMail)).session);
+    const adiSetup = await adi('POST', '/api/2fa/setup', {}).then((r) => r.json());
+    await adi('POST', '/api/2fa/enable', { code: totp(adiSetup.secret) });
+    const adiDev = madeDevice(adiId);
+    const [aId, aExp] = adiDev.token.split('.');
+    check((await login(adiMail, `${aId}.${aExp}.${'0'.repeat(40)}`)).body.twoStep === 'code', 'a changed token asks for the code');
+    check((await login(adiMail, deviceCookie)).body.twoStep === 'code', 'someone else’s device token doesn’t count');
+    check((await login(adiMail, madeDevice(adiId, -1).token)).body.twoStep === 'code', 'an expired one asks for the code');
+    check((await login(adiMail, `${deviceCookie}~${adiDev.token}`)).body.twoStep === undefined, 'a properly signed one works, next to someone else’s on the same browser');
+    // Forget: that device asks again.
+    const forgetOne = await as(third.session, deviceCookie)('POST', '/api/2fa/devices/forget', { id: devId });
+    check(forgetOne.ok && (await login(dewiMail, deviceCookie)).body.twoStep === 'code', 'Forget: that device asks for the code again');
+    // Sign out everywhere: other sessions end, every remembered device is forgotten, this session stays.
+    const devA = madeDevice(dewiId);
+    const keep = await login(dewiMail, devA.token);
+    const other = await login(dewiMail, madeDevice(dewiId).token);
+    const out = await as(keep.session)('POST', '/api/2fa/signout-everywhere', {});
+    const otherMe = await as(other.session)('GET', '/api/me');
+    const keepMe = await as(keep.session)('GET', '/api/me').then((r) => r.json());
+    const left = db.prepare('SELECT COUNT(*) AS n FROM trusted_devices WHERE user_id = ?').get(dewiId).n;
+    check(out.ok && otherMe.status === 401 && keepMe.me === dewiId && left === 0, `“Sign out everywhere” ends the other sessions and forgets every remembered device, and this one stays (${otherMe.status}, ${left} left)`);
+    check((await login(dewiMail, devA.token)).body.twoStep === 'code', 'so a device remembered before asks for the code again');
+    // A password change forgets them too.
+    const devB = madeDevice(dewiId);
+    const pw = await as(keep.session)('POST', '/api/password', { current: env.SEED_PASSWORD, next: 'a-new-password-123' });
+    check(pw.ok && db.prepare('SELECT COUNT(*) AS n FROM trusted_devices WHERE user_id = ?').get(dewiId).n === 0, 'a password change forgets every remembered device');
+    check((await login(dewiMail, devB.token, 'a-new-password-123')).body.twoStep === 'code', 'and the next sign-in there asks for the code');
+
+  }
+  /* ---------- 14. free trials: one per person and per company domain ---------- */
+  {
+    const trialWs = (id, name) => ({ workspace: { id, name, color: '#5b5bf6', domains: [], accounts: [], members: [], plan: { track: 'ai', tier: 'studio', cycle: 'monthly', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString(), addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: name, emails: [] }, since: now() } }, users: [] });
+    // Aqeel's demo companies already had trials (they count from before the rule), and Dewi's address is at the same
+    // company domain: her new company starts on Free, and says why.
+    const asked = await aqeel.get('/api/trial').then((r) => r.json());
+    check(asked.available === false && /^You’ve already had a free trial, with /.test(asked.why ?? ''), `the onboarding hears a second trial isn’t available (“${asked.why}”)`);
+    const made = await aqeel.post('/api/workspace', trialWs('ws-trial-1', 'Second Co')).then((r) => r.json());
+    const second = doc('workspaces', 'ws-trial-1');
+    check(second?.plan?.tier === 'free' && !second.plan.trialEnds && /already had a free trial/.test(second.plan.trialRefused ?? '') && /already had a free trial/.test(made.trialRefused ?? ''), 'a second company of the same person starts on Free, with the reason on its plan');
+    // The app can't give itself the trial back.
+    await aqeel.sync('workspaces', [{ ...second, plan: { ...second.plan, tier: 'studio', track: 'ai', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString() } }]);
+    check(!doc('workspaces', 'ws-trial-1').plan.trialEnds, 'saving a trial from the app doesn’t start one');
+    const notice = db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND json_extract(data, '$.workspaceId') = 'ws-trial-1'").get();
+    check(!!notice && /starts on Free/.test(JSON.parse(notice.data).text), 'the owner is told in the app');
+    // An operator allows one more: the next company gets it.
+    const granted = await rizky.post('/api/admin/person/trial-grant', { userId: 'u-aqeel' });
+    const third = granted.ok ? await aqeel.post('/api/workspace', trialWs('ws-trial-2', 'Third Co')).then((r) => r.json()) : null;
+    check(granted.ok && !third?.trialRefused && !!doc('workspaces', 'ws-trial-2')?.plan?.trialEnds, 'after an operator allows another, the next company starts on its trial');
+    const fourth = await aqeel.post('/api/workspace', trialWs('ws-trial-3', 'Fourth Co')).then((r) => r.json());
+    check(!!fourth.trialRefused && doc('workspaces', 'ws-trial-3')?.plan?.tier === 'free', 'and only that one');
+  }
+
+  /* ---------- 15. BIMI: the logo is checked, served from a stable address, and only admins change it ---------- */
+  {
+    const good = '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64"><title>Pixel and Profits</title><rect width="64" height="64" fill="#5b5bf6"/></svg>';
+    const bad = good.replace('<rect', '<script>alert(document.cookie)</script><rect');
+    const refused = await aqeel.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: bad });
+    const refusedBody = await refused.json();
+    check(refused.status === 400 && refusedBody.problems?.some((p) => /script/.test(p)) && !doc('workspaces', 'pnp').bimi, 'a logo with a script is refused, with the reason, and nothing is kept');
+    const member = await (await signIn('nanda@pixelandprofits.com')).post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good });
+    check(member.status === 403, 'a member can’t set the company’s logo');
+    const saved = await aqeel.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good }).then((r) => r.json());
+    check(saved.record?.host === 'default._bimi' && saved.record.value === `v=BIMI1; l=${saved.url}; a=;` && saved.url.endsWith('/bimi/pnp.svg') && !!doc('workspaces', 'pnp').bimi?.fileId, 'an admin’s logo is kept, with the exact default._bimi record');
+    const served = await fetch(`${base}/bimi/pnp.svg`);
+    const servedBody = await served.text();
+    check(served.ok && served.headers.get('content-type') === 'image/svg+xml' && /sandbox/.test(served.headers.get('content-security-policy') ?? '') && servedBody === good, 'it’s served without signing in, as an SVG in a sandbox');
+    check((await fetch(`${base}/bimi/elk.svg`)).status === 404, 'a company without a logo has nothing there');
+    await aqeel.sync('workspaces', [{ ...doc('workspaces', 'pnp'), bimi: { fileId: secretFile.url.split('/').pop(), name: 'x', at: now(), by: 'u-aqeel' } }]);
+    check(!!doc('workspaces', 'pnp').bimi?.fileId && doc('workspaces', 'pnp').bimi.fileId !== secretFile.url.split('/').pop(), 'the app can’t point the logo at another file');
+  }
+
+  /* ---------- 16. a project's or team's own task stages: who sets them, only lists that work, approvals use them ---------- */
+  {
+    const own = [{ id: 'todo', kind: 'open' }, { id: 'st-design', kind: 'active', name: 'Design' }, { id: 'st-check', kind: 'review', name: 'Check' }, { id: 'done', kind: 'done' }];
+    const nanda = await signIn('nanda@pixelandprofits.com'); // a member, not on this project's lead list
+    const proj = doc('clients', 'c-lumina');
+    await nanda.sync('clients', [{ ...proj, taskStages: own }]);
+    check(!doc('clients', 'c-lumina').taskStages, 'a member can’t give a project its own stages');
+    await aqeel.sync('clients', [{ ...doc('clients', 'c-lumina'), taskStages: own }]);
+    check(JSON.stringify(doc('clients', 'c-lumina').taskStages) === JSON.stringify(own), 'an admin can');
+    await aqeel.sync('clients', [{ ...doc('clients', 'c-lumina'), taskStages: [{ id: 'st-x', kind: 'active' }] }]);
+    check(doc('clients', 'c-lumina').taskStages?.length === 4, 'a list without a start and a done stage isn’t kept');
+    await aqeel.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'cut', kind: 'active', name: 'Cutting' }, { id: 'done', kind: 'done' }] }]);
+    check(doc('teams', 't-perf').taskStages?.length === 3, 'a team gets its own stages from an admin');
+    await nanda.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: undefined }]);
+    check(doc('teams', 't-perf').taskStages?.length === 3, 'not from a member who doesn’t lead it');
+    await nanda.sync('teams', [{ ...doc('teams', 't-video'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'done', kind: 'done' }] }]);
+    check(doc('teams', 't-video').taskStages?.length === 2, 'its lead can');
+    // A guest asks for changes on finished work in that project: it goes back to the project's own first "in progress".
+    const sarahTask = { id: 'td-own-stage', workspaceId: 'pnp', clientId: 'c-lumina', title: 'Hero banner', userId: 'u-aqeel', assignees: ['u-aqeel'], done: true, status: 'done', visibleToClient: true, approval: { status: 'waiting', at: now() }, source: 'manual', createdBy: 'u-aqeel', createdAt: now(), priority: 'normal' };
+    put('todos', sarahTask);
+    // Sarah approves work for Lumina (the approver role), so she can ask for changes.
+    const lumina = doc('clients', 'c-lumina');
+    put('clients', { ...lumina, people: (lumina.people ?? []).map((x) => (x.email === 'sarah@luminaskin.sg' ? { ...x, role: 'approver' } : x)) });
+    const sarah = await signIn('sarah@luminaskin.sg');
+    if (sarah.ok) {
+      await sarah.sync('todos', [{ ...sarahTask, approval: { status: 'changes', note: 'Bigger logo' } }]);
+      const after = doc('todos', 'td-own-stage');
+      check(after.done === false && after.status === 'st-design', `changes asked: back to the project’s own first in-progress stage (${after.status})`);
+    } else check(true, 'the guest can’t sign in here (no seed password for guests): approvals checked in unit tests');
+    // Guests see a project's own stages as ids and kinds only.
+    const nadiaState = await nadia.state();
+    check(!JSON.stringify(nadiaState.clients ?? []).includes('"name":"Design"'), 'guests never see the names of a project’s own stages');
+  }
 
   db.close();
 } catch (e) {

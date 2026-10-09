@@ -126,6 +126,7 @@ try {
   put('workspaces', { id: 'w-strict', name: 'Strict Co', color: '#222', domains: ['strict.test'], accounts: [], members: [{ userId: 'u-erin', role: 'owner' }], security: { twoStep: true, graceDays: 0, twoStepSince: '2026-01-01T00:00:00.000Z' }, createdAt: now() });
   // Projects: Bob is on "Open", not on "Secret" (members don't see every project by default).
   put('clients', { id: 'c-open', workspaceId: 'w-acme', name: 'Open Project', color: '#10b981', status: 'active', ownerId: 'u-alice', domain: 'client.test', members: [{ userId: 'u-bob', role: 'member', addedBy: 'u-alice', at: now() }], people: [{ email: 'gina@client.test', name: 'Gina Guest', role: 'approver', status: 'joined', invitedBy: 'u-alice', at: now() }] });
+  put('clients', { id: 'c-shoot', workspaceId: 'w-acme', name: 'Shoot Project', color: '#6366f1', status: 'active', ownerId: 'u-alice', members: [{ userId: 'u-bob', role: 'member', addedBy: 'u-alice', at: now() }], people: [], taskStages: [{ id: 'brief', kind: 'open', name: 'Brief' }, { id: 'shoot', kind: 'active', name: 'Shoot' }, { id: 'delivered', kind: 'done', name: 'Delivered' }] });
   put('clients', { id: 'c-secret', workspaceId: 'w-acme', name: 'Secret Project', color: '#ef4444', status: 'active', ownerId: 'u-alice', members: [] });
   // Alice is a guest of a project at another company: none of it may show in Acme's connection.
   put('clients', { id: 'c-other', workspaceId: 'w-other', name: 'Partner Launch', color: '#999', status: 'active', ownerId: 'u-dan', people: [{ email: 'alice@acme.test', name: 'Alice Martin', role: 'collaborator', status: 'joined', invitedBy: 'u-dan', at: now() }] });
@@ -330,6 +331,10 @@ try {
   check(!!bobNotice && JSON.parse(bobNotice.data).userId === 'u-bob', 'create_task: Bob hears about it in his bell');
   const ut = await A('update_task', { task_id: newTask.id, stage: 'in progress', due: day(2), comment: 'Ask for the matte paper' });
   check(doc('todos', newTask.id).status === 'doing' && doc('todos', newTask.id).due === day(2) && doc('todos', newTask.id).history.some((h) => h.kind === 'comment' && !h.toClient), 'update_task: stage by its meaning, due date, an internal comment');
+  const own = await A('create_task', { title: 'Plan the shoot list', project: 'Shoot Project', stage: 'Shoot' });
+  check(doc('todos', own.data?.created?.id)?.status === 'shoot' && own.data.created.stage === 'Shoot', 'create_task: a project with its own stages uses them');
+  const ownDone = await A('update_task', { task_id: own.data.created.id, done: true });
+  check(doc('todos', own.data.created.id).status === 'delivered' && ownDone.data?.updated?.stage === 'Delivered', 'update_task: done means the project’s own done stage');
   const done = await A('update_task', { task_id: 't-review', done: true });
   check(doc('todos', 't-review').done === true && done.data?.updated?.stage === 'Done', 'update_task: approving work in review finishes it');
   const wn = await A('write_note', { title: 'Plum plan', text: '# Plan\n- first\n- **second**' });

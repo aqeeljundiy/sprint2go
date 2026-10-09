@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Bell, Check, ChevronDown, ChevronLeft, ChevronRight, FlaskConical, LayoutGrid, Loader2, Search, Settings } from 'lucide-react';
 import type { Client, Workspace } from '../types';
 import { WorkspaceLogo } from './WorkspaceLogo';
@@ -36,6 +36,8 @@ export function MobileTop({
   portals = [],
   onPortal,
   onShared,
+  currentPortal,
+  account,
   demo,
 }: {
   title: string;
@@ -45,7 +47,7 @@ export function MobileTop({
   current: Workspace;
   unreadByWs?: Record<string, number>; // unread mail per company
   onWorkspace: (id: string) => void;
-  onAddWorkspace: () => void;
+  onAddWorkspace?: () => void; // none for guests: they can't add a company from a shared space
   onSearch: () => void;
   back?: () => void;
   onBell?: () => void; // the guest portal keeps its bell here; the team app's notifications are in More and Home
@@ -53,6 +55,8 @@ export function MobileTop({
   portals?: { key: string; ws: Workspace; client: Client }[];
   onPortal?: (key: string) => void;
   onShared?: () => void; // everything shared with you, on one page
+  currentPortal?: string; // the shared space on screen (the guest portal), ticked in the list
+  account?: ReactNode; // the guest portal's own account button, at the end of the row
   demo?: { busy?: boolean; onOpen: () => void } | null; // their own demo company, not made yet
 }) {
   const wsBtn = useRef<HTMLButtonElement>(null);
@@ -60,6 +64,7 @@ export function MobileTop({
   const [titleOpen, setTitleOpen] = useState(false);
   useEffect(() => setWsOpen(false), [current.id]); // the demo company opened, or another company was picked
   const elsewhere = workspaces.some((w) => w.id !== current.id && (unreadByWs[w.id] ?? 0) > 0);
+  const canSwitch = workspaces.length > 0 || portals.length > 0 || !!onAddWorkspace || !!demo; // "View as guest" has nothing to switch to
   const switches = !!menu || settings.length > 0;
   const shownTitle = (menu && menu.options.find((o) => o.value === menu.value)?.label) || title;
   return (
@@ -69,7 +74,7 @@ export function MobileTop({
           <ChevronLeft size={24} />
         </button>
       ) : (
-        <button ref={wsBtn} className="mt-ws" onClick={() => setWsOpen(true)} aria-label={`Workspace: ${current.name}${elsewhere ? ', new mail in another workspace' : ''}`}>
+        <button ref={wsBtn} className="mt-ws" onClick={() => canSwitch && setWsOpen(true)} aria-label={`Workspace: ${current.name}${elsewhere ? ', new mail in another workspace' : ''}`}>
           <WorkspaceLogo ws={current} size={30} />
           {elsewhere && <i className="mt-ws-dot" />}
         </button>
@@ -126,7 +131,7 @@ export function MobileTop({
             </button>
           )}
           {portals.map((pt) => (
-            <button key={pt.key} className="sel-opt" onClick={() => (onPortal?.(pt.key), setWsOpen(false))}>
+            <button key={pt.key} className="sel-opt" aria-selected={pt.key === currentPortal} onClick={() => (onPortal?.(pt.key), setWsOpen(false))}>
               <span className="sel-icon">
                 <WorkspaceLogo ws={pt.ws} size={24} />
               </span>
@@ -136,9 +141,11 @@ export function MobileTop({
               </span>
             </button>
           ))}
-          <button className="sel-opt" onClick={() => (onAddWorkspace(), setWsOpen(false))}>
-            <span className="sel-label">+ Add a workspace</span>
-          </button>
+          {onAddWorkspace && (
+            <button className="sel-opt" onClick={() => (onAddWorkspace(), setWsOpen(false))}>
+              <span className="sel-label">+ Add a workspace</span>
+            </button>
+          )}
         </div>
       </Popover>
 
@@ -162,6 +169,7 @@ export function MobileTop({
           {unread > 0 && <i>{unread > 9 ? '9+' : unread}</i>}
         </button>
       )}
+      {account}
     </header>
   );
 }

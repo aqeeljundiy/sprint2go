@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, LogIn, MonitorSmartphone } from 'lucide-react';
 
-import { rel, dateTime, post, ROLE_LABEL, type PersonRow } from '../api';
+import { rel, dateTime, day, post, ROLE_LABEL, type PersonRow } from '../api';
 import { Badge, Confirm, CopyBtn, Dialog, Empty, Failed, Initials, Loading, Menu, Page, Section, Table, useAct, useAdmin, useApi, Who } from '../ui';
 import { TicketList } from './Tickets';
 
@@ -77,6 +77,8 @@ interface Person {
   suspended: { at: string; by: string; reason: string } | null;
   hasLogin: boolean;
   twoStep: boolean;
+  /** Free trials: one per person and per company domain; an operator can allow one more. */
+  trial: { trials: { workspaceId: string; company: string; at: string; how: string }[]; granted: { by: string; at: string } | null };
   lastSeen: string | null;
   operator: string | null;
   disposable: boolean;
@@ -177,6 +179,41 @@ export function PersonPage({ id }: { id: string }) {
                 ))}
               </div>
             )}
+          </Section>
+          <Section title="Free trial" hint="One per person and per company domain">
+            <div className="adm-mini-list">
+              {u.trial.trials.length === 0 ? (
+                <div className="adm-mini-row">
+                  <span className="grow muted">Hasn’t had one yet: their first company starts on it.</span>
+                </div>
+              ) : (
+                u.trial.trials.map((t) => (
+                  <div key={t.workspaceId} className="adm-mini-row">
+                    <button type="button" className="grow adm-link" onClick={() => go(`/admin/companies/${t.workspaceId}`)}>
+                      <strong>{t.company}</strong> <span className="muted">from {day(t.at)}{t.how === 'operator' ? ', given by an operator' : t.how === 'granted' ? ', allowed by an operator' : ''}</span>
+                    </button>
+                  </div>
+                ))
+              )}
+              {u.trial.trials.length > 0 && (
+                <div className="adm-mini-row">
+                  {u.trial.granted ? (
+                    <span className="grow muted">
+                      {u.trial.granted.by} allowed one more {rel(u.trial.granted.at)}: their next new company starts on it.
+                    </span>
+                  ) : (
+                    <>
+                      <span className="grow muted">A new company of theirs starts on Free.</span>
+                      {may('customers') && (
+                        <button className="ghost-btn sm" onClick={() => void act(() => post('person/trial-grant', { userId: u.id }), `${first}’s next company gets a trial`).then(reload)}>
+                          Allow another trial
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </Section>
           <Section title="Tickets">
             <TicketList tickets={u.tickets} />

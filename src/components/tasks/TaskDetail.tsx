@@ -9,7 +9,7 @@ import { ProjectPicker } from '../ProjectPicker';
 import { usePhone } from '../../mobile/media';
 import { dateTone, addDays, dayDate } from '../../taskDates';
 import { remindText } from '../../quickAdd';
-import { stageName, stageOf, stageIdFor, stagesFor, toneOf } from '../../stages';
+import { stageName, stageOf, stageIdFor, stagesForTask, toneOf } from '../../stages';
 import { holidayOn } from '../../holidayDays';
 import { term } from '../../terms';
 import { localDay } from '../../utils';
@@ -450,4 +450,5 @@ export function TaskDetail({
   );
 }
 
-const stagesOf = (t: Todo) => stagesFor(t.workspaceId);
+/** The task's own stages: its project's or team's, else the company's. */
+const stagesOf = (t: Todo) => stagesForTask(t);

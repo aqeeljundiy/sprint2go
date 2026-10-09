@@ -4,3 +4,156 @@
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
+
+/* A project's page on phones (ProjectPhone.tsx): no row of 12 tabs. Its home lists the parts (.proj-sections), the
+   title switcher jumps between them, and Back goes from a part to the home, then to the list of projects. */
+.proj-sections {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .project-pane .project-tabs {
+    display: none;
+  }
+
+  /* One header row: photo, status and people. Ending the work and templates are on the home's list instead. */
+  .project-pane .tasks-head {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .project-pane .tasks-head .proj-people {
+    margin-left: auto;
+    min-height: var(--tap);
+  }
+  .project-pane .tasks-head .client-status > .ghost-btn,
+  .project-pane .tasks-head .tpl-btn {
+    display: none;
+  }
+
+  .proj-sections {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .proj-sec-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 50px;
+    padding: 6px 12px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .proj-sec-row + .proj-sec-row::before,
+  .proj-sec-actions::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 52px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .proj-sec-row:active {
+    background: var(--hover);
+  }
+  .proj-sec-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: var(--surface-2);
+    color: var(--text-2);
+  }
+  .proj-sec-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .proj-sec-note {
+    flex: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-3);
+  }
+  .proj-sec-note.warn {
+    color: var(--danger);
+  }
+  .proj-sec-chev {
+    flex: none;
+    color: var(--text-3);
+  }
+  .proj-sec-actions {
+    position: relative;
+    border-top: 6px solid var(--surface-2);
+  }
+  .proj-sec-actions::before {
+    display: none;
+  }
+  .proj-sec-row.danger {
+    color: var(--danger);
+  }
+  .proj-sec-row.danger .proj-sec-icon {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+}
+
+@media (max-width: 767px) {
+  /* Guests part: each shared item is a full-height row; the eye that shares it is a real tap target. */
+  .project-pane .pa-row {
+    min-height: 48px;
+    gap: 10px;
+  }
+  .project-pane .pa-title {
+    align-self: stretch;
+    font-size: 15px;
+  }
+  .project-pane .eye {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+  .project-pane .proj-photo-btn {
+    flex: none;
+    width: 40px;
+    height: 40px;
+  }
+
+  /* The list of projects: what is late or waiting comes right under the name, then what is next. Tighter cards, so
+     three fit on a small phone. */
+  .proj-grid {
+    gap: 10px;
+  }
+  .proj-card {
+    gap: 8px;
+    padding: 14px;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+  .proj-card > * {
+    order: 2;
+  }
+  .proj-card > .proj-top {
+    order: 0;
+  }
+  .proj-card > .proj-state {
+    order: 1;
+  }
+  .proj-card .proj-next {
+    font-size: 14px;
+    color: var(--text-2);
+  }
+}

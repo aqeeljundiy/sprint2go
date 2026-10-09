@@ -139,6 +139,12 @@ class View {
   stages(): TaskStage[] {
     return cleanStages(this.ws().taskStages);
   }
+  /** A task's stages, as in the app: its project's own, else its team's own, else the company's. */
+  stagesFor(scope: { clientId?: string; teamId?: string }): TaskStage[] {
+    const own = (coll: string, id?: string) => (id ? this.docs(coll).find((d) => d.id === id)?.taskStages : undefined);
+    const list = own('clients', scope.clientId) ?? own('teams', scope.teamId);
+    return Array.isArray(list) && list.length ? cleanStages(list) : this.stages();
+  }
   role(): string {
     return (this.ws().members ?? []).find((m: Doc) => m.userId === this.me)?.role ?? 'member';
   }
@@ -281,8 +287,7 @@ class View {
     if (some.length === 1) return some[0];
     return no(some.length ? `“${q}” could be ${some.map((t) => t.name).join(' or ')}.` : `No table called “${q}” that you can see. list_tables shows them.`);
   }
-  stage(q: string): TaskStage {
-    const list = this.stages();
+  stage(q: string, list: TaskStage[] = this.stages()): TaskStage {
     const s = lower(q).trim();
     const hit = list.find((x) => x.id === q) ?? list.find((x) => lower(stageName(x)) === s);
     if (hit) return hit;
@@ -329,7 +334,7 @@ class View {
 /* ---------- shaping what goes back to the AI ---------- */
 
 function taskLine(v: View, t: Doc) {
-  const s = stageOf(t as any, v.stages());
+  const s = stageOf(t as any, v.stagesFor(t));
   const today = v.today();
   return {
     id: t.id,
@@ -530,7 +535,6 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     (_a, v) => {
       // The same rules as Home's "Needs you" (src/needsYou.ts), so Claude and the app list the same things.
       const today = v.today();
-      const stages = v.stages();
       const tasks = v.docs('todos');
       const events = v.myEvents();
       const notices = v.docs('notices');
@@ -541,7 +545,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         today,
         now: Date.now(),
         tasks: tasks as any,
-        stageKind: (t) => stageOf(t as any, stages).kind,
+        stageKind: (t) => stageOf(t as any, v.stagesFor(t as any)).kind,
         teams: v.docs('teams') as any,
         clients: v.docs('clients') as any,
         isOwner: v.role() === 'owner',
@@ -1033,8 +1037,8 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       const team = a.team ? v.team(a.team) : null;
       const people = a.assignees ? a.assignees.map((x) => v.person(x)) : team ? [] : [v.user(v.me) ?? { id: v.me }];
       const ids = [...new Set(people.map((p) => p.id))];
-      const stages = v.stages();
-      const stage = a.stage ? v.stage(a.stage) : stages.find((s) => s.id === stageIdFor({ workspaceId: v.ctx.wsId }, 'open', stages))!;
+      const stages = v.stagesFor({ clientId: project?.id, teamId: team?.id });
+      const stage = a.stage ? v.stage(a.stage, stages) : stages.find((s) => s.id === stageIdFor({ workspaceId: v.ctx.wsId }, 'open', stages))!;
       const at = new Date().toISOString();
       const done = stage.kind === 'done';
       const task: Doc = {
@@ -1141,8 +1145,8 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         changed.push('checklist');
       }
       // The stage, as the app moves it: by what the stage means, with the review step and repeating tasks.
-      const stages = v.stages();
-      const target = a.stage ? v.stage(a.stage) : a.done === true ? stages.find((s) => s.kind === 'done')! : a.done === false && before.done ? stages.find((s) => s.kind === 'open')! : null;
+      const stages = v.stagesFor(before);
+      const target = a.stage ? v.stage(a.stage, stages) : a.done === true ? stages.find((s) => s.kind === 'done')! : a.done === false && before.done ? stages.find((s) => s.kind === 'open')! : null;
       let next: Doc | null = null;
       let review: string | null = null;
       if (target) {
