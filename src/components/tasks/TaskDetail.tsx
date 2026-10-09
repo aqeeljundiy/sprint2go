@@ -335,7 +335,7 @@ export function TaskDetail({
         <button type="button" className={`trow-check td-check${task.priority === 'high' ? ' p-high' : ''}${task.done ? ' on' : ''}`} onClick={() => onStatus(task.id, stageIdFor(task, task.done ? 'open' : 'done', stages))} aria-label={task.done ? t('Mark not done') : t('Mark done')}>
           <span className="ring">{task.done && <span>✓</span>}</span>
         </button>
-        <textarea ref={titleRef} className="drawer-title" rows={1} value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} aria-label={t('Title')} />
+        <textarea ref={titleRef} className="drawer-title" rows={1} value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} aria-label={t('Task title')} />
       </div>
       {above}
       {rows.length > 0 && (

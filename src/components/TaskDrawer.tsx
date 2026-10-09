@@ -426,7 +426,7 @@ export function TaskDrawer(p: Props) {
                 {task.done && <span>✓</span>}
               </button>
             )}
-            <textarea ref={titleRef} className="drawer-title" rows={1} value={task.title} onChange={(e) => p.onPatch(task.id, { title: e.target.value })} aria-label={t('Title')} />
+            <textarea ref={titleRef} className="drawer-title" rows={1} value={task.title} onChange={(e) => p.onPatch(task.id, { title: e.target.value })} aria-label={t('Task title')} />
           </div>
 
           {aboveBlock}

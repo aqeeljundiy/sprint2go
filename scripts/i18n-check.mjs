@@ -4,6 +4,7 @@
 //
 //   node scripts/i18n-check.mjs                 per area: words used, translated, missing; fails on placeholder problems
 //   node scripts/i18n-check.mjs --strict        also fails on missing words, conflicts and copy problems
+//   node scripts/i18n-check.mjs --strict tasks,projects   the same, for those areas only (and warnings naming their files)
 //   node scripts/i18n-check.mjs --missing shell the words with no Indonesian yet in one area (or a file path)
 //   node scripts/i18n-check.mjs --todo settings text that still looks untranslated in an area's files (or one file)
 //   node scripts/i18n-check.mjs --unused        entries no code uses any more
@@ -21,6 +22,11 @@ const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const opt = (f) => (args.includes(f) ? args[args.indexOf(f) + 1] : undefined);
 const STRICT = flag('--strict');
+// `--strict tasks,projects`: strict for those areas only. Without a list, every area.
+const STRICT_LIST = STRICT && opt('--strict') && !opt('--strict').startsWith('--') ? opt('--strict').split(',').map((s) => s.trim()).filter(Boolean) : null;
+// Areas that are finished: the plain run (CI) fails when one of them has a word without Indonesian, or a warning names
+// its dictionary. Add yours here when your area is done.
+const DONE = ['tasks', 'projects', 'teams'];
 
 /* ---------- which area each file belongs to (the owners are in docs/i18n.md and each area file's header) ---------- */
 
@@ -283,9 +289,19 @@ if (flag('--missing')) {
 if (warnings.length) console.log(`\nWarnings:\n${warnings.map((w) => '  ' + w).join('\n')}`);
 if (errors.length) console.log(`\nProblems:\n${errors.map((e) => '  ' + e).join('\n')}`);
 const missing = [...rows.values()].reduce((n, r) => n + r.missing.size, 0);
-const fail = errors.length > 0 || (STRICT && (missing > 0 || warnings.length > 0));
+// Strict for some areas: their missing words, and the warnings that name their dictionaries.
+const strictFor = (areas) => {
+  const gaps = areas.flatMap((a) => [...(rows.get(a)?.missing ?? [])].map((k) => `${a}: ${JSON.stringify(k)} has no Indonesian`));
+  const own = warnings.filter((w) => areas.some((a) => w.startsWith(`${a}: `) || new RegExp(`id/${a}(\\.[a-z]+)?\\.ts`).test(w)));
+  return [...gaps, ...own];
+};
+const listed = STRICT_LIST ? strictFor(STRICT_LIST) : [];
+const done = strictFor(DONE);
+if (done.length) console.log(`\nFinished areas (${DONE.join(', ')}) must stay translated:\n${done.map((x) => '  ' + x).join('\n')}`);
+if (listed.length) console.log(`\n--strict ${STRICT_LIST.join(',')}:\n${listed.map((x) => '  ' + x).join('\n')}`);
+const fail = errors.length > 0 || done.length > 0 || (STRICT_LIST ? listed.length > 0 : STRICT && (missing > 0 || warnings.length > 0));
 if (fail) {
-  console.log(`\ni18n check failed${STRICT && !errors.length ? ` (--strict: ${missing} missing, ${warnings.length} warnings)` : ''}.`);
+  console.log(`\ni18n check failed${STRICT && !STRICT_LIST && !errors.length ? ` (--strict: ${missing} missing, ${warnings.length} warnings)` : ''}.`);
   process.exit(1);
 }
 console.log(`\ni18n check passed${missing ? ` (${missing} words still English, allowed until --strict)` : ''}.`);
