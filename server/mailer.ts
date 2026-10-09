@@ -107,6 +107,39 @@ export const boostedAvailable = () => mailConfigured();
 /* ---------- DKIM keys, one per domain (kept with who holds the domain, in server/domains.ts) ---------- */
 
 export const dkimRecord = (domain: string, workspaceId: string) => `v=DKIM1; k=rsa; p=${domainKey(domain, workspaceId).publicKey}`;
+/**
+ * The key mail from a domain is signed with: the company's own for its domain, the platform's for this server's name
+ * (addresses at MAIL_HOST belong to no company's DNS, so sprint2go publishes that one).
+ */
+const signingKey = (domain: string, workspaceId: string) => domainKey(domain, domain === MAIL_HOST ? 'platform' : workspaceId);
+/** A message signed with DKIM for the domain it's from (relaxed/relaxed), ready to go out. */
+export async function signFor(raw: Buffer, domain: string, workspaceId: string): Promise<Buffer> {
+  const key = signingKey(domain, workspaceId);
+  const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
+  if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
+  return Buffer.concat([Buffer.from(signatures), raw]);
+}
+
+/**
+ * The DKIM records for our own names, and whether DNS has them: this server's name (mail from addresses at MAIL_HOST)
+ * and the support domain (sign-up codes, alerts, invoices). Shown in the operator console, Platform, Mail.
+ */
+export async function platformDkim() {
+  const support = SUPPORT_EMAIL.split('@')[1] || MAIL_HOST;
+  const names = Array.from(new Set([MAIL_HOST, support]));
+  return Promise.all(
+    names.map(async (domain) => {
+      const key = signingKey(domain, 'platform');
+      const host = `${key.selector}._domainkey.${domain}`;
+      const value = `v=DKIM1; k=rsa; p=${key.publicKey}`;
+      const use = `Signs mail from ${[domain === MAIL_HOST && `mailboxes at ${domain}`, domain === support && `${NOREPLY} and ${SUPPORT_EMAIL}`].filter(Boolean).join(', ')}`;
+      if (!realDomain(domain)) return { domain, host, value, use, state: 'local' as const, found: '' };
+      const found = (await txt(host)).find((t) => t.includes('p=')) ?? '';
+      const state = !found ? ('missing' as const) : found.replace(/\s/g, '').includes(`p=${key.publicKey}`) ? ('ok' as const) : ('different' as const);
+      return { domain, host, value, use, state, found };
+    }),
+  );
+}
 
 /* ---------- the DNS records a company needs, and whether they're there ---------- */
 
@@ -554,14 +587,9 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   };
   /** Builds the message with this HTML and signs it: every copy that leaves is signed on its own. */
   const build = async (html: string | undefined) => {
-    let raw: Buffer = await new MailComposer({ ...message, html }).compile().build();
-    if (route === 'own' && domain && domain !== MAIL_HOST) {
-      const key = domainKey(domain, ws.id);
-      const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
-      if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
-      raw = Buffer.concat([Buffer.from(signatures), raw]);
-    }
-    return raw;
+    const raw: Buffer = await new MailComposer({ ...message, html }).compile().build();
+    // Every copy our own engine sends is signed: a company domain with its key, our own name with the platform's.
+    return route === 'own' && domain ? signFor(raw, domain, ws.id) : raw;
   };
   const raw = await build(o.html);
   // Our own mailboxes get a copy straight away (an alias: each of its mailboxes), here or in other companies; never the
@@ -882,12 +910,7 @@ export async function queueSystemMail(m: SystemMail) {
   const composer = new MailComposer({ from: { name: m.fromName, address: from }, to: m.to, subject: m.subject, text: m.text, html: m.html, messageId: mid, inReplyTo: m.inReplyTo, references: m.references, attachments: m.attachments, headers: { 'X-Mailer': 'sprint2go' } });
   let raw: Buffer = await composer.compile().build();
   const route: 'own' | 'boosted' = mailConfigured() ? 'boosted' : 'own';
-  if (route === 'own') {
-    const key = domainKey(domain, 'platform');
-    const { signatures } = await dkimSign(raw, { signingDomain: domain, selector: key.selector, privateKey: key.privateKey, canonicalization: 'relaxed/relaxed', signatureData: [{ signingDomain: domain, selector: key.selector, privateKey: key.privateKey }] } as Parameters<typeof dkimSign>[1]); // mailauth 7 signs from signatureData only; the top-level fields are for its types
-    if (!signatures) throw new Error(`DKIM signing for ${domain} produced no signature`);
-    raw = Buffer.concat([Buffer.from(signatures), raw]);
-  }
+  if (route === 'own') raw = await signFor(raw, domain, 'platform');
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
   const ids = m.to.map((to) => {
     const id = randomBytes(8).toString('hex');

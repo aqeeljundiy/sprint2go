@@ -1262,6 +1262,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         limits: mailer.LIMITS,
         health: await mailer.serverHealth(),
         cert: certState(mailer.MAIL_HOST),
+        dkim: await mailer.platformDkim(),
         blocklists: await mailer.blocklists(),
         queued: mailer.queue('queued').map((q) => ({ ...q, company: names.get(q.workspaceId) ?? (q.workspaceId === 'platform' ? 'sprint2go' : q.workspaceId) })),
         failed: mailer.queue('failed', 100).map((q) => ({ ...q, company: names.get(q.workspaceId) ?? (q.workspaceId === 'platform' ? 'sprint2go' : q.workspaceId) })),

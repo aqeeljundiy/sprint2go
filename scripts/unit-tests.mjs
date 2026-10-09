@@ -690,6 +690,30 @@ await test('Local mail: outside addresses are held on this computer (marked, nev
   process.env.MAIL_RELAY_URL = relay;
 });
 
+await test('DKIM: mail from an address at our own mail name is signed with the platform key the console shows, and verifies', async () => {
+  const { authenticate } = await import('mailauth');
+  const records = await mailer.platformDkim();
+  const host = records.find((r) => r.domain === mailer.MAIL_HOST);
+  assert.ok(host, 'the console lists our own mail name');
+  assert.equal(host.host, `s2g._domainkey.${mailer.MAIL_HOST}`);
+  assert.match(host.value, /^v=DKIM1; k=rsa; p=[A-Za-z0-9+/=]{300,}$/);
+  assert.ok(records.some((r) => r.domain === 'example-s2g.com' && /no-reply@example-s2g\.com/.test(r.use)), 'and the support domain of system mail');
+  const relay = process.env.MAIL_RELAY_URL; // a closed port: queued with its signature, nothing leaves
+  db.writeDocs('threads', [{ ...db.getDoc('threads', 't-undo'), messages: [...db.getDoc('threads', 't-undo').messages, { id: 'msg-5', from: {}, to: [], date: '', body: 'x' }] }], [], null);
+  await mailer.queueSend({ ...outgoing('msg-5'), to: [{ name: 'Out', email: 'out@client.example' }] });
+  const row = db.db.prepare('SELECT id, raw FROM outbox WHERE thread_id = ? AND message_id = ?').get('t-undo', 'msg-5');
+  const raw = Buffer.from(row.raw);
+  assert.match(raw.toString('utf8', 0, 600), new RegExp(`DKIM-Signature:[^]*d=${mailer.MAIL_HOST.replace(/\./g, '\\.')};[^]*s=s2g;`));
+  const resolver = async (name, type) => {
+    if (type === 'TXT' && name === host.host) return [[host.value]];
+    throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
+  };
+  const r = await authenticate(raw, { ip: '127.0.0.1', helo: 'test', sender: `ana.undo@${mailer.MAIL_HOST}`, mta: 'test', resolver });
+  assert.equal(r.dkim.results[0]?.status?.result, 'pass', 'the signature checks out against the record the console shows');
+  db.db.prepare('DELETE FROM outbox WHERE id = ?').run(row.id);
+  assert.equal(process.env.MAIL_RELAY_URL, relay);
+});
+
 /* email for teammates who are away (server/digest.ts) */
 
 const digest = await import('../server/digest.ts');

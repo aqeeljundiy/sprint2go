@@ -1170,6 +1170,52 @@ body.resizing-x .adm-nav-resize::after {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Platform, Mail: our own DKIM records, each with its value to copy */
+.adm-dkim {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.adm-dkim-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.adm-dkim-row:first-child {
+  border-top: 0;
+}
+.adm-dkim-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.adm-dkim-head .grow {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.adm-dkim-head small {
+  margin-top: 2px;
+  line-height: 1.45;
+}
+.adm-dkim .adm-linkbox {
+  align-items: flex-start;
+}
+.adm-dkim .adm-linkbox code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  font-size: 12px;
+  user-select: all;
+}
+.adm-dkim-row.warn .adm-dkim-head strong {
+  color: var(--ad-amber);
+}
 .adm-mini-row.head {
   min-height: 36px;
   font-size: 11.5px;
