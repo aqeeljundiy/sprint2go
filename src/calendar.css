@@ -225,7 +225,7 @@
     var(--border) 0,
     var(--border) 1px,
     transparent 1px,
-    transparent 52px
+    transparent var(--hour, 52px)
   );
   cursor: cell;
 }
@@ -673,16 +673,6 @@
 .ev-times > .time-sel {
   min-width: 92px;
 }
-@media (max-width: 767px) {
-  .field-row > .date-sel,
-  .ev-times {
-    flex: 1 1 100%;
-  }
-  .ev-times > .time-sel {
-    flex: 1;
-    min-height: 40px;
-  }
-}
 .check-row {
   display: flex;
   align-items: center;
@@ -745,91 +735,6 @@
 
 /* ---------- Responsive ---------- */
 
-@media (max-width: 1100px) {
-  .cal-new span {
-    display: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .cal-pane {
-    border-radius: 0;
-    border: 0;
-    box-shadow: none;
-  }
-  .cal-header {
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 12px 16px;
-  }
-  .cal-header h1 {
-    font-size: 18px;
-    flex: 1;
-  }
-  .cal-nav {
-    margin-left: 0;
-  }
-  .cal-header .segmented {
-    order: 5;
-    flex: 1;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .cal-new {
-    order: 6;
-  }
-  .tg {
-    --gutter: 48px;
-  }
-  .tg-dow {
-    font-size: 10px;
-  }
-  .tg-day {
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px 2px;
-  }
-  .tg-num {
-    min-width: 26px;
-    height: 26px;
-    font-size: 14px;
-  }
-  .block-event {
-    padding: 3px 5px;
-    font-size: 11px;
-  }
-  .mg-body {
-    grid-auto-rows: minmax(64px, 1fr);
-  }
-  .mg-cell {
-    padding: 3px;
-  }
-  .dot-event .de-time,
-  .dot-event i {
-    display: none;
-  }
-  .dot-event,
-  .pill-event {
-    padding: 1px 3px;
-    font-size: 10.5px;
-  }
-  .mg-head span {
-    padding: 8px 4px;
-    font-size: 10.5px;
-    text-align: center;
-  }
-  .ev-detail {
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: auto;
-    bottom: 0;
-    width: auto;
-    max-height: 75dvh;
-    border-radius: 18px 18px 0 0;
-    animation: rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-}
 
 /* ---------- Calendar links and public holidays ---------- */
 
@@ -1009,16 +914,16 @@ a.primary-btn,
 a.ghost-btn {
   text-decoration: none;
 }
-/* Meet's list rows share the .ev-row name (round2.css): in the detail card they stay one row, icon then text. */
-.ev-detail .ev-row {
+/* Meet's list rows share the .ev-row name (round2.css): in the event's details they stay one row, icon then text. */
+.ev-body .ev-row {
   flex-wrap: nowrap;
   padding: 7px 0;
   border-radius: 0;
 }
-.ev-detail .ev-row:hover {
+.ev-body .ev-row:hover {
   background: none;
 }
-.ev-detail .ev-row > span:last-child {
+.ev-body .ev-row > span:last-child {
   flex: 1;
   min-width: 0;
 }
@@ -1071,3 +976,1105 @@ a.ghost-btn {
   color: var(--text-2);
 }
 
+
+/* ==========================================================================
+   Calendar, redone for phones and desktop (Phase 5): the title as a date picker, Schedule, Up next, the drawn state
+   of events, quick create, guests, the event's quiet extras, Schedule a task. Phone-only layout is in
+   src/mobile/calendar.css.
+   ========================================================================== */
+
+/* The header reacts to its own width (the pane's, not the window's). */
+.cal-header {
+  container-type: inline-size;
+  min-height: 60px;
+}
+.cal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 40px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border-radius: 10px;
+  color: var(--text);
+  transition: background 0.15s;
+}
+.cal-title:hover {
+  background: var(--hover);
+}
+.cal-title h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-title-chev {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.cal-title.open .cal-title-chev {
+  transform: rotate(180deg);
+}
+.cal-header .cal-nav {
+  margin-left: auto;
+}
+.cal-views {
+  flex: none;
+}
+@container (max-width: 860px) {
+  .cal-new span {
+    display: none;
+  }
+}
+@container (max-width: 700px) {
+  .cal-views > button {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+}
+
+/* Today: a little calendar page with today's number; in the accent colour when today isn't on screen. */
+.cal-today {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap, 40px);
+  height: var(--tap, 40px);
+  border-radius: 12px;
+  color: var(--text-2);
+  transition: color 0.2s, background 0.15s;
+}
+.cal-today:hover,
+.cal-today:active {
+  background: var(--hover);
+}
+.cal-today span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid currentColor;
+  border-top-width: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.2s;
+}
+.cal-today.away {
+  color: var(--accent);
+}
+
+/* The mini month under the title */
+.month-drop {
+  border-bottom: 1px solid transparent;
+  transition: grid-template-rows 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.2s ease, border-color 0.2s;
+}
+.month-drop.open {
+  border-bottom-color: var(--border);
+}
+.md-wrap {
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 12px 12px;
+}
+.md-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.md-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+.md-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+  touch-action: pan-y;
+}
+.md-dow {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.md-day {
+  position: relative;
+  justify-self: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  font-size: 14px;
+  color: var(--text);
+  transition: background 0.15s, color 0.15s;
+}
+.md-day:hover {
+  background: var(--hover);
+}
+.md-day.out {
+  color: var(--text-3);
+}
+.md-day.today {
+  color: var(--accent);
+  font-weight: 700;
+}
+.md-day.picked {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.md-day.busy::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.md-day.picked.busy::after {
+  background: #fff;
+}
+.md-months {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding-top: 6px;
+  touch-action: pan-y;
+}
+.md-month {
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 15px;
+  color: var(--text);
+  transition: background 0.15s, color 0.15s;
+}
+.md-month:hover {
+  background: var(--hover);
+}
+.md-month.today {
+  color: var(--accent);
+  font-weight: 700;
+}
+.md-month.picked {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Up next */
+.cal-upnext {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 12px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c) 12%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--c);
+}
+.cu-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--text);
+}
+.cu-when {
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-text, var(--accent));
+}
+.cu-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.cu-bot {
+  flex: none;
+  color: var(--text-3);
+}
+.cu-bot.on {
+  color: var(--ok);
+}
+.cu-join {
+  flex: none;
+}
+
+/* Schedule */
+.sch {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0 24px;
+}
+.sch-earlier {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  transition: color 0.15s;
+}
+.sch-earlier:hover {
+  color: var(--text);
+}
+.sch-month {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 14px 16px 6px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: var(--surface);
+}
+.sch-day {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  animation: fade 0.2s ease-out backwards;
+}
+.sch-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-top: 4px;
+}
+.sch-dow {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.sch-num {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 600;
+}
+.sch-day.today .sch-dow {
+  color: var(--accent);
+}
+.sch-day.today .sch-num {
+  background: var(--accent);
+  color: #fff;
+}
+.sch-items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+.sch-free {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text-3);
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+.sch-free:hover {
+  background: var(--hover);
+  color: var(--text-2);
+}
+.sch-now {
+  position: relative;
+  height: 2px;
+  margin: 2px 0 2px 6px;
+  background: #ef4444;
+  border-radius: 2px;
+}
+.sch-now span {
+  position: absolute;
+  left: -6px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+.sch-task {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  --c: var(--accent);
+}
+.sch-task-title {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sch-task.done .sch-task-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.sch-end {
+  /* Room under the last day, so any day can be scrolled to the top. */
+  height: max(200px, 60vh);
+  padding: 16px 0 0 68px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* One event as a card (Schedule, the day under Month, the all-day list) */
+.ev-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px 8px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c) 13%, var(--surface));
+  box-shadow: inset 4px 0 0 var(--c);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.2s, box-shadow 0.15s;
+}
+.ev-card:hover {
+  background: color-mix(in srgb, var(--c) 19%, var(--surface));
+}
+.ev-card:focus-visible {
+  outline: 2px solid var(--c);
+  outline-offset: 2px;
+}
+.ev-card.picked {
+  box-shadow: inset 4px 0 0 var(--c), 0 0 0 2px var(--c);
+}
+.ev-card.past {
+  opacity: 0.55;
+}
+/* Answered maybe: stripes. Not answered yet: a dashed outline. */
+.ev-card.maybe,
+.block-event.maybe {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 15%, var(--surface)) 0 7px, color-mix(in srgb, var(--c) 6%, var(--surface)) 7px 14px);
+}
+.ev-card.pending {
+  background: var(--surface);
+  box-shadow: none;
+  outline: 1.5px dashed color-mix(in srgb, var(--c) 75%, transparent);
+  outline-offset: -1.5px;
+}
+.ev-card-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.ev-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ev-card.done .ev-card-title {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+.ev-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.ev-card-meta svg {
+  flex: none;
+}
+.ev-card-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ev-card-bot {
+  flex: none;
+  color: var(--ok);
+}
+
+/* A task's checkbox (in cards, task rows and time blocks): a ring in the calendar's colour, filled when done. */
+.ev-check {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--c, var(--accent));
+  color: #fff;
+  transition: background 0.15s, transform 0.15s;
+}
+.ev-check::after {
+  content: '';
+  position: absolute;
+  inset: -11px; /* a 44 px target around the 22 px ring */
+}
+.ev-check:hover {
+  background: color-mix(in srgb, var(--c, var(--accent)) 18%, transparent);
+}
+.ev-check.on {
+  background: var(--c, var(--accent));
+}
+.ev-check:active {
+  transform: scale(0.9);
+}
+
+/* Time grid: the drawn state */
+.tg-scroll {
+  overflow-x: hidden;
+}
+.block-event {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.block-event.pending {
+  background: var(--surface);
+  border: 1.5px dashed var(--c);
+  border-left-width: 3px;
+}
+.block-event.is-task {
+  padding-left: 26px;
+}
+.block-event .ev-check.sm {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 15px;
+  height: 15px;
+  border-width: 1.5px;
+}
+.block-event.short .ev-check.sm {
+  top: 50%;
+  margin-top: -7.5px;
+}
+.block-event.done .be-title {
+  text-decoration: line-through;
+}
+.block-event.dragging {
+  z-index: 5;
+  box-shadow: var(--shadow-lg);
+  transform: scale(1.02);
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.15s;
+  cursor: grabbing;
+}
+.tg-allday-more {
+  align-self: flex-start;
+  min-height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.tg-allday-more:hover {
+  background: var(--hover);
+}
+.pill-event.pending {
+  background: var(--surface);
+  outline: 1.5px dashed var(--c);
+  outline-offset: -1.5px;
+}
+/* Now: the time in the gutter too (the hour label next to it steps aside). */
+.now-label {
+  position: absolute;
+  right: 4px;
+  z-index: 2;
+  transform: translateY(-50%);
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.tg-hours span.near-now {
+  opacity: 0;
+}
+/* The new event's block with its handles */
+.ghost-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border: 2px solid var(--accent);
+  box-shadow: var(--shadow);
+  touch-action: none;
+  cursor: grab;
+  animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.gh-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-text, var(--accent));
+  white-space: nowrap;
+}
+.gh-handle {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  touch-action: none;
+  cursor: ns-resize;
+}
+.gh-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+}
+.gh-handle.top {
+  top: -20px;
+  right: 12px;
+}
+.gh-handle.bottom {
+  bottom: -20px;
+  left: 12px;
+}
+
+/* Month on a phone: dots, and the tapped day's list under the grid */
+.mg-phone .mg-top {
+  flex: none;
+  border-bottom: 1px solid var(--border);
+}
+.mg-phone .mg-head {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-bottom: 0;
+}
+.mg-phone .mg-head span {
+  padding: 6px 0 2px;
+  font-size: 12px;
+  text-align: center;
+  text-transform: none;
+}
+.mg-phone .mg-body {
+  flex: none;
+  grid-auto-rows: 48px;
+  overflow: visible;
+  padding: 0 4px 6px;
+  touch-action: pan-y;
+}
+.mg-phone .mg-cell {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  padding: 5px 0 0;
+  border: 0;
+  cursor: pointer;
+  background: none;
+}
+.mg-phone .mg-cell.out {
+  background: none;
+}
+.mg-phone .mg-num {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 30px;
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+.mg-phone .mg-cell.today .mg-num {
+  background: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+.mg-phone .mg-cell.picked .mg-num {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.mg-dots {
+  display: flex;
+  gap: 3px;
+  height: 5px;
+}
+.mg-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.mg-dots i.pending {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--c);
+}
+.mg-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 6px;
+  padding: 4px 12px 24px;
+  animation: fade 0.18s ease-out;
+}
+.mg-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+.mg-list-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Event details: Join first, answers, Yes / Maybe / No */
+.ev-detail .ev-actions {
+  top: 8px;
+  right: 8px;
+}
+.ev-detail .ev-title {
+  padding-right: 120px;
+}
+.ev-sheet .sheet-head {
+  justify-content: flex-end;
+  min-height: 36px;
+}
+.ev-sheet .ev-actions {
+  position: static;
+}
+.ev-body {
+  padding: 0 0 4px;
+}
+.ev-sheet .ev-body {
+  padding: 0 8px 8px;
+}
+.ev-sheet .ev-title h3 {
+  font-size: 20px;
+}
+.ev-soon {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+.ev-join {
+  flex-direction: column;
+  align-items: stretch;
+  margin-left: 0;
+}
+.ev-join-btn {
+  justify-content: center;
+  min-height: 44px;
+  font-size: 15px;
+}
+.ev-join .link-btn,
+.ev-join .ghost-btn,
+.ev-join .ev-bot-note {
+  align-self: flex-start;
+}
+.ev-guest-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ev-rsvp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.ev-detail .ev-rsvp {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ev-rsvp-q {
+  flex: none;
+  margin-right: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.ev-rsvp-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ev-rsvp-btn:hover {
+  background: var(--hover);
+}
+.ev-rsvp-btn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text, var(--accent));
+}
+
+/* The event editor's fields (the dialog on desktop, the quick-create sheet on phones look the same) */
+.ev-form {
+  display: grid;
+  gap: 12px;
+}
+.ev-form input:not([type='checkbox']),
+.ev-form textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--r-control, 10px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ev-form input:focus,
+.ev-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ev-form input.ev-form-title {
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 2px solid var(--border);
+  border-radius: 0;
+  background: none;
+  font-size: 20px;
+  font-weight: 600;
+}
+.ev-form input.ev-form-title:focus,
+.ev-form input.ev-form-title:focus-visible {
+  border-color: var(--accent);
+  box-shadow: none;
+  outline: none;
+}
+.ev-kind {
+  justify-self: start;
+}
+.ev-kind button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.guest-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.guest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 2px 2px 2px 3px;
+  border-radius: 999px;
+  background: var(--hover);
+  font-size: 13.5px;
+  font-weight: 500;
+  animation: pop 0.16s ease-out backwards;
+}
+.guest-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.guest-chip button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--text-3);
+  transition: background 0.15s, color 0.15s;
+}
+.guest-chip button:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.guest-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px dashed var(--border);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.guest-add:hover,
+.guest-add.open {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--text-3);
+}
+.ev-extras {
+  display: grid;
+  gap: 8px;
+}
+.ev-extra {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: fade 0.18s ease-out backwards;
+}
+.ev-extra.top {
+  align-items: flex-start;
+}
+.ev-extra.top > svg {
+  margin-top: 10px;
+}
+.ev-extra > svg {
+  flex: none;
+  color: var(--text-3);
+}
+.ev-extra > input,
+.ev-extra > textarea,
+.ev-extra > .sel {
+  flex: 1;
+  min-width: 0;
+}
+.ev-quiet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: -8px;
+}
+.ev-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  transition: background 0.15s, color 0.15s;
+}
+@media (hover: hover) {
+  .ev-token:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+}
+.ev-token.on {
+  background: var(--accent-soft);
+  color: var(--accent-text, var(--accent));
+}
+.ev-more {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Quick create (phones): the sheet leaves the grid above it live, so the block can be moved and stretched. */
+.sheet-scrim:has(> .quick-sheet) {
+  background: none;
+  pointer-events: none;
+  animation: none;
+}
+.quick-sheet {
+  pointer-events: auto;
+  box-shadow: 0 -10px 40px -12px rgba(10, 12, 20, 0.28);
+}
+.quick-body {
+  padding: 0 8px;
+}
+
+/* Schedule a task */
+.sched {
+  display: grid;
+  padding: 0 8px 8px;
+}
+.sched-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.sched-task svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+.sched-label {
+  margin: 14px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.cal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cal-chip {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cal-chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text, var(--accent));
+}
+@media (hover: hover) {
+  .cal-chip:hover {
+    background: var(--hover);
+  }
+  .cal-chip.slot:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-text, var(--accent));
+  }
+}
+.sched-none {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  font-size: 13px;
+}
+.sched-own {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  animation: fade 0.18s ease-out backwards;
+}
+.sched-other {
+  justify-self: start;
+  margin-top: 14px;
+}
+
+/* The calendars' panel as a sheet (phones) */
+/* Calendars first, the tasks to plan after them. */
+.cal-sheet-in {
+  display: flex;
+  flex-direction: column;
+}
+.cal-sheet .nav-heading:has(+ .plan-hint),
+.cal-sheet .plan-list {
+  order: 10;
+}
+.cal-sheet .plan-task {
+  cursor: pointer;
+}
+.cal-sheet .compose-btn,
+.cal-sheet .mini,
+.cal-sheet .plan-hint,
+.cal-sheet .pt-grip {
+  display: none;
+}
+.allday-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sch-day,
+  .ghost-block,
+  .guest-chip,
+  .ev-extra,
+  .sched-own,
+  .mg-list {
+    animation: none;
+  }
+  .block-event.dragging {
+    transform: none;
+  }
+}

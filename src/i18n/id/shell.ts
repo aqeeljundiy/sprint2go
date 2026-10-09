@@ -363,6 +363,8 @@ const id: Record<string, string> = {
   '{name} asked you to handle “{subject}”': '{name} meminta Anda menangani “{subject}”',
   '{name} mentioned you in a comment on “{subject}”': '{name} menyebut Anda di komentar pada “{subject}”',
   '{name} added you to #{channel}': '{name} menambahkan Anda ke #{channel}',
+  '{name} mentioned you in the note “{title}”': '{name} menyebut Anda di catatan “{title}”',
+  '{name} mentioned you in an untitled note': '{name} menyebut Anda di catatan tanpa judul',
   '{name} ({company}) mentioned you in #{channel}': '{name} ({company}) menyebut Anda di #{channel}',
   '{name} ({company}) approved “{title}”': '{name} ({company}) menyetujui “{title}”',
   '{name} ({company}) asked for changes on “{title}”': '{name} ({company}) meminta perubahan pada “{title}”',

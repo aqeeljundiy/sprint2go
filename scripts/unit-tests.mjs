@@ -1397,6 +1397,48 @@ await test('Demo company: hidden, shown, cleaned up after a month unused, and co
   assert.equal(sandbox.stateOf('u-unit', true).state, 'none', 'made again, fresh, the next time');
 });
 
+/* ---------- Calendar reminders (server/eventReminders.ts) ---------- */
+
+const { eventReminders, reminderText } = await import('../server/eventReminders.ts');
+await test('Event reminders: due once per start, again when moved, never for teammates’ copies or far too late', () => {
+  const now = Date.parse('2026-10-09T09:50:00Z');
+  const at = (min) => new Date(now + min * 60_000).toISOString();
+  const ev = (id, startMin, remind, extra = {}) => ({ id, title: id, start: at(startMin), end: at(startMin + 30), userId: 'u-a', remind, ...extra });
+  const list = [
+    ev('due', 10, 10), // 10 minutes before a start 10 minutes away: now
+    ev('later', 30, 10), // in 20 minutes
+    ev('sent', 10, 10, { remindedFor: at(10) }), // already reminded for this start
+    ev('moved', 10, 10, { remindedFor: at(-60) }), // reminded for an older start: again
+    ev('none', 5, undefined),
+    ev('feed', 5, 10, { feed: 'link' }), // a calendar link's copy: not ours to remind
+    ev('stale', -5, 7 * 60), // the reminder was due seven hours ago
+  ];
+  assert.deepEqual(eventReminders(list, now).map((e) => e.id), ['due', 'moved']);
+  assert.equal(reminderText(ev('Standup', 10, 10), now), '“Standup” starts in 10 minutes');
+  assert.equal(reminderText(ev('Standup', 0, 0), now), '“Standup” is starting now');
+  assert.equal(reminderText(ev('Offsite', 60 * 24, 1440, { allDay: true }), now), '“Offsite” is tomorrow');
+});
+
+/* ---------- Notes: view only, sharing and Recently deleted (server/notesTrash.ts) ---------- */
+
+const { guardNote, expiredNotes } = await import('../server/notesTrash.ts');
+await test('Notes: view-only notes stay as their owner left them; sharing and deleting are for who may', () => {
+  const note = { id: 'n1', ownerId: 'u-owner', visibility: 'team', html: '<p>a</p>' };
+  assert.equal(guardNote({ ...note, html: '<p>b</p>' }, { ...note, teamCan: 'view' }, 'u-other', false).doc, null, 'view only: a teammate changes nothing');
+  assert.equal(guardNote({ ...note, html: '<p>b</p>', teamCan: 'view' }, { ...note, teamCan: 'view' }, 'u-owner', true).doc.html, '<p>b</p>', 'its owner does');
+  const shared = guardNote({ ...note, html: '<p>b</p>', visibility: 'private' }, note, 'u-other', false);
+  assert.equal(shared.doc.visibility, 'team', 'only the owner changes who sees it');
+  assert.equal(shared.doc.html, '<p>b</p>', 'the edit itself is kept');
+  const del = guardNote({ ...note, deletedAt: '2026-10-09T00:00:00Z' }, note, 'u-other', false);
+  assert.equal(del.doc.deletedAt, undefined, 'a member who may not delete it can’t put it in Recently deleted');
+  const ok = guardNote({ ...note, deletedAt: '2026-10-09T00:00:00Z' }, note, 'u-admin', true);
+  assert.equal(ok.doc.deletedBy, 'u-admin', 'who deleted it is the server’s to say');
+  const back = guardNote({ ...note, deletedAt: undefined, deletedBy: 'x' }, { ...note, deletedAt: '2026-10-09T00:00:00Z', deletedBy: 'u-admin' }, 'u-owner', true);
+  assert.equal(back.doc.deletedBy, undefined, 'put back');
+  const now = Date.parse('2026-11-20T00:00:00Z');
+  assert.deepEqual(expiredNotes([{ id: 'old', deletedAt: '2026-10-01T00:00:00Z' }, { id: 'new', deletedAt: '2026-11-10T00:00:00Z' }, { id: 'live' }], now).map((n) => n.id), ['old'], 'gone for good after 30 days');
+});
+
 /* ---------- Tasks: due-date colours, rescheduling, Quick Add (src/taskDates.ts, src/quickAdd.ts) ---------- */
 
 const td = await import('../src/taskDates.ts');

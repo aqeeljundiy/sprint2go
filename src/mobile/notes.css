@@ -4,3 +4,270 @@
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
+
+@media (max-width: 767px) {
+  /* The list: chips on top, the notes, the search at the bottom (above the tab bar, or the keyboard). */
+  .notes-phone {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+  }
+  .nl-chips {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* The edge fades: there's more to swipe to. */
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .nl-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .nl-chip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-2);
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .nl-chip.on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-text, var(--accent));
+  }
+  .nl-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: calc(16px + var(--fab-space, 0px));
+  }
+  .nl-head {
+    padding: 14px 16px 4px;
+    font-size: 13px;
+  }
+  .nl-none {
+    margin: 16px;
+    font-size: 14px;
+  }
+  /* Rows: dividers, no boxes; the "…" always there. */
+  .notes-phone .note-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    width: 100%;
+    min-height: 76px;
+    margin: 0;
+    padding: 12px 52px 12px 16px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--line, var(--border));
+    background: var(--surface);
+  }
+  .notes-phone .note-item:active {
+    background: var(--hover);
+  }
+  .notes-phone .ni-title {
+    gap: 6px;
+    min-width: 0;
+  }
+  .notes-phone .ni-title strong {
+    font-size: 16px;
+  }
+  .notes-phone .note-item small {
+    font-size: 13px;
+  }
+  .notes-phone .ni-snip {
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--text-2);
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .notes-phone .ni-more {
+    top: 4px;
+    right: 4px;
+    width: var(--tap);
+    height: var(--tap);
+    opacity: 1;
+  }
+  .note-swipe .swipe-face {
+    background: var(--surface);
+  }
+  .nl-trash {
+    width: 100%;
+    min-height: 52px;
+    margin: 8px 0 0;
+    padding: 0 16px;
+    border-radius: 0;
+    font-size: 15px;
+  }
+  .nl-deleted-note {
+    margin: 12px 16px 8px;
+    font-size: 14px;
+  }
+  .nl-deleted .note-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    width: 100%;
+    margin: 0;
+    padding: 12px 16px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--line, var(--border));
+    background: var(--surface);
+  }
+  .nl-deleted .ni-title strong {
+    font-size: 16px;
+  }
+  .nl-deleted .note-item small {
+    font-size: 13px;
+  }
+  .nl-deleted-acts .ghost-btn {
+    min-height: 40px;
+    margin-left: -10px;
+  }
+  .nl-search-dock {
+    flex: none;
+    padding: 8px 12px 10px;
+    border-top: 1px solid var(--line, var(--border));
+    background: var(--surface);
+  }
+  .nl-facets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 2px 4px 10px;
+  }
+  .nl-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--tap);
+    padding: 0 4px 0 12px;
+    border-radius: 12px;
+    background: var(--hover);
+    color: var(--text-3);
+  }
+  .nl-search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 16px;
+    color: var(--text);
+    outline: none;
+  }
+  .nl-clear {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    color: var(--text-3);
+  }
+
+  /* The open note: full screen, Back on the left, who sees it in the middle, Done or "…" on the right. */
+  .note-screen .push-title {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+  }
+  .note-screen .push-body {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+  }
+  .note-screen .note-wrap {
+    flex: 1;
+  }
+  .note-screen .note-scroll {
+    padding-bottom: calc(env(safe-area-inset-bottom) + var(--kb, 0px));
+  }
+  .note-screen .push-foot {
+    padding-top: 4px;
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  }
+  .kb-open .note-screen .push-foot {
+    padding-bottom: 4px;
+  }
+  .note-done {
+    min-height: var(--tap);
+    padding: 0 12px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .note-doc {
+    padding: 14px 18px 56px;
+  }
+  /* The title stays a title: the phone's 16px floor for fields (shell.css) is a minimum, and this is bigger. */
+  .note-screen .note-title {
+    font-size: 24px !important;
+  }
+  /* 16px reading and writing alike, so the text doesn't change size when the caret goes in. */
+  .note-text {
+    font-size: 16px;
+    min-height: 50vh;
+  }
+  .note-text.reading {
+    -webkit-touch-callout: none;
+  }
+  .note-text ul.checklist > li::before {
+    width: 20px;
+    height: 20px;
+    left: -30px;
+    top: 0.18em;
+  }
+  .note-text ul.checklist {
+    padding-left: 32px;
+  }
+  .note-text .note-task {
+    font-size: 13px;
+    line-height: 22px;
+  }
+  .note-line-dots {
+    left: auto;
+    right: 4px;
+    width: 36px;
+    height: 36px;
+    margin-top: -4px;
+  }
+  .note-linked {
+    margin-top: 28px;
+  }
+  .nl-link {
+    min-height: var(--tap);
+    font-size: 15px;
+  }
+  .note-meta {
+    font-size: 13px;
+  }
+
+  /* Quick capture */
+  .qn textarea {
+    min-height: 140px;
+  }
+}
+
+/* Tiny phones: the create button floats at the bottom right, so the search makes room for it. */
+@media (max-width: 359px) {
+  .nl-search-dock {
+    padding-right: 84px;
+  }
+}

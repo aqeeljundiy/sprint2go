@@ -69,6 +69,7 @@ export function PeopleList({
   selected,
   onPick,
   extra = [],
+  typed,
   placeholder = t('Search by name, email, title or team'),
 }: {
   users: User[];
@@ -76,6 +77,7 @@ export function PeopleList({
   selected: string[];
   onPick: (id: string) => void;
   extra?: ExtraOption[]; // e.g. "Nobody" or "The row's owner", listed first
+  typed?: (q: string) => ExtraOption | null; // a choice made from what's typed (an email address that isn't anyone here yet)
   placeholder?: string;
 }) {
   const [q, setQ] = useState('');
@@ -88,8 +90,9 @@ export function PeopleList({
     const rank = (u: User) => (chosenAtOpen.includes(u.id) ? -2 : u.id === me ? -1 : recent.includes(u.id) ? recent.indexOf(u.id) : 100);
     const people = users.filter((u) => matchPerson(u, q, teams)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
     const ex = q.trim() ? extra.filter((o) => o.label.toLowerCase().includes(q.trim().toLowerCase())) : extra;
-    return [...ex.map((o) => ({ kind: 'extra' as const, o })), ...people.map((u) => ({ kind: 'person' as const, u }))];
-  }, [users, q, chosenAtOpen, me, extra, teams]);
+    const free = q.trim() && typed ? typed(q.trim()) : null;
+    return [...[...(free ? [free] : []), ...ex].map((o) => ({ kind: 'extra' as const, o })), ...people.map((u) => ({ kind: 'person' as const, u }))];
+  }, [users, q, chosenAtOpen, me, extra, teams, typed]);
   const pick = (i: number) => {
     const item = shown[i];
     if (!item) return;
