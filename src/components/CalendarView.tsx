@@ -386,7 +386,10 @@ export function CalendarView(props: Props) {
 
       {calsOpen && props.calendarsPanel && (
         <Sheet title="Calendars" onClose={() => setCalsOpen(false)} size="tall" className="cal-sheet">
-          {props.calendarsPanel}
+          {/* Picking a task to plan hands over to its Schedule sheet: one sheet at a time. */}
+          <div className="cal-sheet-in" onClickCapture={(e) => (e.target as Element).closest('.plan-task') && setTimeout(() => setCalsOpen(false))}>
+            {props.calendarsPanel}
+          </div>
         </Sheet>
       )}
 

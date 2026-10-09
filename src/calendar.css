@@ -874,16 +874,16 @@ a.primary-btn,
 a.ghost-btn {
   text-decoration: none;
 }
-/* Meet's list rows share the .ev-row name (round2.css): in the detail card they stay one row, icon then text. */
-.ev-detail .ev-row {
+/* Meet's list rows share the .ev-row name (round2.css): in the event's details they stay one row, icon then text. */
+.ev-body .ev-row {
   flex-wrap: nowrap;
   padding: 7px 0;
   border-radius: 0;
 }
-.ev-detail .ev-row:hover {
+.ev-body .ev-row:hover {
   background: none;
 }
-.ev-detail .ev-row > span:last-child {
+.ev-body .ev-row > span:last-child {
   flex: 1;
   min-width: 0;
 }
@@ -1748,10 +1748,42 @@ a.ghost-btn {
   color: var(--accent-text, var(--accent));
 }
 
-/* The event editor's fields */
+/* The event editor's fields (the dialog on desktop, the quick-create sheet on phones look the same) */
 .ev-form {
   display: grid;
   gap: 12px;
+}
+.ev-form input:not([type='checkbox']),
+.ev-form textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--r-control, 10px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ev-form input:focus,
+.ev-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ev-form input.ev-form-title {
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 2px solid var(--border);
+  border-radius: 0;
+  background: none;
+  font-size: 20px;
+  font-weight: 600;
+}
+.ev-form input.ev-form-title:focus,
+.ev-form input.ev-form-title:focus-visible {
+  border-color: var(--accent);
+  box-shadow: none;
+  outline: none;
 }
 .ev-kind {
   justify-self: start;
@@ -1863,9 +1895,11 @@ a.ghost-btn {
   color: var(--text-3);
   transition: background 0.15s, color 0.15s;
 }
-.ev-token:hover {
-  background: var(--hover);
-  color: var(--text);
+@media (hover: hover) {
+  .ev-token:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
 }
 .ev-token.on {
   background: var(--accent-soft);
@@ -1931,14 +1965,20 @@ a.ghost-btn {
   color: var(--text);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.cal-chip:hover {
-  background: var(--hover);
-}
-.cal-chip.on,
-.cal-chip.slot:hover {
+.cal-chip.on {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent-text, var(--accent));
+}
+@media (hover: hover) {
+  .cal-chip:hover {
+    background: var(--hover);
+  }
+  .cal-chip.slot:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-text, var(--accent));
+  }
 }
 .sched-none {
   display: inline-flex;
@@ -1961,7 +2001,7 @@ a.ghost-btn {
 
 /* The calendars' panel as a sheet (phones) */
 /* Calendars first, the tasks to plan after them. */
-.cal-sheet .sheet-body {
+.cal-sheet-in {
   display: flex;
   flex-direction: column;
 }

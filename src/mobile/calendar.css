@@ -110,7 +110,7 @@
     flex: 1;
     min-height: var(--tap);
   }
-  .ev-form-title {
+  .ev-form input.ev-form-title {
     font-size: 18px;
   }
   .ev-kind > button,
