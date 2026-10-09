@@ -70,6 +70,8 @@ interface Props {
   onOpenTask?: (id: string) => void;
   /** The side panel's contents (calendars on and off, teammates, holidays, connect, tasks to plan): a sheet on phones. */
   calendarsPanel?: ReactNode;
+  /** A dialog from the panel is open (Add a calendar, holidays): the Calendars sheet makes way for it. */
+  dialogOpen?: boolean;
 }
 
 /** The next half hour from now if `day` is today, otherwise 9:00 on that day. */
@@ -129,6 +131,9 @@ export function CalendarView(props: Props) {
 
   /* ---------- the title's switcher: views, then the calendars ---------- */
   const [calsOpen, setCalsOpen] = useState(false);
+  useEffect(() => {
+    if (props.dialogOpen) setCalsOpen(false);
+  }, [props.dialogOpen]);
   useTitleMenu('calendar', {
     label: 'Calendar',
     value: view,

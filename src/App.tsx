@@ -4362,6 +4362,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onToggleTask={toggleTodo}
             onOpenTask={openTask}
             calendarsPanel={calendarPanel}
+            dialogOpen={!!connectCal}
             canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === e.id)}
             onNotetaker={botOn ? sendNotetakerTo : undefined}
             botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
