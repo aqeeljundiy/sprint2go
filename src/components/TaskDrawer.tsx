@@ -10,7 +10,7 @@ import { Select } from './ui/Select';
 import { DatePicker } from './ui/DatePicker';
 import { holidayOn } from '../holidayDays';
 import { SOURCE, doers, dueLabel, isBrief, peopleOptions, statusOf, teamOptions } from './TasksView';
-import { kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
+import { kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesForTask, toneOf } from '../stages';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { useOnePanel } from '../onePanel';
 
@@ -108,7 +108,7 @@ export function TaskDrawer(p: Props) {
                 value={statusOf(t)}
                 onChange={(v) => p.onStatus(t.id, v)}
                 label="Status"
-                options={stagesFor(t.workspaceId).map((s) => ({
+                options={stagesForTask(t).map((s) => ({
                   value: s.id,
                   label: stageName(s),
                   hint: s.kind === 'waiting' ? `The next step is the ${term.who}’s` : s.kind === 'review' ? 'The supervisor checks it' : undefined,

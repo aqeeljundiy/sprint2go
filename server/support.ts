@@ -74,6 +74,37 @@ const row = (r: any): Ticket => ({
 });
 const msgRow = (r: any): TicketMessage => ({ id: r.id, at: r.at, kind: r.kind, author: r.author, authorName: r.author_name, body: r.body, internal: !!r.internal, attachments: r.attachments ? JSON.parse(r.attachments) : [] });
 
+/* ---------- what a ticket's attachments may open ---------- */
+
+/** What operators see instead of an attachment that wasn't sent with its ticket (tickets from before 9 Oct). */
+export const OLD_ATTACHMENT = 'Attachment from before 9 Oct, ask the person to send it again';
+/** How long before a message a customer's own upload still counts as sent with it (Help uploads while they write). */
+const UPLOAD_WINDOW = 24 * 3600_000;
+type FileFacts = { workspaceId: string; by: string; at?: string | null };
+/**
+ * Whether a file was sent with this ticket message, so support may open it: an upload of the ticket's own requester
+ * made while they wrote it (Help uploads files as they're added), or a file that came with the email to support (kept
+ * by the mail engine as the message arrived). Tickets made before 9 Oct could point at any file at all; theirs fail
+ * this and show OLD_ATTACHMENT instead of opening.
+ */
+export function fileFitsTicket(f: FileFacts | null | undefined, requesterUser: string | null, messageAt: string) {
+  if (!f?.at) return false;
+  const at = Date.parse(f.at);
+  const msg = Date.parse(messageAt);
+  if (!Number.isFinite(at) || !Number.isFinite(msg)) return false;
+  if (f.workspaceId === 'platform' && f.by === 'mail') return Math.abs(msg - at) <= 5 * 60_000;
+  return !!requesterUser && f.by === requesterUser && at <= msg + 60_000 && at >= msg - UPLOAD_WINDOW;
+}
+const fileIdOf = (url: string) => /^\/api\/files\/([a-f0-9]{32})$/.exec(String(url ?? ''))?.[1] ?? '';
+/** A ticket's messages for operators: a customer's attachment that wasn't sent with its ticket says so instead of linking. */
+export function messagesForOperators(t: Ticket, fileInfo: (id: string) => FileFacts | null) {
+  return messagesOf(t.id, true).map((m) =>
+    m.kind !== 'customer'
+      ? m
+      : { ...m, attachments: m.attachments.map((a) => (fileFitsTicket(fileInfo(fileIdOf(a.url)), t.requester.userId, m.at) ? a : { name: a.name, url: '', size: a.size, blocked: OLD_ATTACHMENT })) },
+  );
+}
+
 export const ticket = (id: string) => {
   const r = db.prepare('SELECT * FROM tickets WHERE id = ? OR number = ?').get(id, Number(id) || -1);
   return r ? row(r) : null;

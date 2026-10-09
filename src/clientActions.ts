@@ -121,7 +121,7 @@ export function clientActions(c: ClientCtx) {
         due: r.due || undefined,
         priority: 'normal',
         done: false,
-        status: stageIdFor({ workspaceId: c.ws.id }, 'open'),
+        status: stageIdFor({ workspaceId: c.ws.id, clientId: c.client.id }, 'open'),
         source: 'request',
         requestedBy: c.person.email,
         visibleToClient: true,
