@@ -7,6 +7,7 @@ export type { DumpTask, DumpPerson, DumpClient, DumpTeam, DumpBrief, DumpPlan, D
 // Without a server, or before anyone adds a key, a small built-in demo stands in so every feature can be tried.
 import { server } from '../sync';
 import { caps } from '../caps';
+import { isSandboxId } from '../sandbox';
 
 const ENV_URL = (import.meta.env.VITE_AI_URL as string | undefined)?.replace(/\/$/, '');
 const state = { workspaceId: '', live: !!ENV_URL };
@@ -15,6 +16,8 @@ export const aiLive = () => state.live;
 /** The workspace AI calls are for; asks the server whether it has a key for it. */
 export function setAIWorkspace(id: string) {
   state.workspaceId = id;
+  // The demo company never uses a real AI (ours or anyone's keys): its answers are the samples, labelled as such.
+  if (isSandboxId(id)) return void (state.live = false);
   if (!server.on) return;
   void fetch(`/api/ai/status?ws=${encodeURIComponent(id)}`)
     .then((r) => (r.ok ? r.json() : { live: false }))
@@ -50,6 +53,8 @@ async function call<T>(action: string, body: object): Promise<T> {
 /** The real AI when there is one; the demo when no key is set up for this job. */
 function run<T>(action: string, body: object, demoRun: () => Promise<T>): Promise<T> {
   if (!useServer()) return demoRun();
+  // DEMO ONLY: inside the demo company the sample answers stand in (the server refuses AI there anyway).
+  if (isSandboxId(state.workspaceId)) return demoRun();
   return call<T>(action, body).catch((e) => {
     if (e instanceof NoKey) {
       state.live = false;

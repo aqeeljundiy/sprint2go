@@ -1,5 +1,7 @@
 // Production must never pretend. Code that only exists for the demo carries a "DEMO ONLY" comment, and has to sit
-// behind a guard that is false on a real server: demoOk, !real, caps.demo or !server.on. This fails when one doesn't:
+// behind a guard that is false on a real server: demoOk, !real, caps.demo or !server.on. Inside someone's own demo
+// company (src/sandbox.ts) pretending is the point, so its check counts too: inSandbox, isSandbox(…) or
+// isSandboxId(…), all false for every real company. This fails when one doesn't:
 //  - the guard is within a few lines after the comment, or
 //  - the comment is on a function (const fakeIt = ..., function fakeIt) and every place that calls it is guarded.
 //   node scripts/check-demo-guards.mjs
@@ -7,7 +9,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
-const GUARD = /\bdemoOk\b|!\s*real\b|\bcaps\.demo\b|!\s*server\.on\b/;
+const GUARD = /\bdemoOk\b|!\s*real\b|\bcaps\.demo\b|!\s*server\.on\b|\binSandbox\b|\bisSandbox\(|\bisSandboxId\(/;
 const WITHIN = 6; // lines after the comment
 const files = [];
 const walk = (dir) => {
@@ -39,7 +41,7 @@ for (const file of files) {
       problems.push(`${relative(ROOT, file)}:${i + 1}  DEMO ONLY function ${name}() ${calls.length ? `is called without a guard at line ${unguarded.map(({ n }) => n + 1).join(', ')}` : 'is never called behind a guard'}`);
       return;
     }
-    problems.push(`${relative(ROOT, file)}:${i + 1}  DEMO ONLY code without a guard (demoOk, !real, caps.demo or !server.on) in the next ${WITHIN} lines`);
+    problems.push(`${relative(ROOT, file)}:${i + 1}  DEMO ONLY code without a guard (demoOk, !real, caps.demo, !server.on or a demo company check) in the next ${WITHIN} lines`);
   });
 }
 

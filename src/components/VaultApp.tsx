@@ -7,6 +7,7 @@ import { Copy, Eye, History, KeyRound, Lock, MoreHorizontal, Pencil, Plus, Refre
 import type { Client, Team, User } from '../types';
 import { relative } from '../utils';
 import { server } from '../sync';
+import { isSandboxId } from '../sandbox';
 import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { decryptSecret, encryptSecret, isEncrypted, makeVaultKeys, newItemKeys, rewrapVaultKey, setVaultUnlocked, totp as totpCode, unlockVaultKey, unwrapWith, vaultUnlocked, wrapFor, type VaultKeyRecord, type WrappedKey } from '../vaultCrypto';
@@ -39,11 +40,11 @@ const copySecret = async (text: string) => {
 };
 
 /** The sidebar: all logins, or one client's. */
-export function VaultSidebar({ items, clients, filter, onFilter, onNew }: { items: VaultItem[]; clients: Client[]; filter: string; onFilter: (f: string) => void; onNew: () => void }) {
+export function VaultSidebar({ items, clients, filter, onFilter, onNew, workspaceId }: { items: VaultItem[]; clients: Client[]; filter: string; onFilter: (f: string) => void; onNew: () => void; workspaceId?: string }) {
   const withItems = clients.filter((c) => items.some((i) => i.meta.clientId === c.id));
   return (
     <>
-      <button className="compose-btn" onClick={onNew} disabled={!server.on} title="Add a login">
+      <button className="compose-btn" onClick={onNew} disabled={!server.on || isSandboxId(workspaceId)} title="Add a login">
         <Plus size={16} />
         <span className="sb-label">Add a login</span>
       </button>
@@ -127,6 +128,13 @@ export function VaultView({
     if (code && code.left <= 0) void showCode(code.id);
   }, [code?.left]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The demo company has made-up people: real passwords never go in it.
+  if (isSandboxId(workspaceId))
+    return (
+      <section className="tasks-pane view-enter">
+        <EmptyState icon={<KeyRound size={22} />} title="The Vault isn’t part of the demo company" text="It keeps real passwords and two-step codes, so it opens in your real company only." />
+      </section>
+    );
   if (!server.on)
     return (
       <section className="tasks-pane view-enter">

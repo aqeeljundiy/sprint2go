@@ -32,6 +32,7 @@ import { EmailDeliverySection } from './admin/EmailDelivery';
 import { HelpSection } from './HelpSection';
 import { NotificationSettings } from './NotificationSettings';
 import { TwoStepRow } from './TwoStep';
+import { DemoCompanyBlock, type DemoSettings } from './DemoCompany';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -76,6 +77,9 @@ function zoneOptions(current: string): Option[] {
   const top = [...new Set([current, deviceTz()])].map((tz) => ({ ...(ZONES!.find((z) => z.value === tz) ?? zoneOption(tz)), group: 'Suggested' }));
   return [...top, ...ZONES.filter((z) => !top.some((t) => t.value === z.value))];
 }
+
+/** Settings the demo company leaves out: they reach the real world (billing, AI keys, mail delivery, brand, security). */
+const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security'];
 
 const SHORTCUTS: [string, string[]][] = [
   ['Compose', ['C']],
@@ -145,6 +149,8 @@ interface Props {
     projects: { id: string; name: string; color: string }[]; // for "Keep everything for these projects" (chat history)
     onMoveTasks: (moves: { id: string; patch: Partial<Todo> }[]) => void;
   };
+  /** Their own demo company: Help & support and Your apps bring it back; inside it, money, keys and mail setup stay out. */
+  demo?: DemoSettings;
 }
 
 function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
@@ -161,7 +167,7 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin }: Props) {
+export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin, demo }: Props) {
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -174,7 +180,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const realMail = server.on && !caps.demo; // a real server, not the standalone demo
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
-  const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')));
+  // The demo company has no money, keys, mail delivery or sign-in rules of its own: those are the real company's.
+  const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')) && !(demo?.inDemo && DEMO_OUT.includes(x.id)));
   const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
 
   return (
@@ -201,7 +208,9 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'workspace' && (
             <>
               <h2>Workspace</h2>
-              <p className="set-intro">Each business gets its own brand, email accounts, calendar and drive.</p>
+              <p className="set-intro">
+                {demo?.inDemo ? 'This is your demo company: change anything here, nothing leaves it. Billing, AI keys, mail delivery and security are set in your real company.' : 'Each business gets its own brand, email accounts, calendar and drive.'}
+              </p>
               <div className="ws-preview">
                 <WorkspaceLogo ws={ws} size={44} />
                 <div>
@@ -314,7 +323,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 )}
               </div>
 
-              {ws.emailSetup === 'mix' && (
+              {ws.emailSetup === 'mix' && !demo?.inDemo && (
                 <>
                   <h3>Mail routing</h3>
                   <div className="set-block routing-block">
@@ -667,7 +676,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="muted small">{term.Whos} never see Mail, Calendar, Drive, your team’s channels, internal comments or other {term.many}. To check, open a {term.one}’s page and choose “View as guest”.</p>
             </>
           )}
-          {section === 'help' && <HelpSection workspaceId={ws.id} toast={admin.toast} />}
+          {section === 'help' && <HelpSection workspaceId={demo?.inDemo && demo.realWorkspaceId ? demo.realWorkspaceId : ws.id} toast={admin.toast} extra={demo && <DemoCompanyBlock d={demo} />} />}
           {section === 'email' && (
             <EmailDeliverySection
               ws={ws}
@@ -685,6 +694,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'stages' && <TaskStagesSection ws={ws} canManage={canManage} tasks={admin.tasks} teams={admin.teams} me={me} onWorkspace={onWorkspace} onMoveTasks={admin.onMoveTasks} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} projects={admin.projects} />}
+          {section === 'myapps' && myApps && demo && demo.state !== 'on' && <DemoCompanyBlock d={demo} />}
           {section === 'myapps' && myApps && (
             <MyAppsSection
               ws={ws}
@@ -697,7 +707,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             />
           )}
           {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}
-          {!sections.some((x) => x.id === section) && <p className="muted">Ask an admin about this.</p>}
+          {!sections.some((x) => x.id === section) && <p className="muted">{demo?.inDemo && DEMO_OUT.includes(section) ? 'The demo company has no billing, AI keys, mail delivery, brand or sign-in rules of its own: they’re set in your real company.' : 'Ask an admin about this.'}</p>}
           {section === 'ai' && sections.some((x) => x.id === 'ai') && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
           {section === 'billing' && sections.some((x) => x.id === 'billing') && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
           {section === 'security' && <SecuritySection ws={ws} me={me} isOwner={myRole === 'owner'} canManage={canManage} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} onAccount={() => onSection('account')} users={wsUsers} toast={admin.toast} />}

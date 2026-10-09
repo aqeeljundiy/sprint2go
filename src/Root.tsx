@@ -3,7 +3,8 @@ import type { User, Workspace } from './types';
 import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
 import { usePersisted, useSettings } from './settings';
 import { applyRemote, useStored } from './store';
-import { connect, loadMailInfo, probe, server, signIn, signOut, type Session } from './sync';
+import { connect, loadMailInfo, probe, reloadAll, server, setDemo, signIn, signOut, type Session } from './sync';
+import { openDemoCompany, useDemoState } from './components/DemoCompany';
 import { setAIWorkspace } from './ai';
 import App from './App';
 import { clientActions } from './clientActions';
@@ -56,6 +57,7 @@ export default function Root() {
       if (r.twoStep) return setMode('two-step'); // the password is done; the code (or setting it up) comes first
       server.operator = !!r.operator;
       server.flags = r.flags ?? [];
+      setDemo(r.demo ?? null); // their own demo company
       void loadMailInfo();
       if (!r.suspended && !admin) await connect(applyRemote);
       setMode('ready');
@@ -269,6 +271,17 @@ function NoWorkspace({ email, onBack }: { email: string; onBack: () => void }) {
 function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }) {
   useSettings(me);
   const [open, setOpen] = useState(true);
+  const demo = useDemoState();
+  const [opening, setOpening] = useState<string | null>(null); // null, 'busy', or why it didn't open
+  useEffect(() => void (document.title = product.name), []); // back here from the demo company: its name goes
+  // Their own demo company: made (or shown again), then the app opens on it.
+  const lookAround = async () => {
+    setOpening('busy');
+    const r = await openDemoCompany();
+    if (r.error) return setOpening(r.error);
+    setOpen(false);
+    await reloadAll().catch(() => {});
+  };
   return (
     <div className="signin">
       <div className="signin-card">
@@ -278,6 +291,12 @@ function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }
         <button className="primary-btn signin-btn" onClick={() => setOpen(true)}>
           Set up my company
         </button>
+        {demo?.allowed && demo.state !== 'on' && (
+          <button type="button" className="ghost-btn outline signin-btn" onClick={() => void lookAround()} disabled={opening === 'busy'}>
+            {opening === 'busy' ? 'Opening the demo company…' : demo.state === 'hidden' ? 'Show the demo company' : 'Look around a demo company first'}
+          </button>
+        )}
+        {opening && opening !== 'busy' && <p className="signin-error">{opening}</p>}
         <p className="signin-switch">
           Joining a team instead? Ask them to invite {me.email}, then{' '}
           <button type="button" className="link-btn" onClick={() => void signOut()}>
