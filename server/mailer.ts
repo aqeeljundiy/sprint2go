@@ -869,10 +869,12 @@ const realDomain = (d: string) => d.includes('.') && !/(^|\.)(localhost|local|te
 /**
  * How the app's own notes go out: 'ses' when Amazon SES is configured, 'own' when this server can send them itself
  * (the mail engine is on and the support domain is a real one), else 'log' (local development: codes go to the log).
+ * Outside production our own engine only sends with a relay or MAIL_ENABLED=1, so a laptop never mails real people.
  */
 export function systemMailPath(): 'ses' | 'own' | 'log' {
   if (mailConfigured()) return 'ses';
-  if (process.env.MAIL_ENABLED !== '0' && realDomain(NOREPLY.split('@')[1])) return 'own';
+  const local = process.env.NODE_ENV !== 'production' && !process.env.MAIL_RELAY_URL && process.env.MAIL_ENABLED !== '1';
+  if (!local && process.env.MAIL_ENABLED !== '0' && realDomain(NOREPLY.split('@')[1])) return 'own';
   return 'log';
 }
 /**

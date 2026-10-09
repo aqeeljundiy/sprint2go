@@ -96,7 +96,12 @@ await test('ARC: other sealers, broken chains and failed originals are not', () 
 
 await test('System mail: no-reply at the support domain, through our own engine when SES is off', () => {
   assert.equal(mailer.NOREPLY, 'no-reply@example-s2g.com');
+  const env = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
   assert.equal(mailer.systemMailPath(), 'own');
+  process.env.NODE_ENV = 'development';
+  assert.equal(mailer.systemMailPath(), 'log', 'a laptop shows codes instead of mailing real people');
+  if (env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = env;
 });
 
 /* ---------- who holds a domain (server/domains.ts) ---------- */
