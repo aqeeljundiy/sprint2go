@@ -1661,6 +1661,118 @@ const chatLater = await import('../server/chatLater.ts');
   });
 }
 
+/* ---------- Team mail: snoozes, comments, who handles it, and when a phone buzzes (src/mailRules.ts, server/mailTeam.ts, server/notifyPush.ts) ---------- */
+
+const mailRules = await import('../src/mailRules.ts');
+const mailTeam = await import('../server/mailTeam.ts');
+const pushRules = await import('../server/notifyPush.ts');
+const msg = (id, from, minsAgo = 60) => ({ id, from: { name: from.split('@')[0], email: from }, to: [], date: new Date(Date.now() - minsAgo * 60_000).toISOString(), body: 'Hello' });
+
+await test('Snooze: a due email comes back unread to the inbox; one not due stays hidden', () => {
+  const now = new Date().toISOString();
+  const t = { location: 'inbox', unread: false, snoozedUntil: new Date(Date.now() - 1000).toISOString(), messages: [msg('m1', 'client@outside.example')] };
+  const woke = mailRules.wakeThread(t, now);
+  assert.equal(woke.unread, true);
+  assert.equal(woke.location, 'inbox');
+  assert.equal('snoozedUntil' in woke, false);
+  assert.equal(mailRules.wakeThread({ ...t, snoozedUntil: new Date(Date.now() + 60_000).toISOString() }, now), null);
+  assert.equal(mailRules.wakeThread({ ...t, location: 'archive' }, now).location, 'inbox', 'snoozed from Archive (a sent email): back in the inbox');
+});
+await test('Snooze "only if no reply": comes back when nobody wrote; a reply since keeps it away, in Archive', () => {
+  const now = new Date().toISOString();
+  const due = new Date(Date.now() - 1000).toISOString();
+  const quiet = { location: 'inbox', unread: false, snoozedUntil: due, snoozeIfNoReply: 'm1', messages: [msg('m1', 'me@team.example')] };
+  const back = mailRules.wakeThread(quiet, now);
+  assert.equal(back.unread, true, 'nobody wrote: it comes back');
+  assert.equal('snoozeIfNoReply' in back, false);
+  const replied = { ...quiet, messages: [msg('m1', 'me@team.example'), msg('m2', 'me@team.example', 5)] };
+  const handled = mailRules.wakeThread(replied, now);
+  assert.equal(handled.unread, false, 'a reply from here: no comeback');
+  assert.equal(handled.location, 'archive');
+  assert.deepEqual(mailRules.snoozePatch(replied, due, true), { snoozedUntil: due, snoozeIfNoReply: 'm2' });
+  assert.equal(mailRules.snoozePatch(replied, due, false).snoozeIfNoReply, undefined);
+});
+await test('Snooze presets: exact times, only the ones that make sense now', () => {
+  const monMorning = new Date(2026, 9, 5, 8, 10); // Monday 08:10
+  const p = mailRules.snoozePresets(monMorning).map((x) => x.id);
+  assert.deepEqual(p, ['later', 'evening', 'tomorrow', 'weekend', 'week']);
+  const later = mailRules.snoozePresets(monMorning)[0].at;
+  assert.equal(later.getHours() * 60 + later.getMinutes(), 11 * 60 + 15, 'three hours on, to the next quarter');
+  const friNight = new Date(2026, 9, 9, 21, 0); // Friday 21:00
+  assert.deepEqual(mailRules.snoozePresets(friNight).map((x) => x.id), ['tomorrow', 'week']);
+  const week = mailRules.snoozePresets(friNight).find((x) => x.id === 'week').at;
+  assert.equal(week.getDay(), 1, 'next week is Monday');
+  assert.equal(week.getHours(), 9);
+});
+await test('People, not systems: newsletters and notification senders are automated', () => {
+  assert.equal(mailRules.fromPerson({ from: { email: 'nadia@kopikita.co.id' } }), true);
+  assert.equal(mailRules.fromPerson({ from: { email: 'no-reply@aws.amazon.com' } }), false);
+  assert.equal(mailRules.fromPerson({ from: { email: 'notifications@dokploy.com' } }), false);
+  assert.equal(mailRules.fromPerson({ from: { email: 'news+weekly@shop.example' } }), false);
+  assert.equal(mailRules.fromPerson({ from: { email: 'dina@figma.com' }, listUnsubscribe: { url: 'https://x', oneClick: true } }), false);
+  const mine = (e) => e.endsWith('@team.example');
+  assert.equal(mailRules.needsReply({ location: 'inbox', messages: [msg('a', 'client@outside.example')] }, mine), true);
+  assert.equal(mailRules.needsReply({ location: 'inbox', messages: [msg('a', 'client@outside.example'), msg('b', 'me@team.example')] }, mine), false, 'answered');
+  assert.equal(mailRules.needsReply({ location: 'archive', messages: [msg('a', 'client@outside.example')] }, mine), false, 'done');
+});
+await test('Comments: everyone writes their own; nobody changes or removes someone else’s', () => {
+  const acct = { id: 'box', users: ['u-ann', 'u-bob'] };
+  const before = { id: 't-c', accountId: 'box', notes: [{ id: 'n1', by: 'u-ann', text: 'Ann’s', at: '2026-10-01T10:00:00.000Z' }, { id: 'n2', by: 'u-bob', text: 'Bob’s', at: '2026-10-01T11:00:00.000Z' }] };
+  const asked = { ...before, notes: [{ id: 'n1', by: 'u-ann', text: 'Changed by Bob', at: 'x' }, { id: 'n3', by: 'u-ann', text: 'Bob pretending to be Ann', at: 'x' }, { id: 'n4', by: 'u-bob', text: '  New from Bob  ', at: 'not a date' }] };
+  const out = mailTeam.guardTeamMail(asked, before, 'u-bob', acct, '2026-10-09T00:00:00.000Z');
+  assert.deepEqual(out.notes.map((n) => [n.id, n.by, n.text]), [['n1', 'u-ann', 'Ann’s'], ['n4', 'u-bob', 'New from Bob']], 'Ann’s stays as written; Bob removed his own; the forged one is dropped');
+  assert.equal(out.notes[1].at, '2026-10-09T00:00:00.000Z', 'a bad time becomes the server’s');
+  const edit = mailTeam.guardTeamMail({ ...before, notes: [before.notes[0], { ...before.notes[1], text: 'Bob, edited' }] }, before, 'u-bob', acct);
+  assert.equal(edit.notes[1].text, 'Bob, edited', 'their author edits their own');
+});
+await test('Who handles an email: only someone with the mailbox, and the server notes who gave it to them', () => {
+  const acct = { id: 'box', users: ['u-ann', 'u-bob'] };
+  const before = { id: 't-a', accountId: 'box' };
+  const given = mailTeam.guardTeamMail({ ...before, assignee: 'u-bob', assignedBy: 'u-bob' }, before, 'u-ann', acct);
+  assert.equal(given.assignee, 'u-bob');
+  assert.equal(given.assignedBy, 'u-ann');
+  const outsider = mailTeam.guardTeamMail({ ...given, assignee: 'u-stranger' }, given, 'u-ann', acct);
+  assert.equal(outsider.assignee, 'u-bob', 'someone without the mailbox can’t be given it');
+  assert.equal(outsider.assignedBy, 'u-ann');
+  const none = mailTeam.guardTeamMail({ ...given, assignee: undefined }, given, 'u-bob', acct);
+  assert.equal('assignee' in none || 'assignedBy' in none, false);
+  const keep = mailTeam.guardTeamMail({ ...given, assignedBy: 'u-bob' }, given, 'u-bob', acct);
+  assert.equal(keep.assignedBy, 'u-ann', 'who gave it is the server’s');
+  const snooze = mailTeam.guardTeamMail({ ...before, snoozedUntil: 'soon', snoozeIfNoReply: 'm1' }, before, 'u-ann', acct);
+  assert.equal('snoozedUntil' in snooze || 'snoozeIfNoReply' in snooze, false, 'a snooze needs a real time');
+});
+await test('Mail pushes: people only, held about 20 seconds, dropped once read elsewhere; shared inboxes buzz only the assignee', async () => {
+  const sent = [];
+  pushRules.initPushRules({ active: () => false, desktop: { has: (u) => u.startsWith('u-p'), send: (u, a) => sent.push({ u, tag: a.tag }) } });
+  pushRules.setPushHold(60);
+  db.writeDocs('workspaces', [{ id: 'w-push', name: 'Push', domains: ['push.example'], members: [{ userId: 'u-pa', role: 'owner' }, { userId: 'u-pb', role: 'member' }], accounts: [{ id: 'pa', email: 'pa@push.example', kind: 'personal', users: ['u-pa'] }, { id: 'shared', email: 'hello@push.example', kind: 'shared', users: ['u-pa', 'u-pb'] }] }], [], null);
+  const arrive = (id, account, from, extra = {}) => {
+    const t = { id, accountId: account, subject: id, location: 'inbox', unread: true, starred: false, labels: [], messages: [{ ...msg(`m-${id}`, from, 0) }], ...extra };
+    db.writeDocs('threads', [t], [], null);
+    pushRules.onBroadcast('threads', [t]);
+    return t;
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  arrive('t-person', 'pa', 'client@outside.example');
+  arrive('t-robot', 'pa', 'no-reply@service.example');
+  const seen = arrive('t-seen', 'pa', 'other@outside.example');
+  assert.equal(sent.length, 0, 'nothing buzzes straight away');
+  db.writeDocs('threads', [{ ...seen, unread: false }], [], null); // read on the computer a few seconds later
+  arrive('t-shared-open', 'shared', 'lead@outside.example');
+  arrive('t-shared-mine', 'shared', 'lead2@outside.example', { assignee: 'u-pb' });
+  await sleep(150);
+  assert.deepEqual(sent.map((x) => `${x.u} ${x.tag}`).sort(), ['u-pa mail:t-person', 'u-pb mail:t-shared-mine'], 'a person’s mail, and the shared one given to Bob; not the robot, the read one or the unassigned one');
+  // A mention in a comment: held too, and dropped if the notice was read meanwhile.
+  sent.length = 0;
+  const note = (id) => ({ id, userId: 'u-pb', workspaceId: 'w-push', kind: 'mention', text: 'Ann mentioned you', at: new Date().toISOString(), read: false, link: { app: 'mail', id: 't-shared-open' } });
+  db.writeDocs('notices', [note('n-push-1'), note('n-push-2')], [], null);
+  pushRules.onBroadcast('notices', [note('n-push-1'), note('n-push-2')]);
+  db.writeDocs('notices', [{ ...note('n-push-2'), read: true }], [], null);
+  await sleep(150);
+  assert.deepEqual(sent.map((x) => x.tag), ['mail:t-shared-open'], 'one mention buzzes; the one already read doesn’t');
+  pushRules.setPushHold(20_000);
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

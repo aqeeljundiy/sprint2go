@@ -41,7 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   accent: '#5b5bf6',
   density: 'comfortable',
-  undoSend: 5,
+  undoSend: 10, // the mail engine holds each email this long (server/mailer.ts); Undo lasts exactly as long
   notifyMessages: true,
   notifyNewMail: true,
   notifyTasks: true,
@@ -189,7 +189,7 @@ export function usePersisted<T>(key: string, initial: T) {
 
 // What's worth carrying to another device: your settings, saved views, tab orders and Ask AI chats.
 // Panel widths, the collapsed sidebar and "which table was open" stay with the device.
-const SYNCED = [/^pm-settings:/, /^pm-blocked:/, /^s2g-ask-chats:/, /^s2g-task-views$/, /^s2g-tabs:/, /^s2g-tabbar:/, /^s2g-task-(fields|group|layout)$/, /^s2g-project-(group|card-fields|type)$/, /^s2g-briefs-open$/, /^s2g-home:/, /^s2g-chat-(views|view|starred|collapsed|drafts|typed|muted|saved|tiles):/, /^s2g-join:/, /^s2g-read:/, /^pm-drive-layout$/, /^s2g-table-view:/];
+const SYNCED = [/^pm-settings:/, /^s2g-queue-snooze:/, /^pm-blocked:/, /^s2g-ask-chats:/, /^s2g-task-views$/, /^s2g-tabs:/, /^s2g-tabbar:/, /^s2g-task-(fields|group|layout)$/, /^s2g-project-(group|card-fields|type)$/, /^s2g-briefs-open$/, /^s2g-home:/, /^s2g-chat-(views|view|starred|collapsed|drafts|typed|muted|saved|tiles):/, /^s2g-join:/, /^s2g-read:/, /^pm-drive-layout$/, /^s2g-table-view:/];
 const isSynced = (k: string) => SYNCED.some((r) => r.test(k));
 let prefUser = '';
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);

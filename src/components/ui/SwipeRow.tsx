@@ -58,7 +58,7 @@ export function SwipeRow({
 
   // A row that came back (Undo) slides back in.
   useEffect(() => {
-    if (!leaving && gone) setGone(0);
+    if (!leaving && gone) (setGone(0), setArmed(null));
   }, [leaving]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (d: number, width: number): SwipeAction | null => {
@@ -72,7 +72,7 @@ export function SwipeRow({
     const a = g.current.armed;
     g.current.armed = null;
     setMoving(false);
-    setArmed(null);
+    if (!a?.removes) setArmed(null); // a row sliding out keeps its action's colour until it's gone
     if (!a) return setDx(0);
     const doIt = () => {
       const undo = a.run();
@@ -111,7 +111,8 @@ export function SwipeRow({
         }}
         onPointerMove={(e) => {
           const s = g.current;
-          if (e.pointerId !== s.id) return;
+          // Switched off mid-gesture (a long-press that started selecting): the finger moving on is no swipe.
+          if (e.pointerId !== s.id || !on) return;
           const ddx = e.clientX - s.x;
           const ddy = e.clientY - s.y;
           if (!s.lock) {

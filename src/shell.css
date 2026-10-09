@@ -555,7 +555,7 @@ body.resizing-x .pane-resize::after {
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
 }
-.compose-field span {
+.compose-field > span {
   width: 52px;
   flex: none;
   color: var(--text-3);
@@ -1825,83 +1825,11 @@ body.resizing-x .pane-resize::after {
     display: none;
   }
 
-  /* Mail */
-  .list-header {
-    padding: 12px 16px;
-    padding-top: max(12px, env(safe-area-inset-top));
-  }
-  .rows {
-    padding-bottom: 88px;
-  }
-  .row-actions {
-    display: none;
-  }
-  .star:not(.on) {
-    opacity: 0;
-  }
-  .reader-bar {
-    padding-top: max(8px, env(safe-area-inset-top));
-  }
-  .reader-scroll {
-    padding: 20px 16px 32px;
-  }
-  .thread-head h2 {
-    font-size: 20px;
-  }
-  .message-head {
-    padding: 12px;
-  }
-  .message-body {
-    padding: 2px 14px 16px;
-  }
-  .attachment {
-    flex: 1 1 100%;
-  }
-  .attachment > div {
-    flex: 1;
-    min-width: 0;
-  }
-  .file-name {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  /* Compose: full screen sheet */
-  .compose,
-  .compose.max,
-  .compose.min {
-    inset: 0;
-    width: auto !important;
-    height: auto !important;
-    max-width: none;
-    max-height: none;
-    border: 0;
-    border-radius: 0;
-    transform: none;
-    z-index: 60;
-    padding-bottom: env(safe-area-inset-bottom);
-    animation: sheetUp 0.32s var(--ease);
-  }
-  .compose.closing,
-  .compose.max.closing {
-    animation: sheetDown 0.18s ease-in forwards;
-  }
-  .compose-head {
-    padding-top: max(7px, env(safe-area-inset-top));
-    border-radius: 0;
-  }
-  .grip {
-    display: none;
-  }
+  /* Mail's phone rules (list, reader, compose) are in src/mobile/mail.css. */
   .rich-toolbar {
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
-  }
-  .recip-suggest {
-    left: 16px;
-    width: calc(100% - 32px);
   }
 
   /* Calendar */
@@ -1995,13 +1923,6 @@ body.resizing-x .pane-resize::after {
 /* The reply box: the switch on the left, Discard and Send on the right. */
 .reply-actions .track-toggle {
   margin-right: auto;
-}
-@media (max-width: 767px) {
-  .reply-actions .track-toggle {
-    height: 40px;
-    min-width: 40px;
-    justify-content: center;
-  }
 }
 
 .seen-chip {
@@ -2210,9 +2131,6 @@ body.resizing-x .pane-resize::after {
     padding-left: 14px;
   }
   .tp-head span {
-    display: none;
-  }
-  .track-toggle span {
     display: none;
   }
 }
@@ -2729,13 +2647,6 @@ body.resizing-x .pane-resize::after {
   .tg-bar .segmented {
     overflow-x: auto;
     max-width: 100%;
-  }
-  .track-menu {
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    bottom: 64px;
-    width: auto;
   }
 }
 

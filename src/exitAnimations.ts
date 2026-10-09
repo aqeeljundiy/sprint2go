@@ -35,6 +35,7 @@ const LEAVING = [
   '.paused-banner',
   '.demo-bar',
   '.task-bulk',
+  '.mail-bulk',
 ].join(',');
 
 const MS = 200;
