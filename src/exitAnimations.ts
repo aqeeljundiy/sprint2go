@@ -34,6 +34,7 @@ const LEAVING = [
   '.inline-sheet',
   '.paused-banner',
   '.demo-bar',
+  '.mail-bulk',
 ].join(',');
 
 const MS = 200;

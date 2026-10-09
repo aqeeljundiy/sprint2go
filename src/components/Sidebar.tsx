@@ -14,7 +14,7 @@ import {
   ShieldAlert,
   Star,
   Trash2,
-  type LucideIcon, Clock, CalendarClock, UserCheck, Timer, MoreHorizontal, Plus } from 'lucide-react';
+  type LucideIcon, Clock, CalendarClock, UserCheck, Timer, MoreHorizontal, Plus, ListChecks } from 'lucide-react';
 import type { Account, AppId, FolderId, Label, View } from '../types';
 import { providerName } from './Onboarding';
 import { lifeLeft } from './TempAddress';
@@ -213,6 +213,14 @@ export function Sidebar(props: Props) {
                   >
                     <Activity size={17} />
                     <span className="sb-label">Waiting for reply</span>
+                  </button>
+                  <button
+                    className={`nav-item ${isActive({ kind: 'todos', id: 'todos' }) ? 'active' : ''}`}
+                    onClick={() => props.onSelect({ kind: 'todos', id: 'todos' })}
+                    title="To-do: emails that asked you to do something"
+                  >
+                    <ListChecks size={17} />
+                    <span className="sb-label">To-do</span>
                   </button>
 
                 </nav>

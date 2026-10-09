@@ -24,6 +24,8 @@ import { mailConfigured, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as readTracking from './readTracking.ts';
+import * as mailTeam from './mailTeam.ts';
+import { wakeThread } from '../src/mailRules.ts';
 import * as routing from './routing.ts';
 import * as offsite from './offsite.ts';
 import { certState } from './mailcert.ts';
@@ -1479,8 +1481,12 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       if (!runs) say(coll === 'clients' ? 'Only admins and the project’s owner can change its stages.' : 'Only admins and the team’s lead can change its stages.');
       d = { ...d, taskStages } as db.Doc;
     }
-    // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts).
-    if (coll === 'threads') return readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO);
+    // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts);
+    // comments, who handles it and snoozes follow the team mail rules (mailTeam.ts).
+    if (coll === 'threads') {
+      const acct = (db.allDocs('workspaces') as any[]).flatMap((w) => w.accounts ?? []).find((a: any) => a.id === (d as any).accountId);
+      return mailTeam.guardTeamMail(readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO), before, me, acct, now);
+    }
     // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
     if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
     // Your own message: a send time only while it hasn't gone out (Send later, server/chatLater.ts).
@@ -2281,6 +2287,7 @@ createServer(async (req, res) => {
           from: { name: String(account.name || ws.name), email: String(account.email).toLowerCase() },
           to: people(b.to),
           cc: people(b.cc),
+          bcc: people(b.bcc),
           subject: String(b.subject ?? '').slice(0, 500),
           text: String(b.text ?? ''),
           html: typeof b.html === 'string' && b.html ? b.html : undefined,
@@ -2322,7 +2329,7 @@ createServer(async (req, res) => {
         db.writeDocs('threads', [next], [], me);
         broadcast('threads', [next], []);
       }
-      return json(res, 200, { draft: !rest.length, reply: !!rest.length, threadId: tid, email: { to: taken.email.to, cc: taken.email.cc, subject: taken.email.subject, text: taken.email.text, html: taken.email.html, files: taken.email.files } });
+      return json(res, 200, { draft: !rest.length, reply: !!rest.length, threadId: tid, email: { to: taken.email.to, cc: taken.email.cc, bcc: taken.email.bcc ?? [], subject: taken.email.subject, text: taken.email.text, html: taken.email.html, files: taken.email.files } });
     }
 
     /* ---------- mail: calendar invites, out of office, aliases, removing a mailbox ---------- */
@@ -3674,8 +3681,8 @@ setInterval(() => {
   const sendNow: any[] = [];
   const threads = (db.allDocs('threads') as any[]).flatMap((t) => {
     if (t.sendAt && t.sendAt <= now) return (sendNow.push(t), [{ ...t, sendAt: undefined, location: 'archive', messages: t.messages.map((m: any) => ({ ...m, date: now })) }]);
-    if (t.snoozedUntil && t.snoozedUntil <= now) return [{ ...t, snoozedUntil: undefined, unread: true }];
-    return [];
+    const woke = wakeThread(t, now); // snoozed mail comes back (or not, when "only if no reply" saw a reply)
+    return woke ? [woke] : [];
   });
   if (threads.length) {
     db.writeDocs('threads', threads, [], null);
@@ -3688,7 +3695,7 @@ setInterval(() => {
     const account = ws?.accounts?.find((a: any) => a.id === t.accountId);
     const m = t.messages[t.messages.length - 1];
     if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
-    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null, remindDays: Number(m.trackOptions.remindDays) || 0 } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
+    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], bcc: m.bcc ?? [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null, remindDays: Number(m.trackOptions.remindDays) || 0 } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
   if (due.length) {

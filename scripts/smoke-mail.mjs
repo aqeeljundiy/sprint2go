@@ -7,6 +7,7 @@
 //  5. read tracking: a tracked email goes out through a local sink (MAIL_RELAY_URL), each outside recipient with their
 //     own picture and links; loading them as an outside mail app would updates the sender's thread, and the app can't
 //     write opens itself
+//  6. Bcc: the hidden recipient gets it and nobody sees them
 //   node scripts/smoke-mail.mjs
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -253,6 +254,20 @@ try {
     });
     check(sent2.ok && !!t2?.messages[0].mid && Object.keys(t2.messages[0].tracking ?? {}).join() === 'third@outside-smoke.example', 'sent before the app saved it: the Message-ID, delivery state and who is tracked still land on the message');
   }
+
+  // 6. Bcc: the hidden recipient gets the email; no copy names them, in its headers or in a teammate's mailbox.
+  const s6 = `bcc ${randomBytes(4).toString('hex')}`;
+  canSend();
+  const sent6 = await api('/api/mail/send', { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: `t-smoke-${randomBytes(4).toString('hex')}`, messageId: `m-smoke-${randomBytes(4).toString('hex')}`, to: [{ name: 'Open', email: 'open@outside-smoke.example' }], cc: [{ name: 'Rizky', email: 'rizky@pixelandprofits.com' }], bcc: [{ name: 'Hidden', email: 'hidden@outside-smoke.example' }], subject: s6, text: 'Bcc check', files: [] });
+  check(sent6.ok, `the mail engine takes an email with Bcc (${sent6.status})`);
+  const got6 = await waitFor(() => {
+    const m = sunk.filter((x) => x.raw.includes(s6));
+    return m.length >= 2 ? m : null;
+  });
+  check(!!got6 && got6.some((m) => m.to.includes('hidden@outside-smoke.example')), 'the Bcc recipient gets a copy');
+  check(!!got6 && got6.every((m) => !/hidden@outside-smoke/i.test(m.raw.toString('utf8').split(/\r?\n\r?\n/)[0])), 'no copy names them in its headers');
+  const inside6 = await waitFor(() => threadWith(s6).find((t) => t.accountId === 'pnp-rizky'));
+  check(!!inside6 && !JSON.stringify(inside6.messages[0].to).includes('hidden@'), 'the teammate’s copy doesn’t list them either');
 
   db.close();
 } catch (e) {
