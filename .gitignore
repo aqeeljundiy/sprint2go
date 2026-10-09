@@ -11,3 +11,6 @@ recorder/.env
 # Claude Code worktrees
 .claude/worktrees/
 tsconfig.tsbuildinfo
+
+# Competitor research (screenshots and notes): local only, never in the public repo
+research/
