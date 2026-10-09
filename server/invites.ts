@@ -4,6 +4,7 @@ import type { ParsedMail } from 'mailparser';
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import { occurrences, parseInvite, type IcsEvent } from './ics.ts';
+import { inviteCalendarTimes } from '../src/inviteTimes.ts';
 
 type Att = ParsedMail['attachments'][number];
 export type StoredInvite = IcsEvent & { you?: string; answer?: { status: Rsvp; at: string; by: string; sent: boolean } };
@@ -63,8 +64,7 @@ export function eventsFor(inv: StoredInvite, o: { userId: string; workspaceId: s
     id: 'ev-' + hex(),
     title: inv.title,
     calendarId: 'work',
-    start: x.start,
-    end: x.end,
+    ...inviteCalendarTimes(x, inv.allDay), // all-day: floating dates, so the day never shifts with the viewer's zone
     ...(inv.allDay ? { allDay: true } : {}),
     ...(inv.location ? { location: inv.location } : {}),
     ...(inv.url ? { meetUrl: inv.url } : {}),
@@ -76,7 +76,9 @@ export function eventsFor(inv: StoredInvite, o: { userId: string; workspaceId: s
     createdBy: o.userId,
     inviteUid: inv.uid,
     sequence: inv.sequence,
-    ...('recurrenceId' in x && x.recurrenceId ? { occurrence: x.recurrenceId } : inv.recurrenceId ? { occurrence: inv.recurrenceId } : {}),
+    // Which date of the invite this is (its original start, as the invite writes it): a repeat's date, a moved one, or
+    // an all-day event's own day (its start on the calendar is floating, so matching uses this).
+    ...('recurrenceId' in x && x.recurrenceId ? { occurrence: x.recurrenceId } : inv.recurrenceId ? { occurrence: inv.recurrenceId } : inv.allDay ? { occurrence: x.start } : {}),
     rsvp: o.rsvp,
     ...(inv.organizer ? { organizer: inv.organizer } : {}),
   }));
@@ -119,7 +121,7 @@ export function applyInbound(ws: { id: string }, account: Account, inv: StoredIn
       // One date of a repeating event moved.
       const one = mine.find((e) => (e.occurrence ?? e.start) === inv.recurrenceId);
       if (!one) continue;
-      next = [{ ...one, title: inv.title, start: inv.start, end: inv.end, location: inv.location, meetUrl: inv.url ?? one.meetUrl, sequence: inv.sequence }];
+      next = [{ ...one, title: inv.title, ...inviteCalendarTimes(inv, inv.allDay ?? one.allDay), location: inv.location, meetUrl: inv.url ?? one.meetUrl, sequence: inv.sequence }];
       drop = [];
     } else {
       next = eventsFor(inv, { userId, workspaceId: ws.id, threadId: mine[0].threadId ?? threadId, rsvp, mine: [account.email, inv.you ?? ''] }).docs;

@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { SmoothHeight, useLeaving } from './ui/Smooth';
+import { PushScreen } from './ui/PushScreen';
+import { usePhone } from '../mobile/media';
+import { takeSettingsList } from './settingsList';
 import { term, brand as product } from '../terms';
-import { Handshake, Ban, Bell, Building2, ChevronDown, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy, FolderInput } from 'lucide-react';
+import { Handshake, Ban, Bell, Building2, ChevronDown, ChevronRight, Columns3, CreditCard, HardDrive, KeyRound, KeySquare, Stamp, LayoutGrid, UserPlus, Inbox, Plus, Sparkles, Trash2, Users, Keyboard, Menu, Palette, PenLine, ShieldCheck, UserRound, Video, type LucideIcon, FlaskConical, Send, LifeBuoy, FolderInput } from 'lucide-react';
 import { ACCENTS, type Settings } from '../settings';
 import { DEFAULT_PERMISSIONS } from '../types';
 import type { AISettings, AppId, BlockRule, CalendarDef, DriveItem, HomeTemplateId, MeetingSettings, Plan, Role, StorageSettings, Team, Todo, User, Workspace } from '../types';
@@ -19,8 +22,9 @@ import { RichEditor } from './RichEditor';
 import { PhotoPicker } from './PhotoPicker';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { accessFor } from '../clientView';
-import { Select, type Option } from './ui/Select';
-import { COMPANY_TZ, SUMMARY_HOUR, companyTz, deviceTz } from '../jobTimes';
+import { Select } from './ui/Select';
+import { zoneOptions } from './ui/zones';
+import { SUMMARY_HOUR, companyTz } from '../jobTimes';
 import { changePassword, server } from '../sync';
 import { EmailSetupGuide, providerLabel } from './EmailSetupGuide';
 import { caps } from '../caps';
@@ -62,25 +66,6 @@ const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'C
   { id: 'developer', name: 'Developer', icon: FlaskConical, group: 'You' },
 ];
 
-/** One time zone as a choice: "Jakarta, GMT+7", under its region, found by any part of its name. */
-function zoneOption(tz: string, at = new Date()): Option {
-  let offset = '';
-  try {
-    offset = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(at).find((x) => x.type === 'timeZoneName')?.value ?? '';
-  } catch {
-    /* an old browser: the name alone */
-  }
-  const parts = tz.split('/');
-  const city = parts[parts.length - 1].replace(/_/g, ' ');
-  return { value: tz, label: offset ? `${city}, ${offset}` : city, hint: parts.slice(1, -1).join(', ').replace(/_/g, ' ') || undefined, group: parts.length > 1 ? parts[0] : 'Other', keywords: tz.replace(/[/_]/g, ' ') };
-}
-/** Every time zone the browser knows, by region, for Settings, General. The company's and this device's come first. */
-let ZONES: Option[] | null = null;
-function zoneOptions(current: string): Option[] {
-  ZONES ??= (typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [COMPANY_TZ]).map((tz) => zoneOption(tz));
-  const top = [...new Set([current, deviceTz()])].map((tz) => ({ ...(ZONES!.find((z) => z.value === tz) ?? zoneOption(tz)), group: 'Suggested' }));
-  return [...top, ...ZONES.filter((z) => !top.some((t) => t.value === z.value))];
-}
 
 /** Settings the demo company leaves out: they reach the real world (billing, AI keys, mail delivery, brand, security). */
 const DEMO_OUT: SettingsSection[] = ['email', 'agency', 'ai', 'billing', 'storage', 'security', 'import'];
@@ -171,7 +156,53 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
+/**
+ * Phones: Settings is a list of sections, grouped like the desktop's (the company, then you). Each opens full screen over
+ * the list with Back. Keyboard shortcuts stay a desktop thing.
+ */
+function SettingsList({ sections, company, onOpen }: { sections: typeof SECTIONS; company: string; onOpen: (id: SettingsSection) => void }) {
+  const shown = sections.filter((x) => x.id !== 'shortcuts');
+  return (
+    <div className="set-list">
+      {(['Company', 'You'] as const).map((g) => {
+        const rows = shown.filter((x) => x.group === g);
+        if (!rows.length) return null;
+        return (
+          <section key={g} className="set-list-group" aria-label={g === 'Company' ? company : 'You'}>
+            <h2 className="set-list-head">{g === 'Company' ? company : 'You'}</h2>
+            <div className="set-list-card">
+              {rows.map(({ id, name, icon: Icon }) => (
+                <button key={id} type="button" className="set-list-row" onClick={() => onOpen(id)}>
+                  <span className="set-list-icon">
+                    <Icon size={17} />
+                  </span>
+                  <span className="set-list-name">{name}</span>
+                  <ChevronRight size={18} className="set-list-chev" />
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/** One section: in place on desktop; on phones, full screen over the list while it's open. */
+function SectionScreen({ phone, open, title, onBack, children }: { phone: boolean; open: boolean; title: string; onBack: () => void; children: ReactNode }) {
+  if (!phone) return <>{children}</>;
+  return open ? (
+    <PushScreen title={title} backLabel="Settings" onBack={onBack} className="settings-push">
+      {children}
+    </PushScreen>
+  ) : null;
+}
+
 export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin, demo, embedded }: Props & { embedded?: boolean }) {
+  // Phones: the list of sections, and the one open over it (Settings opened for one section starts on it).
+  const onPhone = usePhone();
+  const phone = onPhone && !embedded;
+  const [sectionOpen, setSectionOpen] = useState(() => !embedded && !takeSettingsList());
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -207,7 +238,9 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             </span>
           ))}
         </nav>
+        {phone && <SettingsList sections={sections} company={ws.name || 'Company'} onOpen={(id) => (onSection(id), setSectionOpen(true))} />}
 
+        <SectionScreen phone={phone} open={sectionOpen} title={SECTIONS.find((x) => x.id === section)?.name ?? 'Settings'} onBack={() => setSectionOpen(false)}>
         <div className="settings-content" key={section}>
           {section === 'workspace' && (
             <>
@@ -648,6 +681,16 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="set-intro">What your clients see and can do when they sign in to their portal. You can change any of these for one client on its client page (Portal tab).</p>
               <div className="access-types">
                 <span className="muted small">Settings for</span>
+                {/* Phones: five choices don't fit in a row, so they're a list that opens as a sheet. */}
+                {onPhone && (
+                  <Select
+                    value={accessType}
+                    onChange={setAccessType}
+                    label="Settings for"
+                    className="access-type-sel"
+                    options={['', ...PROJECT_TYPES].map((tp) => ({ value: tp, label: tp || `Every ${term.one}`, hint: tp && ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? 'Changed for this type' : undefined }))}
+                  />
+                )}
                 <div className="segmented sm">
                   {['', ...PROJECT_TYPES].map((tp) => (
                     <button key={tp || 'all'} type="button" className={accessType === tp ? 'on' : ''} onClick={() => setAccessType(tp)}>
@@ -719,6 +762,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'import' && sections.some((x) => x.id === 'import') && <ImportSection ws={ws} members={wsUsers} projects={admin.projects} toast={admin.toast} />}
           {section === 'security' && <SecuritySection ws={ws} me={me} isOwner={myRole === 'owner'} canManage={canManage} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} onAccount={() => onSection('account')} users={wsUsers} toast={admin.toast} />}
         </div>
+        </SectionScreen>
       </div>
     </section>
   );

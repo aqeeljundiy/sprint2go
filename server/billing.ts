@@ -7,8 +7,9 @@
 //  - Boosted sending credits: bought with an invoice paid by bank transfer, added when an operator marks it paid
 import * as db from './db.ts';
 import * as platform from './platform.ts';
-import { MAIL_PACKS, PAUSE_DAYS_A_YEAR, countedMailboxes, mailboxRoom, meetHours, pauseDaysLeft, pauseDaysUsed, rp, storageGB } from '../src/data/pricing.ts';
-import type { Plan } from '../src/types.ts';
+import { randomBytes } from 'node:crypto';
+import { MAIL_PACKS, PAUSE_DAYS_A_YEAR, addAdjustment, billingPeriod, countedMailboxes, mailboxRoom, meetHours, pauseDaysLeft, pauseDaysUsed, prorate, rp, storageGB } from '../src/data/pricing.ts';
+import type { Plan, PlanAdjustment } from '../src/types.ts';
 
 const DAY = 86_400_000;
 const now = () => new Date().toISOString();
@@ -42,6 +43,99 @@ export function activePeople(ws: Ws | undefined, period = now().slice(0, 7)): { 
   const seen = platform.activeInMonth(period);
   return { active: Math.max(1, team.filter((m) => seen.has(m.userId)).length), team: Math.max(1, team.length), period };
 }
+
+/* ---------- free trials: one per person, and one per company domain ---------- */
+
+db.db.exec(`
+  CREATE TABLE IF NOT EXISTS trials (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, email_domain TEXT, workspace_id TEXT NOT NULL, company TEXT NOT NULL, at TEXT NOT NULL, how TEXT NOT NULL, UNIQUE (user_id, workspace_id));
+  CREATE TABLE IF NOT EXISTS trial_grants (user_id TEXT PRIMARY KEY, by TEXT NOT NULL, at TEXT NOT NULL, note TEXT);
+`);
+/** Shared mail services (gmail.com and the like): an address there says nothing about which company someone is. */
+const FREEMAIL = ['gmail', 'googlemail', 'yahoo', 'outlook', 'hotmail', 'icloud', 'live', 'proton', 'protonmail', 'me', 'aol', 'ymail'];
+const ownDomain = (email: string | undefined) => {
+  const d = String(email ?? '').trim().toLowerCase().split('@')[1] ?? '';
+  return d && d.includes('.') && !FREEMAIL.includes(d.split('.')[0]) ? d : null;
+};
+type TrialRow = { id: number; user_id: string; email_domain: string | null; workspace_id: string; company: string; at: string; how: string };
+const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+/**
+ * Whether a new company of this person gets the free trial. One per person (their sign-in) and one per company domain:
+ * their own verified address's domain (they proved it with the sign-up code; gmail.com and the like don't count) and
+ * any domain the new company lists that a company with a trial has proven in its DNS. An operator can allow one more
+ * (grantTrial). `why` is what the person reads when it isn't available.
+ */
+export function trialCheck(userId: string, email: string | undefined, domains: string[] = []): { ok: true; granted: boolean } | { ok: false; why: string } {
+  if (db.db.prepare('SELECT 1 FROM trial_grants WHERE user_id = ?').get(userId)) return { ok: true, granted: true };
+  const mine = db.db.prepare('SELECT * FROM trials WHERE user_id = ? ORDER BY at LIMIT 1').get(userId) as TrialRow | undefined;
+  if (mine) return { ok: false, why: `You’ve already had a free trial, with ${mine.company} from ${day(mine.at)}. Pick a plan any time, or ask us about another trial in Settings, Help.` };
+  const d = ownDomain(email);
+  const byDomain = d ? (db.db.prepare('SELECT * FROM trials WHERE email_domain = ? ORDER BY at LIMIT 1').get(d) as TrialRow | undefined) : undefined;
+  if (byDomain) return { ok: false, why: `${d} already had a free trial, with ${byDomain.company} from ${day(byDomain.at)}. Pick a plan any time, or ask us about another trial in Settings, Help.` };
+  for (const dom of domains.map((x) => String(x).trim().toLowerCase()).filter(Boolean)) {
+    let proven: { workspace_id: string } | undefined;
+    try {
+      proven = db.db.prepare('SELECT workspace_id FROM mail_domains WHERE domain = ? AND verified_at IS NOT NULL').get(dom) as { workspace_id: string } | undefined;
+    } catch {
+      /* no domain was ever proven here */
+    }
+    const had = proven && (db.db.prepare('SELECT * FROM trials WHERE workspace_id = ? LIMIT 1').get(proven.workspace_id) as TrialRow | undefined);
+    if (had) return { ok: false, why: `${dom} belongs to ${had.company}, which already had a free trial. Pick a plan any time, or ask us about another trial in Settings, Help.` };
+  }
+  return { ok: true, granted: false };
+}
+/** A trial started: remembered for the person and their domain (an operator's allowance is used up). */
+export function recordTrial(userId: string, email: string | undefined, ws: { id: string; name?: string }, how: 'self' | 'operator' | 'granted') {
+  db.db.prepare('INSERT OR IGNORE INTO trials (user_id, email_domain, workspace_id, company, at, how) VALUES (?, ?, ?, ?, ?, ?)').run(userId, ownDomain(email), ws.id, String(ws.name ?? 'a company').slice(0, 80), now(), how);
+  if (how !== 'operator') db.db.prepare('DELETE FROM trial_grants WHERE user_id = ?').run(userId);
+}
+/** An operator allows this person one more trial (Operator console, People). */
+export const grantTrial = (userId: string, by: string, note?: string) =>
+  db.db.prepare('INSERT INTO trial_grants (user_id, by, at, note) VALUES (?, ?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET by = excluded.by, at = excluded.at, note = excluded.note').run(userId, by, now(), note ?? null);
+/** A person's trials and whether another one is allowed, for the operator console. */
+export const trialsOf = (userId: string) => ({
+  trials: (db.db.prepare('SELECT * FROM trials WHERE user_id = ? ORDER BY at').all(userId) as TrialRow[]).map((r) => ({ workspaceId: r.workspace_id, company: r.company, at: r.at, how: r.how })),
+  granted: (db.db.prepare('SELECT by, at FROM trial_grants WHERE user_id = ?').get(userId) as { by: string; at: string } | undefined) ?? null,
+});
+/**
+ * A new company's plan: its trial when the owner may have one (and remembered), otherwise Free from the start, with
+ * the reason on the plan for the billing page. `asked` is the plan as planFromApp shaped it.
+ */
+export function trialOnCreate(asked: Plan, owner: { id: string; email?: string }, ws: { id: string; name?: string; domains?: string[] }): { plan: Plan; why?: string } {
+  if (!asked?.trialEnds || asked.trialEnds <= now()) return { plan: asked };
+  const c = trialCheck(owner.id, owner.email, ws.domains ?? []);
+  if (!c.ok) return { plan: { ...asked, tier: 'free', track: 'own', trialEnds: undefined, trialRefused: c.why }, why: c.why };
+  recordTrial(owner.id, owner.email, ws, c.granted ? 'granted' : 'self');
+  return { plan: asked };
+}
+/** Once at start: trials companies already have (from before this rule) count for their owners. */
+export function rememberExistingTrials() {
+  for (const ws of db.allDocs('workspaces') as any[]) {
+    if (!ws.plan?.trialEnds || ws.sandbox) continue;
+    const owner = (ws.members ?? []).find((m: any) => m.role === 'owner')?.userId;
+    if (!owner) continue;
+    const u = db.getDoc('users', owner) as any;
+    db.db.prepare('INSERT OR IGNORE INTO trials (user_id, email_domain, workspace_id, company, at, how) VALUES (?, ?, ?, ?, ?, ?)').run(owner, ownDomain(u?.email), ws.id, String(ws.name ?? 'a company').slice(0, 80), ws.createdAt ?? ws.plan.since ?? now(), 'before');
+  }
+}
+
+/* ---------- plan switches, prorated ---------- */
+
+/** Whether a period's plan invoice was already made for this company (an invoice for Boosted credits doesn't count). */
+const periodInvoiced = (wsId: string, period: string) => platform.invoices(wsId).some((i) => i.period === period && i.status !== 'void' && !isCreditInvoice(i.id));
+/**
+ * A plan saved with another tier or track: the switch is prorated for the rest of its period (src/data/pricing.ts,
+ * prorate) and waits on the plan for the next invoice, with any earlier switch of the same period folded in. The
+ * people it's priced for are the ones active this month, like the invoice.
+ */
+export function adjustmentsOnSave(ws: Ws, prev: Plan | undefined, next: Plan, at = new Date()): PlanAdjustment[] | undefined {
+  const kept = prev?.adjustments?.length ? prev.adjustments : undefined;
+  if (!prev || !next || (prev.tier === next.tier && prev.track === next.track && prev.cycle === next.cycle)) return kept;
+  const period = billingPeriod(prev, at).key;
+  const a = prorate(prev, next, activePeople(ws, at.toISOString().slice(0, 7)).active, at, periodInvoiced(ws.id, period));
+  return a ? addAdjustment(kept, a, 'adj-' + randomBytes(5).toString('hex')) : kept;
+}
+/** The invoice lines for switches waiting on a plan (a credit is a negative amount). */
+export const adjustmentLines = (plan: Plan | undefined) => (plan?.adjustments ?? []).filter((a) => a.amount).map((a) => ({ text: a.text, amount: a.amount }));
 
 /* ---------- read-only: paused or suspended ---------- */
 

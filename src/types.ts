@@ -36,7 +36,7 @@ export interface Message {
   /** The sender's official unsubscribe link (List-Unsubscribe header). */
   listUnsubscribe?: { url: string; oneClick: boolean };
   mid?: string; // the Message-ID on the wire, so replies land in the same thread
-  delivery?: { state: 'held' | 'sending' | 'sent' | 'failed'; at: string; error?: string; until?: string }; // set by the mail engine for mail you sent (held: waiting out the Undo window until `until`)
+  delivery?: { state: 'held' | 'sending' | 'sent' | 'failed' | 'local'; at: string; error?: string; until?: string; kept?: string[] }; // set by the mail engine for mail you sent (held: waiting out the Undo window until `until`; local: a local server kept it on this computer, `kept` are the outside addresses)
   auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
   invite?: MailInvite; // a calendar invite in this email (Google Calendar, Outlook...), read by the mail engine
 }
@@ -297,6 +297,7 @@ export interface Workspace {
   timeZone?: string;
   createdAt?: string;
   suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
+  bimi?: { fileId: string; name: string; at: string; by: string }; // the server's: the BIMI logo (Settings, Email delivery)
   whatsapp?: { phoneNumberId: string; displayPhone?: string; connected: boolean; verifyToken: string; secured?: boolean }; // WhatsApp Business (Meta Cloud API); the token and app secret stay on the server. secured: Meta's signatures can be checked, so messages are read
   /** Read tracking on mail to people outside the company (Settings, Security & data). Off: nobody can track. */
   readTracking?: boolean;
@@ -492,6 +493,7 @@ export interface Team {
   about?: string; // what the team does, one line
   join?: 'open' | 'lead'; // open: anyone can join; lead (default): the lead or an admin adds people, others ask
   requests?: { userId: string; at: string }[]; // people who asked to join
+  taskStages?: TaskStage[]; // the team's own task stages (its queue's tasks), instead of the company's; missing: the company's
 }
 
 export type HomeTemplateId = 'founder' | 'lead' | 'maker' | 'account' | 'finance';
@@ -508,6 +510,7 @@ export interface Client {
   endedAt?: string; // when the work ended (status 'ended')
   endReason?: string;
   portalAfterEnd?: 'readonly' | 'off'; // what their people keep after the end
+  taskStages?: TaskStage[]; // the project's own task stages, instead of its team's or the company's; missing: theirs
   archivedOnEnd?: string[]; // channels archived when ending (unarchived if they come back)
   ownerId: string;
   photo?: string; // a small square picture or logo (data URL); otherwise the first letter on its colour
@@ -777,6 +780,26 @@ export interface Plan {
   pauses?: { from: string; to?: string }[]; // the server's record of pauses: up to 3 months in any year
   cancelAt?: string; // cancelled: the plan moves to Free then, at the end of the period that's paid for (the server's)
   cancel?: boolean; // the app asks to cancel (true) or to keep the plan (false); the server turns it into cancelAt
+  adjustments?: PlanAdjustment[]; // the server's: prorated plan switches waiting for the next invoice
+  trialRefused?: string; // the server's: why this company started on Free instead of a trial (one per person and domain)
+}
+
+/**
+ * A plan switch, prorated: a charge (positive) or a credit (negative) on the next invoice. `invoiced`: the period's
+ * invoice was already made at the old price, so this is the rest of the period; otherwise the period's invoice (still
+ * to come) bills the new price in full and this puts right the days before the switch.
+ */
+export interface PlanAdjustment {
+  id: string;
+  at: string; // the (first) switch
+  period: string; // "2026-10" (a yearly plan: the month its year started)
+  invoiced: boolean;
+  from: string; // plan names, "Studio AI"
+  to: string;
+  daysBefore: number;
+  days: number;
+  amount: number; // rupiah; negative: a credit
+  text: string; // how the invoice and the billing page say it
 }
 
 export type ProviderId =

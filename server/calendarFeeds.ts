@@ -11,6 +11,7 @@ import { expand, parseCalendar, type Occurrence } from './ics.ts';
 import { FetchError, normalizeUrl, safeGet } from './safeFetch.ts';
 import { findMeetingLink } from '../src/meetingLinks.ts';
 import { holidayCalendarId, holidayCountry, holidayFeedUrl } from '../src/data/holidays.ts';
+import { calendarLinkKey } from '../src/calendarLink.ts';
 
 type Doc = db.Doc;
 type Broadcast = (coll: string, upserts: Doc[], deletes: string[], except?: string, deleted?: Doc[]) => void;
@@ -163,7 +164,10 @@ export async function addLink(me: string, b: { url?: unknown; name?: unknown; co
   const url = normalizeUrl(String(b.url ?? ''));
   const mine = (db.allDocs('calendars') as any[]).filter((c) => c.ownerId === me && c.source === 'ics');
   if (mine.length >= MAX_LINKS) throw new FetchError(`You have ${MAX_LINKS} calendar links, the most there can be. Remove one first.`);
-  if (mine.some((c) => c.url === url)) throw new FetchError('You’ve already added this calendar.');
+  // The same link written another way (webcal or https, a trailing slash, its query in another order) is the same calendar.
+  const key = calendarLinkKey(url);
+  const same = mine.find((c) => c.url && calendarLinkKey(c.url) === key);
+  if (same) throw new FetchError(`You’ve already added this calendar, as “${same.name}”. It updates by itself every 30 minutes.`);
   const { name, occurrences } = await readLink(url);
   const at = now();
   const cal = {
@@ -226,6 +230,18 @@ async function holidaysOf(code: string): Promise<{ list: Holiday[]; at: string; 
     if (row) return { list: JSON.parse(row.data), at: row.fetched_at, error: explain(e) };
     throw e;
   }
+}
+
+/**
+ * One country's public holidays for a person's own calendar (Calendar, Public holidays, "Countries you see"): this year
+ * and next, from the same daily cache as the company's.
+ */
+export async function holidaysForPerson(code: string): Promise<{ country: string; name: string; holidays: Holiday[]; at: string; error?: string }> {
+  const country = holidayCountry(code);
+  if (!country) throw new FetchError('Public holidays for that country aren’t available.');
+  const { list, at, error } = await holidaysOf(country.code);
+  const year = new Date().getFullYear();
+  return { country: country.code, name: country.name, holidays: list.filter((h) => h.date >= `${year}-01-01` && h.date <= `${year + 1}-12-31`), at, ...(error ? { error } : {}) };
 }
 
 const syncingHolidays = new Map<string, Promise<void>>();

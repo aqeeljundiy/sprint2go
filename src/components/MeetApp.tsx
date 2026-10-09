@@ -20,6 +20,7 @@ import {
   Lock,
   Menu,
   MessageCircleQuestion,
+  MoreHorizontal,
   Mic,
   Pause,
   Play,
@@ -176,7 +177,8 @@ import type { AskScope } from './Assistant';
 import { personOption } from './ui/PeopleList';
 import { EmptyState } from './ui/EmptyState';
 import { DatePicker } from './ui/DatePicker';
-import { useCreateAction } from '../mobile/chrome';
+import { useCreateAction, useFocusedScreen } from '../mobile/chrome';
+import { useActionMenu } from './ui/ActionSheet';
 
 export function MeetView(p: MeetProps) {
   const pg = p.page;
@@ -374,6 +376,24 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
   const nameFor = (t: Todo) => p.users.find((u) => u.id === t.userId);
   const actionOwner = (t: Todo) => m.actions.find((a) => a.taskId === t.id)?.owner;
 
+  // Phones: the meeting takes the whole screen with Back to the list, and its actions sit in one "…" menu so the
+  // header stays one row (the desktop keeps its buttons).
+  useFocusedScreen(true, () => p.onPage({ kind: 'list' }));
+  const moreBtn = useRef<HTMLButtonElement>(null);
+  const regenerate = () => confirm('Regenerate the summary and tasks from the transcript? Tasks you edited are kept.') && p.onRegenerate(m.id);
+  const remove = () => confirm('Delete this meeting, its recording, transcript and tasks?') && p.onDelete(m.id);
+  const more = useActionMenu(
+    () => [
+      { label: m.share ? 'Shared' : 'Share', hint: m.share ? 'A read-only link is on' : 'A read-only link', icon: Share2, run: () => p.onShare(m.id) },
+      { label: 'Ask about this meeting', icon: Sparkles, run: () => p.onAsk({ kind: 'meeting', id: m.id }) },
+      ...(live && status !== 'stopping' && status !== 'processing' ? [{ label: 'Make bot leave', icon: Square, run: () => p.onStop(m.id) }] : []),
+      ...(!live && (m.transcript?.length ?? 0) > 0 ? [{ label: 'Regenerate notes', hint: 'From the transcript', icon: RefreshCw, run: regenerate }] : []),
+      ...(status === 'done' ? [{ label: 'Who can see this', icon: Lock, run: () => setAccessOpen(true) }] : []),
+      { label: 'Delete', icon: Trash2, danger: true, group: 'end', run: remove },
+    ],
+    { title: m.title },
+  );
+
   return (
     <section className="meet-pane meet-page view-enter">
       <header className="tracking-head m-head">
@@ -398,16 +418,20 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
           </button>
         )}
         {!live && (m.transcript?.length ?? 0) > 0 && (
-          <button className="ghost-btn sm" title="Write the summary and tasks again from the transcript" onClick={() => confirm('Regenerate the summary and tasks from the transcript? Tasks you edited are kept.') && p.onRegenerate(m.id)}>
+          <button className="ghost-btn sm" title="Write the summary and tasks again from the transcript" onClick={regenerate}>
             <RefreshCw size={13} /> Regenerate notes
           </button>
         )}
         <button className="ghost-btn sm" onClick={() => p.onShare(m.id)}>
           <Share2 size={13} /> {m.share ? 'Shared' : 'Share'}
         </button>
-        <button className="icon-btn sm" title="Delete" onClick={() => confirm('Delete this meeting, its recording, transcript and tasks?') && p.onDelete(m.id)}>
+        <button className="icon-btn sm m-delete" title="Delete" onClick={remove}>
           <Trash2 size={15} />
         </button>
+        <button ref={moreBtn} className="icon-btn m-more" aria-label="More for this meeting" onClick={() => more.openFrom(moreBtn)}>
+          <MoreHorizontal size={20} />
+        </button>
+        {more.menu}
       </header>
 
       <div className="tracking-scroll">

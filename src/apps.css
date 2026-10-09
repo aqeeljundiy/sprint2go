@@ -1717,31 +1717,7 @@
     display: inline-flex;
     margin-bottom: 10px;
   }
-  .onboard {
-    padding: 0;
-  }
-  .onboard-card {
-    max-height: 100dvh;
-    height: 100dvh;
-    border-radius: 0;
-  }
-  .onboard-body {
-    padding: 18px 16px 24px;
-  }
-  .ob-steps span:not(.on) {
-    font-size: 0;
-    gap: 0;
-  }
-  .ob-person {
-    grid-template-columns: 1fr 1fr;
-    padding: 10px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-  }
-  .ob-person input:nth-child(2) {
-    grid-column: 1 / -1;
-    order: -1;
-  }
+  /* Onboarding: src/mobile/misc.css */
 }
 .ob-person > small {
   grid-column: 1 / -1;

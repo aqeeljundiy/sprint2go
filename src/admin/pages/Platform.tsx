@@ -3,7 +3,7 @@ import { AlertTriangle, Check, ChevronDown, Download, HardDrive, RefreshCw, Shie
 
 import { rel, bytes, dateTime, post, type PersonRow } from '../api';
 import { testRelay } from '../../ice';
-import { Badge, Empty, Failed, Loading, Page, Section, Stat, Stats, Table, Tabs, useAct, useAdmin, useApi } from '../ui';
+import { Badge, CopyBtn, Empty, Failed, Loading, Page, Section, Stat, Stats, Table, Tabs, useAct, useAdmin, useApi } from '../ui';
 
 export function Platform({ tab }: { tab: string }) {
   const { go } = useAdmin();
@@ -221,6 +221,7 @@ interface MailData {
   limits: { hour: number; day: number };
   health: Record<'ptr' | 'a' | 'port25' | 'inbound', { ok: boolean; found: string; want: string }>;
   cert: Cert;
+  dkim: { domain: string; host: string; value: string; use: string; state: 'ok' | 'missing' | 'different' | 'local'; found: string }[];
   blocklists: { list: string; listed: boolean | 'unknown' }[];
   queued: { id: string; company: string; route: string; fromAddr: string; toAddr: string; attempts: number; nextAt: string; error: string | null; createdAt: string }[];
   failed: { id: string; company: string; route: string; fromAddr: string; toAddr: string; attempts: number; error: string | null; createdAt: string }[];
@@ -254,6 +255,34 @@ function Mail() {
           )}
         </Section>
       </div>
+      <Section title="Signing our own mail" hint="DKIM, a TXT record per name">
+        <div className="adm-dkim">
+          {data.dkim.map((k) => (
+            <div key={k.host} className={`adm-dkim-row ${k.state === 'missing' || k.state === 'different' ? 'warn' : ''}`}>
+              <div className="adm-dkim-head">
+                <span className="grow">
+                  <strong className="adm-mono-sm">{k.host}</strong>
+                  <small className="adm-block muted">
+                    {k.use}.{' '}
+                    {k.state === 'ok'
+                      ? 'Published, so Gmail and Outlook can check it.'
+                      : k.state === 'local'
+                        ? `${k.domain} isn’t a real name, so there’s nothing to publish here.`
+                        : k.state === 'different'
+                          ? 'DNS has a different key: replace it with this one.'
+                          : 'Not in DNS yet: add it as a TXT record. Until then, receivers can’t check the signature.'}
+                  </small>
+                </span>
+                {k.state !== 'local' && <Check2 ok={k.state === 'ok'} />}
+              </div>
+              <div className="adm-linkbox">
+                <code title={k.value}>{k.value}</code>
+                <CopyBtn text={k.value} iconOnly />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
       {data.paused.length > 0 && (
         <Section title="Mailboxes paused for bouncing">
           <div className="adm-mini-list">
