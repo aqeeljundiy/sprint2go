@@ -36,6 +36,10 @@
 .team-tabs .count {
   margin-left: 2px;
 }
+/* "Make lead" and the like stay on one line (longer in Indonesian). */
+.team-row .link-btn {
+  white-space: nowrap;
+}
 .team-sec {
   display: grid;
   gap: 20px;
@@ -273,6 +277,15 @@ button.team-row:hover,
   }
   .team-row {
     min-height: 56px;
+  }
+}
+/* The narrowest phones: four tabs still fit when their words are longer (Indonesian). */
+@media (max-width: 359px) {
+  .client-tabs.team-tabs {
+    padding-inline: 8px;
+  }
+  .client-tabs.team-tabs > [role='tab'] {
+    padding: 0 9px;
   }
 }
 .proj-workload {
