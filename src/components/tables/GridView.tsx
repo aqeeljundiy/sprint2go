@@ -8,6 +8,8 @@ import { CALCS, calc, cellText, fieldIcon, groupRows, isComputed, isNumeric, row
 import { useLongPress } from '../ui/useLongPress';
 import { DatePicker } from '../ui/DatePicker';
 import { Popover } from '../ui/Popover';
+import { t, tn, tx } from '../../i18n';
+import { useLang } from '../../i18n/useLang';
 
 const DEFAULT_W: Partial<Record<TableField['type'], number>> = { button: 150, text: 200, longtext: 240, email: 210, phone: 180, url: 190, checkbox: 90, number: 120, money: 150, date: 130, person: 170, select: 150, multi: 200, link: 200, files: 160, rating: 130, formula: 160, rollup: 140, created: 170, edited: 170, creator: 160 };
 const widthOf = (view: TableViewDef, f: TableField, first: boolean) => view.widths?.[f.id] ?? (first ? 240 : DEFAULT_W[f.type] ?? 160);
@@ -51,7 +53,7 @@ type Pos = { r: number; c: number };
 const key = (rowId: string, fieldId: string) => `${rowId}:${fieldId}`;
 
 /** One cell. Shows the value; the grid tells it when to edit (typing, a picker, the date picker, stars). */
-function GridCell({ t, f, row, ctx, onCell, readOnly, active, inRange, editing, initial, onActivate, onEdit, onDone, wrap, tint, onTouch }: {
+function GridCell({ t: tb, f, row, ctx, onCell, readOnly, active, inRange, editing, initial, onActivate, onEdit, onDone, wrap, tint, onTouch }: {
   tint?: string; // a colour rule on this cell
   onTouch?: () => void; // phones: the tap opens the editor
   t: DataTable;
@@ -70,7 +72,7 @@ function GridCell({ t, f, row, ctx, onCell, readOnly, active, inRange, editing, 
   wrap: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const v = valueOf(t, f, row, ctx);
+  const v = valueOf(tb, f, row, ctx);
   const save = (x: CellValue) => onCell(row.id, f.id, x);
   const ro = readOnly || isComputed(f);
   useEffect(() => {
@@ -218,15 +220,19 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
         onDragOver(e.clientX > r.left + r.width / 2);
       }}
     >
-      <button ref={ref} type="button" className="tb-th-btn" onClick={() => !ro && (menu || editing ? (setMenu(false), setEditing(false)) : setMenu(true))} title={f.description || (ro ? f.name : `${f.name}: click for options, drag to move`)}>
+      <button ref={ref} type="button" className="tb-th-btn" onClick={() => !ro && (menu || editing ? (setMenu(false), setEditing(false)) : setMenu(true))} title={f.description || (ro ? f.name : t('{name}: click for options, drag to move', { name: f.name }))}>
         <Icon size={13} />
         <span>{f.name}</span>
         {f.description && (
-          <span className="tb-th-info" title={f.description} aria-label={`About ${f.name}: ${f.description}`}>
+          <span className="tb-th-info" title={f.description} aria-label={t('About {name}: {description}', { name: f.name, description: f.description })}>
             <Info size={12} />
           </span>
         )}
-        {first && <span className="tb-name-tag" title="Each row’s name. Another column can take this role from its menu.">Title</span>}
+        {first && (
+          <span className="tb-name-tag" title={t('Each row’s name. Another column can take this role from its menu.')}>
+            {tx('field', 'Title')}
+          </span>
+        )}
         {sort?.dir === 'asc' && <ArrowDown size={12} className="tb-sorted" />}
         {sort?.dir === 'desc' && <ArrowUp size={12} className="tb-sorted" />}
         {!ro && <ChevronDown size={13} className="tb-th-chev" />}
@@ -280,13 +286,13 @@ function FootCell({ f, p, rows, sticky }: { f: TableField; p: GridProps; rows: T
             <small>{CALCS.find((c) => c.kind === kind)?.label}</small> {calc(kind, p.table, f, rows, p.ctx)}
           </>
         ) : (
-          <small className="tb-foot-add">Calculate</small>
+          <small className="tb-foot-add">{t('Calculate')}</small>
         )}
       </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={200} title={`${f.name}: total`}>
+      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={200} title={t('{name}: total', { name: f.name })}>
         <div className="tb-menu">
           <button type="button" className={!kind ? 'on' : ''} onClick={() => set(null)}>
-            None
+            {t('None')}
           </button>
           {CALCS.filter((c) => !c.numeric || isNumeric(f)).map((c) => (
             <button key={c.kind} type="button" className={kind === c.kind ? 'on' : ''} onClick={() => set(c.kind)}>
@@ -305,9 +311,10 @@ function FootCell({ f, p, rows, sticky }: { f: TableField; p: GridProps; rows: T
  * column, groups, and totals under each column.
  */
 export function GridView(p: GridProps) {
-  const { table: t, view } = p;
-  const fields = useMemo(() => viewFields(t, view), [t, view]);
-  const nameId = t.fields[0]?.id;
+  const { table: tb, view } = p;
+  const lang = useLang(); // group names ("No status") are words: rebuild them when the language changes
+  const fields = useMemo(() => viewFields(tb, view), [tb, view]);
+  const nameId = tb.fields[0]?.id;
   // On a phone the name column always stays in view (only the rest scrolls sideways) and narrower columns fit more.
   const pinnedN = Math.min(p.touch ? Math.max(view.pinned ?? 0, fields.findIndex((f) => f.id === nameId) + 1) : (view.pinned ?? 0), fields.length);
   const SEL = p.touch ? 0 : SEL_W;
@@ -315,12 +322,12 @@ export function GridView(p: GridProps) {
   const cols = `${SEL}px ${widths.map((w) => `${w}px`).join(' ')} ${p.touch ? 16 : 48}px`;
   const stickyLeft = (i: number) => (i < pinnedN ? SEL + widths.slice(0, i).reduce((a, b) => a + b, 0) : undefined);
 
-  const groupField = view.groupBy ? t.fields.find((f) => f.id === view.groupBy) : undefined;
-  const subField = groupField && view.subGroupBy ? t.fields.find((f) => f.id === view.subGroupBy) : undefined;
-  const groups: RowGroup[] = useMemo(() => (groupField ? groupRows(t, groupField, p.rows, p.ctx) : [{ key: '*', label: '', value: null, rows: p.rows }]), [groupField, t, p.rows, p.ctx]);
+  const groupField = view.groupBy ? tb.fields.find((f) => f.id === view.groupBy) : undefined;
+  const subField = groupField && view.subGroupBy ? tb.fields.find((f) => f.id === view.subGroupBy) : undefined;
+  const groups: RowGroup[] = useMemo(() => (groupField ? groupRows(tb, groupField, p.rows, p.ctx) : [{ key: '*', label: '', value: null, rows: p.rows }]), [groupField, tb, p.rows, p.ctx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const collapsed = new Set(view.collapsed ?? []);
   // Inside each group, its sub-groups (when the view has them): their keys are "group/sub".
-  const subsOf = (g: RowGroup) => (subField ? groupRows(t, subField, g.rows, p.ctx).map((sg) => ({ ...sg, key: `${g.key}/${sg.key}` })) : null);
+  const subsOf = (g: RowGroup) => (subField ? groupRows(tb, subField, g.rows, p.ctx).map((sg) => ({ ...sg, key: `${g.key}/${sg.key}` })) : null);
   const flat = groups.flatMap((g) => (collapsed.has(g.key) ? [] : (subsOf(g)?.flatMap((sg) => (collapsed.has(sg.key) ? [] : sg.rows)) ?? g.rows))); // rows in screen order, for the keyboard
 
   const [active, setActive] = useState<Pos | null>(null);
@@ -387,7 +394,7 @@ export function GridView(p: GridProps) {
       const cells: string[] = [];
       for (let j = r.c0; j <= r.c1; j++) {
         const f = fields[j];
-        const v = valueOf(t, f, row, p.ctx);
+        const v = valueOf(tb, f, row, p.ctx);
         const txt = f.type === 'number' || f.type === 'money' || f.type === 'date' ? (v == null ? '' : String(v)) : cellText(f, v, p.ctx);
         cells.push(/[\t\n"]/.test(txt) ? `"${txt.replace(/"/g, '""')}"` : txt);
       }
@@ -418,7 +425,7 @@ export function GridView(p: GridProps) {
       if (cells.length) p.onClear(cells);
     } else if (e.key === ' ' && fields[c]?.type === 'checkbox' && canEdit(fields[c])) {
       e.preventDefault();
-      p.onCell(flat[r].id, fields[c].id, !valueOf(t, fields[c], flat[r], p.ctx));
+      p.onCell(flat[r].id, fields[c].id, !valueOf(tb, fields[c], flat[r], p.ctx));
     } else if (!mod && !e.altKey && e.key.length === 1 && canEdit(fields[c]) && typesInline(fields[c].type)) {
       e.preventDefault();
       startEdit(active, e.key); // typing replaces the cell, like a spreadsheet
@@ -430,7 +437,7 @@ export function GridView(p: GridProps) {
     if (editing || !active || (e.target as HTMLElement).closest('input, textarea, .pop')) return;
     e.preventDefault();
     e.clipboardData.setData('text/plain', cellsText());
-    p.toast?.(range ? `Copied ${(range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1)} cells` : 'Copied');
+    p.toast?.(range ? tn((range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1), 'Copied {n} cell', 'Copied {n} cells') : t('Copied'));
   };
   const onPasteEv = (e: React.ClipboardEvent) => {
     if (editing || !active || (e.target as HTMLElement).closest('input, textarea, .pop') || p.readOnly) return;
@@ -453,7 +460,7 @@ export function GridView(p: GridProps) {
   const renderRow = (row: TableRow, g: RowGroup, groupValues: { fieldId: string; value: CellValue }[]) => {
     const ri = indexOf.get(row.id) ?? 0;
     const over = rowDrag?.over?.id === row.id && rowDrag.id !== row.id ? (rowDrag.over.after ? ' drop-after' : ' drop-before') : '';
-    const tint = view.colors?.length ? rowColors(t, view, row, p.ctx) : { cells: {} as Record<string, string> };
+    const tint = view.colors?.length ? rowColors(tb, view, row, p.ctx) : { cells: {} as Record<string, string> };
     return (
       <GridRow
         key={row.id}
@@ -478,18 +485,18 @@ export function GridView(p: GridProps) {
       >
         <div className="tb-sel sticky0">
           {rowsDraggable && (
-            <span className="tb-grip" draggable onDragStart={(e) => (e.dataTransfer.setData('text/plain', row.id), (e.dataTransfer.effectAllowed = 'move'), setRowDrag({ id: row.id }))} onDragEnd={() => setRowDrag(null)} title="Drag to move">
+            <span className="tb-grip" draggable onDragStart={(e) => (e.dataTransfer.setData('text/plain', row.id), (e.dataTransfer.effectAllowed = 'move'), setRowDrag({ id: row.id }))} onDragEnd={() => setRowDrag(null)} title={t('Drag to move')}>
               <GripVertical size={13} />
             </span>
           )}
-          {!p.readOnly && !p.locked && <input type="checkbox" aria-label="Select row" checked={p.selected.has(row.id)} onChange={() => toggle(row.id)} />}
+          {!p.readOnly && !p.locked && <input type="checkbox" aria-label={t('Select row')} checked={p.selected.has(row.id)} onChange={() => toggle(row.id)} />}
           <span className="tb-n">{ri + 1}</span>
         </div>
         {fields.map((f, ci) => {
           const cell = (
             <GridCell
               key={f.id}
-              t={t}
+              t={tb}
               f={f}
               row={row}
               ctx={p.ctx}
@@ -519,11 +526,11 @@ export function GridView(p: GridProps) {
             return (
               <div key={f.id} className={`tb-first${ci < pinnedN ? ' tb-pinned' : ''}`} style={ci < pinnedN ? { left: stickyLeft(ci) } : undefined}>
                 {cell}
-                <button type="button" className="tb-expand" onClick={() => p.onOpenRow(row.id)} title="Open (Shift+Enter)" aria-label="Open row">
+                <button type="button" className="tb-expand" onClick={() => p.onOpenRow(row.id)} title={t('Open (Shift+Enter)')} aria-label={t('Open row')}>
                   <Maximize2 size={13} />
                 </button>
                 {!p.locked && !p.readOnly && (
-                  <button type="button" className="tb-expand" onClick={(e) => p.onRowMenu(row.id, { x: e.clientX, y: e.clientY })} title="More" aria-label="Row options">
+                  <button type="button" className="tb-expand" onClick={(e) => p.onRowMenu(row.id, { x: e.clientX, y: e.clientY })} title={t('More')} aria-label={t('Row options')}>
                     <MoreHorizontal size={13} />
                   </button>
                 )}
@@ -544,7 +551,7 @@ export function GridView(p: GridProps) {
 
   const colDrop = () => {
     if (!colDrag?.over || colDrag.id === colDrag.over.id) return setColDrag(null);
-    const order = viewFields(t, view, true).map((x) => x.id).filter((x) => x !== colDrag.id);
+    const order = viewFields(tb, view, true).map((x) => x.id).filter((x) => x !== colDrag.id);
     const at = order.indexOf(colDrag.over.id) + (colDrag.over.after ? 1 : 0);
     order.splice(at, 0, colDrag.id);
     p.onView({ order });
@@ -555,7 +562,7 @@ export function GridView(p: GridProps) {
     <div className={`tb-grid-wrap${p.touch ? ' touch' : ''}`} ref={wrapRef} onKeyDown={onKey} onCopy={onCopy} onPaste={onPasteEv}>
       <div className="tb-grid" role="grid" style={{ ['--cols' as string]: cols }} aria-rowcount={flat.length}>
         <div className="tb-tr tb-head" role="row" onDrop={(e) => (e.preventDefault(), colDrop())} onDragEnd={() => setColDrag(null)}>
-          <div className="tb-th tb-sel sticky0">{!p.readOnly && !p.locked && <input type="checkbox" aria-label="Select all" checked={selAll} onChange={() => p.onSelect(selAll ? new Set() : new Set(flat.map((r) => r.id)))} />}</div>
+          <div className="tb-th tb-sel sticky0">{!p.readOnly && !p.locked && <input type="checkbox" aria-label={t('Select all')} checked={selAll} onChange={() => p.onSelect(selAll ? new Set() : new Set(flat.map((r) => r.id)))} />}</div>
           {fields.map((f, i) => (
             <Header
               key={f.id}
@@ -574,7 +581,7 @@ export function GridView(p: GridProps) {
           ))}
           <div className="tb-th tb-add-col">
             {!p.readOnly && !p.locked && !p.fixedColumns && (
-              <button ref={addRef} type="button" className="icon-btn sm" title="Add a column" onClick={() => setAdding(true)}>
+              <button ref={addRef} type="button" className="icon-btn sm" title={t('Add a column')} aria-label={t('Add a column')} onClick={() => setAdding(true)}>
                 <Plus size={15} />
               </button>
             )}
@@ -588,7 +595,7 @@ export function GridView(p: GridProps) {
             !p.readOnly &&
             p.canAdd !== false && (
               <button type="button" className="tb-grid-add" onClick={() => p.onAddRow(Object.fromEntries(vals.map((x) => [x.fieldId, x.value])))}>
-                <Plus size={14} /> New row{label ? ` in ${label}` : ''}
+                <Plus size={14} /> {label ? t('New row in {group}', { group: label }) : t('New row')}
               </button>
             );
           const toggle = (k: string, gg: RowGroup, sub?: boolean) => (
@@ -632,7 +639,7 @@ export function GridView(p: GridProps) {
           </div>
         )}
       </div>
-      <FieldMenu anchor={addRef} open={adding} onClose={() => setAdding(false)} field={null} table={t} tables={p.tables} onSave={(f) => p.onSaveField(f)} users={p.ctx.users} channels={p.channels} rows={p.ctx.rows} previewCtx={p.ctx} />
+      <FieldMenu anchor={addRef} open={adding} onClose={() => setAdding(false)} field={null} table={tb} tables={p.tables} onSave={(f) => p.onSaveField(f)} users={p.ctx.users} channels={p.channels} rows={p.ctx.rows} previewCtx={p.ctx} />
     </div>
   );
 }

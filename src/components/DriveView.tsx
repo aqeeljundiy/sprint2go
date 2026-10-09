@@ -9,6 +9,7 @@ import { FileIcon } from './FileIcon';
 import { EmptyState } from './ui/EmptyState';
 import { useCreateAction } from '../mobile/chrome';
 import { useActionMenu, type SheetAction } from './ui/ActionSheet';
+import { t, tn } from '../i18n';
 
 interface Props {
   items: DriveItem[]; // everything, including attachments from email
@@ -36,7 +37,7 @@ const byDate = (a: DriveItem, b: DriveItem) => b.modified.localeCompare(a.modifi
 
 export function DriveView(props: Props) {
   const { items, section, folderId } = props;
-  useCreateAction('drive', section !== 'trash' && { label: 'Upload', icon: Upload, run: props.onPickFiles });
+  useCreateAction('drive', section !== 'trash' && { label: t('Upload'), icon: Upload, run: props.onPickFiles });
   const [layout, setLayout] = usePersisted<'grid' | 'list'>('pm-drive-layout', 'grid');
   const [query, setQuery] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -74,36 +75,36 @@ export function DriveView(props: Props) {
     id = f.parentId;
   }
 
-  const sectionName = DRIVE_SECTIONS.find((s) => s.id === section)!.name;
+  const sectionName = t(DRIVE_SECTIONS.find((s) => s.id === section)!.name);
   const open = (item: DriveItem) => (item.kind === 'folder' ? props.onFolder(item.id) : props.onOpen(item, files));
 
   const meta = (i: DriveItem) =>
     section === 'email' && i.threadId
       ? `${props.senderOf(i.threadId)} · ${relative(i.modified)}`
       : i.kind === 'folder'
-        ? `${items.filter((x) => x.parentId === i.id && !x.trashed).length} items`
+        ? tn(items.filter((x) => x.parentId === i.id && !x.trashed).length, '{n} item', '{n} items')
         : `${fmtSize(i.size)} · ${relative(i.modified)}`;
 
   const actions = (i: DriveItem) =>
     section === 'trash' ? (
       <>
-        <button className="icon-btn sm" title="Restore" onClick={() => props.onRestore(i.id)}>
+        <button className="icon-btn sm" title={t('Restore')} onClick={() => props.onRestore(i.id)}>
           <RotateCcw size={14} />
         </button>
-        <button className="icon-btn sm" title="Delete forever" onClick={() => props.onDeleteForever(i.id)}>
+        <button className="icon-btn sm" title={t('Delete forever')} onClick={() => props.onDeleteForever(i.id)}>
           <X size={14} />
         </button>
       </>
     ) : i.id.startsWith('att:') ? (
-      <button className="icon-btn sm" title="Open email" onClick={() => props.onOpenThread(i.threadId!)}>
+      <button className="icon-btn sm" title={t('Open email')} onClick={() => props.onOpenThread(i.threadId!)}>
         <Mail size={14} />
       </button>
     ) : (
       <>
-        <button className={`icon-btn sm ${i.starred ? 'starred' : ''}`} title={i.starred ? 'Unstar' : 'Star'} onClick={() => props.onStar(i.id)}>
+        <button className={`icon-btn sm ${i.starred ? 'starred' : ''}`} title={i.starred ? t('Unstar') : t('Star')} onClick={() => props.onStar(i.id)}>
           <Star size={14} />
         </button>
-        <button className="icon-btn sm" title="Move to trash" onClick={() => props.onTrash(i.id)}>
+        <button className="icon-btn sm" title={t('Move to trash')} onClick={() => props.onTrash(i.id)}>
           <Trash2 size={14} />
         </button>
       </>
@@ -113,19 +114,19 @@ export function DriveView(props: Props) {
   const menuFor = (i: DriveItem) => (): SheetAction[] =>
     section === 'trash'
       ? [
-          { label: 'Restore', icon: RotateCcw, run: () => props.onRestore(i.id) },
-          { label: 'Delete forever', icon: X, danger: true, group: 'end', run: () => props.onDeleteForever(i.id) },
+          { label: t('Restore'), icon: RotateCcw, run: () => props.onRestore(i.id) },
+          { label: t('Delete forever'), icon: X, danger: true, group: 'end', run: () => props.onDeleteForever(i.id) },
         ]
       : i.id.startsWith('att:')
         ? [
-            { label: 'Open', icon: Eye, run: () => open(i) },
-            { label: 'Open the email', icon: Mail, run: () => props.onOpenThread(i.threadId!) },
+            { label: t('Open'), icon: Eye, run: () => open(i) },
+            { label: t('Open the email'), icon: Mail, run: () => props.onOpenThread(i.threadId!) },
           ]
         : [
-            { label: 'Open', icon: Eye, run: () => open(i) },
-            { label: i.starred ? 'Unstar' : 'Star', icon: Star, run: () => props.onStar(i.id) },
-            { label: 'Rename', icon: PenLine, run: () => props.onStartRename(i.id) },
-            { label: 'Move to trash', icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(i.id) },
+            { label: t('Open'), icon: Eye, run: () => open(i) },
+            { label: i.starred ? t('Unstar') : t('Star'), icon: Star, run: () => props.onStar(i.id) },
+            { label: t('Rename'), icon: PenLine, run: () => props.onStartRename(i.id) },
+            { label: t('Move to trash'), icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(i.id) },
           ];
 
   const name = (i: DriveItem) =>
@@ -189,16 +190,16 @@ export function DriveView(props: Props) {
       }}
     >
       <header className="drive-head">
-        <button className="icon-btn menu-btn" onClick={props.onMenu} aria-label="Open menu">
+        <button className="icon-btn menu-btn" onClick={props.onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
         </button>
         <div className="crumbs">
           {q ? (
-            <h1>Search results</h1>
+            <h1>{t('Search results')}</h1>
           ) : section === 'my' ? (
             <>
               <button className={crumbs.length ? 'crumb' : 'crumb cur'} onClick={() => props.onFolder(null)}>
-                My Drive
+                {t('My Drive')}
               </button>
               {crumbs.map((c, idx) => (
                 <span key={c.id} className="crumb-wrap">
@@ -215,46 +216,46 @@ export function DriveView(props: Props) {
         </div>
         <label className="search drive-search">
           <Search size={16} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search in Drive" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Search in Drive')} />
           {query && (
-            <button onClick={() => setQuery('')} aria-label="Clear search">
+            <button onClick={() => setQuery('')} aria-label={t('Clear search')}>
               <X size={14} />
             </button>
           )}
         </label>
         <div className="segmented icon-seg">
-          <button className={layout === 'grid' ? 'on' : ''} onClick={() => setLayout('grid')} title="Grid">
+          <button className={layout === 'grid' ? 'on' : ''} onClick={() => setLayout('grid')} title={t('Grid')}>
             <LayoutGrid size={15} />
           </button>
-          <button className={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')} title="List">
+          <button className={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')} title={t('List')}>
             <List size={15} />
           </button>
         </div>
         <button className="primary-btn hide-mobile" onClick={props.onPickFiles}>
-          <Upload size={15} /> Upload
+          <Upload size={15} /> {t('Upload')}
         </button>
       </header>
 
       <div className="drive-scroll" key={`${section}:${folderId}:${layout}`}>
         {section === 'email' && !q && (
           <p className="drive-note">
-            <Mail size={14} /> Attachments from your emails appear here automatically.
+            <Mail size={14} /> {t('Attachments from your emails appear here automatically.')}
           </p>
         )}
-        {section === 'trash' && shown.length > 0 && <p className="drive-note">Items in trash are deleted forever after 30 days.</p>}
+        {section === 'trash' && shown.length > 0 && <p className="drive-note">{t('Items in trash are deleted forever after 30 days.')}</p>}
 
         {shown.length === 0 ? (
           <EmptyState
             icon={section === 'trash' ? '✓' : '+'}
-            title={q ? 'No files found' : section === 'trash' ? 'Trash is empty' : 'Nothing here yet'}
-            text={q ? `Nothing matches “${query}”.` : section === 'trash' ? '' : 'Drag files here or press Upload.'}
+            title={q ? t('No files found') : section === 'trash' ? t('Trash is empty') : t('Nothing here yet')}
+            text={q ? t('Nothing matches “{q}”.', { q: query.trim() }) : section === 'trash' ? '' : t('Drag files here or press Upload.')}
           />
         ) : layout === 'list' ? (
           <div className="d-table">
             <div className="d-tr d-th">
-              <span>Name</span>
-              <span className="hide-mobile">Modified</span>
-              <span className="hide-mobile">Size</span>
+              <span>{t('Name')}</span>
+              <span className="hide-mobile">{t('Modified')}</span>
+              <span className="hide-mobile">{t('Size')}</span>
               <span />
             </div>
             {shown.map((i, n) => (
@@ -276,7 +277,7 @@ export function DriveView(props: Props) {
           <>
             {folders.length > 0 && (
               <>
-                <div className="d-heading">Folders</div>
+                <div className="d-heading">{t('Folders')}</div>
                 <div className="folder-grid">
                   {folders.map((f, n) => (
                     <DriveItemCard key={f.id} className="folder-card" style={{ ['--i' as string]: n }} label={f.name} actions={menuFor(f)} onOpen={() => open(f)}>
@@ -295,7 +296,7 @@ export function DriveView(props: Props) {
             )}
             {files.length > 0 && (
               <>
-                {folders.length > 0 && <div className="d-heading">Files</div>}
+                {folders.length > 0 && <div className="d-heading">{t('Files')}</div>}
                 <div className={section === 'media' && !q ? 'media-grid' : 'file-grid'}>
                   {files.map((f, n) => (
                     <DriveItemCard key={f.id} className="file-card" style={{ ['--i' as string]: Math.min(n, 16) }} label={f.name} actions={menuFor(f)} onOpen={() => open(f)}>
@@ -321,8 +322,8 @@ export function DriveView(props: Props) {
       {dragging && (
         <div className="drop-overlay">
           <Upload size={28} />
-          <strong>Drop to upload</strong>
-          <span>{section === 'my' && crumbs.length ? `to ${crumbs[crumbs.length - 1].name}` : 'to My Drive'}</span>
+          <strong>{t('Drop to upload')}</strong>
+          <span>{section === 'my' && crumbs.length ? t('to {folder}', { folder: crumbs[crumbs.length - 1].name }) : t('to My Drive')}</span>
         </div>
       )}
     </section>
@@ -345,7 +346,7 @@ function DriveItemCard({ className, style, label, actions, onOpen, children }: {
           ref={dots}
           type="button"
           className="icon-btn d-more"
-          aria-label={`More for ${label}`}
+          aria-label={t('More for {name}', { name: label })}
           onClick={(e) => {
             e.stopPropagation();
             menu.openFrom(dots);

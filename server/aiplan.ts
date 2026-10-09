@@ -11,6 +11,8 @@ import { CRED_FIELDS, JOBS, PROVIDERS, type JobInfo } from '../src/data/aiCatalo
 import { MODEL_ID, prettyModelName } from '../src/data/aiModels.ts';
 import { ALLOWANCE, TOP_UP, discountOf, monthlyTotal, planName, priceFor, seatsFor } from '../src/data/pricing.ts';
 import type { Plan } from '../src/types.ts';
+import { mark, msg, phrase } from '../src/i18n/index.ts';
+import { sentences, type Said } from './lang.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS platform_ai_keys (provider TEXT PRIMARY KEY, sealed TEXT NOT NULL, base_url TEXT, last4 TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, added_by TEXT, added_at TEXT NOT NULL);
@@ -82,7 +84,7 @@ const anyName = (model: string) => PROVIDERS.flatMap((p) => p.models).find((m) =
 
 /** Providers our server can call for text jobs ("custom" is for a company's own server, not ours). */
 const TEXT_OK = (id: string) => id !== 'custom' && canCall(id) && PROVIDERS.find((p) => p.id === id)?.kind !== 'speech';
-const NOT_FOR_US: Record<string, string> = { custom: 'For a company’s own server. Not used for our keys.' };
+const NOT_FOR_US: Record<string, string> = { custom: mark('For a company’s own server. Not used for our keys.') };
 const supported = (id: string) => !NOT_FOR_US[id];
 
 /** Today's recommendation for a job, whatever keys exist: the model it was designed around, another company as the fallback. */
@@ -469,12 +471,12 @@ export function gate(ws: any, people = teamSize(ws)): { state: 'ok' } | { state:
     return {
       state: 'out',
       message: auto?.on
-        ? 'The company’s AI allowance for this month is used up, and automatic top-ups reached their monthly limit. An admin can raise the limit or add a top-up in Settings, Plan & billing.'
-        : 'The company’s AI allowance for this month is used up. An admin can add a top-up in Settings, Plan & billing.',
+        ? mark('The company’s AI allowance for this month is used up, and automatic top-ups reached their monthly limit. An admin can raise the limit or add a top-up in Settings, Plan & billing.')
+        : mark('The company’s AI allowance for this month is used up. An admin can add a top-up in Settings, Plan & billing.'),
     };
   }
-  if (why === 'trial') return { state: 'out', message: 'The AI that comes with the trial is used up for this month. An admin can pick a plan in Settings, Plan & billing, or add an AI key in Settings, AI.' };
-  return { state: 'out', message: 'The AI allowance for this month is used up. It starts again on the 1st, or an admin can add an AI key in Settings, AI.' };
+  if (why === 'trial') return { state: 'out', message: mark('The AI that comes with the trial is used up for this month. An admin can pick a plan in Settings, Plan & billing, or add an AI key in Settings, AI.') };
+  return { state: 'out', message: mark('The AI allowance for this month is used up. It starts again on the 1st, or an admin can add an AI key in Settings, AI.') };
 }
 
 /** For the company's Settings, AI: who handles its data for each job, and how much of the allowance is left. */
@@ -568,46 +570,61 @@ export function money(mrrOf: MrrOf, c = config()) {
   };
 }
 
-/** The headline: lead with whether AI pays for itself. */
+/** The headline: lead with whether AI pays for itself. Words are msg(): the console shows them in its language. */
 function verdict(m: ReturnType<typeof money>) {
   const n = m.losing.length;
-  if (!m.companies && !m.otherCost) return { tone: 'neutral' as const, text: 'No AI-plan companies are using AI yet this month.' };
-  if (!m.companies) return { tone: 'neutral' as const, text: `Nobody pays for the AI plan yet: trials, free months and our own companies used ${rp(m.otherCost)} of AI this month.` };
-  if (m.margin < 0) return { tone: 'bad' as const, text: `AI costs more than it earns: ${rp(-m.margin)} short by the end of the month${n ? `, and ${n} ${n === 1 ? 'company costs' : 'companies cost'} more than ${n === 1 ? 'it pays' : 'they pay'}` : ''}.` };
-  if (n) return { tone: 'warn' as const, text: `${n} ${n === 1 ? 'company costs' : 'companies cost'} more than ${n === 1 ? 'it pays' : 'they pay'}. Overall AI still pays for itself: margin ${rp(m.margin)}.` };
-  return { tone: 'good' as const, text: `AI is paying for itself: margin ${rp(m.margin)} this month.` };
+  if (!m.companies && !m.otherCost) return { tone: 'neutral' as const, text: msg('No AI-plan companies are using AI yet this month.') };
+  if (!m.companies) return { tone: 'neutral' as const, text: msg('Nobody pays for the AI plan yet: trials, free months and our own companies used {cost} of AI this month.', { cost: rp(m.otherCost) }) };
+  if (m.margin < 0)
+    return {
+      tone: 'bad' as const,
+      text: !n
+        ? msg('AI costs more than it earns: {short} short by the end of the month.', { short: rp(-m.margin) })
+        : n === 1
+          ? msg('AI costs more than it earns: {short} short by the end of the month, and 1 company costs more than it pays.', { short: rp(-m.margin) })
+          : msg('AI costs more than it earns: {short} short by the end of the month, and {n} companies cost more than they pay.', { short: rp(-m.margin), n }),
+    };
+  if (n) return { tone: 'warn' as const, text: n === 1 ? msg('1 company costs more than it pays. Overall AI still pays for itself: margin {margin}.', { margin: rp(m.margin) }) : msg('{n} companies cost more than they pay. Overall AI still pays for itself: margin {margin}.', { n, margin: rp(m.margin) }) };
+  return { tone: 'good' as const, text: msg('AI is paying for itself: margin {margin} this month.', { margin: rp(m.margin) }) };
+}
+/** Up to two names and how many more, as words translated where they're read. */
+function someOf(names: (string | ReturnType<typeof phrase>)[]) {
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return phrase('{a} and {b}', { a: names[0], b: names[1] });
+  return phrase('{a}, {b} and {n} more', { a: names[0], b: names[1], n: names.length - 2 });
 }
 
 /** Problems with our AI, for Today and the alerts (worst first). */
-export function problems(mrrOf: MrrOf): { kind: string; text: string; level: 'high' | 'normal'; to: string }[] {
+export function problems(mrrOf: MrrOf): { kind: string; text: Said; level: 'high' | 'normal'; to: string }[] {
   const c = config();
-  const out: { kind: string; text: string; level: 'high' | 'normal'; to: string }[] = [];
+  const out: { kind: string; text: Said; level: 'high' | 'normal'; to: string }[] = [];
   const served = (db.allDocs('workspaces') as any[]).some((w) => planAI(w).ok);
   const dead = JOBS.filter((j) => j.id !== 'speech' && !ourChain(j.id).length);
   if (served && dead.length)
-    out.push({ kind: 'ai-keys', level: 'high', text: dead.length === JOBS.length - 1 ? 'Our AI has no working key: AI-plan companies can’t use AI.' : `Our AI has no working key for ${dead.slice(0, 2).map((j) => inSentence(j.name)).join(' and ')}${dead.length > 2 ? ` and ${dead.length - 2} more` : ''}.`, to: '/admin/ai/keys' });
+    out.push({ kind: 'ai-keys', level: 'high', text: dead.length === JOBS.length - 1 ? msg('Our AI has no working key: AI-plan companies can’t use AI.') : msg('Our AI has no working key for {jobs}.', { jobs: someOf(dead.map((j) => phrase('“{job}”', { job: phrase(j.name) }))) }), to: '/admin/ai/keys' });
   const inUse = new Set(Object.values(c.jobs).flatMap((r) => [r.primary, r.fallback]).filter(Boolean).map((x) => x!.provider));
   for (const p of inUse) {
     const k = keyFor(p, c);
     const h = k && health(k.id);
-    if (h?.failed_at && (!h.used_at || h.failed_at > h.used_at) && h.failed_at > new Date(Date.now() - DAY).toISOString()) out.push({ kind: `ai-fail:${p}`, level: 'normal', text: `Our ${companyName(p)} key failed: ${h.fail_error ?? 'no answer'}`, to: '/admin/ai/keys' });
+    if (h?.failed_at && (!h.used_at || h.failed_at > h.used_at) && h.failed_at > new Date(Date.now() - DAY).toISOString()) out.push({ kind: `ai-fail:${p}`, level: 'normal', text: h.fail_error ? msg('Our {provider} key failed: {error}', { provider: companyName(p), error: h.fail_error }) : msg('Our {provider} key failed: no answer', { provider: companyName(p) }), to: '/admin/ai/keys' });
   }
   const m = money(mrrOf, c);
-  if (m.cost > 0 && m.margin < 0) out.push({ kind: 'ai-margin', level: 'normal', text: `AI costs more than the AI plan earns: ${rp(-m.margin)} short by the end of the month.`, to: '/admin/ai' });
-  else if (m.losing.length) out.push({ kind: 'ai-losing', level: 'normal', text: `${m.losing.length} ${m.losing.length === 1 ? 'company’s AI costs' : 'companies’ AI costs'} more than ${m.losing.length === 1 ? 'it pays' : 'they pay'}.`, to: '/admin/ai' });
+  if (m.cost > 0 && m.margin < 0) out.push({ kind: 'ai-margin', level: 'normal', text: msg('AI costs more than the AI plan earns: {short} short by the end of the month.', { short: rp(-m.margin) }), to: '/admin/ai' });
+  else if (m.losing.length) out.push({ kind: 'ai-losing', level: 'normal', text: m.losing.length === 1 ? msg('1 company’s AI costs more than it pays.') : msg('{n} companies’ AI costs more than they pay.', { n: m.losing.length }), to: '/admin/ai' });
   // A model a provider stopped offering our key: the job runs on its fallback (or not at all).
   for (const j of JOBS.filter((x) => x.id !== 'speech')) {
     const r = c.jobs[j.id];
     if (!goneForUs(r.primary)) continue;
     const fb = r.fallback && !goneForUs(r.fallback) && keyFor(r.fallback.provider, c) ? r.fallback : null;
-    out.push({ kind: `ai-gone:${j.id}`, level: fb ? 'normal' : 'high', text: `${companyName(r.primary.provider)} no longer offers ${modelName(r.primary.provider, r.primary.model)}: ${inSentence(j.name)} ${fb ? `runs on its fallback, ${modelName(fb.provider, fb.model)}` : 'has nothing to run on'}. Pick another model.`, to: '/admin/ai/models' });
+    const gone = { provider: companyName(r.primary.provider), model: modelName(r.primary.provider, r.primary.model), job: phrase(j.name) };
+    out.push({ kind: `ai-gone:${j.id}`, level: fb ? 'normal' : 'high', text: fb ? msg('{provider} no longer offers {model}: “{job}” runs on its fallback, {fallback}. Pick another model.', { ...gone, fallback: modelName(fb.provider, fb.model) }) : msg('{provider} no longer offers {model}: “{job}” has nothing to run on. Pick another model.', gone), to: '/admin/ai/models' });
   }
   // Models that ran this month (on our keys or a company's), or would run now (they have a key), without a price.
   const routed = JOBS.filter((j) => j.id !== 'speech').flatMap((j) => [c.jobs[j.id].primary, c.jobs[j.id].fallback]);
   const missing = new Set([...m.unpriced.map((u) => u.model), ...usedThisMonth().filter((u) => MODEL_ID.test(u.model) && !priceOf(u.model, c)).map((u) => u.model), ...routed.filter((y) => y && keyFor(y.provider, c) && !priceOf(y.model, c)).map((y) => y!.model)]);
   if (missing.size) {
     const names = Array.from(missing).map(anyName);
-    out.push({ kind: 'ai-prices', level: 'normal', text: `No price for ${names.slice(0, 2).join(' and ')}${names.length > 2 ? ` and ${names.length - 2} more` : ''}: their AI cost isn’t counted.`, to: '/admin/ai/prices' });
+    out.push({ kind: 'ai-prices', level: 'normal', text: msg('No price for {models}: their AI cost isn’t counted.', { models: someOf(names) }), to: '/admin/ai/prices' });
   }
   return out;
 }
@@ -650,7 +667,7 @@ function overview(x: AdminBits) {
   // What jobs use now stays pickable, even when the provider stopped offering it.
   for (const j of JOBS.filter((x) => x.id !== 'speech'))
     for (const y of [c.jobs[j.id].primary, c.jobs[j.id].fallback])
-      if (y && !text.some((o) => o.provider === y.provider && o.model === y.model)) text.push(option(y.provider, y.model, `${modelName(y.provider, y.model)}${goneForUs(y) ? ' (no longer offered)' : ''}`, false, goneForUs(y)));
+      if (y && !text.some((o) => o.provider === y.provider && o.model === y.model)) text.push(option(y.provider, y.model, goneForUs(y) ? (msg('{model} (no longer offered)', { model: modelName(y.provider, y.model) }) as unknown as string) : modelName(y.provider, y.model), false, goneForUs(y)));
   const speech = SPEECH_CHOICES.map((s) => ({ ...option(s.provider, s.model, s.name), price: null }));
   const jobs = JOBS.map((j) => {
     const r = c.jobs[j.id];
@@ -659,14 +676,14 @@ function overview(x: AdminBits) {
     const gone = j.id !== 'speech' && goneForUs(r.primary);
     return {
       id: j.id,
-      name: j.name,
-      hint: j.hint,
+      name: msg(j.name), // the catalogue's English; the console reads it in its language (server/lang.ts)
+      hint: msg(j.hint),
       weight: j.weight,
       tokens: j.tokens,
       primary: r.primary,
       fallback: r.fallback,
       state: ok(r.primary) ? 'ok' : ok(r.fallback) ? 'fallback' : 'none',
-      gone: gone ? `${companyName(r.primary.provider)} no longer offers ${modelName(r.primary.provider, r.primary.model)}.` : null,
+      gone: gone ? msg('{provider} no longer offers {model}.', { provider: companyName(r.primary.provider), model: modelName(r.primary.provider, r.primary.model) }) : null,
       per100: p ? ((j.tokens[0] * p[0] + j.tokens[1] * p[1]) / 1e6) * c.rate * 100 : null,
       isDefault: !saved().jobs?.[j.id],
     };
@@ -685,7 +702,7 @@ function overview(x: AdminBits) {
     verdict: verdict(m),
     money: m,
     keys,
-    providers: PROVIDERS.map((p) => ({ id: p.id, name: p.name, kind: p.kind, keyHint: p.keyHint, needsUrl: !!p.needsUrl, warn: p.warn ?? null, supported: supported(p.id), why: NOT_FOR_US[p.id] ?? null, saved: rowsDb.some((r) => r.provider === p.id) })),
+    providers: PROVIDERS.map((p) => ({ id: p.id, name: p.name, kind: p.kind, keyHint: msg(p.keyHint), needsUrl: !!p.needsUrl, warn: p.warn ? msg(p.warn) : null, supported: supported(p.id), why: NOT_FOR_US[p.id] ? msg(NOT_FOR_US[p.id]) : null, saved: rowsDb.some((r) => r.provider === p.id) })),
     jobs,
     options: { text, speech },
     lists: lists.filter((l) => l.list && keyFor(l.id, c)).map(({ id, list }) => ({ provider: id, name: providerName(id), source: list!.source, fetchedAt: list!.fetchedAt, note: list!.note })),
@@ -716,14 +733,14 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
   }
 
   if (sub === 'ai/key') {
-    if (!info) return done({ error: 'Pick a provider.' }, 400);
+    if (!info) return done({ error: mark('Pick a provider.') }, 400);
     if (!supported(provider)) return done({ error: NOT_FOR_US[provider] }, 400);
     const key = String(b.key ?? '').trim();
     const baseUrl = String(b.baseUrl ?? '').trim() || undefined;
-    if (key.length < 8) return done({ error: 'That key looks too short.' }, 400);
-    if (info.needsUrl && !CRED_FIELDS[info.id] && !baseUrl) return done({ error: 'Add the endpoint address too.' }, 400);
+    if (key.length < 8) return done({ error: mark('That key looks too short.') }, 400);
+    if (info.needsUrl && !CRED_FIELDS[info.id] && !baseUrl) return done({ error: mark('Add the endpoint address too.') }, 400);
     const err = await testAndRecord(provider, provider, key, baseUrl);
-    if (err) return done({ error: `${err} Nothing was saved.` }, 400);
+    if (err) return done({ error: msg('{error} Nothing was saved.', { error: err }) }, 400);
     const before = keyRow(provider);
     db.db
       .prepare('INSERT INTO platform_ai_keys (provider, sealed, base_url, last4, enabled, added_by, added_at) VALUES (?, ?, ?, ?, 1, ?, ?) ON CONFLICT(provider) DO UPDATE SET sealed = excluded.sealed, base_url = excluded.base_url, last4 = excluded.last4, enabled = 1, added_by = excluded.added_by, added_at = excluded.added_at')
@@ -739,26 +756,26 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
       const r = keyRow(provider);
       return r ? { key: db.unseal(r.sealed), baseUrl: r.base_url ?? undefined } : null;
     })();
-    if (!k || (server && provider !== 'anthropic')) return done({ error: 'No such key.' }, 404);
+    if (!k || (server && provider !== 'anthropic')) return done({ error: mark('No such key.') }, 404);
     const err = await testAndRecord(server ? ENV_ID : provider, provider, k.key, k.baseUrl);
     return done({ ok: !err, error: err });
   }
   if (sub === 'ai/key/switch') {
     const on = !!b.on;
     if (b.source === 'server') {
-      if (!envKey()) return done({ error: 'No key in the server settings.' }, 404);
+      if (!envKey()) return done({ error: mark('No key in the server settings.') }, 404);
       save({ ...saved(), envOff: !on });
       x.log(on ? 'ai.key.on' : 'ai.key.off', 'anthropic', 'the key from the server settings');
       return done({ ok: true });
     }
-    if (!keyRow(provider)) return done({ error: 'No such key.' }, 404);
+    if (!keyRow(provider)) return done({ error: mark('No such key.') }, 404);
     db.db.prepare('UPDATE platform_ai_keys SET enabled = ? WHERE provider = ?').run(on ? 1 : 0, provider);
     x.log(on ? 'ai.key.on' : 'ai.key.off', provider, providerName(provider));
     return done({ ok: true });
   }
   if (sub === 'ai/key/remove') {
     const r = keyRow(provider);
-    if (!r) return done({ error: 'No such key.' }, 404);
+    if (!r) return done({ error: mark('No such key.') }, 404);
     db.db.prepare('DELETE FROM platform_ai_keys WHERE provider = ?').run(provider);
     db.db.prepare('DELETE FROM platform_ai_health WHERE id = ?').run(provider);
     models.forget(PLATFORM, provider);
@@ -767,15 +784,15 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
   }
   if (sub === 'ai/job') {
     const job = JOBS.find((j) => j.id === b.job);
-    if (!job) return done({ error: 'No such job.' }, 400);
+    if (!job) return done({ error: mark('No such job.') }, 400);
     // A new pick must be on the provider's list for our key (or in our catalogue when there's no list); what the job
     // already uses may stay, so the other choice can change.
     const cur = config().jobs[job.id];
     const same = (a: Choice | null | undefined, y: unknown) => !!a && !!y && a.provider === (y as Choice).provider && a.model === (y as Choice).model;
     const okPick = (y: unknown): y is Choice => offeredChoice(job.id, y) || ((same(cur.primary, y) || same(cur.fallback, y)) && validChoice(job.id, y));
-    if (!okPick(b.primary)) return done({ error: 'Pick a model this job can use.' }, 400);
+    if (!okPick(b.primary)) return done({ error: mark('Pick a model this job can use.') }, 400);
     const fallback = b.fallback ? (okPick(b.fallback) ? { provider: b.fallback.provider, model: b.fallback.model } : undefined) : null;
-    if (fallback === undefined) return done({ error: 'Pick a fallback this job can use, or none.' }, 400);
+    if (fallback === undefined) return done({ error: mark('Pick a fallback this job can use, or none.') }, 400);
     const s = saved();
     const next: Route = { primary: { provider: b.primary.provider, model: b.primary.model }, fallback };
     save({ ...s, jobs: { ...s.jobs, [job.id]: next } });
@@ -808,8 +825,8 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
   // job would use otherwise, when that's a different model.
   if (sub === 'ai/key/assign') {
     const pick = { provider, model: String(b.model ?? '') };
-    if (!keyFor(provider)) return done({ error: 'Add a working key for this provider first.' }, 400);
-    if (!offeredChoice('ask', pick)) return done({ error: 'Pick a model this key offers.' }, 400);
+    if (!keyFor(provider)) return done({ error: mark('Add a working key for this provider first.') }, 400);
+    if (!offeredChoice('ask', pick)) return done({ error: mark('Pick a model this key offers.') }, 400);
     const s0 = saved();
     const c = config();
     const jobs = { ...s0.jobs };
@@ -844,7 +861,7 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
     let rate = s.rate && s.rate > 0 ? s.rate : DEFAULT_RATE;
     if (b.rate !== undefined) {
       const r = Number(b.rate);
-      if (!(r >= 1000 && r <= 100_000)) return done({ error: 'The rate should be rupiah for one US dollar, e.g. 17.500.' }, 400);
+      if (!(r >= 1000 && r <= 100_000)) return done({ error: mark('The rate should be rupiah for one US dollar, e.g. 17.500.') }, 400);
       if (Math.round(r) !== rate) changes.push(`US$1 = Rp ${Math.round(r).toLocaleString('id-ID')}`);
       rate = Math.round(r);
     }

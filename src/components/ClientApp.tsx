@@ -63,9 +63,13 @@ import { GuestQuotes } from './Quotes';
 import type { Quote } from '../types';
 import { EmptyState } from './ui/EmptyState';
 import { PHONE } from '../mobile/media';
+import { LANGS, mark, t, textOf, tn, tx, type Lang, type Msg } from '../i18n';
+import { tj } from '../i18n/tj';
+import { useLang } from '../i18n/useLang';
+import { fmtDayLong, fmtDayWord, fmtNumber, fmtWeekday, fmtWeekdayLong } from '../i18n/format';
 
 /** The dot for a task in the guest's view: planned, in progress, waiting on them, or done. */
-const stCls = (t: Todo) => ({ open: 'todo', active: 'doing', review: 'doing', waiting: 'waiting', done: 'done' } as const)[kindOf(t)];
+const stCls = (task: Todo) => ({ open: 'todo', active: 'doing', review: 'doing', waiting: 'waiting', done: 'done' } as const)[kindOf(task)];
 
 type Mode = 'home' | 'requests' | 'chat' | 'work' | 'files' | 'meet' | 'tables';
 
@@ -89,13 +93,17 @@ interface Props {
   switcher?: React.ReactNode;
   /** Phones: the logo's switcher, with every space shared with this person (the current one ticked). */
   mobileSwitch?: { workspaces: Workspace[]; onWorkspace: (id: string) => void; portals?: { key: string; ws: Workspace; client: Client; unread?: number }[]; current?: string; onPortal?: (key: string) => void; onShared?: () => void; onAdd?: () => void };
-  /** Their own account: profile, photo, password and light or dark. Not in "View as guest". */
-  account?: { me: User; theme: ThemePref; onTheme: (t: ThemePref) => void; onProfile: (patch: Partial<User>) => void };
+  /** Their own account: profile, photo, password, light or dark, and their language. Not in "View as guest". */
+  account?: { me: User; theme: ThemePref; onTheme: (theme: ThemePref) => void; onProfile: (patch: Partial<User>) => void; language?: Lang; onLanguage?: (l: Lang) => void };
 }
 
-const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
-const fmtDay = (iso: string) => new Date(iso).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-const ROLE: Record<ClientPerson['role'], string> = { viewer: 'Viewer', collaborator: 'Collaborator', approver: 'Approver' };
+const fmtSize = (b: number) => (b > 1e6 ? `${fmtNumber(b / 1e6, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB` : `${fmtNumber(Math.max(1, Math.round(b / 1e3)))} KB`);
+/** "Thu 8 Oct" / "Kam, 8 Okt". */
+const fmtDay = (iso: string) => fmtWeekday(iso);
+/** A due day on a row: Overdue, Today, Tomorrow, else the day (the guest's own words, whatever the team's tasks say). */
+const dueText = (cls: string, due: string) => (cls === 'overdue' ? t('Overdue') : fmtDayWord(due));
+// The roles' names: English here, translated where they're shown (t(ROLE[role])).
+const ROLE: Record<ClientPerson['role'], string> = { viewer: mark('Viewer'), collaborator: mark('Collaborator'), approver: mark('Approver') };
 
 function useMobile() {
   const [m, setM] = useState(() => matchMedia(PHONE).matches);
@@ -146,8 +154,8 @@ export function ClientApp(p: Props) {
   const [askChats, setAskChats] = useState<AskChat[]>([]);
   const [toast, setToast] = useState('');
   const meBtn = useRef<HTMLButtonElement>(null);
-  const say = (t: string) => {
-    setToast(t);
+  const say = (text: string) => {
+    setToast(text);
     setTimeout(() => setToast(''), 3500);
   };
 
@@ -161,54 +169,56 @@ export function ClientApp(p: Props) {
   const teamUser = (id?: string) => p.team.find((u) => u.id === id);
   const nameOf = (by: string) => (by.includes('@') ? (v.people.find((x) => x.email.toLowerCase() === by.toLowerCase())?.name ?? by) : teamLabel(teamUser(by), access, ws.name));
   // Team members as the client sees them (names per the company's setting).
-  const shownTeam: User[] = useMemo(() => p.team.map((u) => (access.teamNames === 'hide' ? { ...u, name: `${ws.name} team`, color: ws.color } : { ...u, name: teamLabel(u, access, ws.name) })), [p.team, access, ws.name, ws.color]);
+  const lang = useLang(); // "{company} team" is built in the memo below
+  const shownTeam: User[] = useMemo(() => p.team.map((u) => (access.teamNames === 'hide' ? { ...u, name: teamLabel(undefined, access, ws.name), color: ws.color } : { ...u, name: teamLabel(u, access, ws.name) })), [p.team, access, ws.name, ws.color, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const avatarOf = (by: string, size = 24) => {
     if (by.includes('@')) return <Avatar person={{ name: nameOf(by), email: by, color: client.color }} size={size} />;
     const u = shownTeam.find((x) => x.id === by);
     return access.teamNames === 'hide' || !u ? <WorkspaceLogo ws={ws} size={size} /> : <Avatar person={u} size={size} />;
   };
 
-  const requests = v.tasks.filter((t) => t.source === 'request').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const shared = v.tasks.filter((t) => t.source !== 'request');
+  const requests = v.tasks.filter((tk) => tk.source === 'request').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const shared = v.tasks.filter((tk) => tk.source !== 'request');
   const briefs = shared.filter(isBrief);
-  const work = shared.filter((t) => !isBrief(t));
-  const approvals = work.filter((t) => t.approval?.status === 'waiting');
-  const waitingOnMe = requests.filter((t) => requestStatus(t).cls === 'waiting');
+  const work = shared.filter((tk) => !isBrief(tk));
+  const approvals = work.filter((tk) => tk.approval?.status === 'waiting');
+  const waitingOnMe = requests.filter((tk) => requestStatus(tk).cls === 'waiting');
   const unread = p.notices.filter((n) => !n.read).length;
-  const task = v.tasks.find((t) => t.id === openTask);
+  const task = v.tasks.find((tk) => tk.id === openTask);
 
   // Tables the team shared with this project (leads and so on): only shared fields, shaped like the server does.
   const [allTables] = useStored('tables');
   const [allRows, setAllRows] = useStored('rows');
-  const sharedTables = useMemo(() => allTables.filter((t) => t.workspaceId === ws.id).map((t) => guestTable(client, t)).filter(Boolean) as DataTable[], [allTables, ws.id, client]);
+  const sharedTables = useMemo(() => allTables.filter((tb) => tb.workspaceId === ws.id).map((tb) => guestTable(client, tb)).filter(Boolean) as DataTable[], [allTables, ws.id, client]);
   const sharedRows = useMemo(() => {
-    const byId = new Map(sharedTables.map((t) => [t.id, t]));
+    const byId = new Map(sharedTables.map((tb) => [tb.id, tb]));
     return allRows.filter((r) => byId.has(r.tableId)).map((r) => guestRow(byId.get(r.tableId)!, r));
   }, [allRows, sharedTables]);
   const [tableRow, setTableRow] = useState<string | null>(null);
 
   const MODES: [Mode, string, LucideIcon, number?][] = [
-    ['home', 'Home', House],
-    ...(access.requests ? ([['requests', 'Requests', Inbox, waitingOnMe.length]] as [Mode, string, LucideIcon, number][]) : []),
-    ['chat', 'Messages', MessagesSquare],
-    ['work', 'Work', ListChecks, approvals.length],
-    ['files', 'Files', HardDrive],
-    ['meet', 'Meetings', Video],
-    ...(sharedTables.length ? ([['tables', 'Tables', Table2]] as [Mode, string, LucideIcon][]) : []),
+    ['home', t('Home'), House],
+    ...(access.requests ? ([['requests', t('Requests'), Inbox, waitingOnMe.length]] as [Mode, string, LucideIcon, number][]) : []),
+    ['chat', t('Messages'), MessagesSquare],
+    ['work', t('Work'), ListChecks, approvals.length],
+    ['files', t('Files'), HardDrive],
+    ['meet', t('Meetings'), Video],
+    ...(sharedTables.length ? ([['tables', t('Tables'), Table2]] as [Mode, string, LucideIcon][]) : []),
   ];
   // Phones: a short fixed bar of only what's shared with them, in this order, with More only when it can't fit.
+  // Five tabs next to the create button: the bar's own shorter words where Indonesian runs long (tx 'bar').
   const BAR: [Mode, string, LucideIcon, number?][] = [
-    ['home', 'Home', House],
-    ...(v.channels.length ? ([['chat', 'Messages', MessagesSquare]] as [Mode, string, LucideIcon][]) : []),
-    ...(shared.length ? ([['work', 'Approvals', BadgeCheck, approvals.length]] as [Mode, string, LucideIcon, number][]) : []),
-    ...(v.files.length || access.uploads ? ([['files', 'Files', HardDrive]] as [Mode, string, LucideIcon][]) : []),
-    ...MODES.filter(([id]) => id === 'requests'),
+    ['home', t('Home'), House],
+    ...(v.channels.length ? ([['chat', t('Messages'), MessagesSquare]] as [Mode, string, LucideIcon][]) : []),
+    ...(shared.length ? ([['work', tx('bar', 'Approvals'), BadgeCheck, approvals.length]] as [Mode, string, LucideIcon, number][]) : []),
+    ...(v.files.length || access.uploads ? ([['files', t('Files'), HardDrive]] as [Mode, string, LucideIcon][]) : []),
+    ...(access.requests ? ([['requests', tx('bar', 'Requests'), Inbox, waitingOnMe.length]] as [Mode, string, LucideIcon, number][]) : []),
   ];
   // Meetings and tables, when shared, are on Home and in the account sheet; the bar only grows a More past five.
   const extra = MODES.filter(([id]) => (id === 'meet' && v.meetings.length) || id === 'tables');
   // Phones: the screen's main job sits at the end of the bar, like the team app's create button.
   const uploader = useUploader(actions, say);
-  const create = mode === 'requests' && access.requests && can(person, 'request') && client.status !== 'ended' ? { label: 'New request', icon: Plus, run: () => setNewRequest(true) } : mode === 'files' && access.uploads && can(person, 'upload') && client.status !== 'ended' ? { label: 'Upload', icon: Upload, run: uploader.pick } : null;
+  const create = mode === 'requests' && access.requests && can(person, 'request') && client.status !== 'ended' ? { label: t('New request'), icon: Plus, run: () => setNewRequest(true) } : mode === 'files' && access.uploads && can(person, 'upload') && client.status !== 'ended' ? { label: t('Upload'), icon: Upload, run: uploader.pick } : null;
   const lastCreate = useRef(create); // drawn while the button scales away, so its icon doesn't vanish first
   if (create) lastCreate.current = create;
   const CreateIcon = lastCreate.current?.icon;
@@ -236,19 +246,19 @@ export function ClientApp(p: Props) {
   const sidebar: Partial<Record<Mode, React.ReactNode>> = {
     tables: (
       <nav className="nav">
-        {sharedTables.map((t) =>
+        {sharedTables.map((tb) =>
           navItem(
-            t.id,
+            tb.id,
             <>
-              <span className="client-dot sm" style={{ background: t.color }}>
-                {t.name.charAt(0).toUpperCase()}
+              <span className="client-dot sm" style={{ background: tb.color }}>
+                {tb.name.charAt(0).toUpperCase()}
               </span>{' '}
-              {t.name}
+              {tb.name}
             </>,
             null,
             undefined,
-            (sub || sharedTables[0]?.id) === t.id,
-            () => (setSub(t.id), setTableRow(null)),
+            (sub || sharedTables[0]?.id) === tb.id,
+            () => (setSub(tb.id), setTableRow(null)),
           ),
         )}
       </nav>
@@ -258,33 +268,33 @@ export function ClientApp(p: Props) {
         {can(person, 'request') && (
           <button className="compose-btn" onClick={() => setNewRequest(true)}>
             <Plus size={16} />
-            <span className="sb-label">New request</span>
+            <span className="sb-label">{t('New request')}</span>
           </button>
         )}
         <nav className="nav">
-          {navItem('', 'Open', Inbox)}
-          {navItem('waiting', 'Waiting on you', Clock, waitingOnMe.length)}
-          {navItem('done', 'Done', CheckCircle2)}
-          {navItem('all', 'All requests', ListChecks)}
+          {navItem('', tx('requests', 'Open'), Inbox)}
+          {navItem('waiting', t('Waiting on you'), Clock, waitingOnMe.length)}
+          {navItem('done', t('Done'), CheckCircle2)}
+          {navItem('all', t('All requests'), ListChecks)}
         </nav>
       </>
     ),
     chat: (
       <nav className="nav">
         {v.channels.map((c) => navItem(c.id, c.name, Handshake, undefined, chanId === c.id, () => setChanId(c.id)))}
-        {!v.channels.length && <p className="muted small sb-label sb-note">{ws.name} hasn’t added you to a conversation yet.</p>}
+        {!v.channels.length && <p className="muted small sb-label sb-note">{t('{company} hasn’t added you to a conversation yet.', { company: ws.name })}</p>}
       </nav>
     ),
     work: (
       <>
         <nav className="nav">
-          {navItem('', 'Everything', ListChecks)}
-          {navItem('approve', 'Needs approval', Clock, approvals.length)}
-          {navItem('done', 'Done', CheckCircle2)}
+          {navItem('', t('Everything'), ListChecks)}
+          {navItem('approve', t('Needs approval'), Clock, approvals.length)}
+          {navItem('done', t('Done'), CheckCircle2)}
         </nav>
         {briefs.length > 0 && (
           <>
-            <div className="nav-heading sb-label">Briefs</div>
+            <div className="nav-heading sb-label">{t('Briefs')}</div>
             <nav className="nav">{briefs.map((b) => navItem(`brief:${b.id}`, b.title, FileText))}</nav>
           </>
         )}
@@ -294,13 +304,13 @@ export function ClientApp(p: Props) {
       <>
         {access.uploads && can(person, 'upload') && <UploadButton actions={actions} say={say} />}
         <nav className="nav">
-          {navItem('', 'All files', HardDrive)}
-          {navItem('shared', 'Shared with you', FileText)}
-          {navItem('mine', `From ${fromWho}`, Upload)}
+          {navItem('', t('All files'), HardDrive)}
+          {navItem('shared', t('Shared with you'), FileText)}
+          {navItem('mine', t('From {company}', { company: fromWho }), Upload)}
         </nav>
         {v.channels.length > 0 && (
           <>
-            <div className="nav-heading sb-label">Channel materials</div>
+            <div className="nav-heading sb-label">{t('Channel materials')}</div>
             <nav className="nav">{v.channels.map((c) => navItem(`chan:${c.id}`, c.name, Folder))}</nav>
           </>
         )}
@@ -312,26 +322,26 @@ export function ClientApp(p: Props) {
           .slice()
           .sort((a, b) => b.meeting.at.localeCompare(a.meeting.at))
           .map(({ meeting: m }) => navItem(m.id, m.title, Video, undefined, (sub || v.meetings[0]?.meeting.id) === m.id))}
-        {!v.meetings.length && <p className="muted small sb-label sb-note">No meetings yet.</p>}
+        {!v.meetings.length && <p className="muted small sb-label sb-note">{t('No meetings yet.')}</p>}
       </nav>
     ),
   };
 
   /* ---------------- shared bits ---------------- */
   // Guests see where work is in their words, from the kind of stage it's in (the team's own stage names stay inside).
-  const stLabel = (t: Todo) => (t.source === 'request' ? requestStatus(t).label : ({ done: 'Done', active: 'In progress', review: 'In progress', waiting: 'Waiting on you', open: 'Planned' } as const)[kindOf(t)]);
-  const taskRow = (t: Todo) => {
-    const d = t.due && !t.done ? dueLabel(t.due) : null;
-    const doers = [...new Set((t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []))];
+  const stLabel = (tk: Todo) => (tk.source === 'request' ? t(requestStatus(tk).label) : { done: t('Done'), active: t('In progress'), review: t('In progress'), waiting: t('Waiting on you'), open: t('Planned') }[kindOf(tk)]);
+  const taskRow = (tk: Todo) => {
+    const d = tk.due && !tk.done ? dueLabel(tk.due) : null;
+    const doers = [...new Set((tk.assignees?.length ? tk.assignees : tk.userId ? [tk.userId] : []))];
     return (
-      <div key={t.id} className={`task ${t.done ? 'done' : ''}`} onClick={() => setOpenTask(t.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), setOpenTask(t.id))}>
-        <span className={`st-dot st-${stCls(t)} task-dot`} />
+      <div key={tk.id} className={`task ${tk.done ? 'done' : ''}`} onClick={() => setOpenTask(tk.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), setOpenTask(tk.id))}>
+        <span className={`st-dot st-${stCls(tk)} task-dot`} />
         <div className="task-main">
-          <button className="task-title-btn">{t.title}</button>
+          <button className="task-title-btn">{tk.title}</button>
           <div className="task-meta">
-            {t.approval?.status === 'waiting' ? <span className="due waiting">Needs approval</span> : <span className={`due ${stCls(t) === 'waiting' || stCls(t) === 'doing' ? stCls(t) : ''}`}>{stLabel(t)}</span>}
-            {d && <span className={`due ${d.cls}`}>{d.text}</span>}
-            {t.source === 'request' && <span className="src">from {nameOf(t.requestedBy ?? '').split(' ')[0]}</span>}
+            {tk.approval?.status === 'waiting' ? <span className="due waiting">{t('Needs approval')}</span> : <span className={`due ${stCls(tk) === 'waiting' || stCls(tk) === 'doing' ? stCls(tk) : ''}`}>{stLabel(tk)}</span>}
+            {d && tk.due && <span className={`due ${d.cls}`}>{dueText(d.cls, tk.due)}</span>}
+            {tk.source === 'request' && <span className="src">{t('from {name}', { name: nameOf(tk.requestedBy ?? '').split(' ')[0] })}</span>}
           </div>
         </div>
         {doers.length > 0 && <span className="av-stack">{doers.slice(0, 3).map((id) => <span key={id}>{avatarOf(id, 24)}</span>)}</span>}
@@ -362,7 +372,9 @@ export function ClientApp(p: Props) {
   let content: React.ReactNode = null;
   if (mode === 'home') {
     const hour = new Date().getHours();
-    const greet = hour < 11 ? 'Good morning' : hour < 15 ? 'Good afternoon' : hour < 19 ? 'Good evening' : 'Good evening';
+    const first = person.name.split(' ')[0];
+    // Indonesian says pagi until 11, siang until 15, sore until 18, malam after (the same keys as Home).
+    const greet = hour < 11 ? t('Good morning, {name}.', { name: first }) : hour < 15 ? t('Good afternoon, {name}.', { name: first }) : hour < 18 ? t('Good evening, {name}.', { name: first }) : tx('after 6 pm', 'Good evening, {name}.', { name: first });
     const card = (id: string, icon: React.ReactNode, name: string, body: React.ReactNode, link?: [string, () => void], wide = false) => (
       <div key={id} className={`side-card home-card ${wide ? 'wide' : ''}`}>
         <h3>
@@ -377,71 +389,69 @@ export function ClientApp(p: Props) {
       </div>
     );
     const quotesToAnswer = (p.quotes ?? []).filter((q) => q.clientId === client.id && q.status === 'sent');
-    const needs = [...quotesToAnswer.map((q) => ({ t: undefined as Todo | undefined, text: `Answer the quote “${q.title}”`, go: () => setMode('work') })), ...approvals.map((t) => ({ t: t as Todo | undefined, text: `Approve “${t.title}”`, go: () => (setMode('work'), setOpenTask(t.id)) })), ...waitingOnMe.map((t) => ({ t, text: `Your request “${t.title}” is waiting on you`, go: () => (setMode('requests'), setOpenTask(t.id)) }))];
+    const needs = [...quotesToAnswer.map((q) => ({ task: undefined as Todo | undefined, text: t('Answer the quote “{title}”', { title: q.title }), go: () => setMode('work') })), ...approvals.map((tk) => ({ task: tk as Todo | undefined, text: t('Approve “{title}”', { title: tk.title }), go: () => (setMode('work'), setOpenTask(tk.id)) })), ...waitingOnMe.map((tk) => ({ task: tk as Todo | undefined, text: t('Your request “{title}” is waiting on you', { title: tk.title }), go: () => (setMode('requests'), setOpenTask(tk.id)) }))];
     content = (
       <section className="home-pane view-enter">
         <div className="home-scroll">
           <header className="home-head">
             <div className="home-head-text">
-              <p className="home-date">{new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-              <h1>
-                {greet}, {person.name.split(' ')[0]}.
-              </h1>
+              <p className="home-date">{fmtWeekdayLong(new Date())}</p>
+              <h1>{greet}</h1>
             </div>
           </header>
           <div className="home-grid cards">
             {card(
               'needs',
               <Clock size={15} />,
-              'Needs you',
+              t('Needs you'),
               needs.length ? (
                 <ul className="home-list">
                   {needs.map((n, i) => (
-                    <li key={n.t?.id ?? 'q' + i}>
+                    <li key={n.task?.id ?? 'q' + i}>
                       <button className="home-notice" onClick={n.go}>
                         <span>{n.text}</span>
-                        <time>{n.t?.due ? fmtDay(n.t.due) : ''}</time>
+                        <time>{n.task?.due ? fmtDay(n.task.due) : ''}</time>
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <EmptyState compact text="Nothing waiting on you. 🎉" />
+                <EmptyState compact text={t('Nothing waiting on you. 🎉')} />
               ),
             )}
             {access.requests &&
               card(
                 'requests',
                 <Inbox size={15} />,
-                'Your requests',
-                requests.filter((t) => !t.done).length ? (
+                t('Your requests'),
+                requests.filter((tk) => !tk.done).length ? (
                   <ul className="home-list">
                     {requests
-                      .filter((t) => !t.done)
+                      .filter((tk) => !tk.done)
                       .slice(0, 5)
-                      .map((t) => (
-                        <li key={t.id}>
-                          <button className="home-notice" onClick={() => (setMode('requests'), setOpenTask(t.id))}>
-                            <span>{t.title}</span>
-                            <span className={`req-status ${requestStatus(t).cls}`}>{requestStatus(t).label}</span>
+                      .map((tk) => (
+                        <li key={tk.id}>
+                          <button className="home-notice" onClick={() => (setMode('requests'), setOpenTask(tk.id))}>
+                            <span>{tk.title}</span>
+                            <span className={`req-status ${requestStatus(tk).cls}`}>{t(requestStatus(tk).label)}</span>
                           </button>
                         </li>
                       ))}
                   </ul>
                 ) : (
-                  <EmptyState compact text="Need something? Send a request and the team picks it up." />
+                  <EmptyState compact text={t('Need something? Send a request and the team picks it up.')} />
                 ),
-                can(person, 'request') ? ['New request', () => (setMode('requests'), setNewRequest(true))] : undefined,
+                can(person, 'request') ? [t('New request'), () => (setMode('requests'), setNewRequest(true))] : undefined,
               )}
             {card(
               'work',
               <FileText size={15} />,
-              'Work in progress',
+              t('Work in progress'),
               briefs.length ? (
                 <ul className="home-list">
                   {briefs.map((b) => {
-                    const all = v.tasks.filter((t) => t.briefId === b.id); // shared tasks only
-                    const done = all.filter((t) => t.done).length;
+                    const all = v.tasks.filter((tk) => tk.briefId === b.id); // shared tasks only
+                    const done = all.filter((tk) => tk.done).length;
                     return (
                       <li key={b.id}>
                         <button className="home-brief" onClick={() => go('work', `brief:${b.id}`)}>
@@ -451,7 +461,7 @@ export function ClientApp(p: Props) {
                               <span style={{ width: `${all.length ? (done / all.length) * 100 : 0}%` }} />
                             </span>
                             {done}/{all.length}
-                            {b.due ? ` · due ${fmtDay(b.due)}` : ''}
+                            {b.due ? ` · ${t('due {date}', { date: fmtDay(b.due) })}` : ''}
                           </span>
                         </button>
                       </li>
@@ -459,14 +469,14 @@ export function ClientApp(p: Props) {
                   })}
                 </ul>
               ) : (
-                <EmptyState compact text="The team shares briefs here as work starts." />
+                <EmptyState compact text={t('The team shares briefs here as work starts.')} />
               ),
-              ['Work', () => go('work')],
+              [t('Work'), () => go('work')],
             )}
             {card(
               'meeting',
               <Video size={15} />,
-              'Latest meeting',
+              t('Latest meeting'),
               v.meetings.length ? (
                 (() => {
                   const { meeting: m, notes } = v.meetings.slice().sort((a, b) => b.meeting.at.localeCompare(a.meeting.at))[0];
@@ -474,21 +484,21 @@ export function ClientApp(p: Props) {
                     <button className="home-meeting" onClick={() => go('meet', m.id)}>
                       <strong>{m.title}</strong>
                       <small>
-                        {fmtDay(m.at)} · {m.minutes} min
+                        {fmtDay(m.at)} · {tn(m.minutes, '{n} min', '{n} min')}
                       </small>
                       {notes && <p>{m.summary}</p>}
                     </button>
                   );
                 })()
               ) : (
-                <EmptyState compact text="No meetings yet." />
+                <EmptyState compact text={t('No meetings yet.')} />
               ),
-              v.meetings.length ? ['Meetings', () => go('meet')] : undefined,
+              v.meetings.length ? [t('Meetings'), () => go('meet')] : undefined,
             )}
             {card(
               'files',
               <HardDrive size={15} />,
-              'Recent files',
+              t('Recent files'),
               v.files.length ? (
                 <ul className="home-list">
                   {v.files
@@ -497,7 +507,7 @@ export function ClientApp(p: Props) {
                     .slice(0, 4)
                     .map((f) => (
                       <li key={f.id}>
-                        <a className="home-notice" href={f.url} target="_blank" rel="noreferrer" onClick={(e) => !f.url && (e.preventDefault(), say('This is a demo file without content.'))}>
+                        <a className="home-notice" href={f.url} target="_blank" rel="noreferrer" onClick={(e) => !f.url && (e.preventDefault(), say(t('This is a demo file without content.')))}>
                           <span>{f.name}</span>
                           <time>{relative(f.modified)}</time>
                         </a>
@@ -505,34 +515,32 @@ export function ClientApp(p: Props) {
                     ))}
                 </ul>
               ) : (
-                <EmptyState compact text="Nothing shared yet." />
+                <EmptyState compact text={t('Nothing shared yet.')} />
               ),
-              ['Files', () => go('files')],
+              [t('Files'), () => go('files')],
             )}
             {card(
               'news',
               <Bell size={15} />,
-              'From the team',
+              t('From the team'),
               p.notices.length ? (
                 <ul className="home-list">
                   {p.notices.slice(0, 4).map((n) => (
                     <li key={n.id}>
                       <button className="home-notice" onClick={() => n.link?.id && (setMode(n.link.app === 'chat' ? 'chat' : 'requests'), setOpenTask(n.link.id))}>
-                        <span>{n.text}</span>
+                        <span>{textOf(n)}</span>
                         <time>{relative(n.at)}</time>
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <EmptyState compact text="You’re all caught up." />
+                <EmptyState compact text={t('You’re all caught up.')} />
               ),
             )}
           </div>
           {!access.hideBranding && !product.white && (
-            <p className="client-made">
-              Made with <Logo size={12} /> sprint2go
-            </p>
+            <p className="client-made">{tj('Made with {logo} sprint2go', { logo: <Logo size={12} /> })}</p>
           )}
         </div>
       </section>
@@ -540,14 +548,14 @@ export function ClientApp(p: Props) {
   }
 
   if (mode === 'requests') {
-    const list = requests.filter((t) => (sub === 'done' ? t.done : sub === 'waiting' ? requestStatus(t).cls === 'waiting' : sub === 'all' ? true : !t.done));
+    const list = requests.filter((tk) => (sub === 'done' ? tk.done : sub === 'waiting' ? requestStatus(tk).cls === 'waiting' : sub === 'all' ? true : !tk.done));
     content = pane(
-      sub === 'done' ? 'Done' : sub === 'waiting' ? 'Waiting on you' : sub === 'all' ? 'All requests' : 'Requests',
-      waitingOnMe.length ? `${waitingOnMe.length} waiting on you` : 'The team picks these up like tickets',
-      list.length ? <div className="todo-group">{list.map(taskRow)}</div> : empty(<Inbox size={22} />, 'No requests here', can(person, 'request') ? 'Send one with “New request”.' : 'Your colleagues’ requests show up here.'),
+      sub === 'done' ? t('Done') : sub === 'waiting' ? t('Waiting on you') : sub === 'all' ? t('All requests') : t('Requests'),
+      waitingOnMe.length ? tn(waitingOnMe.length, '{n} waiting on you', '{n} waiting on you') : t('The team picks these up like tickets'),
+      list.length ? <div className="todo-group">{list.map(taskRow)}</div> : empty(<Inbox size={22} />, t('No requests here'), can(person, 'request') ? t('Send one with “New request”.') : t('Your colleagues’ requests show up here.')),
       can(person, 'request') && mobile ? (
         <button className="primary-btn sm" onClick={() => setNewRequest(true)}>
-          <Plus size={14} /> New
+          <Plus size={14} /> {t('New')}
         </button>
       ) : undefined,
     );
@@ -555,13 +563,20 @@ export function ClientApp(p: Props) {
 
   if (mode === 'work') {
     const brief = sub.startsWith('brief:') ? briefs.find((b) => `brief:${b.id}` === sub) : undefined;
-    const list = brief ? work.filter((t) => t.briefId === brief.id) : work.filter((t) => (sub === 'approve' ? t.approval?.status === 'waiting' : sub === 'done' ? t.done : !t.done));
+    const list = brief ? work.filter((tk) => tk.briefId === brief.id) : work.filter((tk) => (sub === 'approve' ? tk.approval?.status === 'waiting' : sub === 'done' ? tk.done : !tk.done));
     const groups = brief
       ? [{ key: brief.id, label: null as string | null, items: list }]
-      : [...briefs.map((b) => ({ key: b.id, label: b.title, items: list.filter((t) => t.briefId === b.id) })), { key: 'other', label: briefs.length ? 'Other work' : null, items: list.filter((t) => !t.briefId || !briefs.some((b) => b.id === t.briefId)) }].filter((g) => g.items.length);
+      : [...briefs.map((b) => ({ key: b.id, label: b.title, items: list.filter((tk) => tk.briefId === b.id) })), { key: 'other', label: briefs.length ? t('Other work') : null, items: list.filter((tk) => !tk.briefId || !briefs.some((b) => b.id === tk.briefId)) }].filter((g) => g.items.length);
+    const progress = brief ? { done: list.filter((tk) => tk.done).length, total: list.length } : null;
     content = pane(
-      brief ? brief.title : sub === 'approve' ? 'Needs approval' : sub === 'done' ? 'Done' : 'Work',
-      brief ? `${brief.due ? `Due ${fmtDay(brief.due)} · ` : ''}${list.filter((t) => t.done).length} of ${list.length} done` : approvals.length ? `${approvals.length} waiting for your approval` : 'Nothing waiting on you',
+      brief ? brief.title : sub === 'approve' ? t('Needs approval') : sub === 'done' ? t('Done') : t('Work'),
+      brief && progress
+        ? brief.due
+          ? t('Due {date} · {done} of {total} done', { date: fmtDay(brief.due), done: progress.done, total: progress.total })
+          : t('{done} of {total} done', { done: progress.done, total: progress.total })
+        : approvals.length
+          ? tn(approvals.length, '{n} waiting for your approval', '{n} waiting for your approval')
+          : t('Nothing waiting on you'),
       <>
         {!brief && !sub && p.quotes && p.onDecideQuote && <GuestQuotes quotes={p.quotes.filter((q) => q.clientId === client.id)} company={p.ws.name} canApprove={can(person, 'approve') && client.status !== 'ended'} onDecide={p.onDecideQuote} />}
         {brief?.context && <p className="client-brief-context">{brief.context}</p>}
@@ -572,19 +587,19 @@ export function ClientApp(p: Props) {
                 {g.items.map(taskRow)}
               </div>
             ))
-          : empty(<ListChecks size={22} />, 'Nothing here', 'The team shares tasks and briefs with you as work moves.')}
+          : empty(<ListChecks size={22} />, t('Nothing here yet'), t('The team shares tasks and briefs with you as work moves.'))}
       </>,
     );
   }
 
   if (mode === 'tables') {
-    const t = sharedTables.find((x) => x.id === sub) ?? sharedTables[0];
-    if (t) {
+    const tb = sharedTables.find((x) => x.id === sub) ?? sharedTables[0];
+    if (tb) {
       const editable = can(person, 'comment') && client.status !== 'ended';
       content = (
         <TableScreen
-          key={t.id}
-          table={t}
+          key={tb.id}
+          table={tb}
           tables={sharedTables}
           rows={sharedRows}
           users={shownTeam}
@@ -597,12 +612,12 @@ export function ClientApp(p: Props) {
           setOpenRow={setTableRow}
           onDeleted={() => {}}
           onMenu={() => go('home')}
-          toast={(x) => say(x.text)}
+          toast={(x) => say(t(x.text))}
           channels={[]}
           isAdmin={false}
           serverOn={server.on}
           onCompose={() => {}}
-          guest={{ canEdit: (id) => editable && (t.share?.edit ?? []).includes(id), add: editable && !!t.share?.add, download: !!t.share?.download }}
+          guest={{ canEdit: (id) => editable && (tb.share?.edit ?? []).includes(id), add: editable && !!tb.share?.add, download: !!tb.share?.download }}
         />
       );
     }
@@ -613,17 +628,17 @@ export function ClientApp(p: Props) {
     if (chan) {
       const msgs = p.messages.filter((m) => m.channelId === chan.id);
       const links = msgs.flatMap((m) => (m.text.match(/https?:\/\/[^\s)]+/g) ?? []).map((url) => ({ url, who: m.guestEmail ? nameOf(m.guestEmail) : nameOf(m.userId), at: m.at })));
-      const chatFiles = msgs.flatMap((m) => (m.files ?? []).map((f) => ({ key: `file:${m.id}:${f.name}`, name: f.name, type: f.type, size: f.size, url: f.url, who: m.guestEmail ? nameOf(m.guestEmail) : nameOf(m.userId), at: m.at, where: 'in chat' })));
+      const chatFiles = msgs.flatMap((m) => (m.files ?? []).map((f) => ({ key: `file:${m.id}:${f.name}`, name: f.name, type: f.type, size: f.size, url: f.url, who: m.guestEmail ? nameOf(m.guestEmail) : nameOf(m.userId), at: m.at, where: t('in chat') })));
       content = pane(
         chan.name,
-        'Files, links and docs in this channel',
+        t('Files, links and docs in this channel'),
         <ChannelMaterials channel={chan} users={shownTeam} me={person.email} chatFiles={chatFiles} chatLinks={links} onChannel={() => {}} readOnly />,
       );
     } else {
       const list = v.files.filter((f) => (sub === 'shared' ? !f.uploadedBy : sub === 'mine' ? !!f.uploadedBy : true)).sort((a, b) => b.modified.localeCompare(a.modified));
       content = pane(
-        sub === 'shared' ? 'Shared with you' : sub === 'mine' ? `From ${fromWho}` : 'Files',
-        access.uploads ? `Uploads go to “From ${fromWho}”` : 'What the team shares with you',
+        sub === 'shared' ? t('Shared with you') : sub === 'mine' ? t('From {company}', { company: fromWho }) : t('Files'),
+        access.uploads ? t('Uploads go to “From {company}”', { company: fromWho }) : t('What the team shares with you'),
         list.length ? (
           <div className="todo-group">
             {list.map((f) => (
@@ -631,7 +646,7 @@ export function ClientApp(p: Props) {
             ))}
           </div>
         ) : (
-          empty(<HardDrive size={22} />, 'No files yet', sub === 'mine' ? 'Upload files for the team here.' : `${ws.name} shares files with you here.`)
+          empty(<HardDrive size={22} />, t('No files yet'), sub === 'mine' ? t('Upload files for the team here.') : t('{company} shares files with you here.', { company: ws.name }))
         ),
         access.uploads && can(person, 'upload') && mobile ? <UploadButton actions={actions} say={say} compact /> : undefined,
       );
@@ -643,11 +658,11 @@ export function ClientApp(p: Props) {
     content = sel ? (
       pane(
         sel.meeting.title,
-        `${fmtDay(sel.meeting.at)} · ${sel.meeting.minutes} min · ${sel.meeting.attendees.join(', ')}`,
+        `${fmtDay(sel.meeting.at)} · ${tn(sel.meeting.minutes, '{n} min', '{n} min')} · ${sel.meeting.attendees.join(', ')}`,
         <MeetingNotes m={sel.meeting} notes={sel.notes} recording={access.recordings} />,
       )
     ) : (
-      pane('Meetings', 'Notes from meetings you were in', empty(<Video size={22} />, 'No meetings yet', 'Notes appear here after you meet with the team.'))
+      pane(t('Meetings'), t('Notes from meetings you were in'), empty(<Video size={22} />, t('No meetings yet'), t('Notes appear here after you meet with the team.')))
     );
   }
 
@@ -695,17 +710,17 @@ export function ClientApp(p: Props) {
           guest={{ canPost: can(person, 'comment') }}
         />
       ) : (
-        pane('Chat', '', empty(<MessagesSquare size={22} />, 'No conversations yet', `${ws.name} will add you to a channel.`))
+        pane(t('Chat'), '', empty(<MessagesSquare size={22} />, t('No conversations yet'), t('{company} will add you to a channel.', { company: ws.name })))
       );
   }
 
   /* ---------------- the shell ---------------- */
   return (
     <div className={`app client-app mode-${mode === 'work' ? 'tasks' : mode === 'files' ? 'drive' : mode} ${hasSidebar ? '' : 'no-sidebar'}`}>
-      <nav className="rail" aria-label="Portal">
+      <nav className="rail" aria-label={t('Portal')}>
         <div className="rail-ws">
           {p.switcher ?? (
-            <span className="client-ws" title={`${ws.name} for ${client.name}`}>
+            <span className="client-ws" title={t('{company} for {project}', { company: ws.name, project: client.name })}>
               <WorkspaceLogo ws={ws} size={34} />
             </span>
           )}
@@ -723,12 +738,12 @@ export function ClientApp(p: Props) {
         </div>
         <div className="rail-foot">
           {access.ai && (
-            <button className={`rail-tool ai ${askOpen ? 'on' : ''}`} onClick={() => setAskOpen((o) => !o)} title="Ask AI">
+            <button className={`rail-tool ai ${askOpen ? 'on' : ''}`} onClick={() => setAskOpen((o) => !o)} title={t('Ask AI')}>
               <Sparkles size={18} />
             </button>
           )}
           <div className="rail-notices">
-            <button className={`rail-tool ${noticesOpen ? 'on' : ''}`} onClick={() => (setNoticesOpen((o) => !o), p.onReadNotices())} title="Notifications">
+            <button className={`rail-tool ${noticesOpen ? 'on' : ''}`} onClick={() => (setNoticesOpen((o) => !o), p.onReadNotices())} title={t('Notifications')}>
               <Bell size={18} />
               {unread ? <i>{unread}</i> : null}
             </button>
@@ -752,14 +767,16 @@ export function ClientApp(p: Props) {
               {sidebar[mode]}
             </div>
           </div>
-          <div className="sb-resize" onPointerDown={startResize} onDoubleClick={() => setSbW(248)} title="Drag to resize · double-click to reset" />
+          <div className="sb-resize" onPointerDown={startResize} onDoubleClick={() => setSbW(248)} title={t('Drag to resize · double-click to reset')} />
         </aside>
       )}
 
       <main className="main" key={mode}>
         {client.status === 'ended' && (
           <div className="ended-banner">
-            Your work with {ws.name} ended{client.endedAt ? ` on ${new Date(client.endedAt).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}. You can still read everything and download files.
+            {client.endedAt
+              ? t('Your work with {company} ended on {date}. You can still read everything and download files.', { company: ws.name, date: fmtDayLong(client.endedAt) })
+              : t('Your work with {company} ended. You can still read everything and download files.', { company: ws.name })}
           </div>
         )}
         {mobile && (
@@ -767,13 +784,13 @@ export function ClientApp(p: Props) {
             title={title}
             menu={
               mode === 'work'
-                ? { value: sub, label: 'Which work', onChange: setSub, options: [{ value: '', label: 'Work' }, { value: 'approve', label: 'Needs approval' }, { value: 'done', label: 'Done' }, ...briefs.map((b) => ({ value: `brief:${b.id}`, label: b.title, group: 'Briefs' }))] }
+                ? { value: sub, label: t('Which work'), onChange: setSub, options: [{ value: '', label: t('Work') }, { value: 'approve', label: t('Needs approval') }, { value: 'done', label: t('Done') }, ...briefs.map((b) => ({ value: `brief:${b.id}`, label: b.title, group: t('Briefs') }))] }
                 : mode === 'files'
-                  ? { value: sub, label: 'Which files', onChange: setSub, options: [{ value: '', label: 'Files' }, { value: 'shared', label: 'Shared with you' }, { value: 'mine', label: `From ${fromWho}` }, ...v.channels.map((c) => ({ value: `chan:${c.id}`, label: c.name, group: 'Channel materials' }))] }
+                  ? { value: sub, label: t('Which files'), onChange: setSub, options: [{ value: '', label: t('Files') }, { value: 'shared', label: t('Shared with you') }, { value: 'mine', label: t('From {company}', { company: fromWho }) }, ...v.channels.map((c) => ({ value: `chan:${c.id}`, label: c.name, group: t('Channel materials') }))] }
                   : mode === 'requests'
-                    ? { value: sub, label: 'Which requests', onChange: setSub, options: [{ value: '', label: 'Requests' }, { value: 'waiting', label: 'Waiting on you' }, { value: 'done', label: 'Done' }, { value: 'all', label: 'All requests' }] }
+                    ? { value: sub, label: t('Which requests'), onChange: setSub, options: [{ value: '', label: t('Requests') }, { value: 'waiting', label: t('Waiting on you') }, { value: 'done', label: t('Done') }, { value: 'all', label: t('All requests') }] }
                     : mode === 'meet' && v.meetings.length
-                      ? { value: sub || v.meetings[0].meeting.id, label: 'Which meeting', onChange: setSub, options: v.meetings.map((x) => ({ value: x.meeting.id, label: x.meeting.title })) }
+                      ? { value: sub || v.meetings[0].meeting.id, label: t('Which meeting'), onChange: setSub, options: v.meetings.map((x) => ({ value: x.meeting.id, label: x.meeting.title })) }
                       : undefined
             }
             workspaces={p.mobileSwitch?.workspaces ?? []}
@@ -788,7 +805,7 @@ export function ClientApp(p: Props) {
             onSearch={() => (access.ai ? setAskOpen(true) : go('home'))}
             onBell={() => (setNoticesOpen(true), p.onReadNotices())}
             account={
-              <button type="button" className="icon-btn mt-account" onClick={() => setMeOpen(true)} aria-label="Your account">
+              <button type="button" className="icon-btn mt-account" onClick={() => setMeOpen(true)} aria-label={t('Your account')}>
                 <Avatar person={{ name: p.account?.me.name ?? person.name, email: person.email, color: p.account?.me.color ?? client.color }} size={28} />
               </button>
             }
@@ -804,9 +821,11 @@ export function ClientApp(p: Props) {
               <button key={id} type="button" className={mode === id ? 'on' : ''} aria-current={mode === id ? 'page' : undefined} onClick={() => (id === 'work' && mode !== 'work' && approvals.length ? go('work', 'approve') : go(id))}>
                 <span className="tab-icon">
                   <Icon size={21} />
-                  {n ? <i aria-label={`${n} waiting`}>{n > 99 ? '99+' : n}</i> : null}
+                  {n ? <i aria-label={tn(n, '{n} waiting', '{n} waiting')}>{n > 99 ? '99+' : n}</i> : null}
                 </span>
-                <span className="tab-label">{label}</span>
+                <span className="tab-label" title={label}>
+                  {label}
+                </span>
               </button>
             ))}
             {!barFits && (
@@ -814,7 +833,7 @@ export function ClientApp(p: Props) {
                 <span className="tab-icon">
                   <MenuIcon size={21} />
                 </span>
-                <span className="tab-label">More</span>
+                <span className="tab-label">{t('More')}</span>
               </button>
             )}
           </div>
@@ -847,7 +866,7 @@ export function ClientApp(p: Props) {
             setNewRequest(false);
             setMode('requests');
             setOpenTask(id);
-            say('Request sent. The team has been told.');
+            say(t('Request sent. The team has been told.'));
           }}
         />
       )}
@@ -855,31 +874,29 @@ export function ClientApp(p: Props) {
         <Assistant
           scope={{ kind: 'all' }}
           setScope={() => {}}
-          scopeOptions={[{ value: 'all', label: `What ${ws.name} shared with ${client.name}` }]}
+          scopeOptions={[{ value: 'all', label: t('What {company} shared with {project}', { company: ws.name, project: client.name }) }]}
           chats={askChats}
           setChats={setAskChats}
           ask={(q) => actions.ask(q)}
-          citeLabel={() => 'source'}
+          citeLabel={() => t('source')}
           onCite={() => {}}
           live
           onClose={() => setAskOpen(false)}
         />
       )}
-      <Popover anchor={meBtn} open={meOpen} onClose={() => setMeOpen(false)} width={300} title="Account">
+      <Popover anchor={meBtn} open={meOpen} onClose={() => setMeOpen(false)} width={300} title={t('Account')}>
         <PersonMenu p={p} close={() => setMeOpen(false)} mobileModes={mobile ? barMore : []} go={go} say={say} onProfile={() => setProfileOpen(true)} />
       </Popover>
-      {profileOpen && p.account && <ProfileDialog me={p.account.me} email={person.email} onSave={(patch) => (p.account!.onProfile(patch), say('Profile saved'))} onClose={() => setProfileOpen(false)} />}
+      {profileOpen && p.account && <ProfileDialog me={p.account.me} email={person.email} onSave={(patch) => (p.account!.onProfile(patch), say(t('Profile saved')))} onClose={() => setProfileOpen(false)} />}
       {p.preview && (
         <div className="view-as-pill">
           <Eye size={14} />
-          <span>
-            Viewing as <b>{person.name}</b>
-          </span>
+          <span>{tj('Viewing as {name}', { name: <b>{person.name}</b> })}</span>
           {p.preview.people.length > 1 && (
-            <Select<string> value={person.email} onChange={(v) => p.preview!.onSwitch(v)} label="Switch person" className="sel-flat" options={p.preview.people.map((x) => ({ value: x.email, label: x.name, hint: ROLE[x.role] }))} />
+            <Select<string> value={person.email} onChange={(v) => p.preview!.onSwitch(v)} label={t('Switch person')} className="sel-flat" options={p.preview.people.map((x) => ({ value: x.email, label: x.name, hint: t(ROLE[x.role]) }))} />
           )}
           <button className="primary-btn sm" onClick={p.preview.onExit}>
-            Exit
+            {t('Exit')}
           </button>
         </div>
       )}
@@ -891,7 +908,7 @@ export function ClientApp(p: Props) {
 /* ---------------- pieces ---------------- */
 
 /** A hidden file field and a way to open it: the sidebar's Upload button and the phone's create button share it. */
-function useUploader(actions: ClientActions, say: (t: string) => void) {
+function useUploader(actions: ClientActions, say: (text: string) => void) {
   const ref = useRef<HTMLInputElement>(null);
   const input = (
     <input
@@ -904,29 +921,29 @@ function useUploader(actions: ClientActions, say: (t: string) => void) {
         e.target.value = '';
         const big = fs.filter((f) => f.size > 8_000_000).length;
         const done = await actions.upload(fs);
-        say(big ? `${done.length} uploaded. Files over 8 MB: share a link instead.` : `${done.length} file${done.length === 1 ? '' : 's'} uploaded.`);
+        say(big ? tn(done.length, '{n} file uploaded. Files over 8 MB: share a link instead.', '{n} files uploaded. Files over 8 MB: share a link instead.') : tn(done.length, '{n} file uploaded.', '{n} files uploaded.'));
       }}
     />
   );
   return { input, pick: () => ref.current?.click() };
 }
 
-function UploadButton({ actions, say, compact }: { actions: ClientActions; say: (t: string) => void; compact?: boolean }) {
+function UploadButton({ actions, say, compact }: { actions: ClientActions; say: (text: string) => void; compact?: boolean }) {
   const up = useUploader(actions, say);
   return (
     <>
       <button className={compact ? 'primary-btn sm' : 'compose-btn'} onClick={up.pick}>
         <Upload size={16} />
-        <span className="sb-label">Upload</span>
+        <span className="sb-label">{t('Upload')}</span>
       </button>
       {up.input}
     </>
   );
 }
 
-function FileRow({ f, by, say }: { f: DriveItem; by: string; say: (t: string) => void }) {
+function FileRow({ f, by, say }: { f: DriveItem; by: string; say: (text: string) => void }) {
   return (
-    <a className="task file-task" href={f.url} target="_blank" rel="noreferrer" download={f.url ? f.name : undefined} onClick={(e) => !f.url && (e.preventDefault(), say('This is a demo file without content.'))}>
+    <a className="task file-task" href={f.url} target="_blank" rel="noreferrer" download={f.url ? f.name : undefined} onClick={(e) => !f.url && (e.preventDefault(), say(t('This is a demo file without content.')))}>
       <span className="cf-icon">{f.kind === 'video' ? <Video size={16} /> : <FileText size={16} />}</span>
       <div className="task-main">
         <span className="task-title-btn">{f.name}</span>
@@ -950,7 +967,7 @@ function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; rec
           ) : (
             <>
               <span className="client-rec-label">
-                <Video size={16} /> Recording
+                <Video size={16} /> {tx('noun', 'Recording')}
               </span>
               <audio src={m.recording.url} controls preload="metadata" />
             </>
@@ -960,24 +977,24 @@ function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; rec
       {notes ? (
         <>
           <div className="side-card">
-            <h3>Summary</h3>
+            <h3>{t('Summary')}</h3>
             <p>{m.summary}</p>
           </div>
           {!!m.decisions?.length && (
             <div className="side-card">
-              <h3>Decisions</h3>
+              <h3>{t('Decisions')}</h3>
               <ul>{m.decisions.map((d) => <li key={d}>{d}</li>)}</ul>
             </div>
           )}
           {!!m.keyPoints?.length && (
             <div className="side-card">
-              <h3>Key points</h3>
+              <h3>{t('Key points')}</h3>
               <ul>{m.keyPoints.map((d) => <li key={d}>{d}</li>)}</ul>
             </div>
           )}
           {m.actions.length > 0 && (
             <div className="side-card">
-              <h3>Next steps</h3>
+              <h3>{t('Next steps')}</h3>
               <ul>
                 {m.actions.map((a) => (
                   <li key={a.title}>
@@ -990,7 +1007,7 @@ function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; rec
           )}
         </>
       ) : (
-        <EmptyState compact text="The team hasn’t shared notes for this meeting." />
+        <EmptyState compact text={t('The team hasn’t shared notes for this meeting.')} />
       )}
     </div>
   );
@@ -998,7 +1015,7 @@ function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; rec
 
 /** A task, brief or request, opened in the same side panel the team uses. */
 function TaskPanel({
-  t,
+  t: task,
   subs,
   person,
   clientName,
@@ -1015,7 +1032,7 @@ function TaskPanel({
   clientName: string;
   nameOf: (by: string) => string;
   avatarOf: (by: string, size?: number) => React.ReactNode;
-  stLabel: (t: Todo) => string;
+  stLabel: (task: Todo) => string;
   actions: ClientActions;
   onOpen: (id: string) => void;
   onClose: () => void;
@@ -1028,46 +1045,48 @@ function TaskPanel({
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, [onClose]);
-  const doers = [...new Set(t.assignees?.length ? t.assignees : t.userId ? [t.userId] : [])];
-  const history = (t.history ?? []).filter((h) => h.toClient || h.by.includes('@') || (h.kind === 'created' && t.source === 'request'));
+  const doers = [...new Set(task.assignees?.length ? task.assignees : task.userId ? [task.userId] : [])];
+  const history = (task.history ?? []).filter((h) => h.toClient || h.by.includes('@') || (h.kind === 'created' && task.source === 'request'));
   const send = () => {
     if (!comment.trim()) return;
-    actions.comment(t.id, comment.trim());
+    actions.comment(task.id, comment.trim());
     setComment('');
   };
+  const ap = task.approval;
+  const apBy = nameOf(ap?.by ?? '');
   return (
     <div className="drawer-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <aside className="drawer" role="dialog" aria-label={t.title}>
+      <aside className="drawer" role="dialog" aria-label={task.title}>
         <header className="drawer-head">
-          {isBrief(t) ? (
+          {isBrief(task) ? (
             <span className="brief-badge">
-              <FileText size={12} /> Brief
+              <FileText size={12} /> {t('Brief')}
             </span>
           ) : (
-            <span className="drawer-kind">{t.source === 'request' ? 'Request' : 'Task'}</span>
+            <span className="drawer-kind">{task.source === 'request' ? t('Request') : t('Task')}</span>
           )}
           <span className="spacer" />
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={18} />
           </button>
         </header>
         <div className="drawer-body">
-          <h2 className="client-title">{t.title}</h2>
+          <h2 className="client-title">{task.title}</h2>
 
           <SmoothHeight>
-          {t.approval?.status === 'waiting' && (
+          {ap?.status === 'waiting' && (
             <div className="review-banner">
               <span>
-                <strong>Waiting for your approval</strong>
-                <small>{can(person, 'approve') ? 'Approve it, or tell the team what to change.' : `Only approvers at ${clientName} can approve. You can still comment.`}</small>
+                <strong>{t('Waiting for your approval')}</strong>
+                <small>{can(person, 'approve') ? t('Approve it, or tell the team what to change.') : t('Only approvers at {company} can approve. You can still comment.', { company: clientName })}</small>
               </span>
               {can(person, 'approve') && changes === null && (
                 <span className="rb-actions">
                   <button className="ghost-btn sm" onClick={() => setChanges('')}>
-                    <RotateCcw size={13} /> Ask for changes
+                    <RotateCcw size={13} /> {t('Ask for changes')}
                   </button>
-                  <button className="primary-btn sm" onClick={() => actions.decide(t.id, 'approved', '')}>
-                    <CheckCircle2 size={14} /> Approve
+                  <button className="primary-btn sm" onClick={() => actions.decide(task.id, 'approved', '')}>
+                    <CheckCircle2 size={14} /> {t('Approve')}
                   </button>
                 </span>
               )}
@@ -1077,33 +1096,38 @@ function TaskPanel({
           <SmoothHeight>
           {changes !== null && (
             <div className="comment-box to-client">
-              <textarea autoFocus rows={3} value={changes} onChange={(e) => setChanges(e.target.value)} placeholder="What should change?" />
+              <textarea autoFocus rows={3} value={changes} onChange={(e) => setChanges(e.target.value)} placeholder={t('What should change?')} />
               <div className="cb-foot">
                 <button className="ghost-btn sm" onClick={() => setChanges(null)}>
-                  Cancel
+                  {t('Cancel')}
                 </button>
-                <button className="primary-btn sm" disabled={!changes.trim()} onClick={() => (actions.decide(t.id, 'changes', changes.trim()), setChanges(null))}>
-                  Send changes
+                <button className="primary-btn sm" disabled={!changes.trim()} onClick={() => (actions.decide(task.id, 'changes', changes.trim()), setChanges(null))}>
+                  {t('Send changes')}
                 </button>
               </div>
             </div>
           )}
           </SmoothHeight>
-          {t.approval && t.approval.status !== 'waiting' && (
-            <p className={`ap-tag ${t.approval.status}`}>
-              {t.approval.status === 'approved' ? 'Approved' : 'Changes asked'} by {nameOf(t.approval.by ?? '')}
-              {t.approval.note ? `: “${t.approval.note}”` : ''}
+          {ap && ap.status !== 'waiting' && (
+            <p className={`ap-tag ${ap.status}`}>
+              {ap.status === 'approved'
+                ? ap.note
+                  ? t('Approved by {name}: “{note}”', { name: apBy, note: ap.note })
+                  : t('Approved by {name}', { name: apBy })
+                : ap.note
+                  ? t('Changes asked by {name}: “{note}”', { name: apBy, note: ap.note })
+                  : t('Changes asked by {name}', { name: apBy })}
             </p>
           )}
 
           <dl className="fields">
-            <dt>Status</dt>
+            <dt>{t('Status')}</dt>
             <dd>
-              <span className={`st-dot st-${stCls(t)}`} /> {stLabel(t)}
+              <span className={`st-dot st-${stCls(task)}`} /> {stLabel(task)}
             </dd>
             {doers.length > 0 && (
               <>
-                <dt>{isBrief(t) ? 'In charge' : 'Doing it'}</dt>
+                <dt>{isBrief(task) ? t('In charge') : t('Doing it')}</dt>
                 <dd className="client-doers">
                   {doers.map((id) => (
                     <span key={id}>
@@ -1113,31 +1137,31 @@ function TaskPanel({
                 </dd>
               </>
             )}
-            {t.due && (
+            {task.due && (
               <>
-                <dt>{t.source === 'request' ? 'Needed by' : 'Due'}</dt>
-                <dd>{fmtDay(t.due)}</dd>
+                <dt>{task.source === 'request' ? t('Needed by') : t('Due')}</dt>
+                <dd>{fmtDay(task.due)}</dd>
               </>
             )}
-            {t.source === 'request' && (
+            {task.source === 'request' && (
               <>
-                <dt>Sent by</dt>
+                <dt>{t('Sent by')}</dt>
                 <dd>
-                  {nameOf(t.requestedBy ?? '')} · {relative(t.createdAt)}
+                  {nameOf(task.requestedBy ?? '')} · {relative(task.createdAt)}
                 </dd>
               </>
             )}
           </dl>
 
-          {isBrief(t) && t.context && (
+          {isBrief(task) && task.context && (
             <>
-              <label className="drawer-label">Context</label>
-              <p className="client-brief-context">{t.context}</p>
+              <label className="drawer-label">{t('Context')}</label>
+              <p className="client-brief-context">{task.context}</p>
             </>
           )}
           {subs.length > 0 && (
             <>
-              <label className="drawer-label">Tasks in this brief</label>
+              <label className="drawer-label">{t('Tasks in this brief')}</label>
               <div className="sub-list">
                 {subs.map((s) => (
                   <div key={s.id} className={`sub ${s.done ? 'done' : ''}`}>
@@ -1152,7 +1176,7 @@ function TaskPanel({
             </>
           )}
 
-          <label className="drawer-label">Conversation</label>
+          <label className="drawer-label">{t('Conversation')}</label>
           <ol className="history">
             {history.map((h) => (
               <li key={h.id} className={`h-${h.kind}`}>
@@ -1160,26 +1184,27 @@ function TaskPanel({
                 <span className="h-body">
                   {h.kind === 'comment' ? (
                     <>
-                      <b>{h.by.toLowerCase() === person.email.toLowerCase() ? 'You' : nameOf(h.by)}</b>
+                      <b>{h.by.toLowerCase() === person.email.toLowerCase() ? t('You') : nameOf(h.by)}</b>
                       <span className="h-comment">{h.text}</span>
                     </>
                   ) : (
                     <span>
-                      <b>{h.by.toLowerCase() === person.email.toLowerCase() ? 'You' : nameOf(h.by)}</b> {h.text}
+                      {/* What happened: in the reader's words when it was saved with msg() (clientActions), else as saved. */}
+                      <b>{h.by.toLowerCase() === person.email.toLowerCase() ? t('You') : nameOf(h.by)}</b> {textOf(h as { text: string; tr?: Msg })}
                     </span>
                   )}
                   <time>{relative(h.at)}</time>
                 </span>
               </li>
             ))}
-            {!history.length && <li className="muted small">No messages yet.</li>}
+            {!history.length && <li className="muted small">{t('No messages yet.')}</li>}
           </ol>
           {can(person, 'comment') && (
             <div className="comment-box">
-              <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())} placeholder="Write to the team…" />
+              <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())} placeholder={t('Write to the team…')} />
               <div className="cb-foot">
                 <button className="primary-btn sm" disabled={!comment.trim()} onClick={send}>
-                  Send
+                  {t('Send')}
                 </button>
               </div>
             </div>
@@ -1198,34 +1223,34 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
   const ref = useRef<HTMLInputElement>(null);
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal request-modal" role="dialog" aria-label="New request" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal request-modal" role="dialog" aria-label={t('New request')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Inbox size={15} /> New request
+            <Inbox size={15} /> {t('New request')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body request-body">
           <SmoothHeight>
           <label className="field">
-            <span>What do you need?</span>
-            <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. A new banner for the Ramadan promo" />
+            <span>{t('What do you need?')}</span>
+            <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('e.g. A new banner for the Ramadan promo')} />
           </label>
           <label className="field">
-            <span>Details</span>
-            <textarea rows={5} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Sizes, wording, examples you like, anything that helps" />
+            <span>{t('Details')}</span>
+            <textarea rows={5} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={t('Sizes, wording, examples you like, anything that helps')} />
           </label>
           <div className="request-row">
             <div className="field">
-              <span>Needed by (optional)</span>
-              <DatePicker value={due} onChange={setDue} label="Needed by" placeholder="No date" />
+              <span>{t('Needed by (optional)')}</span>
+              <DatePicker value={due} onChange={setDue} label={t('Needed by')} placeholder={t('No date')} />
             </div>
             <div className="field">
-              <span>Files</span>
+              <span>{t('Files')}</span>
               <button className="ghost-btn sm" onClick={() => ref.current?.click()}>
-                <Paperclip size={14} /> Attach
+                <Paperclip size={14} /> {t('Attach')}
               </button>
             </div>
           </div>
@@ -1234,7 +1259,7 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
               {files.map((f) => (
                 <span key={f.name} className="chip">
                   {f.name}
-                  <button aria-label="Remove" onClick={() => setFiles(files.filter((x) => x !== f))}>
+                  <button aria-label={t('Remove')} onClick={() => setFiles(files.filter((x) => x !== f))}>
                     <X size={11} />
                   </button>
                 </span>
@@ -1242,16 +1267,16 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
             </div>
           )}
           <input ref={ref} type="file" multiple hidden onChange={(e) => (setFiles([...files, ...(e.target.files ?? [])]), (e.target.value = ''))} />
-          <p className="muted small">The team gets this straight away. You’ll see when they pick it up, and you can talk about it on the request.</p>
+          <p className="muted small">{t('The team gets this straight away. You’ll see when they pick it up, and you can talk about it on the request.')}</p>
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" disabled={!title.trim()} onClick={() => onSend({ title, details, due: due || undefined, files })}>
-            Send request
+            {t('Send request')}
           </button>
         </footer>
       </div>
@@ -1259,7 +1284,7 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
   );
 }
 
-function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; close: () => void; mobileModes: [Mode, string, LucideIcon, number?][]; go: (m: Mode) => void; say: (t: string) => void; onProfile: () => void }) {
+function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; close: () => void; mobileModes: [Mode, string, LucideIcon, number?][]; go: (m: Mode) => void; say: (text: string) => void; onProfile: () => void }) {
   const { person, access, ws, account } = p;
   const [inviting, setInviting] = useState(false);
   const [name, setName] = useState('');
@@ -1267,6 +1292,9 @@ function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; c
   const [msg, setMsg] = useState<{ text: string; link?: string | null } | null>(null);
   const me = account?.me;
   const company = companyOf(person.email, person.company, p.client);
+  // Guests have no Settings: their language is picked here, like Settings, Account (their pick, else what's showing).
+  const lang = useLang();
+  const shownLang = account?.language ?? lang;
   return (
     <div className="sel-pop guest-menu">
       <div className="am-head">
@@ -1275,7 +1303,7 @@ function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; c
           <strong>{me?.name ?? person.name}</strong>
           <small>{person.email}</small>
           <small>
-            {ROLE[person.role]}
+            {t(ROLE[person.role])}
             {company ? ` · ${company}` : ''}
           </small>
         </div>
@@ -1284,9 +1312,9 @@ function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; c
         <div className="am-theme segmented wide">
           {(
             [
-              ['light', Sun, 'Light'],
-              ['dark', Moon, 'Dark'],
-              ['system', Monitor, 'Auto'],
+              ['light', Sun, t('Light')],
+              ['dark', Moon, t('Dark')],
+              ['system', Monitor, t('Auto')],
             ] as const
           ).map(([id, Icon, label]) => (
             <button key={id} className={account.theme === id ? 'on' : ''} onClick={() => account.onTheme(id)}>
@@ -1295,9 +1323,18 @@ function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; c
           ))}
         </div>
       )}
+      {account?.onLanguage && (
+        <div className="am-lang segmented wide" role="group" aria-label={t('Language')}>
+          {LANGS.map((l) => (
+            <button key={l.id} type="button" lang={l.id} className={shownLang === l.id ? 'on' : ''} aria-pressed={shownLang === l.id} onClick={() => account.onLanguage?.(l.id)}>
+              {l.name}
+            </button>
+          ))}
+        </div>
+      )}
       {account && (
         <button className="am-item" onClick={() => (close(), onProfile())}>
-          <UserRound size={16} /> Your profile and password
+          <UserRound size={16} /> {t('Your profile and password')}
         </button>
       )}
       {mobileModes.map(([id, label, Icon]) => (
@@ -1308,21 +1345,21 @@ function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; c
       {access.invites !== 'off' &&
         (inviting ? (
           <div className="client-invite">
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Their name" />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={`name@${person.email.split('@')[1] ?? 'company.com'}`} />
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Their name')} />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('name@{domain}', { domain: person.email.split('@')[1] ?? 'company.com' })} />
             {msg && (
               <p className="small">
                 {msg.text}{' '}
                 {msg.link && (
-                  <button className="link-btn" onClick={() => void navigator.clipboard?.writeText(msg.link!).then(() => say('Invite link copied'))}>
-                    Copy link
+                  <button className="link-btn" onClick={() => void navigator.clipboard?.writeText(msg.link!).then(() => say(t('Invite link copied')))}>
+                    {t('Copy link')}
                   </button>
                 )}
               </p>
             )}
             <div className="ci-actions">
               <button className="ghost-btn sm" onClick={() => (setInviting(false), setMsg(null))}>
-                Cancel
+                {t('Cancel')}
               </button>
               <button
                 className="primary-btn sm"
@@ -1333,22 +1370,22 @@ function PersonMenu({ p, close, mobileModes, go, say, onProfile }: { p: Props; c
                   if (r.ok) (setName(''), setEmail(''));
                 }}
               >
-                {access.invites === 'approve' ? 'Ask to add them' : 'Invite'}
+                {access.invites === 'approve' ? t('Ask to add them') : t('Invite')}
               </button>
             </div>
           </div>
         ) : (
           <button className="am-item" onClick={() => setInviting(true)}>
-            <UserPlus size={16} /> Invite a colleague
+            <UserPlus size={16} /> {t('Invite a colleague')}
           </button>
         ))}
       <div className="am-sep" />
       {(p.onSignOut ?? p.preview?.onExit) && (
         <button className="am-item danger" onClick={() => (close(), (p.onSignOut ?? p.preview!.onExit)())}>
-          <LogOut size={16} /> {p.onSignOut ? 'Sign out' : `Exit ${term.who} view`}
+          <LogOut size={16} /> {p.onSignOut ? t('Sign out') : t('Exit {who} view', { who: term.who })}
         </button>
       )}
-      <p className="muted small menu-note">You see what {ws.name} shares with you. Need something? Use Requests or Chat.</p>
+      <p className="muted small menu-note">{t('You see what {company} shares with you. Need something? Use Requests or Chat.', { company: ws.name })}</p>
     </div>
   );
 }
@@ -1361,12 +1398,12 @@ function ProfileDialog({ me, email, onSave, onClose }: { me: User; email: string
   const [photo, setPhoto] = useState(me.photo);
   return createPortal(
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal profile-modal" role="dialog" aria-label="Your profile" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="modal profile-modal" role="dialog" aria-label={t('Your profile')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <UserRound size={15} /> Your profile
+            <UserRound size={15} /> {t('Your profile')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -1375,26 +1412,26 @@ function ProfileDialog({ me, email, onSave, onClose }: { me: User; email: string
           <PhotoPicker name={name || me.name} email={email} color={color} photo={photo} onChange={setPhoto} />
           {!photo && (
             <div className="avatar-colors">
-              <small>Or a colour</small>
+              <small>{t('Or a colour')}</small>
               <div>
                 {ACCENTS.map((c) => (
-                  <button key={c} className={`swatch ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={`Colour ${c}`} />
+                  <button key={c} className={`swatch ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={t('Colour {color}', { color: c })} />
                 ))}
               </div>
             </div>
           )}
           <div className="field">
-            <label>Name</label>
+            <label>{t('Name')}</label>
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="field">
-            <label>Job title</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Marketing lead" />
+            <label>{t('Job title')}</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('e.g. Marketing lead')} />
           </div>
           <div className="field">
-            <label>Email</label>
+            <label>{t('Email')}</label>
             <input value={email} readOnly />
-            <small>You sign in with this address. The same sign-in works for everything shared with you.</small>
+            <small>{t('You sign in with this address. The same sign-in works for everything shared with you.')}</small>
           </div>
           <PasswordRow />
           </SmoothHeight>
@@ -1402,10 +1439,10 @@ function ProfileDialog({ me, email, onSave, onClose }: { me: User; email: string
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" disabled={!name.trim()} onClick={() => (onSave({ name: name.trim(), title: title.trim(), color, photo }), onClose())}>
-            Save
+            {t('Save')}
           </button>
         </footer>
       </div>

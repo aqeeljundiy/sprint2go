@@ -119,7 +119,7 @@ const id: Record<string, string> = {
   Reply: 'Balas',
   'Reply (draft)': 'Balas (draf)',
   Forward: 'Teruskan',
-  'Make a task': 'Jadikan tugas',
+  'mail::Make a task': 'Jadikan tugas',
   'Who handles this': 'Siapa yang menangani',
   'Who handles this…': 'Siapa yang menangani…',
   'Block {name}': 'Blokir {name}',
@@ -187,7 +187,7 @@ const id: Record<string, string> = {
   'Mark unread (U)': 'Tandai belum dibaca (U)',
   'Mark unread': 'Tandai belum dibaca',
   'Star (S)': 'Beri bintang (S)',
-  'More actions': 'Tindakan lainnya',
+  'More actions': 'Tindakan lain',
   'Code in this email': 'Kode di email ini',
   'Copy code': 'Salin kode',
 
@@ -203,7 +203,7 @@ const id: Record<string, string> = {
   'Full screen': 'Layar penuh',
   'Exit full screen': 'Keluar dari layar penuh',
   'Save draft & close (Esc)': 'Simpan draf & tutup (Esc)',
-  From: 'Dari',
+  'mail::From': 'Dari',
   To: 'Kepada',
   'Shared inbox': 'Kotak masuk bersama',
   Subject: 'Subjek',
@@ -252,7 +252,7 @@ const id: Record<string, string> = {
   'What should the email to {name} say?': 'Apa isi email untuk {name}?',
   'What should this email say?': 'Apa isi email ini?',
   'Rewrite from prompt': 'Tulis ulang dari perintah',
-  Generate: 'Buat',
+  'ai::Generate': 'Buat',
   'Improve what you wrote:': 'Perbaiki tulisan Anda:',
 
   // Templates and quick replies (mail/Templates.tsx): in the writer's language, since they go into the email
@@ -272,7 +272,7 @@ const id: Record<string, string> = {
   'Save what you wrote as a template': 'Simpan tulisan Anda sebagai template',
 
   // Quick reply on phones (mail/QuickReply.tsx)
-  'Reply to {name}': 'Balas {name}',
+  'Reply to {name}': 'Balas ke {name}',
   'Make it smaller': 'Perkecil',
   'Send the reply': 'Kirim balasan',
   'Tracking opens and clicks': 'Melacak dibuka dan klik',
@@ -410,7 +410,7 @@ const id: Record<string, string> = {
   'Opens are a hint, not proof. Apple Mail and some mail filters load pictures by themselves, so those show as maybe automatic and don’t count. Gmail and Outlook.com load them through their own servers, which hide the device. Apps that block pictures never show an open. Clicks and replies are the surest signs.':
     'Tanda dibuka hanyalah petunjuk, bukan bukti. Apple Mail dan beberapa filter email memuat gambar sendiri, jadi tampil sebagai mungkin otomatis dan tidak dihitung. Gmail dan Outlook.com memuatnya lewat server mereka, yang menyembunyikan perangkatnya. Aplikasi yang memblokir gambar tidak pernah menampilkan tanda dibuka. Klik dan balasan adalah tanda yang paling pasti.',
   'n/a': 't/a',
-  '{n} min': '{n} mnt',
+  '{n} min': '{n} menit',
   '{n} h': '{n} jam',
   'Who opened, clicked and replied to the emails you tracked': 'Siapa yang membuka, mengklik, dan membalas email yang Anda lacak',
   'Tracked emails': 'Email yang dilacak',
@@ -465,7 +465,7 @@ const id: Record<string, string> = {
   '{time} in {city}, {name}’s time': '{time} di {city}, waktu {name}',
   '{time} in {city}': '{time} di {city}',
   'With {names}': 'Bersama {names}',
-  '{n} more': '{n} lainnya',
+  '{n} more': '{n} lagi',
   Organiser: 'Penyelenggara',
   'Going?': 'Hadir?',
   'Your answer': 'Jawaban Anda',
@@ -580,7 +580,7 @@ const id: Record<string, string> = {
   'Copy address': 'Salin alamat',
   'Who can see it, how long': 'Siapa yang bisa melihat, berapa lama',
   'Delete now': 'Hapus sekarang',
-  'Saved to My Drive': 'Tersimpan di Drive Saya',
+  'Saved to My Drive': 'Tersimpan di Drive saya',
 };
 
 export default id;

@@ -47,7 +47,7 @@ const id: Record<string, string> = {
   'Pin to the top': 'Sematkan di atas',
   'Pinned to the top': 'Disematkan di atas',
   'Move to a {project}': 'Pindahkan ke {project}',
-  'Who sees it': 'Siapa yang melihat',
+  'Who sees it': 'Siapa yang melihatnya',
   'Only you see it now': 'Sekarang hanya Anda yang melihatnya',
   'Link copied. Only you can open it until you share the note': 'Link disalin. Hanya Anda yang bisa membukanya sampai catatan ini dibagikan',
   'Couldn’t copy the link here.': 'Link tidak bisa disalin di sini.',

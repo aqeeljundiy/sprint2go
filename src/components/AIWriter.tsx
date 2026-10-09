@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Sparkles, Wand2, X } from 'lucide-react';
 import { ai, aiLive, type RewriteStyle } from '../ai';
-import { mark, t } from '../i18n';
+import { mark, t, tx } from '../i18n';
 
 interface Props {
   hasText: boolean;
@@ -73,7 +73,7 @@ export function AIWriter({ hasText, currentText, me, to, subject, onResult, onCl
           ))}
         </div>
         <button className="primary-btn sm" disabled={!prompt.trim() || !!busy} onClick={() => run('draft', () => ai.draft({ instruction: prompt, tone, me, to, subject }))}>
-          {busy === 'draft' ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} {hasText ? t('Rewrite from prompt') : t('Generate')}
+          {busy === 'draft' ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} {hasText ? t('Rewrite from prompt') : tx('ai', 'Generate')}
         </button>
       </div>
       {hasText && (

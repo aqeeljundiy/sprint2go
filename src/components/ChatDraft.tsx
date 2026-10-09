@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
 import { usePersisted } from '../settings';
+import { t } from '../i18n';
 import '../connector.css';
 
 /** A message an AI app the person connected wrote for a channel that guests read (server/mcpTools.ts, post_message). */
@@ -25,8 +26,8 @@ export function useChatDraft(me: string, channelId: string | undefined, setText:
   useEffect(() => {
     if (!key || !draft || filled.current === key) return;
     filled.current = key;
-    setText((t) => {
-      if (t.trim()) return t;
+    setText((cur) => {
+      if (cur.trim()) return cur;
       used.current = key;
       return draft.text;
     });
@@ -51,7 +52,7 @@ export function useChatDraft(me: string, channelId: string | undefined, setText:
     sent: () => void (key && used.current === key && done()),
     discard: () => {
       if (!draft) return;
-      if (used.current === key) setText((t) => (t.trim() === draft.text.trim() ? '' : t));
+      if (used.current === key) setText((cur) => (cur.trim() === draft.text.trim() ? '' : cur));
       done();
     },
   };
@@ -70,14 +71,14 @@ export function DraftNote({ draft, text, onUse, onDiscard }: { draft: ChatDraft 
         {d && (
           <div className="chat-draft" role="status">
             <Sparkles size={14} />
-            <span>{inBox ? `Drafted in ${d.via ?? 'an AI app'}. Guests read this channel, so it waits for you: check it, then send.` : `${d.via ?? 'An AI app'} left a draft for this channel.`}</span>
+            <span>{inBox ? (d.via ? t('Drafted in {app}. Guests read this channel, so it waits for you: check it, then send.', { app: d.via }) : t('Drafted in an AI app. Guests read this channel, so it waits for you: check it, then send.')) : d.via ? t('{app} left a draft for this channel.', { app: d.via }) : t('An AI app left a draft for this channel.')}</span>
             {!inBox && (
               <button type="button" className="link-btn" tabIndex={draft ? 0 : -1} onClick={onUse}>
-                Use it
+                {t('Use it')}
               </button>
             )}
             <button type="button" className="link-btn" tabIndex={draft ? 0 : -1} onClick={onDiscard}>
-              Discard
+              {t('Discard')}
             </button>
           </div>
         )}

@@ -8,6 +8,8 @@ import { Popover } from './ui/Popover';
 import { RichEditor } from './RichEditor';
 import { uploadFile } from '../sync';
 import { EmptyState } from './ui/EmptyState';
+import { t, tn } from '../i18n';
+import { fmtList, fmtNumber } from '../i18n/format';
 
 /** Something shown in Materials: an item added here, or a file or link that came from the chat or Drive. */
 interface Entry {
@@ -34,7 +36,8 @@ interface Props {
   readOnly?: boolean; // clients: open and download, no changes
 }
 
-const fmtSize = (b: number) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+const oneDecimal = (n: number) => fmtNumber(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtSize = (b: number) => (b > 1e9 ? `${oneDecimal(b / 1e9)} GB` : b > 1e6 ? `${oneDecimal(b / 1e6)} MB` : `${fmtNumber(Math.max(1, Math.round(b / 1e3)))} KB`);
 const host = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
 const uid = () => Math.random().toString(36).slice(2, 10);
 const MAX_UPLOAD = 8_000_000; // stored with the channel for now; big files belong in Drive
@@ -62,13 +65,20 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
   const addAnchor = useRef<HTMLButtonElement>(null);
   const [addOpen, setAddOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const who = (id?: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone';
+  const who = (id?: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone');
 
   const own: Entry[] = mats.items.map((m) => ({
     key: m.id,
     kind: m.kind,
     title: m.title,
-    sub: m.kind === 'link' ? `${host(m.url ?? '')} · ${who(m.addedBy)}` : m.kind === 'doc' ? `Doc · ${m.editedAt ? `edited by ${who(m.editedBy)} ${relative(m.editedAt)}` : `by ${who(m.addedBy)}`}` : `${fmtSize(m.file?.size ?? 0)} · ${who(m.addedBy)}`,
+    sub:
+      m.kind === 'link'
+        ? `${host(m.url ?? '')} · ${who(m.addedBy)}`
+        : m.kind === 'doc'
+          ? m.editedAt
+            ? t('Doc · edited by {name} {when}', { name: who(m.editedBy), when: relative(m.editedAt) })
+            : t('Doc · by {name}', { name: who(m.addedBy) })
+          : `${fmtSize(m.file?.size ?? 0)} · ${who(m.addedBy)}`,
     url: m.kind === 'link' ? m.url : m.file?.url,
     type: m.file?.type,
     size: m.file?.size,
@@ -100,7 +110,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
   const remove = (e: Entry) => e.material && save({ ...mats, items: mats.items.filter((m) => m.id !== e.key) });
   const addLink = () => {
     const u = url.trim();
-    if (!/^https?:\/\/\S+\.\S+/.test(u)) return setError('Paste a full link, starting with https://');
+    if (!/^https?:\/\/\S+\.\S+/.test(u)) return setError(t('Paste a full link, starting with https://'));
     save({ ...mats, items: [...mats.items, { id: uid(), kind: 'link', title: name.trim() || host(u), url: u, folderId: folder ?? undefined, addedBy: me, at: new Date().toISOString() }] });
     setAdding(null);
     setName('');
@@ -118,7 +128,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
   const upload = (files: FileList | null) => {
     const list = [...(files ?? [])];
     const big = list.filter((f) => f.size > MAX_UPLOAD);
-    setError(big.length ? `${big.map((f) => f.name).join(', ')} ${big.length > 1 ? 'are' : 'is'} over 8 MB. Share big files in Drive and add the link here.` : '');
+    setError(big.length ? tn(big.length, '{names} is over 8 MB. Share big files in Drive and add the link here.', '{names} are over 8 MB. Share big files in Drive and add the link here.', { names: fmtList(big.map((f) => f.name)) }) : '');
     const ok = list.filter((f) => f.size <= MAX_UPLOAD);
     if (!ok.length) return;
     void Promise.all(
@@ -131,7 +141,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
   const saveDoc = () => {
     if (!doc) return;
     const now = new Date().toISOString();
-    const title = doc.title.trim() || 'Untitled doc';
+    const title = doc.title.trim() || t('Untitled doc');
     save({
       ...mats,
       items: doc.isNew
@@ -165,7 +175,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
       <div className="chan-pane mat-doc">
         <div className="mat-bar">
           <button className="ghost-btn sm" onClick={() => setDoc(null)}>
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={14} /> {t('Back')}
           </button>
         </div>
         <h2 className="mat-doc-title">{doc.title}</h2>
@@ -179,15 +189,15 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
       <div className="chan-pane mat-doc">
         <div className="mat-bar">
           <button className="ghost-btn sm" onClick={() => setDoc(null)}>
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={14} /> {t('Back')}
           </button>
           <span className="spacer" />
           <button className="primary-btn sm" onClick={saveDoc}>
-            Save doc
+            {t('Save doc')}
           </button>
         </div>
-        <input className="mat-doc-title" autoFocus={doc.isNew} value={doc.title} onChange={(e) => setDoc({ ...doc, title: e.target.value })} placeholder="Doc title, e.g. Project A brief" />
-        <RichEditor initialHtml={doc.html} placeholder="Goals, deliverables, dates, links… Everyone in the channel can read and edit this." onChange={(html) => setDoc((d) => d && { ...d, html })} onSubmit={saveDoc} />
+        <input className="mat-doc-title" autoFocus={doc.isNew} value={doc.title} onChange={(e) => setDoc({ ...doc, title: e.target.value })} placeholder={t('Doc title, e.g. Project A brief')} />
+        <RichEditor initialHtml={doc.html} placeholder={t('Goals, deliverables, dates, links… Everyone in the channel can read and edit this.')} onChange={(html) => setDoc((d) => d && { ...d, html })} onSubmit={saveDoc} />
       </div>
     );
 
@@ -207,14 +217,14 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
           <strong>{e.title}</strong>
           <small>
             {e.sub} · {relative(e.at)}
-            {e.fromChat && !e.key.startsWith('drive:') ? ' · from chat' : ''}
+            {e.fromChat && !e.key.startsWith('drive:') ? ` · ${t('from chat')}` : ''}
           </small>
           {e.kind === 'doc' && e.material?.html && <span className="mat-doc-peek">{htmlToText(e.material.html).slice(0, 140)}</span>}
         </button>
       )}
       {!readOnly && <button
         className="icon-btn sm mat-more"
-        aria-label="More"
+        aria-label={t('More')}
         onClick={(ev) => {
           menuAnchor.current = ev.currentTarget;
           setMenu(e.key);
@@ -233,7 +243,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
         {current ? (
           <nav className="mat-crumbs">
             <button className="link-btn" onClick={() => setFolder(null)}>
-              Materials
+              {t('Materials')}
             </button>
             <ChevronRight size={13} />
             <strong>{current.name}</strong>
@@ -242,10 +252,10 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
           <div className="segmented">
             {(
               [
-                ['all', 'All'],
-                ['file', 'Files'],
-                ['link', 'Links'],
-                ['doc', 'Docs'],
+                ['all', t('All')],
+                ['file', t('Files')],
+                ['link', t('Links')],
+                ['doc', t('Docs')],
               ] as const
             ).map(([k, l]) => (
               <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>
@@ -257,29 +267,29 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
         <span className="spacer" />
         {!current && !readOnly && (
           <button className="ghost-btn sm" onClick={() => (setAdding('folder'), setName(''))}>
-            <FolderPlus size={14} /> New folder
+            <FolderPlus size={14} /> {t('New folder')}
           </button>
         )}
         {!readOnly && (
           <button ref={addAnchor} className="primary-btn sm" onClick={() => setAddOpen(true)}>
-            <Plus size={14} /> Add
+            <Plus size={14} /> {t('Add')}
           </button>
         )}
         <input ref={fileInput} type="file" multiple hidden onChange={(e) => (upload(e.target.files), (e.target.value = ''))} />
       </div>
 
-      <Popover anchor={addAnchor} open={addOpen} onClose={() => setAddOpen(false)} width={240} title="Add">
+      <Popover anchor={addAnchor} open={addOpen} onClose={() => setAddOpen(false)} width={240} title={t('Add')}>
         <div className="sel-pop">
           <button className="sel-opt" onClick={() => (setAddOpen(false), setAdding('link'), setName(''), setUrl(''))}>
-            <Link2 size={14} /> Link
+            <Link2 size={14} /> {t('Link')}
           </button>
           <button className="sel-opt" onClick={() => (setAddOpen(false), setDoc({ id: uid(), title: '', html: '', isNew: true }))}>
-            <NotebookPen size={14} /> Doc
+            <NotebookPen size={14} /> {t('Doc')}
           </button>
           <button className="sel-opt" onClick={() => (setAddOpen(false), fileInput.current?.click())}>
-            <Upload size={14} /> Upload a file
+            <Upload size={14} /> {t('Upload a file')}
           </button>
-          {current && <p className="muted small menu-note">Goes into {current.name}.</p>}
+          {current && <p className="muted small menu-note">{t('Goes into {name}.', { name: current.name })}</p>}
         </div>
       </Popover>
 
@@ -287,12 +297,12 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
       {adding === 'folder' && (
         <div className="todo-add task-add mat-add">
           <Folder size={15} />
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => (e.key === 'Enter' ? addFolder() : e.key === 'Escape' && setAdding(null))} placeholder="Folder name, e.g. Project A" />
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => (e.key === 'Enter' ? addFolder() : e.key === 'Escape' && setAdding(null))} placeholder={t('Folder name, e.g. Project A')} />
           <button className="ghost-btn sm" onClick={() => setAdding(null)}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn sm" onClick={addFolder} disabled={!name.trim()}>
-            Create
+            {t('Create')}
           </button>
         </div>
       )}
@@ -300,12 +310,12 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
         <div className="todo-add task-add mat-add">
           <Link2 size={15} />
           <input autoFocus value={url} onChange={(e) => (setUrl(e.target.value), setError(''))} onKeyDown={(e) => e.key === 'Enter' && addLink()} placeholder="https://…" />
-          <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addLink()} placeholder="Name (optional), e.g. Figma file" />
+          <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addLink()} placeholder={t('Name (optional), e.g. Figma file')} />
           <button className="ghost-btn sm" onClick={() => setAdding(null)}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn sm" onClick={addLink} disabled={!url.trim()}>
-            Add link
+            {t('Add link')}
           </button>
         </div>
       )}
@@ -314,7 +324,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
 
       {current ? (
         <>
-          {inFolder(current.id).length ? inFolder(current.id).sort((a, b) => b.at.localeCompare(a.at)).map(row) : <EmptyState compact text="Empty folder. Add files, links or docs, or move things here from Materials." />}
+          {inFolder(current.id).length ? inFolder(current.id).sort((a, b) => b.at.localeCompare(a.at)).map(row) : <EmptyState compact text={t('Empty folder. Add files, links or docs, or move things here from Materials.')} />}
         </>
       ) : (
         <>
@@ -331,12 +341,12 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
                       <button className="mf-open" onClick={() => setFolder(f.id)}>
                         <Folder size={18} />
                         <strong>{f.name}</strong>
-                        <small>{items.length ? [n('file') && `${n('file')} file${n('file') > 1 ? 's' : ''}`, n('link') && `${n('link')} link${n('link') > 1 ? 's' : ''}`, n('doc') && `${n('doc')} doc${n('doc') > 1 ? 's' : ''}`].filter(Boolean).join(' · ') : 'Empty'}</small>
+                        <small>{items.length ? [n('file') && tn(n('file'), '{n} file', '{n} files'), n('link') && tn(n('link'), '{n} link', '{n} links'), n('doc') && tn(n('doc'), '{n} doc', '{n} docs')].filter(Boolean).join(' · ') : t('Empty')}</small>
                       </button>
                     )}
                     {!readOnly && <button
                       className="icon-btn sm mat-more"
-                      aria-label="Folder options"
+                      aria-label={t('Folder options')}
                       onClick={(ev) => {
                         menuAnchor.current = ev.currentTarget;
                         setMenu(f.id);
@@ -358,7 +368,7 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
                 {added.length > 0 && (
                   <>
                     <div className="d-heading">
-                      Not in a folder <span>{added.length}</span>
+                      {t('Not in a folder')} <span>{added.length}</span>
                     </div>
                     {added.map(row)}
                   </>
@@ -366,12 +376,12 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
                 {fromChat.length > 0 && (
                   <>
                     <div className="d-heading">
-                      From chat and Drive <span>{fromChat.length}</span>
+                      {t('From chat and Drive')} <span>{fromChat.length}</span>
                     </div>
                     {fromChat.map(row)}
                   </>
                 )}
-                {!mats.folders.length && !loose.length && <EmptyState compact text="Nothing here yet. Make a folder for a project, then add files, links and docs. Anything shared in the chat shows up here too." />}
+                {!mats.folders.length && !loose.length && <EmptyState compact text={t('Nothing here yet. Make a folder for a project, then add files, links and docs. Anything shared in the chat shows up here too.')} />}
               </>
             );
           })()}
@@ -383,38 +393,38 @@ export function ChannelMaterials({ channel, users, me, chatFiles, chatLinks, onC
           {menuFolder && (
             <>
               <button className="sel-opt" onClick={() => (setRenaming({ key: menuFolder.id, name: menuFolder.name }), setMenu(null))}>
-                <Pencil size={14} /> Rename
+                <Pencil size={14} /> {t('Rename')}
               </button>
               <button className="sel-opt danger" onClick={() => (deleteFolder(menuFolder.id), setMenu(null))}>
-                <Trash2 size={14} /> Delete folder
+                <Trash2 size={14} /> {t('Delete folder')}
               </button>
-              <p className="muted small menu-note">Deleting a folder keeps what’s inside.</p>
+              <p className="muted small menu-note">{t('Deleting a folder keeps what’s inside.')}</p>
             </>
           )}
           {menuEntry && (
             <>
               <div className="sel-group">
-                <FolderInput size={12} /> Move to folder
+                <FolderInput size={12} /> {t('Move to folder')}
               </div>
               {mats.folders.map((f) => (
                 <button key={f.id} className="sel-opt" onClick={() => (moveTo(menuEntry, f.id), setMenu(null))}>
                   <Folder size={14} /> {f.name}
-                  {menuEntry.folderId === f.id && <span className="sel-hint">here</span>}
+                  {menuEntry.folderId === f.id && <span className="sel-hint">{t('here')}</span>}
                 </button>
               ))}
               {menuEntry.folderId && (
                 <button className="sel-opt" onClick={() => (moveTo(menuEntry, undefined), setMenu(null))}>
-                  <X size={14} /> Take out of the folder
+                  <X size={14} /> {t('Take out of the folder')}
                 </button>
               )}
-              {!mats.folders.length && <p className="muted small menu-note">No folders yet. Use “New folder” first.</p>}
+              {!mats.folders.length && <p className="muted small menu-note">{t('No folders yet. Use “New folder” first.')}</p>}
               {menuEntry.material && (
                 <>
                   <button className="sel-opt" onClick={() => (setRenaming({ key: menuEntry.key, name: menuEntry.title }), setMenu(null))}>
-                    <Pencil size={14} /> Rename
+                    <Pencil size={14} /> {t('Rename')}
                   </button>
                   <button className="sel-opt danger" onClick={() => (remove(menuEntry), setMenu(null))}>
-                    <Trash2 size={14} /> Remove
+                    <Trash2 size={14} /> {t('Remove')}
                   </button>
                 </>
               )}

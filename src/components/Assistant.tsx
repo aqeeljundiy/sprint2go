@@ -4,6 +4,7 @@ import { History, Minus, Plus, Send, Sparkles, X } from 'lucide-react';
 import { relative } from '../utils';
 import { Select } from './ui/Select';
 import { EmptyState } from './ui/EmptyState';
+import { t, tx } from '../i18n';
 
 /** What the assistant is looking at. */
 export type AskScope = { kind: 'all' } | { kind: 'client'; id: string } | { kind: 'meeting'; id: string } | { kind: 'channel'; id: string };
@@ -24,10 +25,10 @@ export const keyScope = (k: string): AskScope => {
 };
 
 const CHIPS: Record<AskScope['kind'], string[]> = {
-  get all() { return ['What’s urgent today?', `What did we promise ${term.many} this week?`, 'Which tasks are overdue?']; },
-  get client() { return [`Where do things stand with this ${term.one}?`, 'What is still open, and who owns it?', 'What are the biggest risks right now?']; },
-  get meeting() { return ['Summarize this meeting in 3 bullets', `What did we promise the ${term.who}?`, 'Draft a follow-up email']; },
-  channel: ['What did I miss here?', 'What was decided?', 'Which questions are still open?'],
+  get all() { return [t('What’s urgent today?'), t('What did we promise {projects} this week?', { projects: term.many }), t('Which tasks are overdue?')]; },
+  get client() { return [t('Where do things stand with this {project}?', { project: term.one }), t('What is still open, and who owns it?'), t('What are the biggest risks right now?')]; },
+  get meeting() { return [t('Summarize this meeting in 3 bullets'), t('What did we promise the {who}?', { who: term.who }), t('Draft a follow-up email')]; },
+  get channel() { return [t('What did I miss here?'), t('What was decided?'), t('Which questions are still open?')]; },
 };
 
 interface Props {
@@ -116,51 +117,51 @@ export function Assistant(p: Props) {
 
   if (min)
     return (
-      <button type="button" className="ask-pill" onClick={() => setMin(false)} aria-label="Open Ask AI">
+      <button type="button" className="ask-pill" onClick={() => setMin(false)} aria-label={t('Open Ask AI')}>
         <Sparkles size={16} />
-        Ask AI
-        {busy && <small>Answering…</small>}
+        {t('Ask AI')}
+        {busy && <small>{t('Answering…')}</small>}
       </button>
     );
 
   return (
-    <aside className="ask-drawer" role="dialog" aria-label="Ask AI">
+    <aside className="ask-drawer" role="dialog" aria-label={t('Ask AI')}>
       <header className="cs-head">
         <Sparkles size={15} />
-        <strong>Ask AI</strong>
-        {!p.live && <span className="demo-tag">Demo AI</span>}
+        <strong>{t('Ask AI')}</strong>
+        {!p.live && <span className="demo-tag">{t('Demo AI')}</span>}
         <span className="spacer" />
-        <button className="icon-btn sm" title="Past chats" onClick={() => setHistory((h) => !h)}>
+        <button className="icon-btn sm" title={t('Past chats')} aria-label={t('Past chats')} onClick={() => setHistory((h) => !h)}>
           <History size={15} />
         </button>
-        <button className="icon-btn sm" title="New chat" onClick={() => (setChatId(null), setHistory(false))}>
+        <button className="icon-btn sm" title={t('New chat')} aria-label={t('New chat')} onClick={() => (setChatId(null), setHistory(false))}>
           <Plus size={15} />
         </button>
-        <button className="icon-btn sm" title="Minimize" onClick={() => setMin(true)}>
+        <button className="icon-btn sm" title={t('Minimize')} aria-label={t('Minimize')} onClick={() => setMin(true)}>
           <Minus size={15} />
         </button>
-        <button className="icon-btn sm" onClick={p.onClose} aria-label="Close">
+        <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close')}>
           <X size={16} />
         </button>
       </header>
       <div className="ask-scope">
-        <span className="muted small">Looking at</span>
-        <Select value={scopeKey(p.scope)} onChange={(v) => p.setScope(keyScope(v))} label="Looking at" className="sel-flat" width={300} searchable options={p.scopeOptions} />
+        <span className="muted small">{t('Looking at')}</span>
+        <Select value={scopeKey(p.scope)} onChange={(v) => p.setScope(keyScope(v))} label={t('Looking at')} className="sel-flat" width={300} searchable options={p.scopeOptions} />
       </div>
       <div className="cs-body">
         {history ? (
           <div className="people-list">
-            {p.chats.length === 0 && <EmptyState compact text="No chats yet. Ask your first question below." />}
+            {p.chats.length === 0 && <EmptyState compact text={t('No chats yet. Ask your first question below.')} />}
             {p.chats.map((c) => (
               <div key={c.id} className="pl-row">
                 <button className="pl-text" onClick={() => (setChatId(c.id), p.setScope(c.scope), setHistory(false))}>
                   <strong>{c.title}</strong>
                   <small>
                     {relative(c.at)}
-                    {c.scope.kind !== 'all' ? ` · ${c.scope.kind}` : ''}
+                    {c.scope.kind !== 'all' ? ` · ${tx('scope', c.scope.kind)}` : ''}
                   </small>
                 </button>
-                <button className="icon-btn sm" onClick={() => p.setChats(p.chats.filter((x) => x.id !== c.id))} aria-label="Delete chat">
+                <button className="icon-btn sm" onClick={() => p.setChats(p.chats.filter((x) => x.id !== c.id))} aria-label={t('Delete chat')}>
                   <X size={13} />
                 </button>
               </div>
@@ -169,8 +170,8 @@ export function Assistant(p: Props) {
         ) : !chat ? (
           <div className="ask-empty">
             <Sparkles size={22} />
-            <strong>Ask anything about your work</strong>
-            <p className="muted small">Answers come from your emails, chat, meetings and tasks, with links to the source.</p>
+            <strong>{t('Ask anything about your work')}</strong>
+            <p className="muted small">{t('Answers come from your emails, chat, meetings and tasks, with links to the source.')}</p>
             {CHIPS[p.scope.kind].map((c) => (
               <button key={c} className="ask-chip" onClick={() => ask(c)}>
                 {c}
@@ -196,10 +197,10 @@ export function Assistant(p: Props) {
         )}
       </div>
       <div className="thread-compose">
-        <textarea autoFocus rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), ask(text))} placeholder={`Ask about a ${term.one}, a meeting, open tasks…`} />
+        <textarea autoFocus rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), ask(text))} placeholder={t('Ask about a {project}, a meeting, open tasks…', { project: term.one })} />
         <div className="tc-foot">
-          <span className="muted small">Uses AI when you send</span>
-          <button className="ai-send chat-send" onClick={() => ask(text)} disabled={!text.trim() || busy} aria-label="Ask">
+          <span className="muted small">{t('Uses AI when you send')}</span>
+          <button className="ai-send chat-send" onClick={() => ask(text)} disabled={!text.trim() || busy} aria-label={t('Ask')}>
             <Send size={15} />
           </button>
         </div>

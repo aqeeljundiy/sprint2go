@@ -8,6 +8,7 @@ import { Avatar } from '../components/Avatar';
 import { Badge as UiBadge, PersonCell } from '../components/ui/Person';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Layer } from '../components/ui/Layer';
+import { t, tn } from '../i18n';
 
 /* ---------- the backend's shared state ---------- */
 
@@ -66,7 +67,7 @@ export function useAct() {
       bump();
       return true;
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Something went wrong.');
+      toast(e instanceof Error ? e.message : t('Something went wrong.'));
       return false;
     }
   };
@@ -150,7 +151,7 @@ export function Stat({ label, value, hint, delta, onClick, tone, i = 0 }: { labe
 export function deltaOf(now: number, before: number | null | undefined, upIsGood = true, fmt: (n: number) => string = (n) => `${n}`) {
   if (before === null || before === undefined) return null;
   const diff = now - before;
-  if (!diff) return { text: 'same as before', dir: 'flat' as const, good: true };
+  if (!diff) return { text: t('same as before'), dir: 'flat' as const, good: true };
   const pct = before ? Math.round((Math.abs(diff) / before) * 100) : null;
   return { text: pct !== null && pct < 1000 ? `${pct}%` : fmt(Math.abs(diff)), dir: diff > 0 ? ('up' as const) : ('down' as const), good: diff > 0 === upIsGood };
 }
@@ -163,7 +164,7 @@ export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good
 }
 export function HealthPill({ h }: { h: { score: number; label: string } }) {
   return (
-    <span className={`adm-health ${h.label}`} title={`Health ${h.score} of 100`}>
+    <span className={`adm-health ${h.label}`} title={t('Health {score} of 100', { score: h.score })}>
       <span className="adm-health-track">
         <i style={{ width: `${Math.max(6, h.score)}%` }} />
       </span>
@@ -198,19 +199,19 @@ export function Loading({ rows = 4 }: { rows?: number }) {
 export function Failed({ error, retry }: { error: string; retry?: () => void }) {
   return (
     <Empty
-      title="Couldn’t load this"
+      title={t('Couldn’t load this')}
       text={error}
       action={
         retry && (
           <button className="ghost-btn sm" onClick={retry}>
-            Try again
+            {t('Try again')}
           </button>
         )
       }
     />
   );
 }
-export function CopyBtn({ text, label = 'Copy', iconOnly }: { text: string; label?: string; iconOnly?: boolean }) {
+export function CopyBtn({ text, label = t('Copy'), iconOnly }: { text: string; label?: string; iconOnly?: boolean }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -225,7 +226,7 @@ export function CopyBtn({ text, label = 'Copy', iconOnly }: { text: string; labe
       }}
     >
       {done ? <Check size={13} /> : <Copy size={13} />}
-      {!iconOnly && (done ? ' Copied' : ` ${label}`)}
+      {!iconOnly && ` ${done ? t('Copied') : label}`}
     </button>
   );
 }
@@ -277,7 +278,7 @@ export function Menu({ label, items, icon, align = 'end' }: { label: ReactNode; 
         {label}
         <ChevronDown size={13} className={`rot-chev ${open ? 'open' : ''}`} />
       </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={240} align={align} title={typeof label === 'string' ? label : 'Actions'}>
+      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={240} align={align} title={typeof label === 'string' ? label : t('Actions')}>
         <div className="adm-menu" role="menu">
           {list.map((x) => (
             <button
@@ -325,10 +326,10 @@ export function Dialog({ title, onClose, children, foot, size = 'md' }: { title:
   return (
     <Layer>
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className={`modal adm-modal ${size}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Dialog'} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`modal adm-modal ${size}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : t('Dialog')} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <span className="dump-title">{title}</span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -342,15 +343,16 @@ export function Dialog({ title, onClose, children, foot, size = 'md' }: { title:
   );
 }
 
+/** Why a company left: the label is read when it's shown, in the console's language. */
 export const WHY = [
-  { value: 'unpaid', label: 'Didn’t pay' },
-  { value: 'price', label: 'Too expensive' },
-  { value: 'features', label: 'Missing features' },
-  { value: 'competitor', label: 'Moved to another tool' },
-  { value: 'closed', label: 'Business closed' },
-  { value: 'abuse', label: 'Abuse or spam' },
-  { value: 'test', label: 'Test or duplicate' },
-  { value: 'other', label: 'Something else' },
+  { value: 'unpaid', get label() { return t('Didn’t pay'); } },
+  { value: 'price', get label() { return t('Too expensive'); } },
+  { value: 'features', get label() { return t('Missing features'); } },
+  { value: 'competitor', get label() { return t('Moved to another tool'); } },
+  { value: 'closed', get label() { return t('Business closed'); } },
+  { value: 'abuse', get label() { return t('Abuse or spam'); } },
+  { value: 'test', get label() { return t('Test or duplicate'); } },
+  { value: 'other', get label() { return t('Something else'); } },
 ];
 
 /** Asks before something that matters: a reason (with why, for churn), or a typed word for what can't be undone. */
@@ -368,7 +370,7 @@ export function Confirm({ title, text, action, danger, word, reason, why, onClos
       foot={
         <>
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button
             className={danger ? 'primary-btn danger-btn' : 'primary-btn'}
@@ -386,8 +388,8 @@ export function Confirm({ title, text, action, danger, word, reason, why, onClos
       <div className="adm-form">
         <p className="adm-dialog-text">{text}</p>
         {why && (
-          <Field label="Why">
-            <Select value={w || null} placeholder="Pick a reason" options={WHY} onChange={setW} label="Why" />
+          <Field label={t('Why')}>
+            <Select value={w || null} placeholder={t('Pick a reason')} options={WHY.map((x) => ({ value: x.value, label: x.label }))} onChange={setW} label={t('Why')} />
           </Field>
         )}
         {reason !== undefined && (
@@ -396,7 +398,7 @@ export function Confirm({ title, text, action, danger, word, reason, why, onClos
           </Field>
         )}
         {word && (
-          <Field label={`Type ${word} to confirm`}>
+          <Field label={t('Type {word} to confirm', { word })}>
             <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
           </Field>
         )}
@@ -483,9 +485,9 @@ export function Table<T>({ id, rows, cols, rowKey, onOpen, views, search, bulk, 
           {search && (
             <label className="adm-search">
               <Search size={14} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter" aria-label="Filter" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Filter')} aria-label={t('Filter')} />
               {q && (
-                <button type="button" className="icon-btn xs" onClick={() => setQ('')} aria-label="Clear">
+                <button type="button" className="icon-btn xs" onClick={() => setQ('')} aria-label={t('Clear')}>
                   <X size={12} />
                 </button>
               )}
@@ -496,22 +498,22 @@ export function Table<T>({ id, rows, cols, rowKey, onOpen, views, search, bulk, 
       <SmoothHeight>
         {bulk && selected.length > 0 && (
           <div className="adm-bulk">
-            <strong>{selected.length} selected</strong>
+            <strong>{tn(selected.length, '{n} selected', '{n} selected')}</strong>
             {bulk(selected, () => setSel(new Set()))}
             <button type="button" className="link-btn small" onClick={() => setSel(new Set())}>
-              Clear
+              {t('Clear')}
             </button>
           </div>
         )}
       </SmoothHeight>
       {shown.length === 0 ? (
-        <Empty title={q ? 'Nothing matches' : empty?.title ?? 'Nothing here'} text={q ? 'Try fewer words.' : empty?.text} />
+        <Empty title={q ? t('Nothing matches') : empty?.title ?? t('Nothing here')} text={q ? t('Try fewer words.') : empty?.text} />
       ) : (
         <div className={`adm-table ${dense ? 'dense' : ''}`} role="table" style={{ ['--cols' as string]: template, ['--cols-t' as string]: templateT }}>
           <div className="adm-tr head" role="row">
             {bulk && (
               <label className="adm-check">
-                <input type="checkbox" aria-label="Select all" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(rowKey)))} />
+                <input type="checkbox" aria-label={t('Select all')} checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(shown.map(rowKey)))} />
               </label>
             )}
             {cols.map((c) => (
@@ -533,7 +535,7 @@ export function Table<T>({ id, rows, cols, rowKey, onOpen, views, search, bulk, 
               <div key={k} role="row" className={`adm-tr ${onOpen ? 'click' : ''} ${sel.has(k) ? 'sel' : ''} ${rowTone?.(r) ?? ''}`} style={{ ['--i' as string]: Math.min(i, 12) }} onClick={(e) => onOpen && !(e.target as HTMLElement).closest('button, a, input, .adm-check') && onOpen(r)} tabIndex={onOpen ? 0 : undefined} onKeyDown={(e) => onOpen && e.key === 'Enter' && onOpen(r)}>
                 {bulk && (
                   <label className="adm-check">
-                    <input type="checkbox" aria-label="Select" checked={sel.has(k)} onChange={() => setSel((s) => {
+                    <input type="checkbox" aria-label={t('Select')} checked={sel.has(k)} onChange={() => setSel((s) => {
                       const n = new Set(s);
                       n.has(k) ? n.delete(k) : n.add(k);
                       return n;

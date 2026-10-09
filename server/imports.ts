@@ -23,6 +23,8 @@ import { SOURCE_NAME, UNDO_HOURS, type ImportChoices, type ImportJob, type Impor
 import * as slack from './importSlack.ts';
 import * as trello from './importTrello.ts';
 import * as drive from './importDrive.ts';
+import { mark, msg, phrase, type Msg } from '../src/i18n/index.ts';
+import { part, type Said } from './lang.ts';
 
 const MB = 1024 * 1024;
 const HOUR = 3_600_000;
@@ -45,7 +47,7 @@ const uploadPath = (id: string) => join(dir(), id);
 
 export interface ImportDeps {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) => void;
-  tell: (userIds: string[], workspaceId: string, kind: string, text: string, link: { app: string; id?: string }) => void;
+  tell: (userIds: string[], workspaceId: string, kind: string, text: Said, link: { app: string; id?: string }) => void;
   maxUpload: number; // the largest single file (S2G_MAX_UPLOAD_MB)
 }
 let deps: ImportDeps;
@@ -205,15 +207,19 @@ async function run(id: string) {
     else if (r.source === 'trello') await trello.run(ctx);
     else await drive.run(ctx);
     setRow(id, { status: 'done', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), progress: null });
-    const what = summary.made.filter((m) => m.what !== 'people invited' && m.n > 0).map((m) => `${m.n.toLocaleString('en')} ${inWords(m.n === 1 ? singular(m.what) : m.what, ws)}`);
-    deps.tell([r.created_by], ws.id, 'team', `Your ${SOURCE_NAME[r.source]} import is done${what.length ? `: ${listWords(what)}` : ''}.`, { app: 'settings', id: 'import' });
+    const made = summary.made.filter((m) => m.what !== 'people invited' && m.n > 0);
+    const what = made.map((m) => `${m.n.toLocaleString('en')} ${inWords(m.n === 1 ? singular(m.what) : m.what, ws)}`);
+    // Each reader sees the counts in their language ("3 channels", "3 channel"): phrases translated when read.
+    const counted = made.map((m) => countPhrase(m.n, inWords(m.what, ws)));
+    deps.tell([r.created_by], ws.id, 'team', counted.length ? msg('Your {source} import is done: {what}.', { source: SOURCE_NAME[r.source], what: listPhrase(counted) }) : msg('Your {source} import is done.', { source: SOURCE_NAME[r.source] }), { app: 'settings', id: 'import' });
     platform.event('import.done', ws.id, r.created_by, `${r.source}: ${what.join(', ')}`);
   } catch (e) {
-    const msg = e instanceof ImportError || e instanceof ZipError ? e.message : 'Something went wrong on our side.';
+    const failure = e instanceof ImportError || e instanceof ZipError ? e.message : mark('Something went wrong on our side.');
     if (!(e instanceof ImportError || e instanceof ZipError)) console.error('[import]', e);
-    setRow(id, { status: 'failed', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), error: msg, progress: null });
+    setRow(id, { status: 'failed', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), error: failure, progress: null });
     const partial = itemCount(id) > 0;
-    deps.tell([r.created_by], ws.id, 'team', `Your ${SOURCE_NAME[r.source]} import stopped: ${msg}${partial ? ' Undo removes what it made so far.' : ''}`, { app: 'settings', id: 'import' });
+    const why = e instanceof ImportError || e instanceof ZipError ? e.message : phrase('Something went wrong on our side.');
+    deps.tell([r.created_by], ws.id, 'team', partial ? msg('Your {source} import stopped: {why} Undo removes what it made so far.', { source: SOURCE_NAME[r.source], why }) : msg('Your {source} import stopped: {why}', { source: SOURCE_NAME[r.source], why }), { app: 'settings', id: 'import' });
   } finally {
     rmSync(uploadPath(id), { force: true });
   }
@@ -222,7 +228,24 @@ async function run(id: string) {
 const singular = (w: string) => ({ channels: 'channel', messages: 'message', files: 'file', tasks: 'task', folders: 'folder', projects: 'project', 'direct messages': 'direct message' })[w] ?? w;
 /** "project" in the company's own word (Clients, for agencies that say so). */
 const inWords = (w: string, ws: any) => (ws?.terms?.word === 'client' ? w.replace(/^project/, 'client') : w);
-const listWords = (l: string[]) => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}`);
+/** "3 channels" as a phrase translated when read; a word we don't know stays as it is. */
+const COUNTED: Record<string, [string, string]> = {
+  channels: [mark('1 channel'), mark('{n} channels')],
+  messages: [mark('1 message'), mark('{n} messages')],
+  files: [mark('1 file'), mark('{n} files')],
+  folders: [mark('1 folder'), mark('{n} folders')],
+  tasks: [mark('1 task'), mark('{n} tasks')],
+  projects: [mark('1 project'), mark('{n} projects')],
+  clients: [mark('1 client'), mark('{n} clients')],
+  'direct messages': [mark('1 direct message'), mark('{n} direct messages')],
+};
+const countPhrase = (n: number, words: string): Msg | string => (COUNTED[words] ? phrase(COUNTED[words][n === 1 ? 0 : 1], { n: n.toLocaleString('en') }) : `${n.toLocaleString('en')} ${words}`);
+/** "a, b and c" as a phrase: each language joins a list its own way. */
+function listPhrase(items: (Msg | string)[]): Msg | string {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length === 2) return phrase('{a} and {b}', { a: items[0], b: items[1] });
+  return phrase('{a}, {b}', { a: items[0], b: listPhrase(items.slice(1)) });
+}
 
 /**
  * The people choices made real. Matched people are members already. "Invite": a new person joins as a member and
@@ -417,12 +440,12 @@ const SOURCES: ImportSource[] = ['slack', 'trello', 'drive'];
 
 /** Who may import into a company: its owners and admins, never in the demo company, never while it's read-only. */
 function allowed(me: string, wsId: string, change: boolean, operator: string | null): { ws: any } | { status: number; error: string } {
-  if (isSandboxId(wsId)) return { status: 403, error: 'The demo company doesn’t take imports: nothing is uploaded there. Import into your real company.' };
+  if (isSandboxId(wsId)) return { status: 403, error: mark('The demo company doesn’t take imports: nothing is uploaded there. Import into your real company.') };
   const ws = db.getDoc('workspaces', wsId) as any;
   const role = ws?.members?.find((m: any) => m.userId === me)?.role;
-  if (!ws || !role) return { status: 404, error: 'No such company.' };
-  if (role === 'member') return { status: 403, error: 'Only owners and admins can import.' };
-  if (change && operator) return { status: 403, error: 'That’s theirs to do: you’re signed in as them.' };
+  if (!ws || !role) return { status: 404, error: mark('No such company.') };
+  if (role === 'member') return { status: 403, error: mark('Only owners and admins can import.') };
+  if (change && operator) return { status: 403, error: mark('That’s theirs to do: you’re signed in as them.') };
   const ro = change ? billing.readOnlyWhy(ws) : null;
   if (ro) return { status: 403, error: ro };
   return { ws };
@@ -450,9 +473,9 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
     const source = String(url.searchParams.get('source') ?? '') as ImportSource;
     const a = allowed(me, wsId, true, c.operator);
     if ('error' in a) return (req.resume(), deny(a));
-    if (!SOURCES.includes(source)) return (req.resume(), json(res, 400, { error: 'Import from Slack, Trello or Google Drive.' }), true);
+    if (!SOURCES.includes(source)) return (req.resume(), json(res, 400, { error: mark('Import from Slack, Trello or Google Drive.') }), true);
     const busy = db.db.prepare("SELECT id FROM imports WHERE workspace_id = ? AND status IN ('reading', 'running')").get(wsId);
-    if (busy) return (req.resume(), json(res, 409, { error: 'Another import is going on in this company. Wait for it to finish, then start this one.' }), true);
+    if (busy) return (req.resume(), json(res, 409, { error: mark('Another import is going on in this company. Wait for it to finish, then start this one.') }), true);
     const cap = source === 'trello' ? Math.min(limits().upload, limits().json) : limits().upload;
     const capText = `Exports up to ${Math.round(cap / MB).toLocaleString('en')} MB.`;
     if (Number(req.headers['content-length'] ?? 0) > cap) return (req.resume(), json(res, 413, { error: `That file is too big. ${capText}` }), true);
@@ -497,11 +520,11 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
   }
 
   const m = p.match(/^\/api\/import\/([a-f0-9]{24})(?:\/(start|cancel|undo))?$/);
-  if (!m) return (json(res, 404, { error: 'No such import.' }), true);
+  if (!m) return (json(res, 404, { error: mark('No such import.') }), true);
   const r = rowOf(m[1]);
   // Someone who isn't an admin of its company finds nothing here.
   const a = r ? allowed(me, r.workspace_id, req.method !== 'GET', c.operator) : null;
-  if (!r || !a || ('error' in a && a.status === 404)) return (json(res, 404, { error: 'No such import.' }), true);
+  if (!r || !a || ('error' in a && a.status === 404)) return (json(res, 404, { error: mark('No such import.') }), true);
   if ('error' in a) return deny(a);
 
   if (!m[2] && req.method === 'GET') return (json(res, 200, { job: jobOf(r) }), true);
@@ -516,8 +539,8 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
   if (m[2] === 'start' && req.method === 'POST') {
     if (r.status !== 'ready') return (json(res, 409, { error: r.status === 'running' ? 'It’s already running.' : 'This import can’t start again. Upload the file again.' }), true);
     const busy = db.db.prepare("SELECT id FROM imports WHERE workspace_id = ? AND status = 'running'").get(r.workspace_id);
-    if (busy) return (json(res, 409, { error: 'Another import is going on in this company. Wait for it to finish.' }), true);
-    if (!existsSync(uploadPath(r.id))) return (json(res, 409, { error: 'The uploaded file is gone. Upload it again.' }), true);
+    if (busy) return (json(res, 409, { error: mark('Another import is going on in this company. Wait for it to finish.') }), true);
+    if (!existsSync(uploadPath(r.id))) return (json(res, 409, { error: mark('The uploaded file is gone. Upload it again.') }), true);
     const b = await c.body(req);
     let choices: ImportChoices;
     try {
@@ -542,7 +565,7 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
     undo(r.id, me);
     return (json(res, 200, { job: jobOf(rowOf(r.id)!) }), true);
   }
-  json(res, 404, { error: 'No such import.' });
+  json(res, 404, { error: mark('No such import.') });
   return true;
 }
 

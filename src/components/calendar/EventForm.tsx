@@ -294,7 +294,7 @@ export function EventForm({
                 <Select<string>
                   value={draft.remind === null ? '' : String(draft.remind)}
                   onChange={(v) => set({ remind: v === 'none' ? null : Number(v) })}
-                  options={[...remindOptions(), { value: 'none', label: t('No reminder') }]}
+                  options={[...remindOptions(), { value: 'none', label: tx('remind', 'No reminder') }]}
                   label={t('Reminder')}
                   title={t('Remind me')}
                   placeholder={t('Remind me…')}

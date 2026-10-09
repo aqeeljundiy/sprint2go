@@ -8,6 +8,7 @@ import * as db from './db.ts';
 import { seed, type CollectionKey } from '../src/seed.ts';
 import { buildSandbox, isSandboxId, sandboxWsId, TRY_KEYS, type DemoState, type SandboxMark } from '../src/sandbox.ts';
 import { isZone } from '../src/jobTimes.ts';
+import { mark } from '../src/i18n/index.ts';
 
 type Doc = db.Doc;
 
@@ -218,7 +219,7 @@ export function write(owner: string, coll: CollectionKey | string, upserts: Doc[
     const json = JSON.stringify(d);
     const grow = json.length - (before ? JSON.stringify(before).length : 0);
     if (json.length > MAX_DOC || grow > room) {
-      why = 'The demo company keeps only small files. Reset it from the bar at the top to start fresh.';
+      why = mark('The demo company keeps only small files. Reset it from the bar at the top to start fresh.');
       refused.push(raw.id);
       continue;
     }

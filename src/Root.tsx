@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { User, Workspace } from './types';
 import { SIGNED_IN_DEFAULT, USERS, WORKSPACES } from './data/workspaces';
-import { usePersisted, useSettings } from './settings';
+import { usePersisted, usePrefsSync, useSettings } from './settings';
 import { applyRemote, useStored } from './store';
 import { connect, loadMailInfo, probe, reloadAll, server, setDemo, signIn, signOut, type Session } from './sync';
 import { trying, startOver, endTryOut } from './tryOut';
@@ -380,7 +380,8 @@ function FirstRun({ me, existingEmails }: { me: User; existingEmails: string[] }
 
 /** Someone at a client, signed in: their portal, with only what the company shares (the server enforces it). */
 function ClientRoot({ me }: { me: User }) {
-  const [settings, updateSettings] = useSettings(me); // light or dark, like the team app
+  const [settings, updateSettings] = useSettings(me); // light or dark and their language, like the team app
+  usePrefsSync(me.id); // and they follow the guest to their other devices, as the team's do
   const [users, setUsers] = useStored('users');
   setPhotos(users);
   const self = users.find((u) => u.id === me.id) ?? me;
@@ -407,7 +408,7 @@ function ClientRoot({ me }: { me: User }) {
   useEffect(() => {
     if (ws) setAIWorkspace(ws.id);
   }, [ws?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useAppLanguage(settings.language, ws?.language); // guests too: theirs, else the inviting company's, else the device's
+  useAppLanguage(settings.language, undefined); // a guest's own pick, else their device's (never the inviting company's default)
   if (!portal || !ws || !client) return <FirstRun me={me} existingEmails={users.map((u) => u.email.toLowerCase())} />;
   const start = (
     starting && (
@@ -429,7 +430,7 @@ function ClientRoot({ me }: { me: User }) {
   if (home)
     return (
       <>
-        <SharedHome name={me.name} portals={portals} todos={todos} channels={channels} messages={messages} onOpen={setKey} onStart={() => setStarting(true)} onSignOut={() => void signOut()} />
+        <SharedHome name={me.name} portals={portals} todos={todos} channels={channels} messages={messages} onOpen={setKey} onStart={() => setStarting(true)} onSignOut={() => void signOut()} language={settings.language} onLanguage={(language) => updateSettings({ language })} />
         {start}
       </>
     );
@@ -478,7 +479,7 @@ function ClientRoot({ me }: { me: User }) {
       notices={notices.filter((n) => inbox.includes(n.userId))}
       onReadNotices={() => setNotices((ns) => ns.map((n) => (inbox.includes(n.userId) ? { ...n, read: true } : n)))}
       onSignOut={() => void signOut()}
-      account={{ me: self, theme: settings.theme, onTheme: (t) => updateSettings({ theme: t }), onProfile: (patch) => setUsers((list) => list.map((u) => (u.id === me.id ? { ...u, ...patch } : u))) }}
+      account={{ me: self, theme: settings.theme, onTheme: (theme) => updateSettings({ theme }), onProfile: (patch) => setUsers((list) => list.map((u) => (u.id === me.id ? { ...u, ...patch } : u))), language: settings.language, onLanguage: (language) => updateSettings({ language }) }}
       switcher={<WorkspaceSwitcher workspaces={[]} current={ws} currentPortal={portal.key} unread={{}} portals={portals} onPortal={setKey} onSwitch={() => {}} onHome={portals.length > 1 ? () => setKey('') : undefined} onAdd={() => setStarting(true)} addLabel={t('Start your own workspace (free)')} />}
       mobileSwitch={{ workspaces: [], onWorkspace: () => {}, portals, current: portal.key, onPortal: setKey, onShared: portals.length > 1 ? () => setKey('') : undefined, onAdd: () => setStarting(true) }}
     />

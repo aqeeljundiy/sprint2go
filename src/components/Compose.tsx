@@ -283,8 +283,8 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         <div className="compose-main">
           {accounts.length > 1 && (
             <label className="compose-field from-field">
-              <span>{t('From')}</span>
-              <Select value={fromId} onChange={setFromId} label={t('From')} className="sel-flat from-sel" width={340} options={accounts.map((a) => ({ value: a.id, label: `${a.name} <${a.email}>`, hint: a.kind === 'shared' ? t('Shared inbox') : undefined }))} />
+              <span>{tx('mail', 'From')}</span>
+              <Select value={fromId} onChange={setFromId} label={tx('mail', 'From')} className="sel-flat from-sel" width={340} options={accounts.map((a) => ({ value: a.id, label: `${a.name} <${a.email}>`, hint: a.kind === 'shared' ? t('Shared inbox') : undefined }))} />
             </label>
           )}
           <RecipientInput

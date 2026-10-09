@@ -1,11 +1,13 @@
 import { ProjectBadge } from './ProjectBadge';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
 import { term, brand as product } from '../terms';
 import { Copy, Eye, History, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
-import { relative } from '../utils';
+import { t, tn } from '../i18n';
+import { tj } from '../i18n/tj';
+import { fmtAgo, fmtDateTime, fmtList } from '../i18n/format';
 import { server } from '../sync';
 import { isSandboxId } from '../sandbox';
 import { Popover } from './ui/Popover';
@@ -30,9 +32,33 @@ const host = (u?: string) => (u ? u.replace(/^https?:\/\/(www\.)?/, '').split('/
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const r = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) } });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((d as { error?: string }).error ?? 'Something went wrong.');
+  // The server answers in English: its fixed messages are translated here (src/i18n/id/vault.ts).
+  const error = (d as { error?: string }).error;
+  if (!r.ok) throw new Error(error ? t(error) : t('Something went wrong.'));
   return d as T;
 };
+/** One line of a login's history, a whole sentence from what the server wrote ("copied the password"). */
+function logLine(who: ReactNode, what: string): ReactNode {
+  switch (what) {
+    case 'copied the password':
+      return tj('{who} copied the password', { who });
+    case 'used a 2FA code':
+      return tj('{who} used a 2FA code', { who });
+    case 'read the notes':
+      return tj('{who} read the notes', { who });
+    case 'added it':
+      return tj('{who} added it', { who });
+    case 'changed it':
+      return tj('{who} changed it', { who });
+  }
+  const shared = /^re-shared with (\d+) people$/.exec(what);
+  if (shared) return tj('{who} re-shared it with {people}', { who, people: tn(Number(shared[1]), '{n} person', '{n} people') });
+  return (
+    <>
+      {who} {what}
+    </>
+  );
+}
 /** Copies, then clears the clipboard after 30 seconds (if this tab still has focus). */
 const copySecret = async (text: string) => {
   await navigator.clipboard?.writeText(text);
@@ -44,18 +70,18 @@ export function VaultSidebar({ items, clients, filter, onFilter, onNew, workspac
   const withItems = clients.filter((c) => items.some((i) => i.meta.clientId === c.id));
   return (
     <>
-      <button className="compose-btn" onClick={onNew} disabled={!server.on || isSandboxId(workspaceId)} title="Add a login">
+      <button className="compose-btn" onClick={onNew} disabled={!server.on || isSandboxId(workspaceId)} title={t('Add a login')}>
         <Plus size={16} />
-        <span className="sb-label">Add a login</span>
+        <span className="sb-label">{t('Add a login')}</span>
       </button>
       <nav className="nav">
         <button className={`nav-item ${filter === '' ? 'active' : ''}`} onClick={() => onFilter('')}>
           <KeyRound size={16} />
-          <span className="sb-label">All logins</span>
+          <span className="sb-label">{t('All logins')}</span>
         </button>
         <button className={`nav-item ${filter === 'company' ? 'active' : ''}`} onClick={() => onFilter('company')}>
           <Lock size={16} />
-          <span className="sb-label">Company logins</span>
+          <span className="sb-label">{t('Company logins')}</span>
         </button>
       </nav>
       {withItems.length > 0 && (
@@ -72,7 +98,7 @@ export function VaultSidebar({ items, clients, filter, onFilter, onNew, workspac
         </>
       )}
       <p className="muted small sb-label sb-note vault-note">
-        <ShieldCheck size={13} /> Passwords stay encrypted on the server. Copying one is logged, and the clipboard clears after 30 seconds.
+        <ShieldCheck size={13} /> {t('Passwords stay encrypted on the server. Copying one is logged, and the clipboard clears after 30 seconds.')}
       </p>
     </>
   );
@@ -121,8 +147,8 @@ export function VaultView({
   // The 2FA code counts down and refreshes itself while it's shown.
   useEffect(() => {
     if (!code) return;
-    const t = setInterval(() => setCode((c) => (c ? { ...c, left: c.left - 1 } : c)), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setCode((c) => (c ? { ...c, left: c.left - 1 } : c)), 1000);
+    return () => clearInterval(timer);
   }, [code?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (code && code.left <= 0) void showCode(code.id);
@@ -132,7 +158,7 @@ export function VaultView({
   if (isSandboxId(workspaceId))
     return (
       <section className="tasks-pane view-enter">
-        <EmptyState icon={<KeyRound size={22} />} title="The Vault isn’t part of the demo company" text="It keeps real passwords and two-step codes, so it opens in your real company only." />
+        <EmptyState icon={<KeyRound size={22} />} title={t('The Vault isn’t part of the demo company')} text={t('It keeps real passwords and two-step codes, so it opens in your real company only.')} />
       </section>
     );
   if (!server.on)
@@ -140,8 +166,8 @@ export function VaultView({
       <section className="tasks-pane view-enter">
         <EmptyState
           icon={<KeyRound size={22} />}
-          title={<>The Vault needs the {product.name} server</>}
-          text="Passwords are never kept in the browser. Run the local server (npm run server) and sign in to use it."
+          title={t('The Vault needs the {product} server', { product: product.name })}
+          text={t('Passwords are never kept in the browser. Run the local server (npm run server) and sign in to use it.')}
         />
       </section>
     );
@@ -155,7 +181,7 @@ export function VaultView({
     for (const it of items) {
       const mine = it.meta.keys?.[me];
       if (!mine) continue;
-      const inTeam = (u: User) => it.meta.access.teamIds.some((t) => teams.find((x) => x.id === t)?.members.includes(u.id));
+      const inTeam = (u: User) => it.meta.access.teamIds.some((tid) => teams.find((x) => x.id === tid)?.members.includes(u.id));
       const missing = users.filter((u) => u.vaultKey && !it.meta.keys?.[u.id] && (adminIds.includes(u.id) || it.meta.access.everyone || it.meta.access.userIds.includes(u.id) || inTeam(u)));
       if (!missing.length) continue;
       try {
@@ -166,13 +192,17 @@ export function VaultView({
         people += missing.length;
         logins++;
       } catch (e) {
-        toast(e instanceof Error ? e.message : 'Could not re-share a login.');
+        toast(e instanceof Error ? e.message : t('Could not re-share a login.'));
       }
     }
-    toast(logins ? `Re-shared ${logins} login${logins === 1 ? '' : 's'} with ${people} ${people === 1 ? 'person' : 'people'}.` : 'Everyone who may open your logins already holds the keys.');
+    toast(
+      logins
+        ? t('Re-shared {logins} with {people}.', { logins: tn(logins, '{n} login', '{n} logins'), people: tn(people, '{n} person', '{n} people') })
+        : t('Everyone who may open your logins already holds the keys.'),
+    );
     reload();
   };
-  if (!priv) return <VaultGate record={vaultKey} me={me} onUnlocked={(k, record) => (setVaultUnlocked(me, k), record && onVaultKey(record), setTick((t) => t + 1))} />;
+  if (!priv) return <VaultGate record={vaultKey} me={me} onUnlocked={(k, record) => (setVaultUnlocked(me, k), record && onVaultKey(record), setTick((n) => n + 1))} />;
 
   const shown = items.filter((i) => (filter === '' ? true : filter === 'company' ? !i.meta.clientId : i.meta.clientId === filter));
   /** A secret of an end-to-end login, decrypted here; a server-locked (older) one comes back as is. */
@@ -180,14 +210,14 @@ export function VaultView({
     const { value } = await api<{ value: string }>(`/api/vault/${it.id}/reveal`, { method: 'POST', body: JSON.stringify({ field }) });
     if (!isEncrypted(value)) return value;
     const w = it.meta.keys?.[me];
-    if (!w) throw new Error('You don’t hold the key to this login. Ask whoever added it to edit and save it, so it’s shared with you.');
+    if (!w) throw new Error(t('You don’t hold the key to this login. Ask whoever added it to edit and save it, so it’s shared with you.'));
     return decryptSecret(await unwrapWith(priv, w), value);
   };
   const copyPassword = async (it: VaultItem) => {
     try {
       const value = await secretOf(it, 'password');
       await copySecret(value);
-      toast(`Password for ${it.meta.title} copied. The clipboard clears in 30 seconds`);
+      toast(t('Password for {title} copied. The clipboard clears in 30 seconds', { title: it.meta.title }));
     } catch (e) {
       toast((e as Error).message);
     }
@@ -202,33 +232,37 @@ export function VaultView({
       toast((e as Error).message);
     }
   }
-  const who = (id: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone';
-  const accessLabel = (it: VaultItem) =>
-    it.meta.access.everyone ? 'Everyone' : [...it.meta.access.teamIds.map((t) => teams.find((x) => x.id === t)?.name).filter(Boolean), ...it.meta.access.userIds.map(who)].join(', ') || `Only ${it.createdBy === me ? 'you' : who(it.createdBy)}`;
+  const who = (id: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone');
+  const accessLabel = (it: VaultItem) => {
+    if (it.meta.access.everyone) return t('Everyone');
+    const names = [...it.meta.access.teamIds.map((tid) => teams.find((x) => x.id === tid)?.name).filter((n): n is string => !!n), ...it.meta.access.userIds.map(who)];
+    if (names.length) return fmtList(names);
+    return it.createdBy === me ? t('Only you') : t('Only {name}', { name: who(it.createdBy) });
+  };
   const current = items.find((i) => i.id === menu);
 
   return (
     <section className="tasks-pane view-enter">
       <header className="tracking-head tasks-head">
         <div className="th-text">
-          <h1>{filter === '' ? 'All logins' : filter === 'company' ? 'Company logins' : (clients.find((c) => c.id === filter)?.name ?? 'Logins')}</h1>
-          <p>Shared logins and 2FA codes, only for the people you choose</p>
+          <h1>{filter === '' ? t('All logins') : filter === 'company' ? t('Company logins') : (clients.find((c) => c.id === filter)?.name ?? t('Logins'))}</h1>
+          <p>{t('Shared logins and 2FA codes, only for the people you choose')}</p>
         </div>
         {priv && items.some((it) => it.meta.keys?.[me]) && (
-          <button className="ghost-btn sm" title="Give everyone who may open a login the key to it (after they set up their Vault, or lost their passphrase)" onClick={() => void reshareAll()}>
-            <Users size={14} /> Re-share all
+          <button className="ghost-btn sm" title={t('Give everyone who may open a login the key to it (after they set up their Vault, or lost their passphrase)')} onClick={() => void reshareAll()}>
+            <Users size={14} /> {t('Re-share all')}
           </button>
         )}
         <button className="primary-btn sm" onClick={() => setEditing('new')}>
-          <Plus size={14} /> Add a login
+          <Plus size={14} /> {t('Add a login')}
         </button>
       </header>
       <div className="tracking-scroll">
         {shown.length === 0 && (
           <EmptyState
             icon={<KeyRound size={22} />}
-            title="No logins here yet"
-            text="Add the client logins your team shares (Meta, Shopify, Google Ads). Paste the 2FA setup key and everyone with access gets the codes here, without anyone’s phone."
+            title={t('No logins here yet')}
+            text={t('Add the client logins your team shares (Meta, Shopify, Google Ads). Paste the 2FA setup key and everyone with access gets the codes here, without anyone’s phone.')}
           />
         )}
         <div className="todo-group">
@@ -250,13 +284,13 @@ export function VaultView({
                     <span className="src">
                       <Users size={11} /> {accessLabel(it)}
                     </span>
-                    <span className={`src vault-e2e${it.meta.keys ? ' on' : ''}`} title={it.meta.keys ? 'Encrypted on your devices; the server can’t read it' : 'Locked by the server. Edit and save to move it to end-to-end'}>
-                      <Lock size={11} /> {it.meta.keys ? 'End-to-end' : 'Server-locked'}
+                    <span className={`src vault-e2e${it.meta.keys ? ' on' : ''}`} title={it.meta.keys ? t('Encrypted on your devices; the server can’t read it') : t('Locked by the server. Edit and save to move it to end-to-end')}>
+                      <Lock size={11} /> {it.meta.keys ? t('End-to-end') : t('Server-locked')}
                     </span>
                   </div>
                 </div>
                 {code?.id === it.id ? (
-                  <button className="vault-code" onClick={() => void copySecret(code.code).then(() => toast('Code copied'))} title="Copy the code">
+                  <button className="vault-code" onClick={() => void copySecret(code.code).then(() => toast(t('Code copied')))} title={t('Copy the code')}>
                     <b>
                       {code.code.slice(0, 3)} {code.code.slice(3)}
                     </b>
@@ -265,23 +299,23 @@ export function VaultView({
                 ) : (
                   it.hasTotp && (
                     <button className="row-act" onClick={() => void showCode(it.id)}>
-                      <ShieldCheck size={12} /> 2FA code
+                      <ShieldCheck size={12} /> {t('2FA code')}
                     </button>
                   )
                 )}
                 {it.meta.username && (
-                  <button className="icon-btn sm" title="Copy username" onClick={() => void navigator.clipboard?.writeText(it.meta.username!).then(() => toast('Username copied'))}>
+                  <button className="icon-btn sm" title={t('Copy username')} onClick={() => void navigator.clipboard?.writeText(it.meta.username!).then(() => toast(t('Username copied')))}>
                     <Copy size={14} />
                   </button>
                 )}
                 {it.hasPassword && (
                   <button className="row-act primary" onClick={() => void copyPassword(it)}>
-                    Copy password
+                    {t('Copy password')}
                   </button>
                 )}
                 <button
                   className="icon-btn sm"
-                  aria-label="More"
+                  aria-label={t('More')}
                   onClick={(e) => {
                     anchor.current = e.currentTarget;
                     setMenu(it.id);
@@ -300,7 +334,7 @@ export function VaultView({
           <div className="sel-pop">
             {current.meta.url && (
               <a className="sel-opt" href={current.meta.url} target="_blank" rel="noreferrer" onClick={() => setMenu(null)}>
-                <RefreshCw size={14} /> Open {host(current.meta.url)}
+                <RefreshCw size={14} /> {t('Open {site}', { site: host(current.meta.url) })}
               </a>
             )}
             {current.hasNotes && (
@@ -315,35 +349,43 @@ export function VaultView({
                   }
                 }}
               >
-                <Eye size={14} /> Read notes
+                <Eye size={14} /> {t('Read notes')}
               </button>
             )}
             {current.canEdit && (
               <>
                 <button className="sel-opt" onClick={() => (setMenu(null), setEditing(current))}>
-                  <Pencil size={14} /> Edit and access
+                  <Pencil size={14} /> {t('Edit and access')}
                 </button>
                 <button
                   className="sel-opt"
                   onClick={async () => {
                     setMenu(null);
-                    const { log: rows } = await api<{ log: { userId: string; what: string; at: string }[] }>(`/api/vault/${current.id}/log`);
-                    setLog({ item: current, rows });
+                    try {
+                      const { log: rows } = await api<{ log: { userId: string; what: string; at: string }[] }>(`/api/vault/${current.id}/log`);
+                      setLog({ item: current, rows });
+                    } catch (e) {
+                      toast((e as Error).message);
+                    }
                   }}
                 >
-                  <History size={14} /> Who used it
+                  <History size={14} /> {t('Who used it')}
                 </button>
                 <button
                   className="sel-opt danger"
                   onClick={async () => {
                     setMenu(null);
-                    if (!confirm(`Delete the login “${current.meta.title}”? This can’t be undone.`)) return;
-                    await api(`/api/vault/${current.id}`, { method: 'DELETE' });
-                    reload();
-                    toast('Login deleted');
+                    if (!confirm(t('Delete the login “{title}”? This can’t be undone.', { title: current.meta.title }))) return;
+                    try {
+                      await api(`/api/vault/${current.id}`, { method: 'DELETE' });
+                      reload();
+                      toast(t('Login deleted'));
+                    } catch (e) {
+                      toast((e as Error).message);
+                    }
                   }}
                 >
-                  <Trash2 size={14} /> Delete
+                  <Trash2 size={14} /> {t('Delete')}
                 </button>
               </>
             )}
@@ -363,7 +405,7 @@ export function VaultView({
           teams={teams}
           me={me}
           isAdmin={isAdmin}
-          onSaved={() => (setEditing(null), reload(), toast('Login saved'))}
+          onSaved={() => (setEditing(null), reload(), toast(t('Login saved')))}
           onClose={() => setEditing(null)}
         />
       )}
@@ -372,16 +414,16 @@ export function VaultView({
           <div className="modal vault-log" role="dialog" onMouseDown={(e) => e.stopPropagation()}>
             <header className="modal-head">
               <span className="dump-title">
-                <Lock size={15} /> Notes for “{reading.title}”
+                <Lock size={15} /> {t('Notes for “{name}”', { name: reading.title })}
               </span>
-              <button className="icon-btn sm" onClick={() => setReading(null)} aria-label="Close">
+              <button className="icon-btn sm" onClick={() => setReading(null)} aria-label={t('Close')}>
                 <X size={15} />
               </button>
             </header>
             <div className="modal-body">
               <SmoothHeight>
               <p className="vault-notes">{reading.value}</p>
-              <p className="muted small">Reading notes is logged, like copying a password.</p>
+              <p className="muted small">{t('Reading notes is logged, like copying a password.')}</p>
               </SmoothHeight>
             </div>
           </div>
@@ -392,22 +434,22 @@ export function VaultView({
           <div className="modal vault-log" role="dialog" onMouseDown={(e) => e.stopPropagation()}>
             <header className="modal-head">
               <span className="dump-title">
-                <History size={15} /> Who used “{log.item.meta.title}”
+                <History size={15} /> {t('Who used “{name}”', { name: log.item.meta.title })}
               </span>
-              <button className="icon-btn sm" onClick={() => setLog(null)} aria-label="Close">
+              <button className="icon-btn sm" onClick={() => setLog(null)} aria-label={t('Close')}>
                 <X size={15} />
               </button>
             </header>
             <div className="modal-body">
               <SmoothHeight>
-              {log.rows.length === 0 && <EmptyState compact text="Nobody has used it yet." />}
+              {log.rows.length === 0 && <EmptyState compact text={t('Nobody has used it yet.')} />}
               <ul className="home-list">
                 {log.rows.map((r, i) => (
                   <li key={i} className="vault-log-row">
-                    <span>
-                      <b>{r.userId === me ? 'You' : who(r.userId)}</b> {r.what}
-                    </span>
-                    <time>{relative(r.at)}</time>
+                    <span>{logLine(<b>{r.userId === me ? t('You') : who(r.userId)}</b>, r.what)}</span>
+                    <time dateTime={r.at} title={fmtDateTime(r.at)}>
+                      {fmtAgo(r.at)}
+                    </time>
                   </li>
                 ))}
               </ul>
@@ -422,15 +464,15 @@ export function VaultView({
 
 /** Pull the secret out of an otpauth:// link, or tidy a pasted setup key. */
 const parseTotp = (raw: string) => {
-  const t = raw.trim();
-  if (t.startsWith('otpauth://')) {
+  const s = raw.trim();
+  if (s.startsWith('otpauth://')) {
     try {
-      return new URL(t).searchParams.get('secret') ?? '';
+      return new URL(s).searchParams.get('secret') ?? '';
     } catch {
-      return t;
+      return s;
     }
   }
-  return t.replace(/\s+/g, '');
+  return s.replace(/\s+/g, '');
 };
 const strongPassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?';
@@ -485,7 +527,7 @@ function VaultEditor({
     setError('');
     try {
       // Who may open it: me, admins, and the people and teams chosen (everyone, when it's for everyone).
-      const inTeam = (u: User) => teamIds.some((t) => teams.find((x) => x.id === t)?.members.includes(u.id));
+      const inTeam = (u: User) => teamIds.some((tid) => teams.find((x) => x.id === tid)?.members.includes(u.id));
       const allowed = users.filter((u) => u.id === me || adminIds.includes(u.id) || everyone || userIds.includes(u.id) || inTeam(u));
       const withKey = allowed.filter((u) => u.vaultKey);
       setNoKey(allowed.filter((u) => !u.vaultKey && u.id !== me).map((u) => u.name.split(' ')[0]));
@@ -493,7 +535,7 @@ function VaultEditor({
       let itemKey: CryptoKey;
       let keys: Record<string, WrappedKey> = {};
       const mine = item?.meta.keys?.[me];
-      if (item?.meta.keys && !mine) throw new Error('You don’t hold the key to this login, so you can’t change it. Ask whoever added it to edit and save it, so it’s shared with you.');
+      if (item?.meta.keys && !mine) throw new Error(t('You don’t hold the key to this login, so you can’t change it. Ask whoever added it to edit and save it, so it’s shared with you.'));
       if (mine) {
         itemKey = await unwrapWith(priv, mine);
         for (const u of withKey) keys[u.id] = item!.meta.keys![u.id] ?? (await wrapFor(itemKey, u.vaultKey!.pub));
@@ -528,12 +570,12 @@ function VaultEditor({
   };
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal vault-modal" role="dialog" aria-label={item ? 'Edit login' : 'Add a login'} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal vault-modal" role="dialog" aria-label={item ? t('Edit login') : t('Add a login')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <KeyRound size={15} /> {item ? `Edit “${item.meta.title}”` : 'Add a login'}
+            <KeyRound size={15} /> {item ? t('Edit “{name}”', { name: item.meta.title }) : t('Add a login')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -541,59 +583,63 @@ function VaultEditor({
           <SmoothHeight>
           <div className="vault-grid">
             <label className="field">
-              <span>Name</span>
-              <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. KopiKita Meta Business" />
+              <span>{t('Name')}</span>
+              <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('e.g. {example}', { example: 'KopiKita Meta Business' })} />
             </label>
             <label className="field">
-              <span>Website</span>
+              <span>{t('Website')}</span>
               <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://business.facebook.com" />
             </label>
             <label className="field">
-              <span>Username or email</span>
+              <span>{t('Username or email')}</span>
               <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
             </label>
             <div className="field">
-              <span>Password{item?.hasPassword ? ' (leave empty to keep it)' : ''}</span>
+              <span>{item?.hasPassword ? t('Password (leave empty to keep it)') : t('Password')}</span>
               <span className="pw-row">
                 <input type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" placeholder={item?.hasPassword ? '••••••••' : ''} />
-                <button type="button" className="icon-btn sm" onClick={() => setShowPw((s) => !s)} title={showPw ? 'Hide' : 'Show'}>
+                <button type="button" className="icon-btn sm" onClick={() => setShowPw((s) => !s)} title={showPw ? t('Hide') : t('Show')}>
                   <Eye size={14} />
                 </button>
                 <button type="button" className="ghost-btn sm" onClick={() => (setPassword(strongPassword()), setShowPw(true))}>
-                  Generate
+                  {t('Generate')}
                 </button>
               </span>
             </div>
           </div>
           <label className="field">
-            <span>2FA setup key{item?.hasTotp ? ' (saved; paste a new one to replace it)' : ' (optional)'}</span>
-            <input value={totp} onChange={(e) => setTotp(e.target.value)} placeholder="The key shown when you set up an authenticator app, or the otpauth:// link" autoComplete="off" />
+            <span>{item?.hasTotp ? t('2FA setup key (saved; paste a new one to replace it)') : t('2FA setup key (optional)')}</span>
+            <input value={totp} onChange={(e) => setTotp(e.target.value)} placeholder={t('The key shown when you set up an authenticator app, or the otpauth:// link')} autoComplete="off" />
           </label>
           <label className="field">
-            <span>Notes{item?.hasNotes ? ' (saved; type to replace)' : ' (optional)'}</span>
-            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Backup codes, security questions, who to ask" autoComplete="off" />
+            <span>{item?.hasNotes ? t('Notes (saved; type to replace)') : t('Notes (optional)')}</span>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('Backup codes, security questions, who to ask')} autoComplete="off" />
           </label>
           <div className="field">
             <span>{term.One}</span>
-            <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none={`Company login (no ${term.one})`} />
+            <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none={t('Company login (no {project})', { project: term.one })} />
           </div>
           <div className="field">
-            <span>Who can use it</span>
+            <span>{t('Who can use it')}</span>
             <label className="check-row">
-              <input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> Everyone in the company
+              <input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> {t('Everyone in the company')}
             </label>
             <div className={`fold ${everyone ? '' : 'open'}`} aria-hidden={everyone}>
               <div className="fold-in">
                 <div className="team-toggles">
-                  {teams.map((t) => (
-                    <button key={t.id} type="button" className={teamIds.includes(t.id) ? 'on' : ''} onClick={() => setTeamIds((x) => (x.includes(t.id) ? x.filter((y) => y !== t.id) : [...x, t.id]))}>
-                      <span className="team-square" style={{ background: t.color }} /> {t.name}
+                  {teams.map((team) => (
+                    <button key={team.id} type="button" className={teamIds.includes(team.id) ? 'on' : ''} onClick={() => setTeamIds((x) => (x.includes(team.id) ? x.filter((y) => y !== team.id) : [...x, team.id]))}>
+                      <span className="team-square" style={{ background: team.color }} /> {team.name}
                     </button>
                   ))}
                 </div>
-                <PeoplePicker value={userIds} users={users.filter((u) => u.id !== me)} me={me} onChange={setUserIds} label="People" emptyText="Add people" />
-                <small className="muted">You{isAdmin ? '' : ' and admins'} can always see it. People who haven’t set up their Vault yet get the key once you save again after they do.</small>
-                {noKey.length > 0 && <small className="muted">Not set up yet: {noKey.join(', ')}.</small>}
+                <PeoplePicker value={userIds} users={users.filter((u) => u.id !== me)} me={me} onChange={setUserIds} label={t('People')} emptyText={t('Add people')} />
+                <small className="muted">
+                  {isAdmin
+                    ? t('You can always see it. People who haven’t set up their Vault yet get the key once you save again after they do.')
+                    : t('You and admins can always see it. People who haven’t set up their Vault yet get the key once you save again after they do.')}
+                </small>
+                {noKey.length > 0 && <small className="muted">{t('Not set up yet: {names}.', { names: fmtList(noKey) })}</small>}
               </div>
             </div>
           </div>
@@ -603,10 +649,10 @@ function VaultEditor({
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" disabled={!title.trim() || busy} onClick={() => void save()}>
-            {busy ? 'Saving…' : 'Save login'}
+            {busy ? t('Saving…') : t('Save login')}
           </button>
         </footer>
       </div>
@@ -630,13 +676,13 @@ function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: st
     setError('');
     try {
       if (fresh) {
-        if (pass.length < 8) throw new Error('Use at least 8 characters.');
-        if (pass !== again) throw new Error('The two don’t match.');
+        if (pass.length < 8) throw new Error(t('Use at least 8 characters.'));
+        if (pass !== again) throw new Error(t('The two don’t match.'));
         const made = await makeVaultKeys(pass);
         onUnlocked(made.priv, made.record);
       } else onUnlocked(await unlockVaultKey(record!, pass));
     } catch (e) {
-      setError(fresh ? (e as Error).message : 'That’s not it. Try again.');
+      setError(fresh ? (e as Error).message : t('That’s not it. Try again.'));
     }
     setBusy(false);
   };
@@ -645,11 +691,11 @@ function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: st
       <div className="vault-gate">
         <div className="vault-gate-card">
           <KeyRound size={22} />
-          <h2>{fresh ? 'Set your Vault passphrase' : 'Unlock the Vault'}</h2>
+          <h2>{fresh ? t('Set your Vault passphrase') : t('Unlock the Vault')}</h2>
           <p className="muted">
             {fresh
-              ? 'Logins are encrypted on your devices with keys only you hold; the server never sees a password. This passphrase locks your key. There is no reset: if it’s lost, teammates re-share logins with you.'
-              : 'Your key stays in this tab until you close it.'}
+              ? t('Logins are encrypted on your devices with keys only you hold; the server never sees a password. This passphrase locks your key. There is no reset: if it’s lost, teammates re-share logins with you.')
+              : t('Your key stays in this tab until you close it.')}
           </p>
           <form
             onSubmit={(e) => {
@@ -657,11 +703,11 @@ function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: st
               void go();
             }}
           >
-            <input type="password" autoFocus value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Passphrase" autoComplete={fresh ? 'new-password' : 'current-password'} />
-            {fresh && <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="Once more" autoComplete="new-password" />}
+            <input type="password" autoFocus value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t('Passphrase')} autoComplete={fresh ? 'new-password' : 'current-password'} />
+            {fresh && <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder={t('Once more')} autoComplete="new-password" />}
             {error && <p className="err small">{error}</p>}
             <button className="primary-btn" disabled={busy || !pass}>
-              {busy ? 'Working…' : fresh ? 'Set and open' : 'Unlock'}
+              {busy ? t('Working…') : fresh ? t('Set and open') : t('Unlock')}
             </button>
           </form>
         </div>
@@ -673,6 +719,6 @@ function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: st
 /** A new passphrase for the same keys (for the header's "Change passphrase"). */
 export async function changeVaultPassphrase(me: string, record: VaultKeyRecord, next: string) {
   const priv = vaultUnlocked(me);
-  if (!priv) throw new Error('Unlock the Vault first.');
+  if (!priv) throw new Error(t('Unlock the Vault first.'));
   return rewrapVaultKey(priv, record.pub, next);
 }

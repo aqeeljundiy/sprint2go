@@ -6,6 +6,8 @@ import * as db from './db.ts';
 import { parseInvite, parseRRule, type IcsEvent } from './ics.ts';
 import { inviteCalendarTimes, inviteSeries } from '../src/inviteTimes.ts';
 import { occId } from '../src/repeat.ts';
+import { mark, msg, phrase } from '../src/i18n/index.ts';
+import { datePhrase, type Said } from './lang.ts';
 
 type Att = ParsedMail['attachments'][number];
 export type StoredInvite = IcsEvent & { you?: string; answer?: { status: Rsvp; at: string; by: string; sent: boolean } };
@@ -96,7 +98,7 @@ export const eventsOf = (uid: string, workspaceId: string, userIds: string[]) =>
   (db.allDocs('events') as any[]).filter((e) => e.inviteUid === uid && e.workspaceId === workspaceId && userIds.includes(e.userId));
 
 type Broadcast = (coll: string, upserts: db.Doc[], deletes: string[], except?: string, deleted?: db.Doc[]) => void;
-type Notify = (userIds: string[], workspaceId: string, text: string, link?: string) => void;
+type Notify = (userIds: string[], workspaceId: string, text: Said, link?: string) => void; // msg(): each reader's language
 
 /**
  * An invite email for an event people here already answered: an update moves their events (a newer version only),
@@ -108,7 +110,7 @@ export function applyInbound(ws: { id: string }, account: Account, inv: StoredIn
   if (inv.method === 'REPLY') return applyReply(ws, account, inv, broadcast, notify);
   const evs = eventsOf(inv.uid, ws.id, account.users ?? []);
   if (!evs.length) return;
-  const who = inv.organizer?.name ?? 'The organiser';
+  const who = inv.organizer?.name ?? phrase('The organiser');
   const write = (next: db.Doc[], gone: any[]) => {
     db.writeDocs('events', next, gone.map((e) => e.id), null);
     if (gone.length) broadcast('events', [], gone.map((e) => e.id), undefined, gone);
@@ -123,11 +125,11 @@ export function applyInbound(ws: { id: string }, account: Account, inv: StoredIn
       const gone = evs.filter((e) => !e.rrule && (e.occurrence ?? e.start) === inv.recurrenceId);
       if (!next.length && !gone.length) return;
       write(next, gone);
-      notify([...new Set([...series, ...gone].map((e) => e.userId as string))], ws.id, `${who} cancelled “${inv.title}” on one of its dates. It’s off your calendar.`, '/mail');
+      notify([...new Set([...series, ...gone].map((e) => e.userId as string))], ws.id, msg('{name} cancelled “{title}” on one of its dates. It’s off your calendar.', { name: who, title: inv.title }), '/mail');
       return;
     }
     write([], evs);
-    notify([...new Set(evs.map((e) => e.userId as string))], ws.id, `${who} cancelled “${inv.title}”. It’s off your calendar.`, '/mail');
+    notify([...new Set(evs.map((e) => e.userId as string))], ws.id, msg('{name} cancelled “{title}”. It’s off your calendar.', { name: who, title: inv.title }), '/mail');
     return;
   }
   if (inv.method !== 'REQUEST' && inv.method !== 'PUBLISH') return;
@@ -198,10 +200,16 @@ export function applyInbound(ws: { id: string }, account: Account, inv: StoredIn
     write(next, drop.filter((e) => !keepIds.has(e.id)));
     changed.push(userId);
   }
-  if (changed.length) notify(changed, ws.id, `${who} changed “${inv.title}”${inv.recurrenceId && !inv.rrule ? ' on one of its dates' : ''}. Your calendar has the new details.`, '/mail');
+  if (changed.length) notify(changed, ws.id, inv.recurrenceId && !inv.rrule ? msg('{name} changed “{title}” on one of its dates. Your calendar has the new details.', { name: who, title: inv.title }) : msg('{name} changed “{title}”. Your calendar has the new details.', { name: who, title: inv.title }), '/mail');
 }
 
-const ANSWERED: Record<string, string> = { accepted: 'is going to', tentative: 'might come to', declined: 'can’t come to', delegated: 'sent someone else to' };
+// The owner's notice, in each reader's language: one sentence per answer, with the dates when it's about some of them.
+const ANSWERED: Record<string, [string, string]> = {
+  accepted: [mark('{name} is going to “{title}”.'), mark('{name} is going to “{title}” {when}.')],
+  tentative: [mark('{name} might come to “{title}”.'), mark('{name} might come to “{title}” {when}.')],
+  declined: [mark('{name} can’t come to “{title}”.'), mark('{name} can’t come to “{title}” {when}.')],
+  delegated: [mark('{name} sent someone else to “{title}”.'), mark('{name} sent someone else to “{title}” {when}.')],
+};
 
 /**
  * A guest answered an invite we sent (an iTIP REPLY): the answer goes on the event, for all of it, for the one date
@@ -215,27 +223,27 @@ export function applyReply(ws: { id: string }, account: Account, inv: StoredInvi
   const email = a.email.toLowerCase();
   if (!(ev.guests ?? []).some((g: any) => String(g.email).toLowerCase() === email)) return;
   let next: any;
-  let on = '';
+  let on: ReturnType<typeof phrase> | null = null;
   let open = ev.id; // the notice opens the event, or the date answered
   if (inv.recurrenceId && ev.rrule) {
     // Which date: the series' own way of writing it (an all-day one floats), by the same instant or day.
     const at = isFloatingIso(ev.start) ? `${new Date(Date.parse(inv.recurrenceId)).toISOString().slice(0, 10)}T00:00:00` : new Date(Date.parse(inv.recurrenceId)).toISOString();
-    const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...(ev.timeZone && !isFloatingIso(ev.start) ? { timeZone: ev.timeZone } : { timeZone: 'UTC' }) }).format(new Date(isFloatingIso(at) ? `${at}Z` : at));
+    const dayWords = datePhrase(isFloatingIso(at) ? `${at}Z` : at, { weekday: true, tz: ev.timeZone && !isFloatingIso(ev.start) ? ev.timeZone : 'UTC' });
     open = occId(ev.id, at);
     if (inv.thisAndFuture) {
       next = { ...ev, answersFrom: [...(ev.answersFrom ?? []).filter((x: any) => !(x.email === email && Date.parse(x.from) >= Date.parse(at))), { from: at, email, status: a.status }], ...(ev.overrides ? { overrides: forget(ev.overrides, email, Date.parse(at)) } : {}) };
-      on = ` from ${day} on`;
+      on = phrase('from {day} on', { day: dayWords });
     } else {
       const own = (ev.overrides ?? []).find((o: any) => Date.parse(o.occurrence) === Date.parse(at));
       const others = (ev.overrides ?? []).filter((o: any) => o !== own);
       next = { ...ev, overrides: [...others, { ...own, occurrence: own?.occurrence ?? at, answers: { ...own?.answers, [email]: a.status } }] };
-      on = ` on ${day}`;
+      on = phrase('on {day}', { day: dayWords });
     }
   } else next = { ...ev, answers: { ...ev.answers, [email]: a.status }, ...(ev.answersFrom ? { answersFrom: ev.answersFrom.filter((x: any) => x.email !== email) } : {}), ...(ev.overrides ? { overrides: forget(ev.overrides, email, -Infinity) } : {}) };
   db.writeDocs('events', [next], [], null);
   broadcast('events', [next], []);
   const name = (ev.guests ?? []).find((g: any) => String(g.email).toLowerCase() === email)?.name || a.name;
-  if (ANSWERED[a.status]) notify([ev.userId], ws.id, `${name} ${ANSWERED[a.status]} “${ev.title}”${on}.`, `/calendar?event=${encodeURIComponent(open)}`);
+  if (ANSWERED[a.status]) notify([ev.userId], ws.id, on ? msg(ANSWERED[a.status][1], { name, title: ev.title, when: on }) : msg(ANSWERED[a.status][0], { name, title: ev.title }), `/calendar?event=${encodeURIComponent(open)}`);
 }
 const isFloatingIso = (s: string) => !/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(s);
 /** A guest's answers for single dates from `from` on go: a wider answer covers them now. Dates left with nothing of their own go too. */

@@ -141,7 +141,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
       text.current?.changed();
     };
     return [
-      ...(tid && tasks.has(tid) ? [{ label: t('Open its task'), icon: ListTodo, run: () => p.onOpenTask(tid) }] : canEdit && words ? [{ label: t('Make a task'), icon: ListTodo, run: () => makeTask(b) }] : []),
+      ...(tid && tasks.has(tid) ? [{ label: t('Open its task'), icon: ListTodo, run: () => p.onOpenTask(tid) }] : canEdit && words ? [{ label: tx('mail', 'Make a task'), icon: ListTodo, run: () => makeTask(b) }] : []),
       ...(check && canEdit ? [{ label: b.classList.contains('done') ? t('Untick') : t('Tick'), icon: SquareCheck, run: () => (b.classList.toggle('done'), text.current?.changed()) }] : []),
       ...(canEdit && b.previousElementSibling ? [{ label: t('Move up'), icon: ArrowUp, group: 'move', run: () => moved(-1) }] : []),
       ...(canEdit && b.nextElementSibling ? [{ label: t('Move down'), icon: ArrowDown, group: 'move', run: () => moved(1) }] : []),
@@ -453,7 +453,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
           </button>
           <span className="spacer" />
           <button type="button" className="ghost-btn sm note-make-task" onClick={() => makeTask()} title={t('Make a task from the line the caret is on')}>
-            <ListTodo size={14} /> {t('Make a task')}
+            <ListTodo size={14} /> {tx('mail', 'Make a task')}
           </button>
         </div>
       )}

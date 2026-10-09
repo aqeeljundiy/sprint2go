@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, ArrowLeft, Building2, ClipboardList, CreditCard, Eye, Gauge, Inbox, LifeBuoy, LogOut, Megaphone, Menu, Monitor, Moon, Search, ServerCog, ShieldCheck, Sparkles, Sun, TrendingUp, UserCog, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, ArrowLeft, Building2, Check, ClipboardList, CreditCard, Eye, Gauge, Inbox, Languages, LifeBuoy, LogOut, Megaphone, Menu, Monitor, Moon, Search, ServerCog, ShieldCheck, Sparkles, Sun, TrendingUp, UserCog, Users, X, type LucideIcon } from 'lucide-react';
 import { Wordmark } from '../components/Logo';
 import { signOut } from '../sync';
 import { ApiError, get, post, ROLE_LABEL, type Perm } from './api';
@@ -14,13 +14,18 @@ import { Product } from './pages/Product';
 import { Platform } from './pages/Platform';
 import { Team } from './pages/Team';
 import { AIPage } from './pages/AI';
+import { Popover } from '../components/ui/Popover';
+import { LANGS, getLang, isLang, rememberLang, setLang, t, tx, type Lang } from '../i18n';
+import { tj } from '../i18n/tj';
+import { useLang } from '../i18n/useLang';
 
 type Item = { id: string; label: string; icon: LucideIcon; perm?: Perm };
+// Getters: each read gives the words in the console's language of the moment (docs/i18n.md).
 const NAV: { group: string; items: Item[] }[] = [
-  { group: 'Inbox', items: [{ id: 'today', label: 'Today', icon: Gauge }, { id: 'tickets', label: 'Tickets', icon: LifeBuoy }] },
-  { group: 'Customers', items: [{ id: 'companies', label: 'Companies', icon: Building2 }, { id: 'people', label: 'People', icon: Users }] },
-  { group: 'Business', items: [{ id: 'money', label: 'Money', icon: CreditCard }, { id: 'ai', label: 'AI', icon: Sparkles }, { id: 'growth', label: 'Growth', icon: TrendingUp }] },
-  { group: 'Run', items: [{ id: 'product', label: 'Product', icon: Megaphone }, { id: 'platform', label: 'Platform', icon: ServerCog }, { id: 'team', label: 'Team & settings', icon: UserCog }] },
+  { get group() { return tx('nav', 'Inbox'); }, items: [{ id: 'today', get label() { return t('Today'); }, icon: Gauge }, { id: 'tickets', get label() { return t('Tickets'); }, icon: LifeBuoy }] },
+  { get group() { return t('Customers'); }, items: [{ id: 'companies', get label() { return t('Companies'); }, icon: Building2 }, { id: 'people', get label() { return t('People'); }, icon: Users }] },
+  { get group() { return t('Business'); }, items: [{ id: 'money', get label() { return tx('nav', 'Money'); }, icon: CreditCard }, { id: 'ai', label: 'AI', icon: Sparkles }, { id: 'growth', get label() { return t('Growth'); }, icon: TrendingUp }] },
+  { get group() { return tx('nav', 'Run'); }, items: [{ id: 'product', get label() { return t('Product'); }, icon: Megaphone }, { id: 'platform', get label() { return t('Platform'); }, icon: ServerCog }, { id: 'team', get label() { return t('Team & settings'); }, icon: UserCog }] },
 ];
 
 /** /admin/<section>/<id or tab>/<tab> */
@@ -54,10 +59,30 @@ function useTheme() {
   return [theme, () => setTheme((t) => (t === 'system' ? 'light' : t === 'light' ? 'dark' : 'system'))] as const;
 }
 
+/**
+ * The console's language: the operator's own pick here (kept on the server with their operator record, so it follows
+ * them), else their app account's, else this device's. Operators may have no app language at all.
+ */
+function useConsoleLang(saved: Lang | null | undefined) {
+  useEffect(() => {
+    if (isLang(saved)) void setLang(saved);
+  }, [saved]);
+  const lang = useLang();
+  const pick = (l: Lang) => {
+    rememberLang(l);
+    void setLang(l);
+    void post('me/lang', { lang: l }).catch(() => {});
+  };
+  return [lang, pick] as const;
+}
+
 /** The operator backend: the people who run sprint2go. Its own shell, the app's parts and look. */
 export function AdminApp() {
   const [theme, nextTheme] = useTheme();
-  const [me, setMe] = useState<(Me & { totpOn: boolean; verified: boolean }) | null | 'denied'>(null);
+  const [me, setMe] = useState<(Me & { totpOn: boolean; verified: boolean; lang?: Lang | null }) | null | 'denied'>(null);
+  const [lang, pickLang] = useConsoleLang(me && me !== 'denied' ? me.lang : null);
+  const [langOpen, setLangOpen] = useState(false);
+  const langBtn = useRef<HTMLButtonElement>(null);
   const [path, setPath] = useState(location.pathname);
   const [toasts, setToasts] = useState<{ id: number; text: string; out?: boolean; action?: { label: string; run: () => void } }[]>([]);
   const [tick, setTick] = useState(0);
@@ -114,14 +139,19 @@ export function AdminApp() {
   const ready = !!me && me !== 'denied' && me.totpOn && me.verified;
   useEffect(() => {
     if (!ready) return;
-    const count = () => get<{ tickets: { status: string }[] }>('tickets').then((r) => setOpen(r.tickets.filter((t) => t.status === 'new' || t.status === 'open').length), () => {});
+    const count = () => get<{ tickets: { status: string }[] }>('tickets').then((r) => setOpen(r.tickets.filter((x) => x.status === 'new' || x.status === 'open').length), () => {});
     void count();
-    const t = setInterval(() => document.visibilityState === 'visible' && void count(), 60_000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => document.visibilityState === 'visible' && void count(), 60_000);
+    return () => clearInterval(timer);
   }, [ready, tick]);
   useEffect(() => {
-    document.title = 'sprint2go · Operator';
-  }, []);
+    document.title = t('sprint2go · Operator');
+  }, [lang]);
+  // The server writes some of what the pages show (labels, warnings) in the console's language: load them again.
+  const firstLang = useRef(lang);
+  useEffect(() => {
+    if (lang !== firstLang.current) setTick((n) => n + 1);
+  }, [lang]);
 
   const go = useCallback((to: string) => {
     if (to.startsWith('/admin')) {
@@ -133,22 +163,22 @@ export function AdminApp() {
   }, []);
   const toast = useCallback((text: string, action?: { label: string; run: () => void }) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t.slice(-2), { id, text, action }]);
+    setToasts((list) => [...list.slice(-2), { id, text, action }]);
     // Slides out, then goes.
-    setTimeout(() => setToasts((t) => t.map((x) => (x.id === id ? { ...x, out: true } : x))), action ? 7000 : 4000);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), (action ? 7000 : 4000) + 200);
+    setTimeout(() => setToasts((list) => list.map((x) => (x.id === id ? { ...x, out: true } : x))), action ? 7000 : 4000);
+    setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), (action ? 7000 : 4000) + 200);
   }, []);
 
   if (me === null) return <div className="boot" />;
   if (me === 'denied')
     return (
-      <Gate title="Operators only" text="This account isn’t on the sprint2go operator team. An owner can add you under Team & settings.">
+      <Gate title={t('Operators only')} text={t('This account isn’t on the sprint2go operator team. An owner can add you under Team & settings.')}>
         <a className="primary-btn signin-btn" href="/">
-          Open the app
+          {t('Open the app')}
         </a>
         <p className="signin-switch">
           <button type="button" className="link-btn" onClick={() => void signOut()}>
-            Sign out
+            {t('Sign out')}
           </button>
         </p>
       </Gate>
@@ -163,7 +193,7 @@ export function AdminApp() {
     go,
     toast,
     tick,
-    bump: () => setTick((t) => t + 1),
+    bump: () => setTick((n) => n + 1),
     signInAs: (userId, ticket) =>
       void post('person/signin-as', { userId, ticket })
         .then(() => location.assign('/'))
@@ -185,27 +215,27 @@ export function AdminApp() {
     <AdminCtx.Provider value={ctx}>
       <div className={`adm ${navOpen ? 'nav-open' : ''}`} style={{ ['--ad-nav' as string]: `${navW}px` }}>
         <header className="adm-topbar">
-          <button className="icon-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">
+          <button className="icon-btn" onClick={() => setNavOpen(true)} aria-label={t('Open menu')}>
             <Menu size={18} />
           </button>
           <Wordmark height={20} />
           <span className="spacer" />
-          <button className="icon-btn" onClick={() => setSearch(true)} aria-label="Search">
+          <button className="icon-btn" onClick={() => setSearch(true)} aria-label={t('Search')}>
             <Search size={18} />
           </button>
         </header>
         <div className="adm-scrim" onClick={() => setNavOpen(false)} />
-        <aside className="adm-nav" aria-label="Backend">
+        <aside className="adm-nav" aria-label={t('Backend')}>
           <div
             className="adm-nav-resize"
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize the menu"
+            aria-label={t('Resize the menu')}
             aria-valuemin={NAV_MIN}
             aria-valuemax={NAV_MAX}
             aria-valuenow={navW}
             tabIndex={0}
-            title="Drag to resize · double-click for the usual width"
+            title={t('Drag to resize · double-click for the usual width')}
             onPointerDown={startNavResize}
             onDoubleClick={() => keepNavW(NAV_DEFAULT)}
             onKeyDown={(e) => {
@@ -214,14 +244,14 @@ export function AdminApp() {
           />
           <div className="adm-brand">
             <Wordmark height={20} />
-            <span className="adm-brand-tag">Operator</span>
-            <button className="icon-btn sm adm-nav-close" onClick={() => setNavOpen(false)} aria-label="Close menu">
+            <span className="adm-brand-tag">{t('Operator')}</span>
+            <button className="icon-btn sm adm-nav-close" onClick={() => setNavOpen(false)} aria-label={t('Close menu')}>
               <X size={16} />
             </button>
           </div>
           <button type="button" className="adm-searchbtn" onClick={() => (setNavOpen(false), setSearch(true))}>
             <Search size={14} />
-            <span>Search everything</span>
+            <span>{tx('console', 'Search everything')}</span>
             <kbd>⌘K</kbd>
           </button>
           <nav className="adm-groups">
@@ -254,13 +284,26 @@ export function AdminApp() {
               <small>{ROLE_LABEL[me.role]}</small>
             </span>
             <span className="adm-me-actions">
-              <button className="icon-btn sm" onClick={nextTheme} title={`Theme: ${theme}`} aria-label={`Theme: ${theme}. Change`}>
+              <button className="icon-btn sm" onClick={nextTheme} title={t('Theme: {theme}', { theme: themeName(theme) })} aria-label={t('Theme: {theme}. Change', { theme: themeName(theme) })}>
                 {theme === 'dark' ? <Moon size={15} /> : theme === 'light' ? <Sun size={15} /> : <Monitor size={15} />}
               </button>
-              <a className="icon-btn sm" href="/" title="Back to the app" aria-label="Back to the app">
+              <button ref={langBtn} className="icon-btn sm" onClick={() => setLangOpen((o) => !o)} title={t('Language')} aria-label={t('Language: {language}. Change', { language: LANGS.find((l) => l.id === lang)?.name ?? lang })} aria-haspopup="menu" aria-expanded={langOpen}>
+                <Languages size={15} />
+              </button>
+              <Popover anchor={langBtn} open={langOpen} onClose={() => setLangOpen(false)} width={200} align="end" title={t('Language')}>
+                <div className="adm-menu" role="menu">
+                  {LANGS.map((l) => (
+                    <button key={l.id} type="button" role="menuitemradio" aria-checked={l.id === getLang()} className={`adm-lang ${l.id === lang ? 'on' : ''}`} onClick={() => (setLangOpen(false), pickLang(l.id))} lang={l.id}>
+                      <span>{l.name}</span>
+                      {l.id === lang && <Check size={14} />}
+                    </button>
+                  ))}
+                </div>
+              </Popover>
+              <a className="icon-btn sm" href="/" title={t('Back to the app')} aria-label={t('Back to the app')}>
                 <ArrowLeft size={15} />
               </a>
-              <button className="icon-btn sm" onClick={() => void signOut()} title="Sign out" aria-label="Sign out">
+              <button className="icon-btn sm" onClick={() => void signOut()} title={t('Sign out')} aria-label={t('Sign out')}>
                 <LogOut size={15} />
               </button>
             </span>
@@ -271,18 +314,18 @@ export function AdminApp() {
         </main>
         {search && <Palette onClose={() => setSearch(false)} go={go} />}
         <div className="adm-toasts" role="status" aria-live="polite">
-          {toasts.map((t) => (
-            <div key={t.id} className={`adm-toast ${t.out ? 'out' : ''}`}>
-              <span>{t.text}</span>
-              {t.action && (
+          {toasts.map((tst) => (
+            <div key={tst.id} className={`adm-toast ${tst.out ? 'out' : ''}`}>
+              <span>{tst.text}</span>
+              {tst.action && (
                 <button
                   type="button"
                   onClick={() => {
-                    t.action!.run();
-                    setToasts((x) => x.filter((y) => y.id !== t.id));
+                    tst.action!.run();
+                    setToasts((x) => x.filter((y) => y.id !== tst.id));
                   }}
                 >
-                  {t.action.label}
+                  {tst.action.label}
                 </button>
               )}
             </div>
@@ -296,31 +339,35 @@ export function AdminApp() {
 /* ---------- ⌘K ---------- */
 
 const KIND_ICON: Record<string, LucideIcon> = { company: Building2, person: Users, ticket: Inbox, invoice: CreditCard, mailbox: Activity };
-const JUMPS = [
-  { title: 'Today', to: '/admin/today' },
-  { title: 'Tickets', to: '/admin/tickets' },
-  { title: 'Companies', to: '/admin/companies' },
-  { title: 'People', to: '/admin/people' },
-  { title: 'Revenue', to: '/admin/money/revenue' },
-  { title: 'Invoices', to: '/admin/money/invoices' },
-  { title: 'Plans & coupons', to: '/admin/money/plans' },
-  { title: 'AI margin', to: '/admin/ai/margin' },
-  { title: 'Our AI keys', to: '/admin/ai/keys' },
-  { title: 'AI models per job', to: '/admin/ai/models' },
-  { title: 'AI prices', to: '/admin/ai/prices' },
-  { title: 'Growth', to: '/admin/growth' },
-  { title: 'Announcements', to: '/admin/product/announcements' },
-  { title: 'Feature flags', to: '/admin/product/flags' },
-  { title: 'Email to owners', to: '/admin/product/broadcasts' },
-  { title: 'Platform health', to: '/admin/platform/health' },
-  { title: 'Mail queue', to: '/admin/platform/mail' },
-  { title: 'Errors', to: '/admin/platform/errors' },
-  { title: 'Backups', to: '/admin/platform/backups' },
-  { title: 'Safety', to: '/admin/platform/safety' },
-  { title: 'Operator team', to: '/admin/team/operators' },
-  { title: 'Saved replies', to: '/admin/team/replies' },
-  { title: 'Backend settings', to: '/admin/team/settings' },
-  { title: 'Audit log', to: '/admin/team/audit' },
+/** What each kind of search result is, in words. */
+const kindName = (kind: string) => ({ company: tx('kind', 'company'), person: tx('kind', 'person'), ticket: tx('kind', 'ticket'), invoice: tx('kind', 'invoice'), mailbox: tx('kind', 'mailbox') })[kind] ?? kind;
+const themeName = (theme: Theme) => (theme === 'dark' ? t('dark') : theme === 'light' ? t('light') : t('the system’s'));
+/** Places to jump to (called while rendering: the titles are in the console's language). */
+const jumps = () => [
+  { title: t('Today'), to: '/admin/today' },
+  { title: t('Tickets'), to: '/admin/tickets' },
+  { title: t('Companies'), to: '/admin/companies' },
+  { title: t('People'), to: '/admin/people' },
+  { title: t('Revenue'), to: '/admin/money/revenue' },
+  { title: t('Invoices'), to: '/admin/money/invoices' },
+  { title: t('Plans & coupons'), to: '/admin/money/plans' },
+  { title: t('AI margin'), to: '/admin/ai/margin' },
+  { title: t('Our AI keys'), to: '/admin/ai/keys' },
+  { title: t('AI models per job'), to: '/admin/ai/models' },
+  { title: t('AI prices'), to: '/admin/ai/prices' },
+  { title: t('Growth'), to: '/admin/growth' },
+  { title: t('Announcements'), to: '/admin/product/announcements' },
+  { title: t('Feature flags'), to: '/admin/product/flags' },
+  { title: t('Email to owners'), to: '/admin/product/broadcasts' },
+  { title: t('Platform health'), to: '/admin/platform/health' },
+  { title: t('Mail queue'), to: '/admin/platform/mail' },
+  { title: t('Errors'), to: '/admin/platform/errors' },
+  { title: t('Backups'), to: '/admin/platform/backups' },
+  { title: t('Safety'), to: '/admin/platform/safety' },
+  { title: t('Operator team'), to: '/admin/team/operators' },
+  { title: t('Saved replies'), to: '/admin/team/replies' },
+  { title: t('Backend settings'), to: '/admin/team/settings' },
+  { title: t('Audit log'), to: '/admin/team/audit' },
 ];
 function Palette({ onClose, go }: { onClose: () => void; go: (to: string) => void }) {
   const [q, setQ] = useState('');
@@ -330,28 +377,29 @@ function Palette({ onClose, go }: { onClose: () => void; go: (to: string) => voi
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => input.current?.focus(), []);
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (!q.trim()) return (setResults([]), setI(0));
       get<{ results: typeof results }>('search?q=' + encodeURIComponent(q.trim())).then((r) => (setResults(r.results), setI(0)), () => {});
     }, 140);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [q]);
   useEffect(() => {
     list.current?.querySelector<HTMLElement>('button.on')?.scrollIntoView({ block: 'nearest' });
   }, [i]);
-  const jumps = useMemo(() => JUMPS.filter((j) => !q || j.title.toLowerCase().includes(q.toLowerCase())).map((j) => ({ kind: 'jump', id: j.to, title: j.title, sub: 'Go to', to: j.to })), [q]);
-  const all = [...results, ...jumps].slice(0, 30);
+  const lang = useLang();
+  const places = useMemo(() => jumps().filter((j) => !q || j.title.toLowerCase().includes(q.toLowerCase())).map((j) => ({ kind: 'jump', id: j.to, title: j.title, sub: t('Go to'), to: j.to })), [q, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const all = [...results, ...places].slice(0, 30);
   const pick = (x: { to: string }) => (onClose(), go(x.to));
   return (
     <div className="palette-scrim adm-palette-scrim" onMouseDown={onClose}>
-      <div className="adm-palette" role="dialog" aria-label="Search" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="adm-palette" role="dialog" aria-label={t('Search')} onMouseDown={(e) => e.stopPropagation()}>
         <label className="adm-palette-input">
           <Search size={16} />
           <input
             ref={input}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Company, person, ticket number, invoice or mailbox"
+            placeholder={t('Company, person, ticket number, invoice or mailbox')}
             onKeyDown={(e) => {
               if (e.key === 'Escape') onClose();
               if (e.key === 'ArrowDown') (e.preventDefault(), setI((x) => Math.min(all.length - 1, x + 1)));
@@ -362,7 +410,7 @@ function Palette({ onClose, go }: { onClose: () => void; go: (to: string) => voi
           <kbd>esc</kbd>
         </label>
         <div className="adm-palette-list" ref={list}>
-          {all.length === 0 && <p className="adm-palette-empty">Nothing found for “{q}”.</p>}
+          {all.length === 0 && <p className="adm-palette-empty">{t('Nothing found for “{q}”.', { q })}</p>}
           {all.map((x, k) => {
             const Icon = KIND_ICON[x.kind] ?? ClipboardList;
             return (
@@ -372,7 +420,7 @@ function Palette({ onClose, go }: { onClose: () => void; go: (to: string) => voi
                   <strong>{x.title}</strong>
                   <small>{x.sub}</small>
                 </span>
-                {x.kind !== 'jump' && <em>{x.kind}</em>}
+                {x.kind !== 'jump' && <em>{kindName(x.kind)}</em>}
               </button>
             );
           })}
@@ -410,10 +458,10 @@ function CodeInput({ onSubmit, busy, error }: { onSubmit: (code: string) => void
         if (ok) onSubmit(code);
       }}
     >
-      <input className="adm-code-input" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value.replace(/[^\d ]/g, ''))} placeholder="123 456" autoFocus aria-label="Six-digit code" />
+      <input className="adm-code-input" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value.replace(/[^\d ]/g, ''))} placeholder="123 456" autoFocus aria-label={t('Six-digit code')} />
       {error && <p className="signin-error">{error}</p>}
       <button className="primary-btn signin-btn" disabled={busy || !ok}>
-        {busy ? 'Checking…' : 'Continue'}
+        {busy ? t('Checking…') : t('Continue')}
       </button>
     </form>
   );
@@ -422,7 +470,7 @@ function Verify({ email, onDone }: { email: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <Gate title="Your 2FA code" text={`Open your authenticator app and enter the code for sprint2go (${email}). It’s asked again every 12 hours.`}>
+    <Gate title={t('Your 2FA code')} text={t('Open your authenticator app and enter the code for sprint2go ({email}). It’s asked again every 12 hours.', { email })}>
       <CodeInput
         busy={busy}
         error={error}
@@ -436,10 +484,13 @@ function Verify({ email, onDone }: { email: string; onDone: () => void }) {
         }}
       />
       <p className="signin-switch">
-        Lost your phone? Another owner can reset your 2FA.{' '}
-        <button type="button" className="link-btn" onClick={() => void signOut()}>
-          Sign out
-        </button>
+        {tj('Lost your phone? Another owner can reset your 2FA. {signOut}', {
+          signOut: (
+            <button type="button" className="link-btn" onClick={() => void signOut()}>
+              {t('Sign out')}
+            </button>
+          ),
+        })}
       </p>
     </Gate>
   );
@@ -452,13 +503,9 @@ function Enroll({ email, onDone }: { email: string; onDone: () => void }) {
     post('2fa/setup').then(setSetup, (e: Error) => setError(e.message));
   }, []);
   return (
-    <Gate title="Turn on two-step sign-in" text="The backend can see and change every company, so it needs a second step. Scan this with Google Authenticator, 1Password or any authenticator app, then enter the code it shows.">
-      <div className="adm-qr">{setup ? <img src={setup.qr} alt="QR code for your authenticator app" width={180} height={180} /> : <span className="adm-qr-wait" />}</div>
-      {setup && (
-        <p className="adm-secret">
-          Can’t scan? Enter this key: <code className="mono">{setup.secret.replace(/(.{4})/g, '$1 ').trim()}</code>
-        </p>
-      )}
+    <Gate title={t('Turn on two-step sign-in')} text={t('The backend can see and change every company, so it needs a second step. Scan this with Google Authenticator, 1Password or any authenticator app, then enter the code it shows.')}>
+      <div className="adm-qr">{setup ? <img src={setup.qr} alt={t('QR code for your authenticator app')} width={180} height={180} /> : <span className="adm-qr-wait" />}</div>
+      {setup && <p className="adm-secret">{tj('Can’t scan? Enter this key: {key}', { key: <code className="mono">{setup.secret.replace(/(.{4})/g, '$1 ').trim()}</code> })}</p>}
       <CodeInput
         busy={busy}
         error={error}
@@ -472,10 +519,14 @@ function Enroll({ email, onDone }: { email: string; onDone: () => void }) {
         }}
       />
       <p className="signin-switch">
-        Signed in as {email}.{' '}
-        <button type="button" className="link-btn" onClick={() => void signOut()}>
-          Sign out
-        </button>
+        {tj('Signed in as {email}. {signOut}', {
+          email,
+          signOut: (
+            <button type="button" className="link-btn" onClick={() => void signOut()}>
+              {t('Sign out')}
+            </button>
+          ),
+        })}
       </p>
     </Gate>
   );
@@ -486,10 +537,10 @@ export function ActingBanner({ operator }: { operator: string }) {
   return (
     <div className="op-banner" role="status">
       <span>
-        <Eye size={14} /> Signed in as this person by {operator}. What you do here is theirs.
+        <Eye size={14} /> {t('Signed in as this person by {operator}. What you do here is theirs.', { operator })}
       </span>
       <button className="ghost-btn sm" onClick={() => void fetch('/api/admin/signin-as/stop', { method: 'POST' }).then(() => location.assign('/admin'))}>
-        Back to the backend
+        {t('Back to the backend')}
       </button>
     </div>
   );

@@ -16,6 +16,7 @@ import { addDays, companyTz, localParts, zonedTime } from '../src/jobTimes.ts';
 import type { CalEvent, StageKind, TaskStage } from '../src/types.ts';
 import { expandEvents, repeatWords, specToRule, startOnRule, type RepeatSpec } from '../src/repeat.ts';
 import { parseRRule } from '../src/recurrence.ts';
+import { msg, phrase } from '../src/i18n/index.ts';
 
 export interface ToolDeps {
   /** What one person may see of a document (null: nothing), as the app shows it to them (index.ts teamLens). */
@@ -328,10 +329,11 @@ class View {
     return r.body.why;
   }
   /** Notices in teammates' bells (the same kinds the app sends). Never to guests, and never stops the change itself. */
-  notify(userIds: string[], kind: string, text: string, link: Doc) {
+  notify(userIds: string[], kind: string, text: { text: string; tr?: unknown }, link: Doc) {
     const team = new Set(this.members().map((u) => u.id));
     const at = new Date().toISOString();
-    const notes = [...new Set(userIds)].filter((id) => id && id !== this.me && team.has(id)).map((userId) => ({ id: this.newId(), userId, workspaceId: this.ctx.wsId, kind, text: text.slice(0, 300), at, read: false, link }));
+    // Saved with msg(): each teammate reads it in their own language (src/i18n).
+    const notes = [...new Set(userIds)].filter((id) => id && id !== this.me && team.has(id)).map((userId) => ({ id: this.newId(), userId, workspaceId: this.ctx.wsId, kind, text: text.text.slice(0, 300), ...(text.tr ? { tr: text.tr } : {}), at, read: false, link }));
     if (notes.length) this.deps.write(this.me, 'notices', notes, []);
   }
 }
@@ -1073,8 +1075,8 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       };
       const note = v.save('todos', [task], `created task “${clip(task.title, 120)}”`);
       const me = v.firstOf(v.me);
-      v.notify(ids, 'task', `${me} assigned you “${clip(task.title, 80)}”${via}`, { app: 'tasks', id: task.id });
-      if (!ids.length && team?.leadId) v.notify([team.leadId], 'task', `New in ${team.name}’s queue: “${clip(task.title, 80)}”. Pick someone for it.`, { app: 'tasks', id: task.id });
+      v.notify(ids, 'task', msg('{name} assigned you “{task}” via {app}', { name: me, task: clip(task.title, 80), app: v.ctx.app }), { app: 'tasks', id: task.id });
+      if (!ids.length && team?.leadId) v.notify([team.leadId], 'task', msg('New in {team}’s queue: “{task}”. Pick someone for it.', { team: team.name, task: clip(task.title, 80) }), { app: 'tasks', id: task.id });
       return { created: taskLine(v, task), ...(note ? { note } : {}) };
     },
   );
@@ -1106,7 +1108,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       const at = new Date().toISOString();
       const me = v.firstOf(v.me);
       const log = (kind: string, text: string) => t.history.push({ id: randomBytes(6).toString('hex'), at, by: v.me, kind, text: `${text}${via}` });
-      const tell: { ids: string[]; text: string }[] = [];
+      const tell: { ids: string[]; text: { text: string; tr?: unknown } }[] = [];
       const changed: string[] = [];
       if (a.title !== undefined && a.title.trim() !== t.title) {
         t.title = a.title.trim();
@@ -1120,7 +1122,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
           t.assignees = ids;
           t.userId = ids[0] ?? '';
           log('assigned', ids.length ? `assigned it to ${ids.map(v.firstOf).join(', ')}` : 'took everyone off it');
-          tell.push({ ids: ids.filter((x) => !was.includes(x)), text: `${me} assigned you “${clip(t.title, 80)}”${via}` });
+          tell.push({ ids: ids.filter((x) => !was.includes(x)), text: msg('{name} assigned you “{task}” via {app}', { name: me, task: clip(t.title, 80), app: v.ctx.app }) });
           changed.push('assignees');
         }
       }
@@ -1175,9 +1177,9 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
           changed.push('stage');
           if (needsReview) {
             review = v.nameOf(before.supervisorId);
-            tell.push({ ids: [before.supervisorId], text: `${me} finished “${clip(t.title, 80)}”. Ready for your review${via}` });
+            tell.push({ ids: [before.supervisorId], text: msg('{name} finished “{task}”. Ready for your review via {app}', { name: me, task: clip(t.title, 80), app: v.ctx.app }) });
           } else if (done && !before.done) {
-            tell.push({ ids: [before.supervisorId ?? before.createdBy, ...(before.followers ?? []), ...(from.kind === 'review' ? doers(before) : [])].filter(Boolean), text: `${me} ${from.kind === 'review' ? 'approved' : 'finished'} “${clip(t.title, 80)}”${via}` });
+            tell.push({ ids: [before.supervisorId ?? before.createdBy, ...(before.followers ?? []), ...(from.kind === 'review' ? doers(before) : [])].filter(Boolean), text: from.kind === 'review' ? msg('{name} approved “{task}” via {app}', { name: me, task: clip(t.title, 80), app: v.ctx.app }) : msg('{name} finished “{task}” via {app}', { name: me, task: clip(t.title, 80), app: v.ctx.app }) });
             if (before.repeat) {
               const nextDue = (() => {
                 const d = new Date(`${before.due ?? v.today()}T12:00:00Z`);
@@ -1194,7 +1196,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       }
       if (a.comment?.trim()) {
         log('comment', a.comment.trim());
-        tell.push({ ids: [...doers(t), t.supervisorId, ...(t.followers ?? [])].filter(Boolean), text: `${me} commented on “${clip(t.title, 60)}”: ${clip(a.comment, 80)}` });
+        tell.push({ ids: [...doers(t), t.supervisorId, ...(t.followers ?? [])].filter(Boolean), text: msg('{name} commented on “{task}”: {comment}', { name: me, task: clip(t.title, 60), comment: clip(a.comment, 80) }) });
         changed.push('comment');
       }
       if (!changed.length) return { unchanged: taskLine(v, before), note: 'Nothing to change: it already looks like that.' };
@@ -1311,13 +1313,13 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       v.save('messages', [m], `posted in ${channelName(v, c)}`);
       // Who hears about it, as when it's sent from the app: the other person in a DM, people mentioned, the thread's author.
       const me = v.firstOf(v.me);
-      const where = c.kind === 'dm' ? 'a message' : `#${c.name}`;
+      const where = c.kind === 'dm' ? phrase('a message') : `#${c.name}`;
       const rootMsg = root ? v.docs('messages').find((x) => x.id === root) : null;
-      if (rootMsg && rootMsg.userId !== v.me && rootMsg.userId !== 'guest') v.notify([rootMsg.userId], 'mention', `${me} replied to your message in ${where}: “${clip(text, 80)}”`, { app: 'chat', id: c.id, msg: m.id });
+      if (rootMsg && rootMsg.userId !== v.me && rootMsg.userId !== 'guest') v.notify([rootMsg.userId], 'mention', msg('{name} replied to your message in {where}: {quote}', { name: me, where, quote: `“${clip(text, 80)}”` }), { app: 'chat', id: c.id, msg: m.id });
       for (const id of c.members ?? []) {
         if (id === v.me) continue;
-        if (c.kind === 'dm') v.notify([id], 'mention', `${me} messaged you: “${clip(text, 80)}”`, { app: 'chat', id: c.id, msg: m.id });
-        else if (new RegExp(`@${v.firstOf(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text)) v.notify([id], 'mention', `${me} mentioned you in #${c.name}: “${clip(text, 80)}”`, { app: 'chat', id: c.id, msg: m.id });
+        if (c.kind === 'dm') v.notify([id], 'mention', msg('{name} messaged you: {quote}', { name: me, quote: `“${clip(text, 80)}”` }), { app: 'chat', id: c.id, msg: m.id });
+        else if (new RegExp(`@${v.firstOf(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text)) v.notify([id], 'mention', msg('{name} mentioned you in {channel}: {quote}', { name: me, channel: `#${c.name}`, quote: `“${clip(text, 80)}”` }), { app: 'chat', id: c.id, msg: m.id });
       }
       return { posted: { id: m.id, channel: channelName(v, c), ...(root ? { thread: root } : {}), link: v.link('chat', c.id, m.id) } };
     },

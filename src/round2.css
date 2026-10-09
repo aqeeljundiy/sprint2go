@@ -3403,6 +3403,10 @@ button.tl:hover,
   border-color: var(--accent);
   background: var(--surface);
 }
+/* "Tenggat (mis. Jumat)" is longer than "Due (e.g. Friday)". */
+:lang(id) .due-input {
+  width: 150px;
+}
 .jump {
   font-size: 12px;
   font-weight: 700;
@@ -3736,6 +3740,9 @@ button.tl:hover,
   .due-input {
     width: 96px;
   }
+  :lang(id) .due-input {
+    width: 172px;
+  }
 }
 .m-glance {
   overflow: hidden;
@@ -3779,6 +3786,7 @@ button.tl:hover,
   overflow-y: auto;
   padding: 14px 16px 24px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* a long link shortens with "…" instead of widening the pane past a phone */
   gap: 8px;
   align-content: start;
 }

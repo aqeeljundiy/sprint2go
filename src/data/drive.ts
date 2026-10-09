@@ -1,4 +1,5 @@
 import type { DriveItem, DriveKind } from '../types';
+import { fmtNumber } from '../i18n/format'; // the full path: the server imports this file too (kindOf)
 
 // Sample Drive. This gets replaced by Stalwart's file storage (WebDAV) later.
 
@@ -98,8 +99,9 @@ export function kindOf(file: { name: string; type?: string }): DriveKind {
   return 'other';
 }
 
-export function fmtSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
+/** Splits a size into a number and its unit: 1.5 and "GB". Under 10 of a unit keeps one decimal ("2.0 MB"). */
+function sizeParts(bytes: number): { v: number; unit: string; digits: number } {
+  if (bytes < 1024) return { v: Math.round(bytes), unit: 'B', digits: 0 };
   const units = ['KB', 'MB', 'GB', 'TB'];
   let v = bytes / 1024;
   let i = 0;
@@ -107,13 +109,28 @@ export function fmtSize(bytes: number) {
     v /= 1024;
     i++;
   }
-  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+  return v < 10 ? { v, unit: units[i], digits: 1 } : { v: Math.round(v), unit: units[i], digits: 0 };
 }
 
-/** "1.1 MB" → bytes, for attachment sizes written as text. */
+/** A size to show: "1.5 GB", in Indonesian "1,5 GB". The units stay B, KB, MB, GB and TB in both. */
+export function fmtSize(bytes: number) {
+  const { v, unit, digits } = sizeParts(bytes);
+  return `${fmtNumber(v, { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false })} ${unit}`;
+}
+
+/**
+ * A size saved into data that others read later (an email's attachment list): always "1.5 GB", as the server writes
+ * it, whatever the writer's language. parseSize reads it back; show it with fmtSize(parseSize(s)).
+ */
+export function sizeText(bytes: number) {
+  const { v, unit, digits } = sizeParts(bytes);
+  return `${v.toFixed(digits)} ${unit}`;
+}
+
+/** "1.1 MB" (or "1,1 MB", as fmtSize writes it in Indonesian) → bytes, for attachment sizes written as text. */
 export function parseSize(s: string) {
-  const m = /([\d.]+)\s*(B|KB|MB|GB)/i.exec(s);
+  const m = /(\d+(?:[.,]\d+)?)\s*(B|KB|MB|GB|TB)/i.exec(s);
   if (!m) return 0;
-  const mult = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3 }[m[2].toUpperCase() as 'B'];
-  return parseFloat(m[1]) * mult;
+  const mult = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[m[2].toUpperCase() as 'B'];
+  return parseFloat(m[1].replace(',', '.')) * mult;
 }

@@ -17,6 +17,8 @@ import * as db from './db.ts';
 import { dnsHostOf, MAIL_IP } from './mailer.ts';
 import { hasBranding } from '../src/data/pricing.ts';
 import type { DomainCheck, DomainStatus } from '../src/types.ts';
+import { mark, msg } from '../src/i18n/index.ts';
+import type { Said } from './lang.ts';
 
 db.db.exec(`CREATE TABLE IF NOT EXISTS custom_domains (host TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, dokploy_id TEXT, created_at TEXT NOT NULL)`);
 
@@ -58,20 +60,20 @@ function ownDomains() {
 /** A clean host name from what someone typed ("https://Portal.Agency.com/login" → "portal.agency.com"), or an error. */
 export function cleanHost(input: unknown): { host: string } | { error: string } {
   let raw = String(input ?? '').trim();
-  if (!raw) return { error: 'Type the address, for example portal.youragency.com.' };
+  if (!raw) return { error: mark('Type the address, for example portal.youragency.com.') };
   if (!/^[a-z]+:\/\//i.test(raw)) raw = `http://${raw}`;
   let host: string;
   try {
     host = new URL(raw).hostname.toLowerCase().replace(/\.$/, '');
   } catch {
-    return { error: 'That doesn’t look like an address. Try something like portal.youragency.com.' };
+    return { error: mark('That doesn’t look like an address. Try something like portal.youragency.com.') };
   }
-  if (isIP(host) || host.startsWith('[')) return { error: 'Use a name like portal.youragency.com, not an IP address.' };
+  if (isIP(host) || host.startsWith('[')) return { error: mark('Use a name like portal.youragency.com, not an IP address.') };
   const labels = host.split('.');
   if (labels.length < 2 || host.length > 253 || !labels.every((l) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(l)) || !/^([a-z]{2,63}|xn--[a-z0-9-]{1,59})$/.test(labels[labels.length - 1]))
-    return { error: 'That doesn’t look like an address. Try something like portal.youragency.com.' };
-  if (labels[labels.length - 1] === 'localhost' || host.endsWith('.local')) return { error: 'Use a public address, like portal.youragency.com.' };
-  for (const own of ownDomains()) if (host === own || host.endsWith(`.${own}`)) return { error: `That address belongs to us. Use one on your own domain, like portal.youragency.com.` };
+    return { error: mark('That doesn’t look like an address. Try something like portal.youragency.com.') };
+  if (labels[labels.length - 1] === 'localhost' || host.endsWith('.local')) return { error: mark('Use a public address, like portal.youragency.com.') };
+  for (const own of ownDomains()) if (host === own || host.endsWith(`.${own}`)) return { error: mark(`That address belongs to us. Use one on your own domain, like portal.youragency.com.`) };
   return { host };
 }
 /** Which company already has this address, if any (one address, one company). */
@@ -228,7 +230,7 @@ export function probe(host: string): Promise<{ ok: boolean; why?: string }> {
 export interface Deps {
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
   log: (line: string) => void;
-  notifyAdmins: (wsId: string, text: string) => void; // a notice in the bell of the company's owners and admins
+  notifyAdmins: (wsId: string, text: Said) => void; // a notice in the bell of the company's owners and admins (msg())
 }
 let deps: Deps = { broadcast: () => {}, log: (l) => console.log(l), notifyAdmins: () => {} };
 let hostIndex: { at: number; map: Map<string, string> } | null = null;
@@ -293,7 +295,7 @@ async function checkNow(wsId: string) {
   const r = await probe(host);
   lastProbe.set(host, Date.now());
   if (r.ok) {
-    if (status !== 'live') (deps.log(`[domains] ${host}: live`), deps.notifyAdmins(wsId, `${host} is live. Invite links for your guests now use it.`));
+    if (status !== 'live') (deps.log(`[domains] ${host}: live`), deps.notifyAdmins(wsId, msg('{host} is live. Invite links for your guests now use it.', { host })));
     return save(wsId, host, { domainStatus: 'live', domainCheck: { ...base, since, liveAt: before?.liveAt ?? now() } });
   }
   // Not answering yet. A live address that stops answering is our problem to fix, not the agency's: it stays live.

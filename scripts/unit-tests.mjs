@@ -354,7 +354,7 @@ await test('AI: blocked providers are never allowed; a key at its monthly cap re
   db.logUsage({ workspaceId: 'w-ai', userId: 'u-ai', job: 'draft', provider: 'anthropic', model: 'claude-sonnet-5-5', inTokens: 0, outTokens: 50_000 });
   assert.equal(Math.round(aiLimits.spendUsd('w-ai').anthropic * 100), 50);
   const told = [];
-  const tell = (ids, text) => told.push(text);
+  const tell = (ids, text) => told.push(text?.text ?? text);
   aiLimits.checkAlerts(ws, () => 0, tell);
   assert.equal(told.length, 1);
   assert.match(told[0], /50% of the Anthropic key|50% of the .* key/);
@@ -468,7 +468,7 @@ db.writeDocs('events', [
 db.writeDocs('prefs', [{ id: 'aj-ana', value: { 's2g-join:aj-ana': { skip: false } } }], [], null);
 const ajSent = [];
 const ajNotes = [];
-const ajDeps = { recorderUp: () => true, send: async (_ws, m) => (ajSent.push(m), null), notify: (ids, _ws, text) => ajNotes.push({ ids, text }) };
+const ajDeps = { recorderUp: () => true, send: async (_ws, m) => (ajSent.push(m), null), notify: (ids, _ws, text) => ajNotes.push({ ids, text: text?.text ?? text }) };
 await test('Auto-join: only events about to start, with a Meet or Zoom link, that the rules say to record; once per call', async () => {
   const r = await autojoin.runAutoJoin(ajDeps, T0);
   assert.deepEqual(r.map((x) => [x.eventId, x.outcome]), [['soon', 'sent']]);
@@ -797,7 +797,7 @@ await test('Invites we get: a repeating invite is one repeating event; a date mo
   db.writeDocs('events', [{ ...doc, overrides: [{ occurrence: '2026-10-20T02:00:00.000Z', rsvp: 'tentative' }] }], [], null);
   const acct = { id: 'ub-ana', email: `ana.undo@${mailer.MAIL_HOST}`, users: ['aj-ana'] };
   const said = [];
-  const notify = (ids, _ws, text) => said.push(text);
+  const notify = (ids, _ws, text) => said.push(text?.text ?? text);
   // The organiser moves 13 October to 14:00 Jakarta.
   invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, method: 'REQUEST', rrule: undefined, sequence: 1, recurrenceId: '2026-10-13T02:00:00.000Z', start: '2026-10-13T07:00:00.000Z', end: '2026-10-13T08:00:00.000Z' }, 't-inv', () => {}, notify);
   let e = db.getDoc('events', doc.id);
@@ -1005,7 +1005,7 @@ await test('Retention: nothing goes before the notice ends; then old messages go
     { id: 'rm-elsewhere', channelId: 'rc-other', userId: 'aj-ana', text: 'another company', at: old },
   ], [], null);
   const told = [];
-  const deps = { broadcast: () => {}, notify: (ids, ws, text) => told.push(text) };
+  const deps = { broadcast: () => {}, notify: (ids, ws, text) => told.push(text?.text ?? text) };
   assert.deepEqual(retention.runRetention(deps, R0 + 6 * DAYMS).filter((r) => r.workspaceId === 'w-ret'), [], 'still in the notice week');
   assert.ok(db.getDoc('messages', 'rm-old'));
   const r = retention.runRetention(deps, R0 + 7 * DAYMS + 60_000).filter((x) => x.workspaceId === 'w-ret');
@@ -1942,6 +1942,48 @@ await test('Mail pushes: people only, held about 20 seconds, dropped once read e
   await sleep(150);
   assert.deepEqual(sent.map((x) => x.tag), ['mail:t-shared-open'], 'one mention buzzes; the one already read doesn’t');
   pushRules.setPushHold(20_000);
+});
+
+/* ---------- each reader's language (server/lang.ts, docs/i18n.md) ---------- */
+
+const lang = await import('../server/lang.ts');
+const { textOf } = await import('../src/i18n/index.ts');
+db.writeDocs('workspaces', [{ id: 'w-lang-id', name: 'Kopi Nusantara', language: 'id', members: [{ userId: 'u-lang-co', role: 'owner' }] }, { id: 'w-lang-en', name: 'Plain Co', members: [{ userId: 'u-lang-en', role: 'owner' }, { userId: 'u-lang-own', role: 'member' }] }], [], null);
+db.writeDocs('users', [{ id: 'u-lang-co', name: 'Sari Dewi', email: 'sari@kopi.example' }, { id: 'u-lang-en', name: 'Ann Lee', email: 'ann@plain.example' }, { id: 'u-lang-own', name: 'Budi', email: 'budi@plain.example' }], [], null);
+db.writeDocs('prefs', [{ id: 'u-lang-own', value: { 'pm-settings:u-lang-own': { language: 'id' } } }], [], null);
+await test('Language: a person’s own pick, else the company’s default, else English', () => {
+  assert.equal(lang.langOf('u-lang-own'), 'id', 'their own pick wins');
+  assert.equal(lang.langOf('u-lang-co'), 'id', 'the company’s default');
+  assert.equal(lang.langOf('u-lang-en'), 'en', 'neither: English');
+  assert.equal(lang.langOfEmail('nobody@else.example', 'w-lang-id'), 'id', 'an invitee: the company’s default');
+  assert.equal(lang.browserLang('en-US,en;q=0.9,id;q=0.8'), 'en');
+  assert.equal(lang.browserLang('id-ID,id;q=0.9'), 'id');
+  assert.equal(lang.requestLang({ headers: { cookie: 's2g-lang=id', 'accept-language': 'en' } }), 'id', 'the screen’s language first');
+  assert.equal(lang.requestLang({ headers: { 'accept-language': 'id-ID' } }), 'id', 'else the browser’s');
+});
+await test('Language: a notice reads in Indonesian for an Indonesian reader and in English otherwise', () => {
+  const ev = { id: 'e1', title: 'Standup', start: new Date(Date.parse('2026-10-09T09:10:00Z')).toISOString(), end: '2026-10-09T09:30:00Z', remind: 10, userId: 'u-lang-own' };
+  return import('../server/eventReminders.ts').then(({ reminderWords: rw }) => {
+    const n = rw(ev, Date.parse('2026-10-09T09:00:00Z'));
+    assert.equal(n.text, '“Standup” starts in 10 minutes', 'saved in English');
+    assert.equal(lang.inLang('id', () => textOf(n)), '“Standup” dimulai 10 menit lagi');
+    assert.equal(lang.inLang(lang.langOf('u-lang-en'), () => textOf(n)), '“Standup” starts in 10 minutes');
+    const r = retention.noticeWords('Kopi Nusantara', '90d', '2026-10-16T05:00:00Z', 'Asia/Jakarta');
+    assert.match(lang.inLang('id', () => textOf(r)), /^Mulai 16 Oktober, .*90 hari/);
+    assert.match(r.text, /^From 16 October, chat messages older than 90 days/);
+  });
+});
+await test('Language: an email comes out in Indonesian for an Indonesian reader and in English otherwise', async () => {
+  const digest = await import('../server/digest.ts');
+  const item = { key: 'n:x', group: 'messages', ...(await import('../src/i18n/index.ts')).msg('{name} messaged you: {quote}', { name: 'Mo', quote: '“lunch?”' }), url: 'https://app.example/chat', at: new Date().toISOString(), workspaceId: 'w-lang-id' };
+  const id = digest.compose('Budi Santoso', 'Kopi Nusantara', [item], 'https://app.example', lang.langOf('u-lang-own'));
+  assert.equal(id.subject, '1 hal menunggu Anda di Kopi Nusantara');
+  assert.match(id.text, /^Halo Budi, selama Anda tidak ada:/);
+  assert.match(id.text, /Mo mengirimi Anda pesan: “lunch\?”/);
+  assert.match(id.html, /Ubah seberapa sering/);
+  const en = digest.compose('Ann Lee', 'Plain Co', [item], 'https://app.example', lang.langOf('u-lang-en'));
+  assert.equal(en.subject, '1 thing waiting for you in Plain Co');
+  assert.match(en.text, /Mo messaged you: “lunch\?”/);
 });
 
 db.db.close();

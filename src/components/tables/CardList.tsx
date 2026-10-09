@@ -5,10 +5,12 @@ import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { useLeaving } from '../ui/Smooth';
 import { CellView, type CellCtx } from './Cell';
 import { cardFieldsOf } from './BoardView';
-import { groupRows, isComputed, isEmpty, rowColors, rowName, statusField, valueOf, type RowGroup } from './fields';
+import { groupRows, isComputed, isEmpty, noValue, rowColors, rowName, statusField, valueOf, type RowGroup } from './fields';
+import { t } from '../../i18n';
+import { useLang } from '../../i18n/useLang';
 
 /** The field a card shows as its coloured pill. */
-export const statusFieldOf = (t: DataTable, view: TableViewDef) => statusField(t, view);
+export const statusFieldOf = (tb: DataTable, view: TableViewDef) => statusField(tb, view);
 
 export interface CardHandlers {
   onOpen: (id: string) => void;
@@ -19,10 +21,10 @@ export interface CardHandlers {
 }
 
 /** One row as a card: the name, the status as a pill you can tap, and two or three chosen fields. */
-function Card({ t, view, row, ctx, status, meta, selecting, selected, leaving, h, i }: { t: DataTable; view: TableViewDef; row: TableRow; ctx: CellCtx; status?: TableField; meta: TableField[]; selecting: boolean; selected: boolean; leaving: boolean; h: CardHandlers; i: number }) {
-  const menu = useActionMenu(() => h.actions(row), { title: rowName(t, row), disabled: selecting });
-  const tint = rowColors(t, view, row, ctx);
-  const sv = status ? valueOf(t, status, row, ctx) : null;
+function Card({ t: tb, view, row, ctx, status, meta, selecting, selected, leaving, h, i }: { t: DataTable; view: TableViewDef; row: TableRow; ctx: CellCtx; status?: TableField; meta: TableField[]; selecting: boolean; selected: boolean; leaving: boolean; h: CardHandlers; i: number }) {
+  const menu = useActionMenu(() => h.actions(row), { title: rowName(tb, row), disabled: selecting });
+  const tint = rowColors(tb, view, row, ctx);
+  const sv = status ? valueOf(tb, status, row, ctx) : null;
   const opt = status?.options?.find((o) => o.id === sv);
   const canPill = !!status && !!h.onPill && !isComputed(status) && (!ctx.canEdit || ctx.canEdit(status.id));
   const pill = (status && (opt || canPill)) ? (
@@ -33,12 +35,12 @@ function Card({ t, view, row, ctx, status, meta, selecting, selected, leaving, h
       style={{ ['--c' as string]: opt?.color ?? '#94a3b8' }}
       onClick={canPill ? (e) => (e.stopPropagation(), h.onPill!(row, status)) : undefined}
       onKeyDown={canPill ? (e) => e.key === 'Enter' && (e.stopPropagation(), h.onPill!(row, status)) : undefined}
-      aria-label={canPill ? `${status.name}: ${opt?.label ?? 'none'}, change` : undefined}
+      aria-label={canPill ? t('{field}: {value}, change', { field: status.name, value: opt?.label ?? t('none') }) : undefined}
     >
-      {opt?.label ?? `No ${status.name.toLowerCase()}`}
+      {opt?.label ?? noValue(status)}
     </span>
   ) : null;
-  const shown = meta.map((f) => ({ f, v: valueOf(t, f, row, ctx) })).filter((x) => !isEmpty(x.v));
+  const shown = meta.map((f) => ({ f, v: valueOf(tb, f, row, ctx) })).filter((x) => !isEmpty(x.v));
   return (
     <div className={`tb-crd-wrap${leaving ? ' leaving' : ''}`} style={{ ['--i' as string]: Math.min(i, 16) }}>
       <div
@@ -58,7 +60,7 @@ function Card({ t, view, row, ctx, status, meta, selecting, selected, leaving, h
         )}
         <span className="tb-crd-body">
           <span className="tb-crd-top">
-            <strong className="tb-crd-name">{rowName(t, row)}</strong>
+            <strong className="tb-crd-name">{rowName(tb, row)}</strong>
             {pill}
           </span>
           {shown.length > 0 && (
@@ -92,13 +94,14 @@ function Cards({ rows, ...p }: { t: DataTable; view: TableViewDef; rows: TableRo
  * A grid or list view on a narrow screen: one card per row (the name, the status pill, a few fields), grouped and
  * sub-grouped like the view. Tap opens the row, long-press opens its menu (Select starts picking several).
  */
-export function CardList({ t, view, rows, ctx, selecting, selected, collapsed, onCollapse, canAdd, h }: { t: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; selecting: boolean; selected: Set<string>; collapsed: Set<string>; onCollapse: (key: string) => void; canAdd: boolean; h: CardHandlers }) {
-  const status = statusFieldOf(t, view);
-  const meta = useMemo(() => cardFieldsOf(t, view, status).filter((f) => f.type !== 'files').slice(0, 3), [t, view, status]);
-  const gf = view.groupBy ? t.fields.find((f) => f.id === view.groupBy) : undefined;
-  const sf = gf && view.subGroupBy ? t.fields.find((f) => f.id === view.subGroupBy) : undefined;
-  const groups: RowGroup[] = useMemo(() => (gf ? groupRows(t, gf, rows, ctx) : []), [gf, t, rows, ctx]);
-  const cards = (list: TableRow[]) => <Cards t={t} view={view} rows={list} ctx={ctx} status={status} meta={meta} selecting={selecting} selected={selected} h={h} />;
+export function CardList({ t: tb, view, rows, ctx, selecting, selected, collapsed, onCollapse, canAdd, h }: { t: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; selecting: boolean; selected: Set<string>; collapsed: Set<string>; onCollapse: (key: string) => void; canAdd: boolean; h: CardHandlers }) {
+  const lang = useLang(); // group names ("No status") are words: rebuild them on a language switch
+  const status = statusFieldOf(tb, view);
+  const meta = useMemo(() => cardFieldsOf(tb, view, status).filter((f) => f.type !== 'files').slice(0, 3), [tb, view, status]);
+  const gf = view.groupBy ? tb.fields.find((f) => f.id === view.groupBy) : undefined;
+  const sf = gf && view.subGroupBy ? tb.fields.find((f) => f.id === view.subGroupBy) : undefined;
+  const groups: RowGroup[] = useMemo(() => (gf ? groupRows(tb, gf, rows, ctx) : []), [gf, tb, rows, ctx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cards = (list: TableRow[]) => <Cards t={tb} view={view} rows={list} ctx={ctx} status={status} meta={meta} selecting={selecting} selected={selected} h={h} />;
   const head = (key: string, g: RowGroup, field: TableField, values: Record<string, CellValue>, sub?: boolean) => (
     <div className={`tb-crd-ghead${sub ? ' sub' : ''}`}>
       <button type="button" className="tb-group-toggle" onClick={() => onCollapse(key)} aria-expanded={!collapsed.has(key)}>
@@ -108,7 +111,7 @@ export function CardList({ t, view, rows, ctx, selecting, selected, collapsed, o
         <span className="muted small">{g.rows.length}</span>
       </button>
       {canAdd && h.onAdd && !isComputed(field) && g.value !== null && (
-        <button type="button" className="icon-btn tb-crd-gadd" aria-label={`New row in ${g.label}`} onClick={() => h.onAdd!(values, g.label)}>
+        <button type="button" className="icon-btn tb-crd-gadd" aria-label={t('New row in {group}', { group: g.label })} onClick={() => h.onAdd!(values, g.label)}>
           <Plus size={17} />
         </button>
       )}
@@ -125,7 +128,7 @@ export function CardList({ t, view, rows, ctx, selecting, selected, collapsed, o
             <div className={`fold ${collapsed.has(g.key) ? '' : 'open'}`}>
               <div className="fold-in">
                 {sf
-                  ? groupRows(t, sf, g.rows, ctx).map((sg) => {
+                  ? groupRows(tb, sf, g.rows, ctx).map((sg) => {
                       const key = `${g.key}/${sg.key}`;
                       return (
                         <div key={key} className="tb-crd-sub">

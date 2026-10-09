@@ -31,7 +31,9 @@ import { EditSheet } from './EditSheet';
 import { VIEW_KINDS, kindDefaults, newView, viewIcon } from './viewKinds';
 import { NARROW_PANE, clearTableLink, readTableLink, tableLink, usePaneWidth, useTweaks } from './hooks';
 import { download, rowsToCsv } from './csv';
-import { TABLE_COLORS, cellText, convertValue, filterCount, isComputed, isEmpty, opsFor, optionsFromValues, parseIncoming, rowName, sortsOf, templateValues, viewFields, visibleRows } from './fields';
+import { TABLE_COLORS, cellText, convertValue, filterCount, isComputed, isEmpty, noteOf, opsFor, optionsFromValues, parseIncoming, rowName, sortsOf, templateValues, viewFields, visibleRows } from './fields';
+import { t, tn, tx, type Msg } from '../../i18n';
+import { fmtWeekday } from '../../i18n/format';
 
 type Setter<T> = (fn: (x: T) => T) => void;
 
@@ -49,7 +51,7 @@ interface ScreenProps {
   setOpenRow: (id: string | null) => void;
   onDeleted: () => void;
   onMenu: () => void;
-  toast: (t: { text: string; action?: { label: string; run: () => void } }) => void;
+  toast: (tb: { text: string; action?: { label: string; run: () => void } }) => void;
   channels: Channel[];
   isAdmin: boolean;
   canEditTables?: boolean; // Members may change columns, views and automations (company setting)
@@ -65,15 +67,15 @@ interface ScreenProps {
 const PERSONAL = new Set(['filters', 'filterMode', 'filterGroups', 'sorts', 'sort', 'collapsed']);
 
 export function TableScreen(p: ScreenProps) {
-  const t = p.table;
+  const tb = p.table;
   const g = p.guest;
   const paneRef = useRef<HTMLElement>(null);
   const paneW = usePaneWidth(paneRef);
   const phone = usePhone();
   const narrow = paneW < NARROW_PANE; // the phone layout: cards, one toolbar row, sheets (also in a narrow pane)
-  const [viewId, setViewId] = usePersisted<string>(`s2g-table-view:${t.id}`, t.views[0]?.id ?? '');
-  const base = t.views.find((v) => v.id === viewId) ?? t.views[0];
-  const tweaks = useTweaks(t.id);
+  const [viewId, setViewId] = usePersisted<string>(`s2g-table-view:${tb.id}`, tb.views[0]?.id ?? '');
+  const base = tb.views.find((v) => v.id === viewId) ?? tb.views[0];
+  const tweaks = useTweaks(tb.id);
   const view = base ? tweaks.effective(base) : undefined;
   const differs = base ? tweaks.differs(base) : false;
   const [cardsOn, setCardsOn] = usePersisted<Record<string, boolean>>('s2g-tb-cards', {}); // per view, on this device
@@ -87,7 +89,7 @@ export function TableScreen(p: ScreenProps) {
   const refs = { filter: useRef<HTMLButtonElement>(null), sort: useRef<HTMLButtonElement>(null), fields: useRef<HTMLButtonElement>(null), group: useRef<HTMLButtonElement>(null), colors: useRef<HTMLButtonElement>(null), more: useRef<HTMLButtonElement>(null), newRow: useRef<HTMLButtonElement>(null) };
   const tabAnchor = useRef<HTMLElement | null>(null);
   const addViewAnchor = useRef<HTMLElement | null>(null);
-  const [name, setName] = useState(t.name);
+  const [name, setName] = useState(tb.name);
   const [renamingView, setRenamingView] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
   const [buttonFor, setButtonFor] = useState<string | null>(null);
@@ -104,43 +106,43 @@ export function TableScreen(p: ScreenProps) {
   const rowMenuAnchor = useRef<HTMLSpanElement>(null);
   const [tip, setTip] = usePersisted('s2g-tables-tip', true);
   // Columns, views and automations: admins, whoever made the table, and Members when the company allows it.
-  const structure = !g && (p.isAdmin || p.canEditTables !== false || t.createdBy === p.me);
-  const canDeleteTable = !g && (p.isAdmin || !!p.canDeleteThings || t.createdBy === p.me);
+  const structure = !g && (p.isAdmin || p.canEditTables !== false || tb.createdBy === p.me);
+  const canDeleteTable = !g && (p.isAdmin || !!p.canDeleteThings || tb.createdBy === p.me);
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [asking, setAsking] = useState<{ row: TableRow; f: TableField } | null>(null);
-  useEffect(() => setName(t.name), [t.name]);
+  useEffect(() => setName(tb.name), [tb.name]);
 
   // A link to a view or a row (/tables?t=…&v=…&r=…): open what it points at.
   useEffect(() => {
     const l = readTableLink();
     if (!l) return;
-    if (l.t !== t.id) return void p.onOpenTable(l.t, l.r);
-    if (l.v && t.views.some((v) => v.id === l.v)) setViewId(l.v);
+    if (l.t !== tb.id) return void p.onOpenTable(l.t, l.r);
+    if (l.v && tb.views.some((v) => v.id === l.v)) setViewId(l.v);
     if (l.r) p.setOpenRow(l.r);
     clearTableLink();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const mine = useMemo(() => p.rows.filter((r) => r.tableId === t.id), [p.rows, t.id]);
+  const mine = useMemo(() => p.rows.filter((r) => r.tableId === tb.id), [p.rows, tb.id]);
   const rowNameOf = (id: string) => {
     const r = p.rows.find((x) => x.id === id);
     const tt = r && p.tables.find((x) => x.id === r.tableId);
     return tt ? rowName(tt, r) : '';
   };
   const textCtx = { users: p.users, rowName: rowNameOf, rows: p.rows, tables: p.tables, me: p.me };
-  const shown = useMemo(() => (view ? visibleRows(t, view, mine, q, textCtx) : mine), [t, view, mine, q, p.users, p.rows, p.tables, p.me]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = useMemo(() => (view ? visibleRows(tb, view, mine, q, textCtx) : mine), [tb, view, mine, q, p.users, p.rows, p.tables, p.me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* undo: what this table and its rows were before each change made here (Cmd/Ctrl+Z) */
   const undo = useRef<{ rows: TableRow[]; table: DataTable; what: string }[]>([]);
   const remember = (what: string) => {
-    undo.current.push({ rows: mine, table: t, what });
+    undo.current.push({ rows: mine, table: tb, what });
     if (undo.current.length > 40) undo.current.shift();
   };
   const undoLast = () => {
     const s = undo.current.pop();
-    if (!s) return p.toast({ text: 'Nothing to undo' });
-    p.setRows((rs) => [...rs.filter((r) => r.tableId !== t.id), ...s.rows]);
-    p.setTables((ts) => ts.map((x) => (x.id === t.id ? s.table : x)));
-    p.toast({ text: `Undone: ${s.what}` });
+    if (!s) return p.toast({ text: t('Nothing to undo') });
+    p.setRows((rs) => [...rs.filter((r) => r.tableId !== tb.id), ...s.rows]);
+    p.setTables((ts) => ts.map((x) => (x.id === tb.id ? s.table : x)));
+    p.toast({ text: t('Undone: {what}', { what: s.what }) });
   };
   useEffect(() => {
     if (g) return;
@@ -158,8 +160,8 @@ export function TableScreen(p: ScreenProps) {
   });
 
   /* table changes */
-  const patchTable = (patch: Partial<DataTable>) => p.setTables((ts) => ts.map((x) => (x.id === t.id ? { ...x, ...patch } : x)));
-  const patchShared = (patch: Partial<TableViewDef>) => base && structure && patchTable({ views: t.views.map((v) => (v.id === base.id ? { ...v, ...patch } : v)) });
+  const patchTable = (patch: Partial<DataTable>) => p.setTables((ts) => ts.map((x) => (x.id === tb.id ? { ...x, ...patch } : x)));
+  const patchShared = (patch: Partial<TableViewDef>) => base && structure && patchTable({ views: tb.views.map((v) => (v.id === base.id ? { ...v, ...patch } : v)) });
   /** A change to the view: filters, sorts and folded groups are this person's own; the rest is the view everyone sees. */
   const patchView = (patch: Partial<TableViewDef>) => {
     if (!base) return;
@@ -177,48 +179,48 @@ export function TableScreen(p: ScreenProps) {
     const tw = base && tweaks.of(base.id);
     if (!base || !tw || !structure) return;
     patchTable({
-      views: t.views.map((v) =>
+      views: tb.views.map((v) =>
         v.id !== base.id ? v : { ...v, ...(tw.filters ? { filters: tw.filters } : {}), ...(tw.filterMode ? { filterMode: tw.filterMode } : {}), ...(tw.filterGroups ? { filterGroups: tw.filterGroups } : {}), ...(tw.sorts ? { sorts: tw.sorts, sort: undefined } : {}) },
       ),
     });
     tweaks.reset(base.id);
-    p.toast({ text: `“${base.name}” now shows these filters and sorts for everyone` });
+    p.toast({ text: t('“{view}” now shows these filters and sorts for everyone', { view: base.name }) });
   };
   const addOption = (fieldId: string, label: string) => {
-    const f = t.fields.find((x) => x.id === fieldId)!;
+    const f = tb.fields.find((x) => x.id === fieldId)!;
     const o = newOption(f, label);
-    patchTable({ fields: t.fields.map((x) => (x.id === fieldId ? { ...x, options: [...(x.options ?? []), o] } : x)) });
+    patchTable({ fields: tb.fields.map((x) => (x.id === fieldId ? { ...x, options: [...(x.options ?? []), o] } : x)) });
     return o.id;
   };
   /** Saves a field; a new one goes at a view position when given (a column added left or right of another). */
   const saveField = (f: TableField, at?: number) => {
-    const before = t.fields.find((x) => x.id === f.id);
-    remember(before ? `change to ${before.name}` : `new column ${f.name}`);
+    const before = tb.fields.find((x) => x.id === f.id);
+    remember(before ? t('change to {name}', { name: before.name }) : t('new column {name}', { name: f.name }));
     if (!before) {
-      const views = at === undefined || !base ? t.views : t.views.map((v) => {
+      const views = at === undefined || !base ? tb.views : tb.views.map((v) => {
         if (v.id !== base.id) return v;
-        const vis = viewFields(t, v).map((x) => x.id);
-        const rest = viewFields(t, v, true).map((x) => x.id);
+        const vis = viewFields(tb, v).map((x) => x.id);
+        const rest = viewFields(tb, v, true).map((x) => x.id);
         const anchorId = vis[at];
         const idx = anchorId ? rest.indexOf(anchorId) : rest.length;
         rest.splice(idx < 0 ? rest.length : idx, 0, f.id);
         return { ...v, order: rest };
       });
       // Read the latest table: two new fields in a row (a timeline's Start and End) both land.
-      return p.setTables((ts) => ts.map((x) => (x.id === t.id ? { ...x, fields: [...x.fields, f], views: at === undefined ? x.views : views } : x)));
+      return p.setTables((ts) => ts.map((x) => (x.id === tb.id ? { ...x, fields: [...x.fields, f], views: at === undefined ? x.views : views } : x)));
     }
     let next = f;
     if (before.type !== f.type) {
       // Becoming a choice field: the words already in the column become its choices.
       if ((f.type === 'select' || f.type === 'multi') && !f.options?.length) next = { ...f, options: optionsFromValues(before, mine, textCtx) };
       const target = next;
-      p.setRows((rs) => rs.map((r) => (r.tableId === t.id && !isEmpty(r.values[f.id]) ? { ...r, values: { ...r.values, [f.id]: convertValue(before, target, r.values[f.id], textCtx) } } : r)));
+      p.setRows((rs) => rs.map((r) => (r.tableId === tb.id && !isEmpty(r.values[f.id]) ? { ...r, values: { ...r.values, [f.id]: convertValue(before, target, r.values[f.id], textCtx) } } : r)));
     } else if (f.options) {
       // Choices removed: their cells empty out.
       const keep = new Set(f.options.map((o) => o.id));
       p.setRows((rs) =>
         rs.map((r) => {
-          if (r.tableId !== t.id) return r;
+          if (r.tableId !== tb.id) return r;
           const v = r.values[f.id];
           if (f.type === 'select' && typeof v === 'string' && !keep.has(v)) return { ...r, values: { ...r.values, [f.id]: null } };
           if (f.type === 'multi' && Array.isArray(v) && (v as string[]).some((x) => !keep.has(x))) return { ...r, values: { ...r.values, [f.id]: (v as string[]).filter((x) => keep.has(x)) } };
@@ -226,15 +228,15 @@ export function TableScreen(p: ScreenProps) {
         }),
       );
     }
-    patchTable({ fields: t.fields.map((x) => (x.id === f.id ? next : x)) });
+    patchTable({ fields: tb.fields.map((x) => (x.id === f.id ? next : x)) });
   };
   const deleteField = (id: string) => {
-    const f = t.fields.find((x) => x.id === id);
-    remember(`delete column ${f?.name ?? ''}`);
+    const f = tb.fields.find((x) => x.id === id);
+    remember(t('delete column {name}', { name: f?.name ?? '' }));
     const strip = <V extends TableViewTweak>(v: V): V => ({ ...v, filters: v.filters?.filter((x) => x.fieldId !== id), filterGroups: v.filterGroups?.map((gr) => ({ ...gr, filters: gr.filters.filter((x) => x.fieldId !== id) })), sorts: v.sorts?.filter((x) => x.fieldId !== id) });
     patchTable({
-      fields: t.fields.filter((x) => x.id !== id),
-      views: t.views.map((v) => ({
+      fields: tb.fields.filter((x) => x.id !== id),
+      views: tb.views.map((v) => ({
         ...strip(v),
         hidden: v.hidden?.filter((x) => x !== id),
         order: v.order?.filter((x) => x !== id),
@@ -246,21 +248,21 @@ export function TableScreen(p: ScreenProps) {
         endField: v.endField === id ? undefined : v.endField,
         calcs: v.calcs ? Object.fromEntries(Object.entries(v.calcs).filter(([k]) => k !== id)) : v.calcs,
       })),
-      page: t.page ? { ...t.page, pinned: t.page.pinned?.filter((x) => x !== id), main: t.page.main === id ? undefined : t.page.main, sections: t.page.sections?.map((s) => ({ ...s, fields: s.fields.filter((x) => x !== id) })) } : t.page,
-      templates: t.templates?.map((x) => ({ ...x, values: Object.fromEntries(Object.entries(x.values).filter(([k]) => k !== id)) })),
+      page: tb.page ? { ...tb.page, pinned: tb.page.pinned?.filter((x) => x !== id), main: tb.page.main === id ? undefined : tb.page.main, sections: tb.page.sections?.map((s) => ({ ...s, fields: s.fields.filter((x) => x !== id) })) } : tb.page,
+      templates: tb.templates?.map((x) => ({ ...x, values: Object.fromEntries(Object.entries(x.values).filter(([k]) => k !== id)) })),
     });
-    p.setRows((rs) => rs.map((r) => (r.tableId === t.id && id in r.values ? { ...r, values: Object.fromEntries(Object.entries(r.values).filter(([k]) => k !== id)) } : r)));
-    p.toast({ text: `Deleted the ${f?.name ?? ''} column`, action: { label: 'Undo', run: undoLast } });
+    p.setRows((rs) => rs.map((r) => (r.tableId === tb.id && id in r.values ? { ...r, values: Object.fromEntries(Object.entries(r.values).filter(([k]) => k !== id)) } : r)));
+    p.toast({ text: t('Deleted the {name} column', { name: f?.name ?? '' }), action: { label: t('Undo'), run: undoLast } });
   };
   const duplicateField = (id: string) => {
-    const f = t.fields.find((x) => x.id === id);
+    const f = tb.fields.find((x) => x.id === id);
     if (!f) return;
-    remember(`copy of ${f.name}`);
-    const copy: TableField = { ...structuredClone(f), id: uid(), name: `${f.name} copy` };
-    const rest = base ? viewFields(t, base, true).map((x) => x.id) : [];
+    remember(t('copy of {name}', { name: f.name }));
+    const copy: TableField = { ...structuredClone(f), id: uid(), name: t('{name} copy', { name: f.name }) };
+    const rest = base ? viewFields(tb, base, true).map((x) => x.id) : [];
     rest.splice(rest.indexOf(id) + 1, 0, copy.id);
-    patchTable({ fields: [...t.fields, copy], views: t.views.map((v) => (v.id === base?.id ? { ...v, order: rest } : v)) });
-    if (!isComputed(f)) p.setRows((rs) => rs.map((r) => (r.tableId === t.id && !isEmpty(r.values[id]) ? { ...r, values: { ...r.values, [copy.id]: r.values[id] } } : r)));
+    patchTable({ fields: [...tb.fields, copy], views: tb.views.map((v) => (v.id === base?.id ? { ...v, order: rest } : v)) });
+    if (!isComputed(f)) p.setRows((rs) => rs.map((r) => (r.tableId === tb.id && !isEmpty(r.values[id]) ? { ...r, values: { ...r.values, [copy.id]: r.values[id] } } : r)));
   };
 
   /* row changes */
@@ -271,11 +273,11 @@ export function TableScreen(p: ScreenProps) {
     return { ...r, values: { ...r.values, [fieldId]: v }, updatedAt: now(), history: [...(r.history ?? []), { by: p.me, at: now(), fieldId, from, to: v }].slice(-50) };
   };
   const setCell = (rowId: string, fieldId: string, v: CellValue) => {
-    remember('edit');
+    remember(t('edit'));
     p.setRows((rs) => rs.map((r) => (r.id === rowId ? withValue(r, fieldId, v) : r)));
   };
   const setValues = (rowId: string, values: Record<string, CellValue>) => {
-    remember('edit');
+    remember(t('edit'));
     p.setRows((rs) => rs.map((r) => (r.id === rowId ? Object.entries(values).reduce((acc, [k, v]) => withValue(acc, k, v), r) : r)));
   };
   const orderNear = (targetId?: string, after = true) => {
@@ -286,64 +288,65 @@ export function TableScreen(p: ScreenProps) {
     const there = after ? list[i + 1]?.order : list[i - 1]?.order;
     return there === undefined ? here + (after ? 1 : -1) : (here + there) / 2;
   };
-  const defaultTpl = t.templates?.find((x) => x.isDefault);
+  const defaultTpl = tb.templates?.find((x) => x.isDefault);
   /** A new row: the template's values (the default one unless told otherwise; null for a blank row), then these. */
   const addRow = (values: Record<string, CellValue> = {}, near?: { rowId: string; after: boolean }, tpl?: RowTemplate | null) => {
-    remember('new row');
-    const from = g ? {} : templateValues(t, tpl === null ? undefined : (tpl ?? defaultTpl), p.me);
-    const r: TableRow = { id: uid(), workspaceId: t.workspaceId, tableId: t.id, values: { ...from, ...values }, order: orderNear(near?.rowId, near?.after), createdBy: p.me, createdAt: now(), updatedAt: now() };
+    remember(t('new row'));
+    const from = g ? {} : templateValues(tb, tpl === null ? undefined : (tpl ?? defaultTpl), p.me);
+    const r: TableRow = { id: uid(), workspaceId: tb.workspaceId, tableId: tb.id, values: { ...from, ...values }, order: orderNear(near?.rowId, near?.after), createdBy: p.me, createdAt: now(), updatedAt: now() };
     p.setRows((rs) => [...rs, r]);
     return r.id;
   };
   const deleteRows = (ids: string[]) => {
-    remember(ids.length === 1 ? 'delete row' : `delete ${ids.length} rows`);
+    remember(tn(ids.length, 'delete {n} row', 'delete {n} rows'));
     const gone = p.rows.filter((r) => ids.includes(r.id));
     p.setRows((rs) => rs.filter((r) => !ids.includes(r.id)));
     setSelected(new Set());
     setSelecting(false);
     if (p.openRow && ids.includes(p.openRow)) p.setOpenRow(null);
-    p.toast({ text: ids.length === 1 ? `Deleted “${rowName(t, gone[0])}”` : `Deleted ${ids.length} rows`, action: { label: 'Undo', run: undoLast } });
+    p.toast({ text: ids.length === 1 ? t('Deleted “{name}”', { name: rowName(tb, gone[0]) }) : tn(ids.length, 'Deleted {n} row', 'Deleted {n} rows'), action: { label: t('Undo'), run: undoLast } });
   };
   const duplicate = (id: string) => {
     const r = mine.find((x) => x.id === id);
     if (!r) return;
-    return addRow({ ...r.values, [t.fields[0].id]: `${rowName(t, r)} (copy)` }, { rowId: id, after: true }, null);
+    return addRow({ ...r.values, [tb.fields[0].id]: t('{name} (copy)', { name: rowName(tb, r) }) }, { rowId: id, after: true }, null);
   };
   const duplicateMany = (ids: string[]) => {
-    remember(`copy ${ids.length} rows`);
+    remember(tn(ids.length, 'copy {n} row', 'copy {n} rows'));
     let order = Math.max(0, ...mine.map((x) => x.order));
-    const made = mine.filter((r) => ids.includes(r.id)).map((r) => ({ ...r, id: uid(), order: ++order, values: { ...r.values, [t.fields[0].id]: `${rowName(t, r)} (copy)` }, comments: undefined, history: undefined, runs: undefined, createdBy: p.me, createdAt: now(), updatedAt: now() }));
+    const made = mine.filter((r) => ids.includes(r.id)).map((r) => ({ ...r, id: uid(), order: ++order, values: { ...r.values, [tb.fields[0].id]: t('{name} (copy)', { name: rowName(tb, r) }) }, comments: undefined, history: undefined, runs: undefined, createdBy: p.me, createdAt: now(), updatedAt: now() }));
     p.setRows((rs) => [...rs, ...made]);
     setSelected(new Set());
     setSelecting(false);
-    p.toast({ text: `Copied ${made.length} ${made.length === 1 ? 'row' : 'rows'}`, action: { label: 'Undo', run: undoLast } });
+    p.toast({ text: tn(made.length, 'Copied {n} row', 'Copied {n} rows'), action: { label: t('Undo'), run: undoLast } });
   };
   /** One field changed on several rows at once. */
   const bulkSet = (ids: string[], fieldId: string, v: CellValue) => {
-    const f = t.fields.find((x) => x.id === fieldId);
-    remember(`change ${f?.name ?? 'a field'} on ${ids.length} rows`);
+    const f = tb.fields.find((x) => x.id === fieldId);
+    const field = f?.name ?? t('Field');
+    remember(tn(ids.length, 'change {field} on {n} row', 'change {field} on {n} rows', { field }));
     p.setRows((rs) => rs.map((r) => (ids.includes(r.id) ? withValue(r, fieldId, v) : r)));
-    p.toast({ text: `${f?.name ?? 'Field'} changed on ${ids.length} ${ids.length === 1 ? 'row' : 'rows'}`, action: { label: 'Undo', run: undoLast } });
+    p.toast({ text: tn(ids.length, '{field} changed on {n} row', '{field} changed on {n} rows', { field }), action: { label: t('Undo'), run: undoLast } });
   };
   const comment = (id: string, text: string) => p.setRows((rs) => rs.map((r) => (r.id === id ? { ...r, comments: [...(r.comments ?? []), { id: uid(), by: p.me, at: now(), text }] } : r)));
   const moveRow = (id: string, targetId: string, after: boolean, grp?: { fieldId: string; value: CellValue }) => {
-    remember('move row');
+    remember(t('move row'));
     const order = orderNear(targetId, after);
     p.setRows((rs) => rs.map((r) => (r.id !== id ? r : grp ? { ...withValue(r, grp.fieldId, grp.value), order } : { ...r, order })));
   };
   const clearCells = (cells: { rowId: string; fieldId: string }[]) => {
-    remember(cells.length === 1 ? 'clear cell' : `clear ${cells.length} cells`);
+    remember(tn(cells.length, 'clear {n} cell', 'clear {n} cells'));
     p.setRows((rs) =>
       rs.map((r) => {
         const mineCells = cells.filter((c) => c.rowId === r.id);
-        return mineCells.reduce((acc, c) => withValue(acc, c.fieldId, t.fields.find((f) => f.id === c.fieldId)?.type === 'checkbox' ? false : null), r);
+        return mineCells.reduce((acc, c) => withValue(acc, c.fieldId, tb.fields.find((f) => f.id === c.fieldId)?.type === 'checkbox' ? false : null), r);
       }),
     );
   };
   /** Pasted cells (from a spreadsheet or this table): each value fitted to its column; extra lines become new rows. */
   const paste = (startRow: number, startField: number, grid: string[][], fields: TableField[], flat: TableRow[]) => {
-    remember('paste');
-    let nextFields = t.fields;
+    remember(t('paste'));
+    let nextFields = tb.fields;
     const fieldNow = (id: string) => nextFields.find((f) => f.id === id)!;
     const updates = new Map<string, Record<string, CellValue>>();
     const created: TableRow[] = [];
@@ -353,7 +356,7 @@ export function TableScreen(p: ScreenProps) {
       let target = flat[startRow + i];
       if (!target) {
         if (g && !g.add) return;
-        target = { id: uid(), workspaceId: t.workspaceId, tableId: t.id, values: {}, order: ++order, createdBy: p.me, createdAt: now(), updatedAt: now() };
+        target = { id: uid(), workspaceId: tb.workspaceId, tableId: tb.id, values: {}, order: ++order, createdBy: p.me, createdAt: now(), updatedAt: now() };
         created.push(target);
       }
       line.forEach((text, j) => {
@@ -365,88 +368,89 @@ export function TableScreen(p: ScreenProps) {
         cells++;
       });
     });
-    if (nextFields !== t.fields) patchTable({ fields: nextFields });
+    if (nextFields !== tb.fields) patchTable({ fields: nextFields });
     p.setRows((rs) => [
       ...rs.map((r) => (updates.has(r.id) ? Object.entries(updates.get(r.id)!).reduce((acc, [k, v]) => withValue(acc, k, v), r) : r)),
       ...created.map((r) => ({ ...r, values: updates.get(r.id) ?? {} })),
     ]);
-    p.toast({ text: `Pasted ${cells} cell${cells === 1 ? '' : 's'}${created.length ? `, ${created.length} new row${created.length === 1 ? '' : 's'}` : ''}`, action: { label: 'Undo', run: undoLast } });
+    p.toast({ text: created.length ? t('Pasted {cells}, {rows}', { cells: tn(cells, '{n} cell', '{n} cells'), rows: tn(created.length, '{n} new row', '{n} new rows') }) : tn(cells, 'Pasted {n} cell', 'Pasted {n} cells'), action: { label: t('Undo'), run: undoLast } });
   };
 
   /* views */
   const addView = (kind: TableViewDef['kind']) => {
-    const v = newView(t, kind);
-    patchTable({ views: [...t.views, v] });
+    const v = newView(tb, kind);
+    patchTable({ views: [...tb.views, v] });
     setViewId(v.id);
     setPop(null);
   };
   const duplicateView = () => {
     if (!base) return;
-    const v = { ...structuredClone(base), id: uid(), name: `${base.name} copy` };
-    patchTable({ views: [...t.views, v] });
+    const v = { ...structuredClone(base), id: uid(), name: t('{name} copy', { name: base.name }) };
+    patchTable({ views: [...tb.views, v] });
     setViewId(v.id);
     setPop(null);
   };
   const deleteView = () => {
-    if (!base || t.views.length < 2) return;
-    remember(`delete view ${base.name}`);
-    patchTable({ views: t.views.filter((v) => v.id !== base.id) });
-    setViewId(t.views.find((v) => v.id !== base.id)!.id);
+    if (!base || tb.views.length < 2) return;
+    remember(t('delete view {name}', { name: base.name }));
+    patchTable({ views: tb.views.filter((v) => v.id !== base.id) });
+    setViewId(tb.views.find((v) => v.id !== base.id)!.id);
     setPop(null);
-    p.toast({ text: `Deleted the “${base.name}” view`, action: { label: 'Undo', run: undoLast } });
+    p.toast({ text: t('Deleted the “{name}” view', { name: base.name }), action: { label: t('Undo'), run: undoLast } });
   };
   /** The same view shown another way: what the new way needs comes from the table (a choice field, dates). */
   const changeKind = (kind: TableViewDef['kind']) => {
     if (!base || base.kind === kind) return;
-    const d = kindDefaults(t, kind);
-    patchShared({ kind, groupBy: base.groupBy && (kind !== 'board' || t.fields.find((f) => f.id === base.groupBy)?.type === 'select') ? base.groupBy : d.groupBy, dateField: base.dateField ?? d.dateField, endField: base.endField ?? d.endField, cover: base.cover ?? d.cover });
+    const d = kindDefaults(tb, kind);
+    patchShared({ kind, groupBy: base.groupBy && (kind !== 'board' || tb.fields.find((f) => f.id === base.groupBy)?.type === 'select') ? base.groupBy : d.groupBy, dateField: base.dateField ?? d.dateField, endField: base.endField ?? d.endField, cover: base.cover ?? d.cover });
   };
   const copyLink = (rowId?: string) => {
-    void navigator.clipboard?.writeText(tableLink(t.id, base?.id, rowId)).then(() => p.toast({ text: rowId ? 'Link to the row copied' : 'Link to the view copied' }));
+    void navigator.clipboard?.writeText(tableLink(tb.id, base?.id, rowId)).then(() => p.toast({ text: rowId ? t('Link to the row copied') : t('Link to the view copied') }));
   };
   const deleteTable = () => {
-    if (!confirm(`Delete “${t.name}” and its ${mine.length} row${mine.length === 1 ? '' : 's'}? This can’t be undone.`)) return;
-    p.setRows((rs) => rs.filter((r) => r.tableId !== t.id));
-    p.setTables((ts) => ts.filter((x) => x.id !== t.id));
+    if (!confirm(tn(mine.length, 'Delete “{name}” and its {n} row? This can’t be undone.', 'Delete “{name}” and its {n} rows? This can’t be undone.', { name: tb.name }))) return;
+    p.setRows((rs) => rs.filter((r) => r.tableId !== tb.id));
+    p.setTables((ts) => ts.filter((x) => x.id !== tb.id));
     p.onDeleted();
   };
 
   /* CSV */
   const exportCsv = () => {
-    const ids = view ? viewFields(t, view).map((f) => f.id) : undefined;
-    download(`${t.name.replace(/[^\w\s-]/g, '').trim() || 'table'}.csv`, rowsToCsv(t, shown, p.users, rowNameOf, ids));
+    const ids = view ? viewFields(tb, view).map((f) => f.id) : undefined;
+    download(`${tb.name.replace(/[^\w\s-]/g, '').trim() || t('table')}.csv`, rowsToCsv(tb, shown, p.users, rowNameOf, ids));
   };
   const importPlan = async (plan: ImportPlan) => {
     if (p.serverOn) {
-      const r = await fetch('/api/tables/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tableId: t.id, ...plan }) });
+      const r = await fetch('/api/tables/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tableId: tb.id, ...plan }) });
       const out = await r.json().catch(() => null);
-      if (!r.ok) return p.toast({ text: out?.error ?? 'The import didn’t go through. Try again.' });
+      if (!r.ok) return p.toast({ text: out?.error ? t(out.error) : t('The import didn’t go through. Try again.') });
     } else {
       patchTable({ fields: plan.fields });
       let order = Math.max(0, ...mine.map((x) => x.order));
-      const made: TableRow[] = plan.creates.map((values) => ({ id: uid(), workspaceId: t.workspaceId, tableId: t.id, values, order: ++order, createdBy: p.me, createdAt: now(), updatedAt: now() }));
+      const made: TableRow[] = plan.creates.map((values) => ({ id: uid(), workspaceId: tb.workspaceId, tableId: tb.id, values, order: ++order, createdBy: p.me, createdAt: now(), updatedAt: now() }));
       const upd = new Map(plan.updates.map((u) => [u.id, u.values]));
       p.setRows((rs) => [...rs.map((r) => (upd.has(r.id) ? { ...r, values: { ...r.values, ...upd.get(r.id)! }, updatedAt: now() } : r)), ...made]);
     }
     setImporting(false);
-    p.toast({ text: `Imported ${plan.creates.length} row${plan.creates.length === 1 ? '' : 's'}${plan.updates.length ? `, updated ${plan.updates.length}` : ''}` });
+    p.toast({ text: plan.updates.length ? t('Imported {rows}, updated {updated}', { rows: tn(plan.creates.length, '{n} row', '{n} rows'), updated: tn(plan.updates.length, '{n} row', '{n} rows') }) : tn(plan.creates.length, 'Imported {n} row', 'Imported {n} rows') });
   };
 
   /* buttons */
   const press = async (row: TableRow, f: TableField, input: Record<string, CellValue> = {}) => {
-    if (!p.serverOn) return p.toast({ text: p.inDemo ? 'Buttons don’t run in the demo company: they reach other apps and send email.' : `Buttons run on the server; they work once ${product.name} is running on one.` });
+    if (!p.serverOn) return p.toast({ text: p.inDemo ? t('Buttons don’t run in the demo company: they reach other apps and send email.') : t('Buttons run on the server; they work once {product} is running on one.', { product: product.name }) });
     const key = `${row.id}:${f.id}`;
     setRunning((x) => new Set(x).add(key));
     try {
-      const r = await fetch('/api/tables/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tableId: t.id, rowId: row.id, fieldId: f.id, input }) });
-      const out = (await r.json().catch(() => null)) as { ok: boolean; results: { ok: boolean; note: string; open?: string; compose?: { to: string; subject: string; body: string } }[]; error?: string } | null;
-      if (!r.ok || !out) return p.toast({ text: out?.error ?? 'The button didn’t run. Try again.' });
+      const r = await fetch('/api/tables/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tableId: tb.id, rowId: row.id, fieldId: f.id, input }) });
+      const out = (await r.json().catch(() => null)) as { ok: boolean; results: { ok: boolean; note: string; tr?: Msg; open?: string; compose?: { to: string; subject: string; body: string } }[]; error?: string } | null;
+      if (!r.ok || !out) return p.toast({ text: out?.error ? t(out.error) : t('The button didn’t run. Try again.') });
       for (const x of out.results) {
         if (x.open) window.open(x.open, '_blank', 'noopener');
         if (x.compose) p.onCompose(x.compose);
       }
       const failed = out.results.filter((x) => !x.ok);
-      p.toast({ text: failed.length ? `${f.button?.label ?? f.name}: ${failed.map((x) => x.note).join(' · ')}` : `${f.button?.label ?? f.name}: ${out.results.map((x) => x.note).join(' · ') || 'done'}` });
+      const said = (list: typeof out.results) => list.map(noteOf).join(' · ');
+      p.toast({ text: `${f.button?.label ?? f.name}: ${failed.length ? said(failed) : said(out.results) || t('done')}` });
     } finally {
       setRunning((x) => {
         const n = new Set(x);
@@ -459,21 +463,21 @@ export function TableScreen(p: ScreenProps) {
     const b = f.button;
     if (!b) return;
     if (b.ask?.length) return setAsking({ row, f });
-    if (b.confirm && !confirm(`${b.label || f.name}: run this for “${rowName(t, row)}”?`)) return;
+    if (b.confirm && !confirm(t('{button}: run this for “{row}”?', { button: b.label || f.name, row: rowName(tb, row) }))) return;
     void press(row, f);
   };
 
   const ctx: CellCtx = { users: p.users, tables: p.tables, rows: p.rows, rowName: rowNameOf, addOption, runButton, running, isAdmin: p.isAdmin || !!g, canEdit: g?.canEdit, openLinked: g ? undefined : (tableId, rowId) => p.onOpenTable(tableId, rowId) };
   const filters = view?.filters ?? [];
-  const nFilters = view ? filterCount(t, view) : 0;
+  const nFilters = view ? filterCount(tb, view) : 0;
   const sorts = view ? sortsOf(view) : [];
   const setFilters = (fs: typeof filters) => patchView({ filters: fs });
   const openRow = p.openRow ? mine.find((r) => r.id === p.openRow) : undefined;
   const fieldsHidden = view?.hidden?.length ?? 0;
-  const groupField = view?.groupBy ? t.fields.find((f) => f.id === view.groupBy) : undefined;
+  const groupField = view?.groupBy ? tb.fields.find((f) => f.id === view.groupBy) : undefined;
   const openRowFull = (id: string, wantFull = false) => (setFull(wantFull), p.setOpenRow(id));
   const filterBy = (fieldId: string) => {
-    const f = t.fields.find((x) => x.id === fieldId)!;
+    const f = tb.fields.find((x) => x.id === fieldId)!;
     setFilters([...filters, { fieldId, op: opsFor(f.type)[0].op }]);
     if (narrow) setSheet('filter');
     else setPop('filter');
@@ -493,25 +497,25 @@ export function TableScreen(p: ScreenProps) {
   };
   /** Quick create (phones and narrow panes): a sheet that asks for the name, with the keyboard up. */
   const openQuick = (values: Record<string, CellValue> = {}, title?: string) => openWithFocus(() => setQuick({ values, title }), quickInput);
-  const inGroup = (label?: string) => (label ? `New row in ${label}` : undefined);
+  const inGroup = (label?: string) => (label ? t('New row in {group}', { group: label }) : undefined);
   const quickMade = (nm: string, tpl: RowTemplate | undefined, again: boolean) => {
     if (!quick) return;
-    const first = t.fields[0];
+    const first = tb.fields[0];
     const id = addRow({ ...quick.values, ...(nm ? { [first.id]: nm } : {}) }, undefined, tpl ?? null);
     if (!again) setQuick(null);
-    p.toast({ text: nm ? `Added “${nm}”` : 'Added a row', action: { label: 'Open', run: () => (setQuick(null), p.setOpenRow(id)) } });
+    p.toast({ text: nm ? t('Added “{name}”', { name: nm }) : t('Added a row'), action: { label: t('Open'), run: () => (setQuick(null), p.setOpenRow(id)) } });
   };
 
   // Phones: the create button adds a row (templates on a long-press); the title switches between tables.
-  const templates = t.templates ?? [];
-  useCreateAction('tables', !g && canAdd && !!view && { label: 'New row', icon: Plus, run: () => openQuick(), more: templates.map((x) => ({ label: `New “${x.name}”`, icon: LayoutTemplate, run: () => openQuick(templateValues(t, x, p.me), `New “${x.name}”`) })) });
-  const projectName = (id?: string) => (id ? (p.clients.find((c) => c.id === id)?.name ?? term.One) : 'Company');
+  const templates = tb.templates ?? [];
+  useCreateAction('tables', !g && canAdd && !!view && { label: t('New row'), icon: Plus, run: () => openQuick(), more: templates.map((x) => ({ label: t('New “{name}”', { name: x.name }), icon: LayoutTemplate, run: () => openQuick(templateValues(tb, x, p.me), t('New “{name}”', { name: x.name })) })) });
+  const projectName = (id?: string) => (id ? (p.clients.find((c) => c.id === id)?.name ?? term.One) : t('Company'));
   useTitleMenu(
     'tables',
     !g && {
-      label: 'Tables',
-      value: t.id,
-      options: [{ value: '__all', label: 'All tables', icon: <Table2 size={16} /> }, ...p.tables.filter((x) => x.workspaceId === t.workspaceId).map((x) => ({ value: x.id, label: x.name, group: projectName(x.clientId), icon: <i className="tb-dot" style={{ background: x.color }} /> }))],
+      label: t('Tables'),
+      value: tb.id,
+      options: [{ value: '__all', label: t('All tables'), icon: <Table2 size={16} /> }, ...p.tables.filter((x) => x.workspaceId === tb.workspaceId).map((x) => ({ value: x.id, label: x.name, group: projectName(x.clientId), icon: <i className="tb-dot" style={{ background: x.color }} /> }))],
       onChange: (v) => (v === '__all' ? p.onMenu() : p.onOpenTable(v)),
     },
   );
@@ -528,23 +532,23 @@ export function TableScreen(p: ScreenProps) {
   useEffect(() => {
     if (selecting && !selected.size) setSelecting(false);
   }, [selected.size, selecting]);
-  const status = view ? (view.kind === 'board' ? t.fields.find((f) => f.id === view.groupBy && f.type === 'select') ?? t.fields.find((f) => f.type === 'select') : statusFieldOf(t, view)) : undefined;
+  const status = view ? (view.kind === 'board' ? tb.fields.find((f) => f.id === view.groupBy && f.type === 'select') ?? tb.fields.find((f) => f.type === 'select') : statusFieldOf(tb, view)) : undefined;
   const rowActions = (row: TableRow): SheetAction[] => [
-    ...(canAdd || !g ? [{ label: 'Select', icon: CheckSquare, run: () => (setSelecting(true), setSelected(new Set([row.id]))) }] : []),
-    { label: 'Open', icon: PanelRight, run: () => openRowFull(row.id) },
-    ...(status && canEditField(status) ? [{ label: view?.kind === 'board' ? 'Move to' : `Change ${status.name.toLowerCase()}`, icon: ArrowRightLeft, run: () => setEditCell({ rowId: row.id, fieldId: status.id, title: view?.kind === 'board' ? `Move “${rowName(t, row)}” to` : undefined }) }] : []),
-    ...(canAdd ? [{ label: 'Duplicate', icon: CopyPlus, run: () => duplicate(row.id) }] : []),
-    ...(!g ? [{ label: 'Copy link', icon: Link2, run: () => copyLink(row.id) }] : []),
-    { label: 'Copy as text', icon: Copy, run: () => copyText(row) },
-    ...(!g ? [{ label: 'Delete', icon: Trash2, danger: true, group: 'end', run: () => deleteRows([row.id]) }] : []),
+    ...(canAdd || !g ? [{ label: t('Select'), icon: CheckSquare, run: () => (setSelecting(true), setSelected(new Set([row.id]))) }] : []),
+    { label: t('Open'), icon: PanelRight, run: () => openRowFull(row.id) },
+    ...(status && canEditField(status) ? [{ label: view?.kind === 'board' ? t('Move to') : t('Change {field}', { field: status.name.toLowerCase() }), icon: ArrowRightLeft, run: () => setEditCell({ rowId: row.id, fieldId: status.id, title: view?.kind === 'board' ? t('Move “{name}” to', { name: rowName(tb, row) }) : undefined }) }] : []),
+    ...(canAdd ? [{ label: t('Duplicate'), icon: CopyPlus, run: () => duplicate(row.id) }] : []),
+    ...(!g ? [{ label: t('Copy link'), icon: Link2, run: () => copyLink(row.id) }] : []),
+    { label: t('Copy as text'), icon: Copy, run: () => copyText(row) },
+    ...(!g ? [{ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => deleteRows([row.id]) }] : []),
   ];
   const copyText = (row: TableRow) => {
-    const text = viewFields(t, view ?? t.views[0]).map((f) => `${f.name}: ${cellText(f, row.values[f.id] ?? null, textCtx)}`).filter((l) => !l.endsWith(': ')).join('\n');
+    const text = viewFields(tb, view ?? tb.views[0]).map((f) => `${f.name}: ${cellText(f, row.values[f.id] ?? null, textCtx)}`).filter((l) => !l.endsWith(': ')).join('\n');
     void navigator.clipboard?.writeText(text);
-    p.toast({ text: 'Row copied as text' });
+    p.toast({ text: t('Row copied as text') });
   };
   const touchCell = (rowId: string, fieldId: string) => {
-    const f = t.fields.find((x) => x.id === fieldId);
+    const f = tb.fields.find((x) => x.id === fieldId);
     const row = mine.find((r) => r.id === rowId);
     if (!f || !row) return;
     if (f.type === 'button') return runButton(row, f);
@@ -554,8 +558,8 @@ export function TableScreen(p: ScreenProps) {
   const collapsedSet = new Set(view?.collapsed ?? []);
   const foldGroup = (key: string) => patchView({ collapsed: collapsedSet.has(key) ? [...collapsedSet].filter((x) => x !== key) : [...collapsedSet, key] });
   const editRow = editCell ? mine.find((r) => r.id === editCell.rowId) : undefined;
-  const editField = editCell ? t.fields.find((f) => f.id === editCell.fieldId) : undefined;
-  const dateField = view ? t.fields.find((f) => f.id === view.dateField) ?? t.fields.find((f) => f.type === 'date') : undefined;
+  const editField = editCell ? tb.fields.find((f) => f.id === editCell.fieldId) : undefined;
+  const dateField = view ? tb.fields.find((f) => f.id === view.dateField) ?? tb.fields.find((f) => f.type === 'date') : undefined;
 
   const settingsActions: SettingsActions = {
     structure,
@@ -566,7 +570,7 @@ export function TableScreen(p: ScreenProps) {
     onDuplicateView: duplicateView,
     onDeleteView: deleteView,
     onKind: changeKind,
-    onShare: structure && t.clientId ? () => setSharing(true) : undefined,
+    onShare: structure && tb.clientId ? () => setSharing(true) : undefined,
     onAutomations: () => (setSheet(null), setAutoOpen(true)),
     onTemplates: () => setTemplating(true),
     onImport: structure ? () => (setSheet(null), setImporting(true)) : undefined,
@@ -578,7 +582,7 @@ export function TableScreen(p: ScreenProps) {
     toast: (text) => p.toast({ text }),
   };
 
-  const buttonField = buttonFor ? t.fields.find((f) => f.id === buttonFor && f.type === 'button') : undefined;
+  const buttonField = buttonFor ? tb.fields.find((f) => f.id === buttonFor && f.type === 'button') : undefined;
   const ViewIcon = view ? viewIcon(view.kind) : Table2;
   const showPlus = canAdd && !!view && (!phone || !!g);
   return (
@@ -588,86 +592,86 @@ export function TableScreen(p: ScreenProps) {
         <header className="tb-guest-head">
           {p.tables.length > 1 ? (
             <button type="button" className="tb-guest-title" onClick={() => setSheet('tables')} aria-haspopup="dialog">
-              <span>{t.name}</span>
+              <span>{tb.name}</span>
               <ChevronDown size={17} className="muted" />
             </button>
           ) : (
             <h2 className="tb-guest-title">
-              <span>{t.name}</span>
+              <span>{tb.name}</span>
             </h2>
           )}
-          {t.description && <p className="muted small">{t.description}</p>}
+          {tb.description && <p className="muted small">{tb.description}</p>}
         </header>
       )}
       {!phone && (
         <header className="tracking-head tasks-head tb-head-bar">
-          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
+          <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label={t('Open menu')}>
             <Menu size={18} />
           </button>
-          <button type="button" className="client-badge tb-badge" style={{ background: t.color }} title={g || !structure ? t.name : 'Change colour'} disabled={!!g || !structure} onClick={() => patchTable({ color: TABLE_COLORS[(TABLE_COLORS.indexOf(t.color) + 1) % TABLE_COLORS.length] })}>
-            {t.name.charAt(0).toUpperCase()}
+          <button type="button" className="client-badge tb-badge" style={{ background: tb.color }} title={g || !structure ? tb.name : t('Change colour')} disabled={!!g || !structure} onClick={() => patchTable({ color: TABLE_COLORS[(TABLE_COLORS.indexOf(tb.color) + 1) % TABLE_COLORS.length] })}>
+            {tb.name.charAt(0).toUpperCase()}
           </button>
           <div className="th-text">
-            <input className="tb-title" value={name} readOnly={!!g || !structure} aria-label="Table name" onChange={(e) => setName(e.target.value)} onBlur={() => (name.trim() ? name.trim() !== t.name && patchTable({ name: name.trim() }) : setName(t.name))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
-            {g || !structure ? t.description && <span className="muted small tb-desc">{t.description}</span> : <ProjectPicker value={t.clientId ?? ''} onChange={(v) => patchTable({ clientId: v || undefined })} projects={p.clients} none="Whole company" label="Belongs to" className="sel-flat" />}
+            <input className="tb-title" value={name} readOnly={!!g || !structure} aria-label={t('Table name')} onChange={(e) => setName(e.target.value)} onBlur={() => (name.trim() ? name.trim() !== tb.name && patchTable({ name: name.trim() }) : setName(tb.name))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+            {g || !structure ? tb.description && <span className="muted small tb-desc">{tb.description}</span> : <ProjectPicker value={tb.clientId ?? ''} onChange={(v) => patchTable({ clientId: v || undefined })} projects={p.clients} none={t('Whole company')} label={t('Belongs to')} className="sel-flat" />}
           </div>
           {!g && !narrow && (
-            <button className="icon-btn" onClick={undoLast} title="Undo (Cmd/Ctrl+Z)" aria-label="Undo">
+            <button className="icon-btn" onClick={undoLast} title={t('Undo (Cmd/Ctrl+Z)')} aria-label={t('Undo')}>
               <Undo2 size={16} />
             </button>
           )}
-          {!g && !narrow && structure && t.clientId && (
-            <button className={`ghost-btn sm tb-share-btn${t.share?.enabled ? ' on' : ''}`} onClick={() => setSharing(true)} title={`What the ${term.one}’s guests see`}>
-              <Users size={13} /> <span className="lbl">{t.share?.enabled ? 'Shared' : 'Share'}</span>
+          {!g && !narrow && structure && tb.clientId && (
+            <button className={`ghost-btn sm tb-share-btn${tb.share?.enabled ? ' on' : ''}`} onClick={() => setSharing(true)} title={t('What the {project}’s guests see', { project: term.one })}>
+              <Users size={13} /> <span className="lbl">{tb.share?.enabled ? t('Shared') : t('Share')}</span>
             </button>
           )}
           {structure && !narrow && (
-            <button className={`ghost-btn sm tb-auto-btn${t.intake?.enabled || t.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title="Data coming in, rules, webhooks">
-              <Zap size={13} /> <span className="lbl">Automations</span>
+            <button className={`ghost-btn sm tb-auto-btn${tb.intake?.enabled || tb.rules?.some((r) => r.enabled) ? ' on' : ''}`} onClick={() => setAutoOpen(true)} title={t('Data coming in, rules, webhooks')}>
+              <Zap size={13} /> <span className="lbl">{t('Automations')}</span>
             </button>
           )}
           {g ? (
             g.download && (
-              <button className="icon-btn" onClick={exportCsv} aria-label="Download CSV" title="Download CSV">
+              <button className="icon-btn" onClick={exportCsv} aria-label={t('Download CSV')} title={t('Download CSV')}>
                 <Download size={16} />
               </button>
             )
           ) : (
             !narrow && (
-              <button ref={refs.more} className="icon-btn" onClick={() => setPop('more')} aria-label="Table options">
+              <button ref={refs.more} className="icon-btn" onClick={() => setPop('more')} aria-label={t('Table options')}>
                 <MoreHorizontal size={17} />
               </button>
             )
           )}
-          <Popover anchor={refs.more} open={pop === 'more'} onClose={() => setPop(null)} width={260} align="end" title="Table">
+          <Popover anchor={refs.more} open={pop === 'more'} onClose={() => setPop(null)} width={260} align="end" title={t('Table')}>
             <div className="tb-menu">
               {structure && (
                 <label className="tb-menu-desc">
-                  <span className="muted small">Description</span>
-                  <textarea rows={2} defaultValue={t.description ?? ''} placeholder="What this table is for" onBlur={(e) => e.target.value.trim() !== (t.description ?? '') && patchTable({ description: e.target.value.trim() || undefined })} />
+                  <span className="muted small">{t('Description')}</span>
+                  <textarea rows={2} defaultValue={tb.description ?? ''} placeholder={t('What this table is for')} onBlur={(e) => e.target.value.trim() !== (tb.description ?? '') && patchTable({ description: e.target.value.trim() || undefined })} />
                 </label>
               )}
               {structure && (
                 <button type="button" onClick={() => (setPop(null), setTemplating(true))}>
-                  <LayoutTemplate size={14} /> Row templates{templates.length ? ` (${templates.length})` : ''}
+                  <LayoutTemplate size={14} /> {t('Row templates')}{templates.length ? ` (${templates.length})` : ''}
                 </button>
               )}
               {structure && (
                 <button type="button" onClick={() => (setPop(null), setLaying(true))}>
-                  <PanelRight size={14} /> Row page layout
+                  <PanelRight size={14} /> {t('Row page layout')}
                 </button>
               )}
               {structure && (
                 <button type="button" onClick={() => (setPop(null), setImporting(true))}>
-                  <FileUp size={14} /> Import CSV
+                  <FileUp size={14} /> {t('Import CSV')}
                 </button>
               )}
               <button type="button" onClick={() => (setPop(null), exportCsv())}>
-                <Download size={14} /> Download CSV{view && shown.length !== mine.length ? ` (${shown.length} shown)` : ''}
+                <Download size={14} /> {view && shown.length !== mine.length ? t('Download CSV ({n} shown)', { n: shown.length }) : t('Download CSV')}
               </button>
               {canDeleteTable && (
                 <button type="button" className="danger" onClick={() => (setPop(null), deleteTable())}>
-                  <Trash2 size={14} /> Delete table
+                  <Trash2 size={14} /> {t('Delete table')}
                 </button>
               )}
             </div>
@@ -680,35 +684,35 @@ export function TableScreen(p: ScreenProps) {
           {searching ? (
             <label className="tb-psearch">
               <Search size={16} />
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${t.name}`} aria-label="Search rows" enterKeyHint="search" />
-              <button type="button" className="icon-btn" onClick={() => (setQ(''), setSearching(false))} aria-label="Stop searching">
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search {name}', { name: tb.name })} aria-label={t('Search rows')} enterKeyHint="search" />
+              <button type="button" className="icon-btn" onClick={() => (setQ(''), setSearching(false))} aria-label={t('Stop searching')}>
                 <X size={18} />
               </button>
             </label>
           ) : (
             <>
-              <button type="button" className="tb-vpill" onClick={() => setSheet('views')} aria-haspopup="dialog" aria-label={`View: ${view?.name ?? ''}. Switch views`}>
+              <button type="button" className="tb-vpill" onClick={() => setSheet('views')} aria-haspopup="dialog" aria-label={t('View: {name}. Switch views', { name: view?.name ?? '' })}>
                 <ViewIcon size={16} />
-                <span>{view?.name ?? 'Views'}</span>
+                <span>{view?.name ?? t('Views')}</span>
                 <ChevronDown size={15} className="muted" />
               </button>
               <span className="spacer" />
-              <button type="button" className={`icon-btn tb-pbtn${q ? ' on' : ''}`} onClick={() => setSearching(true)} aria-label="Search rows">
+              <button type="button" className={`icon-btn tb-pbtn${q ? ' on' : ''}`} onClick={() => setSearching(true)} aria-label={t('Search rows')}>
                 <Search size={19} />
               </button>
               {view && (
-                <button type="button" className={`icon-btn tb-pbtn${nFilters ? ' on' : ''}`} onClick={() => setSheet('filter')} aria-label={nFilters ? `Filter, ${nFilters} on` : 'Filter'}>
+                <button type="button" className={`icon-btn tb-pbtn${nFilters ? ' on' : ''}`} onClick={() => setSheet('filter')} aria-label={nFilters ? t('Filter, {n} on', { n: nFilters }) : t('Filter')}>
                   <Filter size={19} />
                   {nFilters > 0 && <b className="tb-pbadge">{nFilters}</b>}
                 </button>
               )}
               {view && (
-                <button type="button" className="icon-btn tb-pbtn" onClick={() => setSheet('settings')} aria-label="View and table settings">
+                <button type="button" className="icon-btn tb-pbtn" onClick={() => setSheet('settings')} aria-label={t('View and table settings')}>
                   <SlidersHorizontal size={19} />
                 </button>
               )}
               {showPlus && (
-                <button type="button" className="primary-btn tb-pplus" onClick={() => openQuick()} aria-label="New row">
+                <button type="button" className="primary-btn tb-pplus" onClick={() => openQuick()} aria-label={t('New row')}>
                   <Plus size={18} />
                 </button>
               )}
@@ -718,20 +722,20 @@ export function TableScreen(p: ScreenProps) {
       ) : (
         <div className="tb-bar">
           <ViewTabs
-            views={t.views}
+            views={tb.views}
             current={base?.id ?? ''}
             canEdit={structure}
             onSelect={(id) => id !== base?.id && (setViewId(id), setSelected(new Set()))}
             onMenu={(id, el) => {
               tabAnchor.current = el;
               setViewId(id);
-              setRenamingView(t.views.find((v) => v.id === id)?.name ?? '');
+              setRenamingView(tb.views.find((v) => v.id === id)?.name ?? '');
               setPop('view');
             }}
-            onReorder={structure ? (ids) => patchTable({ views: ids.map((id) => t.views.find((v) => v.id === id)!).filter(Boolean) }) : undefined}
+            onReorder={structure ? (ids) => patchTable({ views: ids.map((id) => tb.views.find((v) => v.id === id)!).filter(Boolean) }) : undefined}
             onAdd={structure ? (el) => ((addViewAnchor.current = el), setPop('addView')) : undefined}
           />
-          <Popover anchor={addViewAnchor} open={pop === 'addView'} onClose={() => setPop(null)} width={280} title="Add a view">
+          <Popover anchor={addViewAnchor} open={pop === 'addView'} onClose={() => setPop(null)} width={280} title={t('Add a view')}>
             <div className="tb-menu">
               {VIEW_KINDS.map(({ kind, name: n, icon: I, hint }) => (
                 <button key={kind} type="button" onClick={() => addView(kind)} className="tb-menu-2line">
@@ -745,11 +749,11 @@ export function TableScreen(p: ScreenProps) {
             </div>
           </Popover>
           {base && (
-            <Popover anchor={tabAnchor} open={pop === 'view'} onClose={() => (renamingView.trim() && renamingView.trim() !== base.name && patchShared({ name: renamingView.trim() }), setPop(null))} width={300} title="View">
+            <Popover anchor={tabAnchor} open={pop === 'view'} onClose={() => (renamingView.trim() && renamingView.trim() !== base.name && patchShared({ name: renamingView.trim() }), setPop(null))} width={300} title={tx('view', 'View')}>
               <div className="tb-menu">
-                {structure && <input className="tb-fm-name" autoFocus value={renamingView} onChange={(e) => setRenamingView(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (renamingView.trim() && patchShared({ name: renamingView.trim() }), setPop(null))} aria-label="View name" />}
+                {structure && <input className="tb-fm-name" autoFocus value={renamingView} onChange={(e) => setRenamingView(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (renamingView.trim() && patchShared({ name: renamingView.trim() }), setPop(null))} aria-label={t('View name')} />}
                 {structure && (
-                  <div className="tb-view-kinds" role="group" aria-label="Show as">
+                  <div className="tb-view-kinds" role="group" aria-label={t('Show as')}>
                     {VIEW_KINDS.map(({ kind, name: n, icon: I }) => (
                       <button key={kind} type="button" className={base.kind === kind ? 'on' : ''} aria-pressed={base.kind === kind} title={n} onClick={() => changeKind(kind)}>
                         <I size={15} />
@@ -758,18 +762,18 @@ export function TableScreen(p: ScreenProps) {
                     ))}
                   </div>
                 )}
-                {structure && <ViewSettings t={t} view={base} onView={patchShared} onNewField={(f) => saveField(f)} />}
+                {structure && <ViewSettings t={tb} view={base} onView={patchShared} onNewField={(f) => saveField(f)} />}
                 <button type="button" onClick={() => (copyLink(), setPop(null))}>
-                  <Link2 size={14} /> Copy a link to this view
+                  <Link2 size={14} /> {t('Copy a link to this view')}
                 </button>
                 {structure && (
                   <button type="button" onClick={duplicateView}>
-                    <CopyPlus size={14} /> Duplicate view
+                    <CopyPlus size={14} /> {t('Duplicate view')}
                   </button>
                 )}
-                {structure && t.views.length > 1 && (
+                {structure && tb.views.length > 1 && (
                   <button type="button" className="danger" onClick={deleteView}>
-                    <Trash2 size={14} /> Delete view
+                    <Trash2 size={14} /> {t('Delete view')}
                   </button>
                 )}
               </div>
@@ -778,65 +782,65 @@ export function TableScreen(p: ScreenProps) {
 
           <label className="tb-search">
             <Search size={14} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search rows" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search')} aria-label={t('Search rows')} />
           </label>
           {view && (
             <>
-              <button ref={refs.filter} className={`ghost-btn sm${nFilters ? ' on' : ''}`} onClick={() => setPop('filter')} aria-label={nFilters ? `Filter, ${nFilters} on` : 'Filter'}>
-                <Filter size={13} /> <span className="lbl">{nFilters ? `${nFilters} filter${nFilters === 1 ? '' : 's'}` : 'Filter'}</span>
+              <button ref={refs.filter} className={`ghost-btn sm${nFilters ? ' on' : ''}`} onClick={() => setPop('filter')} aria-label={nFilters ? t('Filter, {n} on', { n: nFilters }) : t('Filter')}>
+                <Filter size={13} /> <span className="lbl">{nFilters ? tn(nFilters, '{n} filter', '{n} filters') : t('Filter')}</span>
               </button>
               {view.kind !== 'calendar' && (
-                <button ref={refs.sort} className={`ghost-btn sm tb-quiet${sorts.length ? ' on' : ''}`} onClick={() => setPop('sort')} title="Sort" aria-label="Sort">
-                  <ArrowUpDown size={13} /> <span className="lbl">{sorts.length ? `Sorted${sorts.length > 1 ? ` (${sorts.length})` : `: ${t.fields.find((f) => f.id === sorts[0].fieldId)?.name}`}` : 'Sort'}</span>
+                <button ref={refs.sort} className={`ghost-btn sm tb-quiet${sorts.length ? ' on' : ''}`} onClick={() => setPop('sort')} title={t('Sort')} aria-label={t('Sort')}>
+                  <ArrowUpDown size={13} /> <span className="lbl">{sorts.length ? (sorts.length > 1 ? t('Sorted ({n})', { n: sorts.length }) : t('Sorted: {field}', { field: tb.fields.find((f) => f.id === sorts[0].fieldId)?.name ?? '' })) : t('Sort')}</span>
                 </button>
               )}
               {structure && (view.kind === 'grid' || view.kind === 'list') && (
-                <button ref={refs.group} className={`ghost-btn sm tb-quiet${groupField ? ' on' : ''}`} onClick={() => setPop('group')} title={groupField ? `Grouped by ${groupField.name}${view.subGroupBy ? `, then by ${t.fields.find((f) => f.id === view.subGroupBy)?.name ?? 'another field'}` : ''}` : 'Group'} aria-label="Group">
-                  <Group size={13} /> <span className="lbl">{groupField ? `By ${groupField.name}` : 'Group'}</span>
+                <button ref={refs.group} className={`ghost-btn sm tb-quiet${groupField ? ' on' : ''}`} onClick={() => setPop('group')} title={groupField ? (view.subGroupBy ? t('Grouped by {field}, then by {sub}', { field: groupField.name, sub: tb.fields.find((f) => f.id === view.subGroupBy)?.name ?? t('another field') }) : t('Grouped by {field}', { field: groupField.name })) : t('Group')} aria-label={t('Group')}>
+                  <Group size={13} /> <span className="lbl">{groupField ? t('By {field}', { field: groupField.name }) : t('Group')}</span>
                 </button>
               )}
               {/* A board's "Cards" is what its fields menu would be (what each card shows): one button, not two. */}
               {view.kind === 'board' ? (
-                <BoardTools table={t} view={view} onView={patchShared} onNewField={(f) => saveField(f)} readOnly={!structure} />
+                <BoardTools table={tb} view={view} onView={patchShared} onNewField={(f) => saveField(f)} readOnly={!structure} />
               ) : (
                 structure &&
                 view.kind !== 'calendar' &&
                 view.kind !== 'timeline' && (
-                  <button ref={refs.fields} className={`ghost-btn sm tb-quiet${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')} title="Fields in this view" aria-label="Fields">
-                    <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? `${fieldsHidden} hidden` : 'Fields'}</span>
+                  <button ref={refs.fields} className={`ghost-btn sm tb-quiet${fieldsHidden ? ' on' : ''}`} onClick={() => setPop('fields')} title={t('Fields in this view')} aria-label={t('Fields')}>
+                    <EyeOff size={13} /> <span className="lbl">{fieldsHidden ? tn(fieldsHidden, '{n} hidden', '{n} hidden') : t('Fields')}</span>
                   </button>
                 )
               )}
               {structure && view.kind !== 'calendar' && view.kind !== 'timeline' && (
-                <button ref={refs.colors} className={`ghost-btn sm tb-quiet${view.colors?.length ? ' on' : ''}`} onClick={() => setPop('colors')} title="Colours" aria-label="Colours">
-                  <Palette size={13} /> <span className="lbl">{view.colors?.length ? `Colours (${view.colors.length})` : 'Colours'}</span>
+                <button ref={refs.colors} className={`ghost-btn sm tb-quiet${view.colors?.length ? ' on' : ''}`} onClick={() => setPop('colors')} title={t('Colours')} aria-label={t('Colours')}>
+                  <Palette size={13} /> <span className="lbl">{view.colors?.length ? t('Colours ({n})', { n: view.colors.length }) : t('Colours')}</span>
                 </button>
               )}
             </>
           )}
           {canAdd && view && (
             <span className="tb-split">
-              <button className="primary-btn sm tb-add-row" aria-label="New row" onClick={() => newRowHere()}>
-                <Plus size={14} /> <span className="lbl">New row</span>
+              <button className="primary-btn sm tb-add-row" aria-label={t('New row')} onClick={() => newRowHere()}>
+                <Plus size={14} /> <span className="lbl">{t('New row')}</span>
               </button>
               {!g && (templates.length > 0 || structure) && (
-                <button ref={refs.newRow} className="primary-btn sm tb-add-more" aria-label="New row from a template" onClick={() => setPop('newRow')}>
+                <button ref={refs.newRow} className="primary-btn sm tb-add-more" aria-label={t('New row from a template')} onClick={() => setPop('newRow')}>
                   <ChevronDown size={14} />
                 </button>
               )}
             </span>
           )}
-          <Popover anchor={refs.newRow} open={pop === 'newRow'} onClose={() => setPop(null)} width={260} align="end" title="New row">
+          <Popover anchor={refs.newRow} open={pop === 'newRow'} onClose={() => setPop(null)} width={260} align="end" title={t('New row')}>
             <div className="tb-menu">
               <button type="button" onClick={() => (setPop(null), newRowHere(null))}>
-                <Plus size={14} /> Blank row
+                <Plus size={14} /> {t('Blank row')}
               </button>
               {templates.map((x) => (
                 <button key={x.id} type="button" className="tb-menu-2line" onClick={() => (setPop(null), newRowHere(x))}>
                   <LayoutTemplate size={14} />
                   <span>
                     {x.name}
-                    {(x.isDefault || x.repeat) && <small className="muted">{[x.isDefault ? 'New rows start from it' : '', x.repeat ? 'Also adds itself on a schedule' : ''].filter(Boolean).join(' · ')}</small>}
+                    {(x.isDefault || x.repeat) && <small className="muted">{[x.isDefault ? t('New rows start from it') : '', x.repeat ? t('Also adds itself on a schedule') : ''].filter(Boolean).join(' · ')}</small>}
                   </span>
                 </button>
               ))}
@@ -844,7 +848,7 @@ export function TableScreen(p: ScreenProps) {
                 <>
                   <div className="tb-colmenu-sep" />
                   <button type="button" onClick={() => (setPop(null), setTemplating(true))}>
-                    <SlidersHorizontal size={14} /> {templates.length ? 'Edit templates' : 'Make a template'}
+                    <SlidersHorizontal size={14} /> {templates.length ? t('Edit templates') : t('Make a template')}
                   </button>
                 </>
               )}
@@ -853,20 +857,20 @@ export function TableScreen(p: ScreenProps) {
 
           {view && (
             <>
-              <Popover anchor={refs.filter} open={pop === 'filter'} onClose={() => setPop(null)} width={520} title="Filter">
-                <FilterPanel table={t} view={view} rows={mine} ctx={textCtx} onChange={patchView} />
+              <Popover anchor={refs.filter} open={pop === 'filter'} onClose={() => setPop(null)} width={520} title={t('Filter')}>
+                <FilterPanel table={tb} view={view} rows={mine} ctx={textCtx} onChange={patchView} />
               </Popover>
-              <Popover anchor={refs.sort} open={pop === 'sort'} onClose={() => setPop(null)} width={420} title="Sort">
-                <SortEditor table={t} sorts={sorts} onChange={(s) => patchView({ sorts: s })} />
+              <Popover anchor={refs.sort} open={pop === 'sort'} onClose={() => setPop(null)} width={420} title={t('Sort')}>
+                <SortEditor table={tb} sorts={sorts} onChange={(s) => patchView({ sorts: s })} />
               </Popover>
-              <Popover anchor={refs.group} open={pop === 'group'} onClose={() => setPop(null)} width={320} title={view.kind === 'board' ? 'Columns and swimlanes' : 'Group by'}>
-                <GroupEditor t={t} view={view} onView={patchShared} board={view.kind === 'board'} />
+              <Popover anchor={refs.group} open={pop === 'group'} onClose={() => setPop(null)} width={320} title={view.kind === 'board' ? t('Columns and swimlanes') : t('Group by')}>
+                <GroupEditor t={tb} view={view} onView={patchShared} board={view.kind === 'board'} />
               </Popover>
-              <Popover anchor={refs.fields} open={pop === 'fields'} onClose={() => setPop(null)} width={300} title="Fields in this view">
-                <FieldsEditor t={t} view={view} onView={patchShared} all={viewFields(t, view, true)} />
+              <Popover anchor={refs.fields} open={pop === 'fields'} onClose={() => setPop(null)} width={300} title={t('Fields in this view')}>
+                <FieldsEditor t={tb} view={view} onView={patchShared} all={viewFields(tb, view, true)} />
               </Popover>
-              <Popover anchor={refs.colors} open={pop === 'colors'} onClose={() => setPop(null)} width={520} title="Colours">
-                <ColorRulesEditor table={t} view={view} users={p.users} me={p.me} onView={patchShared} />
+              <Popover anchor={refs.colors} open={pop === 'colors'} onClose={() => setPop(null)} width={520} title={t('Colours')}>
+                <ColorRulesEditor table={tb} view={view} users={p.users} me={p.me} onView={patchShared} />
               </Popover>
             </>
           )}
@@ -875,18 +879,18 @@ export function TableScreen(p: ScreenProps) {
 
       {view &&
         (narrow ? (
-          <FilterLine table={t} view={view} base={base!} differs={differs} canSave={structure} onClear={() => patchView({ filters: [], filterGroups: [] })} onReset={() => base && tweaks.reset(base.id)} onSave={saveForEveryone} onOpen={() => setSheet('filter')} />
+          <FilterLine table={tb} view={view} base={base!} differs={differs} canSave={structure} onClear={() => patchView({ filters: [], filterGroups: [] })} onReset={() => base && tweaks.reset(base.id)} onSave={saveForEveryone} onOpen={() => setSheet('filter')} />
         ) : (
           <div className={`fold ${differs ? 'open' : ''}`}>
             <div className="fold-in">
               <div className="tb-mine" aria-live="polite">
-                <span>{structure ? 'These filters and sorts are just for you until you save them for everyone.' : 'These filters and sorts are just for you.'}</span>
+                <span>{structure ? t('These filters and sorts are just for you until you save them for everyone.') : t('These filters and sorts are just for you.')}</span>
                 <button type="button" className="link-btn small" onClick={() => base && tweaks.reset(base.id)}>
-                  Reset
+                  {t('Reset')}
                 </button>
                 {structure && (
                   <button type="button" className="link-btn small strong" onClick={saveForEveryone}>
-                    Save for everyone
+                    {t('Save for everyone')}
                   </button>
                 )}
               </div>
@@ -896,8 +900,8 @@ export function TableScreen(p: ScreenProps) {
 
       {!g && !narrow && tip && view?.kind === 'grid' && (
         <div className="tb-tip">
-          <span>Click a column’s name to rename it, change its type, sort, filter or hide it. Drag columns and rows to move them. Click a cell once to choose it, again to edit; copy and paste blocks of cells, even from a spreadsheet.</span>
-          <button className="icon-btn sm" onClick={() => setTip(false)} aria-label="Got it">
+          <span>{t('Click a column’s name to rename it, change its type, sort, filter or hide it. Drag columns and rows to move them. Click a cell once to choose it, again to edit; copy and paste blocks of cells, even from a spreadsheet.')}</span>
+          <button className="icon-btn sm" onClick={() => setTip(false)} aria-label={t('Got it')}>
             <X size={13} />
           </button>
         </div>
@@ -907,7 +911,7 @@ export function TableScreen(p: ScreenProps) {
         <TabPane key={`${view?.id ?? 'none'}:${view?.kind}:${cards ? 'c' : 'g'}`}>
           {!view ? null : view.kind === 'board' ? (
             <BoardView
-              table={t}
+              table={tb}
               view={view}
               rows={shown}
               ctx={ctx}
@@ -918,13 +922,13 @@ export function TableScreen(p: ScreenProps) {
               onNewField={(f) => saveField(f)}
               onSaveField={(f) => saveField(f)}
               canEditColumns={structure}
-              readOnly={!!g && !g.add && !t.fields.some((f) => g.canEdit(f.id))}
+              readOnly={!!g && !g.add && !tb.fields.some((f) => g.canEdit(f.id))}
               canAdd={canAdd}
-              phone={narrow ? { actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id, title: `Move “${rowName(t, r)}” to` }), selecting, selected, onToggle: toggle } : undefined}
+              phone={narrow ? { actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id, title: t('Move “{name}” to', { name: rowName(tb, r) }) }), selecting, selected, onToggle: toggle } : undefined}
             />
           ) : cards ? (
             <CardList
-              t={t}
+              t={tb}
               view={view}
               rows={shown}
               ctx={ctx}
@@ -936,12 +940,12 @@ export function TableScreen(p: ScreenProps) {
               h={{ onOpen: (id) => openRowFull(id), onToggle: toggle, actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id }), onAdd: (v, label) => openQuick(v, inGroup(label)) }}
             />
           ) : view.kind === 'list' ? (
-            <ListView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onView={patchView} />
+            <ListView table={tb} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onView={patchView} />
           ) : view.kind === 'gallery' ? (
-            <GalleryView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onAddRow={canAdd ? () => (narrow ? openQuick() : openRowFull(addRow())) : undefined} />
+            <GalleryView table={tb} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onAddRow={canAdd ? () => (narrow ? openQuick() : openRowFull(addRow())) : undefined} />
           ) : view.kind === 'calendar' ? (
             <CalendarView
-              table={t}
+              table={tb}
               view={view}
               rows={shown}
               ctx={ctx}
@@ -952,17 +956,17 @@ export function TableScreen(p: ScreenProps) {
               onNewField={(f) => saveField(f)}
               readOnly={!!g || !structure}
               narrow={narrow}
-              onLongPressDay={canAdd && dateField ? (day) => openQuick({ [dateField.id]: day }, `New row on ${new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`) : undefined}
+              onLongPressDay={canAdd && dateField ? (day) => openQuick({ [dateField.id]: day }, t('New row on {day}', { day: fmtWeekday(day) })) : undefined}
             />
           ) : view.kind === 'timeline' ? (
-            <TimelineView table={t} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onValues={setValues} onView={patchShared} onNewField={(f) => saveField(f)} readOnly={!!g && !(dateField && g.canEdit(dateField.id))} narrow={narrow} canAdd={canAdd} onAddRow={(values) => (narrow ? openQuick(values) : openRowFull(addRow(values)))} />
+            <TimelineView table={tb} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onValues={setValues} onView={patchShared} onNewField={(f) => saveField(f)} readOnly={!!g && !(dateField && g.canEdit(dateField.id))} narrow={narrow} canAdd={canAdd} onAddRow={(values) => (narrow ? openQuick(values) : openRowFull(addRow(values)))} />
           ) : (
             <GridView
               locked={!!g}
               fixedColumns={!structure}
               canAdd={canAdd}
               channels={p.channels}
-              table={t}
+              table={tb}
               tables={p.tables}
               view={view}
               rows={shown}
@@ -978,12 +982,12 @@ export function TableScreen(p: ScreenProps) {
               onDeleteField={deleteField}
               onDuplicateField={duplicateField}
               onMakeName={(id) => {
-                const f = t.fields.find((x) => x.id === id);
+                const f = tb.fields.find((x) => x.id === id);
                 if (!f) return;
-                remember(`${f.name} as the name`);
+                remember(t('{name} as the name', { name: f.name }));
                 // Every view keeps its columns where they are; only which one names the row changes.
-                patchTable({ fields: [f, ...t.fields.filter((x) => x.id !== id)], views: t.views.map((v) => ({ ...v, order: viewFields(t, v, true).map((x) => x.id) })) });
-                p.toast({ text: `${f.name} is now each row’s name` });
+                patchTable({ fields: [f, ...tb.fields.filter((x) => x.id !== id)], views: tb.views.map((v) => ({ ...v, order: viewFields(tb, v, true).map((x) => x.id) })) });
+                p.toast({ text: t('{name} is now each row’s name', { name: f.name }) });
               }}
               onView={patchView}
               onFilterBy={filterBy}
@@ -996,7 +1000,7 @@ export function TableScreen(p: ScreenProps) {
               onTouchCell={touchCell}
             />
           )}
-          {view && !shown.length && (mine.length ? <p className="muted small tb-none">No rows match {q.trim() ? 'the search' : 'the filters'}.</p> : view.kind === 'board' || view.kind === 'calendar' || view.kind === 'timeline' ? null : <p className="muted small tb-none">{narrow ? 'No rows yet.' : 'No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.'}</p>)}
+          {view && !shown.length && (mine.length ? <p className="muted small tb-none">{q.trim() ? t('No rows match the search.') : t('No rows match the filters.')}</p> : view.kind === 'board' || view.kind === 'calendar' || view.kind === 'timeline' ? null : <p className="muted small tb-none">{narrow ? t('No rows yet.') : t('No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.')}</p>)}
         </TabPane>
       </div>
 
@@ -1007,7 +1011,7 @@ export function TableScreen(p: ScreenProps) {
           canDelete={!g}
           onEdit={() => setSheet('bulk')}
           onDuplicate={canAdd ? () => duplicateMany([...selected]) : undefined}
-          onDelete={() => confirm(`Delete ${selected.size} row${selected.size === 1 ? '' : 's'}?`) && deleteRows([...selected])}
+          onDelete={() => confirm(tn(selected.size, 'Delete {n} row?', 'Delete {n} rows?')) && deleteRows([...selected])}
           onAll={narrow && selected.size < shown.length ? () => setSelected(new Set(shown.map((r) => r.id))) : undefined}
           onCancel={() => (setSelected(new Set()), setSelecting(false))}
         />
@@ -1015,43 +1019,43 @@ export function TableScreen(p: ScreenProps) {
 
       {/* The row menu: right-click a row, its ⋯, or a long-press in the phone's grid. */}
       <span ref={rowMenuAnchor} className="tb-menu-anchor" style={rowMenu ? { left: rowMenu.x, top: rowMenu.y } : undefined} aria-hidden />
-      <Popover anchor={rowMenuAnchor} open={!!menuRow} onClose={() => setRowMenu(null)} width={230} title={menuRow ? rowName(t, menuRow) : 'Row'}>
+      <Popover anchor={rowMenuAnchor} open={!!menuRow} onClose={() => setRowMenu(null)} width={230} title={menuRow ? rowName(tb, menuRow) : t('Row')}>
         {menuRow && (
           <div className="tb-menu">
             <button type="button" onClick={() => (setRowMenu(null), openRowFull(menuRow.id))}>
-              <PanelRight size={14} /> Open
+              <PanelRight size={14} /> {t('Open')}
             </button>
             {!narrow && (
               <button type="button" onClick={() => (setRowMenu(null), openRowFull(menuRow.id, true))}>
-                <Maximize2 size={14} /> Open as a page
+                <Maximize2 size={14} /> {t('Open as a page')}
               </button>
             )}
             {canAdd && !phone && (
               <>
                 <button type="button" onClick={() => (setRowMenu(null), addRow({}, { rowId: menuRow.id, after: false }))}>
-                  <Plus size={14} /> Insert a row above
+                  <Plus size={14} /> {t('Insert a row above')}
                 </button>
                 <button type="button" onClick={() => (setRowMenu(null), addRow({}, { rowId: menuRow.id, after: true }))}>
-                  <Plus size={14} /> Insert a row below
+                  <Plus size={14} /> {t('Insert a row below')}
                 </button>
               </>
             )}
             {canAdd && (
               <button type="button" onClick={() => (setRowMenu(null), duplicate(menuRow.id))}>
-                <CopyPlus size={14} /> Duplicate
+                <CopyPlus size={14} /> {t('Duplicate')}
               </button>
             )}
             {!g && (
               <button type="button" onClick={() => (setRowMenu(null), copyLink(menuRow.id))}>
-                <Link2 size={14} /> Copy link
+                <Link2 size={14} /> {t('Copy link')}
               </button>
             )}
             <button type="button" onClick={() => (setRowMenu(null), copyText(menuRow))}>
-              <Copy size={14} /> Copy as text
+              <Copy size={14} /> {t('Copy as text')}
             </button>
             {!g && (
               <button type="button" className="danger" onClick={() => (setRowMenu(null), deleteRows([menuRow.id]))}>
-                <Trash2 size={14} /> Delete
+                <Trash2 size={14} /> {t('Delete')}
               </button>
             )}
           </div>
@@ -1059,34 +1063,34 @@ export function TableScreen(p: ScreenProps) {
       </Popover>
 
       {sheet === 'tables' && (
-        <Sheet title="Shared tables" onClose={() => setSheet(null)} className="tb-sheet">
+        <Sheet title={t('Shared tables')} onClose={() => setSheet(null)} className="tb-sheet">
           <div className="as-list">
             {p.tables.map((x) => (
-              <button key={x.id} type="button" className="as-item" aria-current={x.id === t.id} onClick={() => (setSheet(null), p.onOpenTable(x.id))}>
+              <button key={x.id} type="button" className="as-item" aria-current={x.id === tb.id} onClick={() => (setSheet(null), p.onOpenTable(x.id))}>
                 <i className="tb-dot" style={{ background: x.color }} />
                 <span className="as-label">{x.name}</span>
-                {x.id === t.id && <Check size={18} className="as-check" />}
+                {x.id === tb.id && <Check size={18} className="as-check" />}
               </button>
             ))}
           </div>
         </Sheet>
       )}
-      {sheet === 'views' && <ViewsSheet table={t} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
-      {sheet === 'filter' && view && <FilterSheet table={t} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
-      {sheet === 'settings' && view && <SettingsSheet table={t} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
-      {sheet === 'bulk' && <BulkEditSheet table={t} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}
-      {quick && <QuickCreate table={t} title={quick.title} inputRef={quickInput} onCreate={quickMade} onClose={() => setQuick(null)} />}
-      {editRow && editField && <EditSheet table={t} field={editField} row={editRow} ctx={ctx} title={editCell?.title} onSave={(v) => setCell(editRow.id, editField.id, v)} onClose={() => setEditCell(null)} canCreate={!g} />}
+      {sheet === 'views' && <ViewsSheet table={tb} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
+      {sheet === 'filter' && view && <FilterSheet table={tb} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
+      {sheet === 'settings' && view && <SettingsSheet table={tb} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
+      {sheet === 'bulk' && <BulkEditSheet table={tb} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}
+      {quick && <QuickCreate table={tb} title={quick.title} inputRef={quickInput} onCreate={quickMade} onClose={() => setQuick(null)} />}
+      {editRow && editField && <EditSheet table={tb} field={editField} row={editRow} ctx={ctx} title={editCell?.title} onSave={(v) => setCell(editRow.id, editField.id, v)} onClose={() => setEditCell(null)} canCreate={!g} />}
 
-      {importing && <ImportDialog table={t} rows={mine} users={p.users} onImport={importPlan} onClose={() => setImporting(false)} />}
-      {sharing && <ShareTableDialog t={t} onSave={(share) => (patchTable({ share }), setSharing(false), p.toast({ text: share.enabled ? 'Shared with the project’s guests' : 'No longer shared' }))} onClose={() => setSharing(false)} />}
-      {templating && <TemplatesDialog t={t} ctx={ctx} onSave={(list) => (patchTable({ templates: list }), p.toast({ text: 'Templates saved' }))} onClose={() => setTemplating(false)} />}
-      {laying && <PageLayoutDialog t={t} onSave={(page) => (patchTable({ page }), p.toast({ text: 'Row page layout saved' }))} onClose={() => setLaying(false)} />}
-      {autoOpen && <AutomationsPanel t={t} tables={p.tables} users={p.users} channels={p.channels} onPatch={patchTable} onClose={() => setAutoOpen(false)} toast={(text) => p.toast({ text })} />}
-      {buttonField && <ButtonDialog key={buttonField.id} field={buttonField} t={t} tables={p.tables} users={p.users} channels={p.channels} onSave={(button) => saveField({ ...buttonField, button })} onClose={() => setButtonFor(null)} />}
+      {importing && <ImportDialog table={tb} rows={mine} users={p.users} onImport={importPlan} onClose={() => setImporting(false)} />}
+      {sharing && <ShareTableDialog t={tb} onSave={(share) => (patchTable({ share }), setSharing(false), p.toast({ text: share.enabled ? t('Shared with the {project}’s guests', { project: term.one }) : t('No longer shared') }))} onClose={() => setSharing(false)} />}
+      {templating && <TemplatesDialog t={tb} ctx={ctx} onSave={(list) => (patchTable({ templates: list }), p.toast({ text: t('Templates saved') }))} onClose={() => setTemplating(false)} />}
+      {laying && <PageLayoutDialog t={tb} onSave={(page) => (patchTable({ page }), p.toast({ text: t('Row page layout saved') }))} onClose={() => setLaying(false)} />}
+      {autoOpen && <AutomationsPanel t={tb} tables={p.tables} users={p.users} channels={p.channels} onPatch={patchTable} onClose={() => setAutoOpen(false)} toast={(text) => p.toast({ text })} />}
+      {buttonField && <ButtonDialog key={buttonField.id} field={buttonField} t={tb} tables={p.tables} users={p.users} channels={p.channels} onSave={(button) => saveField({ ...buttonField, button })} onClose={() => setButtonFor(null)} />}
       {asking && (
         <AskDialog
-          table={t}
+          table={tb}
           row={asking.row}
           f={asking.f}
           ctx={ctx}
@@ -1100,7 +1104,7 @@ export function TableScreen(p: ScreenProps) {
       )}
       {openRow && (
         <RecordDrawer
-          table={t}
+          table={tb}
           row={openRow}
           ctx={ctx}
           me={p.me}
@@ -1119,7 +1123,7 @@ export function TableScreen(p: ScreenProps) {
           onClose={() => (p.setOpenRow(null), setFull(false))}
           onOpenRow={(tableId, rowId) => p.onOpenTable(tableId, rowId)}
           guest={!!g}
-          edit={structure ? { tables: p.tables, channels: p.channels, onSave: (f) => saveField(f), onDelete: deleteField, onHide: (id) => patchTable({ page: { ...t.page, hidden: [...new Set([...(t.page?.hidden ?? []), id])] } }) } : undefined}
+          edit={structure ? { tables: p.tables, channels: p.channels, onSave: (f) => saveField(f), onDelete: deleteField, onHide: (id) => patchTable({ page: { ...tb.page, hidden: [...new Set([...(tb.page?.hidden ?? []), id])] } }) } : undefined}
           onPage={structure ? (page) => patchTable({ page }) : undefined}
           onLayout={structure ? () => setLaying(true) : undefined}
           onNewField={structure ? (f) => saveField(f) : undefined}
@@ -1133,30 +1137,30 @@ export function TableScreen(p: ScreenProps) {
 
 /* ---------- the view's own settings (under its tab) ---------- */
 
-function ViewSettings({ t, view, onView, onNewField }: { t: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void; onNewField: (f: TableField) => void }) {
+function ViewSettings({ t: tb, view, onView, onNewField }: { t: DataTable; view: TableViewDef; onView: (p: Partial<TableViewDef>) => void; onNewField: (f: TableField) => void }) {
   if (view.kind === 'board') {
-    const selects = t.fields.filter((f) => f.type === 'select');
+    const selects = tb.fields.filter((f) => f.type === 'select');
     return (
       <div className="tb-view-set">
-        <span className="tb-fm-label">Grouped by</span>
-        <PickSelect value={view.groupBy ?? selects[0]?.id ?? ''} aria-label="Grouped by" onChange={(e) => (e.target.value === '__new' ? newChoiceField(t, onNewField, onView) : onView({ groupBy: e.target.value }))}>
+        <span className="tb-fm-label">{t('Grouped by')}</span>
+        <PickSelect value={view.groupBy ?? selects[0]?.id ?? ''} aria-label={t('Grouped by')} onChange={(e) => (e.target.value === '__new' ? newChoiceField(tb, onNewField, onView) : onView({ groupBy: e.target.value }))}>
           {selects.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
           ))}
-          <option value="__new">+ New choice field…</option>
+          <option value="__new">{t('+ New choice field…')}</option>
         </PickSelect>
-        <p className="muted small">A board makes one column for each choice of a single-choice field.</p>
+        <p className="muted small">{t('A board makes one column for each choice of a single-choice field.')}</p>
       </div>
     );
   }
   if (view.kind === 'calendar' || view.kind === 'timeline') {
-    const dates = t.fields.filter((f) => f.type === 'date' || f.type === 'created' || f.type === 'edited');
+    const dates = tb.fields.filter((f) => f.type === 'date' || f.type === 'created' || f.type === 'edited');
     return (
       <div className="tb-view-set">
-        <span className="tb-fm-label">{view.kind === 'timeline' ? 'Bars start at' : 'Dates from'}</span>
-        <PickSelect value={view.dateField ?? dates[0]?.id ?? ''} aria-label="Dates from" onChange={(e) => onView({ dateField: e.target.value })}>
+        <span className="tb-fm-label">{view.kind === 'timeline' ? t('Bars start at') : t('Dates from')}</span>
+        <PickSelect value={view.dateField ?? dates[0]?.id ?? ''} aria-label={view.kind === 'timeline' ? t('Bars start at') : t('Dates from')} onChange={(e) => onView({ dateField: e.target.value })}>
           {dates.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
@@ -1165,9 +1169,9 @@ function ViewSettings({ t, view, onView, onNewField }: { t: DataTable; view: Tab
         </PickSelect>
         {view.kind === 'timeline' && (
           <>
-            <span className="tb-fm-label">and end at</span>
-            <PickSelect value={view.endField ?? ''} aria-label="Bars end at" onChange={(e) => onView({ endField: e.target.value || undefined })}>
-              <option value="">The same day</option>
+            <span className="tb-fm-label">{t('and end at')}</span>
+            <PickSelect value={view.endField ?? ''} aria-label={t('Bars end at')} onChange={(e) => onView({ endField: e.target.value || undefined })}>
+              <option value="">{t('The same day')}</option>
               {dates
                 .filter((f) => f.type === 'date' && f.id !== view.dateField)
                 .map((f) => (
@@ -1182,12 +1186,12 @@ function ViewSettings({ t, view, onView, onNewField }: { t: DataTable; view: Tab
     );
   }
   if (view.kind === 'gallery') {
-    const files = t.fields.filter((f) => f.type === 'files');
+    const files = tb.fields.filter((f) => f.type === 'files');
     return (
       <div className="tb-view-set">
-        <span className="tb-fm-label">Card picture from</span>
-        <PickSelect value={view.cover ?? ''} aria-label="Card picture" onChange={(e) => onView({ cover: e.target.value || undefined })}>
-          <option value="">No picture</option>
+        <span className="tb-fm-label">{t('Card picture from')}</span>
+        <PickSelect value={view.cover ?? ''} aria-label={t('Card picture')} onChange={(e) => onView({ cover: e.target.value || undefined })}>
+          <option value="">{t('No picture')}</option>
           {files.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
@@ -1214,7 +1218,7 @@ function AskDialog({ table, row, f, ctx, onRun, onClose }: { table: DataTable; r
           <span className="dump-title">
             <Zap size={15} /> {f.button?.label || f.name} · {rowName(table, row)}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -1228,10 +1232,10 @@ function AskDialog({ table, row, f, ctx, onRun, onClose }: { table: DataTable; r
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" onClick={() => onRun(draft)}>
-            {f.button?.label || 'Run'}
+            {f.button?.label || t('Run')}
           </button>
         </footer>
       </div>
@@ -1240,9 +1244,9 @@ function AskDialog({ table, row, f, ctx, onRun, onClose }: { table: DataTable; r
 }
 
 /** What a project's guests get of this table: they see some fields, change fewer, press chosen buttons. */
-function ShareTableDialog({ t, onSave, onClose }: { t: DataTable; onSave: (s: NonNullable<DataTable['share']>) => void; onClose: () => void }) {
+function ShareTableDialog({ t: tb, onSave, onClose }: { t: DataTable; onSave: (s: NonNullable<DataTable['share']>) => void; onClose: () => void }) {
   const [s, setS] = useState<NonNullable<DataTable['share']>>(
-    () => t.share ?? { enabled: true, fields: t.fields.filter((f, i) => i > 0 && !['button', 'link', 'longtext'].includes(f.type)).map((f) => f.id), edit: [], buttons: [], add: false, download: true },
+    () => tb.share ?? { enabled: true, fields: tb.fields.filter((f, i) => i > 0 && !['button', 'link', 'longtext'].includes(f.type)).map((f) => f.id), edit: [], buttons: [], add: false, download: true },
   );
   const toggle = (key: 'fields' | 'edit' | 'buttons', id: string, on: boolean) =>
     setS((x) => {
@@ -1251,15 +1255,15 @@ function ShareTableDialog({ t, onSave, onClose }: { t: DataTable; onSave: (s: No
       if (key === 'edit' && on && !next.fields.includes(id)) next.fields = [...next.fields, id];
       return next;
     });
-  const first = t.fields[0];
+  const first = tb.fields[0];
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal tb-share" role="dialog" aria-label="Share with guests" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="modal tb-share" role="dialog" aria-label={t('Share with guests')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Users size={15} /> Share {t.name} with guests
+            <Users size={15} /> {t('Share {name} with guests', { name: tb.name })}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
@@ -1267,40 +1271,40 @@ function ShareTableDialog({ t, onSave, onClose }: { t: DataTable; onSave: (s: No
           <label className="check-row tb-share-on">
             <input type="checkbox" checked={s.enabled} onChange={(e) => setS({ ...s, enabled: e.target.checked })} />
             <span>
-              <strong>Guests on this {term.one} can open this table</strong>
-              <small className="muted">It shows in their shared space. Rules, webhook addresses and the team’s notes on rows stay hidden.</small>
+              <strong>{t('Guests on this {project} can open this table', { project: term.one })}</strong>
+              <small className="muted">{t('It shows in their shared space. Rules, webhook addresses and the team’s notes on rows stay hidden.')}</small>
             </span>
           </label>
           <div className={`fold ${s.enabled ? 'open' : ''}`}>
             <div className="fold-in">
               <div className="tb-share-grid">
                 <span />
-                <small className="muted">Sees</small>
-                <small className="muted">Can change</small>
+                <small className="muted">{t('Sees')}</small>
+                <small className="muted">{t('Can change')}</small>
                 <span className="tb-share-name">{first.name}</span>
-                <input type="checkbox" checked disabled aria-label={`${first.name} is always seen`} />
-                <input type="checkbox" checked={s.edit.includes(first.id)} onChange={(e) => toggle('edit', first.id, e.target.checked)} aria-label={`Guests can change ${first.name}`} />
-                {t.fields.slice(1).filter((f) => f.type !== 'link').map((f) =>
+                <input type="checkbox" checked disabled aria-label={t('{name} is always seen', { name: first.name })} />
+                <input type="checkbox" checked={s.edit.includes(first.id)} onChange={(e) => toggle('edit', first.id, e.target.checked)} aria-label={t('Guests can change {name}', { name: first.name })} />
+                {tb.fields.slice(1).filter((f) => f.type !== 'link').map((f) =>
                   f.type === 'button' ? (
                     <div key={f.id} className="contents">
-                      <span className="tb-share-name">{f.button?.label ?? f.name} <small className="muted">button</small></span>
-                      <input type="checkbox" checked={s.buttons.includes(f.id)} onChange={(e) => toggle('buttons', f.id, e.target.checked)} aria-label={`Guests can press ${f.name}`} />
+                      <span className="tb-share-name">{f.button?.label ?? f.name} <small className="muted">{t('button')}</small></span>
+                      <input type="checkbox" checked={s.buttons.includes(f.id)} onChange={(e) => toggle('buttons', f.id, e.target.checked)} aria-label={t('Guests can press {name}', { name: f.name })} />
                       <span />
                     </div>
                   ) : (
                     <div key={f.id} className="contents">
                       <span className="tb-share-name">{f.name}</span>
-                      <input type="checkbox" checked={s.fields.includes(f.id)} onChange={(e) => toggle('fields', f.id, e.target.checked)} aria-label={`Guests see ${f.name}`} />
-                      <input type="checkbox" checked={s.edit.includes(f.id)} onChange={(e) => toggle('edit', f.id, e.target.checked)} aria-label={`Guests can change ${f.name}`} />
+                      <input type="checkbox" checked={s.fields.includes(f.id)} onChange={(e) => toggle('fields', f.id, e.target.checked)} aria-label={t('Guests see {name}', { name: f.name })} />
+                      <input type="checkbox" checked={s.edit.includes(f.id)} onChange={(e) => toggle('edit', f.id, e.target.checked)} aria-label={t('Guests can change {name}', { name: f.name })} />
                     </div>
                   ),
                 )}
               </div>
               <label className="check-row">
-                <input type="checkbox" checked={!!s.add} onChange={(e) => setS({ ...s, add: e.target.checked })} /> They can add rows
+                <input type="checkbox" checked={!!s.add} onChange={(e) => setS({ ...s, add: e.target.checked })} /> {t('They can add rows')}
               </label>
               <label className="check-row">
-                <input type="checkbox" checked={!!s.download} onChange={(e) => setS({ ...s, download: e.target.checked })} /> They can download it as CSV
+                <input type="checkbox" checked={!!s.download} onChange={(e) => setS({ ...s, download: e.target.checked })} /> {t('They can download it as CSV')}
               </label>
             </div>
           </div>
@@ -1308,10 +1312,10 @@ function ShareTableDialog({ t, onSave, onClose }: { t: DataTable; onSave: (s: No
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" onClick={() => onSave(s)}>
-            Save
+            {t('Save')}
           </button>
         </footer>
       </div>

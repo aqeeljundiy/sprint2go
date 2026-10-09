@@ -9,6 +9,8 @@ import { iceConfig, redacted } from '../ice';
 import { usePhone } from '../mobile/media';
 import { Sheet } from './ui/Sheet';
 import { useHuddleDock } from './chat/huddleDock';
+import { mark, t, tn } from '../i18n';
+import { fmtList, fmtNumber } from '../i18n/format';
 
 type Note = { channelId: string; kind: 'offer' | 'answer' | 'ice' | 'bye' | 'react'; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit; emoji?: string };
 const REACTIONS = ['👍', '😂', '👏', '❤️', '🎉', '👀'];
@@ -51,7 +53,7 @@ function useSpeaking(streams: Record<string, MediaStream>, local: MediaStream | 
 }
 /** How the line to one person is doing. blocked: no route between the two networks; silent: they never answered. */
 type Line = 'connecting' | 'connected' | 'retrying' | 'blocked' | 'silent';
-const LINE_LABEL: Record<Line, string> = { connecting: 'Connecting', connected: '', retrying: 'Reconnecting', blocked: 'Can’t connect', silent: 'Not answering' };
+const LINE_LABEL: Record<Line, string> = { connecting: mark('Connecting'), connected: '', retrying: mark('Reconnecting'), blocked: mark('Can’t connect'), silent: mark('Not answering') };
 
 interface Peer {
   pc: RTCPeerConnection;
@@ -354,28 +356,30 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     }
   };
 
-  const name = channel.kind === 'dm' ? 'Direct message' : `#${channel.name}`;
+  const name = channel.kind === 'dm' ? t('Direct message') : `#${channel.name}`;
   const lineOf = (id: string): Line => lines[id] ?? 'connecting';
-  const first = (id: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone';
-  const names = (ids: string[]) => (ids.length === 1 ? first(ids[0]) : ids.length === 2 ? `${first(ids[0])} and ${first(ids[1])}` : `${first(ids[0])} and ${ids.length - 1} others`);
+  const first = (id: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone');
+  const names = (ids: string[]) => (ids.length <= 2 ? fmtList(ids.map(first)) : t('{name} and {n} others', { name: first(ids[0]), n: fmtNumber(ids.length - 1) }));
   const blocked = others.filter((id) => lineOf(id) === 'blocked');
   const silent = others.filter((id) => lineOf(id) === 'silent');
   const problem = blocked.length
     ? relay
-      ? `Couldn’t connect to ${names(blocked)}, even through the call relay. Try again, or switch to another network.`
-      : 'This network blocks direct calls. Ask your admin to turn on the call relay.'
+      ? t('Couldn’t connect to {names}, even through the call relay. Try again, or switch to another network.', { names: names(blocked) })
+      : t('This network blocks direct calls. Ask your admin to turn on the call relay.')
     : silent.length
-      ? `${names(silent)} ${silent.length === 1 ? 'isn’t' : 'aren’t'} answering. They may have lost their connection.`
+      ? silent.length === 1
+        ? t('{names} isn’t answering. They may have lost their connection.', { names: names(silent) })
+        : t('{names} aren’t answering. They may have lost their connection.', { names: names(silent) })
       : null;
   const shown = useRef(problem); // keeps the words while the note folds away
   if (problem) shown.current = problem;
   const any = (l: Line) => others.some((id) => lineOf(id) === l);
   const status = (() => {
-    if (mic === 'asking') return 'Asking for your microphone…';
-    if (any('retrying')) return 'Reconnecting…';
-    if (any('connecting') && !any('connected')) return 'Connecting…';
-    if (mic === 'denied') return 'No microphone: listening only';
-    return others.length ? `${others.length + 1} in the huddle` : 'Waiting for others';
+    if (mic === 'asking') return t('Asking for your microphone…');
+    if (any('retrying')) return t('Reconnecting…');
+    if (any('connecting') && !any('connected')) return t('Connecting…');
+    if (mic === 'denied') return t('No microphone: listening only');
+    return others.length ? tn(others.length + 1, '{n} in the huddle', '{n} in the huddle') : t('Waiting for others');
   })();
 
   const audio = Object.entries(streams).map(([id, st]) => (
@@ -391,7 +395,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     const u = users.find((x) => x.id === id);
     const l = id === me ? 'connected' : lineOf(id);
     return u ? (
-      <span key={id} className={`huddle-av is-${l}${id === me && muted ? ' muted' : ''}${speaking.includes(id) ? ' speaking' : ''}`} title={LINE_LABEL[l] ? `${u.name}: ${LINE_LABEL[l].toLowerCase()}` : u.name}>
+      <span key={id} className={`huddle-av is-${l}${id === me && muted ? ' muted' : ''}${speaking.includes(id) ? ' speaking' : ''}`} title={LINE_LABEL[l] ? `${u.name}: ${t(LINE_LABEL[l]).toLowerCase()}` : u.name}>
         <Avatar person={u} size={size} />
         {id === me && muted && <MicOff size={size > 40 ? 14 : 10} />}
         {floating
@@ -405,7 +409,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     ) : null;
   };
   const talking = speaking.filter((id) => id !== me);
-  const line = talking.length ? `${names(talking)} ${talking.length === 1 ? 'is' : 'are'} talking` : status;
+  const line = talking.length ? (talking.length === 1 ? t('{names} is talking', { names: names(talking) }) : t('{names} are talking', { names: names(talking) })) : status;
   const problemNote = (
     <div className={`fold huddle-fold${problem ? ' open' : ''}`} role="status" aria-live="polite">
       <div className="fold-in">
@@ -413,7 +417,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
           <AlertTriangle size={14} />
           <span>{shown.current}</span>
           <button type="button" className="ghost-btn sm" onClick={retry}>
-            Try again
+            {t('Try again')}
           </button>
         </div>
       </div>
@@ -422,9 +426,9 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
   const reactRow = (
     <div className={`fold hs-react-fold${reacting ? ' open' : ''}`} aria-hidden={!reacting}>
       <div>
-        <div className="hs-react" role="group" aria-label="React">
+        <div className="hs-react" role="group" aria-label={t('React')}>
           {REACTIONS.map((e) => (
-            <button key={e} type="button" tabIndex={reacting ? 0 : -1} onClick={() => react(e)} aria-label={`React ${e}`}>
+            <button key={e} type="button" tabIndex={reacting ? 0 : -1} onClick={() => react(e)} aria-label={t('React {emoji}', { emoji: e })}>
               {e}
             </button>
           ))}
@@ -441,8 +445,8 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
         {audio}
         {dock &&
           createPortal(
-            <div className="huddle-bar" role="region" aria-label={`Huddle in ${name}`}>
-              <button type="button" className="hb-main" onClick={() => setFull(true)} aria-label={`Huddle in ${name}: ${line}. Open the call`}>
+            <div className="huddle-bar" role="region" aria-label={t('Huddle in {name}', { name })}>
+              <button type="button" className="hb-main" onClick={() => setFull(true)} aria-label={t('Huddle in {name}: {status}. Open the call', { name, status: line })}>
                 <Headphones size={16} className="hb-icon" />
                 <span className="hb-text">
                   <strong>{name}</strong>
@@ -450,24 +454,24 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
                 </span>
                 <span className="hb-avs">{members.slice(0, 3).map((id) => avatar(id, 24))}</span>
               </button>
-              <button type="button" className={`icon-btn hb-mic${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted}>
+              <button type="button" className={`icon-btn hb-mic${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-label={muted ? t('Unmute') : t('Mute')} aria-pressed={muted}>
                 {muted ? <MicOff size={18} /> : <Mic size={18} />}
               </button>
-              <button type="button" className="icon-btn hb-leave" onClick={leave} aria-label="Leave the huddle">
+              <button type="button" className="icon-btn hb-leave" onClick={leave} aria-label={t('Leave the huddle')}>
                 <PhoneOff size={18} />
               </button>
             </div>,
             dock,
           )}
         {full && (
-          <Sheet title={name} size="full" onClose={() => setFull(false)} className="huddle-sheet" label={`Huddle in ${name}`}>
+          <Sheet title={name} size="full" onClose={() => setFull(false)} className="huddle-sheet" label={t('Huddle in {name}', { name })}>
             <p className="hs-status">{line}</p>
             {problemNote}
             <div className="hs-people">
               {members.map((id) => (
                 <div key={id} className="hs-person">
                   {avatar(id, 72)}
-                  <span>{id === me ? 'You' : first(id)}</span>
+                  <span>{id === me ? t('You') : first(id)}</span>
                 </div>
               ))}
             </div>
@@ -475,27 +479,27 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
             <div className="hs-controls">
               <button type="button" className={`hs-ctl${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-pressed={muted}>
                 <span>{muted ? <MicOff size={22} /> : <Mic size={22} />}</span>
-                {muted ? 'Unmute' : 'Mute'}
+                {muted ? t('Unmute') : t('Mute')}
               </button>
               <button type="button" className={`hs-ctl${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting}>
                 <span>
                   <SmilePlus size={22} />
                 </span>
-                React
+                {t('React')}
               </button>
               {onOpenChannel && (
                 <button type="button" className="hs-ctl" onClick={() => (setFull(false), onOpenChannel())}>
                   <span>
                     <MessageSquare size={22} />
                   </span>
-                  Chat
+                  {t('Chat')}
                 </button>
               )}
               <button type="button" className="hs-ctl leave" onClick={() => (setFull(false), leave())}>
                 <span>
                   <PhoneOff size={22} />
                 </span>
-                Leave
+                {t('Leave')}
               </button>
             </div>
           </Sheet>
@@ -504,11 +508,11 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     );
 
   return (
-    <aside className="huddle" role="region" aria-label={`Huddle in ${name}`}>
+    <aside className="huddle" role="region" aria-label={t('Huddle in {name}', { name })}>
       <header>
         <Headphones size={15} />
         {onOpenChannel ? (
-          <button type="button" className="huddle-name" onClick={onOpenChannel} title={`Open ${name}`}>
+          <button type="button" className="huddle-name" onClick={onOpenChannel} title={t('Open {name}', { name })}>
             {name}
           </button>
         ) : (
@@ -520,14 +524,14 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
       <div className="huddle-people">{members.map((id) => avatar(id, 32))}</div>
       {audio}
       <div className="huddle-actions">
-        <button type="button" className={`ghost-btn sm huddle-react${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting} aria-label="React" title="React">
+        <button type="button" className={`ghost-btn sm huddle-react${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting} aria-label={t('React')} title={t('React')}>
           <SmilePlus size={14} />
         </button>
         <button type="button" className={`ghost-btn sm${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'}>
-          {muted ? <MicOff size={14} /> : <Mic size={14} />} {muted ? 'Unmute' : 'Mute'}
+          {muted ? <MicOff size={14} /> : <Mic size={14} />} {muted ? t('Unmute') : t('Mute')}
         </button>
         <button type="button" className="primary-btn sm danger" onClick={leave}>
-          <PhoneOff size={14} /> Leave
+          <PhoneOff size={14} /> {t('Leave')}
         </button>
       </div>
       {reactRow}

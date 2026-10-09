@@ -57,7 +57,7 @@ import { CommentBox, MailComment } from './mail/Comments';
 import { QuickReply } from './mail/QuickReply';
 import { quickReplies } from './mail/Templates';
 import { participantsOf, whenWords } from '../mailRules';
-import { t, tn } from '../i18n';
+import { t, tn, tx } from '../i18n';
 import { tj } from '../i18n/tj';
 import { fmtDate } from '../i18n/format';
 
@@ -301,7 +301,7 @@ export function Reader(props: Props) {
   const moreActions = (): SheetAction[] => [
     ...(phone ? [] : [{ label: t('Reply'), icon: Reply, run: () => startReply() }]),
     { label: t('Forward'), icon: Forward, disabled: !!props.replyOff, run: () => props.onForward(thread) },
-    ...(props.onMakeTask ? [{ label: t('Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
+    ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
     { label: t('Mark as unread'), icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
     { label: thread.starred ? t('Unstar') : t('Star'), icon: Star, group: 'mark', checked: thread.starred, run: () => props.onStar(thread.id) },
     ...(phone && props.shared ? [] : props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, group: 'mark', run: () => setAssignOpen(true) }] : []),
@@ -495,7 +495,7 @@ export function Reader(props: Props) {
             )}
             {props.onMakeTask && (
               <button className="ai-chip" onClick={() => props.onMakeTask!(thread.id)}>
-                <ListPlus size={13} /> {t('Make a task')}
+                <ListPlus size={13} /> {tx('mail', 'Make a task')}
               </button>
             )}
             {props.todos.length > 0 && (

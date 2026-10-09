@@ -13,6 +13,7 @@ import { ConfirmSheet, WhenSheet, chanName } from './Sheets';
 import { authorOf, preview, Text } from './Message';
 import { dmOther, followedThreads, readFallback, TILE_NAMES, useChatState, whenText, type ChatState, type SavedItem } from './chatPrefs';
 import type { ChatPage } from '../ChatApp';
+import { t, tn, tx } from '../../i18n';
 
 export interface PagesProps {
   page: ChatPage;
@@ -42,7 +43,7 @@ export function ChatPages(p: PagesProps) {
   );
   if (p.phone)
     return (
-      <PushScreen title={title} backLabel="Chat" onBack={p.onClose} className={`chat-page-push page-${p.page}`}>
+      <PushScreen title={title} backLabel={t('Chat')} onBack={p.onClose} className={`chat-page-push page-${p.page}`}>
         {body}
       </PushScreen>
     );
@@ -52,9 +53,9 @@ export function ChatPages(p: PagesProps) {
       <header className="chat-head">
         <div className="th-text">
           <h1>{title}</h1>
-          <p>{p.page === 'catchup' ? 'Unread conversations, one at a time' : p.page === 'threads' ? 'Threads you started, replied in or were mentioned in' : p.page === 'drafts' ? 'What you started writing, what waits to be sent, and what you sent' : 'Messages you saved, and their reminders'}</p>
+          <p>{p.page === 'catchup' ? t('Unread conversations, one at a time') : p.page === 'threads' ? t('Threads you started, replied in or were mentioned in') : p.page === 'drafts' ? t('What you started writing, what waits to be sent, and what you sent') : t('Messages you saved, and their reminders')}</p>
         </div>
-        <button className="icon-btn sm" onClick={p.onClose} aria-label="Close" title="Close">
+        <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close')} title={t('Close')}>
           <X size={16} />
         </button>
       </header>
@@ -66,7 +67,7 @@ export function ChatPages(p: PagesProps) {
 
 const nameOf = (p: PagesProps, channelId: string) => {
   const c = p.channels.find((x) => x.id === channelId);
-  return c ? chanName(c, p.users, p.me) : 'A conversation you left';
+  return c ? chanName(c, p.users, p.me) : t('A conversation you left');
 };
 const ChanIcon = ({ c, users, me, size = 16 }: { c?: Channel; users: User[]; me: string; size?: number }) => {
   if (!c) return <Hash size={size} />;
@@ -137,7 +138,7 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
     rest.forEach((x) => chat.markRead(x.c.id));
     setSteps((s) => [...s, ...rest.map((x) => ({ id: x.c.id, kind: 'read' as const, before: chat.read[x.c.id] }))]);
     setI(queue.length);
-    toastUndo(`${rest.length} ${rest.length === 1 ? 'conversation' : 'conversations'} marked read`, () => {
+    toastUndo(tn(rest.length, '{n} conversation marked read', '{n} conversations marked read'), () => {
       rest.forEach((x) => chat.setReadBack(x.c.id, chat.read[x.c.id] === undefined ? undefined : x.since));
       setI(i);
     });
@@ -157,14 +158,14 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
   });
 
   if (!queue.length)
-    return <EmptyState icon={<CheckCheck size={22} />} title="You’re caught up" text="Nothing unread in your conversations. New messages show up here next time." action={<button className="ghost-btn" onClick={p.onClose}>Done</button>} />;
+    return <EmptyState icon={<CheckCheck size={22} />} title={t('You’re caught up')} text={t('Nothing unread in your conversations. New messages show up here next time.')} action={<button className="ghost-btn" onClick={p.onClose}>{t('Done')}</button>} />;
   if (!card)
     return (
       <div className="cu-done">
-        <EmptyState icon={<CheckCheck size={22} />} title="That’s everything" text={`You went through ${queue.length} ${queue.length === 1 ? 'conversation' : 'conversations'}.`} action={<button className="primary-btn" onClick={p.onClose}>Done</button>} />
+        <EmptyState icon={<CheckCheck size={22} />} title={t('That’s everything')} text={tn(queue.length, 'You went through {n} conversation.', 'You went through {n} conversations.')} action={<button className="primary-btn" onClick={p.onClose}>{t('Done')}</button>} />
         {steps.length > 0 && (
           <button className="link-btn cu-undo-last" onClick={undo}>
-            <Undo2 size={14} /> Undo the last one
+            <Undo2 size={14} /> {t('Undo the last one')}
           </button>
         )}
       </div>
@@ -177,9 +178,9 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
   return (
     <div className="cu-page">
       <div className="cu-top">
-        <span className="muted">{left === 1 ? 'Last one' : `${left} left`}</span>
+        <span className="muted">{left === 1 ? t('Last one') : tn(left, '{n} left', '{n} left')}</span>
         <button className="link-btn" onClick={undo} disabled={!steps.length}>
-          <Undo2 size={14} /> Undo
+          <Undo2 size={14} /> {t('Undo')}
         </button>
       </div>
       <div className="cu-stack">
@@ -220,16 +221,16 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
           onPointerCancel={() => ((drag.current.id = -1), setDx(0))}
         >
           <span className={`cu-stamp read${dx > 40 ? ' on' : ''}`} aria-hidden>
-            Read
+            {tx('catch up', 'Read')}
           </span>
           <span className={`cu-stamp skip${dx < -40 ? ' on' : ''}`} aria-hidden>
-            Skip
+            {t('Skip')}
           </span>
-          <button className="cu-open" onClick={() => p.onOpen(card.c.id)} aria-label={`Open ${nameOf(p, card.c.id)}`}>
+          <button className="cu-open" onClick={() => p.onOpen(card.c.id)} aria-label={t('Open {name}', { name: nameOf(p, card.c.id) })}>
             <CardHead c={card.c} n={card.unread.length} p={p} />
           </button>
           <div className="cu-msgs">
-            {card.unread.length > shown.length && <p className="muted small cu-more">{card.unread.length - shown.length} earlier</p>}
+            {card.unread.length > shown.length && <p className="muted small cu-more">{tn(card.unread.length - shown.length, '{n} earlier', '{n} earlier')}</p>}
             {shown.map((m) => {
               const a = authorOf(m, { me: p.me, users: p.users, channel: card.c });
               return (
@@ -252,12 +253,12 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
               e.preventDefault();
               if (!reply.trim()) return;
               p.onSendTo(card.c.id, reply.trim());
-              toast({ text: `Sent to ${nameOf(p, card.c.id)}` });
+              toast({ text: t('Sent to {name}', { name: nameOf(p, card.c.id) }) });
               act('read');
             }}
           >
-            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={`Reply to ${nameOf(p, card.c.id)}`} aria-label={`Reply to ${nameOf(p, card.c.id)}`} />
-            <button className="ai-send chat-send" disabled={!reply.trim()} aria-label="Send reply">
+            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('Reply to {name}', { name: nameOf(p, card.c.id) })} aria-label={t('Reply to {name}', { name: nameOf(p, card.c.id) })} />
+            <button className="ai-send chat-send" disabled={!reply.trim()} aria-label={t('Send reply')}>
               <ArrowUp size={16} />
             </button>
           </form>
@@ -265,14 +266,14 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
       </div>
       <div className="cu-actions">
         <button className="ghost-btn" onClick={() => act('skip')}>
-          <SkipForward size={16} /> Skip
+          <SkipForward size={16} /> {t('Skip')}
         </button>
-        <button className="primary-btn lp" {...holdRead} onClick={() => act('read')} title={left > 1 ? 'Hold to mark everything read' : undefined}>
-          <CheckCheck size={16} /> Mark read
+        <button className="primary-btn lp" {...holdRead} onClick={() => act('read')} title={left > 1 ? t('Hold to mark everything read') : undefined}>
+          <CheckCheck size={16} /> {t('Mark read')}
         </button>
       </div>
-      <p className="muted small cu-hint">{p.phone ? 'Swipe right to mark read, left to skip. Hold Mark read for all of them.' : 'Right arrow marks read, left arrow skips, Z undoes.'}</p>
-      {allOpen && <ConfirmSheet title={`Mark all ${left} read?`} text="Every conversation left here is marked read. You can undo it straight after." yes="Mark all read" onYes={markAll} onClose={() => setAllOpen(false)} />}
+      <p className="muted small cu-hint">{p.phone ? t('Swipe right to mark read, left to skip. Hold Mark read for all of them.') : t('Right arrow marks read, left arrow skips, Z undoes.')}</p>
+      {allOpen && <ConfirmSheet title={tn(left, 'Mark all {n} read?', 'Mark all {n} read?')} text={t('Every conversation left here is marked read. You can undo it straight after.')} yes={t('Mark all read')} onYes={markAll} onClose={() => setAllOpen(false)} />}
     </div>
   );
 }
@@ -284,7 +285,7 @@ function CardHead({ c, n, p }: { c: Channel; n: number; p: PagesProps }) {
         <ChanIcon c={c} users={p.users} me={p.me} />
       </span>
       <strong>{chanName(c, p.users, p.me)}</strong>
-      <span className="cu-count">{n} new</span>
+      <span className="cu-count">{tn(n, '{n} new', '{n} new')}</span>
     </span>
   );
 }
@@ -293,7 +294,7 @@ function CardHead({ c, n, p }: { c: Channel; n: number; p: PagesProps }) {
 
 function Threads(p: PagesProps & { chat: ChatState }) {
   const list = useMemo(() => followedThreads(p.messages, p.me, p.myFirst, p.chat), [p.messages, p.me, p.myFirst, p.chat.read]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!list.length) return <EmptyState icon={<MessagesSquare size={22} />} title="No threads yet" text="Threads you start, reply in or are mentioned in show up here, with new replies on top." />;
+  if (!list.length) return <EmptyState icon={<MessagesSquare size={22} />} title={t('No threads yet')} text={t('Threads you start, reply in or are mentioned in show up here, with new replies on top.')} />;
   return (
     <div className="page-list">
       {list.map(({ root, replies, unread }) => {
@@ -314,9 +315,9 @@ function Threads(p: PagesProps & { chat: ChatState }) {
               <b>{authorOf(last, ctx).first}:</b> {preview(last)}
             </span>
             <span className="pr-meta">
-              {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-              {unread ? <span className="count">{unread} new</span> : null}
-              {draft && <span className="draft-pill">Draft</span>}
+              {tn(replies.length, '{n} reply', '{n} replies')}
+              {unread ? <span className="count">{tn(unread, '{n} new', '{n} new')}</span> : null}
+              {draft && <span className="draft-pill">{t('Draft')}</span>}
             </span>
           </button>
         );
@@ -346,9 +347,9 @@ function DraftsSent(p: PagesProps & { chat: ChatState }) {
       <div className="segmented page-tabs" role="tablist">
         {(
           [
-            ['drafts', 'Drafts'],
-            ['scheduled', 'To send'],
-            ['sent', 'Sent'],
+            ['drafts', t('Drafts')],
+            ['scheduled', t('To send')],
+            ['sent', t('Sent')],
           ] as const
         ).map(([id, l]) => (
           <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
@@ -364,18 +365,18 @@ function DraftsSent(p: PagesProps & { chat: ChatState }) {
                 <ItemRow
                   key={d.key}
                   onOpen={() => p.onOpen(d.channelId, d.rootId)}
-                  where={`${d.rootId ? 'Thread in ' : ''}${nameOf(p, d.channelId)}`}
+                  where={d.rootId ? t('Thread in {name}', { name: nameOf(p, d.channelId) }) : nameOf(p, d.channelId)}
                   c={p.channels.find((x) => x.id === d.channelId)}
                   p={p}
                   time={relative(d.at)}
                   text={d.text}
                   icon={<PenLine size={13} />}
-                  actions={[{ label: 'Delete draft', icon: Trash2, danger: true, run: () => (chat.setDraft(d.key, ''), toastUndo('Draft deleted', () => chat.setDraft(d.key, d.text))) }]}
+                  actions={[{ label: t('Delete draft'), icon: Trash2, danger: true, run: () => (chat.setDraft(d.key, ''), toastUndo(t('Draft deleted'), () => chat.setDraft(d.key, d.text))) }]}
                 />
               ))}
             </div>
           ) : (
-            <EmptyState compact text="No drafts. Anything you start writing and leave stays here until you send it." />
+            <EmptyState compact text={t('No drafts. Anything you start writing and leave stays here until you send it.')} />
           ))}
         {tab === 'scheduled' &&
           (waiting.length ? (
@@ -387,43 +388,43 @@ function DraftsSent(p: PagesProps & { chat: ChatState }) {
                   where={nameOf(p, m.channelId)}
                   c={p.channels.find((x) => x.id === m.channelId)}
                   p={p}
-                  time={`Goes ${whenText(m.sendAt!)}`}
+                  time={t('Goes {when}', { when: whenText(m.sendAt!) })}
                   text={preview(m)}
                   icon={<Clock size={13} />}
                   buttons={
                     <>
-                      <button className="ghost-btn sm" onClick={() => (p.onSendNow(m.id), toast({ text: `Sent to ${nameOf(p, m.channelId)}` }))}>
-                        <Send size={14} /> Send now
+                      <button className="ghost-btn sm" onClick={() => (p.onSendNow(m.id), toast({ text: t('Sent to {name}', { name: nameOf(p, m.channelId) }) }))}>
+                        <Send size={14} /> {t('Send now')}
                       </button>
                       <button className="ghost-btn sm" onClick={() => setWhen(m)}>
-                        <Clock size={14} /> Change time
+                        <Clock size={14} /> {t('Change time')}
                       </button>
                     </>
                   }
                   actions={[
-                    { label: 'Send now', icon: SendHorizontal, run: () => p.onSendNow(m.id) },
-                    { label: 'Change time', icon: Clock, run: () => setWhen(m) },
-                    { label: 'Delete', icon: Trash2, danger: true, run: () => setDel(m) },
+                    { label: t('Send now'), icon: SendHorizontal, run: () => p.onSendNow(m.id) },
+                    { label: t('Change time'), icon: Clock, run: () => setWhen(m) },
+                    { label: t('Delete'), icon: Trash2, danger: true, run: () => setDel(m) },
                   ]}
                 />
               ))}
             </div>
           ) : (
-            <EmptyState compact text="Nothing waiting. Hold Send (or use its arrow) to send a message later." />
+            <EmptyState compact text={t('Nothing waiting. Hold Send (or use its arrow) to send a message later.')} />
           ))}
         {tab === 'sent' &&
           (sent.length ? (
             <div className="page-list">
               {sent.map((m) => (
-                <ItemRow key={m.id} onOpen={() => p.onOpen(m.channelId, m.id)} where={`${m.parentId ? 'Thread in ' : ''}${nameOf(p, m.channelId)}`} c={p.channels.find((x) => x.id === m.channelId)} p={p} time={relative(m.at)} text={preview(m)} />
+                <ItemRow key={m.id} onOpen={() => p.onOpen(m.channelId, m.id)} where={m.parentId ? t('Thread in {name}', { name: nameOf(p, m.channelId) }) : nameOf(p, m.channelId)} c={p.channels.find((x) => x.id === m.channelId)} p={p} time={relative(m.at)} text={preview(m)} />
               ))}
             </div>
           ) : (
-            <EmptyState compact text="Nothing sent yet." />
+            <EmptyState compact text={t('Nothing sent yet.')} />
           ))}
       </TabPane>
-      {when && <WhenSheet title="Change when it goes" kind="send" onPick={(at) => (p.onReschedule(when.id, at), toast({ text: `Goes ${whenText(at)}` }))} onClose={() => setWhen(null)} />}
-      {del && <ConfirmSheet title="Delete this message?" text="It won’t be sent. Nobody saw it yet." yes="Delete" onYes={() => p.onDelete(del.id)} onClose={() => setDel(null)} />}
+      {when && <WhenSheet title={t('Change when it goes')} kind="send" onPick={(at) => (p.onReschedule(when.id, at), toast({ text: t('Goes {when}', { when: whenText(at) }) }))} onClose={() => setWhen(null)} />}
+      {del && <ConfirmSheet title={t('Delete this message?')} text={t('It won’t be sent. Nobody saw it yet.')} yes={t('Delete')} onYes={() => p.onDelete(del.id)} onClose={() => setDel(null)} />}
     </div>
   );
 }
@@ -433,16 +434,16 @@ function DraftsSent(p: PagesProps & { chat: ChatState }) {
 function Saved(p: PagesProps & { chat: ChatState }) {
   const { chat } = p;
   const [remind, setRemind] = useState<SavedItem | null>(null);
-  if (!chat.saved.length) return <EmptyState icon={<Bookmark size={22} />} title="Nothing saved" text="Hold a message (or use its menu) and choose Save or Remind me. It waits here." />;
+  if (!chat.saved.length) return <EmptyState icon={<Bookmark size={22} />} title={t('Nothing saved')} text={t('Hold a message (or use its menu) and choose Save or Remind me. It waits here.')} />;
   const items = [...chat.saved].sort((a, b) => Number(!!b.remindAt && !b.reminded) - Number(!!a.remindAt && !a.reminded) || (a.remindAt ?? '').localeCompare(b.remindAt ?? '') || b.at.localeCompare(a.at));
   return (
     <div className="page-list">
       {items.map((s) => {
         const m = p.messages.find((x) => x.id === s.id);
         const c = p.channels.find((x) => x.id === s.channelId);
-        const remove: SheetAction = { label: 'Remove from saved', icon: Trash2, danger: true, run: () => (chat.unsave(s.id), toastUndo('Removed from saved', () => chat.restoreSaved(s))) };
+        const remove: SheetAction = { label: t('Remove from saved'), icon: Trash2, danger: true, run: () => (chat.unsave(s.id), toastUndo(t('Removed from saved'), () => chat.restoreSaved(s))) };
         if (!m)
-          return <ItemRow key={s.id} where={nameOf(p, s.channelId)} c={c} p={p} time={relative(s.at)} text="This message isn’t here any more (deleted, or you left the conversation)." muted actions={[remove]} />;
+          return <ItemRow key={s.id} where={nameOf(p, s.channelId)} c={c} p={p} time={relative(s.at)} text={t('This message isn’t here any more (deleted, or you left the conversation).')} muted actions={[remove]} />;
         const a = authorOf(m, { me: p.me, users: p.users, channel: c ?? ({ id: s.channelId, members: [], kind: 'channel', name: '', workspaceId: '' } as Channel) });
         return (
           <ItemRow
@@ -451,18 +452,18 @@ function Saved(p: PagesProps & { chat: ChatState }) {
             where={nameOf(p, m.channelId)}
             c={c}
             p={p}
-            time={s.remindAt && !s.reminded ? `Reminder ${whenText(s.remindAt)}` : s.reminded ? 'Reminded' : `Saved ${relative(s.at)}`}
+            time={s.remindAt && !s.reminded ? t('Reminder {when}', { when: whenText(s.remindAt) }) : s.reminded ? t('Reminded') : t('Saved {when}', { when: relative(s.at) })}
             text={`${a.first}: ${preview(m)}`}
             icon={s.remindAt && !s.reminded ? <Clock size={13} /> : <Bookmark size={13} />}
-            actions={[{ label: s.remindAt && !s.reminded ? 'Change reminder' : 'Remind me', icon: Clock, run: () => setRemind(s) }, ...(s.remindAt && !s.reminded ? [{ label: 'No reminder', icon: RotateCcw, run: () => chat.restoreSaved({ id: s.id, channelId: s.channelId, at: s.at }) }] : []), remove]}
+            actions={[{ label: s.remindAt && !s.reminded ? t('Change reminder') : t('Remind me'), icon: Clock, run: () => setRemind(s) }, ...(s.remindAt && !s.reminded ? [{ label: t('No reminder'), icon: RotateCcw, run: () => chat.restoreSaved({ id: s.id, channelId: s.channelId, at: s.at }) }] : []), remove]}
           />
         );
       })}
       {remind && (
         <WhenSheet
-          title="Remind me"
+          title={t('Remind me')}
           kind="remind"
-          onPick={(at) => (chat.restoreSaved({ id: remind.id, channelId: remind.channelId, at: remind.at, remindAt: at }), toast({ text: `You’ll be reminded ${whenText(at)}` }))}
+          onPick={(at) => (chat.restoreSaved({ id: remind.id, channelId: remind.channelId, at: remind.at, remindAt: at }), toast({ text: t('You’ll be reminded {when}', { when: whenText(at) }) }))}
           onClose={() => setRemind(null)}
         />
       )}
@@ -487,7 +488,7 @@ function ItemRow({ where, c, p, time, text, icon, onOpen, actions, buttons, mute
           <span className="pr-text">{text}</span>
         </button>
         {!p.phone && !!actions?.length && (
-          <button ref={more} className="icon-btn sm pi-more" onClick={() => menu.openFrom(more)} aria-label="More">
+          <button ref={more} className="icon-btn sm pi-more" onClick={() => menu.openFrom(more)} aria-label={t('More')}>
             <MoreHorizontal size={15} />
           </button>
         )}
