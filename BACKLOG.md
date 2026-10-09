@@ -20,7 +20,7 @@ Each of these is built and switched off until its key or account exists; the app
 
 ## In progress
 
-Nothing running. The 9 Oct "do everything" pass is merged and live; see Done.
+The phone redesign and every other buildable item, built locally (not pushed or deployed until Aqeel says): see docs/mobile-plan.md for the phases, the defaults used and the waves.
 
 ## Later
 
