@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
-import { AlarmClock, Check, Clock, Lock, Mail, MapPin, Mic, Pencil, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
+import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef, RsvpStatus } from '../../types';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../../meetingLinks';
 import { Avatar } from '../Avatar';
 import { Badge, type BadgeTone } from '../ui/Person';
 import { Sheet } from '../ui/Sheet';
-import { isPending, startsIn, whenLine } from './calTools';
+import { fromWall, isPending, startsIn, wallIn, whenLine, zoneCity } from './calTools';
+import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
 
 export type GuestAnswer = RsvpStatus | 'needs-action' | 'delegated';
@@ -131,6 +132,17 @@ function DetailBody(p: DetailProps) {
         {whenLine(new Date(event.start), new Date(event.end), event.allDay)}
         {soon && !event.allDay && <em className="ev-soon">{startMs <= now ? 'Now' : startsIn(event, now)}</em>}
       </Row>
+      {event.timeZone && isZone(event.timeZone) && event.timeZone !== deviceTz() && !event.allDay && (
+        <Row icon={<Globe size={16} />} muted>
+          {(() => {
+            // The same moments on the clock where it was set.
+            const s = wallIn(new Date(event.start), event.timeZone);
+            const e = wallIn(new Date(event.end), event.timeZone);
+            const t = (w: { date: string; time: string }) => fromWall(w.date, w.time, null).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            return `${t(s)} to ${t(e)} in ${zoneCity(event.timeZone)}`;
+          })()}
+        </Row>
+      )}
       {link && !ended && (
         <div className="ev-join">
           <a className="primary-btn ev-join-btn" href={link.url} target="_blank" rel="noopener noreferrer">

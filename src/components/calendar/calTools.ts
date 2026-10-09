@@ -1,5 +1,6 @@
 import type { CalEvent } from '../../types';
-import { addDays, eventsOn, sameDay, startOfDay, startOfWeek } from '../../calendarUtils';
+import { addDays, eventsOn, sameDay, startOfDay, startOfWeek, toDateInput, toTimeInput } from '../../calendarUtils';
+import { localParts, zonedTime } from '../../jobTimes';
 
 /**
  * The calendar's views. Phones get Schedule, Day, 3 Day and Month; Week (seven columns) only when the pane is wide
@@ -111,3 +112,19 @@ export const snap15 = (ms: number) => Math.round(ms / (15 * 60_000)) * 15 * 60_0
 
 /** The link to an event inside sprint2go (Copy link). */
 export const eventLink = (id: string) => `${location.origin}/calendar?event=${encodeURIComponent(id)}`;
+
+const two = (n: number) => String(n).padStart(2, '0');
+/** A moment as the date and clock time on a wall in `tz` (null: this device). */
+export function wallIn(d: Date, tz: string | null) {
+  if (!tz) return { date: toDateInput(d), time: toTimeInput(d) };
+  const p = localParts(d.getTime(), tz);
+  return { date: p.day, time: `${two(p.hour)}:${two(p.minute)}` };
+}
+/** The moment a date and clock time in `tz` is (null: this device). */
+export function fromWall(date: string, time: string, tz: string | null) {
+  if (!tz) return new Date(`${date}T${time}`);
+  const [h, m] = time.split(':').map(Number);
+  return new Date(zonedTime(date, h, tz) + (m || 0) * 60_000);
+}
+/** "Singapore" from "Asia/Singapore". */
+export const zoneCity = (tz: string) => tz.split('/').pop()!.replace(/_/g, ' ');

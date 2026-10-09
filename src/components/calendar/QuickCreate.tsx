@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { CalEvent, CalendarDef, Person, User } from '../../types';
-import { toDateInput, toTimeInput } from '../../calendarUtils';
+import { fromWall, wallIn } from './calTools';
 import { Sheet } from '../ui/Sheet';
 import { Draft, draftEvent, draftTimes, EventForm } from './EventForm';
 
@@ -30,12 +30,18 @@ export function QuickCreate({
   onSave: (e: Omit<CalEvent, 'id'>, kind: 'event' | 'task') => void;
   onClose: () => void;
 }) {
-  const [rest, setRest] = useState<Omit<Draft, 'date' | 'from' | 'to'>>({ kind: 'event', title: '', allDay: false, calendarId: calendars[0].id, guests: [], location: '', meetUrl: '', notes: '', remind: null });
+  const [rest, setRest] = useState<Omit<Draft, 'date' | 'from' | 'to'>>({ kind: 'event', title: '', allDay: false, calendarId: calendars[0].id, guests: [], location: '', meetUrl: '', notes: '', remind: null, tz: null });
   const [more, setMore] = useState(false);
-  const draft: Draft = { ...rest, date: toDateInput(quick.start), from: toTimeInput(quick.start), to: toTimeInput(quick.end) };
+  const s0 = wallIn(quick.start, rest.tz);
+  const draft: Draft = { ...rest, date: s0.date, from: s0.time, to: wallIn(quick.end, rest.tz).time };
   const set = (p: Partial<Draft>) => {
     const { date, from, to, ...other } = p;
     if (Object.keys(other).length) setRest((r) => ({ ...r, ...other }));
+    // Another time zone keeps the same clock times: the block moves to where they fall here.
+    if ('tz' in other && other.tz !== rest.tz) {
+      onTimes(fromWall(draft.date, draft.from, other.tz ?? null), fromWall(draft.date, draft.to, other.tz ?? null));
+      return;
+    }
     if (date !== undefined || from !== undefined || to !== undefined) {
       const d = { ...draft, ...p };
       const { start, end, ok } = draftTimes({ ...d, allDay: false });

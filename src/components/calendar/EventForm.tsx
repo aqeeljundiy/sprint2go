@@ -1,7 +1,9 @@
 import { useState, type RefObject } from 'react';
-import { AlarmClock, CalendarCheck, CalendarDays, Check, ChevronDown, MapPin, StickyNote, Sun, Video } from 'lucide-react';
+import { AlarmClock, CalendarCheck, CalendarDays, Check, ChevronDown, Globe, MapPin, StickyNote, Sun, Video } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, User } from '../../types';
-import { toDateInput, toTimeInput } from '../../calendarUtils';
+import { deviceTz, isZone } from '../../jobTimes';
+import { zoneOptions } from '../ui/zones';
+import { fromWall, wallIn } from './calTools';
 import { DatePicker, TimePicker } from '../ui/DatePicker';
 import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
@@ -21,18 +23,21 @@ export interface Draft {
   meetUrl: string;
   notes: string;
   remind: number | null; // minutes before the start
+  tz: string | null; // the times are in this time zone (null: this device's)
 }
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 export function draftOf(start: Date, end: Date, calendarId: string, e?: CalEvent): Draft {
+  const tz = e?.timeZone && isZone(e.timeZone) && e.timeZone !== deviceTz() ? e.timeZone : null;
+  const s = wallIn(start, tz);
   return {
     kind: 'event',
     title: e?.title ?? '',
-    date: toDateInput(start),
-    from: toTimeInput(start),
-    to: toTimeInput(end),
+    date: s.date,
+    from: s.time,
+    to: wallIn(end, tz).time,
     allDay: !!e?.allDay,
     calendarId: e?.calendarId ?? calendarId,
     guests: e?.guests ?? [],
@@ -40,14 +45,14 @@ export function draftOf(start: Date, end: Date, calendarId: string, e?: CalEvent
     meetUrl: e?.meetUrl ?? '',
     notes: e?.notes ?? '',
     remind: e?.remind ?? null,
+    tz,
   };
 }
 
-/** The draft's start and end (an all-day event ends the next midnight). */
+/** The draft's start and end (an all-day event ends the next midnight; times in another zone are read in it). */
 export function draftTimes(d: Draft) {
-  const start = new Date(`${d.date}T${d.allDay ? '00:00' : d.from}`);
-  let end = new Date(`${d.date}T${d.allDay ? '00:00' : d.to}`);
-  if (d.allDay) end = new Date(start.getTime() + 86_400_000);
+  const start = d.allDay ? new Date(`${d.date}T00:00`) : fromWall(d.date, d.from, d.tz);
+  const end = d.allDay ? new Date(start.getTime() + 86_400_000) : fromWall(d.date, d.to, d.tz);
   return { start, end, ok: !isNaN(start.getTime()) && end > start };
 }
 
@@ -66,8 +71,13 @@ export function draftEvent(d: Draft): Omit<CalEvent, 'id'> {
     notes: d.notes.trim() || undefined,
     guests: d.guests.length ? d.guests : undefined,
     remind: d.remind ?? undefined,
+    timeZone: d.tz && !d.allDay ? d.tz : undefined,
   };
 }
+
+const SOURCE: Record<string, string> = { google: 'Google', microsoft: 'Outlook', icloud: 'iCloud', ics: 'link' };
+/** A calendar's name, with where it lives when another one has the same name ("Personal" and "Personal, Google"). */
+export const calName = (c: CalendarDef, all: CalendarDef[]) => (c.source && SOURCE[c.source] && all.some((x) => x !== c && x.name === c.name) ? `${c.name}, ${SOURCE[c.source]}` : c.name);
 
 const REMIND: { value: string; label: string }[] = [
   { value: '0', label: 'When it starts' },
@@ -79,7 +89,7 @@ const REMIND: { value: string; label: string }[] = [
 ];
 export const remindWords = (m: number) => REMIND.find((r) => r.value === String(m))?.label ?? `${m} minutes before`;
 
-type Extra = 'location' | 'meet' | 'notes' | 'remind' | 'calendar';
+type Extra = 'location' | 'meet' | 'notes' | 'remind' | 'calendar' | 'tz';
 
 /**
  * The fields of an event: title, Event or Task, when, guests; then the optional ones as quiet words (All day, Video
@@ -115,7 +125,7 @@ export function EventForm({
 }) {
   const [opened, setOpened] = useState<Set<Extra>>(() => new Set());
   const open = (x: Extra) => setOpened((s) => new Set(s).add(x));
-  const shows = (x: Extra) => opened.has(x) || (x === 'location' && !!draft.location) || (x === 'meet' && !!draft.meetUrl) || (x === 'notes' && !!draft.notes) || (x === 'remind' && draft.remind !== null);
+  const shows = (x: Extra) => opened.has(x) || (x === 'location' && !!draft.location) || (x === 'meet' && !!draft.meetUrl) || (x === 'notes' && !!draft.notes) || (x === 'remind' && draft.remind !== null) || (x === 'tz' && !!draft.tz && !draft.allDay);
   const task = draft.kind === 'task';
   // Moving the start keeps the length (a 1 hour meeting stays 1 hour), the way calendars do.
   const moveStart = (v: string) => {
@@ -131,9 +141,10 @@ export function EventForm({
           { id: 'location', label: 'Location', icon: MapPin },
         ] as const)
       : []),
+    ...(!draft.allDay ? [{ id: 'tz' as const, label: 'Time zone', icon: Globe }] : []),
     { id: 'remind', label: 'Reminder', icon: AlarmClock },
     { id: 'notes', label: 'Notes', icon: StickyNote },
-    ...(!task && calendars.length > 1 ? [{ id: 'calendar' as const, label: cal ? cal.name : 'Calendar', icon: CalendarDays }] : []),
+    ...(!task && calendars.length > 1 ? [{ id: 'calendar' as const, label: cal ? calName(cal, calendars) : 'Calendar', icon: CalendarDays }] : []),
   ];
   const tokens = quiet.filter((q) => q.id === 'allday' || !shows(q.id as Extra));
   return (
@@ -186,6 +197,21 @@ export function EventForm({
                 <input autoFocus={opened.has('location') && !draft.location} value={draft.location} onChange={(e) => set({ location: e.target.value })} placeholder="Where" aria-label="Location" />
               </label>
             )}
+            {shows('tz') && !draft.allDay && (
+              <div className="ev-extra">
+                <Globe size={16} />
+                <Select<string>
+                  value={draft.tz ?? deviceTz()}
+                  // The same clock times, now in the chosen zone ("10:00, Singapore time").
+                  onChange={(v) => set({ tz: v === deviceTz() ? null : v })}
+                  options={zoneOptions(draft.tz ?? deviceTz())}
+                  label="Time zone"
+                  title="The times are in"
+                  searchable
+                  className="sel-flat"
+                />
+              </div>
+            )}
             {shows('remind') && (
               <div className="ev-extra">
                 <AlarmClock size={16} />
@@ -211,7 +237,7 @@ export function EventForm({
                 {calendars.map((c) => (
                   <button key={c.id} type="button" role="radio" aria-checked={draft.calendarId === c.id} className={draft.calendarId === c.id ? 'on' : ''} style={{ ['--c' as string]: c.color }} onClick={() => set({ calendarId: c.id })}>
                     <span className="dot" style={{ background: c.color }} />
-                    {c.name}
+                    {calName(c, calendars)}
                   </button>
                 ))}
               </div>
