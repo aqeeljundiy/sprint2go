@@ -1,6 +1,8 @@
 import { TabBar } from './ui/TabBar';
 import { ProjectBadge } from './ProjectBadge';
-import { MEETING_LANGUAGES, languageName, languagesText } from '../data/languages';
+import { MEETING_LANGUAGES, languageLabel, languagesLabel } from '../data/languages';
+import { t, tn, tx, mark } from '../i18n';
+import { fmtDate, fmtList, fmtNumber, fmtTime, fmtDay } from '../i18n/format';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight, TabPane } from './ui/Smooth';
@@ -44,23 +46,42 @@ import { Popover } from './ui/Popover';
 
 export type MeetPage = { kind: 'list' } | { kind: 'unfiled' } | { kind: 'upcoming' } | { kind: 'tasks' } | { kind: 'folder'; clientId: string } | { kind: 'meeting'; id: string };
 
+/** A meeting's status. Show it with t(). */
 export const STATUS_LABEL: Record<NonNullable<Meeting['status']>, string> = {
-  queued: 'Queued',
-  joining: 'Joining',
-  waiting_room: 'Waiting to be let in',
-  recording: 'Recording',
-  stopping: 'Stopping',
-  processing: 'Writing notes',
-  done: 'Done',
-  failed: 'Failed',
-  stopped: 'Stopped',
+  queued: mark('Queued'),
+  joining: mark('Joining'),
+  waiting_room: mark('Waiting to be let in'),
+  recording: mark('Recording'),
+  stopping: mark('Stopping'),
+  processing: mark('Writing notes'),
+  done: mark('Done'),
+  failed: mark('Failed'),
+  stopped: mark('Stopped'),
 };
 export const LIVE = new Set(['queued', 'joining', 'waiting_room', 'recording', 'stopping', 'processing']);
-export const TYPE_LABEL: Record<MeetingType, string> = { sales: 'Sales', get client() { return `${term.One}`; }, internal: 'Internal', hiring: 'Hiring', partner: 'Partner', one_on_one: '1:1', other: 'Other' };
+// Getters: the words come in the language on screen when they're read.
+export const TYPE_LABEL: Record<MeetingType, string> = {
+  get sales() { return t('Sales'); },
+  get client() { return term.One; },
+  get internal() { return t('Internal'); },
+  get hiring() { return t('Hiring'); },
+  get partner() { return t('Partner'); },
+  one_on_one: '1:1',
+  get other() { return t('Other'); },
+};
 // Video is a company choice (Beta); a meeting only shows video when the bot actually recorded it.
-const KEEP_LABEL = { video: 'Video, audio and notes', audio: 'Audio and notes', notes: 'Notes and transcript only' } as const;
+const KEEP_LABEL = { video: mark('Video, audio and notes'), audio: mark('Audio and notes'), notes: mark('Notes and transcript only') } as const;
 export const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-const sizeOf = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : mb < 1 ? 'Under 1 MB' : `${Math.round(mb)} MB`);
+const sizeOf = (mb: number) => (mb >= 1000 ? `${fmtNumber(mb / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB` : mb < 1 ? t('Under 1 MB') : `${fmtNumber(Math.round(mb))} MB`);
+/** A log line's time with seconds: "14:30:05" / "14.30.05". */
+const logTime = (at: string) => fmtDate(at, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+/** "45 min", "1 h 20 min" / "45 menit", "1 jam 20 menit". */
+const hoursOf = (min: number) => {
+  const all = Math.round(min);
+  const h = Math.floor(all / 60);
+  const m = all % 60;
+  return h ? (m ? t('{h} h {m} min', { h, m }) : tn(h, '{n} h', '{n} h')) : tn(all, '{n} min', '{n} min');
+};
 
 /* ---------------- Sidebar ---------------- */
 
@@ -80,31 +101,31 @@ export function MeetSidebar({ page, meetings, clients, canSend, onPage, onSend, 
   return (
     <>
       {canSend && (
-        <button className="compose-btn" onClick={onSend} title="Send the notetaker to a meeting">
+        <button className="compose-btn" onClick={onSend} title={t('Send the notetaker to a meeting')}>
           <Bot size={16} />
-          <span className="sb-label">Send bot to a meeting</span>
+          <span className="sb-label">{t('Send bot to a meeting')}</span>
         </button>
       )}
       <nav className="nav">
-        <button className={`nav-item ${is('list') ? 'active' : ''}`} onClick={() => onPage({ kind: 'list' })} title="Meetings">
+        <button className={`nav-item ${is('list') ? 'active' : ''}`} onClick={() => onPage({ kind: 'list' })} title={t('Meetings')}>
           <Video size={17} />
-          <span className="sb-label">Meetings</span>
-          {live ? <span className="count live-count">{live} live</span> : null}
+          <span className="sb-label">{t('Meetings')}</span>
+          {live ? <span className="count live-count">{tn(live, '{n} live', '{n} live')}</span> : null}
         </button>
-        <button className={`nav-item ${is('upcoming') ? 'active' : ''}`} onClick={() => onPage({ kind: 'upcoming' })} title="Upcoming">
+        <button className={`nav-item ${is('upcoming') ? 'active' : ''}`} onClick={() => onPage({ kind: 'upcoming' })} title={t('Upcoming')}>
           <CalendarClock size={17} />
-          <span className="sb-label">Upcoming</span>
+          <span className="sb-label">{t('Upcoming')}</span>
         </button>
-        <button className={`nav-item ${is('tasks') ? 'active' : ''}`} onClick={() => onPage({ kind: 'tasks' })} title="Tasks from meetings">
+        <button className={`nav-item ${is('tasks') ? 'active' : ''}`} onClick={() => onPage({ kind: 'tasks' })} title={t('Tasks from meetings')}>
           <ListChecks size={17} />
-          <span className="sb-label">Tasks from meetings</span>
+          <span className="sb-label">{t('Tasks from meetings')}</span>
         </button>
-        <button className="nav-item" onClick={onAsk} title="Ask AI about your meetings">
+        <button className="nav-item" onClick={onAsk} title={t('Ask AI about your meetings')}>
           <MessageCircleQuestion size={17} />
-          <span className="sb-label">Ask AI</span>
+          <span className="sb-label">{t('Ask AI')}</span>
         </button>
       </nav>
-      <div className="nav-heading sb-label">Folders</div>
+      <div className="nav-heading sb-label">{t('Folders')}</div>
       <nav className="nav">
         {clients.map((c) => {
           return (
@@ -114,14 +135,14 @@ export function MeetSidebar({ page, meetings, clients, canSend, onPage, onSend, 
             </button>
           );
         })}
-        <button className={`nav-item ${is('unfiled') ? 'active' : ''}`} onClick={() => onPage({ kind: 'unfiled' })} title="Unfiled">
+        <button className={`nav-item ${is('unfiled') ? 'active' : ''}`} onClick={() => onPage({ kind: 'unfiled' })} title={t('Unfiled')}>
           <Inbox size={16} />
-          <span className="sb-label">Unfiled</span>
-          {unfiled ? <span className="count warn-count" title="Meetings to file">{unfiled}</span> : null}
+          <span className="sb-label">{t('Unfiled')}</span>
+          {unfiled ? <span className="count warn-count" title={t('Meetings to file')}>{unfiled}</span> : null}
         </button>
-        <button className="nav-item" onClick={onSettings} title="Meeting settings">
+        <button className="nav-item" onClick={onSettings} title={t('Meeting settings')}>
           <Folder size={16} />
-          <span className="sb-label">Filing rules & settings</span>
+          <span className="sb-label">{t('Filing rules & settings')}</span>
         </button>
       </nav>
     </>
@@ -182,18 +203,18 @@ import { useActionMenu } from './ui/ActionSheet';
 
 export function MeetView(p: MeetProps) {
   const pg = p.page;
-  useCreateAction('meet', p.canSendBot !== false && { label: 'Send the notetaker', icon: Bot, run: p.onSend });
+  useCreateAction('meet', p.canSendBot !== false && { label: t('Send the notetaker'), icon: Bot, run: p.onSend });
   if (pg.kind === 'meeting') {
     const m = p.meetings.find((x) => x.id === pg.id);
     if (!m)
       return (
         <section className="meet-pane meet-empty view-enter">
           <EmptyState
-            title="Not found"
-            text="This meeting doesn’t exist in this workspace."
+            title={t('Not found')}
+            text={t('This meeting doesn’t exist in this workspace.')}
             action={
               <button className="ghost-btn" onClick={() => p.onPage({ kind: 'list' })}>
-                Back to meetings
+                {t('Back to meetings')}
               </button>
             }
           />
@@ -210,7 +231,7 @@ export function MeetView(p: MeetProps) {
 function Head({ title, sub, onMenu, children }: { title: React.ReactNode; sub?: React.ReactNode; onMenu: () => void; children?: React.ReactNode }) {
   return (
     <header className="tracking-head">
-      <button className="icon-btn menu-btn" onClick={onMenu} aria-label="Open menu">
+      <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>
         <Menu size={18} />
       </button>
       <div className="th-text">
@@ -224,7 +245,7 @@ function Head({ title, sub, onMenu, children }: { title: React.ReactNode; sub?: 
 
 function StatusPill({ m }: { m: Meeting }) {
   const s = m.status ?? 'done';
-  return <span className={`m-status s-${s}`}>{LIVE.has(s) && <i />}{STATUS_LABEL[s]}</span>;
+  return <span className={`m-status s-${s}`}>{LIVE.has(s) && <i />}{t(STATUS_LABEL[s])}</span>;
 }
 
 function MeetingRows({ list, clients, tasks, onOpen, onFile, showStatusDone = false }: { list: Meeting[]; clients: Client[]; tasks: Todo[]; onOpen: (id: string) => void; onFile?: (id: string, clientId: string) => void; showStatusDone?: boolean }) {
@@ -232,7 +253,7 @@ function MeetingRows({ list, clients, tasks, onOpen, onFile, showStatusDone = fa
     <div className="m-rows">
       {list.map((m) => {
         const c = clients.find((x) => x.id === m.clientId);
-        const open = tasks.filter((t) => t.meetingId === m.id && !t.done).length;
+        const open = tasks.filter((tk) => tk.meetingId === m.id && !tk.done).length;
         return (
           <div key={m.id} className="m-row" role="button" tabIndex={0} onClick={(e) => !(e.target as HTMLElement).closest('.sel, .pop') && onOpen(m.id)} onKeyDown={(e) => e.key === 'Enter' && onOpen(m.id)}>
             <span className={`plat ${m.platform ?? 'meet'}`}>{m.platform === 'zoom' ? 'Zm' : 'GM'}</span>
@@ -241,8 +262,8 @@ function MeetingRows({ list, clients, tasks, onOpen, onFile, showStatusDone = fa
               <small>
                 {fullDate(m.at)}
                 {m.type ? ` · ${TYPE_LABEL[m.type]}` : ''}
-                {open ? ` · ${open} open task${open > 1 ? 's' : ''}` : ''}
-                {m.error && <span className="m-err"> · {m.error}</span>}
+                {open ? ` · ${tn(open, '{n} open task', '{n} open tasks')}` : ''}
+                {m.error && <span className="m-err"> · {t(m.error)}</span>}
               </small>
             </span>
             {c && (
@@ -253,7 +274,7 @@ function MeetingRows({ list, clients, tasks, onOpen, onFile, showStatusDone = fa
             {!c && onFile && (!m.status || m.status === 'done') && (
               // Not filed yet: file it right here.
               <span onClick={(e) => e.stopPropagation()}>
-                <Select value="" onChange={(v) => onFile(m.id, v)} label="File under" placeholder="File under…" className="sel-flat" options={clients.map((x) => ({ value: x.id, label: x.name }))} />
+                <Select value="" onChange={(v) => onFile(m.id, v)} label={t('File under')} placeholder={t('File under…')} className="sel-flat" options={clients.map((x) => ({ value: x.id, label: x.name }))} />
               </span>
             )}
             {(showStatusDone || m.status !== 'done') && m.status && <StatusPill m={m} />}
@@ -278,7 +299,7 @@ function useFilter(list: Meeting[]) {
   const bar = (placeholder: string) => (
     <div className="m-filters">
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} />
-      <Select value={type} onChange={setType} label="Type" options={[{ value: '', label: 'All types' }, ...Object.entries(TYPE_LABEL).map(([v, l]) => ({ value: v, label: l }))]} />
+      <Select value={type} onChange={setType} label={t('Type')} options={[{ value: '', label: t('All types') }, ...Object.entries(TYPE_LABEL).map(([v, l]) => ({ value: v, label: l }))]} />
     </div>
   );
   return { shown, bar, filtering: !!(q || type) };
@@ -289,15 +310,15 @@ function MeetingList(p: MeetProps & { unfiled: boolean }) {
   const { shown, bar, filtering } = useFilter(list);
   return (
     <section className="meet-pane view-enter">
-      <Head title={p.unfiled ? 'Unfiled' : 'Meetings'} sub={p.unfiled ? `Meetings that didn’t fit a ${term.one} yet.` : 'Every meeting the notetaker has joined in this workspace.'} onMenu={p.onMenu}>
+      <Head title={p.unfiled ? t('Unfiled') : t('Meetings')} sub={p.unfiled ? t('Meetings that didn’t fit a {project} yet.', { project: term.one }) : t('Every meeting the notetaker has joined in this workspace.')} onMenu={p.onMenu}>
         <button className="primary-btn sm" onClick={p.onSend}>
-          <Bot size={14} /> Send bot
+          <Bot size={14} /> {t('Send bot')}
         </button>
       </Head>
       <div className="tracking-scroll">
-        {bar('Search titles, notes and transcripts')}
+        {bar(t('Search titles, notes and transcripts'))}
         <MeetingRows list={shown} clients={p.clients} tasks={p.tasks} onOpen={(id) => p.onPage({ kind: 'meeting', id })} onFile={(id, cid) => p.onFolder(id, cid, false)} />
-        {shown.length === 0 && <EmptyState compact text={filtering ? 'Nothing matches.' : 'No meetings here yet. Use “Send bot to a meeting”.'} />}
+        {shown.length === 0 && <EmptyState compact text={filtering ? t('Nothing matches.') : t('No meetings here yet. Use “{send}”.', { send: t('Send bot to a meeting') })} />}
       </div>
     </section>
   );
@@ -318,8 +339,8 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
   const status = m.status ?? 'done';
   const live = LIVE.has(status);
   const client = p.clients.find((c) => c.id === m.clientId);
-  const mTasks = p.tasks.filter((t) => t.meetingId === m.id);
-  const doneN = mTasks.filter((t) => t.done).length;
+  const mTasks = p.tasks.filter((tk) => tk.meetingId === m.id);
+  const doneN = mTasks.filter((tk) => tk.done).length;
   const speakers = [...new Set((m.transcript ?? []).map((l) => l.speaker))];
   const rawKeep = m.recording?.keep ?? (status === 'done' ? p.settings.keep : undefined);
   const keep = rawKeep === 'video' && !m.recording?.videoUrl ? 'audio' : rawKeep; // demo and older meetings have no real video
@@ -336,8 +357,8 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
       return;
     }
     if (!playing) return;
-    const t = setInterval(() => setTime((x) => (x + 1000 >= duration ? (setPlaying(false), duration) : x + 1000)), 250);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setTime((x) => (x + 1000 >= duration ? (setPlaying(false), duration) : x + 1000)), 250);
+    return () => clearInterval(timer);
   }, [playing, duration, real]);
   useEffect(() => {
     if (tab === 'transcript' && live) tEnd.current?.scrollIntoView({ block: 'end' });
@@ -350,19 +371,25 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
   };
 
   const copy = async () => {
+    const section = (h: string, list?: string[]) => ['', t(h), ...(list?.length ? list.map((x) => `- ${x}`) : [`- ${t('None')}`])];
+    const taskLine = (tk: Todo) => {
+      const who = tk.userId ? p.users.find((u) => u.id === tk.userId)?.name : undefined;
+      const task = who ? `${tk.title} (${who})` : tk.title;
+      return `[${tk.done ? 'x' : ' '}] ${tk.due ? t('{task}, due {due}', { task, due: fmtDay(tk.due) }) : task}`;
+    };
     const lines =
       tab === 'summary'
-        ? [m.title, '', m.summary, '', 'Key points', ...(m.keyPoints?.length ? m.keyPoints.map((x) => `- ${x}`) : ['- None']), '', 'Decisions', ...(m.decisions?.length ? m.decisions.map((x) => `- ${x}`) : ['- None']), '', 'Open questions', ...(m.openQuestions?.length ? m.openQuestions.map((x) => `- ${x}`) : ['- None'])]
+        ? [m.title, '', m.summary, ...section(mark('Key points'), m.keyPoints), ...section(mark('Decisions'), m.decisions), ...section(mark('Open questions'), m.openQuestions)]
         : tab === 'tasks'
-          ? mTasks.map((t) => `[${t.done ? 'x' : ' '}] ${t.title}${t.userId ? ` (${p.users.find((u) => u.id === t.userId)?.name ?? ''})` : ''}${t.due ? `, due ${t.due}` : ''}`)
+          ? mTasks.map(taskLine)
           : tab === 'transcript'
             ? (m.transcript ?? []).map((l) => `[${mmss(l.at)}] ${l.speaker}: ${l.text}`)
-            : (m.log ?? []).map((l) => `${new Date(l.at).toLocaleTimeString()}  ${l.message}`);
+            : (m.log ?? []).map((l) => `${logTime(l.at)}  ${l.message}`);
     try {
       await navigator.clipboard.writeText(lines.join('\n'));
-      p.toast(`${tab === 'summary' ? 'Summary' : tab === 'tasks' ? 'Tasks' : tab === 'transcript' ? 'Transcript' : 'Bot log'} copied`);
+      p.toast(tab === 'summary' ? t('Summary copied') : tab === 'tasks' ? t('Tasks copied') : tab === 'transcript' ? t('Transcript copied') : t('Bot log copied'));
     } catch {
-      p.toast('Copying isn’t allowed here');
+      p.toast(t('Copying isn’t allowed here'));
     }
   };
   const downloadTxt = () => {
@@ -373,23 +400,23 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
     a.click();
   };
 
-  const nameFor = (t: Todo) => p.users.find((u) => u.id === t.userId);
-  const actionOwner = (t: Todo) => m.actions.find((a) => a.taskId === t.id)?.owner;
+  const nameFor = (tk: Todo) => p.users.find((u) => u.id === tk.userId);
+  const actionOwner = (tk: Todo) => m.actions.find((a) => a.taskId === tk.id)?.owner;
 
   // Phones: the meeting takes the whole screen with Back to the list, and its actions sit in one "…" menu so the
   // header stays one row (the desktop keeps its buttons).
   useFocusedScreen(true, () => p.onPage({ kind: 'list' }));
   const moreBtn = useRef<HTMLButtonElement>(null);
-  const regenerate = () => confirm('Regenerate the summary and tasks from the transcript? Tasks you edited are kept.') && p.onRegenerate(m.id);
-  const remove = () => confirm('Delete this meeting, its recording, transcript and tasks?') && p.onDelete(m.id);
+  const regenerate = () => confirm(t('Regenerate the summary and tasks from the transcript? Tasks you edited are kept.')) && p.onRegenerate(m.id);
+  const remove = () => confirm(t('Delete this meeting, its recording, transcript and tasks?')) && p.onDelete(m.id);
   const more = useActionMenu(
     () => [
-      { label: m.share ? 'Shared' : 'Share', hint: m.share ? 'A read-only link is on' : 'A read-only link', icon: Share2, run: () => p.onShare(m.id) },
-      { label: 'Ask about this meeting', icon: Sparkles, run: () => p.onAsk({ kind: 'meeting', id: m.id }) },
-      ...(live && status !== 'stopping' && status !== 'processing' ? [{ label: 'Make bot leave', icon: Square, run: () => p.onStop(m.id) }] : []),
-      ...(!live && (m.transcript?.length ?? 0) > 0 ? [{ label: 'Regenerate notes', hint: 'From the transcript', icon: RefreshCw, run: regenerate }] : []),
-      ...(status === 'done' ? [{ label: 'Who can see this', icon: Lock, run: () => setAccessOpen(true) }] : []),
-      { label: 'Delete', icon: Trash2, danger: true, group: 'end', run: remove },
+      { label: m.share ? t('Shared') : t('Share'), hint: m.share ? t('A read-only link is on') : t('A read-only link'), icon: Share2, run: () => p.onShare(m.id) },
+      { label: t('Ask about this meeting'), icon: Sparkles, run: () => p.onAsk({ kind: 'meeting', id: m.id }) },
+      ...(live && status !== 'stopping' && status !== 'processing' ? [{ label: t('Make bot leave'), icon: Square, run: () => p.onStop(m.id) }] : []),
+      ...(!live && (m.transcript?.length ?? 0) > 0 ? [{ label: t('Regenerate notes'), hint: t('From the transcript'), icon: RefreshCw, run: regenerate }] : []),
+      ...(status === 'done' ? [{ label: t('Who can see this'), icon: Lock, run: () => setAccessOpen(true) }] : []),
+      { label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: remove },
     ],
     { title: m.title },
   );
@@ -397,38 +424,38 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
   return (
     <section className="meet-pane meet-page view-enter">
       <header className="tracking-head m-head">
-        <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
+        <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
         </button>
         <button className="link-btn" onClick={() => p.onPage({ kind: 'list' })}>
-          Meetings
+          {t('Meetings')}
         </button>
         <StatusPill m={m} />
         <ProjectPicker value={m.clientId ?? ''} onChange={(v) => {
             const outsiders = speakers.filter((s) => !p.users.some((u) => u.name.split(' ')[0] === s.split(' ')[0]) && s !== 'You' && s !== `${term.One}`);
             if (v && outsiders.length && m.clientId !== v) setAskRemember(v);
             p.onFolder(m.id, v || null, false);
-          }} projects={p.clients} none="Unfiled" label="Folder" className="sel-flat" />
-        <Select value={m.type ?? null} onChange={(v) => p.onPatch(m.id, { type: v as MeetingType })} placeholder="Type…" label="Type" className="sel-flat" options={Object.entries(TYPE_LABEL).map(([v, l]) => ({ value: v, label: l }))} />
-        {m.filedBy && m.filedBy !== 'user' && <span className="muted small">{m.filedBy === 'ai' ? 'auto-filed' : 'filed by rule'}</span>}
+          }} projects={p.clients} none={t('Unfiled')} label={t('Folder')} className="sel-flat" />
+        <Select value={m.type ?? null} onChange={(v) => p.onPatch(m.id, { type: v as MeetingType })} placeholder={t('Type…')} label={t('Type')} className="sel-flat" options={Object.entries(TYPE_LABEL).map(([v, l]) => ({ value: v, label: l }))} />
+        {m.filedBy && m.filedBy !== 'user' && <span className="muted small">{m.filedBy === 'ai' ? t('auto-filed') : t('filed by rule')}</span>}
         <span className="spacer" />
         {live && status !== 'stopping' && status !== 'processing' && (
           <button className="ghost-btn sm" onClick={() => p.onStop(m.id)}>
-            <Square size={13} /> Make bot leave
+            <Square size={13} /> {t('Make bot leave')}
           </button>
         )}
         {!live && (m.transcript?.length ?? 0) > 0 && (
-          <button className="ghost-btn sm" title="Write the summary and tasks again from the transcript" onClick={regenerate}>
-            <RefreshCw size={13} /> Regenerate notes
+          <button className="ghost-btn sm" title={t('Write the summary and tasks again from the transcript')} onClick={regenerate}>
+            <RefreshCw size={13} /> {t('Regenerate notes')}
           </button>
         )}
         <button className="ghost-btn sm" onClick={() => p.onShare(m.id)}>
-          <Share2 size={13} /> {m.share ? 'Shared' : 'Share'}
+          <Share2 size={13} /> {m.share ? t('Shared') : t('Share')}
         </button>
-        <button className="icon-btn sm m-delete" title="Delete" onClick={remove}>
+        <button className="icon-btn sm m-delete" title={t('Delete')} onClick={remove}>
           <Trash2 size={15} />
         </button>
-        <button ref={moreBtn} className="icon-btn m-more" aria-label="More for this meeting" onClick={() => more.openFrom(moreBtn)}>
+        <button ref={moreBtn} className="icon-btn m-more" aria-label={t('More for this meeting')} onClick={() => more.openFrom(moreBtn)}>
           <MoreHorizontal size={20} />
         </button>
         {more.menu}
@@ -437,24 +464,24 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
       <div className="tracking-scroll">
         {askRemember && (
           <div className="remember">
-            Always file meetings with {speakers.filter((s) => !p.users.some((u) => u.name.split(' ')[0] === s.split(' ')[0]) && s !== 'You').join(', ')} under {p.clients.find((c) => c.id === askRemember)?.name}?
+            {t('Always file meetings with {people} under {project}?', { people: fmtList(speakers.filter((s) => !p.users.some((u) => u.name.split(' ')[0] === s.split(' ')[0]) && s !== 'You')), project: p.clients.find((c) => c.id === askRemember)?.name ?? '' })}
             <span className="spacer" />
             <button className="ghost-btn sm" onClick={() => setAskRemember(null)}>
-              No
+              {t('No')}
             </button>
             <button className="primary-btn sm" onClick={() => (p.onFolder(m.id, askRemember, true), setAskRemember(null))}>
-              Yes, always
+              {t('Yes, always')}
             </button>
           </div>
         )}
         <h2 className="m-title">{m.title}</h2>
         <p className="m-sub">
           {fullDate(m.at)} · {m.platform === 'zoom' ? 'Zoom' : 'Google Meet'}
-          {m.error && <span className="m-err"> · {m.error}</span>}
-          {m.attendees.length ? ` · ${m.attendees.length} invited` : ''}
-          {m.tags?.map((t) => (
-            <span key={t} className="m-tag">
-              #{t}
+          {m.error && <span className="m-err"> · {t(m.error)}</span>}
+          {m.attendees.length ? ` · ${tn(m.attendees.length, '{n} invited', '{n} invited')}` : ''}
+          {m.tags?.map((tag) => (
+            <span key={tag} className="m-tag">
+              #{tag}
             </span>
           ))}
         </p>
@@ -464,14 +491,14 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
             {keep === 'notes' ? (
               <div className="m-novideo">
                 <FileText size={22} />
-                <strong>Notes and transcript only</strong>
-                <span>The recording wasn’t kept for this meeting, to save space.</span>
+                <strong>{t('Notes and transcript only')}</strong>
+                <span>{t('The recording wasn’t kept for this meeting, to save space.')}</span>
               </div>
             ) : !keep ? (
               <div className="m-novideo">
                 {status === 'recording' ? <span className="rec-dot big" /> : <Video size={22} />}
-                <strong>No recording</strong>
-                <span>{status === 'recording' ? 'Recording in progress. It appears here when the meeting ends.' : status === 'failed' || status === 'stopped' ? 'There is no recording for this meeting.' : 'The recording appears here after the meeting.'}</span>
+                <strong>{t('No recording')}</strong>
+                <span>{status === 'recording' ? t('Recording in progress. It appears here when the meeting ends.') : status === 'failed' || status === 'stopped' ? t('There is no recording for this meeting.') : t('The recording appears here after the meeting.')}</span>
               </div>
             ) : (
               <div className={`m-player ${keep}${playing ? ' is-playing' : ''}`}>
@@ -487,7 +514,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                     ))}
                   </span>
                 )}
-                <button className="m-play" onClick={() => setPlaying((x) => !x)} aria-label={playing ? 'Pause' : 'Play'}>
+                <button className="m-play" onClick={() => setPlaying((x) => !x)} aria-label={playing ? t('Pause') : t('Play')}>
                   {playing ? <Pause size={20} /> : <Play size={20} />}
                 </button>
                 <div className="m-bar" onClick={(e) => seek(((e.clientX - e.currentTarget.getBoundingClientRect().left) / e.currentTarget.clientWidth) * duration)}>
@@ -500,46 +527,46 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
             )}
             {status === 'done' && (
               <div className="keep-row">
-                <span className="muted small">Keep:</span>
+                <span className="muted small">{t('Keep:')}</span>
                 <Select
                   value={keep ?? p.settings.keep}
                   onChange={(v) => {
                     if (m.recording?.url) {
                       // A real recording: keeping less deletes it for good.
-                      const loses = v === 'notes' ? 'the recording' : v === 'audio' && keep === 'video' ? 'the video (the audio stays)' : '';
-                      if (loses && !confirm(`Delete ${loses} for good? This can’t be undone.`)) return;
+                      const ask = v === 'notes' ? t('Delete the recording for good? This can’t be undone.') : v === 'audio' && keep === 'video' ? t('Delete the video (the audio stays) for good? This can’t be undone.') : '';
+                      if (ask && !confirm(ask)) return;
                       return p.onPatch(m.id, { recording: { ...m.recording, keep: v } });
                     }
                     p.onPatch(m.id, { recording: { ...m.recording, keep: v, sizeMb: v === 'audio' ? (m.minutes || 30) * 0.5 : 0.4 } });
                   }}
-                  label="What to keep"
+                  label={t('What to keep')}
                   className="sel-flat"
                   width={280}
-                  options={(m.recording?.videoUrl ? (['video', 'audio', 'notes'] as const) : m.bot && !m.recording?.url ? (['notes'] as const) : (['audio', 'notes'] as const)).map((k) => ({ value: k, label: KEEP_LABEL[k], hint: k === 'video' ? `About ${sizeOf(m.recording?.videoMb ?? 0)}` : k === 'audio' ? `About ${sizeOf(m.recording?.url ? m.recording.sizeMb : (m.minutes || 30) * 0.5)}` : 'Under 1 MB' }))}
+                  options={(m.recording?.videoUrl ? (['video', 'audio', 'notes'] as const) : m.bot && !m.recording?.url ? (['notes'] as const) : (['audio', 'notes'] as const)).map((k) => ({ value: k, label: t(KEEP_LABEL[k]), hint: k === 'video' ? t('About {size}', { size: sizeOf(m.recording?.videoMb ?? 0) }) : k === 'audio' ? t('About {size}', { size: sizeOf(m.recording?.url ? m.recording.sizeMb : (m.minutes || 30) * 0.5) }) : t('Under 1 MB') }))}
                 />
-                {keep !== 'notes' && m.recording && <span className="muted small">{sizeOf(m.recording.sizeMb + (keep === 'video' ? m.recording.videoMb ?? 0 : 0))} of team storage</span>}
+                {keep !== 'notes' && m.recording && <span className="muted small">{t('{size} of team storage', { size: sizeOf(m.recording.sizeMb + (keep === 'video' ? m.recording.videoMb ?? 0 : 0)) })}</span>}
                 <button ref={accessBtn} className="link-btn small" onClick={() => setAccessOpen(true)}>
-                  <Lock size={12} /> Who can see this
+                  <Lock size={12} /> {t('Who can see this')}
                 </button>
               </div>
             )}
           </div>
 
           <div className="m-glance side-card">
-            <h3>At a glance</h3>
+            <h3>{t('At a glance')}</h3>
             <dl>
-              <dt>Tasks</dt>
+              <dt>{t('Tasks')}</dt>
               <dd>
-                {doneN}/{mTasks.length} done
+                {t('{done}/{total} done', { done: doneN, total: mTasks.length })}
                 <span className="bar wide">
                   <span style={{ width: `${mTasks.length ? (doneN / mTasks.length) * 100 : 0}%` }} />
                 </span>
               </dd>
-              <dt>Length</dt>
-              <dd>{m.minutes ? `${m.minutes} min` : 'not set'}</dd>
-              <dt>Speakers</dt>
+              <dt>{t('Length')}</dt>
+              <dd>{m.minutes ? hoursOf(m.minutes) : t('not set')}</dd>
+              <dt>{t('Speakers')}</dt>
               <dd>{speakers.length}</dd>
-              <dt>People</dt>
+              <dt>{tx('meet', 'People')}</dt>
               <dd className="chips">
                 {(m.attendees.length ? m.attendees : speakers).map((a) => (
                   <span key={a} className="m-person">
@@ -554,13 +581,13 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                     <button className="link-btn" onClick={() => p.onOpenClient(client.id)}>
                       {client.name}
                     </button>
-                    {m.sharedWithClient && <span className="ap-tag approved">notes visible to {term.whos}</span>}
+                    {m.sharedWithClient && <span className="ap-tag approved">{t('notes visible to {whos}', { whos: term.whos })}</span>}
                   </dd>
                 </>
               )}
             </dl>
             <button className="ghost-btn sm" onClick={() => p.onAsk({ kind: 'meeting', id: m.id })}>
-              <Sparkles size={13} /> Ask about this meeting
+              <Sparkles size={13} /> {t('Ask about this meeting')}
             </button>
           </div>
         </div>
@@ -573,22 +600,22 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
           fixed={['summary']}
           items={(
             [
-              ['summary', 'Summary', 'Summary'],
-              ['tasks', `Tasks ${mTasks.filter((t) => !t.done).length}`, 'Tasks'],
-              ['transcript', 'Transcript', 'Transcript'],
-              ['log', 'Bot log', 'Bot log'],
+              ['summary', t('Summary'), t('Summary')],
+              ['tasks', t('Tasks {n}', { n: mTasks.filter((tk) => !tk.done).length }), t('Tasks')],
+              ['transcript', t('Transcript'), t('Transcript')],
+              ['log', t('Bot log'), t('Bot log')],
             ] as const
           ).map(([id, label, name]) => ({ id, label, name }))}
           trailing={
             <>
               <span className="spacer" />
               {tab === 'transcript' && (m.transcript?.length ?? 0) > 0 && (
-                <button className="m-tab-act" onClick={downloadTxt} title="Download .txt">
-                  <Download size={13} /> <span className="lbl">Download .txt</span>
+                <button className="m-tab-act" onClick={downloadTxt} title={t('Download .txt')}>
+                  <Download size={13} /> <span className="lbl">{t('Download .txt')}</span>
                 </button>
               )}
-              <button className="m-tab-act" onClick={copy} title="Copy">
-                <Copy size={13} /> <span className="lbl">Copy</span>
+              <button className="m-tab-act" onClick={copy} title={t('Copy')}>
+                <Copy size={13} /> <span className="lbl">{t('Copy')}</span>
               </button>
             </>
           }
@@ -601,13 +628,13 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
               <p className="m-lead">{m.summary}</p>
               {(
                 [
-                  ['Key points', m.keyPoints],
-                  ['Decisions', m.decisions],
-                  ['Open questions', m.openQuestions],
+                  [mark('Key points'), m.keyPoints],
+                  [mark('Decisions'), m.decisions],
+                  [mark('Open questions'), m.openQuestions],
                 ] as const
               ).map(([h, list]) => (
                 <div key={h}>
-                  <h4>{h}</h4>
+                  <h4>{t(h)}</h4>
                   {list?.length ? (
                     <ul>
                       {list.map((x) => (
@@ -615,17 +642,17 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                       ))}
                     </ul>
                   ) : (
-                    <p className="muted small">None</p>
+                    <p className="muted small">{t('None')}</p>
                   )}
                 </div>
               ))}
               {!!m.topics?.length && (
                 <div>
-                  <h4>Topics</h4>
+                  <h4>{t('Topics')}</h4>
                   <div className="topic-chips">
-                    {m.topics.map((t) => (
-                      <button key={t.name + t.at} onClick={() => seek(t.at)}>
-                        <b>{mmss(t.at)}</b> {t.name}
+                    {m.topics.map((tp) => (
+                      <button key={tp.name + tp.at} onClick={() => seek(tp.at)}>
+                        <b>{mmss(tp.at)}</b> {tp.name}
                       </button>
                     ))}
                   </div>
@@ -633,7 +660,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
               )}
             </div>
           ) : (
-            <EmptyState compact text={live ? 'Notes appear here when the meeting ends.' : 'No notes. The bot log says why (notes need a transcript and an AI provider in Settings → AI).'} />
+            <EmptyState compact text={live ? t('Notes appear here when the meeting ends.') : t('No notes. The bot log says why (notes need a transcript and an AI provider in Settings → AI).')} />
           ))}
 
         {tab === 'tasks' && (
@@ -645,15 +672,15 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
             nameFor={nameFor}
             extra={
               mTasks.length > 0 && (
-                <button className="ghost-btn sm" onClick={() => confirm(`Remove all ${mTasks.length} tasks from this meeting? The summary stays.`) && (p.onBulk(mTasks.map((t) => t.id), 'delete'), p.toast('Tasks cleared'))}>
-                  Clear all tasks
+                <button className="ghost-btn sm" onClick={() => confirm(tn(mTasks.length, 'Remove {n} task from this meeting? The summary stays.', 'Remove all {n} tasks from this meeting? The summary stays.')) && (p.onBulk(mTasks.map((tk) => tk.id), 'delete'), p.toast(t('Tasks cleared')))}>
+                  {t('Clear all tasks')}
                 </button>
               )
             }
             empty={
               m.actions.some((a) => !a.taskId) ? (
                 <div className="te-empty">
-                  No tasks (automatic tasks are off or were cleared). Action items mentioned in the meeting:
+                  {t('No tasks (automatic tasks are off or were cleared). Action items mentioned in the meeting:')}
                   <ul>
                     {m.actions.map((a) => (
                       <li key={a.title}>
@@ -664,19 +691,19 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
                   </ul>
                 </div>
               ) : (
-                <EmptyState compact text="No action items." />
+                <EmptyState compact text={t('No action items.')} />
               )
             }
             footer={
               <div className="todo-add task-add">
                 <Plus size={16} />
-                <input value={newTask} onChange={(e) => setNewTask(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && newTask.trim() && (p.onAddTask({ title: newTask.trim(), userId: p.me, meetingId: m.id, clientId: m.clientId }), setNewTask(''))} placeholder="Add a task from this meeting…" />
+                <input value={newTask} onChange={(e) => setNewTask(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && newTask.trim() && (p.onAddTask({ title: newTask.trim(), userId: p.me, meetingId: m.id, clientId: m.clientId }), setNewTask(''))} placeholder={t('Add a task from this meeting…')} />
                 <button className="primary-btn sm" disabled={!newTask.trim()} onClick={() => (p.onAddTask({ title: newTask.trim(), userId: p.me, meetingId: m.id, clientId: m.clientId }), setNewTask(''))}>
-                  Add
+                  {t('Add')}
                 </button>
               </div>
             }
-            onSeek={(t) => (setTab('summary'), seek(t))}
+            onSeek={(ms) => (setTab('summary'), seek(ms))}
           />
         )}
 
@@ -684,68 +711,68 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
           <div className="m-transcript">
             {!live && m.bot && m.recording?.url && p.onTranscribeAgain && (
               <div className="tr-again">
-                <span className="muted small">Spoken in {m.language ? languageName(m.language) : languagesText(p.settings.languages)}. Wrong language or messy?</span>
+                <span className="muted small">{t('Spoken in {languages}. Wrong language or messy?', { languages: m.language ? languageLabel(m.language) : languagesLabel(p.settings.languages) })}</span>
                 <Select<string>
                   value={null}
                   onChange={(v) => p.onTranscribeAgain!(m.id, v === 'company' ? undefined : v)}
-                  placeholder="Transcribe again in…"
-                  label="Transcribe again in"
+                  placeholder={t('Transcribe again in…')}
+                  label={t('Transcribe again in')}
                   className="sel-flat"
                   width={260}
-                  options={[{ value: 'company', label: languagesText(p.settings.languages), hint: 'Your company’s meeting languages' }, ...MEETING_LANGUAGES.map((l) => ({ value: l.code, label: l.label, hint: m.language === l.code ? 'Used last time' : undefined }))]}
+                  options={[{ value: 'company', label: languagesLabel(p.settings.languages), hint: t('Your company’s meeting languages') }, ...MEETING_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label), hint: m.language === l.code ? t('Used last time') : undefined }))]}
                 />
               </div>
             )}
             {(m.transcript ?? []).map((l, i) => (
               <button key={i} className={`tl ${time >= l.at && time < (m.transcript![i + 1]?.at ?? Infinity) && playing ? 'now' : ''}`} onClick={() => seek(l.at)}>
                 <time>{mmss(l.at)}</time>
-                <b>{l.speaker || 'Unknown'}</b>
+                <b>{l.speaker || t('Unknown')}</b>
                 <span>{l.text}</span>
               </button>
             ))}
-            {!m.transcript?.length && <EmptyState compact text={live ? 'Waiting for people to talk… (captions must be on in the meeting)' : 'No transcript.'} />}
+            {!m.transcript?.length && <EmptyState compact text={live ? t('Waiting for people to talk… (captions must be on in the meeting)') : t('No transcript.')} />}
             <div ref={tEnd} />
           </div>
         )}
 
         {tab === 'log' && (
-          <pre className="m-log">{(m.log ?? []).map((l) => `${new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}  ${l.message}`).join('\n') || 'Nothing logged yet.'}</pre>
+          <pre className="m-log">{(m.log ?? []).map((l) => `${logTime(l.at)}  ${l.message}`).join('\n') || t('Nothing logged yet.')}</pre>
         )}
         </TabPane>
       </div>
 
-      <Popover anchor={accessBtn} open={accessOpen} onClose={() => setAccessOpen(false)} width={320} title="Who can see this meeting">
+      <Popover anchor={accessBtn} open={accessOpen} onClose={() => setAccessOpen(false)} width={320} title={t('Who can see this meeting')}>
         <div className="access-pop">
-          <label>Who can watch the recording</label>
+          <label>{t('Who can watch the recording')}</label>
           <Select
             value={m.access?.watch ?? 'everyone'}
             onChange={(v) => p.onPatch(m.id, { access: { watch: v, download: m.access?.download ?? false, transcript: m.access?.transcript ?? 'everyone' } })}
-            label="Who can watch"
+            label={t('Who can watch')}
             options={[
-              { value: 'everyone', label: 'Everyone in the company' },
-              { value: 'attendees', label: 'Only people who were in the meeting' },
-              { value: 'admins', label: 'Only admins' },
+              { value: 'everyone', label: t('Everyone in the company') },
+              { value: 'attendees', label: t('Only people who were in the meeting') },
+              { value: 'admins', label: t('Only admins') },
             ]}
           />
-          <label>Who sees the transcript</label>
+          <label>{t('Who sees the transcript')}</label>
           <Select
             value={m.access?.transcript ?? 'everyone'}
             onChange={(v) => p.onPatch(m.id, { access: { watch: m.access?.watch ?? 'everyone', download: m.access?.download ?? false, transcript: v } })}
-            label="Transcript"
+            label={t('Transcript')}
             options={[
-              { value: 'everyone', label: 'Everyone in the company' },
-              { value: 'attendees', label: 'Only people who were in the meeting' },
+              { value: 'everyone', label: t('Everyone in the company') },
+              { value: 'attendees', label: t('Only people who were in the meeting') },
             ]}
           />
           <label className="check-row">
-            <input type="checkbox" checked={m.access?.download ?? false} onChange={(e) => p.onPatch(m.id, { access: { watch: m.access?.watch ?? 'everyone', transcript: m.access?.transcript ?? 'everyone', download: e.target.checked } })} /> Allow downloading the recording
+            <input type="checkbox" checked={m.access?.download ?? false} onChange={(e) => p.onPatch(m.id, { access: { watch: m.access?.watch ?? 'everyone', transcript: m.access?.transcript ?? 'everyone', download: e.target.checked } })} /> {t('Allow downloading the recording')}
           </label>
           {client && (
             <label className="check-row">
-              <input type="checkbox" checked={!!m.sharedWithClient} onChange={(e) => p.onPatch(m.id, { sharedWithClient: e.target.checked })} /> {client.name} sees the notes in their portal
+              <input type="checkbox" checked={!!m.sharedWithClient} onChange={(e) => p.onPatch(m.id, { sharedWithClient: e.target.checked })} /> {t('{name} sees the notes in their portal', { name: client.name })}
             </label>
           )}
-          <p className="muted small">Recordings never go to the shared space. Use Share for a read-only link.</p>
+          <p className="muted small">{t('Recordings never go to the shared space. Use Share for a read-only link.')}</p>
         </div>
       </Popover>
     </section>
@@ -759,9 +786,9 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
   const [sel, setSel] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setSel((s) => (s.has(id) ? (s.delete(id), new Set(s)) : new Set(s.add(id))));
   const bulk = (a: 'done' | 'reopen' | 'delete') => {
-    if (a === 'delete' && !confirm(`Delete ${sel.size} task${sel.size > 1 ? 's' : ''}?`)) return;
+    if (a === 'delete' && !confirm(tn(sel.size, 'Delete {n} task?', 'Delete {n} tasks?'))) return;
     p.onBulk([...sel], a);
-    p.toast(`${sel.size} task${sel.size > 1 ? 's' : ''} ${a === 'done' ? 'marked done' : a === 'reopen' ? 'reopened' : 'deleted'}`);
+    p.toast(a === 'done' ? tn(sel.size, '{n} task marked done', '{n} tasks marked done') : a === 'reopen' ? tn(sel.size, '{n} task reopened', '{n} tasks reopened') : tn(sel.size, '{n} task deleted', '{n} tasks deleted'));
     setSel(new Set());
     setSelecting(false);
   };
@@ -776,25 +803,25 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
             <label className="check-row">
               <input type="checkbox" checked={sel.size === p.list.length && p.list.length > 0} ref={(el) => {
                 if (el) el.indeterminate = sel.size > 0 && sel.size < p.list.length;
-              }} onChange={() => setSel(sel.size === p.list.length ? new Set() : new Set(p.list.map((t) => t.id)))} /> All
+              }} onChange={() => setSel(sel.size === p.list.length ? new Set() : new Set(p.list.map((tk) => tk.id)))} /> {t('All')}
             </label>
-            <span className="muted small">{sel.size} selected</span>
+            <span className="muted small">{tn(sel.size, '{n} selected', '{n} selected')}</span>
             <button className="ghost-btn sm" disabled={!sel.size} onClick={() => bulk('done')}>
-              Mark done
+              {t('Mark done')}
             </button>
             <button className="ghost-btn sm" disabled={!sel.size} onClick={() => bulk('reopen')}>
-              Reopen
+              {t('Reopen')}
             </button>
             <button className="ghost-btn sm danger-text" disabled={!sel.size} onClick={() => bulk('delete')}>
-              Delete
+              {t('Delete')}
             </button>
             <button className="link-btn" onClick={() => (setSelecting(false), setSel(new Set()))}>
-              Cancel
+              {t('Cancel')}
             </button>
           </>
         ) : (
           <button className="ghost-btn sm" disabled={!p.list.length} onClick={() => setSelecting(true)}>
-            <CheckSquare size={13} /> Select
+            <CheckSquare size={13} /> {t('Select')}
           </button>
         )}
         <span className="spacer" />
@@ -807,38 +834,38 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
           <div key={mid || 'none'} className="todo-group">
             {p.grouped && (
               <button className="d-heading m-group" onClick={() => mt && p.onPage({ kind: 'meeting', id: mt.id })}>
-                {mt ? `${mt.title} · ${fullDate(mt.at)}${mt.clientId ? ` · ${p.clients.find((c) => c.id === mt.clientId)?.name}` : ''}` : 'Added by hand'}
+                {mt ? `${mt.title} · ${fullDate(mt.at)}${mt.clientId ? ` · ${p.clients.find((c) => c.id === mt.clientId)?.name}` : ''}` : t('Added by hand')}
               </button>
             )}
-            {list.map((t) => {
-              const owner = p.ownerName?.(t);
-              const m = p.meetingFor(t);
+            {list.map((tk) => {
+              const owner = p.ownerName?.(tk);
+              const m = p.meetingFor(tk);
               return (
-                <div key={t.id} className={`task m-task ${t.done ? 'done' : ''}`} onClick={() => selecting && toggle(t.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), selecting && toggle(t.id))}>
-                  {selecting && <input type="checkbox" checked={sel.has(t.id)} onChange={() => toggle(t.id)} onClick={(e) => e.stopPropagation()} />}
-                  <button className="todo-check" onClick={(e) => (e.stopPropagation(), p.onToggleTask(t.id))} aria-label="Toggle done">
-                    {t.done && <span>✓</span>}
+                <div key={tk.id} className={`task m-task ${tk.done ? 'done' : ''}`} onClick={() => selecting && toggle(tk.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), selecting && toggle(tk.id))}>
+                  {selecting && <input type="checkbox" checked={sel.has(tk.id)} onChange={() => toggle(tk.id)} onClick={(e) => e.stopPropagation()} />}
+                  <button className="todo-check" onClick={(e) => (e.stopPropagation(), p.onToggleTask(tk.id))} aria-label={t('Toggle done')}>
+                    {tk.done && <span>✓</span>}
                   </button>
-                  <input className="task-title" value={t.title} onChange={(e) => p.onPatchTask(t.id, { title: e.target.value })} onClick={(e) => e.stopPropagation()} aria-label="Task" />
+                  <input className="task-title" value={tk.title} onChange={(e) => p.onPatchTask(tk.id, { title: e.target.value })} onClick={(e) => e.stopPropagation()} aria-label={t('Task')} />
                   <Select
-                    value={t.userId}
-                    onChange={(v) => p.onPatchTask(t.id, { userId: v })}
-                    label="Assignee"
+                    value={tk.userId}
+                    onChange={(v) => p.onPatchTask(tk.id, { userId: v })}
+                    label={t('Assignee')}
                     className="sel-flat"
                     options={[
-                      { value: '', label: owner && !p.users.some((u) => u.name.split(' ')[0] === owner) ? `${owner} (not a member)` : 'Unassigned' },
+                      { value: '', label: owner && !p.users.some((u) => u.name.split(' ')[0] === owner) ? t('{name} (not a member)', { name: owner }) : t('Unassigned') },
                       ...p.users.map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={18} /> })),
                     ]}
                   />
                   <span className="due-pick" onClick={(e) => e.stopPropagation()}>
-                    <DatePicker value={t.due ?? ''} onChange={(v) => p.onPatchTask(t.id, { due: v || undefined })} label="Due" placeholder="No due date" className="sel-flat" />
+                    <DatePicker value={tk.due ?? ''} onChange={(v) => p.onPatchTask(tk.id, { due: v || undefined })} label={t('Due')} placeholder={t('No due date')} className="sel-flat" />
                   </span>
-                  {t.saidAt !== undefined && m && (
-                    <button className="jump" onClick={(e) => (e.stopPropagation(), p.onSeek ? p.onSeek(t.saidAt!, t) : p.onPage({ kind: 'meeting', id: m.id }))} title="Jump to when it was said">
-                      ▶ {mmss(t.saidAt)}
+                  {tk.saidAt !== undefined && m && (
+                    <button className="jump" onClick={(e) => (e.stopPropagation(), p.onSeek ? p.onSeek(tk.saidAt!, tk) : p.onPage({ kind: 'meeting', id: m.id }))} title={t('Jump to when it was said')}>
+                      ▶ {mmss(tk.saidAt)}
                     </button>
                   )}
-                  <button className="icon-btn sm" onClick={(e) => (e.stopPropagation(), p.onBulk([t.id], 'delete'))} aria-label="Delete task">
+                  <button className="icon-btn sm" onClick={(e) => (e.stopPropagation(), p.onBulk([tk.id], 'delete'))} aria-label={t('Delete task')}>
                     <X size={14} />
                   </button>
                 </div>
@@ -857,36 +884,36 @@ function MeetTasks(p: MeetProps) {
   const [title, setTitle] = useState('');
   const [who, setWho] = useState('');
   const [due, setDue] = useState('');
-  const all = p.tasks.filter((t) => t.meetingId || t.source === 'meeting');
-  const list = all.filter((t) => (tab === 'open' ? !t.done : tab === 'mine' ? !t.done && t.userId === p.me : tab === 'done' ? t.done : true));
+  const all = p.tasks.filter((tk) => tk.meetingId || tk.source === 'meeting');
+  const list = all.filter((tk) => (tab === 'open' ? !tk.done : tab === 'mine' ? !tk.done && tk.userId === p.me : tab === 'done' ? tk.done : true));
   return (
     <section className="meet-pane view-enter">
-      <Head title="Tasks from meetings" sub="Action items from every meeting, plus your own." onMenu={p.onMenu} />
+      <Head title={t('Tasks from meetings')} sub={t('Action items from every meeting, plus your own.')} onMenu={p.onMenu} />
       <div className="tracking-scroll">
         <div className="client-tabs flat">
           {(['open', 'mine', 'done', 'all'] as const).map((k) => (
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-              {k === 'open' ? 'Open' : k === 'mine' ? 'Mine' : k === 'done' ? 'Done' : 'All'}
+              {k === 'open' ? tx('meet', 'Open') : k === 'mine' ? t('Mine') : k === 'done' ? t('Done') : t('All')}
             </button>
           ))}
         </div>
         <div className="todo-add task-add">
           <Plus size={16} />
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a task…" />
-          <Select value={who} onChange={setWho} label="Assignee" className="sel-flat" options={[{ value: '', label: 'Unassigned' }, ...p.users.map((u) => ({ ...personOption(u), label: u.name }))]} />
-          <input className="due-input" value={due} onChange={(e) => setDue(e.target.value)} placeholder="Due (e.g. Friday)" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('Add a task…')} />
+          <Select value={who} onChange={setWho} label={t('Assignee')} className="sel-flat" options={[{ value: '', label: t('Unassigned') }, ...p.users.map((u) => ({ ...personOption(u), label: u.name }))]} />
+          <input className="due-input" value={due} onChange={(e) => setDue(e.target.value)} placeholder={t('Due (e.g. Friday)')} />
           <button className="primary-btn sm" disabled={!title.trim()} onClick={() => (p.onAddTask({ title: title.trim(), userId: who, due: due || undefined }), setTitle(''), setDue(''))}>
-            Add
+            {t('Add')}
           </button>
         </div>
         <TaskList
           {...p}
           list={list}
           grouped
-          meetingFor={(t) => p.meetings.find((m) => m.id === t.meetingId)}
-          ownerName={(t) => p.meetings.find((m) => m.id === t.meetingId)?.actions.find((a) => a.taskId === t.id)?.owner}
-          nameFor={(t) => p.users.find((u) => u.id === t.userId)}
-          empty={<EmptyState compact text={tab === 'done' ? 'Nothing finished yet.' : 'No open tasks. Nice.'} />}
+          meetingFor={(tk) => p.meetings.find((m) => m.id === tk.meetingId)}
+          ownerName={(tk) => p.meetings.find((m) => m.id === tk.meetingId)?.actions.find((a) => a.taskId === tk.id)?.owner}
+          nameFor={(tk) => p.users.find((u) => u.id === tk.userId)}
+          empty={<EmptyState compact text={tab === 'done' ? t('Nothing finished yet.') : t('No open tasks. Nice.')} />}
         />
       </div>
     </section>
@@ -900,8 +927,8 @@ function FolderPage(p: MeetProps & { clientId: string }) {
   const [tab, setTab] = useState<'meetings' | 'tasks'>('meetings');
   const list = p.meetings.filter((m) => m.clientId === p.clientId).sort((a, b) => b.at.localeCompare(a.at));
   const { shown, bar, filtering } = useFilter(list);
-  const tasks = p.tasks.filter((t) => t.meetingId && list.some((m) => m.id === t.meetingId));
-  const open = tasks.filter((t) => !t.done).length;
+  const tasks = p.tasks.filter((tk) => tk.meetingId && list.some((m) => m.id === tk.meetingId));
+  const open = tasks.filter((tk) => !tk.done).length;
   if (!c) return null;
   return (
     <section className="meet-pane view-enter">
@@ -912,21 +939,21 @@ function FolderPage(p: MeetProps & { clientId: string }) {
             {c.name}
           </>
         }
-        sub={`${term.One} folder`}
+        sub={t('{Project} folder', { project: term.one })}
         onMenu={p.onMenu}
       >
         <button className="ghost-btn sm" onClick={() => p.onOpenClient(c.id)}>
-          {term.One} page: overview, mail, files
+          {t('{Project} page: overview, mail, files', { project: term.one })}
         </button>
         <button className="ghost-btn sm" onClick={() => p.onAsk({ kind: 'client', id: c.id })}>
-          <Sparkles size={13} /> Ask AI
+          <Sparkles size={13} /> {t('Ask AI')}
         </button>
       </Head>
       <div className="client-tabs">
         {(
           [
-            ['meetings', 'Meetings'],
-            ['tasks', open ? `Tasks · ${open} open` : 'Tasks'],
+            ['meetings', t('Meetings')],
+            ['tasks', open ? t('Tasks · {n} open', { n: open }) : t('Tasks')],
           ] as const
         ).map(([k, l]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
@@ -938,9 +965,9 @@ function FolderPage(p: MeetProps & { clientId: string }) {
         <TabPane key={tab}>
         {tab === 'meetings' && (
           <>
-            {bar(`Search this ${term.one}’s meetings`)}
+            {bar(t('Search this {project}’s meetings', { project: term.one }))}
             <MeetingRows list={shown} clients={p.clients} tasks={p.tasks} onOpen={(id) => p.onPage({ kind: 'meeting', id })} />
-            {!shown.length && <EmptyState compact text={filtering ? 'Nothing matches.' : 'No meetings yet.'} />}
+            {!shown.length && <EmptyState compact text={filtering ? t('Nothing matches.') : t('No meetings yet.')} />}
           </>
         )}
         {tab === 'tasks' && (
@@ -948,9 +975,9 @@ function FolderPage(p: MeetProps & { clientId: string }) {
             {...p}
             list={tasks}
             grouped
-            meetingFor={(t) => p.meetings.find((m) => m.id === t.meetingId)}
-            nameFor={(t) => p.users.find((u) => u.id === t.userId)}
-            empty={<EmptyState compact text="No tasks from these meetings yet. Promises made in a meeting become tasks here." />}
+            meetingFor={(tk) => p.meetings.find((m) => m.id === tk.meetingId)}
+            nameFor={(tk) => p.users.find((u) => u.id === tk.userId)}
+            empty={<EmptyState compact text={t('No tasks from these meetings yet. Promises made in a meeting become tasks here.')} />}
           />
         )}
         </TabPane>
@@ -969,7 +996,7 @@ function Upcoming(p: MeetProps) {
   const now = Date.now();
   const soon = p.events.filter((e) => !e.allDay && new Date(e.end).getTime() > now && new Date(e.start).getTime() < now + 7 * 86_400_000).sort((a, b) => a.start.localeCompare(b.start));
   const days = [...new Set(soon.map((e) => new Date(e.start).toDateString()))];
-  const dayName = (d: string) => (d === new Date().toDateString() ? 'Today' : d === new Date(now + 86_400_000).toDateString() ? 'Tomorrow' : new Date(d).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' }));
+  const dayName = (d: string) => (d === new Date().toDateString() ? t('Today') : d === new Date(now + 86_400_000).toDateString() ? t('Tomorrow') : fmtDate(new Date(d), { weekday: 'long', day: 'numeric', month: 'short' }));
   const joins = (e: CalEvent) => {
     const k = linkOf(e, p.demo);
     if (!k || !notetakerJoins(k)) return false;
@@ -978,29 +1005,29 @@ function Upcoming(p: MeetProps) {
   };
   const live = p.autoJoin === 'live';
   const admin = p.myRole !== 'member';
-  const modeLabel = JOIN_MODES.find((x) => x.value === mode)?.label ?? '';
+  const modeLabel = t(JOIN_MODES.find((x) => x.value === mode)?.label ?? '');
   return (
     <section className="meet-pane view-enter">
-      <Head title="Upcoming" sub={p.calendarsSyncedAt ? `From your calendars · updated ${relative(p.calendarsSyncedAt)}` : 'From your calendar'} onMenu={p.onMenu}>
+      <Head title={t('Upcoming')} sub={p.calendarsSyncedAt ? t('From your calendars · updated {ago}', { ago: relative(p.calendarsSyncedAt) }) : t('From your calendar')} onMenu={p.onMenu}>
         {p.onSyncCalendars && (
           <button className="ghost-btn sm" onClick={p.onSyncCalendars}>
-            <RefreshCw size={13} /> Update now
+            <RefreshCw size={13} /> {t('Update now')}
           </button>
         )}
       </Head>
       <div className="tracking-scroll">
         <div className="side-card upcoming-set">
           <span>
-            <strong>Bot joins automatically</strong>
+            <strong>{t('Bot joins automatically')}</strong>
             <small>
               {p.autoJoin === 'off'
-                ? 'The notetaker isn’t available on this server yet, so it can’t join meetings. Recordings and notes start working as soon as it is.'
+                ? t('The notetaker isn’t available on this server yet, so it can’t join meetings. Recordings and notes start working as soon as it is.')
                 : admin
-                  ? 'It joins a minute before each meeting with a Google Meet or Zoom link, for everyone in the company. Read only: it never changes your calendar.'
-                  : `${modeLabel}, for everyone in the company. An admin can change it in Settings, Meetings. Use the switch on a meeting to change just that one.`}
+                  ? t('It joins a minute before each meeting with a Google Meet or Zoom link, for everyone in the company. Read only: it never changes your calendar.')
+                  : t('{mode}, for everyone in the company. An admin can change it in Settings, Meetings. Use the switch on a meeting to change just that one.', { mode: modeLabel })}
             </small>
           </span>
-          {p.autoJoin !== 'off' && admin && <Select value={mode} onChange={p.onJoinMode} label="Bot joins automatically" width={280} options={JOIN_MODES.map((x) => ({ value: x.value, label: x.label, hint: x.hint }))} />}
+          {p.autoJoin !== 'off' && admin && <Select value={mode} onChange={p.onJoinMode} label={t('Bot joins automatically')} width={280} options={JOIN_MODES.map((x) => ({ value: x.value, label: t(x.label), hint: t(x.hint) }))} />}
         </div>
         {days.map((d) => (
           <div key={d} className="todo-group">
@@ -1019,20 +1046,20 @@ function Upcoming(p: MeetProps) {
                 return (
                   <div key={e.id} className="ev-row">
                     <time>
-                      {new Date(e.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      <small>{new Date(e.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+                      {fmtTime(e.start)}
+                      <small>{fmtTime(e.end)}</small>
                     </time>
                     <span className="ev-main">
                       <strong>{e.title}</strong>
                       <small>
-                        {link ? MEETING_NAME[link] : 'No meeting link'}
-                        {link && !notetakerJoins(link) ? ' · the notetaker can’t join this yet' : ''}
-                        {e.guests?.length ? ` · ${e.guests.length} other${e.guests.length > 1 ? 's' : ''}` : ''}
-                        {e.id in p.overrides ? ' · set by you' : ''}
+                        {link ? MEETING_NAME[link] : t('No meeting link')}
+                        {link && !notetakerJoins(link) ? ` · ${t('the notetaker can’t join this yet')}` : ''}
+                        {e.guests?.length ? ` · ${tn(e.guests.length, '{n} other', '{n} others')}` : ''}
+                        {e.id in p.overrides ? ` · ${t('set by you')}` : ''}
                       </small>
                       {willJoin && (
                         <small className="ev-bot-will">
-                          <Mic size={12} aria-hidden /> The notetaker will join
+                          <Mic size={12} aria-hidden /> {t('The notetaker will join')}
                         </small>
                       )}
                     </span>
@@ -1045,18 +1072,18 @@ function Upcoming(p: MeetProps) {
                       startsSoon &&
                       !willJoin && (
                         <button className="ghost-btn sm" onClick={() => p.onSendNow(e)}>
-                          <Send size={13} /> Send now
+                          <Send size={13} /> {t('Send now')}
                         </button>
                       )
                     )}
                     {url && startsSoon && (
                       <a className="ghost-btn sm" href={url} target="_blank" rel="noopener noreferrer">
-                        <Video size={13} /> Join
+                        <Video size={13} /> {t('Join')}
                       </a>
                     )}
                     {bot && !mt && (
-                      <label className="ev-switch" title="Bot joins">
-                        <span className="muted small">Bot joins</span>
+                      <label className="ev-switch" title={t('Bot joins')}>
+                        <span className="muted small">{t('Bot joins')}</span>
                         <button
                           type="button"
                           role="switch"
@@ -1076,7 +1103,7 @@ function Upcoming(p: MeetProps) {
               })}
           </div>
         ))}
-        {!soon.length && <EmptyState compact text="No meetings in the next 7 days. Connect a calendar in Calendar, or send the bot to a meeting link." />}
+        {!soon.length && <EmptyState compact text={t('No meetings in the next 7 days. Connect a calendar in Calendar, or send the bot to a meeting link.')} />}
       </div>
     </section>
   );
@@ -1097,7 +1124,6 @@ export function SendBotDialog({ clients, botName, languages, real, workspaceId, 
       on = false;
     };
   }, [real, workspaceId]);
-  const hoursOf = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h${min % 60 ? ` ${Math.round(min % 60)} min` : ''}` : `${Math.round(min)} min`);
   const usedUp = !!minutes && minutes.left !== null && minutes.left < 1;
   const [url, setUrl] = useState('');
   const [language, setLanguage] = useState('');
@@ -1106,55 +1132,57 @@ export function SendBotDialog({ clients, botName, languages, real, workspaceId, 
   const [clientId, setClientId] = useState('');
   const [err, setErr] = useState('');
   const send = () => {
-    if (!/^https?:\/\/(meet\.google\.com|[\w.-]*zoom\.us)\//i.test(url.trim())) return setErr('Paste a Google Meet or Zoom link');
+    if (!/^https?:\/\/(meet\.google\.com|[\w.-]*zoom\.us)\//i.test(url.trim())) return setErr(t('Paste a Google Meet or Zoom link'));
     onSend({ url: url.trim(), title: title.trim(), botName: name.trim() || botName, clientId, language: language || undefined });
   };
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label="Send the bot to a meeting" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+      <div className="modal" role="dialog" aria-label={t('Send the bot to a meeting')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Bot size={15} /> Send the bot to a meeting
+            <Bot size={15} /> {t('Send the bot to a meeting')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body connect-form">
           <SmoothHeight>
-          <p className="modal-intro">{seed ? (seed.note ? `${seed.note} If the meeting also has a Google Meet or Zoom link, paste it here.` : `“${seed.title}” has no meeting link yet. Paste its Google Meet or Zoom link to send the notetaker. Someone in the call has to let it in.`) : 'Paste a Google Meet or Zoom link. Someone in the call has to let the bot in.'}</p>
+          <p className="modal-intro">{seed ? (seed.note ? t('{note} If the meeting also has a Google Meet or Zoom link, paste it here.', { note: t(seed.note) }) : t('“{title}” has no meeting link yet. Paste its Google Meet or Zoom link to send the notetaker. Someone in the call has to let it in.', { title: seed.title })) : t('Paste a Google Meet or Zoom link. Someone in the call has to let the bot in.')}</p>
           <label className="field">
-            <span>Meeting link</span>
+            <span>{t('Meeting link')}</span>
             <input autoFocus value={url} onChange={(e) => (setUrl(e.target.value), setErr(''))} placeholder="https://meet.google.com/abc-defg-hij" onKeyDown={(e) => e.key === 'Enter' && send()} />
           </label>
           {err && <p className="err">{err}</p>}
           <label className="field">
-            <span>Title (optional)</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Weekly sync with…" />
+            <span>{t('Title (optional)')}</span>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('Weekly sync with…')} />
           </label>
           <label className="field">
-            <span>Bot name (optional, for this meeting)</span>
+            <span>{t('Bot name (optional, for this meeting)')}</span>
             <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder={botName} />
           </label>
           <div className="field">
-            <span>Folder (optional, otherwise filed automatically)</span>
-            <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none="Auto" label="Folder" />
+            <span>{t('Folder (optional, otherwise filed automatically)')}</span>
+            <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none={t('Auto')} label={t('Folder')} />
           </div>
           <div className="field">
-            <span>Spoken in</span>
+            <span>{t('Spoken in')}</span>
             <Select<string>
               value={language}
               onChange={setLanguage}
-              label="Spoken in"
-              options={[{ value: '', label: languagesText(languages), hint: 'Your company’s meeting languages' }, ...MEETING_LANGUAGES.map((l) => ({ value: l.code, label: l.label, hint: 'Just this meeting' }))]}
+              label={t('Spoken in')}
+              options={[{ value: '', label: languagesLabel(languages), hint: t('Your company’s meeting languages') }, ...MEETING_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label), hint: t('Just this meeting') }))]}
             />
           </div>
-          {!real && <p className="muted small">Demo: no real bot is sent. You’ll see it join, record a short sample conversation and write the notes.</p>}
+          {!real && <p className="muted small">{t('Demo: no real bot is sent. You’ll see it join, record a short sample conversation and write the notes.')}</p>}
           {minutes && minutes.total !== null && minutes.left !== null && (
             <p className={usedUp ? 'warn-note small' : 'muted small'}>
               {usedUp
-                ? `The notetaker’s ${hoursOf(minutes.total)} for this month are used up. ${isOwner ? 'Add 10 more hours in Settings, Plan & billing, Add-ons' : 'An owner can add 10 more hours in Settings, Plan & billing'}, or it starts again on the 1st.`
-                : `${hoursOf(minutes.left)} of the notetaker’s ${hoursOf(minutes.total)} left this month. It leaves the meeting when they run out.`}
+                ? isOwner
+                  ? t('The notetaker’s {hours} for this month are used up. Add 10 more hours in Settings, Plan & billing, Add-ons, or it starts again on the 1st.', { hours: hoursOf(minutes.total) })
+                  : t('The notetaker’s {hours} for this month are used up. An owner can add 10 more hours in Settings, Plan & billing, or it starts again on the 1st.', { hours: hoursOf(minutes.total) })
+                : t('{left} of the notetaker’s {total} left this month. It leaves the meeting when they run out.', { left: hoursOf(minutes.left), total: hoursOf(minutes.total) })}
             </p>
           )}
           </SmoothHeight>
@@ -1162,10 +1190,10 @@ export function SendBotDialog({ clients, botName, languages, real, workspaceId, 
         <footer className="modal-foot">
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="primary-btn" onClick={send} disabled={usedUp}>
-            <Send size={14} /> Send bot
+            <Send size={14} /> {t('Send bot')}
           </button>
         </footer>
       </div>
@@ -1182,22 +1210,22 @@ export function ShareDialog({ m, onSave, onOff, onPreview, onClose, toast }: { m
   const link = m.share ? `https://meet.sprint2go.com/s/${m.share.token}` : '';
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label="Share this meeting" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="modal" role="dialog" aria-label={t('Share this meeting')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span className="dump-title">
-            <Link2 size={15} /> Share this meeting
+            <Link2 size={15} /> {t('Share this meeting')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label="Close">
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>
         <div className="modal-body">
           <SmoothHeight>
-          <p className="modal-intro">Anyone with the link can view a read-only page: summary and tasks, plus the parts you allow below. No login needed.</p>
+          <p className="modal-intro">{t('Anyone with the link can view a read-only page: summary and tasks, plus the parts you allow below. No login needed.')}</p>
           <label className="set-row toggle-row">
             <span>
-              <strong>Include transcript</strong>
-              <small>The full conversation, line by line</small>
+              <strong>{t('Include transcript')}</strong>
+              <small>{t('The full conversation, line by line')}</small>
             </span>
             <button type="button" role="switch" aria-checked={transcript} className={`switch ${transcript ? 'on' : ''}`} onClick={() => setTranscript(!transcript)}>
               <span />
@@ -1205,8 +1233,8 @@ export function ShareDialog({ m, onSave, onOff, onPreview, onClose, toast }: { m
           </label>
           <label className="set-row toggle-row">
             <span>
-              <strong>Include recording</strong>
-              <small>{hasVideo ? 'The meeting recording' : 'This meeting has no recording'}</small>
+              <strong>{t('Include recording')}</strong>
+              <small>{hasVideo ? t('The meeting recording') : t('This meeting has no recording')}</small>
             </span>
             <button type="button" role="switch" disabled={!hasVideo} aria-checked={video && hasVideo} className={`switch ${video && hasVideo ? 'on' : ''}`} onClick={() => setVideo(!video)}>
               <span />
@@ -1215,11 +1243,11 @@ export function ShareDialog({ m, onSave, onOff, onPreview, onClose, toast }: { m
           {link && (
             <div className="share-link">
               <input readOnly value={link} onFocus={(e) => e.target.select()} />
-              <button className="ghost-btn sm" onClick={() => navigator.clipboard?.writeText(link).then(() => toast('Link copied'), () => toast('Copying isn’t allowed here'))}>
-                Copy link
+              <button className="ghost-btn sm" onClick={() => navigator.clipboard?.writeText(link).then(() => toast(t('Link copied')), () => toast(t('Copying isn’t allowed here')))}>
+                {t('Copy link')}
               </button>
               <button className="link-btn" onClick={onPreview}>
-                <Eye size={13} /> Preview
+                <Eye size={13} /> {t('Preview')}
               </button>
             </div>
           )}
@@ -1227,16 +1255,16 @@ export function ShareDialog({ m, onSave, onOff, onPreview, onClose, toast }: { m
         </div>
         <footer className="modal-foot">
           {link && (
-            <button className="ghost-btn danger-text" onClick={() => confirm('Turn off this link? People who have it will no longer see the meeting.') && onOff()}>
-              Turn off link
+            <button className="ghost-btn danger-text" onClick={() => confirm(t('Turn off this link? People who have it will no longer see the meeting.')) && onOff()}>
+              {t('Turn off link')}
             </button>
           )}
           <span className="spacer" />
           <button className="ghost-btn" onClick={onClose}>
-            Close
+            {t('Close')}
           </button>
           <button className="primary-btn" onClick={() => onSave({ transcript, video: video && hasVideo })}>
-            {link ? 'Save' : 'Create link'}
+            {link ? t('Save') : t('Create link')}
           </button>
         </footer>
       </div>
@@ -1249,17 +1277,17 @@ export function SharedPage({ m, brand, tasks, users, onClose }: { m: Meeting; br
   return (
     <div className="portal-scrim">
       <div className="preview-bar">
-        <Eye size={15} /> Preview of the public link. People see this without signing in.
+        <Eye size={15} /> {t('Preview of the public link. People see this without signing in.')}
         <span className="spacer" />
         <button className="ghost-btn sm" onClick={onClose}>
-          <X size={14} /> Close preview
+          <X size={14} /> {t('Close preview')}
         </button>
       </div>
       <div className="portal">
-        <p className="portal-kicker">{brand} · Shared meeting · read only</p>
+        <p className="portal-kicker">{t('{brand} · Shared meeting · read only', { brand })}</p>
         <h1 className="m-title">{m.title}</h1>
         <p className="m-sub">
-          {fullDate(m.at)} · {m.minutes} min · {m.attendees.join(', ')}
+          {[fullDate(m.at), m.minutes ? hoursOf(m.minutes) : '', fmtList(m.attendees)].filter(Boolean).join(' · ')}
         </p>
         {opts.video && (
           <div className="m-player video">
@@ -1269,18 +1297,18 @@ export function SharedPage({ m, brand, tasks, users, onClose }: { m: Meeting; br
           </div>
         )}
         <div className="portal-card">
-          <h2>Notes</h2>
-          <p>{m.summary || 'No summary for this meeting.'}</p>
+          <h2>{tx('meet', 'Notes')}</h2>
+          <p>{m.summary || t('No summary for this meeting.')}</p>
           {(
             [
-              ['Key points', m.keyPoints],
-              ['Decisions', m.decisions],
-              ['Open questions', m.openQuestions],
+              [mark('Key points'), m.keyPoints],
+              [mark('Decisions'), m.decisions],
+              [mark('Open questions'), m.openQuestions],
             ] as const
           ).map(([h, l]) =>
             l?.length ? (
               <div key={h}>
-                <h4>{h}</h4>
+                <h4>{t(h)}</h4>
                 <ul>
                   {l.map((x) => (
                     <li key={x}>{x}</li>
@@ -1291,14 +1319,14 @@ export function SharedPage({ m, brand, tasks, users, onClose }: { m: Meeting; br
           )}
         </div>
         <div className="portal-card">
-          <h2>Action items</h2>
+          <h2>{t('Action items')}</h2>
           <ul className="portal-list">
-            {tasks.map((t) => (
-              <li key={t.id}>
-                {t.done ? '✓' : '○'} <span className="pl-title">{t.title}</span>
+            {tasks.map((tk) => (
+              <li key={tk.id}>
+                {tk.done ? '✓' : '○'} <span className="pl-title">{tk.title}</span>
                 <span className="muted small">
-                  {users.find((u) => u.id === t.userId)?.name.split(' ')[0] ?? ''}
-                  {t.due ? ` · due ${t.due}` : ''}
+                  {users.find((u) => u.id === tk.userId)?.name.split(' ')[0] ?? ''}
+                  {tk.due ? ` · ${t('due {date}', { date: fmtDay(tk.due) })}` : ''}
                 </span>
               </li>
             ))}
@@ -1307,7 +1335,7 @@ export function SharedPage({ m, brand, tasks, users, onClose }: { m: Meeting; br
         </div>
         {opts.transcript && (
           <div className="portal-card">
-            <h2>Transcript</h2>
+            <h2>{t('Transcript')}</h2>
             <div className="m-transcript">
               {(m.transcript ?? []).map((l, i) => (
                 <div key={i} className="tl">
