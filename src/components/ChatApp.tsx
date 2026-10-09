@@ -1044,7 +1044,7 @@ export function ChatView(p: ViewProps) {
           {!grouped && (
             <div className="cm-head">
               <strong>{a.name}</strong>
-              {'former' in a && a.former && <Badge small>Former member</Badge>}
+              {'former' in a && a.former && <Badge small>{m.userId.startsWith('former:bot:') ? 'App' : 'Former member'}</Badge>}
               {a.guest && <Badge small tone="warn">Guest{(() => { const co = companyOf(a.person?.email ?? '', client?.people?.find((x) => x.email === a.person?.email)?.company, client); return co ? ` · ${co}` : ''; })()}</Badge>}
               {st && <span className="st-emoji" title={st.text}>{st.emoji}</span>}
               <time>{relative(m.at)}</time>
@@ -1095,7 +1095,7 @@ export function ChatView(p: ViewProps) {
                 <strong>{f.name}</strong>
                 <small>
                   {fmtSize(f.size)}
-                  {f.missing ? ` · ${f.missing}` : client ? ` · saved to Drive › ${client.name}` : ' · saved to Drive'}
+                  {f.missing ? ` · ${f.missing}` : f.url && !f.driveId ? '' : client ? ` · saved to Drive › ${client.name}` : ' · saved to Drive'}
                 </small>
               </span>
             </a>

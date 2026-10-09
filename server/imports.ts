@@ -184,12 +184,12 @@ async function run(id: string) {
       db.recordFile({ id: f.id, workspaceId: ws.id, by: r.created_by, name: f.name, type: f.type, size: f.size });
     },
     progress: (phase, done, total) => saveProgress({ phase, done, total }),
-    missing: (name, where, why) => {
-      if (summary.missing.length < MISSING_LISTED) summary.missing.push({ name: name.slice(0, 200), where: where.slice(0, 120), why });
+    missing: (name, where, why, kind) => {
+      if (summary.missing.length < MISSING_LISTED) summary.missing.push({ name: name.slice(0, 200), where: where.slice(0, 120), why, ...(kind ? { kind } : {}) });
       else summary.missingMore++;
     },
     made: (what, n) => {
-      if (n <= 0) return;
+      if (n < 0) return; // 0: just keeps its place in the list (the order things are made in)
       const had = summary.made.find((m) => m.what === what);
       if (had) had.n += n;
       else summary.made.push({ what, n });
@@ -205,7 +205,7 @@ async function run(id: string) {
     else if (r.source === 'trello') await trello.run(ctx);
     else await drive.run(ctx);
     setRow(id, { status: 'done', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), progress: null });
-    const what = summary.made.filter((m) => m.what !== 'people invited').map((m) => `${m.n.toLocaleString('en')} ${m.n === 1 ? singular(m.what) : m.what}`);
+    const what = summary.made.filter((m) => m.what !== 'people invited' && m.n > 0).map((m) => `${m.n.toLocaleString('en')} ${inWords(m.n === 1 ? singular(m.what) : m.what, ws)}`);
     deps.tell([r.created_by], ws.id, 'team', `Your ${SOURCE_NAME[r.source]} import is done${what.length ? `: ${listWords(what)}` : ''}.`, { app: 'settings', id: 'import' });
     platform.event('import.done', ws.id, r.created_by, `${r.source}: ${what.join(', ')}`);
   } catch (e) {
@@ -220,6 +220,8 @@ async function run(id: string) {
 }
 
 const singular = (w: string) => ({ channels: 'channel', messages: 'message', files: 'file', tasks: 'task', folders: 'folder', projects: 'project', 'direct messages': 'direct message' })[w] ?? w;
+/** "project" in the company's own word (Clients, for agencies that say so). */
+const inWords = (w: string, ws: any) => (ws?.terms?.word === 'client' ? w.replace(/^project/, 'client') : w);
 const listWords = (l: string[]) => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}`);
 
 /**
@@ -265,7 +267,8 @@ function resolvePeople(ctx: RunCtx, summary: ImportSummary, items: (list: [strin
   }
   if (!joining.length) return;
   const seats = seatsLeft(ws);
-  if (seats !== null && joining.length > seats) throw new ImportError(`Free covers 5 people, so ${seats === 0 ? 'nobody else' : `only ${seats} more`} can join. Keep the others as names or match them to members, or pick a plan in Settings, Plan & billing.`);
+  if (seats !== null && joining.length > seats)
+    throw new ImportError(`Free covers 5 people, so ${seats === 0 ? 'nobody else' : `only ${seats} more`} can join. Keep the others as names or match them to members, or pick a plan in Settings, Plan & billing.`);
   // Recorded before anything is saved, so Undo always knows.
   items([...newUsers.map((u): [string, string, string | null] => ['user', u.id, null]), ...joining.map((j): [string, string, string | null] => ['member', j.userId, j.isNew ? 'new' : 'existing'])]);
   if (newUsers.length) {
@@ -311,10 +314,11 @@ function undo(id: string, by: string): ImportSummary {
   const items = db.db.prepare('SELECT kind, ref, extra FROM import_items WHERE import_id = ?').all(id) as { kind: string; ref: string; extra: string | null }[];
   const since = addedSince(id);
   const byColl = new Map<string, string[]>();
-  for (const it of items) if (it.kind === 'doc') {
-    const [coll, docId] = it.ref.split('\t');
-    (byColl.get(coll) ?? byColl.set(coll, []).get(coll)!).push(docId);
-  }
+  for (const it of items)
+    if (it.kind === 'doc') {
+      const [coll, docId] = it.ref.split('\t');
+      (byColl.get(coll) ?? byColl.set(coll, []).get(coll)!).push(docId);
+    }
   for (const s of since) (byColl.get(s.coll) ?? byColl.set(s.coll, []).get(s.coll)!).push(s.id);
   let removed = 0;
   // Messages, tasks and files first, then the channels, projects and folders that held them.
@@ -325,10 +329,24 @@ function undo(id: string, by: string): ImportSummary {
   for (const coll of colls) {
     const ids = byColl.get(coll)!;
     for (let i = 0; i < ids.length; i += 500) {
-      const docs = ids.slice(i, i + 500).map((x) => db.getDoc(coll, x)).filter(Boolean) as db.Doc[];
+      const docs = ids
+        .slice(i, i + 500)
+        .map((x) => db.getDoc(coll, x))
+        .filter(Boolean) as db.Doc[];
       if (!docs.length) continue;
-      db.writeDocs(coll, [], docs.map((d) => d.id), by);
-      deps.broadcast(coll, [], docs.map((d) => d.id), undefined, docs);
+      db.writeDocs(
+        coll,
+        [],
+        docs.map((d) => d.id),
+        by,
+      );
+      deps.broadcast(
+        coll,
+        [],
+        docs.map((d) => d.id),
+        undefined,
+        docs,
+      );
       removed += docs.length;
     }
   }
@@ -362,8 +380,19 @@ function undo(id: string, by: string): ImportSummary {
     }
   }
   if (goneUsers.length) {
-    db.writeDocs('users', [], goneUsers.map((u) => u.id), by);
-    deps.broadcast('users', [], goneUsers.map((u) => u.id), undefined, goneUsers);
+    db.writeDocs(
+      'users',
+      [],
+      goneUsers.map((u) => u.id),
+      by,
+    );
+    deps.broadcast(
+      'users',
+      [],
+      goneUsers.map((u) => u.id),
+      undefined,
+      goneUsers,
+    );
   }
   const summary = { ...(parse<ImportSummary>(r.summary) ?? { made: [], missing: [], missingMore: 0, invited: [] }), removed: removed + fileIds.size, kept };
   setRow(id, { status: 'undone', undone_at: new Date().toISOString(), summary: JSON.stringify(summary) });
@@ -411,7 +440,7 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
     if ('error' in a) return deny(a);
     const since = new Date(Date.now() - 14 * 24 * HOUR).toISOString();
     const rows = db.db.prepare("SELECT * FROM imports WHERE workspace_id = ? AND created_at > ? AND status != 'cancelled' ORDER BY created_at DESC LIMIT 12").all(wsId, since) as unknown as Row[];
-    json(res, 200, { jobs: rows.map(jobOf), limits: { upload: limits().upload } });
+    json(res, 200, { jobs: rows.map(jobOf), limits: { upload: limits().upload, json: limits().json } });
     return true;
   }
 
@@ -459,7 +488,9 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
       rmSync(uploadPath(old.id), { force: true });
     }
     const now = new Date().toISOString();
-    db.db.prepare('INSERT INTO imports (id, workspace_id, source, status, created_by, created_at, file_name, file_size, progress) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, wsId, source, 'reading', me, now, name, size, JSON.stringify({ phase: 'Reading the file', done: 0, total: 1 }));
+    db.db
+      .prepare('INSERT INTO imports (id, workspace_id, source, status, created_by, created_at, file_name, file_size, progress) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, wsId, source, 'reading', me, now, name, size, JSON.stringify({ phase: 'Reading the file', done: 0, total: 1 }));
     void read(id);
     json(res, 200, { job: jobOf(rowOf(id)!) });
     return true;
@@ -501,7 +532,13 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
 
   if (m[2] === 'undo' && req.method === 'GET') return (json(res, 200, { since: canUndo(r) ? addedSince(r.id).length : 0 }), true);
   if (m[2] === 'undo' && req.method === 'POST') {
-    if (!canUndo(r)) return (json(res, 409, { error: r.status === 'undone' ? 'It was already undone.' : r.status === 'running' ? 'It’s still running. Undo it once it’s done.' : `Imports can be undone for ${UNDO_HOURS} hours after they finish.` }), true);
+    if (!canUndo(r))
+      return (
+        json(res, 409, {
+          error: r.status === 'undone' ? 'It was already undone.' : r.status === 'running' ? 'It’s still running. Undo it once it’s done.' : `Imports can be undone for ${UNDO_HOURS} hours after they finish.`,
+        }),
+        true
+      );
     undo(r.id, me);
     return (json(res, 200, { job: jobOf(rowOf(r.id)!) }), true);
   }
@@ -546,7 +583,8 @@ function checkChoices(ws: any, preview: ImportPreview, raw: any): ImportChoices 
     } else people[p.key] = { action: 'former' };
   }
   const seats = seatsLeft(ws);
-  if (seats !== null && invites > seats) throw new ImportError(`Free covers 5 people, so ${seats === 0 ? 'nobody else' : `only ${seats} more`} can join. Keep the others as names or match them to members, or pick a plan in Settings, Plan & billing.`);
+  if (seats !== null && invites > seats)
+    throw new ImportError(`Free covers 5 people, so ${seats === 0 ? 'nobody else' : `only ${seats} more`} can join. Keep the others as names or match them to members, or pick a plan in Settings, Plan & billing.`);
   const out: ImportChoices = { people, big: !!raw?.big };
   if (preview.source === 'slack') {
     const keys = new Set((preview.channels ?? []).map((ch) => ch.key));
@@ -564,7 +602,7 @@ function checkChoices(ws: any, preview: ImportPreview, raw: any): ImportChoices 
     const pid = typeof raw?.projectId === 'string' ? raw.projectId : '';
     if (pid) {
       const pr = db.getDoc('clients', pid) as any;
-      if (!pr || pr.workspaceId !== ws.id) throw new ImportError('That project isn’t in this company any more. Pick another, or make a new one.');
+      if (!pr || pr.workspaceId !== ws.id) throw new ImportError(`That ${ws.terms?.word === 'client' ? 'client' : 'project'} isn’t in this company any more. Pick another, or make a new one.`);
       out.projectId = pid;
     }
     out.archived = !!raw?.archived;
@@ -573,7 +611,10 @@ function checkChoices(ws: any, preview: ImportPreview, raw: any): ImportChoices 
     const d = preview.drive!;
     const need = d.bytes - (out.big ? 0 : d.bigBytes);
     const room = roomOf(ws.id);
-    if (need > room.left) throw new ImportError(`It doesn’t fit: these files take ${mbText(need)} and the company has ${mbText(room.left)} left of its ${mbText(room.total)}. ${d.big && out.big ? 'Leave out the big files, or a' : 'A'}n owner can add more in Settings, Plan & billing.`);
+    if (need > room.left)
+      throw new ImportError(
+        `It doesn’t fit: these files take ${mbText(need)} and the company has ${mbText(room.left)} left of its ${mbText(room.total)}. ${d.big && out.big ? 'Leave out the big files, or a' : 'A'}n owner can add more in Settings, Plan & billing.`,
+      );
   }
   return out;
 }

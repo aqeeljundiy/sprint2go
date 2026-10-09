@@ -12,18 +12,58 @@ import { readEntryText, readZip, type ZipEntry } from './zip.ts';
 import { ImportError, download, dropFile, fileId, limits, matchPerson, mbText, newId, suggest, typeOf, type AnalyzeCtx, type RunCtx } from './importKit.ts';
 import type { ImportChannel, ImportPreview } from '../src/importTypes.ts';
 import type { ChatFile } from '../src/types.ts';
+import { kindOf } from '../src/data/drive.ts';
 
 const NOT_SLACK = 'This isn’t a Slack export. In Slack, open Tools & settings, Workspace settings, Import/Export Data, then Export, and upload the zip Slack sends you.';
 /** Slack's housekeeping lines (joins, leaves, topic changes): not brought in. */
 const NOISE = new Set([
-  'channel_join', 'channel_leave', 'channel_topic', 'channel_purpose', 'channel_name', 'channel_archive', 'channel_unarchive', 'channel_convert_to_private', 'channel_convert_to_public',
-  'group_join', 'group_leave', 'group_topic', 'group_purpose', 'group_name', 'group_archive', 'group_unarchive',
-  'bot_add', 'bot_remove', 'pinned_item', 'unpinned_item', 'reminder_add', 'joiner_notification', 'tombstone', 'sh_room_created', 'huddle_thread', 'channel_canvas_updated',
+  'channel_join',
+  'channel_leave',
+  'channel_topic',
+  'channel_purpose',
+  'channel_name',
+  'channel_archive',
+  'channel_unarchive',
+  'channel_convert_to_private',
+  'channel_convert_to_public',
+  'group_join',
+  'group_leave',
+  'group_topic',
+  'group_purpose',
+  'group_name',
+  'group_archive',
+  'group_unarchive',
+  'bot_add',
+  'bot_remove',
+  'pinned_item',
+  'unpinned_item',
+  'reminder_add',
+  'joiner_notification',
+  'tombstone',
+  'sh_room_created',
+  'huddle_thread',
+  'channel_canvas_updated',
 ]);
 
 type SUser = { id: string; name?: string; real_name?: string; deleted?: boolean; is_bot?: boolean; is_app_user?: boolean; profile?: { email?: string; real_name?: string; display_name?: string } };
 type SFile = { id?: string; name?: string; title?: string; mimetype?: string; size?: number; url_private?: string; url_private_download?: string; mode?: string };
-type SMsg = { type?: string; subtype?: string; user?: string; bot_id?: string; username?: string; text?: string; ts?: string; thread_ts?: string; reactions?: { name: string; users?: string[] }[]; files?: SFile[]; user_profile?: { real_name?: string; display_name?: string; name?: string }; bot_profile?: { name?: string }; edited?: unknown; hidden?: boolean; attachments?: { fallback?: string; text?: string }[] };
+type SMsg = {
+  type?: string;
+  subtype?: string;
+  user?: string;
+  bot_id?: string;
+  username?: string;
+  text?: string;
+  ts?: string;
+  thread_ts?: string;
+  reactions?: { name: string; users?: string[] }[];
+  files?: SFile[];
+  user_profile?: { real_name?: string; display_name?: string; name?: string };
+  bot_profile?: { name?: string };
+  edited?: unknown;
+  hidden?: boolean;
+  attachments?: { fallback?: string; text?: string }[];
+};
 interface Conv {
   key: string;
   kind: ImportChannel['kind'];
@@ -89,11 +129,36 @@ async function conversations(file: string, at: (n: string) => ZipEntry | undefin
   const out: Conv[] = [];
   const about = (c: any) => str(c?.purpose?.value) || str(c?.topic?.value);
   for (const c of arr<any>(await readJson(file, at('channels.json'))))
-    if (str(c?.id) && str(c?.name)) out.push({ key: c.id, kind: c.is_private ? 'private' : 'public', name: c.name, folder: c.name, members: arr<string>(c.members).filter((x) => typeof x === 'string'), archived: !!c.is_archived, created: Number(c.created) || undefined, creator: str(c.creator), about: about(c) });
+    if (str(c?.id) && str(c?.name))
+      out.push({
+        key: c.id,
+        kind: c.is_private ? 'private' : 'public',
+        name: c.name,
+        folder: c.name,
+        members: arr<string>(c.members).filter((x) => typeof x === 'string'),
+        archived: !!c.is_archived,
+        created: Number(c.created) || undefined,
+        creator: str(c.creator),
+        about: about(c),
+      });
   for (const c of arr<any>(await readJson(file, at('groups.json'))))
-    if (str(c?.id) && str(c?.name)) out.push({ key: c.id, kind: 'private', name: c.name, folder: c.name, members: arr<string>(c.members).filter((x) => typeof x === 'string'), archived: !!c.is_archived, created: Number(c.created) || undefined, creator: str(c.creator), about: about(c) });
-  for (const c of arr<any>(await readJson(file, at('dms.json')))) if (str(c?.id)) out.push({ key: c.id, kind: 'dm', name: '', folder: c.id, members: arr<string>(c.members).filter((x) => typeof x === 'string'), archived: false, created: Number(c.created) || undefined });
-  for (const c of arr<any>(await readJson(file, at('mpims.json')))) if (str(c?.id) && str(c?.name)) out.push({ key: c.id, kind: 'group', name: c.name, folder: c.name, members: arr<string>(c.members).filter((x) => typeof x === 'string'), archived: !!c.is_archived, created: Number(c.created) || undefined });
+    if (str(c?.id) && str(c?.name))
+      out.push({
+        key: c.id,
+        kind: 'private',
+        name: c.name,
+        folder: c.name,
+        members: arr<string>(c.members).filter((x) => typeof x === 'string'),
+        archived: !!c.is_archived,
+        created: Number(c.created) || undefined,
+        creator: str(c.creator),
+        about: about(c),
+      });
+  for (const c of arr<any>(await readJson(file, at('dms.json'))))
+    if (str(c?.id)) out.push({ key: c.id, kind: 'dm', name: '', folder: c.id, members: arr<string>(c.members).filter((x) => typeof x === 'string'), archived: false, created: Number(c.created) || undefined });
+  for (const c of arr<any>(await readJson(file, at('mpims.json'))))
+    if (str(c?.id) && str(c?.name))
+      out.push({ key: c.id, kind: 'group', name: c.name, folder: c.name, members: arr<string>(c.members).filter((x) => typeof x === 'string'), archived: !!c.is_archived, created: Number(c.created) || undefined });
   return out;
 }
 
@@ -175,13 +240,138 @@ export async function analyze(ctx: AnalyzeCtx): Promise<ImportPreview> {
 /* ---------- Slack's markup and reactions ---------- */
 
 const EMOJI: Record<string, string> = {
-  '+1': '👍', thumbsup: '👍', '-1': '👎', thumbsdown: '👎', heart: '❤️', heart_eyes: '😍', joy: '😂', laughing: '😆', smile: '😄', smiley: '😃', grinning: '😀', slightly_smiling_face: '🙂', wink: '😉', blush: '😊', sweat_smile: '😅', rolling_on_the_floor_laughing: '🤣', rofl: '🤣',
-  tada: '🎉', fire: '🔥', eyes: '👀', pray: '🙏', clap: '👏', raised_hands: '🙌', muscle: '💪', ok_hand: '👌', wave: '👋', point_up: '☝️', point_right: '👉', v: '✌️', handshake: '🤝', saluting_face: '🫡',
-  white_check_mark: '✅', heavy_check_mark: '✔️', ballot_box_with_check: '☑️', x: '❌', warning: '⚠️', exclamation: '❗', question: '❓', bangbang: '‼️', '100': '💯', star: '⭐', star2: '🌟', sparkles: '✨', zap: '⚡', boom: '💥',
-  rocket: '🚀', thinking_face: '🤔', thinking: '🤔', sob: '😭', cry: '😢', disappointed: '😞', confused: '😕', scream: '😱', open_mouth: '😮', astonished: '😲', sunglasses: '😎', upside_down_face: '🙃', face_palm: '🤦', facepalm: '🤦', shrug: '🤷', partying_face: '🥳', hugging_face: '🤗', hugs: '🤗', grimacing: '😬', relieved: '😌', sleeping: '😴', nerd_face: '🤓', skull: '💀', see_no_evil: '🙈',
-  coffee: '☕', beers: '🍻', beer: '🍺', cake: '🍰', pizza: '🍕', trophy: '🏆', medal: '🏅', moneybag: '💰', gift: '🎁', bulb: '💡', memo: '📝', pushpin: '📌', calendar: '📅', link: '🔗', lock: '🔒', mag: '🔍', bell: '🔔', loudspeaker: '📢', mega: '📣', chart_with_upwards_trend: '📈', hourglass: '⌛', stopwatch: '⏱️', alarm_clock: '⏰',
-  heavy_plus_sign: '➕', heavy_minus_sign: '➖', arrow_up: '⬆️', arrow_down: '⬇️', arrow_right: '➡️', arrow_left: '⬅️', repeat: '🔁', red_circle: '🔴', large_green_circle: '🟢', large_blue_circle: '🔵', large_yellow_circle: '🟡', white_circle: '⚪', black_circle: '⚫', green_heart: '💚', blue_heart: '💙', purple_heart: '💜', yellow_heart: '💛', orange_heart: '🧡', broken_heart: '💔', sparkling_heart: '💖',
-  sunny: '☀️', rainbow: '🌈', seedling: '🌱', cactus: '🌵', dog: '🐶', cat: '🐱', unicorn_face: '🦄', unicorn: '🦄', bug: '🐛', robot_face: '🤖', ghost: '👻', alien: '👽', poop: '💩', hankey: '💩', eyes_closed: '😌', money_mouth_face: '🤑', star_struck: '🤩', melting_face: '🫠', pleading_face: '🥺', smiling_face_with_3_hearts: '🥰',
+  '+1': '👍',
+  thumbsup: '👍',
+  '-1': '👎',
+  thumbsdown: '👎',
+  heart: '❤️',
+  heart_eyes: '😍',
+  joy: '😂',
+  laughing: '😆',
+  smile: '😄',
+  smiley: '😃',
+  grinning: '😀',
+  slightly_smiling_face: '🙂',
+  wink: '😉',
+  blush: '😊',
+  sweat_smile: '😅',
+  rolling_on_the_floor_laughing: '🤣',
+  rofl: '🤣',
+  tada: '🎉',
+  fire: '🔥',
+  eyes: '👀',
+  pray: '🙏',
+  clap: '👏',
+  raised_hands: '🙌',
+  muscle: '💪',
+  ok_hand: '👌',
+  wave: '👋',
+  point_up: '☝️',
+  point_right: '👉',
+  v: '✌️',
+  handshake: '🤝',
+  saluting_face: '🫡',
+  white_check_mark: '✅',
+  heavy_check_mark: '✔️',
+  ballot_box_with_check: '☑️',
+  x: '❌',
+  warning: '⚠️',
+  exclamation: '❗',
+  question: '❓',
+  bangbang: '‼️',
+  '100': '💯',
+  star: '⭐',
+  star2: '🌟',
+  sparkles: '✨',
+  zap: '⚡',
+  boom: '💥',
+  rocket: '🚀',
+  thinking_face: '🤔',
+  thinking: '🤔',
+  sob: '😭',
+  cry: '😢',
+  disappointed: '😞',
+  confused: '😕',
+  scream: '😱',
+  open_mouth: '😮',
+  astonished: '😲',
+  sunglasses: '😎',
+  upside_down_face: '🙃',
+  face_palm: '🤦',
+  facepalm: '🤦',
+  shrug: '🤷',
+  partying_face: '🥳',
+  hugging_face: '🤗',
+  hugs: '🤗',
+  grimacing: '😬',
+  relieved: '😌',
+  sleeping: '😴',
+  nerd_face: '🤓',
+  skull: '💀',
+  see_no_evil: '🙈',
+  coffee: '☕',
+  beers: '🍻',
+  beer: '🍺',
+  cake: '🍰',
+  pizza: '🍕',
+  trophy: '🏆',
+  medal: '🏅',
+  moneybag: '💰',
+  gift: '🎁',
+  bulb: '💡',
+  memo: '📝',
+  pushpin: '📌',
+  calendar: '📅',
+  link: '🔗',
+  lock: '🔒',
+  mag: '🔍',
+  bell: '🔔',
+  loudspeaker: '📢',
+  mega: '📣',
+  chart_with_upwards_trend: '📈',
+  hourglass: '⌛',
+  stopwatch: '⏱️',
+  alarm_clock: '⏰',
+  heavy_plus_sign: '➕',
+  heavy_minus_sign: '➖',
+  arrow_up: '⬆️',
+  arrow_down: '⬇️',
+  arrow_right: '➡️',
+  arrow_left: '⬅️',
+  repeat: '🔁',
+  red_circle: '🔴',
+  large_green_circle: '🟢',
+  large_blue_circle: '🔵',
+  large_yellow_circle: '🟡',
+  white_circle: '⚪',
+  black_circle: '⚫',
+  green_heart: '💚',
+  blue_heart: '💙',
+  purple_heart: '💜',
+  yellow_heart: '💛',
+  orange_heart: '🧡',
+  broken_heart: '💔',
+  sparkling_heart: '💖',
+  sunny: '☀️',
+  rainbow: '🌈',
+  seedling: '🌱',
+  cactus: '🌵',
+  dog: '🐶',
+  cat: '🐱',
+  unicorn_face: '🦄',
+  unicorn: '🦄',
+  bug: '🐛',
+  robot_face: '🤖',
+  ghost: '👻',
+  alien: '👽',
+  poop: '💩',
+  hankey: '💩',
+  eyes_closed: '😌',
+  money_mouth_face: '🤑',
+  star_struck: '🤩',
+  melting_face: '🫠',
+  pleading_face: '🥺',
+  smiling_face_with_3_hearts: '🥰',
 };
 /** A Slack reaction as an emoji (skin tones dropped); custom ones keep their :name:. */
 export const emojiOf = (name: string) => {
@@ -242,10 +432,8 @@ export async function run(ctx: RunCtx) {
   const channel = (id: string, label: string) => label || chanNames.get(id) || 'channel';
   const here = new Map((db.allDocs('channels') as any[]).filter((c) => c.workspaceId === wsId && c.kind === 'channel' && !c.archived).map((c) => [String(c.name), String(c.id)]));
   const askOver = Number(ctx.preview.room.askOverMb ?? 500) * 1024 * 1024;
-  let newChannels = 0;
-  let newDms = 0;
-  let messages = 0;
-  let files = 0;
+  // What it made, counted as it goes (so an import that stops part way still says what came over).
+  for (const what of ['channels', 'direct messages', 'messages', 'files']) ctx.made(what, 0);
 
   for (const [ci, c] of convs.entries()) {
     const label = convLabel(c, nameOf);
@@ -255,18 +443,35 @@ export async function run(ctx: RunCtx) {
     const mapped = [...new Set(c.members.map(memberId).filter(Boolean) as string[])];
     if (c.kind === 'dm' || c.kind === 'group') {
       if (!mapped.length) {
-        ctx.missing(label, 'Direct messages', 'nobody in them is a member here');
+        ctx.missing(label, c.kind === 'dm' ? 'Direct messages' : 'Group messages', 'nobody in them is a member here', 'conversation');
         continue;
       }
       channelId = newId('ch-');
       const others = c.members.filter((x) => !memberId(x));
       const doc =
         c.kind === 'dm'
-          ? { id: channelId, workspaceId: wsId, kind: 'dm', name: c.members.map(nameOf).join(', ').slice(0, 80), members: [...mapped, ...others.map((x) => `former:${x}`)].slice(0, 2), createdAt: c.created ? new Date(c.created * 1000).toISOString() : new Date().toISOString() }
-          : { id: channelId, workspaceId: wsId, kind: 'channel', name: slugName(c.members.map((x) => nameOf(x).split(' ')[0]).join('-')).slice(0, 60), members: mapped, private: true, category: 'project', topic: `Group messages from Slack with ${c.members.map(nameOf).join(', ')}`.slice(0, 250), ownerId: mapped[0], createdAt: c.created ? new Date(c.created * 1000).toISOString() : new Date().toISOString() };
+          ? {
+              id: channelId,
+              workspaceId: wsId,
+              kind: 'dm',
+              name: c.members.map(nameOf).join(', ').slice(0, 80),
+              members: [...mapped, ...others.map((x) => `former:${x}`)].slice(0, 2),
+              createdAt: c.created ? new Date(c.created * 1000).toISOString() : new Date().toISOString(),
+            }
+          : {
+              id: channelId,
+              workspaceId: wsId,
+              kind: 'channel',
+              name: slugName(c.members.map((x) => nameOf(x).split(' ')[0]).join('-')).slice(0, 60),
+              members: mapped,
+              private: true,
+              category: 'project',
+              topic: `Group messages from Slack with ${c.members.map(nameOf).join(', ')}`.slice(0, 250),
+              ownerId: mapped[0],
+              createdAt: c.created ? new Date(c.created * 1000).toISOString() : new Date().toISOString(),
+            };
       ctx.add('channels', [doc]);
-      if (c.kind === 'dm') newDms++;
-      else newChannels++;
+      ctx.made(c.kind === 'dm' ? 'direct messages' : 'channels', 1);
     } else {
       const into = here.get(slugName(c.name));
       if (into) channelId = into;
@@ -289,7 +494,7 @@ export async function run(ctx: RunCtx) {
         };
         ctx.add('channels', [doc]);
         here.set(doc.name, channelId);
-        newChannels++;
+        ctx.made('channels', 1);
       }
     }
 
@@ -306,56 +511,85 @@ export async function run(ctx: RunCtx) {
     const where = c.kind === 'dm' || c.kind === 'group' ? label : `#${slugName(c.name)}`;
 
     let batch: db.Doc[] = [];
+    let driveBatch: db.Doc[] = [];
     const flush = () => {
+      ctx.add('drive', driveBatch); // a file's Drive entry goes first, so the message never points at nothing
       ctx.add('messages', batch);
-      messages += batch.length;
+      ctx.made('messages', batch.length);
       batch = [];
+      driveBatch = [];
     };
-    for (const [mi, m] of raw.entries()) {
-      const ts = String(m.ts);
-      const parent = m.thread_ts && m.thread_ts !== ts ? idOfTs.get(String(m.thread_ts)) : undefined;
-      const parentId = parent && written.has(parent) ? parent : undefined; // a reply whose first message isn't here stands on its own
-      let text = plainText(str(m.text), mention, channel);
-      if (!text.trim()) text = arr<{ fallback?: string; text?: string }>(m.attachments).map((x) => str(x.fallback) || str(x.text)).filter(Boolean).join('\n');
-      const reactions: Record<string, string[]> = {};
-      for (const r of arr<{ name: string; users?: string[] }>(m.reactions)) {
-        if (!str(r.name)) continue;
-        const e = emojiOf(r.name);
-        reactions[e] = [...new Set([...(reactions[e] ?? []), ...arr<string>(r.users).map((u) => memberId(u) ?? `former:${u}`)])];
+    // Messages (and their files) handled before a stop are still saved, so nothing is left without its message.
+    try {
+      for (const [mi, m] of raw.entries()) {
+        const ts = String(m.ts);
+        const parent = m.thread_ts && m.thread_ts !== ts ? idOfTs.get(String(m.thread_ts)) : undefined;
+        const parentId = parent && written.has(parent) ? parent : undefined; // a reply whose first message isn't here stands on its own
+        let text = plainText(str(m.text), mention, channel);
+        if (!text.trim())
+          text = arr<{ fallback?: string; text?: string }>(m.attachments)
+            .map((x) => str(x.fallback) || str(x.text))
+            .filter(Boolean)
+            .join('\n');
+        const reactions: Record<string, string[]> = {};
+        for (const r of arr<{ name: string; users?: string[] }>(m.reactions)) {
+          if (!str(r.name)) continue;
+          const e = emojiOf(r.name);
+          reactions[e] = [...new Set([...(reactions[e] ?? []), ...arr<string>(r.users).map((u) => memberId(u) ?? `former:${u}`)])];
+        }
+        const chatFiles: ChatFile[] = [];
+        for (const f of arr<SFile>(m.files)) {
+          const got = await fileOf(ctx, f, where, askOver);
+          if (got.url) {
+            ctx.made('files', 1);
+            // Like a file shared in chat here: in Drive too, with its channel. Only from public channels, so a private
+            // conversation's files don't show to the whole company in Drive.
+            if (c.kind === 'public') {
+              const driveId = newId('d-');
+              const kind = kindOf({ name: got.name, type: got.type });
+              driveBatch.push({
+                id: driveId,
+                name: got.name,
+                kind,
+                parentId: null,
+                size: got.size,
+                modified: new Date(tsMs(m.ts)).toISOString(),
+                workspaceId: wsId,
+                channelId,
+                url: got.url,
+                ...(kind === 'image' ? { thumb: got.url } : {}),
+                uploadedBy: (m.user && memberId(m.user)) || ctx.me,
+              });
+              got.driveId = driveId;
+            }
+          }
+          chatFiles.push(got);
+        }
+        if (!text.trim() && !chatFiles.length) continue;
+        const doc = {
+          id: idOfTs.get(ts)!,
+          channelId,
+          ...authorOf(m),
+          text: text.slice(0, 40_000),
+          at: new Date(tsMs(m.ts)).toISOString(),
+          ...(parentId ? { parentId } : {}),
+          ...(parentId && m.subtype === 'thread_broadcast' ? { alsoInChannel: true } : {}),
+          ...(Object.keys(reactions).length ? { reactions } : {}),
+          ...(chatFiles.length ? { files: chatFiles } : {}),
+          ...(m.edited ? { edited: true } : {}),
+        };
+        batch.push(doc as db.Doc);
+        written.add(doc.id);
+        if (batch.length >= 400) {
+          flush();
+          ctx.progress(label, ci + mi / Math.max(1, raw.length), convs.length);
+          await ctx.breathe();
+        }
       }
-      const chatFiles: ChatFile[] = [];
-      for (const f of arr<SFile>(m.files)) {
-        const got = await fileOf(ctx, f, where, askOver);
-        if (got.url) files++;
-        chatFiles.push(got);
-      }
-      if (!text.trim() && !chatFiles.length) continue;
-      const doc = {
-        id: idOfTs.get(ts)!,
-        channelId,
-        ...authorOf(m),
-        text: text.slice(0, 40_000),
-        at: new Date(tsMs(m.ts)).toISOString(),
-        ...(parentId ? { parentId } : {}),
-        ...(parentId && m.subtype === 'thread_broadcast' ? { alsoInChannel: true } : {}),
-        ...(Object.keys(reactions).length ? { reactions } : {}),
-        ...(chatFiles.length ? { files: chatFiles } : {}),
-        ...(m.edited ? { edited: true } : {}),
-      };
-      batch.push(doc as db.Doc);
-      written.add(doc.id);
-      if (batch.length >= 400) {
-        flush();
-        ctx.progress(label, ci + mi / Math.max(1, raw.length), convs.length);
-        await ctx.breathe();
-      }
+    } finally {
+      flush();
     }
-    flush();
   }
-  ctx.made('channels', newChannels);
-  ctx.made('direct messages', newDms);
-  ctx.made('messages', messages);
-  ctx.made('files', files);
 }
 
 /** A message's file: fetched from Slack's link into data/files when it can be, else just its name, with why. */

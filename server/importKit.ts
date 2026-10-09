@@ -47,7 +47,10 @@ const norm = (s: unknown) =>
     .trim();
 /** The members of a company as people to match against. */
 export function membersOf(ws: any): { id: string; name: string; email: string }[] {
-  return (ws.members ?? []).map((m: any) => db.getDoc('users', m.userId) as any).filter((u: any) => u && !u.deletedAt).map((u: any) => ({ id: u.id, name: String(u.name ?? ''), email: String(u.email ?? '').toLowerCase() }));
+  return (ws.members ?? [])
+    .map((m: any) => db.getDoc('users', m.userId) as any)
+    .filter((u: any) => u && !u.deletedAt)
+    .map((u: any) => ({ id: u.id, name: String(u.name ?? ''), email: String(u.email ?? '').toLowerCase() }));
 }
 /** The member someone from the export is: by email first, then by their full name (only when one member has it). */
 export function matchPerson(members: { id: string; name: string; email: string }[], p: { email?: string; names: string[] }): { id: string; how: 'email' | 'name' } | null {
@@ -86,7 +89,7 @@ export interface RunCtx {
   /** A file saved under data/files (already on disk at db.filePath(id)), recorded for Undo. */
   addFile: (f: { id: string; name: string; type: string; size: number }) => void;
   progress: (phase: string, done: number, total: number) => void;
-  missing: (name: string, where: string, why: string) => void;
+  missing: (name: string, where: string, why: string, kind?: 'conversation') => void;
   made: (what: string, n: number) => void;
   room: () => number; // storage left now, in bytes
   maxFile: () => number; // the largest single file
@@ -151,7 +154,10 @@ export async function download(raw: string, dest: string, max: number, { timeout
     if (status === 401 || status === 403) (res.resume(), fail('it asks for a sign-in'));
     if (status === 404 || status === 410) (res.resume(), fail('it’s gone from there'));
     if (status < 200 || status >= 300) (res.resume(), fail(`its server answered with an error (${status})`));
-    const type = String(res.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    const type = String(res.headers['content-type'] ?? '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
     if (type === 'text/html' && !html) (res.resume(), fail('it asks for a sign-in'));
     if (Number(res.headers['content-length'] ?? 0) > max) (res.resume(), fail('it’s bigger than allowed'));
     const out = createWriteStream(dest);
@@ -188,14 +194,58 @@ export const mbText = (n: number) => (n >= 1024 ** 3 ? `${+(n / 1024 ** 3).toFix
 
 /** Type by file name, for files that arrive without one (from a zip). */
 const TYPES: Record<string, string> = {
-  pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  odt: 'application/vnd.oasis.opendocument.text', ods: 'application/vnd.oasis.opendocument.spreadsheet', odp: 'application/vnd.oasis.opendocument.presentation', rtf: 'application/rtf', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', tsv: 'text/tab-separated-values', html: 'text/html', htm: 'text/html', json: 'application/json', xml: 'application/xml',
-  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', svg: 'image/svg+xml', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff', avif: 'image/avif',
-  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo', m4v: 'video/mp4',
-  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac', aac: 'audio/aac',
-  zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed', gz: 'application/gzip', key: 'application/vnd.apple.keynote', pages: 'application/vnd.apple.pages', numbers: 'application/vnd.apple.numbers',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  odt: 'application/vnd.oasis.opendocument.text',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  odp: 'application/vnd.oasis.opendocument.presentation',
+  rtf: 'application/rtf',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  csv: 'text/csv',
+  tsv: 'text/tab-separated-values',
+  html: 'text/html',
+  htm: 'text/html',
+  json: 'application/json',
+  xml: 'application/xml',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  avif: 'image/avif',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  m4v: 'video/mp4',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+  zip: 'application/zip',
+  rar: 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+  gz: 'application/gzip',
+  key: 'application/vnd.apple.keynote',
+  pages: 'application/vnd.apple.pages',
+  numbers: 'application/vnd.apple.numbers',
 };
-export const typeOf = (name: string, given?: string) => (given && given !== 'application/octet-stream' ? given : TYPES[name.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream');
+export const typeOf = (name: string, given?: string) => (given && given !== 'application/octet-stream' ? given : (TYPES[name.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream'));
 export const newId = (prefix: string) => `${prefix}${randomBytes(8).toString('hex')}`;
 /** A new id for a file under data/files (the shape /api/files/<id> serves). */
 export const fileId = () => randomBytes(16).toString('hex');

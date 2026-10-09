@@ -17,7 +17,21 @@ import type { StageKind, TaskStage } from '../src/types.ts';
 const NOT_TRELLO = 'This isn’t a Trello board export. In Trello, open the board’s menu, then Print, export and share, then Export as JSON, and save that page as a .json file.';
 
 type TList = { id: string; name?: string; closed?: boolean; pos?: number };
-type TCard = { id: string; name?: string; desc?: string; closed?: boolean; idList?: string; idLabels?: string[]; labels?: { id?: string; name?: string; color?: string }[]; idMembers?: string[]; due?: string | null; dueComplete?: boolean; pos?: number; dateLastActivity?: string; attachments?: { name?: string; url?: string }[] };
+type TCard = {
+  id: string;
+  name?: string;
+  desc?: string;
+  closed?: boolean;
+  idList?: string;
+  idLabels?: string[];
+  labels?: { id?: string; name?: string; color?: string }[];
+  idMembers?: string[];
+  due?: string | null;
+  dueComplete?: boolean;
+  pos?: number;
+  dateLastActivity?: string;
+  attachments?: { name?: string; url?: string }[];
+};
 type TMember = { id: string; fullName?: string; username?: string; email?: string };
 type TChecklist = { id: string; name?: string; idCard?: string; pos?: number; checkItems?: { name?: string; state?: string; pos?: number }[] };
 type TAction = { type?: string; date?: string; idMemberCreator?: string; memberCreator?: TMember; data?: { text?: string; card?: { id?: string } } };
@@ -46,7 +60,15 @@ function readBoard(file: string): Board {
   }
   if (!b || typeof b !== 'object' || !Array.isArray(b.lists) || !Array.isArray(b.cards)) throw new ImportError(NOT_TRELLO);
   const ok = <T extends { id?: unknown }>(l: unknown) => arr<T>(l).filter((x) => x && typeof x === 'object' && typeof x.id === 'string');
-  return { name: str(b.name).trim().slice(0, 80) || 'Trello board', lists: ok<TList>(b.lists), cards: ok<TCard>(b.cards), members: ok<TMember>(b.members), labels: ok<{ id: string }>(b.labels), checklists: ok<TChecklist>(b.checklists), actions: arr<TAction>(b.actions).filter((a) => a && typeof a === 'object') };
+  return {
+    name: str(b.name).trim().slice(0, 80) || 'Trello board',
+    lists: ok<TList>(b.lists),
+    cards: ok<TCard>(b.cards),
+    members: ok<TMember>(b.members),
+    labels: ok<{ id: string }>(b.labels),
+    checklists: ok<TChecklist>(b.checklists),
+    actions: arr<TAction>(b.actions).filter((a) => a && typeof a === 'object'),
+  };
 }
 
 /** The company's stages, in board order. */
@@ -111,7 +133,13 @@ export async function analyze(ctx: AnalyzeCtx): Promise<ImportPreview> {
     source: 'trello',
     title: b.name,
     people: suggest(people, ctx.seats),
-    board: { name: b.name, cards: b.cards.filter((c) => !archivedCard(c, lists)).length, archivedCards: b.cards.filter((c) => archivedCard(c, lists)).length, comments: comments.length, ...(same ? { sameName: same.id } : {}) },
+    board: {
+      name: b.name,
+      cards: b.cards.filter((c) => !archivedCard(c, lists)).length,
+      archivedCards: b.cards.filter((c) => archivedCard(c, lists)).length,
+      comments: comments.length,
+      ...(same ? { sameName: same.id } : {}),
+    },
     lists: listsOut,
     room: ctx.room,
     seatsLeft: ctx.seats,
@@ -161,10 +189,9 @@ export async function run(ctx: RunCtx) {
     return d.toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD where the company is
   };
   let batch: db.Doc[] = [];
-  let made = 0;
   const flush = async () => {
     ctx.add('todos', batch);
-    made += batch.length;
+    ctx.made('tasks', batch.length);
     batch = [];
     await ctx.breathe();
   };
@@ -176,7 +203,14 @@ export async function run(ctx: RunCtx) {
     const doing = arr<string>(c.idMembers).map(memberOf);
     const assignees = [...new Set(doing.map((p) => p?.userId).filter((x): x is string => !!x))];
     const notHere = doing.filter((p) => p && !p.userId).map((p) => p!.name);
-    const labelNames = [...arr<{ name?: string; color?: string }>(c.labels), ...arr<string>(c.idLabels).map((id) => labels.get(id)).filter(Boolean)].map((l: any) => str(l?.name) || (l?.color ? `${l.color} label` : '')).filter(Boolean);
+    const labelNames = [
+      ...arr<{ name?: string; color?: string }>(c.labels),
+      ...arr<string>(c.idLabels)
+        .map((id) => labels.get(id))
+        .filter(Boolean),
+    ]
+      .map((l: any) => str(l?.name) || (l?.color ? `${l.color} label` : ''))
+      .filter(Boolean);
     const uniqLabels = [...new Set(labelNames)];
     const links = arr<{ name?: string; url?: string }>(c.attachments).filter((a) => /^https?:\/\//i.test(str(a.url)));
     const notes = [
@@ -216,7 +250,7 @@ export async function run(ctx: RunCtx) {
       status,
       ...(done ? { doneAt: str(c.dateLastActivity) || now, doneBy: ctx.me } : {}),
       priority: uniqLabels.some((l) => HIGH.test(l)) ? 'high' : 'normal',
-      source: 'manual',
+      source: 'import',
       userId: assignees[0] ?? '',
       assignees,
       ...(checklist.length ? { checklist } : {}),
@@ -233,5 +267,4 @@ export async function run(ctx: RunCtx) {
   }
   await flush();
   ctx.progress('Making tasks', cards.length, cards.length);
-  ctx.made('tasks', made);
 }

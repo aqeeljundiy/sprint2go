@@ -83,7 +83,7 @@ export interface ImportProgress {
 export interface ImportSummary {
   made: { what: string; n: number }[];
   /** Files it couldn't bring, with why (not in the export, couldn't be fetched, too big, no room). */
-  missing: { name: string; where: string; why: string }[];
+  missing: { name: string; where: string; why: string; kind?: 'conversation' }[]; // files, unless it says otherwise
   missingMore: number; // beyond the ones listed
   invited: { name: string; email: string; link: string | null }[]; // link: null when they already sign in
   /** After an undo: what it removed, and people it kept because they already joined. */

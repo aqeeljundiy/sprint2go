@@ -99,14 +99,35 @@ export function takeoutZip() {
 
 /** Zips the server must refuse, by what's wrong with them. */
 export const malicious = {
-  traversal: () => makeZip([{ name: 'Takeout/Drive/ok.txt', data: 'fine' }, { name: '../../evil.txt', data: 'gotcha' }]),
+  traversal: () =>
+    makeZip([
+      { name: 'Takeout/Drive/ok.txt', data: 'fine' },
+      { name: '../../evil.txt', data: 'gotcha' },
+    ]),
   absolute: () => makeZip([{ name: '/etc/passwd', data: 'root:x:0:0' }]),
   windows: () => makeZip([{ name: 'C:\\Windows\\evil.dll', data: 'MZ' }]),
   hidden: () => makeZip([{ name: 'Takeout/Drive/a/../../../evil.txt', data: 'gotcha' }]),
   /** One file that says it's 1 KB and unpacks to 20 MB of zeros (about 20 KB packed). */
-  bomb: () => makeZip([{ name: 'Takeout/Drive/readme.txt', data: 'hello' }, { name: 'Takeout/Drive/zeros.bin', data: Buffer.alloc(20 * 1024 * 1024), claim: 1024 }]),
+  bomb: () =>
+    makeZip([
+      { name: 'Takeout/Drive/readme.txt', data: 'hello' },
+      { name: 'Takeout/Drive/zeros.bin', data: Buffer.alloc(20 * 1024 * 1024), claim: 1024 },
+    ]),
   /** Says honestly that it's 20 MB unpacked: over a 5 MB limit, refused before anything is unpacked. */
   huge: () => makeZip([{ name: 'Takeout/Drive/zeros.bin', data: Buffer.alloc(20 * 1024 * 1024) }]),
-  /** More files than the limit allows. */
+  /** More files than the limit allows (set S2G_IMPORT_MAX_FILES below n to try it; at most 65,535 here). */
   many: (n) => makeZip(Array.from({ length: n }, (_, i) => ({ name: `Takeout/Drive/f${i}.txt`, data: 'x', store: true }))),
 };
+
+// Run directly to get the fixture zips to try in the app (Settings, Import):
+//   node scripts/fixtures/zip.mjs <folder> [where Slack's file links point]
+if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+  const { mkdirSync, writeFileSync, copyFileSync } = await import('node:fs');
+  const out = process.argv[2] ?? join(here, 'out');
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, 'slack-export.zip'), slackZip(process.argv[3]));
+  writeFileSync(join(out, 'takeout-drive.zip'), takeoutZip());
+  copyFileSync(join(here, 'trello-board.json'), join(out, 'trello-board.json'));
+  for (const [name, make] of Object.entries(malicious)) writeFileSync(join(out, `malicious-${name}.zip`), make(300));
+  console.log(`Fixture zips in ${out}`);
+}

@@ -420,7 +420,7 @@ export interface Todo {
   status?: TaskStatus; // board column; kept in step with `done`
   priority: 'high' | 'normal';
   threadId?: string; // the email it came from
-  source: 'ai' | 'manual' | 'braindump' | 'chat' | 'meeting' | 'request';
+  source: 'ai' | 'manual' | 'braindump' | 'chat' | 'meeting' | 'request' | 'import'; // import: brought over from another app (Settings, Import)
   requestedBy?: string; // a client person's email (requests from the portal)
   userId: string; // first person doing it ('' = waiting in a team queue); kept for older code
   assignees?: string[]; // everyone doing it (userId is the first)

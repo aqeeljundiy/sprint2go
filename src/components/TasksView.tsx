@@ -6,7 +6,7 @@ import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, ChevronDown, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CalendarPlus, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, List, Mail, Menu, MessagesSquare, Plus, Sparkles, Trash2, Users, Video, type LucideIcon, FolderInput, ChevronDown, ChevronRight, SlidersHorizontal, Bookmark, MessageCircle } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
 import { firstOf, kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesFor, toneOf } from '../stages';
 import { ProjectTables } from './tables/TablesApp';
@@ -48,6 +48,7 @@ export const SOURCE: Record<Todo['source'], { icon: LucideIcon; label: string }>
   chat: { icon: MessagesSquare, label: 'From chat' },
   meeting: { icon: Video, label: 'From a meeting' },
   request: { icon: Inbox, get label() { return `${term.Who} request`; } },
+  import: { icon: FolderInput, label: 'Imported' },
 };
 /** A task's stage id (one of its company's stages; see src/stages.ts). */
 export const statusOf = (t: Todo): TaskStatus => stageOf(t).id;

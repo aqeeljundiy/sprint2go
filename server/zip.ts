@@ -198,7 +198,7 @@ export async function openEntry(path: string, e: ZipEntry, max = Infinity): Prom
     },
     flush(cb) {
       if (seen !== e.size) return cb(new ZipError(`${e.name} is damaged in this zip.`, 'damaged'));
-      if ((sum >>> 0) !== (e.crc >>> 0)) return cb(new ZipError(`${e.name} is damaged in this zip.`, 'damaged'));
+      if (sum >>> 0 !== e.crc >>> 0) return cb(new ZipError(`${e.name} is damaged in this zip.`, 'damaged'));
       cb();
     },
   });

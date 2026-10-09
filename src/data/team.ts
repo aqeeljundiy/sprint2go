@@ -399,7 +399,7 @@ for (const m of MEETINGS)
   }
 
 // Everyone on a task: who does it, who supervises (whoever assigned it), and a history that starts at creation.
-const SRC_WORD: Record<Todo['source'], string> = { ai: 'from an email', manual: '', braindump: 'from a brain dump', chat: 'from chat', meeting: 'from a meeting', request: 'from a client request' };
+const SRC_WORD: Record<Todo['source'], string> = { ai: 'from an email', manual: '', braindump: 'from a brain dump', chat: 'from chat', meeting: 'from a meeting', request: 'from a client request', import: 'from an import' };
 for (const t of TASKS) {
   t.assignees = t.userId ? [t.userId] : [];
   t.supervisorId = t.createdBy;
