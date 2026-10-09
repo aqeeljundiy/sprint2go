@@ -862,7 +862,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     return (
       json(res, 200, {
         ticket: { ...t, breaching: !t.firstReplyAt && !!t.dueAt && t.dueAt < now() && (t.status === 'new' || t.status === 'open') },
-        messages: support.messagesOf(t.id, true),
+        messages: support.messagesForOperators(t, db.fileInfo),
         company: company ? { id: company.id, name: company.name, color: company.color, plan: company.plan, state: company.state, mrr: company.mrr, after: company.after, people: company.people, health: company.health, lastActive: company.lastActive } : null,
         person: user ? { id: user.id, name: user.name, email: user.email, color: user.color, lastSeen: db.lastSeen().get(user.id) ?? null, companies: (db.allDocs('workspaces') as any[]).filter((w) => (w.members ?? []).some((m: any) => m.userId === user.id)).map((w) => ({ id: w.id, name: w.name })) } : null,
         others,

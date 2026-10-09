@@ -714,6 +714,22 @@ await test('DKIM: mail from an address at our own mail name is signed with the p
   assert.equal(process.env.MAIL_RELAY_URL, relay);
 });
 
+const supportMod = await import('../server/support.ts');
+await test('Tickets: an attachment counts only when it was sent with its ticket (before 9 Oct a ticket could point at any file)', () => {
+  const at = '2026-10-09T10:00:00.000Z';
+  const fits = (f, who = 'u-req') => supportMod.fileFitsTicket(f, who, at);
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-10-09T09:58:00.000Z' }), true, 'their own upload, made while they wrote it');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-other', at: '2026-10-09T09:58:00.000Z' }), false, 'someone else’s file');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-09-01T09:00:00.000Z' }), false, 'their own, but an old file from elsewhere');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-10-10T10:00:00.000Z' }), false, 'uploaded after the message');
+  assert.equal(fits({ workspaceId: 'w1', by: 'u-req', at: '2026-10-09T09:58:00.000Z' }, null), false, 'no requester to match');
+  assert.equal(fits({ workspaceId: 'platform', by: 'mail', at: '2026-10-09T10:00:01.000Z' }), true, 'what came with the email to support');
+  assert.equal(fits({ workspaceId: 'platform', by: 'mail', at: '2026-10-01T10:00:00.000Z' }), false, 'another email’s attachment');
+  assert.equal(fits({ workspaceId: 'acme', by: 'mail', at: at }), false, 'a company mailbox’s attachment');
+  assert.equal(fits(null), false, 'a file that’s gone');
+  assert.equal(supportMod.OLD_ATTACHMENT, 'Attachment from before 9 Oct, ask the person to send it again');
+});
+
 /* email for teammates who are away (server/digest.ts) */
 
 const digest = await import('../server/digest.ts');

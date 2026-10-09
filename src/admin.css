@@ -1452,6 +1452,20 @@ button.adm-q-text:hover strong {
 .adm-msg-files a:hover {
   background: var(--hover);
 }
+.adm-file-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--hover);
+  font-size: 12.5px;
+  color: var(--ad-amber);
+}
+.adm-file-blocked .adm-file-name {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
 .adm-rating {
   margin: 0 0 16px;
   font-size: 13px;

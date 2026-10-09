@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bug, ChevronDown, LogIn, Mail, MessageSquare, Paperclip, Plus, Smartphone } from 'lucide-react';
+import { Bug, ChevronDown, FileX, LogIn, Mail, MessageSquare, Paperclip, Plus, Smartphone } from 'lucide-react';
 import { Select } from '../../components/ui/Select';
 import { SmoothHeight } from '../../components/ui/Smooth';
 
@@ -156,7 +156,7 @@ function NewTicket({ onClose, onDone }: { onClose: () => void; onDone: (id: stri
 
 interface TicketData {
   ticket: TicketRow & { context: Record<string, unknown> | null; mergedInto: string | null };
-  messages: { id: string; at: string; kind: 'customer' | 'operator' | 'system'; author: string; authorName: string | null; body: string; internal: boolean; attachments: { name: string; url: string; size?: string }[] }[];
+  messages: { id: string; at: string; kind: 'customer' | 'operator' | 'system'; author: string; authorName: string | null; body: string; internal: boolean; attachments: { name: string; url: string; size?: string; blocked?: string }[] }[];
   company: { id: string; name: string; color: string; plan: never; state: keyof typeof STATE_LABEL; mrr: number; after?: number; people: number; health: { score: number; label: string }; lastActive: string | null } | null;
   person: { id: string; name: string; email: string; color: string; lastSeen: string | null; companies: { id: string; name: string }[] } | null;
   others: { id: string; number: number; subject: string; status: TicketStatus; updatedAt: string }[];
@@ -238,12 +238,19 @@ export function TicketPage({ id }: { id: string }) {
                   <div className="adm-msg-text">{m.body}</div>
                   {m.attachments.length > 0 && (
                     <div className="adm-msg-files">
-                      {m.attachments.map((a) => (
-                        <a key={a.url} href={a.url} target="_blank" rel="noreferrer">
-                          <Paperclip size={12} /> {a.name}
-                          {a.size && <small> {a.size}</small>}
-                        </a>
-                      ))}
+                      {m.attachments.map((a, j) =>
+                        a.blocked ? (
+                          // Not sent with this ticket (a ticket from before 9 Oct could point at any file): never opened.
+                          <span key={`blocked-${j}`} className="adm-file-blocked">
+                            <FileX size={12} /> <span className="adm-file-name">{a.name}</span> · {a.blocked}
+                          </span>
+                        ) : (
+                          <a key={a.url} href={a.url} target="_blank" rel="noreferrer">
+                            <Paperclip size={12} /> {a.name}
+                            {a.size && <small> {a.size}</small>}
+                          </a>
+                        ),
+                      )}
                     </div>
                   )}
                 </div>

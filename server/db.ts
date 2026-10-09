@@ -332,8 +332,8 @@ export function saveFile(f: { id: string; workspaceId: string; by: string; name:
   db.prepare('INSERT INTO files (id, workspace_id, uploaded_by, name, type, size, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(f.id, f.workspaceId, f.by, f.name, f.type, f.size, new Date().toISOString());
 }
 export function fileInfo(id: string) {
-  const r = db.prepare('SELECT id, workspace_id, uploaded_by, name, type, size FROM files WHERE id = ?').get(id) as any;
-  return r ? { id: r.id as string, workspaceId: r.workspace_id as string, by: r.uploaded_by as string, name: r.name as string, type: r.type as string, size: r.size as number } : null;
+  const r = db.prepare('SELECT id, workspace_id, uploaded_by, name, type, size, at FROM files WHERE id = ?').get(id) as any;
+  return r ? { id: r.id as string, workspaceId: r.workspace_id as string, by: r.uploaded_by as string, name: r.name as string, type: r.type as string, size: r.size as number, at: r.at as string } : null;
 }
 export function fileData(id: string): Buffer | null {
   const f = join(FILES, id);

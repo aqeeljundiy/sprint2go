@@ -226,7 +226,7 @@ function portalsOf(userId: string): { workspaceId: string; clientId: string }[] 
  */
 const ticketFiles = (list: unknown, userId: string) =>
   (Array.isArray(list) ? list : [])
-    .filter((a: any) => a && typeof a.url === 'string' && db.fileInfo(/^\/api\/files\/([a-f0-9]{32})$/.exec(a.url)?.[1] ?? '')?.by === userId)
+    .filter((a: any) => a && typeof a.url === 'string' && support.fileFitsTicket(db.fileInfo(/^\/api\/files\/([a-f0-9]{32})$/.exec(a.url)?.[1] ?? ''), userId, new Date().toISOString()))
     .slice(0, 10)
     .map((a: any) => ({ name: String(a.name ?? 'file').slice(0, 200), url: String(a.url), size: a.size ? String(a.size).slice(0, 20) : undefined }));
 /**
@@ -2391,7 +2391,8 @@ createServer(async (req, res) => {
       // Support tickets: the operators who work tickets (the support permission, past the console's two-step sign-in)
       // open what customers attached (their own uploads, or what came with their email), and each opening is in the
       // audit log. Whoever wrote in by email opens what they sent, in Help (those files belong to no company).
-      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.kind = 'customer' AND m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; number: number; requesterUser: string | null; requesterEmail: string }[]) : [];
+      // Only a file sent with its ticket counts: tickets from before 9 Oct could point at any file (support.fileFitsTicket).
+      const tickets = !team && !guest ? (db.db.prepare("SELECT m.ticket_id AS ticketId, m.at, t.number, t.requester_user AS requesterUser, t.requester_email AS requesterEmail FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.kind = 'customer' AND m.attachments LIKE ? ESCAPE '\\' LIMIT 20").all(`%/api/files/${f.id}%`) as { ticketId: string; at: string; number: number; requesterUser: string | null; requesterEmail: string }[]).filter((t) => support.fileFitsTicket(f, t.requesterUser, t.at)) : [];
       const supportOp = !!tickets.length && !!opRecord && opRecord.totpOn && platform.permsOf(opRecord.role).includes('support') && platform.sessionVerified(token);
       const myEmail = String(meDoc?.email ?? '').toLowerCase();
       const requester = !supportOp && f.workspaceId === 'platform' && tickets.some((t) => t.requesterUser === me || (!!myEmail && t.requesterEmail === myEmail));

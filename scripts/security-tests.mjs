@@ -340,6 +340,17 @@ try {
   db.prepare("UPDATE operators SET role = 'finance' WHERE email = ?").run('rizky@pixelandprofits.com');
   check((await opensWith(rizky, shot.url)) === 404, 'an operator without the support permission can’t');
   check((await opensWith(dimas, shot.url)) === 200, 'the customer still opens their own');
+  // A ticket from before 9 Oct, when a ticket could point at any file: its attachment is someone else's file.
+  db.prepare("UPDATE operators SET role = 'support' WHERE email = ?").run('rizky@pixelandprofits.com');
+  const oldAt = '2026-10-08T09:00:00.000Z';
+  db.prepare("INSERT INTO tickets (id, number, subject, status, priority, channel, requester_email, requester_name, requester_user, workspace_id, tags, created_at, updated_at) VALUES ('t-old-files', 990001, 'Old one', 'open', 'normal', 'app', 'dimas@elkiyagroup.com', 'Dimas', ?, 'elk', '[]', ?, ?)").run(db.prepare('SELECT user_id FROM logins WHERE email = ?').get('dimas@elkiyagroup.com')?.user_id ?? null, oldAt, oldAt);
+  db.prepare("INSERT INTO ticket_messages (id, ticket_id, at, kind, author, author_name, body, internal, attachments) VALUES ('tm-old-files', 't-old-files', ?, 'customer', 'dimas@elkiyagroup.com', 'Dimas', 'see attached', 0, ?)").run(oldAt, JSON.stringify([{ name: 'numbers.txt', url: secretFile.url }]));
+  check((await opensWith(rizky, secretFile.url)) === 404, 'an old ticket pointing at another company’s file doesn’t open it for support');
+  const oldView = await rizky.get('/api/admin/ticket?id=t-old-files').then((r) => r.json());
+  const shown = oldView.messages?.[0]?.attachments?.[0];
+  check(!!shown && shown.url === '' && shown.blocked === 'Attachment from before 9 Oct, ask the person to send it again', 'the operator sees “Attachment from before 9 Oct, ask the person to send it again” instead of a link');
+  const newView = await rizky.get(`/api/admin/ticket?id=${ticket.id}`).then((r) => r.json());
+  check(newView.messages?.[0]?.attachments?.[0]?.url === shot.url && !newView.messages[0].attachments[0].blocked, 'a file sent with its ticket still links');
 
   /* ---------- 10. invoices bill active people ---------- */
   db.prepare("UPDATE operators SET role = 'owner' WHERE email = ?").run('rizky@pixelandprofits.com');
