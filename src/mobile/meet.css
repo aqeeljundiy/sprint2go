@@ -4,3 +4,127 @@
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    ========================================================================== */
+
+/* The meeting's "…" menu: phones only (the desktop shows its buttons). */
+.m-more {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* ---------- The list ---------- */
+
+  /* A row: the title gets the width (two lines when long); the project and status sit on the line under it. */
+  .m-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 6px;
+    min-height: 56px;
+    padding: 10px 8px;
+  }
+  .m-row > .m-main {
+    flex: 1 1 calc(100% - 48px);
+  }
+  .m-row > .m-main + * {
+    margin-left: 44px;
+  }
+  .m-main strong {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .m-main small {
+    font-size: 13px;
+  }
+  .m-filters input {
+    min-width: 0;
+  }
+
+  /* ---------- A meeting ---------- */
+
+  /* One header row: folder and type, then "…" with Share, Ask, Regenerate, Who can see this and Delete. Back is in the
+     top bar, and "Done" says nothing a finished meeting needs. */
+  .m-head {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .m-head > .link-btn,
+  .m-head > .ghost-btn,
+  .m-head > .m-delete,
+  .m-head > .muted,
+  .m-head > .m-status.s-done {
+    display: none;
+  }
+  .m-head .sel {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .m-more {
+    display: inline-grid;
+    flex: none;
+    margin-left: auto;
+  }
+
+  /* The notes come first: title, the player (when there's a recording), then Summary, Tasks and Transcript, which
+     stay at the top while you scroll. What's kept and "At a glance" move to the end. */
+  .meet-page .tracking-scroll {
+    display: flex;
+    flex-direction: column;
+  }
+  .meet-page .m-top,
+  .meet-page .m-video {
+    display: contents;
+  }
+  .meet-page .tracking-scroll > *,
+  .meet-page .m-player,
+  .meet-page .keep-row,
+  .meet-page .m-glance {
+    order: 5;
+    flex-shrink: 0; /* the list scrolls; nothing in it squeezes to fit */
+  }
+  .meet-page .remember {
+    order: 0;
+  }
+  .meet-page .m-title {
+    order: 1;
+    font-size: 22px;
+  }
+  .meet-page .m-sub {
+    order: 2;
+    margin-bottom: 12px;
+  }
+  .meet-page .m-player {
+    order: 3;
+  }
+  .meet-page .m-novideo {
+    display: none;
+  }
+  .meet-page .m-tabs {
+    order: 4;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 12px 0 0;
+    padding: 6px 0;
+    background: var(--surface);
+  }
+  .meet-page .m-tabs .m-tab-act .lbl {
+    display: none;
+  }
+  .meet-page .tab-pane {
+    display: block; /* not "contents": its rows must stay together under the tabs */
+    order: 5;
+  }
+  .meet-page .keep-row {
+    order: 6;
+    margin-top: 24px;
+    flex-wrap: wrap;
+  }
+  .meet-page .m-glance {
+    order: 7;
+    margin-top: 16px;
+  }
+  .meet-page .tl {
+    min-height: var(--tap);
+  }
+}
