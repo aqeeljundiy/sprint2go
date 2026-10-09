@@ -1026,6 +1026,17 @@ const id: Record<string, string> = {
   'No such table': 'Tabel tidak ditemukan',
   'That import is too big or incomplete': 'Impor itu terlalu besar atau tidak lengkap',
   'Only admins can press this button.': 'Hanya admin yang bisa menekan tombol ini.',
+
+  // Tables in App.tsx: a link to a table, and the starter tables a new company gets for what it does
+  'You can’t open that table.': 'Anda tidak bisa membuka tabel itu.',
+  Customers: 'Pelanggan',
+  'Product launches': 'Peluncuran produk',
+  Prospects: 'Calon klien',
+  Engagements: 'Proyek berjalan',
+  Roadmap: 'Roadmap',
+  Bugs: 'Bug',
+  Sponsors: 'Sponsor',
+  Vendors: 'Vendor',
 };
 
 export default id;
