@@ -981,6 +981,25 @@ await test('A model the provider dropped: its jobs move to the job’s fallback,
   assert.deepEqual(both.jobs.summary, { provider: 'sumopod', model: 'claude-opus-5-5' });
 });
 
+await test('Our AI: until operators pick, each job uses the recommended model on the keys we have', async () => {
+  const plan = await import('../server/aiplan.ts');
+  const had = db.db.prepare("SELECT provider FROM platform_ai_keys").all().map((r) => r.provider);
+  db.db.prepare('DELETE FROM platform_ai_keys').run();
+  try {
+    const none = plan.config().jobs;
+    assert.equal(none.ask.primary.provider, 'anthropic', 'no key at all: the plain recommendation');
+    db.db.prepare('INSERT INTO platform_ai_keys (provider, sealed, base_url, last4, enabled, added_by, added_at) VALUES (?, ?, NULL, ?, 1, NULL, ?)').run('sumopod', db.seal('sk-unit-test-0000'), '0000', new Date().toISOString());
+    const jobs = plan.config().jobs;
+    for (const [id, r] of Object.entries(jobs)) assert.equal(r.primary.provider, 'sumopod', `${id} runs on the only key we have`);
+    assert.match(jobs.ask.primary.model, /claude-sonnet/, 'a heavy job keeps its Claude Sonnet family on SumoPod');
+    assert.ok(jobs.ask.fallback && jobs.ask.fallback.model !== jobs.ask.primary.model, 'with a different model as the fallback');
+    assert.match(jobs.speech.primary.model, /gemini/, 'speech uses SumoPod’s audio model');
+  } finally {
+    db.db.prepare("DELETE FROM platform_ai_keys WHERE provider = 'sumopod' AND last4 = '0000'").run();
+    void had;
+  }
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

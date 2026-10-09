@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, KeyRound, Plus, RefreshCw, RotateCcw, Sparkles, TrendingDown } from 'lucide-react';
 import { Select, type Option } from '../../components/ui/Select';
 import { CRED_FIELDS, PROVIDERS } from '../../data/aiCatalog';
-import { ApiError, day, post, rel, rp, rpShort } from '../api';
+import { ApiError, day, get, post, rel, rp, rpShort } from '../api';
 import { Badge, Confirm, Dialog, Empty, Failed, Field, Loading, Menu, MoneyInput, Page, Section, Stat, Stats, Tabs, useAct, useAdmin, useApi } from '../ui';
 
 interface Choice {
@@ -242,7 +242,10 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
   const [removing, setRemoving] = useState<KeyRow | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [leaving, setLeaving] = useState<string | null>(null);
+  const [choosing, setChoosing] = useState<string | null>(null); // the provider whose model is being chosen
   const jobName = (id: string) => d.jobs.find((j) => j.id === id)?.name ?? id;
+  const isText = (provider: string) => d.providers.find((p) => p.id === provider)?.kind !== 'speech';
+  const textKeyOn = d.keys.some((k) => k.on && isText(k.provider));
   // Providers a job is set to use, with no key that's on: what to add next.
   const needed = useMemo(() => {
     const out = new Map<string, { name: string; jobs: string[] }>();
@@ -324,6 +327,7 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
                         <Menu
                           label="More"
                           items={[
+                            ...(isText(k.provider) ? [{ label: 'Choose its model', hint: 'For every job, or the best match for each', run: () => setChoosing(k.provider) }] : []),
                             { label: 'Replace the key', hint: 'Test a new one, then swap', run: () => setAdding({ provider: k.provider, rotate: true }) },
                             { label: 'Remove', danger: true, run: () => setRemoving(k) },
                           ]}
@@ -339,7 +343,18 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
         {d.keys.some((k) => k.source === 'server') && <p className="adm-note">The key from the server settings (ANTHROPIC_API_KEY) can be tested and switched off here. To remove it, take it out of the server settings; a saved Claude key goes first anyway.</p>}
       </Section>
       {needed.length > 0 && (
-        <Section title="Picked for a job, but no key" hint="Those jobs use their fallback, or don’t run">
+        <Section
+          title="Picked for a job, but no key"
+          hint="Those jobs use their fallback, or don’t run"
+          actions={
+            d.can &&
+            textKeyOn && (
+              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset', { noKeyOnly: true }), 'Those jobs now use the best match on our keys').then(reload)}>
+                Use our keys for these
+              </button>
+            )
+          }
+        >
           <div className="adm-mini-list">
             {needed.map((n) => (
               <div key={n.id} className="adm-mini-row">
@@ -369,13 +384,17 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
           initial={adding.provider}
           rotate={!!adding.rotate}
           onClose={() => setAdding(null)}
-          onDone={(text) => {
+          onDone={(text, provider) => {
+            const rotated = !!adding.rotate;
             setAdding(null);
             toast(text);
             reload();
+            // A new key for text jobs: which of its models to use comes next.
+            if (provider && !rotated && isText(provider)) setChoosing(provider);
           }}
         />
       )}
+      {choosing && <ChooseModel provider={choosing} name={d.providers.find((p) => p.id === choosing)?.name ?? choosing} onClose={() => setChoosing(null)} onDone={(text) => (setChoosing(null), toast(text), reload())} />}
       {removing && (
         <Confirm
           title={`Remove the ${removing.name} key?`}
@@ -398,7 +417,7 @@ function Keys({ d, reload }: { d: AIData; reload: () => void }) {
   );
 }
 
-function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: string | null; rotate: boolean; onClose: () => void; onDone: (text: string) => void }) {
+function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: string | null; rotate: boolean; onClose: () => void; onDone: (text: string, provider?: string) => void }) {
   const [provider, setProvider] = useState<string | null>(initial);
   const [key, setKey] = useState('');
   const [url, setUrl] = useState('');
@@ -416,7 +435,7 @@ function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: s
     setErr(null);
     const packed = cred ? JSON.stringify(Object.fromEntries(cred.fields.map((f) => [f.key, (fields[f.key] ?? '').trim()]))) : key.trim();
     void post<{ last4: string }>('ai/key', { provider, key: packed, baseUrl: cred ? (fields[cred.url] ?? '').trim() || undefined : url.trim() || undefined })
-      .then((r) => onDone(`${info.name} key ${rotate ? 'replaced' : 'added'} (•••• ${r.last4}). It worked on a test call.`), (e: ApiError) => setErr(e.message))
+      .then((r) => onDone(`${info.name} key ${rotate ? 'replaced' : 'added'} (•••• ${r.last4}). It worked on a test call.`, provider ?? undefined), (e: ApiError) => setErr(e.message))
       .finally(() => setBusy(false));
   };
   return (
@@ -484,6 +503,93 @@ function AddKey({ d, initial, rotate, onClose, onDone }: { d: AIData; initial: s
   );
 }
 
+/**
+ * Right after a key is added (or from its menu): which of its models our jobs use. Either the best match for each job
+ * (the recommended model, or its family, on our keys) or one model for every job, from the provider's own list.
+ */
+function ChooseModel({ provider, name, onClose, onDone }: { provider: string; name: string; onClose: () => void; onDone: (text: string) => void }) {
+  const act = useAct();
+  const [data, setData] = useState<AIData | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [mode, setMode] = useState<'auto' | 'one'>('auto');
+  const [model, setModel] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    // Reading the page data also reads the new key's own model list.
+    void get<AIData>('ai').then(setData, (e: Error) => setFailed(e.message));
+  }, []);
+  const mine = (data?.options.text ?? []).filter((o) => o.provider === provider && !o.gone);
+  const options: Option[] = mine.map((o) => ({ value: o.model, label: o.name, hint: o.price ? `${usd(o.price[0])} / ${usd(o.price[1])} per million` : 'price unknown', group: o.recommended ? 'Recommended' : 'More models', keywords: o.model }));
+  const onThis = (data?.jobs ?? []).filter((j) => j.id !== 'speech' && j.primary.provider === provider);
+  const save = async () => {
+    setBusy(true);
+    const ok =
+      mode === 'one'
+        ? await act(() => post('ai/key/assign', { provider, model }))
+        : await act(() => post('ai/jobs/reset', { noKeyOnly: true }));
+    setBusy(false);
+    if (!ok) return;
+    const label = mine.find((o) => o.model === model)?.name ?? model;
+    onDone(mode === 'one' ? `Every job now uses ${label} on ${name}` : `Each job uses the best match on our keys`);
+  };
+  return (
+    <Dialog
+      title={`Which model should ${name} use?`}
+      onClose={onClose}
+      foot={
+        <>
+          <button className="ghost-btn" onClick={onClose}>
+            Not now
+          </button>
+          <button className="primary-btn" disabled={busy || !data || (mode === 'one' && !model)} onClick={() => void save()}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="adm-form">
+        {failed ? (
+          <p className="err">{failed}</p>
+        ) : !data ? (
+          <Loading rows={3} />
+        ) : (
+          <>
+            <div className="segmented sm" role="tablist" aria-label="How jobs pick a model">
+              <button type="button" role="tab" aria-selected={mode === 'auto'} className={mode === 'auto' ? 'on' : ''} onClick={() => setMode('auto')}>
+                Best match for each job
+              </button>
+              <button type="button" role="tab" aria-selected={mode === 'one'} className={mode === 'one' ? 'on' : ''} onClick={() => setMode('one')}>
+                One model for every job
+              </button>
+            </div>
+            {mode === 'auto' ? (
+              <>
+                <p className="adm-note">
+                  Each job runs on the model it was made for, or the closest one our keys have, with a strong model for heavy jobs like Ask AI and a fast one for light jobs. Jobs set by hand to a provider we have no key for move too.
+                </p>
+                {onThis.length > 0 && (
+                  <div className="adm-mini-list">
+                    {onThis.map((j) => (
+                      <div key={j.id} className="adm-mini-row">
+                        <span className="grow">{j.name}</span>
+                        <small className="muted">{mine.find((o) => o.model === j.primary.model)?.name ?? j.primary.model}</small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <Field label="Model" hint={mine.length ? `${mine.length} models from ${name}’s own list` : `${name} didn’t list its models; try again in a minute`}>
+                <Select value={model} options={options} onChange={setModel} placeholder="Choose a model" label="Model" searchable width={420} />
+              </Field>
+            )}
+          </>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 /* ---------- the model for each job ---------- */
 
 const GROUPS: [string, string[]][] = [
@@ -496,8 +602,12 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
   const act = useAct();
   const [refreshing, setRefreshing] = useState(false);
   // Each provider's own list for our key (recommended ones first), grouped by provider; the catalogue where there's no list.
+  // Only models we have a working key for (and whatever a job uses now, so it still shows); with no key at all, the
+  // catalogue, so the page isn't empty before the first key.
+  const anyKey = (speech: boolean) => (speech ? d.options.speech : d.options.text).some((o) => o.hasKey);
+  const inUse = new Set(d.jobs.flatMap((j) => [j.primary, j.fallback].filter(Boolean).map((c) => `${c!.provider}|${c!.model}`)));
   const opts = (speech: boolean): Option[] =>
-    (speech ? d.options.speech : d.options.text).map((o) => ({
+    (speech ? d.options.speech : d.options.text).filter((o) => o.hasKey || !anyKey(speech) || inUse.has(`${o.provider}|${o.model}`)).map((o) => ({
       value: `${o.provider}|${o.model}`,
       label: o.name,
       hint: o.gone ? 'no longer offered: pick another' : !o.hasKey ? 'no key yet' : speech ? undefined : o.price ? `${usd(o.price[0])} / ${usd(o.price[1])}` : 'no price yet',
@@ -533,7 +643,7 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
   return (
     <Section
       title="Which model does each job"
-      hint="For AI-plan companies. The fallback takes over when the first one fails or has no key."
+      hint="For AI-plan companies. Until you pick, each job uses the recommended model on the keys we have. The fallback takes over when the first one fails."
       actions={
         d.can && (
           <>
@@ -543,8 +653,8 @@ function Models({ d, reload }: { d: AIData; reload: () => void }) {
               </button>
             )}
             {custom && (
-              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset'), 'Every job is back on the recommended models').then(reload)}>
-                <RotateCcw size={13} /> Back to recommended
+              <button className="ghost-btn sm" onClick={() => void act(() => post('ai/jobs/reset'), 'Every job is back to automatic: the recommended model on our keys').then(reload)}>
+                <RotateCcw size={13} /> Back to automatic
               </button>
             )}
           </>

@@ -84,14 +84,83 @@ const TEXT_OK = (id: string) => id !== 'custom' && canCall(id) && PROVIDERS.find
 const NOT_FOR_US: Record<string, string> = { custom: 'For a company’s own server. Not used for our keys.' };
 const supported = (id: string) => !NOT_FOR_US[id];
 
-/** The model a job runs on until operators pick: today's recommendation, with a different company as the fallback. */
-function defaultRoute(job: JobInfo): Route {
+/** Today's recommendation for a job, whatever keys exist: the model it was designed around, another company as the fallback. */
+function recommendedRoute(job: JobInfo): Route {
   if (job.id === 'speech') return { primary: { provider: 'groq', model: 'whisper-large-v3' }, fallback: { provider: 'deepgram', model: 'nova-3' } };
   const model = job.rec.balanced;
   const provider = PROVIDERS.find((p) => p.kind === 'direct' && p.models.some((m) => m.id === model))?.id ?? 'anthropic';
   const heavy = job.weight === 'Heavy';
   const fallback = provider === 'anthropic' ? { provider: 'google', model: heavy ? 'gemini-3.1-pro' : 'gemini-3.5-flash' } : { provider: 'anthropic', model: heavy ? 'claude-sonnet-5-5' : 'claude-haiku-4-5' };
   return { primary: { provider, model }, fallback };
+}
+
+/* Matching a wanted model to the keys we have: "claude-sonnet-5-5", "anthropic/claude-sonnet-5.5" and SumoPod's
+   "claude-sonnet-5" are the same family, so a job designed around Claude Sonnet runs on whichever key offers it. */
+const normId = (id: string) => id.toLowerCase().replace(/^[\w.-]+\//, '').replace(/[._]/g, '-');
+const familyOf = (id: string) => normId(id).replace(/-(preview|latest|exp)$/, '').replace(/-\d{6,8}$/, '').replace(/\d+/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
+const versionOf = (id: string) => (normId(id).match(/\d+/g) ?? []).map(Number);
+const newer = (a: string, b: string) => {
+  const x = versionOf(a), y = versionOf(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (y[i] ?? 0) - (x[i] ?? 0);
+  return 0;
+};
+/** The text models a provider offers our key: its own list when it has been read, else our catalogue. */
+function offeredIds(provider: string): string[] {
+  const l = models.cachedList(PLATFORM, provider);
+  if (l && l.source === 'live') return l.models.filter((m) => m.kind === 'text').map((m) => m.id);
+  return PROVIDERS.find((p) => p.id === provider)?.models.map((m) => m.id) ?? [];
+}
+const KIND_ORDER: Record<string, number> = { direct: 0, gateway: 1, cloud: 2 };
+/** Where a wanted model runs on our keys: the same model on a direct key first, then the same or the newest of its family anywhere. */
+function resolveOn(model: string, keyed: string[]): Choice | null {
+  const order = [...keyed].sort((a, b) => (KIND_ORDER[PROVIDERS.find((p) => p.id === a)?.kind ?? ''] ?? 9) - (KIND_ORDER[PROVIDERS.find((p) => p.id === b)?.kind ?? ''] ?? 9));
+  for (const p of order) {
+    const hit = offeredIds(p).find((id) => normId(id) === normId(model));
+    if (hit) return { provider: p, model: hit };
+  }
+  const fam = familyOf(model);
+  for (const p of order) {
+    const hit = offeredIds(p).filter((id) => familyOf(id) === fam).sort(newer)[0];
+    if (hit) return { provider: p, model: hit };
+  }
+  return null;
+}
+/** Without a family match: a catalogue model of the right weight on any key we have. */
+function byTier(keyed: string[], heavy: boolean, not?: Choice | null): Choice | null {
+  const tiers = heavy ? ['best', 'balanced', 'fast'] : ['fast', 'balanced', 'best'];
+  for (const t of tiers)
+    for (const p of keyed) {
+      const offered = new Set(offeredIds(p).map(normId));
+      const m = PROVIDERS.find((x) => x.id === p)?.models.find((mm) => mm.tier === t && offered.has(normId(mm.id)) && !(not && not.provider === p && normId(not.model) === normId(mm.id)));
+      if (m) return { provider: p, model: offeredIds(p).find((id) => normId(id) === normId(m.id)) ?? m.id };
+    }
+  return null;
+}
+/** Providers with a working key of ours, for text jobs. */
+function keyedText(c: Pick<Config, 'envOff'>) {
+  return PROVIDERS.filter((p) => TEXT_OK(p.id) && keyFor(p.id, c)).map((p) => p.id);
+}
+
+/**
+ * The model a job runs on until operators pick one: today's recommendation on the keys we have. With only SumoPod, the
+ * jobs designed around Claude run on SumoPod's Claude, and so on. With no key at all it's the plain recommendation.
+ */
+function defaultRoute(job: JobInfo, c: Pick<Config, 'envOff'>): Route {
+  const rec = recommendedRoute(job);
+  if (job.id === 'speech') {
+    const avail = SPEECH_CHOICES.filter((x) => keyFor(x.provider, c)).map(({ provider, model }) => ({ provider, model }));
+    return avail.length ? { primary: avail[0], fallback: avail[1] ?? null } : rec;
+  }
+  const keyed = keyedText(c);
+  if (!keyed.length) return rec;
+  const heavy = job.weight === 'Heavy';
+  const wants = [rec.primary.model, rec.fallback?.model, job.rec.balanced, job.rec.best, job.rec.cheap].filter((m): m is string => !!m && m !== 'browser');
+  const found = wants.map((m) => resolveOn(m, keyed)).filter((x): x is Choice => !!x);
+  const primary = found[0] ?? byTier(keyed, heavy);
+  if (!primary) return rec;
+  const differs = (x: Choice) => x.provider !== primary.provider || familyOf(x.model) !== familyOf(primary.model);
+  const fallback = found.find(differs) ?? byTier(keyed, heavy, primary) ?? null;
+  return { primary, fallback: fallback && differs(fallback) ? fallback : null };
 }
 /** Whether a saved choice is one this job can use: any model id the provider could offer (new picks are checked by `offeredChoice`). */
 function validChoice(job: string, c: unknown): c is Choice {
@@ -130,10 +199,11 @@ export async function warmLists(force = false) {
 
 export function config() {
   const s = saved();
+  const keyCtx = { envOff: !!s.envOff };
   const jobs: Record<string, Route> = {};
   for (const j of JOBS) {
     const r = s.jobs?.[j.id];
-    jobs[j.id] = r && validChoice(j.id, r.primary) ? { primary: r.primary, fallback: validChoice(j.id, r.fallback) ? r.fallback : null } : defaultRoute(j);
+    jobs[j.id] = r && validChoice(j.id, r.primary) ? { primary: r.primary, fallback: validChoice(j.id, r.fallback) ? r.fallback : null } : defaultRoute(j, keyCtx);
   }
   return { jobs, prices: s.prices ?? {}, rate: s.rate && s.rate > 0 ? s.rate : DEFAULT_RATE, envOff: !!s.envOff };
 }
@@ -597,7 +667,7 @@ function overview(x: AdminBits) {
       state: ok(r.primary) ? 'ok' : ok(r.fallback) ? 'fallback' : 'none',
       gone: gone ? `${companyName(r.primary.provider)} no longer offers ${modelName(r.primary.provider, r.primary.model)}.` : null,
       per100: p ? ((j.tokens[0] * p[0] + j.tokens[1] * p[1]) / 1e6) * c.rate * 100 : null,
-      isDefault: JSON.stringify(r) === JSON.stringify(defaultRoute(j)),
+      isDefault: !saved().jobs?.[j.id],
     };
   });
   const monthUse = usedThisMonth();
@@ -713,10 +783,46 @@ export async function handleAdmin(sub: string, x: AdminBits): Promise<boolean> {
     return done({ ok: true });
   }
   if (sub === 'ai/jobs/reset') {
+    // Only the jobs set to a provider we have no working key for, or every job: back to automatic, which follows our keys.
+    if (b.noKeyOnly) {
+      const s0 = saved();
+      const c = config();
+      const stuck = Object.keys(s0.jobs ?? {}).filter((id) => {
+        const r = s0.jobs![id];
+        return !r || !keyFor(r.primary.provider, c);
+      });
+      if (!stuck.length) return done({ ok: true, moved: 0 });
+      const jobs = { ...s0.jobs };
+      for (const id of stuck) delete jobs[id];
+      save({ ...s0, jobs });
+      x.log('ai.jobs.reset', null, `${stuck.length} job${stuck.length === 1 ? '' : 's'} without a working key back to automatic`);
+      return done({ ok: true, moved: stuck.length });
+    }
     const { jobs: _j, ...rest } = saved();
     save(rest);
-    x.log('ai.jobs.reset', null, 'every job back to the recommended models');
+    x.log('ai.jobs.reset', null, 'every job back to automatic: the recommended models on the keys we have');
     return done({ ok: true });
+  }
+  // One model for every text job (picked right after adding a key, or from a key's menu). The fallback stays what each
+  // job would use otherwise, when that's a different model.
+  if (sub === 'ai/key/assign') {
+    const pick = { provider, model: String(b.model ?? '') };
+    if (!keyFor(provider)) return done({ error: 'Add a working key for this provider first.' }, 400);
+    if (!offeredChoice('ask', pick)) return done({ error: 'Pick a model this key offers.' }, 400);
+    const s0 = saved();
+    const c = config();
+    const jobs = { ...s0.jobs };
+    let n = 0;
+    for (const j of JOBS) {
+      if (j.id === 'speech') continue;
+      const cur = c.jobs[j.id];
+      const fb = [cur.primary, cur.fallback, defaultRoute(j, c).fallback].find((y) => y && keyFor(y.provider, c) && !(y.provider === pick.provider && y.model === pick.model)) ?? null;
+      jobs[j.id] = { primary: pick, fallback: fb };
+      n++;
+    }
+    save({ ...s0, jobs });
+    x.log('ai.jobs.assign', provider, `${n} jobs: ${modelName(provider, pick.model)} on ${companyName(provider)}`);
+    return done({ ok: true, jobs: n });
   }
   if (sub === 'ai/prices') {
     const s = saved();
