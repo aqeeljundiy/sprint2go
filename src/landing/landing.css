@@ -108,6 +108,22 @@ button {
   transform: translateY(-1px);
   box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.4);
 }
+/* On the blue final section: a quieter second choice next to the white one. */
+.ln-btn.on-blue {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.ln-btn.on-blue:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: #fff;
+}
+.ln-final-cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
 
 /* ---------- nav ---------- */
 .ln-nav {
@@ -226,6 +242,18 @@ button {
 .ln-fine {
   color: var(--text-3);
   font-size: 13px;
+}
+.ln-fine-link {
+  margin-left: 4px;
+  color: var(--text-2);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  transition: color 0.15s;
+}
+.ln-fine-link:hover {
+  color: var(--accent);
 }
 
 /* ---------- mocks ---------- */
