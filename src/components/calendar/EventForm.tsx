@@ -11,6 +11,7 @@ import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
 import { GuestPicker } from './GuestPicker';
 import { RepeatField, RepeatToken, type RepeatDraft } from './RepeatField';
+import { t } from '../../i18n';
 
 /** What the event editor and the phone's quick create hold while someone types. */
 export interface Draft {
@@ -183,7 +184,7 @@ export function EventForm({
   const cal = calendars.find((c) => c.id === draft.calendarId) ?? calendars[0];
   const quiet: { id: Extra | 'allday'; label: string; icon: typeof Sun; on?: boolean }[] = [
     { id: 'allday', label: 'All day', icon: Sun, on: draft.allDay },
-    ...(!task ? [{ id: 'repeat' as const, label: 'Repeat', icon: Repeat }] : []),
+    ...(!task ? [{ id: 'repeat' as const, label: t('Repeat'), icon: Repeat }] : []),
     ...(!task
       ? ([
           { id: 'meet', label: 'Video call', icon: Video },
@@ -235,8 +236,8 @@ export function EventForm({
         {!task && draft.guests.length > 0 && draft.sendInvites !== null && (
           // Guests get it by email (a calendar invite with Yes / Maybe / No), and its updates.
           <div className="ev-invite">
-            <span>Email the invite to guests</span>
-            <button type="button" role="switch" aria-checked={draft.sendInvites} aria-label="Email the invite to guests" className={`switch ${draft.sendInvites ? 'on' : ''}`} onClick={() => set({ sendInvites: !draft.sendInvites })}>
+            <span>{t('Email the invite to guests')}</span>
+            <button type="button" role="switch" aria-checked={draft.sendInvites} aria-label={t('Email the invite to guests')} className={`switch ${draft.sendInvites ? 'on' : ''}`} onClick={() => set({ sendInvites: !draft.sendInvites })}>
               <span />
             </button>
           </div>

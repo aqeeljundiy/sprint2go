@@ -2,7 +2,9 @@ import { ChevronDown, Minus, Plus, Repeat } from 'lucide-react';
 import { DatePicker } from '../ui/DatePicker';
 import { Select, type Option } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
-import { DAY_NAMES, dateFacts, monthlyWords, presetOf, presetSpec, specWords, type Freq, type RepeatPreset, type RepeatSpec } from '../../repeat';
+import { dateFacts, dayName, monthlyWords, presetOf, presetSpec, specWords, type Freq, type RepeatPreset, type RepeatSpec } from '../../repeat';
+import { t, tn } from '../../i18n';
+import { weekdayName } from '../../i18n/format';
 
 /** What the event form holds for its repeat: the picker's choice, or a rule it can't show (kept as written, in words). */
 export interface RepeatDraft {
@@ -13,25 +15,28 @@ export interface RepeatDraft {
 }
 
 const WEEK = [1, 2, 3, 4, 5, 6, 0]; // Monday first
-const UNIT: Record<Freq, string> = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' };
+/** "day" or "days" after "Every 2…" in Custom. */
+const unit = (f: Freq, n: number) =>
+  ({ DAILY: tn(n, 'day', 'days'), WEEKLY: tn(n, 'week', 'weeks'), MONTHLY: tn(n, 'month', 'months'), YEARLY: tn(n, 'year', 'years') })[f];
 
 /** The presets for a date: their names say the day ("Every week on Tuesday", "Every month on the 2nd Tuesday"). */
 export function repeatOptions(startWall: number, spec: RepeatSpec | null): Option<RepeatPreset>[] {
   const f = dateFacts(startWall);
   const cur = presetOf(spec);
   const weekly = (p: 'weekly' | 'biweekly') => specWords(cur === p && spec ? spec : presetSpec(p, startWall)!, startWall, false);
+  const monthly = (m: NonNullable<RepeatSpec['monthly']>) => specWords({ freq: 'MONTHLY', interval: 1, monthly: m }, startWall, false);
   return [
-    { value: 'none', label: 'Doesn’t repeat' },
-    { value: 'daily', label: 'Every day' },
-    { value: 'weekdays', label: 'Every weekday', hint: 'Monday to Friday' },
+    { value: 'none', label: t('Doesn’t repeat') },
+    { value: 'daily', label: t('Every day') },
+    { value: 'weekdays', label: t('Every weekday'), hint: t('{first} to {last}', { first: weekdayName(1), last: weekdayName(5) }) },
     { value: 'weekly', label: weekly('weekly') },
     { value: 'biweekly', label: weekly('biweekly') },
-    { value: 'monthly-date', label: `Every month ${monthlyWords('date', startWall)}` },
-    { value: 'monthly-nth', label: `Every month ${monthlyWords('nth', startWall)}` },
-    ...(f.lastWeek ? [{ value: 'monthly-lastWeekday' as const, label: `Every month ${monthlyWords('lastWeekday', startWall)}` }] : []),
-    ...(f.lastDay ? [{ value: 'monthly-last' as const, label: 'Every month on the last day' }] : []),
+    { value: 'monthly-date', label: monthly('date') },
+    { value: 'monthly-nth', label: monthly('nth') },
+    ...(f.lastWeek ? [{ value: 'monthly-lastWeekday' as const, label: monthly('lastWeekday') }] : []),
+    ...(f.lastDay ? [{ value: 'monthly-last' as const, label: monthly('last') }] : []),
     { value: 'yearly', label: specWords({ freq: 'YEARLY', interval: 1 }, startWall) },
-    { value: 'custom', label: 'Custom', hint: cur === 'custom' && spec ? specWords(spec, startWall) : 'Every few days or weeks, or until a date' },
+    { value: 'custom', label: t('Custom'), hint: cur === 'custom' && spec ? specWords(spec, startWall) : t('Every few days or weeks, or until a date') },
   ];
 }
 
@@ -42,15 +47,15 @@ export function RepeatToken({ startWall, onPick }: { startWall: number; onPick: 
       value={null}
       options={repeatOptions(startWall, null).slice(1)}
       onChange={(p) => onPick(p === 'custom' ? { freq: 'WEEKLY', interval: 1, days: [dateFacts(startWall).wd] } : presetSpec(p, startWall), p === 'custom')}
-      label="Repeat"
-      title="Repeat"
+      label={t('Repeat')}
+      title={t('Repeat')}
       className="ev-token"
       searchable={false}
       width={280}
       renderValue={() => (
         <>
           <Repeat size={14} />
-          Repeat
+          {t('Repeat')}
         </>
       )}
     />
@@ -60,12 +65,12 @@ export function RepeatToken({ startWall, onPick }: { startWall: number; onPick: 
 /** Weekday chips, Monday first; at least one stays on. */
 function Days({ days, onChange }: { days: number[]; onChange: (d: number[]) => void }) {
   return (
-    <div className="rp-days" role="group" aria-label="On these days">
+    <div className="rp-days" role="group" aria-label={t('On these days')}>
       {WEEK.map((d) => {
         const on = days.includes(d);
         return (
-          <button key={d} type="button" className={`rp-day${on ? ' on' : ''}`} aria-pressed={on} aria-label={DAY_NAMES[d]} title={DAY_NAMES[d]} onClick={() => (on ? days.length > 1 && onChange(days.filter((x) => x !== d)) : onChange([...days, d]))}>
-            {DAY_NAMES[d][0]}
+          <button key={d} type="button" className={`rp-day${on ? ' on' : ''}`} aria-pressed={on} aria-label={dayName(d)} title={dayName(d)} onClick={() => (on ? days.length > 1 && onChange(days.filter((x) => x !== d)) : onChange([...days, d]))}>
+            {weekdayName(d, 'narrow')}
           </button>
         );
       })}
@@ -78,11 +83,11 @@ function Stepper({ value, min = 1, max = 999, onChange, label }: { value: number
   const clamp = (n: number) => Math.max(min, Math.min(max, Math.round(n) || min));
   return (
     <span className="rp-step" role="group" aria-label={label}>
-      <button type="button" className="icon-btn sm" onClick={() => onChange(clamp(value - 1))} disabled={value <= min} aria-label="Fewer">
+      <button type="button" className="icon-btn sm" onClick={() => onChange(clamp(value - 1))} disabled={value <= min} aria-label={t('One fewer')}>
         <Minus size={14} />
       </button>
       <input value={String(value)} inputMode="numeric" aria-label={label} onChange={(e) => e.target.value.replace(/\D/g, '') && onChange(clamp(Number(e.target.value.replace(/\D/g, ''))))} onFocus={(e) => e.target.select()} />
-      <button type="button" className="icon-btn sm" onClick={() => onChange(clamp(value + 1))} disabled={value >= max} aria-label="More">
+      <button type="button" className="icon-btn sm" onClick={() => onChange(clamp(value + 1))} disabled={value >= max} aria-label={t('One more')}>
         <Plus size={14} />
       </button>
     </span>
@@ -98,7 +103,7 @@ export function RepeatField({ value, startWall, startDay, onChange, custom, onCu
   const { spec } = value;
   const preset = value.raw && !spec ? 'raw' : custom && spec ? 'custom' : presetOf(spec);
   const set = (s: RepeatSpec | null) => onChange({ spec: s, raw: null, touched: true });
-  const options: Option<string>[] = [...(value.raw && !spec ? [{ value: 'raw', label: value.rawWords ?? 'Repeats', hint: 'As the invite says' }] : []), ...repeatOptions(startWall, spec)];
+  const options: Option<string>[] = [...(value.raw && !spec ? [{ value: 'raw', label: value.rawWords ?? t('Repeats'), hint: t('As the invite says') }] : []), ...repeatOptions(startWall, spec)];
   const pick = (p: string) => {
     if (p === 'raw') return;
     if (p === 'custom') {
@@ -125,8 +130,8 @@ export function RepeatField({ value, startWall, startDay, onChange, custom, onCu
           value={preset}
           options={options}
           onChange={pick}
-          label="Repeat"
-          title="Repeat"
+          label={t('Repeat')}
+          title={t('Repeat')}
           className="sel-flat"
           width={300}
           searchable={false}
@@ -148,14 +153,14 @@ export function RepeatField({ value, startWall, startDay, onChange, custom, onCu
         {spec && preset === 'custom' && (
           <div className="rp-more rp-custom">
             <div className="rp-line">
-              <span className="rp-label">Every</span>
-              <Stepper value={spec.interval} max={99} onChange={(interval) => set({ ...spec, interval })} label="How often" />
+              <span className="rp-label">{t('Every')}</span>
+              <Stepper value={spec.interval} max={99} onChange={(interval) => set({ ...spec, interval })} label={t('How often')} />
               <Select<Freq>
                 value={spec.freq}
-                options={(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as Freq[]).map((x) => ({ value: x, label: `${UNIT[x]}${spec.interval === 1 ? '' : 's'}` }))}
+                options={(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as Freq[]).map((x) => ({ value: x, label: unit(x, spec.interval) }))}
                 onChange={(freq) => set({ freq, interval: spec.interval, until: spec.until, count: spec.count, ...(freq === 'WEEKLY' ? { days: [f.wd] } : freq === 'MONTHLY' ? { monthly: 'date' } : {}) })}
-                label="Days, weeks, months or years"
-                title="Every"
+                label={t('Days, weeks, months or years')}
+                title={t('Every')}
                 className="sel-flat rp-unit"
                 width={160}
               />
@@ -163,29 +168,29 @@ export function RepeatField({ value, startWall, startDay, onChange, custom, onCu
             {spec.freq === 'WEEKLY' && <Days days={spec.days ?? [f.wd]} onChange={(days) => set({ ...spec, days })} />}
             {spec.freq === 'MONTHLY' && (
               <div className="rp-line">
-                <Select value={spec.monthly ?? 'date'} options={monthModes} onChange={(monthly) => set({ ...spec, monthly })} label="Which day of the month" title="Which day" className="sel-flat" width={240} />
+                <Select value={spec.monthly ?? 'date'} options={monthModes} onChange={(monthly) => set({ ...spec, monthly })} label={t('Which day of the month')} title={t('Which day')} className="sel-flat" width={240} />
               </div>
             )}
             <div className="rp-line">
-              <span className="rp-label">Ends</span>
+              <span className="rp-label">{t('Ends')}</span>
               <Select<'never' | 'until' | 'count'>
                 value={ends}
                 options={[
-                  { value: 'never', label: 'Never' },
-                  { value: 'until', label: 'On a date' },
-                  { value: 'count', label: 'After a number of times' },
+                  { value: 'never', label: t('Never') },
+                  { value: 'until', label: t('On a date') },
+                  { value: 'count', label: t('After a number of times') },
                 ]}
                 onChange={(v) => set({ ...spec, until: v === 'until' ? (spec.until ?? addMonths(startDay, 3)) : undefined, count: v === 'count' ? (spec.count ?? 10) : undefined })}
-                label="Ends"
-                title="Ends"
+                label={t('Ends')}
+                title={t('Ends')}
                 className="sel-flat"
                 width={220}
               />
-              {ends === 'until' && <DatePicker value={spec.until} onChange={(v) => v && set({ ...spec, until: v < startDay ? startDay : v })} clearable={false} label="Last day" />}
+              {ends === 'until' && <DatePicker value={spec.until} onChange={(v) => v && set({ ...spec, until: v < startDay ? startDay : v })} clearable={false} label={t('Last day')} />}
               {ends === 'count' && (
                 <>
-                  <Stepper value={spec.count ?? 10} onChange={(count) => set({ ...spec, count })} label="How many times" />
-                  <span className="rp-label">{spec.count === 1 ? 'time' : 'times'}</span>
+                  <Stepper value={spec.count ?? 10} onChange={(count) => set({ ...spec, count })} label={t('How many times')} />
+                  <span className="rp-label">{tn(spec.count ?? 10, 'time', 'times')}</span>
                 </>
               )}
             </div>

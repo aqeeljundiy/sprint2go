@@ -4,6 +4,7 @@ import type { CalEvent } from '../../types';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../../meetingLinks';
 import { startsIn, upNext } from './calTools';
 import { expandEvents } from '../../repeat';
+import { t } from '../../i18n';
 
 /**
  * The next meeting, when it starts within 30 minutes: its title, how soon, Join, and whether the notetaker goes.
@@ -35,7 +36,7 @@ export function UpNext({ events, color, onOpen, botWill }: { events: CalEvent[];
             <button type="button" className="cu-main" onClick={() => onOpen(ev.id)}>
               <span className="cu-when">{new Date(ev.start).getTime() <= now ? 'Now' : startsIn(ev, now)}</span>
               <span className="cu-title">{ev.title}</span>
-              {ev.rrule && <Repeat size={13} className="cu-repeat" aria-label="Repeats" />}
+              {ev.rrule && <Repeat size={13} className="cu-repeat" aria-label={t('Repeats')} />}
               {bot !== undefined && (bot ? <Mic size={14} className="cu-bot on" aria-label="The notetaker will join" /> : <MicOff size={14} className="cu-bot" aria-label="The notetaker won’t join" />)}
             </button>
             {link && (

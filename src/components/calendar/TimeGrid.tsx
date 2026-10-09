@@ -5,6 +5,7 @@ import { eventsOn, fmtTime, hourLabel, layoutDay, minutesIntoDay, sameDay, start
 import { haptic, useLongPress } from '../ui/useLongPress';
 import { isMaybe, isPending } from './calTools';
 import { swipeLock, useSwipeNav } from './useSwipeNav';
+import { t } from '../../i18n';
 
 const Q = 15 * 60_000;
 
@@ -206,7 +207,7 @@ export function TimeGrid(p: GridProps) {
             <div key={i} className="tg-allday-cell">
               {list.slice(0, perDay).map((e) => (
                 <button key={e.id} className={`pill-event ${p.selectedId === e.id ? 'picked' : ''} ${isPending(e) ? 'pending' : ''}`} style={{ ['--c' as string]: color(e.calendarId) }} onClick={() => p.onSelect(e.id)}>
-                  {e.rrule && <Repeat size={11} className="pe-repeat" aria-label="Repeats" />}
+                  {e.rrule && <Repeat size={11} className="pe-repeat" aria-label={t('Repeats')} />}
                   {e.title}
                 </button>
               ))}
@@ -357,7 +358,7 @@ function Block(b: {
     <div
       role="button"
       tabIndex={0}
-      aria-label={`${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}${ev.rrule ? ', repeats' : ''}`}
+      aria-label={ev.rrule ? t('{label}, repeats', { label: `${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}` }) : `${ev.title}, ${fmtTime(s)} to ${fmtTime(e)}`}
       className={cls}
       {...press}
       onPointerDown={(pe) => {
@@ -399,7 +400,7 @@ function Block(b: {
       <span className="be-title">{ev.title}</span>
       <span className="be-time">
         {b.bot && <Mic size={11} className="be-bot" aria-label="The notetaker will join" />}
-        {ev.rrule && <Repeat size={11} className="be-repeat" aria-label="Repeats" />}
+        {ev.rrule && <Repeat size={11} className="be-repeat" aria-label={t('Repeats')} />}
         {fmtTime(s)}
         {(!short || b.dragging) && ` to ${fmtTime(e)}`}
       </span>

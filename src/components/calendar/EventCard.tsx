@@ -4,6 +4,7 @@ import { fmtTime } from '../../calendarUtils';
 import { meetingLinkOf } from '../../meetingLinks';
 import { useLongPress } from '../ui/useLongPress';
 import { isMaybe, isPast, isPending } from './calTools';
+import { t } from '../../i18n';
 
 export interface CardKit {
   color: (calendarId: string) => string;
@@ -56,7 +57,7 @@ export function EventCard({ e, kit, now }: { e: CalEvent; kit: CardKit; now: num
         <span className="ev-card-title">{e.title}</span>
         <span className="ev-card-meta">
           {e.allDay ? 'All day' : `${fmtTime(e.start)} to ${fmtTime(e.end)}`}
-          {e.rrule && <Repeat size={12} className="ev-repeat" aria-label="Repeats" />}
+          {e.rrule && <Repeat size={12} className="ev-repeat" aria-label={t('Repeats')} />}
           {link && (
             <>
               {' · '}

@@ -9,6 +9,7 @@ import { fromWall, isPending, startsIn, wallIn, whenLine, zoneCity } from './cal
 import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
 import { repeatWords } from '../../repeat';
+import { t, tn } from '../../i18n';
 
 export type { GuestAnswer };
 
@@ -110,10 +111,10 @@ function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus, a
 /** What happened to the invite we email to guests (the server keeps it on the event). */
 function inviteWords(e: CalEvent) {
   const inv = e.invite;
-  if (!inv) return 'The invite is on its way to the guests';
-  if (inv.error) return `The invite couldn’t go out: ${inv.error}`;
-  if (inv.held?.length) return `Emailed to guests here. Held on this computer for ${inv.held.length === 1 ? inv.held[0] : `${inv.held.length} outside guests`}: a local sprint2go doesn’t send mail out`;
-  return inv.sequence > 0 ? 'Guests have the latest changes by email' : 'Invite emailed to the guests';
+  if (!inv) return t('The invite is on its way to the guests');
+  if (inv.error) return t('The invite couldn’t go out: {why}', { why: t(inv.error) });
+  if (inv.held?.length) return t('Emailed to guests here. Held on this computer for {who}: a local sprint2go doesn’t send mail out', { who: inv.held.length === 1 ? inv.held[0] : tn(inv.held.length, '{n} outside guest', '{n} outside guests') });
+  return inv.sequence > 0 ? t('Guests have the latest changes by email') : t('Invite emailed to the guests');
 }
 
 function Row({ icon, children, muted, top }: { icon: ReactNode; children: ReactNode; muted?: boolean; top?: boolean }) {

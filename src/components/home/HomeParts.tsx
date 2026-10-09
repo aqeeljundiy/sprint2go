@@ -188,7 +188,7 @@ export function MeetingStrip({
             <button type="button" className="upn-text" onClick={() => onOpen(e.id)}>
               <strong>
                 {e.title}
-                {e.rrule && <Repeat size={13} className="h-repeat" aria-label="Repeats" />}
+                {e.rrule && <Repeat size={13} className="h-repeat" aria-label={t('Repeats')} />}
               </strong>
               <small>{x.sub}</small>
             </button>
@@ -347,7 +347,7 @@ export function TodayBlock({
                 <time>{fmtTime(e.start)}</time>
                 <button type="button" className="htd-ev-title" onClick={() => onOpenEvent(e.id)}>
                   {e.title}
-                  {e.rrule && <Repeat size={12} className="h-repeat" aria-label="Repeats" />}
+                  {e.rrule && <Repeat size={12} className="h-repeat" aria-label={t('Repeats')} />}
                 </button>
                 {link && (
                   <a className="ghost-btn sm" href={link.url} target="_blank" rel="noopener noreferrer">

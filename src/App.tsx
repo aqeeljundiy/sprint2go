@@ -110,7 +110,7 @@ import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
 import { msg, phrase, t, textOf, tn, type Msg } from './i18n';
-import { fmtDay, fmtList } from './i18n/format';
+import { fmtDay, fmtList, fmtWeekday } from './i18n/format';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -2812,7 +2812,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setCalCursor(new Date(ev.start));
     if (!mobile) setSelectedEventId(ev.rrule ? (findEvent([ev], ev.id)?.id ?? ev.id) : ev.id);
     showToast({
-      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : ev.rrule ? (ev.start === e.start ? 'Repeating event created' : `Repeating event created. The first one is ${new Date(ev.start).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}`) : 'Event created',
+      text: task ? `Task added, with ${fmtTime(start)} blocked for it` : ev.rrule ? (ev.start === e.start ? t('Repeating event created') : t('Repeating event created. The first one is {day}', { day: fmtWeekday(ev.start) })) : 'Event created',
       action: { label: 'Undo', run: () => (setEvents((es) => es.filter((x) => x.id !== ev.id)), task && setTodos((ts) => ts.filter((x) => x.id !== task.id))) },
     });
   };
@@ -2829,9 +2829,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return [...kept, ...from.filter((x) => !list.some((y) => y.id === x.id))];
     };
     setEvents((es) => put(es, change.upserts));
-    showToast({ text, action: { label: 'Undo', run: () => setEvents((es) => put(es, before)) } });
+    showToast({ text, action: { label: t('Undo'), run: () => setEvents((es) => put(es, before)) } });
   };
-  const scopeWords = (scope: Scope, what: string) => (scope === 'one' ? `${what} for this event` : scope === 'following' ? `${what} for this and following events` : `${what} for all events`);
+  /** What a change to some dates of a series did, in words. */
+  const scopeWords = (scope: Scope, what: 'saved' | 'moved' | 'times') =>
+    ({
+      saved: { one: t('Saved for this event'), following: t('Saved for this and following events'), all: t('Saved for all events') },
+      moved: { one: t('Moved this event'), following: t('Moved this and the following events'), all: t('Moved all events') },
+      times: { one: t('New times for this event'), following: t('New times for this and following events'), all: t('New times for all events') },
+    })[what][scope];
   /** One date of a series and the series it's in, by the date's id. */
   const seriesOf = (id: string) => {
     const occ = findEvent(events, id);
@@ -2853,9 +2859,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const resized = (before: string) => new Date(before).getTime() === start.getTime();
     const text = (before: string) => (resized(before) ? `Now ${fmtTime(start)} to ${fmtTime(end)}` : `Moved to ${start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(start)}`);
     if (s) {
-      const pick = scope ?? (await askRepeatScope(s.occ, 'Move a repeating event', at));
+      const pick = scope ?? (await askRepeatScope(s.occ, t('Move a repeating event'), at));
       if (!pick) return;
-      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, { start: start.toISOString(), end: end.toISOString() }), pick, uid), pick === 'one' ? text(s.occ.start) : scopeWords(pick, resized(s.occ.start) ? 'New times' : 'Moved'));
+      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, { start: start.toISOString(), end: end.toISOString() }), pick, uid), pick === 'one' ? text(s.occ.start) : scopeWords(pick, resized(s.occ.start) ? 'times' : 'moved'));
       return;
     }
     const before = events.find((e) => e.id === id);
@@ -2869,9 +2875,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const s = seriesOf(id);
     if (s) {
       // A new rule (or all day, or another time zone) can't be for one date alone.
-      const scope = await askRepeatScope(s.occ, 'Change a repeating event', at, changesRule(s.series, s.occurrence, e) ? ['following', 'all'] : ['one', 'following', 'all']);
+      const scope = await askRepeatScope(s.occ, t('Change a repeating event'), at, changesRule(s.series, s.occurrence, e) ? ['following', 'all'] : ['one', 'following', 'all']);
       if (!scope) return;
-      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, e), scope, uid), scopeWords(scope, 'Saved'));
+      applySeries(changeSeries(s.series, s.occurrence, asSeriesTimes(s.series, e), scope, uid), scopeWords(scope, 'saved'));
       setEditEventId(null);
       return;
     }
@@ -2883,7 +2889,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setEvents((es) => es.map((x) => (x.id === id ? startOnRule({ ...x, ...rest, guests: e.guests, location: e.location, meetUrl: e.meetUrl, notes: e.notes, allDay: e.allDay, remind: e.remind, timeZone: e.timeZone, ...repeat }) : x)));
     setEditEventId(null);
     if (rrule) setSelectedEventId(null);
-    showToast({ text: rrule ? 'Saved. It repeats now' : 'Event saved', action: { label: 'Undo', run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
+    showToast({ text: rrule ? t('Saved. It repeats now') : 'Event saved', action: { label: 'Undo', run: () => setEvents((es) => es.map((x) => (x.id === id ? before : x))) } });
   };
   const duplicateEvent = (id: string) => {
     const e = findEvent(events, id);
@@ -2943,10 +2949,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const deleteEvent = async (id: string, at?: ScopeAt) => {
     const s = seriesOf(id);
     if (s) {
-      const scope = await askRepeatScope(s.occ, 'Delete a repeating event', at);
+      const scope = await askRepeatScope(s.occ, t('Delete a repeating event'), at);
       if (!scope) return;
       setSelectedEventId(null);
-      applySeries(removeFromSeries(s.series, s.occurrence, scope), scope === 'one' ? 'Event deleted' : scope === 'following' ? 'This and following events deleted' : 'All events deleted');
+      applySeries(removeFromSeries(s.series, s.occurrence, scope), scope === 'one' ? 'Event deleted' : scope === 'following' ? t('This and following events deleted') : t('All events deleted'));
       return;
     }
     const snapshot = events;
@@ -3158,7 +3164,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // One date of a repeating invite: for that date, from it on, or all of them.
     let only: { scope: Scope; occurrence: string } | undefined;
     if (e.seriesId && e.occurrence && found.m.invite?.rrule) {
-      const scope = await askRepeatScope(e, `Answer “${status === 'accepted' ? 'Yes' : status === 'tentative' ? 'Maybe' : 'No'}” for`, at);
+      const scope = await askRepeatScope(e, t('Answer “{answer}” for', { answer: status === 'accepted' ? t('Yes') : status === 'tentative' ? t('Maybe') : t('No') }), at);
       if (!scope) return;
       only = { scope, occurrence: e.occurrence };
     }
@@ -4773,7 +4779,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenThread={openThread}
             onRsvp={rsvpEvent}
             answersOf={answersOf}
-            inviteNote={real ? undefined : 'Demo: invites aren’t emailed'}
+            inviteNote={real ? undefined : t('Demo: invites aren’t emailed')}
             team={members}
             contacts={guestContacts}
             me={user.id}

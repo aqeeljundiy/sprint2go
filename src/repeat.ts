@@ -8,6 +8,8 @@
 
 import type { CalEvent, EventOverride, RsvpStatus } from './types';
 import { DAY, floating, isZone, occurrences, pad, parseRRule, utcFromWall, wallFromUtc, wallOccurrences, WEEKDAYS, type ICalTime, type SeriesTimes } from './recurrence';
+import { getLang, t } from './i18n/index';
+import { fmtDate, fmtList, weekdayName } from './i18n/format';
 
 /* ---------- the clock of a series ---------- */
 
@@ -311,36 +313,44 @@ export function presetSpec(p: RepeatPreset, startWall: number, days?: number[]):
   }
 }
 
-export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-export const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
-const list = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
-const every = (n: number, unit: string) => (n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`);
+/** A weekday's name in the reader's language, 0 Sunday to 6 Saturday. */
+export const dayName = (d: number) => weekdayName(d);
+/** "2nd" in English; the plain number where the language puts the order in its words ("Selasa ke-2"). */
+export const ordinal = (n: number) => (getLang() === 'id' ? String(n) : `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`);
 
-/** "on the 2nd Tuesday", "on the 12th", "on the last day": where a monthly repeat falls. */
+/** "on the 2nd Tuesday", "on the 12th", "on the last day": where a monthly repeat falls (the choices in Custom). */
 export function monthlyWords(mode: RepeatSpec['monthly'], startWall: number) {
   const f = dateFacts(startWall);
-  if (mode === 'last') return 'on the last day';
-  if (mode === 'nth') return `on the ${ordinal(Math.min(5, f.nth))} ${DAY_NAMES[f.wd]}`;
-  if (mode === 'lastWeekday') return `on the last ${DAY_NAMES[f.wd]}`;
-  return `on the ${ordinal(f.day)}`;
+  if (mode === 'last') return t('on the last day');
+  if (mode === 'nth') return t('on the {nth} {weekday}', { nth: ordinal(Math.min(5, f.nth)), weekday: dayName(f.wd) });
+  if (mode === 'lastWeekday') return t('on the last {weekday}', { weekday: dayName(f.wd) });
+  return t('on the {nth}', { nth: ordinal(f.day) });
 }
 
 /** A repeat in plain words: "Every week on Monday and Wednesday", "Every month on the 2nd Tuesday, until 31 Dec 2026". */
 export function specWords(spec: RepeatSpec, startWall: number, ends = true): string {
   const f = dateFacts(startWall);
+  const n = spec.interval;
+  const one = n === 1;
   let s: string;
-  if (spec.freq === 'DAILY') s = every(spec.interval, 'day');
+  if (spec.freq === 'DAILY') s = one ? t('Every day') : t('Every {n} days', { n });
   else if (spec.freq === 'WEEKLY') {
-    const days = MONDAY_FIRST.filter((d) => (spec.days?.length ? spec.days : [f.wd]).includes(d));
-    s = spec.interval === 1 && days.join() === '1,2,3,4,5' ? 'Every weekday' : spec.interval === 1 && days.length === 7 ? 'Every day' : `${every(spec.interval, 'week')} on ${list(days.map((d) => DAY_NAMES[d]))}`;
-  } else if (spec.freq === 'MONTHLY') s = `${every(spec.interval, 'month')} ${monthlyWords(spec.monthly, startWall)}`;
-  else s = `${every(spec.interval, 'year')} on ${f.day} ${MONTH_NAMES[f.m - 1]}`;
-  if (ends && spec.count) s += spec.count === 1 ? ', once' : `, ${spec.count} times`;
-  else if (ends && spec.until) {
-    const [y, m, d] = spec.until.split('-').map(Number);
-    s += `, until ${d} ${MONTH_NAMES[m - 1].slice(0, 3)} ${y}`;
+    const list = MONDAY_FIRST.filter((d) => (spec.days?.length ? spec.days : [f.wd]).includes(d));
+    const days = fmtList(list.map(dayName));
+    s = one && list.join() === '1,2,3,4,5' ? t('Every weekday') : one && list.length === 7 ? t('Every day') : one ? t('Every week on {days}', { days }) : t('Every {n} weeks on {days}', { n, days });
+  } else if (spec.freq === 'MONTHLY') {
+    const v = { nth: ordinal(spec.monthly === 'nth' ? Math.min(5, f.nth) : f.day), weekday: dayName(f.wd), n };
+    if (spec.monthly === 'last') s = one ? t('Every month on the last day') : t('Every {n} months on the last day', v);
+    else if (spec.monthly === 'nth') s = one ? t('Every month on the {nth} {weekday}', v) : t('Every {n} months on the {nth} {weekday}', v);
+    else if (spec.monthly === 'lastWeekday') s = one ? t('Every month on the last {weekday}', v) : t('Every {n} months on the last {weekday}', v);
+    else s = one ? t('Every month on the {nth}', v) : t('Every {n} months on the {nth}', v);
+  } else {
+    // The date on the series' own clock (as if UTC), so no zone moves it.
+    const date = fmtDate(new Date(startWall), { day: 'numeric', month: 'long', timeZone: 'UTC' });
+    s = one ? t('Every year on {date}', { date }) : t('Every {n} years on {date}', { n, date });
   }
+  if (ends && spec.count) return spec.count === 1 ? t('{rule}, once', { rule: s }) : t('{rule}, {n} times', { rule: s, n: spec.count });
+  if (ends && spec.until) return t('{rule}, until {date}', { rule: s, date: fmtDate(spec.until, { day: 'numeric', month: 'short', year: 'numeric' }) });
   return s;
 }
 
@@ -350,8 +360,10 @@ export function repeatWords(e: Pick<CalEvent, 'rrule' | 'start' | 'timeZone'>): 
   const clock = clockOf(e);
   const spec = ruleToSpec(e.rrule, clock.wall(e.start), clock);
   if (spec) return specWords(spec, clock.wall(e.start));
+  // A rule the picker can't show (from an invite): how often, at least.
   const r = parseRRule(e.rrule);
-  return r ? `Repeats ${{ DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly', YEARLY: 'yearly' }[r.freq]}` : 'Repeats';
+  if (!r) return t('Repeats');
+  return { DAILY: t('Repeats daily'), WEEKLY: t('Repeats weekly'), MONTHLY: t('Repeats monthly'), YEARLY: t('Repeats yearly') }[r.freq];
 }
 
 /**

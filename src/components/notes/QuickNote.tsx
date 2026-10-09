@@ -5,6 +5,7 @@ import { term } from '../../terms';
 import { lsKey } from '../../settings';
 import { Sheet } from '../ui/Sheet';
 import { Select, Dot } from '../ui/Select';
+import { t } from '../../i18n';
 
 const LAST = 's2g-quick-note-to';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -67,15 +68,15 @@ export function QuickNote({ shared, clients, onSave, onClose }: { shared?: { tit
           <Select<string>
             value={to}
             onChange={pick}
-            label={`Where it goes: ${dest ? dest.name : 'Private'}`}
-            title="Where it goes"
+            label={t('Where it goes: {place}', { place: dest ? dest.name : t('Private') })}
+            title={t('Where it goes')}
             className="qn-dest"
             width={260}
-            options={[{ value: '', label: 'Private', hint: 'Only you', icon: <Lock size={14} /> }, ...open.map((c) => ({ value: c.id, label: c.name, group: term.Many, icon: <Dot color={c.color} /> }))]}
+            options={[{ value: '', label: t('Private'), hint: t('Only you'), icon: <Lock size={14} /> }, ...open.map((c) => ({ value: c.id, label: c.name, group: term.Many, icon: <Dot color={c.color} /> }))]}
             renderValue={() => (
               <>
                 {dest ? <Dot color={dest.color} /> : <Lock size={13} />}
-                <span className="sel-text">{dest ? dest.name : 'Private'}</span>
+                <span className="sel-text">{dest ? dest.name : t('Private')}</span>
                 <ChevronDown size={14} className="sel-chev" />
               </>
             )}

@@ -4,6 +4,8 @@ import type { CalEvent } from '../../types';
 import { repeatWords, type Scope } from '../../repeat';
 import { ActionSheet } from '../ui/ActionSheet';
 import { isPhone } from '../../mobile/media';
+import { t } from '../../i18n';
+import { fmtWeekday } from '../../i18n/format';
 
 type Ask = { title: string; at: { x: number; y: number } | null; options: Scope[]; event: CalEvent; done: (s: Scope | null) => void };
 let show: ((a: Ask | null) => void) | null = null;
@@ -46,12 +48,12 @@ export function ScopeHost() {
     };
   }, []);
   const e = ask?.event;
-  const day = e ? new Date(e.start).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+  const day = e ? fmtWeekday(e.start) : '';
   const all = e ? repeatWords({ rrule: e.rrule, start: e.occurrence ?? e.start, timeZone: e.timeZone }) : null;
   const label: Record<Scope, { label: string; hint: string; icon: typeof Repeat }> = {
-    one: { label: 'This event', hint: day, icon: CalendarDays },
-    following: { label: 'This and following events', hint: `From ${day} on`, icon: CalendarRange },
-    all: { label: 'All events', hint: all ?? '', icon: Repeat },
+    one: { label: t('This event'), hint: day, icon: CalendarDays },
+    following: { label: t('This and following events'), hint: t('From {day} on', { day }), icon: CalendarRange },
+    all: { label: t('All events'), hint: all ?? '', icon: Repeat },
   };
   return (
     <ActionSheet

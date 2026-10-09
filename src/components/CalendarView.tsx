@@ -21,6 +21,7 @@ import { QuickCreate } from './calendar/QuickCreate';
 import { ScheduleView, type DueTask } from './calendar/ScheduleView';
 import { TimeGrid } from './calendar/TimeGrid';
 import { UpNext } from './calendar/UpNext';
+import { t } from '../i18n';
 
 export type { CalView } from './calendar/calTools';
 
@@ -137,7 +138,7 @@ export function CalendarView(props: Props) {
     const e = shown.find((x) => x.id === id) ?? findEvent(events, id);
     if (!e?.seriesId) return props.onMove?.(id, start, end);
     setHeld({ id, start, end });
-    const scope = await askScope(e, 'Move a repeating event', at);
+    const scope = await askScope(e, t('Move a repeating event'), at);
     setHeld(null);
     if (scope) props.onMove?.(id, start, end, scope);
   };
