@@ -3762,7 +3762,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             tasks={wsTasks}
             clients={wsClientsAll}
             teams={wsTeams}
-            onScope={(sc) => (mode === 'projects' && (sc.kind === 'client' || sc.kind === 'past') ? setProjScope(sc) : openTasks(sc))}
+            onScope={(sc) => (mode === 'projects' && (sc.kind === 'client' || sc.kind === 'past' || sc.kind === 'projects') ? setProjScope(sc) : openTasks(sc))}
             logins={vaultItems.map((v) => ({ id: v.id, title: v.meta.title, url: v.meta.url, username: v.meta.username, clientId: v.meta.clientId, hasTotp: v.hasTotp }))}
             onOpenLogins={(clientId) => (setVaultFilter(clientId), go('vault'))}
             onNewLogin={(clientId) => (setVaultFilter(clientId), setVaultEditing('new'), go('vault'))}

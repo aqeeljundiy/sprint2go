@@ -26,6 +26,7 @@ import { personOption } from './ui/PeopleList';
 import { QuotesTab } from './Quotes';
 import type { Quote } from '../types';
 import { useCreateAction } from '../mobile/chrome';
+import { projectTabs, ProjectSections, useProjectPhone } from './ProjectPhone';
 
 export type TaskScope =
   | { kind: 'mine' }
@@ -717,13 +718,17 @@ export function TasksView(p: Props) {
           ? 'Bigger pieces of work with one person in charge and tasks for others'
           : [overdue ? `${overdue} late` : '', open.filter((t) => t.due === localDay()).length ? `${open.filter((t) => t.due === localDay()).length} due today` : ''].filter(Boolean).join(' · ') || (open.length ? 'Nothing late or due today' : 'Nothing open');
 
+  // A project's parts: tabs on desktop; on phones a list on its home and the title switcher (ProjectPhone.tsx).
+  const tabItems = projectTabs({ late: overdue, unreadMail: clientThreads.filter((t) => t.unread).length, quotes: !!p.onQuote, quoteWaiting: !!client && (p.quotes ?? []).some((q) => q.clientId === client.id && q.status === 'sent'), tables: !!p.onOpenTable });
+  useProjectPhone({ client, items: tabItems, tab: clientTab, onTab: setClientTab, others: p.clients, onProject: (id) => p.onScope(id === null ? { kind: 'projects' } : id === 'past' ? { kind: 'past' } : { kind: 'client', id }) });
+
   if (scope.kind === 'past')
     return <PastClients clients={p.clients} tasks={p.tasks} canManage={p.canManage} onOpen={(id) => p.onScope({ kind: 'client', id })} onReactivate={p.onReactivateClient} />;
 
   // Admins, the owner and the project's Leads manage a project: its status, people, guests and their access.
   const projectManage = !!client && (p.canManage || client.ownerId === p.me || (client.members ?? []).some((m) => m.userId === p.me && m.role === 'lead'));
   return (
-    <section className="tasks-pane view-enter">
+    <section className={`tasks-pane view-enter${client ? ' project-pane' : ''}`}>
       <header className="tracking-head tasks-head">
         <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label="Open menu">
           <Menu size={18} />
@@ -851,22 +856,8 @@ export function TasksView(p: Props) {
           value={clientTab}
           onSelect={(id) => setClientTab(id as typeof clientTab)}
           fixed={['overview']}
-          items={(
-            [
-              ['overview', 'Overview', 'Overview'],
-              ['tasks', overdue ? `Tasks · ${overdue} late` : 'Tasks', 'Tasks'],
-              ['workload', 'Workload', 'Workload'],
-              ...(p.onQuote ? ([['quotes', (p.quotes ?? []).some((q) => q.clientId === client.id && q.status === 'sent') ? 'Quotes · waiting' : 'Quotes', 'Quotes']] as const) : []),
-              ['chat', 'Chat', 'Chat'],
-              ['emails', clientThreads.filter((t) => t.unread).length ? `Mail · ${clientThreads.filter((t) => t.unread).length} unread` : 'Mail', 'Mail'],
-              ['meetings', 'Meetings', 'Meetings'],
-              ['files', 'Files', 'Files'],
-              ['notes', 'Notes', 'Notes'],
-              ...(p.onOpenTable ? ([['tables', 'Tables', 'Tables']] as const) : []),
-              ['logins', 'Logins', 'Logins'],
-              ['portal', 'Guests', 'Guests'],
-            ] as const
-          ).map(([id, label, name]) => ({ id, label, name }))}
+          className="client-tabs project-tabs"
+          items={tabItems}
           extra={
             cellTeam && (
               <button className="on soft" onClick={() => p.onScope({ kind: 'client', id: client.id })}>
@@ -1222,6 +1213,7 @@ export function TasksView(p: Props) {
                 </div>
               );
             })()}
+            <ProjectSections items={tabItems} onTab={setClientTab} actions={client.status === 'ended' ? [] : [{ id: 'template', label: 'Start from a template', run: p.onTemplate }, ...(projectManage ? [{ id: 'end', label: 'End work', danger: true, run: () => p.onEndClient(client.id) }] : [])]} />
             <div className="side-card client-notes-card">
               <h3>
                 Notes
