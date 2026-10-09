@@ -1,0 +1,6 @@
+/* ==========================================================================
+   Phone rules for Calendar. Owned by the Calendar builder (docs/mobile-kit.md says who owns what).
+   Loaded after src/system.css and src/mobile/shell.css, so a rule here wins over the old ones without
+   !important. As a screen is redone, move its old phone rules here and delete them where they were.
+   Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
+   ========================================================================== */

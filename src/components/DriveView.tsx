@@ -7,6 +7,7 @@ import { usePersisted } from '../settings';
 import { DRIVE_SECTIONS } from './DriveSidebar';
 import { FileIcon } from './FileIcon';
 import { EmptyState } from './ui/EmptyState';
+import { useCreateAction } from '../mobile/chrome';
 
 interface Props {
   items: DriveItem[]; // everything, including attachments from email
@@ -34,6 +35,7 @@ const byDate = (a: DriveItem, b: DriveItem) => b.modified.localeCompare(a.modifi
 
 export function DriveView(props: Props) {
   const { items, section, folderId } = props;
+  useCreateAction('drive', section !== 'trash' && { label: 'Upload', icon: Upload, run: props.onPickFiles });
   const [layout, setLayout] = usePersisted<'grid' | 'list'>('pm-drive-layout', 'grid');
   const [query, setQuery] = useState('');
   const [dragging, setDragging] = useState(false);

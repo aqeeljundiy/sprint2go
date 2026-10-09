@@ -5,6 +5,8 @@ import type { Client, Person, Thread } from '../types';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
 import { isMine } from '../identity';
+import { PenLine } from 'lucide-react';
+import { useCreateAction } from '../mobile/chrome';
 
 interface Props {
   /** A line above the list about what doesn't work yet (incoming or outgoing mail), with its fix. */
@@ -36,6 +38,7 @@ interface Props {
   onRefresh?: () => Promise<void>;
   updatedAt?: number; // when mail last came in fresh
   offline?: boolean; // the live connection dropped: new mail waits for a refresh
+  onCompose?: () => void; // phones: Compose is Mail's create button (missing: sending isn't set up)
 }
 
 const PULL_AT = 64; // px: pull this far, let go, and it refreshes
@@ -45,6 +48,7 @@ export const LIST_MAX = 560;
 
 export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageList(props, searchRef) {
   const { title, threads, me, selectedId, query, filter } = props;
+  useCreateAction('mail', props.onCompose && { label: 'Compose', icon: PenLine, run: props.onCompose });
   const listRef = useRef<HTMLUListElement>(null);
   const unread = threads.filter((t) => t.unread).length;
   const [refreshing, setRefreshing] = useState(false);

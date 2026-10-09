@@ -12,8 +12,7 @@ import { ProjectsCtx } from './components/ProjectPicker';
 import { ProjectsSidebar } from './components/ProjectsSidebar';
 import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
-import { SmoothHeight, TabPane } from './components/ui/Smooth';
-import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, Menu as MenuIcon, PenLine, Plus, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
+import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
 import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
@@ -65,9 +64,21 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, type Presence, type SendPayload } from './components/ChatApp';
 import { ChannelDialog, CATEGORY_ONE } from './components/ChannelDialog';
 import { MobileTop } from './components/MobileTop';
+import { PushScreen } from './components/ui/PushScreen';
+import { Sheet } from './components/ui/Sheet';
+import { offerInstall } from './components/InstallPrompt';
+import { BottomBar } from './mobile/BottomBar';
+import { MoreSheet } from './mobile/MoreSheet';
+import { DEFAULT_BAR, MORE_ORDER, companyBar } from './mobile/BarDefaults';
+import { useChrome, useFocusedScreen } from './mobile/chrome';
+import { PHONE, TABLET, useMedia } from './mobile/media';
+import { usePullToSearch } from './mobile/usePullToSearch';
+import { useKeyboard } from './mobile/keyboard';
+import { SEARCHABLE } from './components/CommandPalette';
+import type { ToastMsg } from './toast';
 import { clientActions } from './clientActions';
 import { accessFor, afterEnd, clientInbox, clientPeople, portalsFor, requestStatus, teamLabel } from './clientView';
 import { firstOf as firstStage, kindOf as stageKind, registerStages, stageIdFor, stageName, stageOf, stagesFor } from './stages';
@@ -144,20 +155,15 @@ function inView(t: Thread, v: View, me = '') {
   }
 }
 
-function useMedia(query: string) {
-  const [match, setMatch] = useState(() => matchMedia(query).matches);
-  useEffect(() => {
-    const mq = matchMedia(query);
-    const on = () => setMatch(mq.matches);
-    on();
-    mq.addEventListener('change', on);
-    window.addEventListener('resize', on);
-    return () => {
-      mq.removeEventListener('change', on);
-      window.removeEventListener('resize', on);
-    };
-  }, [query]);
-  return match;
+/** Settings for one app, opened from the phone's title switcher: the same section, full screen over the app. */
+function PushedSettings({ push, onBack, children }: { push: { label: string } | null; onBack: () => void; children: React.ReactNode }) {
+  return push ? (
+    <PushScreen title={push.label} onBack={onBack} className="settings-push">
+      {children}
+    </PushScreen>
+  ) : (
+    <>{children}</>
+  );
 }
 
 type Toast = { id: number; text: string; action?: { label: string; run: () => void }; ms?: number };
@@ -292,7 +298,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, [ws, portalKey]); // also when coming back from a client portal (it uses the other company's brand)
 
   const patchWorkspace = (id: string, patch: Partial<Workspace>) => setWorkspaces((list) => list.map((w) => (w.id === id ? { ...w, ...patch } : w)));
-  const mobile = useMedia('(max-width: 760px)');
+  const mobile = useMedia(PHONE);
 
   // Shell
   const [mode, setMode] = useState<Mode>(readRoute);
@@ -307,7 +313,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, []);
   // Tablets (iPad portrait, small landscape): the sidebar starts folded to icons so the page gets the room.
   // Each size keeps its own choice, so opening it on the iPad doesn't change the laptop.
-  const tablet = useMedia('(min-width: 761px) and (max-width: 1099px)');
+  const tablet = useMedia(TABLET);
   const [collapsedWide, setCollapsedWide] = usePersisted('pm-sidebar-collapsed', false);
   const [collapsedTablet, setCollapsedTablet] = usePersisted('pm-sidebar-collapsed-tablet', true);
   const collapsed = tablet ? collapsedTablet : collapsedWide;
@@ -319,6 +325,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('account');
   const [toast, setToast] = useState<Toast | null>(null);
   const showToast = (t: Omit<Toast, 'id'>) => setToast({ ...t, id: Date.now() });
+  // Shared pieces (SwipeRow, sheets) send their toasts here through src/toast.ts.
+  useEffect(() => {
+    const on = (e: Event) => setToast({ ...(e as CustomEvent<ToastMsg>).detail, id: Date.now() });
+    window.addEventListener('s2g:toast', on);
+    return () => window.removeEventListener('s2g:toast', on);
+  }, []);
   // News from the sprint2go team (operator backend, Product), minus what this person dismissed on this device.
   const [news, setNews] = useState<{ id: string; text: string; link?: string; kind: 'news' | 'warning' }[]>([]);
   const [newsSeen, setNewsSeen] = usePersisted<string[]>('s2g-news-dismissed', []);
@@ -427,7 +439,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [shownMates, setShownMates] = useState<Set<string>>(new Set());
   const [connectCal, setConnectCal] = useState<false | true | 'holidays'>(false);
   const [calCursor, setCalCursor] = useState(new Date());
-  const [calView, setCalView] = useState<CalView>(() => (matchMedia('(max-width: 760px)').matches ? 'day' : 'week'));
+  const [calView, setCalView] = useState<CalView>(() => (matchMedia(PHONE).matches ? 'day' : 'week'));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [newEventAt, setNewEventAt] = useState<Date | null>(null);
 
@@ -484,7 +496,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [shareFor, setShareFor] = useState<string | null>(null);
   const [sharedPreview, setSharedPreview] = useState<string | null>(null);
   const [askScope, setAskScope] = useState<AskScope | null>(null);
-  const [tabApps, setTabApps] = usePersisted<AppId[]>(`s2g-tabbar:${user.id}`, ['home', 'mail', 'chat', 'tasks']);
+  // The phone's bottom bar: the person's own, else their team's or company's (Settings, Apps & chat), else the usual.
+  // A bar saved before company bars existed counts as their own when it isn't the usual one.
+  const [savedBar, setSavedBar] = usePersisted<AppId[]>(`s2g-tabbar:${user.id}`, DEFAULT_BAR);
+  const [ownBar, setOwnBar] = usePersisted<boolean>(`s2g-tabbar:own:${user.id}`, false);
   const [editingBar, setEditingBar] = useState(false);
   const [askChats, setAskChats] = usePersisted<AskChat[]>(`s2g-ask-chats:${user.id}`, []);
   const [joinOverrides, setJoinOverrides] = usePersisted<Record<string, boolean>>(`s2g-join:${user.id}`, {});
@@ -524,6 +539,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const calendarsOn = !server.on || caps.demo || inSandbox || caps.googleCalendar || caps.microsoftCalendar || caps.calendarLinks;
   const go = (m: Mode) => {
     if (m !== 'settings') setLastMode(m);
+    if (m !== mode) window.dispatchEvent(new CustomEvent('s2g:app', { detail: m })); // a calm moment (the install prompt waits for one)
     setMode(m);
     setSidebarOpen(false);
     setAccountOpen(false);
@@ -1667,6 +1683,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         if (ch) setMessages((ms) => [...ms, { id: uid(), channelId: ch.id, userId: user.id, text: `${myFirst} finished “${t.title}”`, at: nowIso(), kind: 'celebration', taskId: t.id }]);
         if (!quiet) celebrate();
       }
+      if (!quiet) offerInstall(); // finishing something is a good moment to offer the app
       if (!quiet)
         showToast({
           text: next ? `Done. The next one is due ${dueWords(next.due!)}` : `Done: ${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}`,
@@ -2913,25 +2930,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const title = view.kind === 'folder' ? FOLDER_TITLES[view.id] : view.kind === 'tracking' ? 'Tracking' : view.kind === 'todos' ? 'To-do' : LABELS.find((l) => l.id === view.id)?.name ?? '';
   const appMode = mode === 'settings' ? lastMode : mode;
 
-  const fab =
-    mode === 'mail'
-      ? mailOut
-        ? { icon: PenLine, label: 'Compose', run: () => openCompose() }
-        : null
-      : mode === 'calendar'
-        ? { icon: Plus, label: 'New event', run: () => openNewEvent() }
-        : mode === 'drive'
-          ? { icon: Upload, label: 'Upload', run: () => fileInput.current?.click() }
-          : mode === 'projects' && projScope.kind === 'projects'
-            ? { icon: Plus, label: `New ${term.one}`, run: () => newProjectFlow() }
-          : (mode === 'tasks' || mode === 'home') && aiOn
-            ? { icon: Sparkles, label: 'Brain dump', run: () => openDump('') }
-            : mode === 'chat' && !chatId && canStartChannels
-              ? { icon: Plus, label: 'New channel', run: () => setChanDialog({}) }
-              : mode === 'meet' && botOn
-                ? { icon: Video, label: 'Send bot to a meeting', run: () => openSendBot() }
-                : null;
-
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
   const appSettings = (app: Mode, place: 'sidebar' | 'phone') => (
     <AppSettingsButton
@@ -3025,6 +3023,102 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return undefined;
   })();
 
+  /* ---------------- The phone shell (src/mobile/, docs/mobile-kit.md) ---------------- */
+
+  const chrome = useChrome(mode);
+  const kb = useKeyboard();
+  const ownBarOn = ownBar || savedBar.join() !== DEFAULT_BAR.join();
+  const teamBar = companyBar(ws, myTeamIds);
+  const tabApps: AppId[] = (ownBarOn ? savedBar : (teamBar ?? DEFAULT_BAR)).filter((id) => enabled.has(id)).slice(0, 4);
+  const setTabApps = (bar: string[]) => (setSavedBar(bar as AppId[]), setOwnBar(true));
+  // Focused screens that live in this file: an open mail on a phone, and a project's page (its Back goes in the top bar).
+  useFocusedScreen(mobile && mode === 'mail' && readerOpen);
+  useFocusedScreen(mobile && mode === 'projects' && projScope.kind === 'client', () => setProjScope({ kind: 'projects' }));
+  // The bar steps aside on focused screens and while the keyboard is up.
+  const barAway = chrome.focused || kb.open;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (root.classList.contains('bar-away') !== barAway) root.classList.toggle('bar-away', barAway);
+  }, [barAway]);
+  useEffect(() => () => document.documentElement.classList.remove('bar-away'), []);
+  // Chat's badge: what's written to you (direct messages) and mentions of you, not every channel's chatter.
+  const chatForMe = useMemo(() => {
+    const fallback = new Date(Date.now() - 90 * 60_000).toISOString();
+    const name = myFirst.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
+    const at = new RegExp(`@${name}\\b`, 'i');
+    let n = 0;
+    for (const c of wsChannels) {
+      const u = chatUnread[c.id];
+      if (!u) continue;
+      if (c.kind === 'dm') n += u;
+      else n += messages.filter((m) => m.channelId === c.id && m.userId !== user.id && m.at > (lastRead[c.id] ?? fallback) && at.test(m.text)).length;
+    }
+    return n;
+  }, [chatUnread, wsChannels, messages, lastRead, myFirst, user.id]);
+  const unreadNotices = myNotices.filter((n) => !n.read).length;
+  const barBadge = (id: AppId) => (id === 'home' ? unreadNotices : id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : 0);
+  // Search: inside the app on screen when it has things to search, with "All apps" one tap away.
+  const [searchScope, setSearchScope] = useState<AppId | null>(null);
+  const openSearch = (scope: AppId | null) => (setSearchScope(scope), setPaletteOpen(true));
+  const searchHere = () => openSearch(mode !== 'settings' && SEARCHABLE.includes(mode) ? mode : null);
+  usePullToSearch(searchHere, mobile && !paletteOpen);
+  // Recent: the last projects, notes and tables opened here (More lists five).
+  const [recentIds, setRecentIds] = usePersisted<{ kind: 'project' | 'note' | 'table'; id: string }[]>(`s2g-recent:${user.id}:${ws.id}`, []);
+  const visited = (kind: 'project' | 'note' | 'table', id: string) => setRecentIds((list) => (list[0]?.kind === kind && list[0]?.id === id ? list : [{ kind, id }, ...list.filter((x) => !(x.kind === kind && x.id === id))].slice(0, 12)));
+  useEffect(() => {
+    if (mode === 'projects' && projScope.kind === 'client') visited('project', projScope.id);
+  }, [mode, projScope]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (mode === 'notes' && noteId) visited('note', noteId);
+  }, [mode, noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (mode === 'tables' && tableId && wsTables.some((t) => t.id === tableId)) visited('table', tableId);
+  }, [mode, tableId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recentLinks = recentIds
+    .map((r) => {
+      if (r.kind === 'project') {
+        const c = wsClientsAll.find((x) => x.id === r.id);
+        return c && { id: `p-${c.id}`, label: c.name, hint: term.One, icon: Briefcase, run: () => openClient(c.id) };
+      }
+      if (r.kind === 'note') {
+        const n = wsNotes.find((x) => x.id === r.id);
+        return n && { id: `n-${n.id}`, label: n.title || 'Untitled note', hint: 'Note', icon: FileText, run: () => openNote(n.id) };
+      }
+      const t = wsTables.find((x) => x.id === r.id);
+      return t && { id: `t-${t.id}`, label: t.name, hint: 'Table', icon: Table2, run: () => (openTable(t.id), go('tables')) };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .slice(0, 5);
+  // An app's settings, opened over the app (Back returns to it) instead of jumping to the Settings page.
+  const [pushed, setPushed] = useState<{ kind: 'own' | 'section'; id: string; label: string } | null>(null);
+  useEffect(() => setPushed(null), [mode, ws.id]);
+  const settingsRows =
+    mode === 'settings'
+      ? []
+      : [
+          ...chrome.settings.map((e) => ({ id: `own:${e.id}`, label: e.label, hint: e.hint, run: () => setPushed({ kind: 'own', id: e.id, label: e.label }) })),
+          ...appSettingsLinks(mode, { admin: isAdmin, perms }).map((l) => ({ id: l.id, label: l.name, hint: l.hint, run: () => (setSettingsSection(l.id), setPushed({ kind: 'section', id: l.id, label: l.name })) })),
+        ];
+  const ownSettings = pushed?.kind === 'own' ? chrome.settings.find((e) => e.id === pushed.id) : undefined;
+  // More: New things from anywhere.
+  const [newMessage, setNewMessage] = useState(false);
+  const [taskAdd, setTaskAdd] = useState(0); // bumps to open Tasks' new task field
+  const makeLinks = [
+    ...(enabled.has('mail') && mailOut ? [{ id: 'email', label: 'Email', icon: PenLine, run: () => openCompose() }] : []),
+    ...(enabled.has('chat') ? [{ id: 'message', label: 'Message', icon: MessagesSquare, run: () => setNewMessage(true) }] : []),
+    ...(enabled.has('tasks') ? [{ id: 'task', label: 'Task', icon: ListChecks, run: () => (openTasks({ kind: 'mine' }), setTaskAdd((n) => n + 1)) }] : []),
+    ...(enabled.has('calendar') ? [{ id: 'event', label: 'Event', icon: CalendarPlus, run: () => (go('calendar'), openNewEvent()) }] : []),
+    ...(enabled.has('notes') ? [{ id: 'note', label: 'Note', icon: FileText, run: () => newNote() }] : []),
+    ...(enabled.has('drive') ? [{ id: 'upload', label: 'Upload', icon: Upload, run: () => (go('drive'), fileInput.current?.click()) }] : []),
+  ];
+  const meetLive = wsMeetings.some((m) => m.status === 'joining' || m.status === 'waiting_room' || m.status === 'recording');
+  const moreApps = MORE_ORDER.filter((id) => enabled.has(id) && !tabApps.includes(id)).map((id) => {
+    const a = APPS.find((x) => x.id === id)!;
+    return { id, name: a.name, icon: a.icon, badge: barBadge(id), live: id === 'meet' && meetLive ? 'Recording' : undefined };
+  });
+  // Edit the bar lists the apps in More's order (Calendar first), after the ones on the bar.
+  const enabledForBar = MORE_ORDER.filter((id) => enabled.has(id)).map((id) => APPS.find((a) => a.id === id)!).map((a) => ({ id: a.id, name: a.name, icon: a.icon }));
+
   // ⌘K: everything you can jump to
   const today0 = localDay();
   // Search inside tables and chat too. Built only when they change: they're the biggest part of the list.
@@ -3055,10 +3149,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...wsTasks
       .filter((t) => !t.done && ((stageKind(t) === 'review' && t.supervisorId === user.id) || (doersOf(t).includes(user.id) && !!t.due && t.due <= today0)))
       .map((t) => ({ id: 'n-' + t.id, group: 'Needs you', title: t.title, sub: stageKind(t) === 'review' ? 'Waiting for your review' : t.due! < today0 ? 'Late' : 'Due today', icon: ListChecks, run: () => openTask(t.id) })),
-    { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, run: () => openDump('') },
-    ...(enabled.has('mail') && mailOut ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, run: () => openCompose() }] : []),
-    { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, run: () => { openTasks({ kind: 'mine' }); setTimeout(() => document.getElementById('new-task')?.focus(), 200); } },
-    ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, run: () => { go('calendar'); openNewEvent(); } }] : []),
+    { id: 'a-dump', group: 'Actions', title: 'Brain dump', sub: 'Turn your thoughts into assigned tasks', icon: Brain, app: 'tasks' as const, run: () => openDump('') },
+    ...(enabled.has('mail') && mailOut ? [{ id: 'a-compose', group: 'Actions', title: 'Compose email', icon: PenLine, app: 'mail' as const, run: () => openCompose() }] : []),
+    { id: 'a-task', group: 'Actions', title: 'New task', icon: ListChecks, app: 'tasks' as const, run: () => (openTasks({ kind: 'mine' }), setTaskAdd((n) => n + 1)) },
+    ...(enabled.has('calendar') ? [{ id: 'a-event', group: 'Actions', title: 'New event', icon: CalendarPlus, app: 'calendar' as const, run: () => { go('calendar'); openNewEvent(); } }] : []),
     ...APPS.filter((a) => enabled.has(a.id)).map((a) => ({ id: 'go-' + a.id, group: 'Go to', title: a.name, icon: a.icon, run: () => go(a.id) })),
     ...wsClientsAll.map((c) => ({ id: 'c-' + c.id, group: `${term.Many}`, title: c.name, sub: c.status === 'ended' ? `Past ${term.one}` : c.domain, icon: Building2, run: () => openClient(c.id) })),
     ...wsTasks.filter((t) => !t.done).map((t) => ({ id: 't-' + t.id, group: 'Tasks', title: t.title, sub: [wsClients.find((c) => c.id === t.clientId)?.name, t.userId ? firstOf(t.userId) : 'nobody yet'].filter(Boolean).join(' · '), icon: ListChecks, keywords: [t.notes, t.context].filter(Boolean).join(' ').slice(0, 1500), run: () => openTask(t.id) })),
@@ -3171,6 +3265,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       <AppRail
         current={mode}
         enabled={enabledApps}
+        pinned={tablet ? tabApps : undefined}
+        onPinned={setTabApps}
         badges={{ mail: accountUnread.all, chat: chatUnreadTotal, tasks: wsTasks.filter((t) => t.userId === user.id && !t.done && t.due && t.due <= localDay()).length }}
         workspace={
           <WorkspaceSwitcher onHome={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
@@ -3473,19 +3569,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         {mobile && (
           <MobileTop
             title={({ home: 'Home', mail: 'Mail', chat: 'Chat', tasks: 'Tasks', projects: term.Many, teams: 'Teams', tables: 'Tables', calendar: 'Calendar', notes: 'Notes', drive: 'Drive', meet: 'Meet', vault: 'Vault', settings: 'Settings' } as Record<string, string>)[mode] ?? ''}
-            switcher={mobileSwitcher}
+            menu={chrome.title ?? mobileSwitcher}
+            settings={settingsRows}
+            back={chrome.back}
             workspaces={workspaces}
             current={ws}
-            unread={myNotices.filter((n) => !n.read).length}
+            unreadByWs={wsUnread}
             onWorkspace={switchWorkspace}
             onAddWorkspace={() => setNewWs(true)}
             demo={demoEntry}
             portals={portalItems}
             onPortal={setPortalKey}
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
-            onSearch={() => setPaletteOpen(true)}
-            onBell={() => setNoticesOpen(true)}
-            settings={appSettings(mode, 'phone')}
+            onSearch={searchHere}
           />
         )}
         {mobile && mode === 'chat' && !chatId && (
@@ -3584,6 +3680,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               .sort((a, b) => b.at.localeCompare(a.at))
               .map((m) => ({ id: m.id, to: m.kudosFor!, from: m.userId, text: m.text, at: m.at }))}
             enabled={enabled}
+            ai={aiOn}
             onDump={(text) => openDump(text ?? '')}
             onToggleTask={toggleTodo}
             onOpenTasks={() => openTasks({ kind: 'mine' })}
@@ -3707,6 +3804,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenChannel={openChannel}
             onOpenMeeting={openMeeting}
             onBrainDump={() => openDump('')}
+            addKey={taskAdd}
             dumpInSidebar={mode === 'tasks'}
             onTemplate={() => setTplOpen({ clientId: taskScope.kind === 'client' ? taskScope.id : undefined })}
             onMenu={() => setSidebarOpen(true)}
@@ -3835,6 +3933,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSyncCalendars={real && linkCals.some((c) => c.source === 'ics') ? refreshLinks : demoOk ? () => showToast({ text: 'Synced' }) : undefined}
             onAsk={setAskScope}
             onSend={() => openSendBot()}
+            canSendBot={botOn}
             onMenu={() => setSidebarOpen(true)}
             toast={(text) => showToast({ text })}
           />
@@ -3926,6 +4025,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               width={Math.min(Math.max(listW, 300), 560)}
               onWidth={setListW}
               onRefresh={refreshMail}
+              onCompose={mailOut ? () => openCompose() : undefined}
               updatedAt={mailLive.at}
               offline={real && mailLive.down}
               onQuery={setQuery}
@@ -4215,8 +4315,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           />
         )}
 
-        {mode === 'settings' && (
+        {(mode === 'settings' || pushed?.kind === 'section') && (
+          <PushedSettings push={mode === 'settings' ? null : pushed} onBack={() => setPushed(null)}>
           <SettingsPage
+            embedded={mode !== 'settings'}
             demo={
               demo && server.on
                 ? { inDemo: inSandbox, allowed: demo.allowed, state: demo.state, listOff: !!sandboxWs?.sandbox?.listOff, busy: demoBusy, onOpen: () => void openDemo(), onList: showTryList, realWorkspaceId: workspaces.find((w) => !isSandbox(w))?.id }
@@ -4313,92 +4415,58 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               />
             }
           />
+          </PushedSettings>
         )}
       </main>
 
-      {/* Phone: floating action + bottom tabs */}
-      {fab && !(mode === 'mail' && readerOpen) && (
-        <button className="fab" onClick={fab.run} aria-label={fab.label}>
-          <fab.icon size={22} />
-        </button>
+      {/* Phones: the bottom bar with the app's create button, More, and the sheets they open (src/mobile/) */}
+      {mobile && (
+        <BottomBar
+          apps={tabApps.map((id) => {
+            const a = APPS.find((x) => x.id === id)!;
+            return { id, name: a.name, icon: a.icon, badge: barBadge(id) };
+          })}
+          current={moreOpen ? '' : mode}
+          moreOn={moreOpen || !tabApps.includes(mode as AppId)}
+          onApp={(id) => go(id as AppId)}
+          onMore={() => (setEditingBar(false), setMoreOpen((o) => !o))}
+          onEdit={() => (setEditingBar(true), setMoreOpen(true))}
+          create={mode === 'settings' ? null : chrome.create}
+        />
       )}
-      <nav className="tabbar">
-        {tabApps
-          .filter((id) => enabled.has(id))
-          .slice(0, 4)
-          .map((id) => [id, APPS.find((a) => a.id === id)!.icon, APPS.find((a) => a.id === id)!.name, id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatUnreadTotal : 0] as const)
-          .map(([id, Icon, label, badge]) => (
-            <button key={id} className={mode === id ? 'on' : ''} onClick={() => go(id)}>
-              <span className="tab-icon">
-                <Icon size={21} />
-                {badge > 0 && <i>{badge}</i>}
-              </span>
-              {label}
-            </button>
-          ))}
-        <button className={moreOpen || (!tabApps.includes(mode as AppId) && mode !== 'settings') || mode === 'settings' ? 'on' : ''} onClick={() => setMoreOpen((o) => !o)}>
-          <span className="tab-icon">
-            <MenuIcon size={21} />
-          </span>
-          More
-        </button>
-      </nav>
       {moreOpen && (
-        <div className="more-sheet" onClick={() => setMoreOpen(false)}>
-          <div className="more-card" onClick={(e) => e.stopPropagation()}>
-            <SmoothHeight>
-            <TabPane key={String(editingBar)}>
-            {editingBar ? (
-              <div className="bar-edit">
-                <strong>Your bottom bar</strong>
-                <small className="muted">Pick up to 4 apps. The rest live here in More.</small>
-                {APPS.filter((a) => enabled.has(a.id)).map((a) => (
-                  <label key={a.id} className="check-row">
-                    <input
-                      type="checkbox"
-                      checked={tabApps.includes(a.id)}
-                      disabled={!tabApps.includes(a.id) && tabApps.length >= 4}
-                      onChange={() => setTabApps(tabApps.includes(a.id) ? tabApps.filter((x) => x !== a.id) : [...tabApps, a.id])}
-                    />
-                    <a.icon size={17} /> {a.name}
-                  </label>
-                ))}
-                <button className="primary-btn sm" onClick={() => setEditingBar(false)}>
-                  Done
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="more-apps">
-                  {APPS.filter((a) => enabled.has(a.id) && !tabApps.slice(0, 4).includes(a.id)).map((a) => (
-                    <button key={a.id} onClick={() => go(a.id)}>
-                      <a.icon size={22} />
-                      <span>{a.name}</span>
-                    </button>
-                  ))}
-                </div>
-                <button onClick={() => (setMoreOpen(false), toggleAsk())}>
-                  <Sparkles size={20} /> Ask AI
-                </button>
-                <button onClick={() => setEditingBar(true)}>
-                  <MenuIcon size={20} /> Edit the bottom bar
-                </button>
-              </>
-            )}
-            </TabPane>
-            </SmoothHeight>
-            <button onClick={() => go('settings')}>
-              <UserIcon size={20} /> Account & settings
-            </button>
-          </div>
-        </div>
+        <MoreSheet
+          onClose={() => (setMoreOpen(false), setEditingBar(false))}
+          onSearch={() => (setMoreOpen(false), openSearch(null))}
+          make={makeLinks}
+          apps={moreApps}
+          onApp={(id) => go(id as AppId)}
+          current={mode}
+          recent={recentLinks}
+          notices={unreadNotices}
+          onNotices={() => (setMoreOpen(false), setNoticesOpen(true))}
+          onAsk={toggleAsk}
+          onAccount={() => go('settings')}
+          editing={editingBar}
+          onEditing={setEditingBar}
+          edit={{
+            apps: enabledForBar,
+            bar: tabApps,
+            onChange: setTabApps,
+            reset: ownBarOn ? { label: teamBar ? 'Use the company’s bar' : 'Back to the usual bar', run: () => (setSavedBar(DEFAULT_BAR), setOwnBar(false)) } : undefined,
+          }}
+        />
       )}
       {noticesOpen && mobile && (
-        <div className="more-sheet" onClick={() => setNoticesOpen(false)}>
-          <div className="more-card notices-sheet" onClick={(e) => e.stopPropagation()}>
-            <Notifications notices={myNotices} onOpen={openNotice} onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))} onClose={() => setNoticesOpen(false)} />
-          </div>
-        </div>
+        <Sheet onClose={() => setNoticesOpen(false)} label="Notifications" className="notices-sheet" size="tall">
+          <Notifications notices={myNotices} onOpen={openNotice} onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))} onClose={() => setNoticesOpen(false)} />
+        </Sheet>
+      )}
+      {newMessage && <NewMessageSheet users={members} me={user.id} onPick={(id) => openChannel(dmWith(id))} onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined} onClose={() => setNewMessage(false)} />}
+      {ownSettings && (
+        <PushScreen title={ownSettings.label} onBack={() => setPushed(null)}>
+          {ownSettings.render()}
+        </PushScreen>
       )}
 
       <input
@@ -4745,6 +4813,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       {paletteOpen && (
         <CommandPalette
           items={paletteItems}
+          scope={searchScope}
           recentKey={`s2g-palette-recent:${user.id}:${ws.id}`}
           queryActions={(q) => [
             { id: 'q-task', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Create task “${q}”`, sub: 'Assigned to you', icon: ListChecks, run: () => { const t = createTask({ title: q.charAt(0).toUpperCase() + q.slice(1), userId: user.id, source: 'manual' }); showToast({ text: 'Task created', action: { label: 'Open', run: () => openTask(t.id) } }); } },
@@ -4752,7 +4821,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             { id: 'q-note', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `New note “${q}”`, sub: 'Only you can see it until you share it', icon: FileText, run: () => newNote(q.charAt(0).toUpperCase() + q.slice(1)) },
             { id: 'q-ask', group: 'Do with “' + (q.length > 40 ? q.slice(0, 40) + '…' : q) + '”', title: `Ask AI: “${q}”`, sub: 'Answers from your mail, chat, meetings and tasks', icon: Sparkles, run: () => { setAskSeed(q); setAskScope({ kind: 'all' }); } },
           ]}
-          onClose={() => setPaletteOpen(false)}
+          onClose={() => (setPaletteOpen(false), setSearchScope(null))}
         />
       )}
 

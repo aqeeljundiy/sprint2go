@@ -457,7 +457,7 @@
 }
 
 /* Phones: every control here is at least 40px to tap. */
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .list-sync .icon-btn,
   .ed-record .ed-rec-del,
   .ed-rec-tools .icon-btn {

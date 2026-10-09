@@ -94,7 +94,7 @@
   color: var(--accent);
   background: var(--accent-soft);
 }
-@container (max-width: 760px) {
+@container (max-width: 767px) {
   .tb-bar .ghost-btn .lbl {
     display: none;
   }
@@ -1121,7 +1121,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tb-bar {
     padding: 0 12px 10px;
   }
@@ -1188,7 +1188,7 @@
 .tb-back {
   display: none !important;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tasks-head.tb-head-bar .th-text {
     display: flex !important;
     flex: 1;
@@ -1463,7 +1463,7 @@
 .tb-auto-sec {
   display: grid;
   gap: 10px;
-  max-width: 760px;
+  max-width: 767px;
 }
 .tb-auto-sec > p {
   margin: 0;
@@ -1642,7 +1642,7 @@
 .tb-imp-sum {
   margin-right: 8px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tb-imap-row {
     grid-template-columns: 1fr;
     gap: 4px;
@@ -1723,7 +1723,7 @@
   gap: 2px 8px;
   font-size: 13px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tb-act-row {
     flex-wrap: wrap;
   }
@@ -2691,7 +2691,7 @@
 .tb-cal-more {
   padding: 0 6px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tb-cal-day {
     min-height: 64px;
     padding: 4px;
@@ -2913,7 +2913,7 @@
   flex-wrap: wrap;
   padding-top: 8px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tb-rd-grip {
     display: none;
   }

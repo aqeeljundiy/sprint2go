@@ -8,6 +8,8 @@ import { htmlToText } from '../sanitize';
 import { RichEditor } from './RichEditor';
 import { Select, Dot } from './ui/Select';
 import { EmptyState } from './ui/EmptyState';
+import { SquarePen } from 'lucide-react';
+import { useCreateAction, useFocusedScreen } from '../mobile/chrome';
 
 export type NotesFilter = 'all' | 'private' | 'team' | `client:${string}`;
 
@@ -29,6 +31,7 @@ export function NotesList({
   onOpen: (id: string) => void;
   onNew: () => void;
 }) {
+  useCreateAction('notes', { label: 'New note', icon: SquarePen, run: onNew });
   const [q, setQ] = useState('');
   const shown = notes
     .filter((n) => (filter === 'all' ? true : filter === 'private' ? n.visibility === 'private' : filter === 'team' ? n.visibility === 'team' : n.clientId === filter.slice(7)))
@@ -106,6 +109,7 @@ export function NoteEditor({
   onTask: (text: string, note: Note) => void;
   onBack?: () => void;
 }) {
+  useFocusedScreen(!!onBack && !!note); // phones: an open note takes the whole screen
   if (!note)
     return (
       <section className="notes-pane view-enter">

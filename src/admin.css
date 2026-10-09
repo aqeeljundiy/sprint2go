@@ -2031,7 +2031,7 @@ button.adm-q-text:hover strong {
   line-height: 1.45;
 }
 .adm-settings {
-  max-width: 760px;
+  max-width: 767px;
 }
 
 /* ---------- search (⌘K) ---------- */
@@ -2385,7 +2385,7 @@ button.adm-q-text:hover strong {
 }
 
 /* phones: the nav slides in from the left */
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .adm {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -2595,7 +2595,7 @@ button.adm-q-text:hover strong {
 }
 
 /* phones: every tap target at least 40px tall */
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .adm-main .ghost-btn.sm,
   .adm-main .primary-btn.sm,
   .adm-main .danger-btn.sm,
@@ -2882,7 +2882,7 @@ button.adm-q-text:hover strong {
     display: none;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .adm-ai-pick .sel,
   .adm-ai-usd input {
     min-height: 40px;

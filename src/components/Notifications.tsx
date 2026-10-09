@@ -16,7 +16,8 @@ interface Props {
 export function Notifications({ notices, onOpen, onReadAll, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const down = (e: MouseEvent) => !(e.target as HTMLElement).closest('.rail-notices') && onClose();
+    // Outside the list closes it (the phone's sheet has its own scrim, and taps inside it stay inside).
+    const down = (e: MouseEvent) => !(e.target as HTMLElement).closest('.rail-notices, .notices, .sheet') && onClose();
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('mousedown', down);
     document.addEventListener('keydown', key);

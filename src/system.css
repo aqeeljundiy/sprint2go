@@ -372,7 +372,7 @@ span.person-cell > :first-child {
 }
 
 /* Phones: every tab and segment is a 40px target. */
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .segmented > button,
   .client-tabs > button,
   .chan-tabs > button,
@@ -455,7 +455,7 @@ span.person-cell > :first-child {
 .task-toolbar > .sel.sel-flat.open {
   background: color-mix(in oklab, var(--text) 9%, var(--hover));
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .tool-row > .spacer {
     display: none;
   }
@@ -525,7 +525,7 @@ span.person-cell > :first-child {
 
 /* ---------- The huddle bar sits over the sidebar column, never over the message box ---------- */
 
-@media (min-width: 761px) {
+@media (min-width: 768px) {
   .huddle {
     width: 240px;
   }
@@ -557,38 +557,8 @@ h4,
   flex: none;
 }
 
-/* ---------- Phones: every control is at least a 40px target ---------- */
-@media (max-width: 760px) {
-  .ghost-btn,
-  .primary-btn,
-  .danger-btn,
-  .sel,
-  .date-sel,
-  .time-sel {
-    min-height: 40px;
-  }
-  .icon-btn,
-  .icon-btn.sm,
-  .icon-btn.xs {
-    min-width: 40px;
-    min-height: 40px;
-  }
-  /* The top bar: workspace, title switcher, settings, search, bell. */
-  .mobile-top .mt-ws {
-    place-items: center;
-    min-width: 40px;
-    min-height: 40px;
-  }
-  .mobile-top .icon-btn {
-    width: 40px;
-    height: 40px;
-  }
-  .mt-title.sel {
-    min-height: 40px;
-  }
-  .settings-nav button {
-    min-height: 40px;
-  }
+/* ---------- Phones (tap targets, fields and labels are in src/mobile/shell.css) ---------- */
+@media (max-width: 767px) {
   /* Calendar: the date on its own line with New event; Today, the arrows and Day / Week / Month under it. */
   .cal-header h1 {
     order: 1;
@@ -985,7 +955,7 @@ h4,
 .is-leaving.demo-bar {
   animation: s2gFadeOut 0.18s ease-in forwards !important;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   :root {
     --demo-bar-h: 52px;
   }

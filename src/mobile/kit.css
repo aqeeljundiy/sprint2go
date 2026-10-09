@@ -31,8 +31,18 @@
   justify-content: center;
   padding-bottom: var(--kb, 0px); /* rides above the phone's keyboard */
   background: rgba(10, 12, 20, calc(0.38 * var(--shade)));
-  animation: fade-in 0.18s ease-out;
+  animation: sheet-shade-in 0.2s ease-out; /* only the shade fades: the sheet itself is never see-through */
   transition: padding-bottom 0.18s ease-out;
+}
+@keyframes sheet-shade-in {
+  from {
+    background-color: rgba(10, 12, 20, 0);
+  }
+}
+@keyframes sheet-shade-out {
+  to {
+    background-color: rgba(10, 12, 20, 0);
+  }
 }
 .sheet {
   position: relative;
@@ -348,9 +358,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .sheet,
-  .sheet-scrim,
   .push-screen {
     animation: fade-in 0.15s ease-out backwards;
+  }
+  .sheet-scrim {
+    animation: none;
   }
   .swipe-face:not(.moving),
   .swipe-face.gone,

@@ -14,6 +14,7 @@ import { Select } from './ui/Select';
 import { doers, dueLabel, isBrief, peopleOptions } from './TasksView';
 import { kindOf } from '../stages';
 import { EmptyState } from './ui/EmptyState';
+import { useCreateAction } from '../mobile/chrome';
 
 type CardId =
   | 'briefing'
@@ -105,6 +106,7 @@ interface Props {
   kudos: { id: string; to: string; from: string; text: string; at: string }[]; // this week
   enabled: Set<string>;
   onDump: (text?: string) => void;
+  ai?: boolean; // AI is on for the company: Brain dump is Home's create button on phones
   onToggleTask: (id: string) => void;
   onAssign: (taskId: string, userId: string) => void;
   onNudge: (taskId: string) => void; // remind the person doing a late task
@@ -142,6 +144,7 @@ function guessTemplate(p: Props): HomeTemplateId {
 }
 
 export function HomeView(p: Props) {
+  useCreateAction('home', p.ai !== false && { label: 'Brain dump', icon: Sparkles, run: () => p.onDump() });
   const [dump, setDump] = useState('');
   const [editing, setEditing] = useState(false);
   const [dragId, setDragId] = useState<CardId | null>(null);

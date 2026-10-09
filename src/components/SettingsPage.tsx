@@ -33,6 +33,7 @@ import { HelpSection } from './HelpSection';
 import { NotificationSettings } from './NotificationSettings';
 import { TwoStepRow } from './TwoStep';
 import { DemoCompanyBlock, type DemoSettings } from './DemoCompany';
+import { BarDefaults } from '../mobile/BarDefaults';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -167,7 +168,7 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin, demo }: Props) {
+export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin, demo, embedded }: Props & { embedded?: boolean }) {
   const wsUsers = users.filter((u) => ws.members.some((m) => m.userId === u.id));
   const plan = ws.plan ?? trialPlan(ws.name, email);
   const [accessOpen, setAccessOpen] = useState<string | null>(null);
@@ -185,7 +186,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
   const nameOf = (id: string) => (id === me ? 'You' : users.find((u) => u.id === id)?.name.split(' ')[0] ?? 'Someone');
 
   return (
-    <section className="settings-pane view-enter">
+    <section className={`settings-pane view-enter${embedded ? ' embedded' : ''}`}>
       <header className="settings-head">
         <button className="icon-btn menu-btn" onClick={onMenu} aria-label="Open menu">
           <Menu size={18} />
@@ -694,6 +695,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
           {section === 'teams' && <TeamsLink teams={admin.teams} users={wsUsers} onOpen={admin.onOpenTeams} />}
           {section === 'stages' && <TaskStagesSection ws={ws} canManage={canManage} tasks={admin.tasks} teams={admin.teams} me={me} onWorkspace={onWorkspace} onMoveTasks={admin.onMoveTasks} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} projects={admin.projects} />}
+          {section === 'apps' && <BarDefaults ws={ws} teams={admin.teams} canManage={canManage} onWorkspace={onWorkspace} />}
           {section === 'myapps' && myApps && demo && demo.state !== 'on' && <DemoCompanyBlock d={demo} />}
           {section === 'myapps' && myApps && (
             <MyAppsSection

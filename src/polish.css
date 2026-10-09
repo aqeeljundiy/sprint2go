@@ -517,7 +517,7 @@ details.advanced[open] summary h3::after {
   border-top: 1px solid var(--border);
   background: var(--surface-2, var(--bg));
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .hub-two {
     grid-template-columns: 1fr;
   }
@@ -658,89 +658,8 @@ details.advanced[open] summary h3::after {
   background: none;
 }
 
-/* ==========================================================================
-   Phone: one way to move around, the same on every screen.
-   Fixed bottom bar · top bar (workspace, title switcher, search, bell) · list then detail · sheets.
-   ========================================================================== */
-.mobile-top,
-.mobile-list {
-  display: none;
-}
-@media (max-width: 760px) {
-  .main {
-    flex-direction: column;
-  }
-  .main > .mobile-top {
-    flex: none;
-  }
-  .main > :not(.mobile-top) {
-    flex: 1;
-    min-height: 0;
-  }
-  .mobile-top {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    position: sticky;
-    top: 0;
-    z-index: 30;
-    padding: max(8px, env(safe-area-inset-top)) 10px 8px;
-    background: color-mix(in oklab, var(--bg) 92%, transparent);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--line);
-  }
-  .mt-ws {
-    flex: none;
-    display: grid;
-    border-radius: 9px;
-  }
-  .mt-title.sel {
-    border: 0;
-    background: none;
-    padding: 0 6px;
-    min-height: 36px;
-    font-size: 19px;
-    font-weight: 750;
-    letter-spacing: -0.02em;
-    max-width: 58vw;
-  }
-  .mt-title.sel .sel-chev {
-    margin-left: 4px;
-    color: var(--text-3);
-  }
-  .mt-title.plain {
-    margin: 0 0 0 6px;
-    font-size: 19px;
-    font-weight: 750;
-    letter-spacing: -0.02em;
-  }
-  .mt-bell {
-    position: relative;
-  }
-  .mt-bell i {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    border-radius: 999px;
-    background: var(--danger);
-    color: #fff;
-    font-style: normal;
-    font-size: 10px;
-    font-weight: 800;
-    display: grid;
-    place-items: center;
-  }
-  /* No ☰ drawers on phones: the top bar's switcher replaces them. */
-  .menu-btn {
-    display: none !important;
-  }
-  .sidebar.open,
-  .sidebar-scrim {
-    display: none !important;
-  }
+/* Phone: the shell (top bar, bottom bar, More) lives in src/mobile/shell.css. Screens' own phone rules follow. */
+@media (max-width: 767px) {
   /* Pane headers become simple sub-headers under the top bar. */
   .home-head .home-date {
     display: none;
@@ -754,53 +673,6 @@ details.advanced[open] summary h3::after {
   }
   .back-btn {
     margin-left: -6px;
-  }
-  /* Chat on phones: the channel list is the screen. */
-  .mobile-list {
-    display: block;
-    overflow-y: auto;
-    padding: 8px 6px calc(var(--tabbar-h, 64px) + 90px);
-    background: var(--surface);
-  }
-  .mobile-list .nav-item {
-    min-height: 46px;
-    font-size: 15px;
-  }
-  .mobile-list .nav-more {
-    opacity: 1;
-    background: none;
-  }
-  .mobile-list .status-btn,
-  .mobile-list .view-bar {
-    margin-left: 6px;
-    margin-right: 6px;
-  }
-  /* More: an app grid, Ask AI, edit the bar. */
-  .more-apps {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-  .more-apps button {
-    display: grid !important;
-    justify-items: center;
-    gap: 6px;
-    padding: 14px 6px !important;
-    border-radius: var(--r-card);
-    background: var(--surface-2);
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .bar-edit {
-    display: grid;
-    gap: 10px;
-  }
-  .bar-edit .check-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 15px;
   }
   /* Modals become full-height sheets from the bottom. */
   .modal {
@@ -816,11 +688,8 @@ details.advanced[open] summary h3::after {
   .ask-drawer {
     width: 100%;
   }
-  .fab {
-    border-radius: 18px;
-  }
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   /* The top bar already says where you are: no second title, no second Brain dump button. */
   .tasks-head .th-text,
   .tasks-head .brain-btn,
@@ -949,7 +818,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .task-add input#new-task { flex: 1 1 calc(100% - 40px); }
 .task-add > .primary-btn { margin-left: auto; }
 /* Shown again on wider screens only: on phones the Team picker stays hidden (round2.css) so the title gets the room. */
-@media (min-width: 761px) { .task-add .hide-sm { display: inline-flex; } }
+@media (min-width: 768px) { .task-add .hide-sm { display: inline-flex; } }
 /* Dragging a channel onto a sidebar section */
 .nav-row[draggable='true'] { cursor: grab; }
 .chat-section.drop-on { background: color-mix(in oklab, var(--accent) 10%, transparent); border-radius: var(--r-control); outline: 1.5px dashed color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: -2px; }
@@ -991,7 +860,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .spend-card.current { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .spend-card.best em { position: absolute; top: 10px; right: 10px; font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--ok, var(--accent)); }
 .spend-verdict { margin: 10px 0 0; font-size: 13px; }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .spend-totals, .spend-compare { grid-template-columns: 1fr 1fr; }
   .spend-table th:nth-child(4), .spend-table td:nth-child(4) { display: none; }
 }
@@ -1071,7 +940,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .hb-progress { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .hb-progress .bar { flex: 0 0 120px; }
 .client-brief-context { white-space: pre-wrap; margin: 0 0 14px; font-size: 14px; line-height: 1.55; color: var(--text-2, var(--text)); }
-.client-notes { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+.client-notes { display: flex; flex-direction: column; gap: 12px; max-width: 767px; }
 .client-notes .side-card h3 { margin: 0 0 6px; font-size: 13px; }
 .client-notes .side-card p, .client-notes .side-card li { font-size: 14px; line-height: 1.55; }
 .client-notes ul { margin: 0; padding-left: 18px; }
@@ -1106,7 +975,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 @keyframes pillIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .client-made { display: flex; justify-content: center; align-items: center; gap: 4px; margin: 24px 0 8px; font-size: 11.5px; color: var(--muted); }
 .client-toast { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 90; }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .view-as-pill { bottom: calc(76px + env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); }
   .view-as-pill > span { white-space: nowrap; }
   .request-row { grid-template-columns: 1fr; }
@@ -1133,7 +1002,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .up-next.clear p { margin: 0; }
 .pulse-num { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 @keyframes unIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-@media (max-width: 760px) { .un-row { gap: 10px; } .un-text strong { white-space: normal; } }
+@media (max-width: 767px) { .un-row { gap: 10px; } .un-text strong { white-space: normal; } }
 .sec-count.unread { color: var(--accent); font-weight: 700; opacity: 1; }
 .spend-lead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 8px 0 2px; }
 .spend-lead b { font-size: 26px; letter-spacing: -0.02em; }
@@ -1149,7 +1018,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .home-search:hover { box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--accent) 45%, var(--line)); }
 .home-search span { flex: 1; }
 .home-search kbd { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: var(--hover); color: var(--muted); }
-@media (max-width: 760px) { .home-search kbd { display: none; } }
+@media (max-width: 767px) { .home-search kbd { display: none; } }
 .row-act { flex: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 0; cursor: pointer; background: var(--hover); color: var(--text); }
 .row-act:hover { background: color-mix(in oklab, var(--accent) 14%, var(--hover)); }
 .row-act.primary { background: var(--accent); color: #fff; }
@@ -1190,7 +1059,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .ot-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 6px 8px 6px 0; }
 .ot-table td { padding: 7px 8px 7px 0; border-top: 1px solid var(--line); vertical-align: top; }
 .ot-table td .link-btn + .link-btn::before { content: ', '; color: var(--muted); }
-@media (max-width: 760px) { .end-row { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .end-row { grid-template-columns: 1fr; } }
 .ended-banner { margin: 12px 16px 0; padding: 10px 14px; border-radius: var(--r-control); background: var(--hover); color: var(--text); font-size: 13px; }
 
 /* ---------- Notes ---------- */
@@ -1214,7 +1083,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .client-notes-card { margin-bottom: 14px; }
 .client-notes-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; }
 .client-notes-card h3 .link-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 13px; }
-@media (max-width: 760px) { .note-body { padding: 14px 16px 30px; } .note-title { font-size: 22px; } }
+@media (max-width: 767px) { .note-body { padding: 14px 16px 30px; } .note-title { font-size: 22px; } }
 
 /* ---------- Vault ---------- */
 .vault-note { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; line-height: 1.4; }
@@ -1234,7 +1103,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .vault-log-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 13px; border-top: 1px solid var(--line); }
 .vault-log-row time { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .vault-notes { white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--hover); padding: 12px; border-radius: var(--r-control); }
-@media (max-width: 760px) { .vault-grid { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .vault-grid { grid-template-columns: 1fr; } }
 .vault-row { flex-wrap: wrap; row-gap: 8px; }
 .vault-row .task-main { flex: 1 1 240px; }
 .vault-note { white-space: normal; padding-right: 12px; }
@@ -1281,7 +1150,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 /* A guest's "Shared with you" home: projects grouped by the company that shared them */
 .shared-home {
   min-height: 100vh;
-  max-width: 760px;
+  max-width: 767px;
   margin: 0 auto;
   padding: 48px 16px 64px;
   animation: rise 0.28s ease backwards;
@@ -1978,7 +1847,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   text-align: center;
   animation: installUp 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-@media (min-width: 761px) {
+@media (min-width: 768px) {
   .install-scrim {
     align-items: center;
   }
@@ -2094,6 +1963,33 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 .is-leaving .install-sheet {
   animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
 }
+/* The touch kit (src/mobile/kit.css): sheets go back down, pushed screens go back out to the right. A sheet let go
+   mid-swipe carries on from where the finger left it (no "from" in the animation). */
+.is-leaving.sheet-scrim {
+  animation: sheet-shade-out 0.2s ease forwards !important;
+}
+.is-leaving .sheet {
+  animation: s2gSheetOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.is-leaving.push-screen {
+  animation: s2gPushOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+@keyframes s2gPushOut {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (min-width: 768px) {
+  .is-leaving .sheet {
+    animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-leaving .sheet,
+  .is-leaving.push-screen {
+    animation: s2gFadeOut 0.15s ease forwards !important;
+  }
+}
 .is-leaving.pop,
 .is-leaving.account-menu,
 .is-leaving.ws-menu,
@@ -2182,10 +2078,6 @@ select,
 .mention-pop {
   animation: pop-in-up 0.14s ease-out;
 }
-.is-leaving.more-sheet {
-  animation: s2gFadeOut 0.2s ease forwards !important;
-}
-.is-leaving .more-card,
 .is-leaving.inline-sheet {
   animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
 }
@@ -2207,17 +2099,8 @@ select,
 .is-leaving.lightbox {
   animation: s2gFadeOut 0.18s ease forwards !important;
 }
-.is-leaving.fab {
-  animation: s2gFabOut 0.18s ease forwards !important;
-}
-@keyframes s2gFabOut {
-  to {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-}
 /* On phones dialogs are bottom sheets: they leave the way they came, down */
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .is-leaving .modal,
   .is-leaving .palette {
     animation: s2gSheetOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
@@ -2313,7 +2196,7 @@ select,
   }
 }
 /* Guest view: a toast sits above the "Viewing as" pill, not under it */
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .client-app:has(.view-as-pill) .client-toast {
     bottom: calc(132px + env(safe-area-inset-bottom));
   }
@@ -3743,7 +3626,7 @@ p.trial-note > svg:first-child {
     animation: none;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .ed-routes {
     grid-template-columns: 1fr;
   }
@@ -4081,7 +3964,7 @@ a.help-file:hover {
   flex-direction: column;
   gap: 8px;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .help-msg {
     max-width: 100%;
   }
@@ -4246,7 +4129,7 @@ a.help-file:hover {
 :root[data-theme='dark'] .mail-gate > svg {
   color: #fbbf24;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .mail-setup-body {
     padding: 16px 16px 80px;
   }

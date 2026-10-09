@@ -12,6 +12,7 @@ import { kindOf } from '../stages';
 import { Select } from './ui/Select';
 import { SmoothHeight } from './ui/Smooth';
 import { EmptyState } from './ui/EmptyState';
+import { useCreateAction } from '../mobile/chrome';
 
 /**
  * The Projects app's home: every project, the ones that need something first. Each card says what's wrong (late,
@@ -19,6 +20,7 @@ import { EmptyState } from './ui/EmptyState';
  */
 export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu, startAdding }: { startAdding?: boolean; projects: Client[]; tasks: Todo[]; users: User[]; onOpen: (id: string) => void; onCreate?: (name: string, type?: string) => void; onMenu: () => void }) {
   const [adding, setAdding] = useState(!!startAdding);
+  useCreateAction('projects', !!onCreate && { label: `New ${term.one}`, icon: Plus, run: () => setAdding(true) });
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   // What each card shows, chosen by each person.
