@@ -298,6 +298,8 @@ export interface Workspace {
   /** Where the company is (an IANA name, Settings, General): when scheduled summaries are written, and the clock for
    *  digests and table rules when a person's own isn't known. Missing: Asia/Jakarta (src/jobTimes.ts). */
   timeZone?: string;
+  /** The language for members who haven't picked their own (Settings, General). Missing: each person's device. */
+  language?: 'en' | 'id';
   createdAt?: string;
   suspended?: { at: string; by: string; reason: string }; // set by an operator: read-only for everyone until lifted
   bimi?: { fileId: string; name: string; at: string; by: string }; // the server's: the BIMI logo (Settings, Email delivery)
@@ -689,6 +691,8 @@ export interface Notice {
   url?: string; // a page outside the app (operators: a ticket in the backend)
   fromGuest?: boolean; // written by a guest (set by the server), for the "Guests" choice in Settings, Notifications
   event?: 'opened'; // someone opened an email you sent (server/readTracking.ts): also a toast while you're in the app
+  /** The words to show each reader in their own language (msg() and textOf() in src/i18n): `text` is the English. */
+  tr?: { key: string; vars?: Record<string, string | number> };
 }
 
 export type MeetingStatus = 'queued' | 'joining' | 'waiting_room' | 'recording' | 'stopping' | 'processing' | 'done' | 'failed' | 'stopped';

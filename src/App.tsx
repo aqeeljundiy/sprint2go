@@ -103,6 +103,7 @@ import { rowName } from './components/tables/core';
 import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
+import { useAppLanguage } from './i18n/useLang';
 
 /** "today", "tomorrow", "in 3 days" read lower-case mid-sentence; dates keep their capitals. */
 const dueWords = (d: string) => {
@@ -239,6 +240,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   uploadPolicy.storageTotal = ws ? storageGB(ws.plan ?? trialPlan(ws.name, ''), ws.members.length) * 1024 ** 3 : 0;
   setBrandName(brandOf(ws)); // white label: an agency's name in place of ours
   setTermWord(ws?.terms?.word); // "Projects" or "Clients", before anything below renders words
+  useAppLanguage(settings.language, ws?.language); // theirs, else the company's, else the device's (docs/i18n.md)
   registerStages(allWorkspaces, ws?.id); // each company's task stages, so every screen reads a task's stage from its company
   // Companies this person is a client of (same sign-in): their portals sit in the workspace switcher.
   const [portalKey, setPortalKey] = usePersisted(`s2g-portal:${user.id}`, '');

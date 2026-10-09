@@ -41,6 +41,7 @@ import { ConnectedApps } from './ConnectedApps';
 import { ImportSection } from './imports/ImportSection';
 import { BarDefaults } from '../mobile/BarDefaults';
 import { MAIL_APPS_SECTION, PhoneMailApps } from './PhoneMailApps';
+import { LANGS, getLang, t, type Lang } from '../i18n';
 
 const SECTIONS: { id: SettingsSection; name: string; icon: LucideIcon; group: 'Company' | 'You' }[] = [
   { id: 'workspace', name: 'General & email', icon: Building2, group: 'Company' },
@@ -321,6 +322,16 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 <Select value={companyTz(ws)} onChange={(v) => onWorkspace({ timeZone: v })} label="Time zone" searchable options={zoneOptions(companyTz(ws))} />
                 <small>Scheduled channel summaries are written at {SUMMARY_HOUR}:00 here. Email digests use it for anyone whose own time zone isn’t known yet.</small>
               </div>
+              <div className="field">
+                <label>{t('Language')}</label>
+                <Select<'' | Lang>
+                  value={ws.language ?? ''}
+                  onChange={(v) => onWorkspace({ language: v || undefined })}
+                  label={t('Language')}
+                  options={[{ value: '', label: t('Each person’s browser') }, ...LANGS.map((l) => ({ value: l.id, label: l.name }))]}
+                />
+                <small>{t('For new members and anyone who hasn’t picked their own language in Settings, Account.')}</small>
+              </div>
               </fieldset>
 
               <h3>Members</h3>
@@ -509,6 +520,11 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 <label>Email address</label>
                 <input value={email} readOnly />
                 <small>Your address is set up by your administrator.</small>
+              </div>
+              <div className="field">
+                <label>{t('Language')}</label>
+                <Select<Lang> value={s.language ?? getLang()} onChange={(v) => update({ language: v })} label={t('Language')} options={LANGS.map((l) => ({ value: l.id, label: l.name }))} />
+                <small>{t('The app’s words, dates and numbers. It follows you to your other devices.')}</small>
               </div>
 
               <h3>Security</h3>

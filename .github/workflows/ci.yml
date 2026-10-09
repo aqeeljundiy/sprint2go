@@ -4,8 +4,9 @@
 # the demo company and try-out checks (each person's demo company stays theirs and nothing in it leaves), the AI
 # apps connector (sign-in with OAuth and PKCE, every MCP tool, each person sees only their own, outward things are drafts),
 # the import checks (Slack, Trello and Google Drive into a company, Undo, and zips that try to get out or blow up),
-# the Tables checks (filters with groups, each person's own filters and sorts, templates that repeat, who may change a view)
-# and phone mail apps (IMAP and SMTP submission with app passwords, against a real IMAP client and nodemailer).
+# the Tables checks (filters with groups, each person's own filters and sorts, templates that repeat, who may change a view),
+# phone mail apps (IMAP and SMTP submission with app passwords, against a real IMAP client and nodemailer) and the
+# language check (every Indonesian text keeps the English one's placeholders).
 name: CI
 on:
   push:
@@ -30,6 +31,8 @@ jobs:
         run: npx vite build
       - name: Demo-only code is guarded
         run: node scripts/check-demo-guards.mjs
+      - name: Languages (Indonesian placeholders match the English, per area; docs/i18n.md)
+        run: node scripts/i18n-check.mjs
       - name: Unit checks
         run: node --import ./server/register.mjs scripts/unit-tests.mjs
       - name: Calendar parser (invites and calendar links)

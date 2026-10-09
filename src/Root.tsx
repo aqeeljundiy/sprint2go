@@ -22,6 +22,8 @@ import { brand as product, brandOf, setBrandName } from './terms';
 import { registerStages } from './stages';
 import { applyPricing, type PricingOverride } from './data/pricing';
 import { loadCaps } from './caps';
+import { deviceLang, setLang } from './i18n';
+import { useAppLanguage } from './i18n/useLang';
 
 /**
  * With the local server: real sign-in, data from the database, live updates.
@@ -37,6 +39,10 @@ export default function Root() {
 
   // Before the app opens (sign-in, the two-step code, an invite), nobody's settings apply yet: follow the device.
   const preApp = mode === 'signed-out' || mode === 'two-step' || !!invite || connecting;
+  // …and its language: what this device picked (here or on the landing page), else the browser's.
+  useEffect(() => {
+    if (preApp) void setLang(deviceLang());
+  }, [preApp]);
   useEffect(() => {
     if (!preApp) return;
     const mq = matchMedia('(prefers-color-scheme: dark)');
@@ -391,6 +397,7 @@ function ClientRoot({ me }: { me: User }) {
   useEffect(() => {
     if (ws) setAIWorkspace(ws.id);
   }, [ws?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAppLanguage(settings.language, ws?.language); // guests too: theirs, else the inviting company's, else the device's
   if (!portal || !ws || !client) return <FirstRun me={me} existingEmails={users.map((u) => u.email.toLowerCase())} />;
   const start = (
     starting && (
