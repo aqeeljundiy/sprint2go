@@ -3,7 +3,8 @@ import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { Bell, CalendarPlus, CheckCircle2, Clock, Eye, EyeOff, FileText, Hash, LayoutTemplate, Plus, Repeat as RepeatIcon, RotateCcw, Trash2, X } from 'lucide-react';
-import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../types';
+import type { Client, CommentFile, Repeat, TaskStatus, Team, Todo, User } from '../types';
+import { AttachButton, dropFiles, FileCards, useCommentFiles, WaitingFiles } from './tasks/CommentFiles';
 import { localDay, relative } from '../utils';
 import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
@@ -36,7 +37,7 @@ interface Props {
   onOpenThread: (id: string) => void;
   onOpenChannel?: (clientId: string) => void;
   onAskApproval: (id: string) => void;
-  onComment: (id: string, text: string, toClient?: boolean) => void;
+  onComment: (id: string, text: string, toClient?: boolean, files?: CommentFile[]) => void;
   clientNames?: Record<string, string>; // client people by email (for their comments)
   onSendBack: (id: string, note: string) => void;
   onSaveTemplate?: (briefId: string) => void;
@@ -63,7 +64,16 @@ export function TaskDrawer(p: Props) {
   const [sendingBack, setSendingBack] = useState(false);
   const [backNote, setBackNote] = useState('');
   const src = SOURCE[task.source];
-  const phone = usePhone(); // a task's guest card is a row and a "…" item in the phone's sheet (TaskDetail)
+  const phone = usePhone();
+  // A brief's comments take files too (a task's are in TaskDetail).
+  const att = useCommentFiles(task.workspaceId ?? '');
+  const canSend = (!!comment.trim() || att.files.length > 0) && !att.busy;
+  const send = () => {
+    if (!canSend) return;
+    p.onComment(task.id, comment.trim(), toClient, att.files.length ? att.files : undefined);
+    setComment('');
+    att.clear();
+  }; // a task's guest card is a row and a "…" item in the phone's sheet (TaskDetail)
 
   useEffect(() => {
     const el = titleRef.current;
@@ -349,7 +359,8 @@ export function TaskDrawer(p: Props) {
                           {fromClient && <em className="h-tag client">{term.One}</em>}
                           {!fromClient && h.toClient && <em className="h-tag">{t('To {who}', { who: term.who })}</em>}
                         </b>
-                        <span className="h-comment">{h.text}</span>
+                        {h.text && <span className="h-comment">{h.text}</span>}
+                        <FileCards files={h.files} />
                       </>
                     ) : (
                       <span>
@@ -522,15 +533,17 @@ export function TaskDrawer(p: Props) {
 
           <label className="drawer-label">{t('History')}</label>
           {historyBlock}
-          <div className={`comment-box ${toClient ? 'to-client' : ''}`}>
-            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && comment.trim() && (e.preventDefault(), p.onComment(task.id, comment.trim(), toClient), setComment(''))} placeholder={toClient ? t('Reply to the {who}… they will see this', { who: term.who }) : t('Internal comment… @mention someone')} />
+          <div className={`comment-box ${toClient ? 'to-client' : ''}`} {...dropFiles(att)}>
+            <WaitingFiles state={att} />
+            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())} placeholder={toClient ? t('Reply to the {who}… they will see this', { who: term.who }) : t('Internal comment… @mention someone')} />
             <div className="cb-foot">
               {clientCanSee && (
                 <label className="cb-toggle">
                   <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> {t('{Who} can see this', { who: term.who })}
                 </label>
               )}
-              <button className="primary-btn sm" disabled={!comment.trim()} onClick={() => (p.onComment(task.id, comment.trim(), toClient), setComment(''))}>
+              <AttachButton state={att} phone={phone} className="icon-btn sm" />
+              <button className="primary-btn sm" disabled={!canSend} onClick={send}>
                 {toClient ? t('Send to {who}', { who: term.who }) : t('Comment')}
               </button>
             </div>

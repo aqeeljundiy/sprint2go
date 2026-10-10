@@ -333,6 +333,36 @@
   background: var(--c);
   color: #fff;
 }
+/* Month: a bar over several days. It meets the week's edge flat where the event carries on into the next row. */
+.mg-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.15s, color 0.15s;
+}
+.mg-bar:hover {
+  background: color-mix(in srgb, var(--c) 28%, var(--surface));
+}
+.mg-bar.picked:hover {
+  background: var(--c);
+}
+.mg-bar .de-time {
+  flex: none;
+  color: var(--text-2);
+}
+.mg-bar.picked .de-time {
+  color: inherit;
+}
+.mg-week > .mg-go-l {
+  margin-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.mg-week > .mg-go-r {
+  margin-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
 
 /* Month grid */
 
@@ -358,14 +388,37 @@
 .mg-body {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: minmax(96px, 1fr);
   overflow-y: auto;
 }
+/* A narrow month (a tablet beside the panel): titles only, the times would leave no room for them. */
+.mg-lanes:not(.mg-chips) .mg-body {
+  container-type: inline-size;
+}
+@container (max-width: 760px) {
+  .mg-week .dot-event .de-time {
+    display: none;
+  }
+}
+/* A week: seven days, the dates on top and the events on lanes under them. A bar spans its days (monthLayout.ts). */
+.mg-week {
+  --mg-num: 34px;
+  --mg-lane: 22px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  min-height: 0;
+  overflow: hidden;
+}
+.mg-week > :not(.mg-cell) {
+  z-index: 1;
+  margin: 0 4px 2px;
+  min-width: 0;
+}
 .mg-cell {
+  grid-row: 1 / -1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
   padding: 6px;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -373,7 +426,7 @@
   min-width: 0;
   overflow: hidden;
 }
-.mg-cell:nth-child(7n) {
+.mg-cell:nth-child(7) {
   border-right: 0;
 }
 .mg-cell.out {
@@ -429,7 +482,7 @@
   font-weight: 500;
 }
 .mg-more {
-  align-self: flex-start;
+  justify-self: start;
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 12px;
@@ -672,6 +725,17 @@
 }
 .ev-times > .time-sel {
   min-width: 92px;
+}
+/* Starts and ends: a date and a time on each line, the times lined up. */
+.ev-when > .ev-time {
+  flex: none;
+  min-width: 112px;
+}
+.ev-when-error {
+  display: block;
+  margin-top: -4px;
+  font-size: 12px;
+  color: var(--danger);
 }
 .check-row {
   display: flex;

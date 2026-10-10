@@ -60,6 +60,8 @@ import { Popover } from './ui/Popover';
 import { dueLabel, isBrief } from './TasksView';
 import { kindOf } from '../stages';
 import { useOnePanel } from '../onePanel';
+import { AttachButton, dropFiles, FileCards, useCommentFiles, WaitingFiles } from './tasks/CommentFiles';
+import { isPhone as mobilePhone } from '../mobile/media';
 import { Select } from './ui/Select';
 import { GuestQuotes } from './Quotes';
 import type { Quote } from '../types';
@@ -1056,10 +1058,15 @@ function TaskPanel({
   }, [onClose]);
   const doers = [...new Set(task.assignees?.length ? task.assignees : task.userId ? [task.userId] : [])];
   const history = (task.history ?? []).filter((h) => h.toClient || h.by.includes('@') || (h.kind === 'created' && task.source === 'request'));
+  // Files on their comment, where the project lets them add files (uploads count toward the company's storage).
+  const att = useCommentFiles(actions.workspaceId);
+  const attach = actions.canAttach();
+  const canSend = (!!comment.trim() || att.files.length > 0) && !att.busy;
   const send = () => {
-    if (!comment.trim()) return;
-    actions.comment(task.id, comment.trim());
+    if (!canSend) return;
+    actions.comment(task.id, comment.trim(), att.files.length ? att.files : undefined);
     setComment('');
+    att.clear();
   };
   const ap = task.approval;
   const apBy = nameOf(ap?.by ?? '');
@@ -1194,7 +1201,8 @@ function TaskPanel({
                   {h.kind === 'comment' ? (
                     <>
                       <b>{h.by.toLowerCase() === person.email.toLowerCase() ? t('You') : nameOf(h.by)}</b>
-                      <span className="h-comment">{h.text}</span>
+                      {h.text && <span className="h-comment">{h.text}</span>}
+                      <FileCards files={h.files} />
                     </>
                   ) : (
                     <span>
@@ -1209,10 +1217,12 @@ function TaskPanel({
             {!history.length && <li className="muted small">{t('No messages yet.')}</li>}
           </ol>
           {can(person, 'comment') && (
-            <div className="comment-box">
+            <div className="comment-box" {...(attach ? dropFiles(att) : {})}>
+              {attach && <WaitingFiles state={att} />}
               <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())} placeholder={t('Write to the team…')} />
               <div className="cb-foot">
-                <button className="primary-btn sm" disabled={!comment.trim()} onClick={send}>
+                {attach && <AttachButton state={att} phone={mobilePhone()} className="icon-btn sm" />}
+                <button className="primary-btn sm" disabled={!canSend} onClick={send}>
                   {t('Send')}
                 </button>
               </div>

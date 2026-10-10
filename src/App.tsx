@@ -15,7 +15,7 @@ import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
-import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -1913,10 +1913,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   /** A comment on a task: everyone on it hears about it (mentions too). */
-  const commentTask = (id: string, text: string, toClient = false) => {
+  const commentTask = (id: string, text: string, toClient = false, files?: CommentFile[]) => {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}) }] } : x)));
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}), ...(files?.length ? { files } : {}) }] } : x)));
+    // A comment that is only files: the notices name them.
+    if (!text) text = (files ?? []).map((f) => f.name).join(', ');
     if (toClient) {
       const c = clients.find((x) => x.id === t.clientId);
       // "{company} team" is read in each guest's own language; a name is a name.
