@@ -131,6 +131,7 @@ export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen,
   if (phone && teams.length)
     return (
       <section className="tasks-pane view-enter tdir-pane">
+        <TopBar app="teams" search={false} /> {/* one search: the field in the list */}
         {/* Teams and People: one segmented control under the bar (a two-item bottom bar isn't an iPhone pattern). */}
         {onPart && (
           <div className="segmented tdir-seg" role="tablist" aria-label={t('Teams')}>

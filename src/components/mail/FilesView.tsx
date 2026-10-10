@@ -79,7 +79,7 @@ export function FilesView({ threads, onOpenThread, onMenu }: { threads: Thread[]
   return (
     <section className="tracking-pane files-pane view-enter">
       {/* Phones: the bar's title says Files (not "Mail"), so no second "Files" heading here. */}
-      {phone && <TopBar app="mail" title={<h1 className="mt-title">{t('Files')}</h1>} />}
+      {phone && <TopBar app="mail" title={<h1 className="mt-title">{t('Files')}</h1>} search={false} />}
       {!phone && (
         <header className="tracking-head">
           <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>

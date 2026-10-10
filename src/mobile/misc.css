@@ -1129,3 +1129,25 @@
   min-height: var(--tap);
   justify-content: center;
 }
+
+@media (max-width: 767px) {
+  .new-sheet .primary-btn:disabled {
+    background: var(--surface-2); /* neutral when it can't go yet, not a pale company colour */
+    color: var(--text-3);
+    box-shadow: none;
+    opacity: 1;
+  }
+  .new-sheet .team-new {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .new-sheet .team-new > input {
+    min-height: 48px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-tile);
+    background: var(--surface);
+    font-size: var(--fs-field);
+  }
+}
