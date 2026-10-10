@@ -227,7 +227,7 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen, people: everyone
     const s = teamState(tm, tasks);
     return (
       <div key={tm.id} className="tdir-row" role="button" tabIndex={0} onClick={() => onOpen(tm.id)} onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onOpen(tm.id)}>
-        <span className="tdir-tile" style={{ background: tm.color }} aria-hidden>
+        <span className="tdir-tile" style={{ ['--c' as string]: tm.color }} aria-hidden>
           {tm.name.charAt(0).toUpperCase()}
         </span>
         <span className="tdir-text">
@@ -373,6 +373,7 @@ export function TeamPage({
   const manage = canManageTeam(tm, me, isAdmin);
   // Phones: the team takes the screen with Back to all teams, and its name is the title (a switcher to the others).
   useFocusedScreen(true, onBack);
+
   useTitleMenu('teams', !!onOpen && { label: t('Teams'), value: tm.id, options: teams.map((x) => ({ value: x.id, label: x.name, icon: <span className="team-square" style={{ background: x.color }} /> })), onChange: onOpen });
   const [tab, setTab] = useState<TeamTab>('members');
   const tabs: { id: TeamTab; label: string }[] = [

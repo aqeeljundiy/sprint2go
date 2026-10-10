@@ -828,7 +828,9 @@
     width: var(--av-m);
     height: var(--av-m);
     border-radius: var(--r-tile);
-    color: #fff;
+    /* A pastel tile with the team's letter in its colour, like the launcher's app tiles (D7, N4). */
+    background: color-mix(in srgb, var(--c, var(--accent)) 16%, var(--surface));
+    color: color-mix(in srgb, var(--c, var(--accent)) 80%, var(--text));
     font-size: var(--fs-body);
     font-weight: 700;
   }
