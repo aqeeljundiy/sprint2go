@@ -14,3 +14,6 @@ export const isMine = (email: string) => mine.has(email.toLowerCase());
 
 /** True for people at your workspace’s domains: their mail is never tracked. */
 export const isTeam = (email: string) => isMine(email) || teamDomains.includes(email.split('@')[1]?.toLowerCase() ?? '');
+
+/** The team's own domains and those of your addresses (the names a suspicious link may imitate, src/mailSafety.ts). */
+export const ownDomains = () => [...new Set([...teamDomains, ...[...mine].map((a) => a.split('@')[1] ?? '')])].filter(Boolean);

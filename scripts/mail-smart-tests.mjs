@@ -131,7 +131,7 @@ const DAY = 86_400_000;
   // Spam: patterns, checks, and what the company teaches.
   const spamMail = { workspaceId: 'w1', from: { name: 'Prize desk', email: 'winner@lotto.example' }, subject: 'CONGRATULATIONS YOU HAVE WON!!!', text: 'Dear friend, you have won a lottery. Claim your prize by wire transfer.' };
   const s1 = smart.scoreSpam(spamMail);
-  check(s1.spam && s1.why.includes('prize'), `obvious spam scores high (${s1.score}: ${s1.why.join(', ')})`);
+  check(s1.spam && s1.why.includes('promises a prize'), `obvious spam scores high (${s1.score}: ${s1.why.join(', ')})`);
   const ham = { workspaceId: 'w1', from: { name: 'Nadia', email: 'nadia@kopikita.id' }, subject: 'Menu for Friday', text: 'Can you check the new menu before Friday?' };
   check(!smart.scoreSpam(ham).spam, 'ordinary mail does not');
   check(smart.scoreSpam({ ...ham, auth: 'spf=fail dkim=none dmarc=fail' }).spam, 'a failed DMARC check is spam');
@@ -148,7 +148,7 @@ const DAY = 86_400_000;
   for (let i = 0; i < 4; i++) smart.learn('w3', { from: { email: `x${i}@cheap-pills${i}.example` }, subject: 'cheap meds online pharmacy discount', text: 'buy cheap meds online pharmacy no prescription' }, true);
   for (let i = 0; i < 4; i++) smart.learn('w3', { from: { email: `p${i}@client${i}.example` }, subject: 'project meeting notes', text: 'notes from our project meeting and next steps' }, false);
   const w3 = smart.scoreSpam({ workspaceId: 'w3', from: { name: 'x', email: 'new@other-pills.example' }, subject: 'cheap meds', text: 'online pharmacy cheap meds no prescription' });
-  check(w3.why.includes('looks like reported spam'), `words learned from reports count (${w3.score})`);
+  check(w3.why.includes('looks like mail your company reported'), `words learned from reports count (${w3.score})`);
 
   // The 30 days, Report spam through a save, mute and Important, with real documents.
   const ws = { id: 'w1', name: 'PnP', accounts: [{ id: 'box1', email: me, users: ['u1'] }], members: [{ userId: 'u1' }] };
@@ -169,7 +169,7 @@ const DAY = 86_400_000;
   const before = { ...base, id: 't-r', location: 'inbox', messages: [msg({ from: { name: 'Cold', email: 'cold@pitchy.example' }, body: 'buy our backlinks package today' })] };
   const reported = smart.guardSmart({ ...before, location: 'spam' }, before, 'w1');
   check(!!reported.spamAt, 'Report spam starts the 30 days');
-  check(smart.scoreSpam({ workspaceId: 'w1', from: { name: 'Cold', email: 'cold@pitchy.example' }, subject: 'Hi', text: 'hello again' }).why.includes('reported before'), 'and teaches the company’s filter');
+  check(smart.scoreSpam({ workspaceId: 'w1', from: { name: 'Cold', email: 'cold@pitchy.example' }, subject: 'Hi', text: 'hello again' }).why.includes('reported by your company before'), 'and teaches the company’s filter');
   const back2 = smart.guardSmart({ ...reported, location: 'inbox' }, reported, 'w1');
   check(!back2.spamAt && !back2.spamWhy, 'Not spam stops the clock');
   const phish = smart.guardSmart({ ...before, location: 'spam', spamWhy: ['phishing'] }, before, 'w1');

@@ -65,6 +65,7 @@ import { QuickReply } from './mail/QuickReply';
 import { quickReplies } from './mail/Templates';
 import { participantsOf, whenWords } from '../mailRules';
 import { t, tn, tx } from '../i18n';
+import { MailSafety, smartMenu } from './mail/Safety';
 import { tj } from '../i18n/tj';
 import { fmtDate } from '../i18n/format';
 
@@ -395,6 +396,7 @@ export function Reader(props: Props) {
     { label: t('Mark as unread'), icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
     { label: thread.starred ? t('Unstar') : t('Star'), icon: Star, group: 'mark', checked: thread.starred, run: () => props.onStar(thread.id) },
     ...(phone && props.shared ? [] : props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, group: 'mark', run: () => setAssignOpen(true) }] : []),
+    ...smartMenu(thread), // Move to, Important, Mute, Report phishing, Delete forever (mail/Safety.tsx)
     ...(thread.location !== 'spam' ? [{ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
     ...(incoming ? [{ label: t('Block {name}', { name: incoming.from.name || incoming.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
     ...(thread.location !== 'trash' ? [{ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(thread.id) }] : []),
@@ -631,6 +633,8 @@ export function Reader(props: Props) {
           )}
         </SmoothHeight>
 
+        {/* Phishing signs, why it's in Spam, links checked on click (mail/Safety.tsx). */}
+        <MailSafety thread={thread} onNotSpam={props.onMoveToInbox} />
         {isList &&
           incoming &&
           (() => {
@@ -801,6 +805,7 @@ export function Reader(props: Props) {
       ...(thread.invite && !props.inviteAdded ? [{ label: t('Add to calendar'), icon: CalendarPlus, run: () => props.onAddInvite(thread.id) }] : []),
       ...(incoming ? [{ label: t('Block {name}', { name: incoming.from.name || incoming.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
       ...(thread.location !== 'spam' ? [{ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
+      ...smartMenu(thread), // Move to, Important, Mute, Report phishing, Delete forever (mail/Safety.tsx)
     ];
     const messageMore = (m: Message): SheetAction[] => [
       ...(canAll ? [{ label: t('Reply all'), icon: ReplyAll, disabled: !!props.replyOff, run: () => startReply(undefined, true) }] : []),
@@ -1063,6 +1068,7 @@ export function Reader(props: Props) {
             </button>
           )}
 
+          <MailSafety thread={thread} onNotSpam={props.onMoveToInbox} />
           <div className="messages">
             {items.map((x) => {
               const at = x.kind === 'm' ? x.m.date : x.n.at;

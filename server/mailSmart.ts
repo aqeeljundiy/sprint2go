@@ -110,12 +110,12 @@ export function teachCategory(accountId: string, sender: string, category: Categ
 
 const SPAM_PATTERNS: [RegExp, string][] = [
   [/\b(viagra|cialis|casino|lottery|loterie|jackpot|slot gacor|judi online|togel)\b/i, 'gambling or pills'],
-  [/\b(you (have )?won|claim your (prize|reward)|congratulations,? you|selamat anda (memenangkan|mendapatkan))\b/i, 'prize'],
-  [/\b(inheritance|beneficiary|next of kin|barrister|diplomatic (bag|courier)|million (us )?dollars|usd ?\d{1,3}(,\d{3}){2,})\b/i, 'money offer'],
-  [/\b(wire transfer|western union|moneygram|bitcoin (wallet|doubling)|crypto (giveaway|doubling)|investment opportunity|guaranteed (profit|returns))\b/i, 'money transfer'],
-  [/\b(dear (friend|beneficiary|customer|sir\/madam)|urgent (response|reply) (needed|required))\b/i, 'form letter'],
-  [/\b(pinjaman online|pinjol|dana cepat tanpa jaminan)\b/i, 'loan offer'],
-  [/\b(verify your account (now|immediately)|account (will be )?(suspended|closed|locked)|unusual sign-?in activity|confirm your (password|identity))\b/i, 'account scare'],
+  [/\b(you (have )?won|claim your (prize|reward)|congratulations,? you|selamat anda (memenangkan|mendapatkan))\b/i, 'promises a prize'],
+  [/\b(inheritance|beneficiary|next of kin|barrister|diplomatic (bag|courier)|million (us )?dollars|usd ?\d{1,3}(,\d{3}){2,})\b/i, 'offers money'],
+  [/\b(wire transfer|western union|moneygram|bitcoin (wallet|doubling)|crypto (giveaway|doubling)|investment opportunity|guaranteed (profit|returns))\b/i, 'asks for a money transfer'],
+  [/\b(dear (friend|beneficiary|customer|sir\/madam)|urgent (response|reply) (needed|required))\b/i, 'reads like a form letter'],
+  [/\b(pinjaman online|pinjol|dana cepat tanpa jaminan)\b/i, 'offers a loan'],
+  [/\b(verify your account (now|immediately)|account (will be )?(suspended|closed|locked)|unusual sign-?in activity|confirm your (password|identity))\b/i, 'scares you about your account'],
 ];
 
 const TOKEN_RE = /[\p{L}\p{N}][\p{L}\p{N}'-]{2,24}/gu;
@@ -175,32 +175,32 @@ export function scoreSpam(i: SpamInput): { score: number; spam: boolean; why: st
   const add = (n: number, w: string) => ((score += n), n > 0 && !why.includes(w) && why.push(w));
   const a = authOf(i.auth);
   if (!a.arc) {
-    if (a.dmarc === 'fail') add(5, 'failed DMARC');
-    else if (a.spf === 'fail' && a.dkim !== 'pass') add(4, 'failed SPF');
-    else if (a.spf === 'softfail' && a.dkim !== 'pass') add(1.5, 'weak SPF');
+    if (a.dmarc === 'fail') add(5, 'the sender couldn’t be verified');
+    else if (a.spf === 'fail' && a.dkim !== 'pass') add(4, 'the sender couldn’t be verified');
+    else if (a.spf === 'softfail' && a.dkim !== 'pass') add(1.5, 'the sender couldn’t be verified');
   }
-  if (i.listed) add(5, 'sender on a blocklist');
+  if (i.listed) add(5, 'the sender’s server is on a blocklist');
   const text = `${i.subject} ${i.text}`;
   let pat = 0;
   for (const [re, w] of SPAM_PATTERNS) if (re.test(text) && pat < 6) (add(2, w), (pat += 2));
   const letters = i.subject.replace(/[^A-Za-z]/g, '');
-  if (letters.length >= 12 && letters === letters.toUpperCase()) add(1, 'shouting subject');
-  if (/[!$]{3,}/.test(i.subject)) add(1, 'shouting subject');
+  if (letters.length >= 12 && letters === letters.toUpperCase()) add(1, 'a subject in capitals');
+  if (/[!$]{3,}/.test(i.subject)) add(1, 'a subject in capitals');
   if (i.html && !i.text.trim() && /<img/i.test(i.html)) add(1, 'only a picture');
-  if (i.html && /href=["']https?:\/\/\d{1,3}(\.\d{1,3}){3}/i.test(i.html)) add(2, 'links to bare addresses');
+  if (i.html && /href=["']https?:\/\/\d{1,3}(\.\d{1,3}){3}/i.test(i.html)) add(2, 'links to bare server addresses');
   if (linkMismatches(i.html).length) add(1.5, 'links that hide where they go');
   for (const w of i.warn ?? []) {
-    if (w.kind === 'lookalike') add(3, 'lookalike sender');
+    if (w.kind === 'lookalike') add(3, 'imitates a known sender');
     if (w.kind === 'spoof') add(3, 'pretends to be a colleague');
   }
   // What the company taught: this sender, its domain, and words like these.
   const s = rep(i.workspaceId, 'a:' + lower(i.from.email));
   const d = rep(i.workspaceId, 'd:' + baseDomain(domainOfEmail(i.from.email)));
   const learned = (s.spam * 5 - s.ham * 5) + (d.spam * 2 - d.ham * 2);
-  if (learned > 0) add(Math.min(learned, 8), 'reported before');
+  if (learned > 0) add(Math.min(learned, 8), 'reported by your company before');
   else if (learned < 0) score += Math.max(learned, -8);
   const p = bayes(i.workspaceId, tokens(text));
-  if (p > 0.9) add((p - 0.5) * 8, 'looks like reported spam');
+  if (p > 0.9) add((p - 0.5) * 8, 'looks like mail your company reported');
   else if (p < 0.2) score -= (0.5 - p) * 6;
   if (i.known) score -= 5;
   score = Math.round(score * 10) / 10;
@@ -368,7 +368,7 @@ export async function arrive<T extends Doc>(thread: T, ctx: ArriveCtx): Promise<
   if (spam && (!ex || ex.location !== 'inbox' || score.score >= 8)) {
     t.location = 'spam';
     t.spamAt = now();
-    t.spamWhy = ctx.authSpam ? ['failed sender checks', ...score.why.filter((w) => !/^failed/.test(w))].slice(0, 4) : score.why.slice(0, 4);
+    t.spamWhy = ctx.authSpam ? ['failed sender checks', ...score.why.filter((w) => w !== 'the sender couldn’t be verified')].slice(0, 4) : score.why.slice(0, 4);
   } else if (ex?.location === 'spam') {
     // A reply in a conversation already in Spam stays there.
     t.location = 'spam';

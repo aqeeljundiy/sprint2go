@@ -1,0 +1,447 @@
+/* Mail's sorting (src/components/mail/Sorting.tsx, Safety.tsx, Shortcuts.tsx): search options and chips, saved
+   searches, inbox tabs, multiple inboxes, Spam's 30 days, the Important marker, the phishing banner and the link
+   warning, the shortcut sheet. Phone rules for these live in src/mobile/mail.css. */
+
+/* ---------- Search options (the slider button in the search box) ---------- */
+.search .so-btn,
+.search .so-clear {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-right: -4px;
+  color: var(--text-3);
+  transition: background 0.15s, color 0.15s;
+}
+.search .so-btn.on,
+.search .so-btn:hover,
+.search .so-clear:hover {
+  color: var(--text);
+}
+.search .so-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.so-form {
+  display: grid;
+  gap: 4px;
+  padding: 8px 8px 4px;
+}
+.so-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+}
+.so-row > span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.so-row input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  outline: 0;
+  font: inherit;
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+.so-row input:focus {
+  border-color: var(--accent);
+}
+.so-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.so-size input {
+  flex: 1;
+  min-width: 48px;
+}
+.so-ticks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 0 4px;
+}
+.so-query {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.so-query code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+}
+.so-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+}
+.so-foot-end {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.so-chips .so-save {
+  gap: 6px;
+  color: var(--text-3);
+}
+.so-chips .so-save:hover {
+  color: var(--text);
+}
+
+/* ---------- Saved searches in the sidebar ---------- */
+.saved-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 4px;
+}
+.saved-row .saved-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.saved-row .saved-open .sb-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-row .saved-x {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.saved-row:hover .saved-x,
+.saved-row .saved-x:focus-visible {
+  opacity: 1;
+}
+
+/* ---------- Inbox tabs (desktop) ---------- */
+.list-pane .mail-tabs {
+  min-height: 44px;
+  padding: 6px 12px;
+}
+.mail-tab-new {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 600;
+  animation: fadeIn 0.2s ease-out backwards;
+}
+
+/* ---------- Multiple inboxes ---------- */
+.mx-sections {
+  border-bottom: 1px solid var(--border);
+}
+.mx-section + .mx-section {
+  border-top: 1px solid var(--line);
+}
+.mx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 4px;
+}
+.mx-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: background 0.15s;
+}
+.mx-title:hover {
+  background: var(--hover);
+}
+.mx-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+}
+.mx-row {
+  display: grid;
+  grid-template-columns: minmax(0, 9em) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 16px;
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: left;
+  transition: background 0.15s;
+}
+.mx-row:hover {
+  background: var(--hover);
+}
+.mx-row.unread {
+  color: var(--text);
+  font-weight: 600;
+}
+.mx-who,
+.mx-subj {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-row time {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.mx-empty {
+  margin: 0;
+  padding: 4px 16px 12px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.mx-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.mx-add input {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  outline: 0;
+  font: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.mx-add input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.mx-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mx-quick .mail-chip {
+  gap: 4px;
+}
+.inbox-settings .set-row .sel {
+  flex: none;
+}
+
+/* ---------- Spam and Trash: 30 days ---------- */
+.keep-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 13px;
+  color: var(--text-2);
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.keep-notice > svg {
+  flex: none;
+  color: var(--text-3);
+}
+.keep-notice > span:first-of-type {
+  flex: 1;
+  min-width: 180px;
+}
+.keep-ask {
+  display: inline-flex;
+  gap: 6px;
+  animation: fadeIn 0.15s ease-out backwards;
+}
+
+/* ---------- The Important marker ---------- */
+.imp-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-right: 6px;
+  color: var(--star);
+  vertical-align: -1px;
+}
+
+/* ---------- The phishing banner and Spam's reason ---------- */
+.safety-banner {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--warn-solid) 45%, var(--border));
+  background: var(--warn-soft);
+  color: var(--text);
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.safety-banner .safety-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warn);
+}
+.safety-banner.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: var(--danger-soft);
+}
+.safety-banner.danger .safety-icon {
+  color: var(--danger);
+}
+.safety-words {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.safety-words strong {
+  font-size: 14px;
+}
+.safety-words ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+}
+.safety-words small {
+  color: var(--text-2);
+}
+.safety-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.list-banner.safety-spam > span {
+  min-width: 200px;
+}
+
+/* ---------- The link warning ---------- */
+.modal.link-warn {
+  width: min(460px, calc(100vw - 32px));
+}
+.lw-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.lw-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.lw-hero small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.lw-url {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.lw-why {
+  margin: 16px 0 8px;
+  padding-left: 18px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.lw-why li + li {
+  margin-top: 4px;
+}
+
+/* ---------- Move to and the shortcut sheet ---------- */
+.mv-head {
+  padding: 12px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.kbd-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 24px;
+  padding: 4px 8px 12px;
+}
+.kbd-group h3 {
+  margin: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.kbd-group dl {
+  margin: 0;
+}
+.kbd-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 30px;
+}
+.kbd-line dt {
+  display: flex;
+  gap: 4px;
+  min-width: 72px;
+}
+.kbd-line dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.kbd-line kbd {
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font: 600 12px/18px var(--font);
+  text-align: center;
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mail-tab-new,
+  .keep-notice,
+  .keep-ask,
+  .safety-banner {
+    animation: none;
+  }
+}
