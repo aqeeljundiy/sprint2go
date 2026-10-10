@@ -154,7 +154,11 @@ export function TaskViews({
   const [inline, setInline] = useState(false); // desktop: the field above the list
   // Desktop: the title row's slot (TasksView) holds layout, Display and New task, so there's no half-empty bar.
   const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
-  useEffect(() => setHeadSlot(document.getElementById('tq-head-slot')), []);
+  // The header remounts when the list changes: find its current slot after every render, not just the first.
+  useEffect(() => {
+    const el = document.getElementById('tq-head-slot');
+    if (el !== headSlot) setHeadSlot(el);
+  });
   const quickField = useRef<HTMLTextAreaElement>(null);
   const inlineField = useRef<HTMLTextAreaElement>(null);
   const openAdd = (extra: QuickDefaults = {}, from: 'tap' | 'later' = 'tap') => {

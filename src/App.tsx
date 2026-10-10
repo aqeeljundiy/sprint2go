@@ -3923,7 +3923,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       />
       <Sidebar
         mode={appMode}
-        title={({ home: t('Home'), mail: t('Mail'), chat: t('Chat'), tasks: t('Tasks'), calendar: t('Calendar'), notes: t('Notes'), drive: t('Drive'), meet: t('Meet'), vault: t('Vault'), settings: t('Settings') } as Record<string, string>)[appMode]}
+        title={({ home: t('Home'), mail: t('Mail'), chat: t('Chat'), tasks: t('Tasks'), calendar: t('Calendar'), notes: t('Notes'), drive: t('Drive'), meet: t('Meet'), vault: t('Vault'), settings: t('Settings'), projects: term.Many, tables: t('Tables'), teams: t('Teams') } as Record<string, string>)[appMode]}
         collapsed={collapsed && !mobile}
         onCollapse={setCollapsed}
         settings={appSettings(appMode, 'sidebar')}
