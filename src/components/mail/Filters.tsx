@@ -136,7 +136,10 @@ function Act({ on, onChange, label, children, disabled, hint }: { on: boolean; o
       </button>
       {children && (
         <div className={`fold${on ? ' open' : ''}`}>
-          <div className="flt-act-more">{children}</div>
+          {/* The fold's own child has no padding, so it closes to nothing. */}
+          <div>
+            <div className="flt-act-more">{children}</div>
+          </div>
         </div>
       )}
     </div>
@@ -189,7 +192,7 @@ export function FilterEditor(p: EditorProps) {
 
   // Labels this filter can use: the mailbox's own and the company's (a company filter: the company's only).
   const usable = p.labels.filter((l) => l.workspaceId === p.wsId && (l.accountId === null || (accountId && l.accountId === accountId)));
-  const labelOptions = labelTree(usable, p.labels).map((x) => ({ value: x.label.id, label: x.path, icon: <span className="lb-dot" style={{ background: x.label.color }} /> }));
+  const labelOptions = labelTree(usable, p.labels).map((x) => ({ value: x.label.id, label: x.path, icon: <span className="ml-dot" style={{ background: x.label.color }} /> }));
   const templates = [...own, ...builtInTemplates()];
   const onShared = account ? p.people.filter((u) => account.users.includes(u.id)) : [];
   const findOk = !criteriaEmpty(c);

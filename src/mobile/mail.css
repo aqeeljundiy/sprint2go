@@ -1902,71 +1902,73 @@
 /* ---------- Labels and filters on phones (src/components/mail/Labels.tsx, Filters.tsx, Organize.tsx) ---------- */
 @media (max-width: 767px) {
   /* The drawer: nested labels step in under their parent. */
-  .gm-nav.lb-drawer-row {
+  .gm-nav.ml-drawer-row {
     padding-left: calc(16px + var(--depth, 0) * 16px);
   }
   /* "Label as" as a sheet: Gmail's list with ticks. */
-  .lb-pick .lb-search {
+  .ml-pick .ml-search {
     margin: 0 var(--gutter) 8px;
     height: var(--row-compact);
     border-radius: var(--r-pill);
   }
-  .lb-pick .lb-search input {
+  .ml-pick .ml-search input {
     font-size: var(--fs-field);
   }
-  .lb-list {
+  .ml-list {
     max-height: none;
   }
-  .lb-row {
+  .ml-row {
     min-height: var(--row-1);
     padding: 0 var(--gutter) 0 calc(16px + var(--depth, 0) * 16px);
     gap: 16px;
     border-radius: 0;
     font: var(--t-body);
   }
-  .lb-scope {
+  .ml-scope {
     font: var(--t-caption);
   }
-  .lb-tick {
+  .ml-tick {
     width: 20px;
     height: 20px;
   }
-  .lb-empty {
+  .ml-empty {
     padding: 16px var(--gutter);
     font: var(--t-secondary);
   }
   /* The editor as a pushed screen. */
-  .lb-screen-body {
+  .ml-screen-body {
     padding: 16px var(--gutter);
   }
-  .lb-screen-body .field input,
+  .ml-screen-body .field input,
   .flt-screen-body .field input,
   .flt-size input {
     font-size: var(--fs-field);
     min-height: var(--row-compact);
   }
-  .accent-row.lb-colors {
+  .accent-row.ml-colors {
     gap: 12px;
   }
-  .accent-row.lb-colors .accent-swatch {
+  .accent-row.ml-colors .accent-swatch {
     width: 32px;
     height: 32px;
   }
-  .lb-confirm {
+  .ml-confirm {
     padding: 0 var(--gutter) 16px;
     font: var(--t-para);
   }
   /* On an email: chips sit on the subject's line, the filed line under it. */
-  .gm-subject .chip.lb-chip {
+  .gm-subject .chip.ml-chip {
     height: 24px;
-    font: var(--t-chip);
+    font: var(--t-caption);
     padding: 0 4px 0 8px;
+    margin-right: 4px;
+    vertical-align: middle;
   }
   .gm-reader .filed-line {
     margin: 0 var(--gutter) 8px;
     font: var(--t-caption);
   }
-  .lb-chip-x {
+  .ml-chip-x {
     width: 20px;
     height: 20px;
   }
@@ -2024,7 +2026,7 @@
     color: var(--text-2);
   }
   /* Settings' Labels and Filters screens: our own grouped rows (long-press opens their actions). */
-  .g-row.lb-grow .g-label {
+  .g-row.ml-grow .g-label {
     padding-left: calc(var(--depth, 0) * 16px);
   }
   .g-row.flt-grow {

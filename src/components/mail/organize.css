@@ -2,7 +2,7 @@
    the phone's own are in src/mobile/mail.css (loaded later). This file loads before the app's stylesheets, so rules
    that meet an older one (.nav-item, .modal) carry an extra class. */
 
-.lb-dot {
+.ml-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -12,12 +12,12 @@
 
 /* ---------- "Label as" ---------- */
 
-.lb-pick {
+.ml-pick {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
-.lb-pick .lb-search {
+.ml-pick .ml-search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -30,11 +30,11 @@
   color: var(--text-3);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.lb-pick .lb-search:focus-within {
+.ml-pick .ml-search:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.lb-pick .lb-search input {
+.ml-pick .ml-search input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -43,14 +43,14 @@
   color: var(--text);
   font: inherit;
 }
-.lb-list {
+.ml-list {
   display: flex;
   flex-direction: column;
   max-height: 320px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.lb-row {
+.ml-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -60,57 +60,57 @@
   text-align: left;
   color: var(--text);
   transition: background 0.15s;
-  animation: lb-in 0.18s ease-out backwards;
+  animation: ml-in 0.18s ease-out backwards;
 }
-.lb-row:hover,
-.lb-row:focus-visible {
+.ml-row:hover,
+.ml-row:focus-visible {
   background: var(--hover);
 }
-.lb-name {
+.ml-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lb-scope {
+.ml-scope {
   font-size: 11.5px;
   color: var(--text-3);
 }
-.lb-create {
+.ml-create {
   color: var(--accent-text, var(--accent));
 }
-.lb-empty {
+.ml-empty {
   padding: 12px 10px;
   color: var(--text-3);
   font-size: 13px;
 }
-.lb-foot {
+.ml-foot {
   display: flex;
   justify-content: flex-end;
   padding: 8px 4px 2px;
   border-top: 1px solid var(--border);
   margin-top: 6px;
 }
-.lb-tick {
+.ml-tick {
   width: 18px;
   height: 18px;
   flex: none;
   display: grid;
   place-items: center;
   border-radius: 5px;
-  border: 2px solid var(--lb, var(--text-3));
+  border: 2px solid var(--ml, var(--text-3));
   color: #fff;
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
-.lb-tick.on,
-.lb-tick.some {
-  background: var(--lb, var(--accent));
+.ml-tick.on,
+.ml-tick.some {
+  background: var(--ml, var(--accent));
 }
-.lb-row:active .lb-tick {
+.ml-row:active .ml-tick {
   transform: scale(0.92);
 }
-@keyframes lb-in {
+@keyframes ml-in {
   from {
     opacity: 0;
     transform: translateY(2px);
@@ -119,49 +119,49 @@
 
 /* ---------- the label editor ---------- */
 
-.modal.lb-modal {
+.modal.ml-modal {
   width: min(440px, 100%);
 }
-.lb-error {
+.ml-error {
   color: var(--danger, #dc2626) !important;
 }
-.lb-colors {
+.ml-colors {
   flex-wrap: wrap;
 }
-.lb-confirm {
+.ml-confirm {
   margin: 0;
   color: var(--text-2);
   line-height: 1.5;
 }
-.lb-screen-body {
+.ml-screen-body {
   padding: 16px;
 }
-.lb-screen-body .field input {
+.ml-screen-body .field input {
   font-size: 16px;
 }
 
 /* ---------- the sidebar's Labels ---------- */
 
-.nav-heading.lb-head {
+.nav-heading.ml-head {
   justify-content: space-between;
   padding-right: 6px;
 }
-.lb-head .icon-btn {
+.ml-head .icon-btn {
   opacity: 0.7;
   transition: opacity 0.15s, background 0.15s;
 }
-.lb-head .icon-btn:hover {
+.ml-head .icon-btn:hover {
   opacity: 1;
 }
-.nav .nav-item.lb-nav-row {
+.nav .nav-item.ml-nav-row {
   position: relative;
   gap: 0;
-  padding: 0 4px 0 calc(var(--depth, 0) * 14px);
+  padding: 0 4px 0 calc(var(--depth, 0) * 16px);
   min-height: 34px;
-  animation: lb-in 0.18s ease-out backwards;
+  animation: ml-in 0.18s ease-out backwards;
 }
-.lb-fold {
-  width: 22px;
+.ml-fold {
+  width: 14px;
   height: 22px;
   flex: none;
   display: grid;
@@ -170,62 +170,66 @@
   color: var(--text-3);
   transition: background 0.15s, color 0.15s;
 }
-button.lb-fold:hover {
+button.ml-fold:hover {
   background: var(--hover);
   color: var(--text);
 }
-.lb-open {
+.ml-open {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 6px;
+  gap: 11px;
+  padding: 7px 6px 7px 0;
   text-align: left;
   color: inherit;
   font: inherit;
 }
-.lb-nav-name {
+.ml-open > .ml-dot {
+  /* In a 17 px box, so the dots line up with the folders' icons and the names with their names. */
+  margin: 0 3.5px;
+}
+.ml-nav-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lb-nav-row .count {
+.ml-nav-row .count {
   margin-left: auto;
 }
-.lb-nav-row .lb-more {
+.ml-nav-row .ml-more {
   opacity: 0;
   transition: opacity 0.15s, background 0.15s;
 }
-.lb-nav-row:hover .lb-more,
-.lb-nav-row:focus-within .lb-more {
+.ml-nav-row:hover .ml-more,
+.ml-nav-row:focus-within .ml-more {
   opacity: 1;
 }
-.lb-nav-row:hover .count {
+.ml-nav-row:hover .count {
   display: none;
 }
-.sidebar.collapsed .nav-item.lb-nav-row {
+.sidebar.collapsed .nav-item.ml-nav-row {
   padding: 0;
   justify-content: center;
 }
-.sidebar.collapsed .lb-open {
+.sidebar.collapsed .ml-open {
   justify-content: center;
   flex: none;
 }
-.lb-morelabels {
+.ml-morelabels {
   color: var(--text-3);
 }
 @media (hover: none) {
-  .lb-nav-row .lb-more {
+  .ml-nav-row .ml-more {
     opacity: 1;
   }
 }
 
 /* ---------- on an email ---------- */
 
-.chip.lb-chip {
+.chip.ml-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -238,7 +242,7 @@ button.lb-fold:hover {
   color: var(--text);
   transition: background 0.15s;
 }
-.lb-chip-name {
+.ml-chip-name {
   font: inherit;
   color: inherit;
   max-width: 180px;
@@ -246,7 +250,7 @@ button.lb-fold:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lb-chip-x {
+.ml-chip-x {
   width: 18px;
   height: 18px;
   display: grid;
@@ -255,7 +259,7 @@ button.lb-fold:hover {
   color: var(--text-3);
   transition: background 0.15s, color 0.15s;
 }
-.lb-chip-x:hover {
+.ml-chip-x:hover {
   background: color-mix(in srgb, var(--c) 30%, transparent);
   color: var(--text);
 }
@@ -267,7 +271,7 @@ button.lb-fold:hover {
   margin: 8px 0 0;
   font-size: 12.5px;
   color: var(--text-3);
-  animation: lb-in 0.2s ease-out backwards;
+  animation: ml-in 0.2s ease-out backwards;
 }
 .filed-line .link-btn {
   font-size: inherit;
@@ -310,6 +314,7 @@ button.lb-fold:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0 16px;
+  align-items: start;
 }
 .flt-find > .flt-field:first-child,
 .flt-find > .flt-two,
@@ -326,6 +331,7 @@ button.lb-fold:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0 16px;
+  align-items: start;
 }
 .flt-size {
   display: grid;
@@ -362,7 +368,7 @@ button.lb-fold:hover {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0 8px;
   font-size: 12.5px;
-  animation: lb-in 0.2s ease-out backwards;
+  animation: ml-in 0.2s ease-out backwards;
 }
 .flt-sample strong,
 .flt-sample span {
@@ -445,7 +451,7 @@ button.lb-fold:hover {
   font-weight: 600;
   color: var(--text-2);
 }
-.lb-set-list,
+.ml-set-list,
 .flt-list {
   display: flex;
   flex-direction: column;
@@ -453,7 +459,7 @@ button.lb-fold:hover {
   border-radius: 12px;
   overflow: hidden;
 }
-.lb-set-row {
+.ml-set-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -461,33 +467,33 @@ button.lb-fold:hover {
   padding: 4px 8px 4px calc(14px + var(--depth, 0) * 18px);
   transition: background 0.15s;
 }
-.lb-set-row + .lb-set-row,
+.ml-set-row + .ml-set-row,
 .flt-row + .flt-row {
   border-top: 1px solid var(--border);
 }
-.lb-set-row:hover,
+.ml-set-row:hover,
 .flt-row:hover {
   background: var(--hover);
 }
-.lb-set-name {
+.ml-set-name {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
-.lb-set-name strong {
+.ml-set-name strong {
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lb-set-name small,
-.lb-set-show {
+.ml-set-name small,
+.ml-set-show {
   font-size: 12px;
   color: var(--text-3);
 }
-.lb-set-new {
+.ml-set-new {
   margin-top: 10px;
   display: inline-flex;
   align-items: center;
@@ -587,13 +593,13 @@ button.lb-fold:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lb-row,
-  .nav .nav-item.lb-nav-row,
+  .ml-row,
+  .nav .nav-item.ml-nav-row,
   .filed-line,
   .flt-sample li {
     animation: none;
   }
-  .lb-tick,
+  .ml-tick,
   .flt-row,
   .flt-row-words {
     transition: none;

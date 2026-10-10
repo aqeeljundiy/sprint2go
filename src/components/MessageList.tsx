@@ -351,17 +351,17 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
             </div>
           ) : (
             <div className="mail-chips" role="group" aria-label={t('Show only')}>
-              {chips.map((c) => (
-                <button key={c.id} type="button" className={`mail-chip${filter === c.id ? ' on' : ''}`} aria-pressed={filter === c.id} onClick={() => props.onFilter(filter === c.id ? 'all' : c.id)}>
-                  {t(c.label)}
-                </button>
-              ))}
               {/* Gmail's "Create filter": what was searched becomes a filter's criteria (src/components/mail/Filters.tsx). */}
               {query.trim() && props.onFilterSearch && (
                 <button type="button" className="mail-chip flt-from-search" onClick={() => props.onFilterSearch!(query)}>
                   <ListFilter size={14} aria-hidden /> {t('Create filter')}
                 </button>
               )}
+              {chips.map((c) => (
+                <button key={c.id} type="button" className={`mail-chip${filter === c.id ? ' on' : ''}`} aria-pressed={filter === c.id} onClick={() => props.onFilter(filter === c.id ? 'all' : c.id)}>
+                  {t(c.label)}
+                </button>
+              ))}
             </div>
           )}
         </div>

@@ -389,7 +389,7 @@ export function onArrival(thread: any, m: any, ctx: Arrival): { thread: any; aft
 /** A filter's name in plain words when it has none ("From @dokploy.com"). */
 export function describe(f: Pick<MailFilterRule, 'criteria'>): string {
   const c = f.criteria ?? {};
-  return c.from ? `From ${c.from}` : c.to ? `To ${c.to}` : c.subject ? `Subject ${c.subject}` : c.list ? `List ${c.list}` : c.hasWords ? `“${c.hasWords}”` : c.deliveredTo ? `Sent to ${c.deliveredTo}` : c.attachment ? `Files ${c.attachment}` : c.hasAttachment ? 'Has attachment' : 'Filter';
+  return c.from ? `From ${c.from}` : c.to ? `To ${c.to}` : c.subject ? `Subject ${c.subject}` : c.list ? `List ${c.list}` : c.hasWords ? `Has ${c.hasWords}` : c.deliveredTo ? `Sent to ${c.deliveredTo}` : c.attachment ? `Files ${c.attachment}` : c.hasAttachment ? 'Has attachment' : 'Filter';
 }
 
 /** Forward, answer, make a task: after the email is saved. A failure turns into the filter's problem, never a lost email. */

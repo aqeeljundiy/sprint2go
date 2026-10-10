@@ -21,7 +21,7 @@ type Mark = 'on' | 'off' | 'some';
 /** The picker's tick: a box with a tick, a dash, or nothing. */
 function Tick({ mark, color }: { mark: Mark; color?: string }) {
   return (
-    <span className={`lb-tick ${mark}`} style={color ? { ['--lb' as string]: color } : undefined} aria-hidden>
+    <span className={`ml-tick ${mark}`} style={color ? { ['--ml' as string]: color } : undefined} aria-hidden>
       {mark === 'on' ? <Check size={14} strokeWidth={3} /> : mark === 'some' ? <Minus size={14} strokeWidth={3} /> : null}
     </span>
   );
@@ -53,8 +53,11 @@ export function LabelPicker(p: {
   const [marks, setMarks] = useState<Record<string, Mark>>(start);
   const [made, setMade] = useState<MailLabel[]>([]);
   const input = useRef<HTMLInputElement>(null);
+  // The popover is hidden while it measures, and a hidden field can't take focus: focus a frame or two later.
   useEffect(() => {
-    if (!phone) input.current?.focus();
+    if (phone) return;
+    let f = requestAnimationFrame(() => (f = requestAnimationFrame(() => input.current?.focus({ preventScroll: true }))));
+    return () => cancelAnimationFrame(f);
   }, [phone]);
   const pool = [...p.labels, ...made.filter((m) => !p.labels.some((l) => l.id === m.id))];
   const tree = labelTree(pool, [...p.all, ...made]);
@@ -78,8 +81,8 @@ export function LabelPicker(p: {
     setQ('');
   };
   const body = (
-    <div className="lb-pick">
-      <label className={phone ? 'sheet-search lb-search' : 'lb-search'}>
+    <div className="ml-pick">
+      <label className={phone ? 'sheet-search ml-search' : 'ml-search'}>
         <Search size={16} aria-hidden />
         <input
           ref={input}
@@ -96,24 +99,23 @@ export function LabelPicker(p: {
           }}
         />
       </label>
-      <div className="lb-list" role="listbox" aria-multiselectable="true" aria-label={t('Labels')}>
+      <div className="ml-list" role="listbox" aria-multiselectable="true" aria-label={t('Labels')}>
         {shown.map(({ label: l, depth, path }) => (
-          <button key={l.id} type="button" role="option" aria-selected={marks[l.id] === 'on'} className="lb-row" style={{ ['--depth' as string]: words ? 0 : depth }} onClick={() => flip(l.id)} title={path}>
+          <button key={l.id} type="button" role="option" aria-selected={marks[l.id] === 'on'} className="ml-row" style={{ ['--depth' as string]: words ? 0 : depth }} onClick={() => flip(l.id)} title={path}>
             <Tick mark={marks[l.id] ?? 'off'} color={l.color} />
-            <span className="lb-name">{words ? path : l.name}</span>
-            {l.accountId === null && <small className="lb-scope">{t('Company')}</small>}
+            <span className="ml-name">{words ? path : l.name}</span>
           </button>
         ))}
         {words && !exact && (
-          <button type="button" className="lb-row lb-create" onClick={create}>
+          <button type="button" className="ml-row ml-create" onClick={create}>
             <Plus size={16} aria-hidden />
-            <span className="lb-name">{t('Create “{name}”', { name: q.trim() })}</span>
+            <span className="ml-name">{t('Create “{name}”', { name: q.trim() })}</span>
           </button>
         )}
-        {!words && !tree.length && <p className="lb-empty">{t('No labels yet. Type a name to make one.')}</p>}
+        {!words && !tree.length && <p className="ml-empty">{t('No labels yet. Type a name to make one.')}</p>}
       </div>
       {!phone && (
-        <div className="lb-foot">
+        <div className="ml-foot">
           <button type="button" className="primary-btn sm" disabled={!changed.length} onClick={apply}>
             {t('Apply')}
           </button>
@@ -174,13 +176,13 @@ export function LabelEditor(p: {
   // Nest under a label of the same mailbox, never under itself or what's inside it.
   const no = new Set(editing ? subtree(editing.id, p.all) : []);
   const same = p.all.filter((l) => l.workspaceId === p.workspaceId && (l.accountId ?? null) === accountId && !no.has(l.id));
-  const options = [{ value: '', label: t('Nothing (a top label)') }, ...labelTree(same, p.all).map((x) => ({ value: x.label.id, label: x.path, icon: <span className="lb-dot" style={{ background: x.label.color }} /> }))];
+  const options = [{ value: '', label: t('Nothing (a top label)') }, ...labelTree(same, p.all).map((x) => ({ value: x.label.id, label: x.path, icon: <span className="ml-dot" style={{ background: x.label.color }} /> }))];
   const save = () => {
     const clean = name.trim();
     if (!clean) return setError(t('Give the label a name.'));
     if (clean.includes('/')) return setError(t('Use “Nest under” for a label inside another, not a slash.'));
     const l: MailLabel = {
-      ...(editing ?? { id: `lb-${Math.random().toString(36).slice(2, 10)}`, workspaceId: p.workspaceId, show: 'show' as const, order: Date.now(), createdBy: p.me, createdAt: new Date().toISOString() }),
+      ...(editing ?? { id: `ml-${Math.random().toString(36).slice(2, 10)}`, workspaceId: p.workspaceId, show: 'show' as const, order: Date.now(), createdBy: p.me, createdAt: new Date().toISOString() }),
       accountId: editing ? editing.accountId : accountId,
       name: clean,
       parentId: parentId || null,
@@ -193,9 +195,9 @@ export function LabelEditor(p: {
   const fields = (
     <SmoothHeight>
       <div className="field">
-        <label htmlFor="lb-name">{t('Name')}</label>
-        <input id="lb-name" autoFocus={!phone} value={name} maxLength={80} onChange={(e) => (setName(e.target.value), setError(''))} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder={t('e.g. Invoices')} />
-        {error && <small className="lb-error">{error}</small>}
+        <label htmlFor="ml-name">{t('Name')}</label>
+        <input id="ml-name" autoFocus={!phone} value={name} maxLength={80} onChange={(e) => (setName(e.target.value), setError(''))} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder={t('e.g. Invoices')} />
+        {error && <small className="ml-error">{error}</small>}
       </div>
       {!editing && p.homes.length > 1 && (
         <div className="field">
@@ -210,7 +212,7 @@ export function LabelEditor(p: {
       </div>
       <div className="field">
         <label>{t('Colour')}</label>
-        <div className="accent-row lb-colors" role="radiogroup" aria-label={t('Colour')}>
+        <div className="accent-row ml-colors" role="radiogroup" aria-label={t('Colour')}>
           {LABEL_COLORS.map((c) => (
             <button key={c} type="button" role="radio" aria-checked={color === c} className={`accent-swatch ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={c} />
           ))}
@@ -225,19 +227,19 @@ export function LabelEditor(p: {
         title={title}
         onBack={p.onClose}
         cancel
-        className="g-page g-edit lb-screen"
+        className="g-page g-edit ml-screen"
         actions={
           <button type="button" className="g-save" onClick={save}>
             {t('Save')}
           </button>
         }
       >
-        <div className="lb-screen-body">{fields}</div>
+        <div className="ml-screen-body">{fields}</div>
       </PushScreen>
     );
   return (
     <div className="modal-scrim" onMouseDown={p.onClose}>
-      <div className="modal lb-modal" role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && p.onClose()}>
+      <div className="modal ml-modal" role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && p.onClose()}>
         <header className="modal-head">
           <span>{title}</span>
           <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close')}>
@@ -274,12 +276,12 @@ export function DeleteLabel({ label, inside, onDelete, onClose }: { label: MailL
           </button>
         }
       >
-        <p className="lb-confirm">{text}</p>
+        <p className="ml-confirm">{text}</p>
       </Sheet>
     );
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal lb-modal" role="alertdialog" aria-label={t('Delete label?')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="modal ml-modal" role="alertdialog" aria-label={t('Delete label?')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <header className="modal-head">
           <span>{t('Delete label?')}</span>
           <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
@@ -287,7 +289,7 @@ export function DeleteLabel({ label, inside, onDelete, onClose }: { label: MailL
           </button>
         </header>
         <div className="modal-body">
-          <p className="lb-confirm">{text}</p>
+          <p className="ml-confirm">{text}</p>
         </div>
         <footer className="modal-foot">
           <button className="ghost-btn" onClick={onClose}>
@@ -354,20 +356,20 @@ function NavRow({ x, p, open, hasKids, onFold }: { x: LabelNavProps['tree'][numb
   const n = p.unread[x.label.id] ?? 0;
   return (
     <>
-    <div className={`nav-item lb-nav-row${active ? ' active' : ''}`} style={{ ['--depth' as string]: x.depth }} {...menu.bind}>
+    <div className={`nav-item ml-nav-row${active ? ' active' : ''}`} style={{ ['--depth' as string]: x.depth }} {...menu.bind}>
       {hasKids ? (
-        <button type="button" className="lb-fold sb-label" onClick={onFold} aria-expanded={open} aria-label={open ? t('Hide the labels inside {name}', { name: x.label.name }) : t('Show the labels inside {name}', { name: x.label.name })}>
+        <button type="button" className="ml-fold sb-label" onClick={onFold} aria-expanded={open} aria-label={open ? t('Hide the labels inside {name}', { name: x.label.name }) : t('Show the labels inside {name}', { name: x.label.name })}>
           <ChevronRight size={14} className={`rot-chev${open ? ' open' : ''}`} />
         </button>
       ) : (
-        <span className="lb-fold sb-label" aria-hidden />
+        <span className="ml-fold sb-label" aria-hidden />
       )}
-      <button type="button" className="lb-open" onClick={() => p.onPick(x.label.id)} title={x.path}>
-        <span className="lb-dot" style={{ background: x.label.color }} />
-        <span className="sb-label lb-nav-name">{x.label.name}</span>
+      <button type="button" className="ml-open" onClick={() => p.onPick(x.label.id)} title={x.path}>
+        <span className="ml-dot" style={{ background: x.label.color }} />
+        <span className="sb-label ml-nav-name">{x.label.name}</span>
         {n > 0 && <span className="count">{n}</span>}
       </button>
-      <button type="button" ref={more} className="icon-btn sm lb-more sb-label" onClick={() => menu.openFrom(more)} aria-label={t('More for {name}', { name: x.label.name })} title={t('More')}>
+      <button type="button" ref={more} className="icon-btn sm ml-more sb-label" onClick={() => menu.openFrom(more)} aria-label={t('More for {name}', { name: x.label.name })} title={t('More')}>
         <MoreHorizontal size={15} />
       </button>
     </div>
@@ -384,24 +386,18 @@ export function LabelNav(p: LabelNavProps) {
   const hidden = p.tree.length - visibleRows(p, new Set(), false).length;
   return (
     <>
-      <div className="nav-heading sb-label lb-head">
+      <div className="nav-heading sb-label ml-head">
         <span>{t('Labels')}</span>
         <button type="button" className="icon-btn sm" onClick={p.onNew} aria-label={t('New label')} title={t('New label')}>
           <Plus size={15} />
         </button>
       </div>
-      <nav className="nav lb-nav" aria-label={t('Labels')}>
+      <nav className="nav ml-nav" aria-label={t('Labels')}>
         {rows.map((x) => (
           <NavRow key={x.label.id} x={x} p={p} open={!closed.has(x.label.id)} hasKids={p.tree.some((y) => y.label.parentId === x.label.id)} onFold={() => toggle(x.label.id)} />
         ))}
-        {!p.tree.length && (
-          <button type="button" className="nav-item temp-add" onClick={p.onNew}>
-            <Tag size={16} />
-            <span className="sb-label">{t('Make a label')}</span>
-          </button>
-        )}
         {hidden > 0 && (
-          <button type="button" className="nav-item lb-morelabels" onClick={() => setMore((m) => !m)} aria-expanded={more}>
+          <button type="button" className="nav-item ml-morelabels" onClick={() => setMore((m) => !m)} aria-expanded={more}>
             <ChevronRight size={16} className={`rot-chev${more ? ' open' : ''}`} />
             <span className="sb-label">{more ? t('Fewer labels') : t('More labels')}</span>
           </button>
@@ -418,7 +414,7 @@ function DrawerRow({ x, p }: { x: LabelNavProps['tree'][number]; p: LabelNavProp
   const n = p.unread[x.label.id] ?? 0;
   return (
     <>
-      <button type="button" className={`gm-nav lp lb-drawer-row${on ? ' active' : ''}`} aria-current={on || undefined} style={{ ['--depth' as string]: x.depth }} onClick={() => p.onPick(x.label.id)} {...menu.bind}>
+      <button type="button" className={`gm-nav lp ml-drawer-row${on ? ' active' : ''}`} aria-current={on || undefined} style={{ ['--depth' as string]: x.depth }} onClick={() => p.onPick(x.label.id)} {...menu.bind}>
         <Tag size={20} style={{ color: x.label.color }} />
         <span className="gm-nav-label">{x.label.name}</span>
         {n ? <span className="gm-nav-count">{n > 999 ? '999+' : n}</span> : null}
@@ -459,11 +455,11 @@ export function LabelDrawer(p: LabelNavProps) {
 /** An email's labels in the reader: a chip each, with × to take it off. */
 export function LabelChips({ labels, all, onRemove, onOpen }: { labels: MailLabel[]; all: MailLabel[]; onRemove: (id: string) => void; onOpen: (id: string) => void }): ReactNode {
   return labels.map((l) => (
-    <span key={l.id} className="chip lb-chip" style={{ ['--c' as string]: l.color }}>
-      <button type="button" className="lb-chip-name" onClick={() => onOpen(l.id)} title={t('Open {name}', { name: labelPath(l, all) })}>
+    <span key={l.id} className="chip ml-chip" style={{ ['--c' as string]: l.color }}>
+      <button type="button" className="ml-chip-name" onClick={() => onOpen(l.id)} title={t('Open {name}', { name: labelPath(l, all) })}>
         {labelPath(l, all)}
       </button>
-      <button type="button" className="lb-chip-x" onClick={() => onRemove(l.id)} aria-label={t('Remove the label {name}', { name: l.name })} title={t('Remove label')}>
+      <button type="button" className="ml-chip-x" onClick={() => onRemove(l.id)} aria-label={t('Remove the label {name}', { name: l.name })} title={t('Remove label')}>
         <X size={12} />
       </button>
     </span>

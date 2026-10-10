@@ -10,7 +10,7 @@ import { useStored } from '../../store';
 import { server } from '../../sync';
 import { isMine } from '../../identity';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
-import { Group, GRow } from '../ui/Grouped';
+import { ChoiceRow, Group, GRow } from '../ui/Grouped';
 import { PushScreen } from '../ui/PushScreen';
 import { Select } from '../ui/Select';
 import { usePhone } from '../../mobile/media';
@@ -291,7 +291,7 @@ export function useMailOrganize(o: OrganizeOpts) {
     return (
       <p className="filed-line">
         {last.scope === 'block' ? <Ban size={13} aria-hidden /> : <Filter size={13} aria-hidden />}
-        <span>{filedWords(last)}</span>
+        <span>{filedWords(f ? { ...last, name: filterTitle(f) } : last)}</span>
         {f && mayEditFilter(f) && (
           <button type="button" className="link-btn" onClick={() => setFilterEdit(f)}>
             {t('Edit filter')}
@@ -497,9 +497,9 @@ function LabelRow({ x, p }: { x: SettingsProps['tree'][number]; p: SettingsProps
   if (p.phone)
     return (
       <>
-      <button type="button" className="g-row has-pic lp lb-grow" style={{ ['--depth' as string]: x.depth }} onClick={() => menu.openAt(0, 0)} {...menu.bind}>
+      <button type="button" className="g-row has-pic lp ml-grow" style={{ ['--depth' as string]: x.depth }} onClick={() => menu.openAt(0, 0)} {...menu.bind}>
         <span className="g-pic" aria-hidden>
-          <span className="lb-dot" style={{ background: x.label.color }} />
+          <span className="ml-dot" style={{ background: x.label.color }} />
         </span>
         <span className="g-label">
           <span className="g-text">{x.label.name}</span>
@@ -512,13 +512,13 @@ function LabelRow({ x, p }: { x: SettingsProps['tree'][number]; p: SettingsProps
     );
   return (
     <>
-    <div className="lb-set-row" style={{ ['--depth' as string]: x.depth }} {...menu.bind}>
-      <span className="lb-dot" style={{ background: x.label.color }} />
-      <span className="lb-set-name">
+    <div className="ml-set-row" style={{ ['--depth' as string]: x.depth }} {...menu.bind}>
+      <span className="ml-dot" style={{ background: x.label.color }} />
+      <span className="ml-set-name">
         <strong>{x.label.name}</strong>
         {x.label.accountId === null && <small>{t('Company label')}</small>}
       </span>
-      <span className="lb-set-show">{showWords(x.label.show)}</span>
+      <span className="ml-set-show">{showWords(x.label.show)}</span>
       <button type="button" ref={more} className="icon-btn sm" onClick={() => menu.openFrom(more)} aria-label={t('More for {name}', { name: x.label.name })} title={t('More')}>
         <MoreHorizontal size={15} />
       </button>
@@ -654,7 +654,7 @@ function OrganizeSettings(p: SettingsProps) {
               ))}
               {p.isAdmin && (
                 <Group title={t('Automatic forwarding')} footer={t('Who filters may forward your company’s mail to.')}>
-                  <GRow label={t('Allowed')} accessory={<Select value={policy} options={policyOptions} onChange={setPolicy} title={t('Automatic forwarding')} />} />
+                  <ChoiceRow label={t('Allowed')} value={policy} options={policyOptions} onChange={setPolicy} title={t('Automatic forwarding')} />
                 </Group>
               )}
               {server.on && policy !== 'off' && personal.map((b) => <Forwarding key={b.id} box={b} phone policy={policy} />)}
@@ -673,9 +673,9 @@ function OrganizeSettings(p: SettingsProps) {
           {t('Labels sort mail your way, and an email can have several. Make one here, or from “Label as” on any email.')}
         </small>
       ) : (
-        <div className="lb-set-list">{p.tree.map((x) => <LabelRow key={x.label.id} x={x} p={p} />)}</div>
+        <div className="ml-set-list">{p.tree.map((x) => <LabelRow key={x.label.id} x={x} p={p} />)}</div>
       )}
-      <button type="button" className="ghost-btn outline sm lb-set-new" onClick={p.onNewLabel}>
+      <button type="button" className="ghost-btn outline sm ml-set-new" onClick={p.onNewLabel}>
         <Plus size={14} /> {t('New label')}
       </button>
 
@@ -694,7 +694,7 @@ function OrganizeSettings(p: SettingsProps) {
         ))
       )}
       {p.canMakeFilters && (
-        <button type="button" className="ghost-btn outline sm lb-set-new" onClick={p.onNewFilter}>
+        <button type="button" className="ghost-btn outline sm ml-set-new" onClick={p.onNewFilter}>
           <Plus size={14} /> {t('New filter')}
         </button>
       )}
