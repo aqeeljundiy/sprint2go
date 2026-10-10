@@ -6,7 +6,7 @@
    ========================================================================== */
 
 @media (max-width: 767px) {
-  /* ---------- The list: chips under the title, three lines and a status line per email ---------- */
+  /* ---------- The list (Gmail): the search pill is the top bar, the folder's name, three-line rows ---------- */
 
   .mail-view {
     border-radius: 0;
@@ -18,55 +18,144 @@
     opacity: 1;
     pointer-events: auto;
   }
-  /* The top bar has the title, search and the switcher; pull down to check for mail. No second header. */
-  .list-pane .list-title,
-  .list-pane .list-header > .search {
+  /* Gmail iOS: plain rows on the page, no card. */
+  .app.mode-mail .mobile-top,
+  .app.mode-mail .main {
+    background: var(--surface);
+  }
+  .mail-view > .list-pane {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--surface);
+  }
+  /* The top bar has the pill; pull down to check for mail. No second header. */
+  .list-pane .list-header {
     display: none;
   }
-  .list-header {
-    gap: 0;
-    padding: 0 0 0 12px;
-    border-bottom: 1px solid var(--line);
+
+  /* Gmail's search pill (MailTop.tsx), and the selection bar that takes its place. Same box, so nothing moves. */
+  .gm-search,
+  .gm-select {
+    display: flex;
+    align-items: center;
+    height: 56px;
+    margin: 8px 16px 0;
   }
-  .mail-tools {
-    min-height: 52px;
+  .gm-search {
+    padding: 0 6px;
+    border-radius: 28px;
+    background: var(--surface-2);
+    color: var(--text-2);
   }
-  .mail-chips {
+  .gm-select {
+    margin: 8px 8px 0;
     gap: 2px;
-    margin-right: 0;
-    padding-right: 28px;
   }
-  /* Chips are 44px to tap; the pill drawn inside is smaller. */
-  .mail-chip {
+  .gm-fade {
+    animation: gmFade 0.15s ease-out backwards;
+  }
+  @keyframes gmFade {
+    from {
+      opacity: 0;
+    }
+  }
+  .gm-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--tap);
     height: var(--tap);
-    padding: 0 14px;
-    border: 0;
-    background: none;
-    font-size: 14px;
-    isolation: isolate;
+    border-radius: 50%;
+    color: var(--text-2);
+    transition: background 0.15s;
   }
-  .mail-chip::before {
-    content: '';
+  .gm-icon:active {
+    background: var(--hover);
+  }
+  .gm-field {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0 4px;
+    text-align: left;
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--text-3);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-avatar {
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: 50%;
+  }
+  .gm-avatar-dot {
     position: absolute;
-    inset: 6px 0;
-    z-index: -1;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    transition: background 0.18s, border-color 0.18s;
+    right: 4px;
+    bottom: 4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--surface-2);
   }
-  .mail-chip:hover {
-    background: none;
+  .gm-count {
+    padding-left: 8px;
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
-  .mail-chip.on::before {
-    border-color: transparent;
-    background: var(--accent-soft);
+  .gm-select .spacer {
+    flex: 1;
   }
-  .sel-head {
-    padding-right: 4px;
+
+  /* The folder's name over the rows (Gmail's "Inbox"), or "Select all" while selecting: one height, no jump. */
+  .gm-label {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    min-height: 44px;
+    padding: 0 16px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-3);
   }
-  .sel-head .ghost-btn {
+  .gm-selall {
+    align-items: center;
+    padding: 0 8px 0 4px;
+  }
+  .gm-selall-btn {
+    display: flex;
+    align-items: center;
+    gap: 20px;
     min-height: var(--tap);
+    padding: 0 12px 0 21px;
+    border-radius: 22px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    animation: gmFade 0.15s ease-out backwards;
+  }
+  .gm-selall-box {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--text-3);
+    color: transparent;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .gm-selall-btn.on .gm-selall-box {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
   }
   .list-offline {
     display: block;
@@ -85,259 +174,1255 @@
   .mail-swipe > .swipe-face {
     border-radius: 0;
   }
-  .row {
-    gap: 12px;
-    border-radius: 0;
+
+  /* A row: avatar 40 at 16, text from 72; who 16, subject 14, a line of it 14, the time 12. Bold when unread. */
+  .gm-row {
+    gap: 16px;
+    min-height: 88px;
     padding: 12px 16px;
-  }
-  /* A divider between emails, from the text's edge (the picture column stays clean). */
-  .rows > .row-li + .row-li .row::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 64px;
-    right: 0;
-    width: auto;
-    height: 1px;
     border-radius: 0;
-    background: var(--line);
+    background: var(--surface);
+    transition: background 0.15s;
   }
-  .row-av {
-    width: var(--tap);
-    height: var(--tap);
-    margin: -4px;
+  .gm-row:active {
+    background: var(--hover);
   }
-  .row-av .avatar,
-  .row-check {
-    width: 36px;
-    height: 36px;
+  .gm-row.unread::before,
+  .gm-row::before,
+  .gm-row::after {
+    content: none;
   }
-  .row-check {
-    inset: 4px;
+  .gm-row .row-av {
+    width: 44px;
+    height: 44px;
+    margin: -2px;
   }
-  .row-from,
-  .row-subject {
-    font-size: 15px;
+  .gm-row .row-check {
+    inset: 2px;
   }
-  .row-snippet {
-    font-size: 14px;
+  .gm-row .row-av .avatar,
+  .gm-row .row-check {
+    width: 40px;
+    height: 40px;
   }
-  .row-date {
-    font-size: 13px;
-  }
-  .row-meta {
-    font-size: 12.5px;
-  }
-  /* Actions live in swipes, long-press and the reader on phones: no hover tools or corner star. */
-  .row-actions,
-  .row > .star {
-    display: none;
-  }
-  .row.team-mail::after {
-    top: 0;
-    bottom: 0;
-    border-radius: 0;
-  }
-  .row.selected:not(.picked) {
-    background: color-mix(in oklab, var(--accent-soft) 55%, transparent);
-  }
-  /* A finger leaves no hover behind. */
-  @media (hover: none) {
-    .row:not(.picked):not(.selected):hover {
-      background: none;
-    }
-  }
-
-  /* Several selected: the bar takes the tab bar's place. */
-  .mail-bulk {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 35;
-    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
-    background: var(--bg);
-    border-top: 1px solid var(--line);
-    animation: mailBulkUp 0.24s var(--ease) backwards;
-  }
-  @keyframes mailBulkUp {
-    from {
-      transform: translateY(100%);
-    }
-  }
-  .mail-bulk > button {
-    min-height: 52px;
-    font-size: 12px;
-  }
-  .list-pane.selecting .rows {
-    padding-bottom: calc(80px + env(safe-area-inset-bottom));
-  }
-
-  /* ---------- The reader: a pushed screen with one header row and the actions at the bottom ---------- */
-
-  .mail-reader .push-head {
-    gap: 2px;
-  }
-  .mail-reader .push-actions {
+  .gm-row .row-top {
     align-items: center;
-    gap: 0;
+    gap: 6px;
   }
-  .mail-reader .push-actions .icon-btn {
-    width: var(--tap);
-    height: var(--tap);
-  }
-  .mail-reader .rp-btn {
-    min-height: var(--tap);
-    padding: 0 6px;
-  }
-  .mail-reader .reader-scroll {
-    flex: none;
-    overflow: visible;
-    padding: 16px 16px 24px;
-  }
-  .mail-reader .thread-head h2 {
-    font-size: 20px;
-  }
-  .mail-reader .thread-labels {
-    gap: 6px 8px;
-  }
-  /* How many messages: the fold says it ("3 earlier") where it matters. */
-  .mail-reader .thread-count {
-    display: none;
-  }
-  .mail-reader .thread-labels > button,
-  .mail-reader .th-when,
-  .mail-reader .ai-sum,
-  .mail-reader .ai-chip,
-  .mail-reader .smart-replies button {
-    min-height: var(--tap);
-  }
-  .mail-reader .thread-labels > button {
-    padding: 0 14px 0 10px;
-    font-size: 13px;
-  }
-  .mail-reader .rp-btn {
-    min-width: var(--tap);
-    justify-content: center;
-  }
-  /* Messages are plain sections with a line between them, not boxes inside the screen. */
-  .mail-reader .messages {
-    gap: 0;
-    margin-top: 16px;
-  }
-  .mail-reader .message {
-    border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-  }
-  .mail-reader .message + .message,
-  .mail-reader .mail-comment + .message,
-  .mail-reader .msg-fold + .message {
-    border-top: 1px solid var(--line);
-  }
-  .mail-reader .message-head {
-    min-height: 56px;
-    padding: 10px 0;
-    gap: 10px;
-  }
-  .mail-reader .message-body {
-    padding: 0 0 16px;
-    font-size: 15px;
-  }
-  .mail-reader .mail-comment {
-    margin: 8px 0;
-  }
-  .mail-reader .msg-fold {
-    min-height: var(--tap);
-  }
-  .mail-reader .attachment {
-    flex: 1 1 100%;
-  }
-  .mail-reader .attachment > div {
+  .gm-row .row-from {
     flex: 1;
     min-width: 0;
+    font-size: 16px;
+    line-height: 22px;
+    font-weight: 400;
+    color: var(--text);
   }
-  .mail-reader .file-name {
+  .gm-row.unread .row-from {
+    font-weight: 700;
+    color: var(--text);
+  }
+  .gm-row .row-count {
+    margin-left: 6px;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--text-3);
+  }
+  .row-assignee {
+    flex: none;
+    display: grid;
+  }
+  .gm-row .row-date,
+  .gm-row.unread .row-date {
+    flex: none;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-3);
+  }
+  .gm-row.unread .row-date {
+    font-weight: 700;
+    color: var(--text);
+  }
+  .gm-row .row-date.snoozed {
+    color: var(--warn);
+    font-weight: 600;
+  }
+  .gm-row .row-subject {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 1px;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 400;
+    color: var(--text);
+  }
+  .gm-row.unread .row-subject {
+    font-weight: 700;
+  }
+  .row-subj-text {
+    min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .mail-reader .att-save {
+  .gm-row .rm-draft,
+  .gm-row .rm-sched {
+    flex: none;
+    white-space: pre;
+  }
+  .rm-sched {
+    color: var(--text-3);
+  }
+  /* A project or label: Gmail's small chip at the end of the subject line. */
+  .gm-tag {
+    flex: none;
+    max-width: 40%;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 18px;
+    font-weight: 500;
+    color: var(--text-2);
+    background: color-mix(in oklab, var(--c, var(--text-3)) 16%, transparent);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .row-line3 {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+  }
+  .gm-row .row-snippet {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-3);
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-row .hl {
+    font-weight: 700;
+    color: var(--text);
+  }
+  /* The star sits at the end of the snippet line, its 44 target reaching into the row's padding. */
+  .row-star {
+    flex: none;
+    display: grid;
+    place-items: center;
     width: var(--tap);
     height: var(--tap);
+    margin: -12px -12px -12px 0;
+    border-radius: 50%;
+    color: var(--text-3);
+    transition: color 0.15s, transform 0.15s;
   }
-  .mail-reader .smart-replies {
-    margin-top: 16px;
+  .row-star:active {
+    transform: scale(0.88);
   }
-  .invite {
-    flex-wrap: wrap;
+  .row-star svg {
+    transition: fill 0.15s;
   }
-  .invite .primary-btn {
-    width: 100%;
-    justify-content: center;
+  .row-star.on {
+    color: var(--star);
+  }
+  .row-star.on svg {
+    fill: var(--star);
+  }
+  /* Files: up to two chips under the snippet (Gmail's attachment chips). */
+  .gm-files {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    min-width: 0;
+  }
+  .gm-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 50%;
+    height: 32px;
+    padding: 0 12px 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .gm-file > span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-file svg {
+    flex: none;
+    color: var(--text-3);
+  }
+  .gm-file.more {
+    flex: none;
+    padding: 0 10px;
+  }
+  .row-actions,
+  .row > .star {
+    display: none;
+  }
+  .gm-row.selected:not(.picked) {
+    background: color-mix(in oklab, var(--accent-soft) 55%, transparent);
+  }
+  .gm-row.picked {
+    background: var(--accent-soft);
+  }
+  /* A finger leaves no hover behind. */
+  @media (hover: none) {
+    .row:not(.picked):not(.selected):hover {
+      background: var(--surface);
+    }
   }
 
-  /* The bottom: the comment bar (team mail) over the actions; typing a comment folds the actions away. */
-  .mail-reader .push-foot {
-    padding: 6px 8px calc(4px + env(safe-area-inset-bottom));
+  /* Swipes in Mail: the icon alone, Gmail's way (the word is still read out). */
+  .mail-swipe .swipe-under {
+    padding: 0 24px;
   }
-  .kb-open .mail-reader .push-foot {
-    padding-bottom: 6px;
+  .mail-swipe .swipe-under > span {
+    display: none;
   }
-  .reader-foot {
+  .mail-swipe .swipe-under svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* ---------- Mail's search (MailSearch.tsx): the pill becomes the field; chips; results as inbox rows ---------- */
+
+  .mail-search.push-screen {
+    background: var(--surface);
+    animation: gmFade 0.2s ease-out backwards;
+  }
+  .mail-search.push-screen.is-leaving {
+    animation: gmFadeOut 0.15s ease-in forwards;
+  }
+  @keyframes gmFadeOut {
+    to {
+      opacity: 0;
+    }
+  }
+  .mail-search .push-head {
+    display: none;
+  }
+  .mail-search .push-body {
     display: flex;
     flex-direction: column;
+    padding-top: env(safe-area-inset-top);
   }
-  .reader-actions {
+  .gm-search-field {
+    flex: none;
+    gap: 0;
+    padding-right: 4px;
+  }
+  .gm-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0 4px;
+    border: 0;
+    outline: 0;
+    background: none;
+    font: inherit;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .gm-input::placeholder {
+    color: var(--text-3);
+  }
+  .gm-chips {
+    flex: none;
+    display: flex;
+    gap: 0;
+    padding: 4px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .gm-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .gm-chips::after {
+    content: '';
+    flex: none;
+    width: 4px;
+  }
+  .gm-chip {
+    flex: none;
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    max-height: 64px;
-    overflow: hidden;
-    transition:
-      max-height 0.2s var(--ease),
-      opacity 0.15s;
-  }
-  .reader-foot.commenting .reader-actions {
-    max-height: 0;
-    opacity: 0;
-  }
-  .reader-actions > button {
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 2px;
-    min-height: 52px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 550;
-    color: var(--text-2);
-    transition: background 0.15s, color 0.15s;
+    min-height: var(--tap);
+    padding: 0 4px;
   }
-  .reader-actions > button:active {
+  .gm-chip-face {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-2);
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .gm-chip-check {
+    display: none;
+  }
+  .gm-chip.on .gm-chip-face {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .gm-chip.on .gm-chip-check {
+    display: block;
+    margin-left: -4px;
+  }
+  .gm-chip-caret {
+    margin-right: -4px;
+  }
+  .gm-results {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom) + var(--kb, 0px));
+  }
+  .gm-results .rows {
+    overflow: visible;
+    padding-bottom: 0;
+  }
+  .gm-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .gm-suggest {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 16px 0 20px;
+    text-align: left;
+    font-size: 16px;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .gm-suggest:active {
     background: var(--hover);
   }
-  .reader-actions > button.off {
-    opacity: 0.5;
+  .gm-suggest > svg {
+    flex: none;
+    color: var(--text-3);
   }
-  .ra-icon {
-    position: relative;
+  .gm-suggest.person {
+    gap: 16px;
+    min-height: 56px;
+  }
+  .gm-suggest > span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-suggest-text {
     display: grid;
   }
-  .ra-dot {
-    position: absolute;
-    top: -2px;
-    right: -5px;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 0 2px var(--surface);
+  .gm-suggest-text small {
+    font-size: 13px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .mc-box.docked {
-    margin: 0 0 6px;
+  .gm-none {
+    padding: 40px 32px;
+    text-align: center;
+  }
+
+  /* ---------- The folders drawer (Sidebar.tsx, PhoneMailDrawer) ---------- */
+
+  :root.phone-sidebar .sidebar {
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top) 0 0;
+  }
+  .gm-drawer {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .gm-drawer-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    margin: 4px 12px;
+    padding: 8px 12px;
+    border-radius: 16px;
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .gm-drawer-head:active {
+    background: var(--hover);
+  }
+  .gm-drawer-who {
+    display: grid;
+    min-width: 0;
+  }
+  .gm-drawer-who b {
+    font-size: 18px;
+    font-weight: 700;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-drawer-who small {
+    font-size: 13px;
+    color: var(--text-3);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-drawer-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+  .gm-nav-group {
+    display: grid;
+  }
+  .gm-nav {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    min-height: 48px;
+    margin: 0 12px;
+    padding: 0 12px;
+    border-radius: 24px;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    transition: background 0.15s, color 0.15s;
+  }
+  .gm-nav > svg {
+    color: var(--text-2);
+    transition: color 0.15s;
+  }
+  .gm-nav:active {
+    background: var(--hover);
+  }
+  .gm-nav.active {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .gm-nav.active > svg {
+    color: var(--accent-text);
+  }
+  .gm-nav-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-nav.active .gm-nav-label {
+    text-shadow: 0 0 0.4px currentColor; /* a touch heavier without the width changing */
+  }
+  .gm-nav-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .gm-nav.active .gm-nav-count {
+    color: var(--accent-text);
+  }
+  .gm-sep {
+    height: 1px;
+    margin: 8px 0 8px 24px;
+    background: var(--line);
+  }
+  .gm-head {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 24px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+
+  /* ---------- Mail settings (MailSettings.tsx): Gmail's plain rows; swipes with a preview ---------- */
+
+  .gm-set-list {
+    display: grid;
+    padding: 8px 0 24px;
+  }
+  .gm-set-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    padding: 8px 16px;
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .gm-set-row:active {
+    background: var(--hover);
+  }
+  .gm-set-row > svg {
+    flex: none;
+    color: var(--text-3);
+  }
+  .gm-set-words {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .gm-set-words b {
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .gm-set-words span {
+    font-size: 14px;
+    color: var(--text-3);
+  }
+  .gm-swipes {
+    padding: 8px 16px 24px;
+  }
+  .gm-swipes > .set-hint {
+    display: block;
+    margin-top: 16px;
+  }
+  .gm-swipe-block + .gm-swipe-block {
+    margin-top: 24px;
+  }
+  .gm-swipe-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .gm-swipe-words {
+    flex: 1;
+    display: grid;
+    gap: 2px;
+  }
+  .gm-swipe-words b {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .gm-swipe-words span {
+    font-size: 14px;
+    color: var(--text-3);
+  }
+  .gm-swipe-change {
+    text-decoration: none;
+    min-height: var(--tap);
+    padding: 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .gm-swipe-demo {
+    --tone: var(--ok);
+    position: relative;
+    height: 72px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--tone);
+  }
+  .gm-swipe-demo[data-tone='warn'] {
+    --tone: var(--warn);
+  }
+  .gm-swipe-demo[data-tone='accent'] {
+    --tone: var(--accent);
+  }
+  .gm-swipe-demo[data-tone='danger'] {
+    --tone: var(--danger);
+  }
+  .gm-swipe-demo[data-tone='none'] {
+    --tone: var(--surface-2);
+  }
+  .gm-swipe-under {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: grid;
+    place-items: center;
+    width: 72px;
+    color: #fff;
+  }
+  .gm-swipe-demo[data-tone='none'] .gm-swipe-under {
+    color: var(--text-3);
+  }
+  .gm-swipe-demo.right .gm-swipe-under {
+    left: 0;
+  }
+  .gm-swipe-demo.left .gm-swipe-under {
+    right: 0;
+  }
+  .gm-swipe-face {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    background: var(--surface-2);
+    transition: transform 0.25s var(--ease);
+  }
+  .gm-swipe-demo.right .gm-swipe-face {
+    transform: translateX(72px);
+  }
+  .gm-swipe-demo.left .gm-swipe-face {
+    transform: translateX(-72px);
+  }
+  .gm-swipe-av {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+  .gm-swipe-lines {
+    flex: 1;
+    display: grid;
+    gap: 8px;
+  }
+  .gm-swipe-lines i {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--border);
+  }
+  .gm-swipe-lines i + i {
+    width: 60%;
+  }
+
+  /* ---------- The reader (Gmail): back and the actions at the top, the thread, Reply docked at the bottom ---------- */
+
+  .gm-reader-screen .push-head {
+    min-height: 56px;
+    gap: 0;
+    padding-right: 4px;
+    border-bottom-color: transparent;
+    transition: border-color 0.2s;
+  }
+  .gm-reader-screen .push-head:has(+ .push-body .gm-reader) {
+    border-bottom-color: var(--line);
+  }
+  /* No title in the bar: the subject is the page's first line. */
+  .gm-reader-screen .push-title {
+    visibility: hidden;
+  }
+  .gm-reader-screen .push-actions {
+    align-items: center;
+    gap: 0;
+  }
+  .gm-reader-screen .push-actions .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+  .gm-reader-screen .push-body {
+    overflow-x: hidden;
+  }
+  .gm-swipe-box {
+    will-change: auto;
+  }
+  .gm-reader {
+    flex: none;
+    overflow: visible;
+    padding: 8px 16px 24px;
+  }
+  .gm-reader.enter-left {
+    animation: gmFromLeft 0.24s var(--ease) backwards;
+  }
+  .gm-reader.enter-right {
+    animation: gmFromRight 0.24s var(--ease) backwards;
+  }
+  @keyframes gmFromLeft {
+    from {
+      transform: translateX(-24%);
+      opacity: 0;
+    }
+  }
+  @keyframes gmFromRight {
+    from {
+      transform: translateX(24%);
+      opacity: 0;
+    }
+  }
+
+  /* The subject: 22 regular, the star on its first line, the project and who handles it as small chips after it. */
+  .gm-subject {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .gm-subject h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding-top: 6px;
+    font-size: 22px;
+    line-height: 30px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--text);
+    text-wrap: pretty;
+  }
+  .gm-subject h2 > span:first-child {
+    margin-right: 8px;
+  }
+  .gm-subject .gm-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    margin: 0 6px 0 0;
+    vertical-align: 4px;
+  }
+  .gm-tag-btn {
+    min-height: 18px;
+    transition: filter 0.15s;
+  }
+  .gm-tag-btn:active {
+    filter: brightness(0.94);
+  }
+  .gm-who {
+    --c: var(--text-3);
+    height: 20px;
+    padding: 0 6px 0 2px;
+    border-radius: 10px;
+  }
+  .gm-who:not(.on) {
+    padding-left: 6px;
+  }
+  .gm-snoozed {
+    --c: var(--warn);
+    color: var(--warn);
+  }
+  .gm-star {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--tap);
+    height: var(--tap);
+    margin: 0 -10px 0 0;
+    border-radius: 50%;
+    color: var(--text-3);
+    transition: color 0.15s, transform 0.15s;
+  }
+  .gm-star:active {
+    transform: scale(0.88);
+  }
+  .gm-star.on {
+    color: var(--star);
+  }
+  .gm-star.on svg {
+    fill: var(--star);
+  }
+
+  /* AI: one small chip; the summary opens under it. */
+  .gm-chiprow {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .gm-ai {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--tap);
+    padding: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-2);
+    background: none;
+  }
+  .gm-ai::before {
+    content: '';
+    position: absolute;
+  }
+  .gm-ai {
+    position: relative;
+    isolation: isolate;
+    padding: 0 12px;
+  }
+  .gm-ai::after {
+    content: '';
+    position: absolute;
+    inset: 6px 0;
+    z-index: -1;
+    border-radius: 16px;
+    background: var(--surface-2);
+    transition: background 0.15s;
+  }
+  .gm-ai:active::after {
+    background: var(--hover);
+  }
+  .gm-ai svg:first-child {
+    color: var(--accent-text);
+  }
+  .gm-reader .ai-summary {
+    margin-top: 4px;
+  }
+  .gm-todos {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--tap);
+    font-size: 14px;
+    color: var(--accent-text);
+  }
+
+  /* Messages: plain sections with a line between them. */
+  .gm-reader .messages {
+    gap: 0;
+    margin-top: 8px;
+  }
+  .gm-reader .message {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    scroll-margin-top: 8px;
+  }
+  .gm-reader .message + .message,
+  .gm-reader .mail-comment + .message,
+  .gm-reader .message + .mail-comment {
+    border-top: 1px solid var(--line);
+  }
+  .gm-msg-collapsed {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    min-height: 64px;
+    padding: 12px 0;
+    text-align: left;
+  }
+  .gm-msg-lines {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .gm-msg-l1 {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .gm-msg-l1 strong {
+    flex: 1;
+    min-width: 0;
+    font-size: 16px;
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-msg-l1 time,
+  .gm-msg-name time {
+    flex: none;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .gm-msg-snip {
+    font-size: 14px;
+    color: var(--text-3);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  /* An open message's header: avatar 40, the name and time, "to me ▾"; Reply and ⋮ on the right. */
+  .gm-msg-head {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-areas: 'av name acts' 'av to acts';
+    column-gap: 16px;
+    align-items: center;
+    padding: 12px 0 8px;
+  }
+  .gm-msg-av {
+    grid-area: av;
+    align-self: start;
+    display: grid;
+    border-radius: 50%;
+  }
+  .gm-msg-name {
+    grid-area: name;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    text-align: left;
+  }
+  .gm-msg-name strong {
+    min-width: 0;
+    font-size: 16px;
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-msg-to {
+    grid-area: to;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    min-height: 28px;
+    margin: -4px 0;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .gm-msg-to span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .gm-msg-acts {
+    grid-area: acts;
+    display: flex;
+    margin-right: -10px;
+  }
+  .gm-msg-details {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 12px;
+    margin: 0 0 12px 56px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    font-size: 13px;
+  }
+  .gm-msg-details dt {
+    color: var(--text-3);
+  }
+  .gm-msg-details dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .gm-msg-details dd span {
+    color: var(--text-3);
+  }
+  .gm-reader .message-body {
+    padding: 4px 0 16px;
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .gm-reader .message-body p {
+    margin: 0 0 12px;
+  }
+
+  /* Gmail's fold: a hairline across the thread with a circle that counts the folded messages. */
+  .gm-fold {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: var(--tap);
+    gap: 0;
+    padding: 0;
+  }
+  .gm-fold::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: var(--line);
+  }
+  .gm-fold::after {
+    content: none;
+  }
+  .gm-fold span {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-left: 4px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+
+  /* The team's comments: an item of the thread, tinted, no box inside a box. */
+  .gm-reader .mail-comment {
+    margin: 8px 0;
+    padding: 12px;
+    border-radius: 16px;
+    background: var(--warn-soft);
+    box-shadow: none;
+  }
+  .gm-reader .mc-head strong {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .gm-reader .mc-text {
+    font-size: 15px;
+  }
+
+  /* Files: Gmail's cards in a row that scrolls sideways. */
+  .gm-atts {
+    margin-top: 12px;
+  }
+  .gm-atts-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--tap);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .gm-att-row {
+    display: flex;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 0 16px 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .gm-att-row::-webkit-scrollbar {
+    display: none;
+  }
+  .gm-att {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    width: 148px;
+    height: 112px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    transition: transform 0.15s, background 0.15s;
+  }
+  .gm-att:active {
+    transform: scale(0.98);
+  }
+  .gm-att-preview {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: var(--surface-2);
+  }
+  .gm-att-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .gm-att-ext {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--danger);
+  }
+  .gm-att-name {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 10px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .gm-att-name svg {
+    flex: none;
+    color: var(--text-3);
+  }
+  .gm-att-name span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Invites and proposed meetings: Gmail's quiet card. */
+  .gm-reader .invite,
+  .gm-reader .mi-wrap > * {
+    margin: 4px 0 16px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: none;
+  }
+  .gm-invite {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .gm-invite .invite-date {
+    flex: none;
+    width: 44px;
+    height: 44px;
+  }
+  .gm-invite .invite-info {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .gm-invite .invite-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .gm-invite .invite-when {
+    font-size: 14px;
+    color: var(--text-2);
+  }
+  .gm-invite .invite-status {
+    font-size: 13px;
+    color: var(--ok);
+  }
+  .gm-invite .invite-status.warn {
+    color: var(--warn);
+  }
+  .gm-invite .gm-pill,
+  .gm-invite .invite-done {
+    justify-self: start;
+    margin-top: 8px;
+  }
+  .gm-reader .list-banner {
+    margin: 0 0 12px;
+  }
+
+  /* The end of the thread: smart replies as Gmail's chips. */
+  .gm-smart {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 8px;
+    margin-top: 12px;
+  }
+  .gm-smart > span {
+    display: none;
+  }
+  .gm-smart button {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--tap);
+    padding: 0 14px;
+    border: 0;
+    background: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .gm-smart button::after {
+    content: '';
+    position: absolute;
+    inset: 4px 0;
+    z-index: -1;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    transition: background 0.15s;
+  }
+  .gm-smart button:active::after {
+    background: var(--hover);
+  }
+  .gm-smart .ai-suggest svg {
+    color: var(--accent-text);
+  }
+
+  /* Docked at the bottom: Reply, Reply all, Forward (and Comment for the team), Gmail's outlined pills. */
+  .gm-reader-screen .push-foot {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .kb-open .gm-reader-screen .push-foot {
+    padding-bottom: 12px;
+  }
+  .gm-dock-row,
+  .gm-dock-comment {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    animation: gmFade 0.15s ease-out backwards;
+  }
+  .gm-pill {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 40px;
+    padding: 0 14px 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--surface);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .gm-pill:active {
+    background: var(--hover);
+  }
+  .gm-pill.off {
+    opacity: 0.5;
+  }
+  .gm-pill svg {
+    flex: none;
+    color: var(--text-2);
+  }
+  .gm-draft {
+    color: var(--danger);
+    font-weight: 600;
+  }
+  .gm-round {
+    width: 40px;
+    padding: 0;
+  }
+  .gm-round .gm-pill-word {
+    display: none;
+  }
+  .gm-dock-row .gm-comment {
+    margin-left: auto;
+    border-color: transparent;
+    background: var(--warn-soft);
+  }
+  .gm-dock-row .gm-comment svg {
+    color: var(--warn);
+  }
+  .gm-dock-comment .mc-box.docked {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
     padding: 2px 2px 2px 14px;
     border-radius: 22px;
     min-height: var(--tap);
@@ -353,6 +1438,9 @@
     align-self: flex-end;
     color: var(--warn);
   }
+  .gm-dock-comment .gm-icon {
+    margin-right: -8px;
+  }
   .cb-mentions {
     left: 0;
     right: 0;
@@ -361,45 +1449,7 @@
     min-height: var(--tap);
   }
 
-  /* Reply: half the screen, the thread still above it; swiped up, all of it. */
-  .quick-reply.sheet {
-    height: min(58dvh, calc(100dvh - var(--kb, 0px) - 64px));
-    transition: height 0.24s var(--ease);
-  }
-  .quick-reply.sheet.grown {
-    height: calc(100dvh - var(--kb, 0px) - max(12px, env(safe-area-inset-top)) - 8px);
-  }
-  .quick-reply .sheet-head {
-    padding-right: 8px;
-  }
-  .quick-reply .sheet-body {
-    display: flex;
-    flex-direction: column;
-    padding: 0 4px;
-  }
-  .qr-editor {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .qr-editor .rich {
-    flex: 1;
-  }
-  .qr-editor .rich-body {
-    min-height: 96px;
-    padding: 8px 12px;
-  }
-  .quick-reply:not(.fmt-on) .rich-toolbar,
-  .compose.phone:not(.fmt-on) .rich-toolbar {
-    display: none;
-  }
-  .quick-reply .sheet-foot {
-    padding: 4px 8px;
-    justify-content: stretch;
-  }
-
-  /* The bar above the keyboard (quick reply and compose). */
+  /* The bar above the keyboard (reply and compose). Only while the keyboard is up. */
   .kb-bar {
     display: flex;
     align-items: center;
@@ -420,13 +1470,30 @@
   .kb-bar .icon-btn:disabled {
     opacity: 0.4;
   }
+  .kb-bar .kb-ai.labelled {
+    width: auto;
+    gap: 6px;
+    padding: 0 12px;
+    border-radius: 22px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .kb-bar .kb-ai svg {
+    color: var(--accent-text);
+  }
+  .compose.phone:not(.fmt-on) .rich-toolbar {
+    display: none;
+  }
 
-  /* ---------- Compose: the whole screen; Send top right; swipe the top down to park it as a pill ---------- */
+  /* ---------- Compose and Reply (Gmail): one full screen; close, attach, send and ⋮ at the top ---------- */
 
   .compose.phone,
   .compose.phone.normal {
+    position: fixed;
     inset: 0;
     bottom: var(--kb, 0px);
+    display: flex;
+    flex-direction: column;
     width: auto;
     height: auto;
     max-width: none;
@@ -436,6 +1503,8 @@
     transform: none;
     z-index: var(--z-dialog);
     padding-bottom: env(safe-area-inset-bottom);
+    background: var(--surface);
+    box-shadow: none;
     animation: mailSheetUp 0.3s var(--ease) backwards;
   }
   .kb-open .compose.phone {
@@ -457,46 +1526,116 @@
   .compose.phone .compose-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0;
     min-height: 56px;
-    padding: max(6px, env(safe-area-inset-top)) 8px 6px 4px;
+    padding: max(6px, env(safe-area-inset-top)) 4px 6px 4px;
     border-radius: 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 0;
     background: var(--surface);
-    touch-action: none; /* the top is where the email is swiped down to park it */
+    cursor: default;
+  }
+  .compose.phone .compose-head .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
   }
   .compose.phone .compose-title {
     flex: 1;
     min-width: 0;
-    text-align: center;
-    font-size: 16px;
-    font-weight: 650;
+    padding-left: 8px;
+    text-align: left;
+    font-size: 18px;
+    font-weight: 600;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .compose-send {
-    padding: 0 16px;
+  .compose.phone .compose-send-icon {
+    color: var(--text-3);
+    transition: color 0.15s;
+  }
+  .compose.phone .compose-send-icon.ready {
+    color: var(--accent);
   }
   .compose.phone .compose-main {
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+  /* Rows: the label inline at 16, every value from 72. */
   .compose.phone .compose-field,
   .compose.phone .recip {
-    min-height: 48px;
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    padding: 0 4px 0 16px;
+    gap: 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
   }
-  .compose.phone .cc-toggle {
-    min-height: var(--tap);
-    padding: 0 12px;
-  }
-  .compose.phone .compose-foot {
+  .compose.phone .compose-field > span:first-child,
+  .compose.phone .recip-label {
     flex: none;
-    padding: 4px 6px;
+    width: 56px;
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--text-3);
+  }
+  .compose.phone .compose-field input {
+    flex: 1;
+    min-width: 0;
+    height: 50px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 16px;
+  }
+  .compose.phone .from-field .sel {
+    flex: 1;
+    min-width: 0;
+  }
+  .compose.phone .cc-caret {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+  .compose.phone .compose-body {
+    flex: 1;
+    padding: 8px 16px;
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .compose.phone .compose-body .rich-body {
+    padding: 0;
+    min-height: 160px;
+  }
+  .gm-fixed-value {
+    flex: 1;
+    min-width: 0;
+    font-size: 16px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .compose.phone .compose-field .gm-fixed-value.muted.muted {
+    color: var(--text-3);
+  }
+  /* The strip above the keyboard shows only while the keyboard is up (Gmail has no toolbar at rest). */
+  .compose.phone .compose-foot {
+    display: none;
+    flex: none;
+    padding: 0 6px;
+    min-height: 44px;
     border-top: 1px solid var(--line);
     background: var(--surface);
+  }
+  .kb-open .compose.phone .compose-foot,
+  .compose.phone.fmt-on .compose-foot {
+    display: flex;
   }
   .recip-suggest {
     left: 16px;
@@ -506,65 +1645,183 @@
     min-height: 48px;
   }
 
-  /* Parked: a pill above the tab bar; tap it to carry on writing. */
-  .compose.compose-pill {
-    flex-direction: row;
-    inset: auto 16px calc(var(--bar-space) + 12px) 16px;
-    width: auto;
-    height: 52px;
-    max-width: none;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0 4px 0 6px;
+  /* Invites: Gmail's quiet card (InviteCard.tsx and the proposed meeting). A small date tile, no tint, no shadow. */
+  .gm-reader .mail-invite,
+  .gm-reader .gm-invite {
     border: 1px solid var(--border);
-    border-radius: 26px;
+    border-radius: 16px;
     background: var(--surface);
-    box-shadow: var(--shadow-lg);
-    z-index: 36;
-    animation: pillIn 0.24s var(--ease) backwards;
-    transition: bottom 0.24s var(--ease);
+    box-shadow: none;
   }
-  @keyframes pillIn {
-    from {
-      opacity: 0;
-      transform: translateY(16px) scale(0.96);
-    }
+  .gm-reader .mi-wrap > .mail-invite {
+    margin: 4px 0 16px;
   }
-  .compose.compose-pill.closing {
-    animation: pillOut 0.16s ease-in forwards;
+  .gm-reader .invite-date {
+    width: 44px;
+    height: auto;
+    border-radius: 10px;
+    box-shadow: none;
   }
-  @keyframes pillOut {
-    to {
-      opacity: 0;
-      transform: translateY(16px) scale(0.96);
-    }
+  .gm-reader .invite-date span {
+    padding: 2px 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--danger);
   }
-  .cp-open {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+  .gm-reader .invite-date strong {
+    padding: 2px 0 4px;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 22px;
+  }
+  .gm-reader .mail-invite .invite-kicker {
+    color: var(--text-3);
+  }
+  /* "Join Google Meet": a text button with the video icon, not a full-width outlined button. */
+  .gm-reader .mail-invite .mi-join {
+    width: auto;
+    justify-self: start;
+    border: 0;
+    background: none;
+    padding: 0 4px;
     min-height: var(--tap);
-    padding: 0 10px;
-    border-radius: 22px;
-    font-size: 15px;
+    color: var(--accent-text);
     font-weight: 600;
-    text-align: left;
   }
-  .cp-open svg {
-    flex: none;
-    color: var(--accent);
-  }
-  .cp-open span {
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  .gm-todos {
+    text-decoration: none;
   }
 
-  /* ---------- Pickers as sheets ---------- */
+  /* Snooze (MailPickers.tsx): Gmail's centred dialog of tiles. */
+  .gm-dialog-scrim {
+    position: fixed;
+    inset: 0;
+    bottom: var(--kb, 0px);
+    z-index: var(--z-dialog);
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgb(0 0 0 / 0.32);
+    animation: gmFade 0.2s ease-out backwards;
+  }
+  .gm-dialog-scrim.is-leaving {
+    animation: gmFadeOut 0.15s ease-in forwards;
+  }
+  .gm-dialog-scrim.is-leaving .gm-dialog {
+    animation: gmPopOut 0.15s ease-in forwards;
+  }
+  .gm-dialog {
+    width: min(340px, calc(100vw - 32px));
+    max-height: calc(100dvh - var(--kb, 0px) - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 20px 16px 8px;
+    border-radius: 24px;
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    animation: gmPop 0.2s var(--ease) backwards;
+  }
+  @keyframes gmPopOut {
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+  @keyframes gmPop {
+    from {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+  }
+  .gm-dialog-title {
+    margin: 0 8px 12px;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .gm-tiles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .gm-tile {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 2px;
+    min-height: 104px;
+    padding: 8px;
+    border-radius: 16px;
+    text-align: center;
+    transition: background 0.15s;
+  }
+  .gm-tile:active,
+  .gm-tile.on {
+    background: var(--surface-2);
+  }
+  .gm-tile > svg {
+    margin-bottom: 6px;
+    color: var(--warn);
+  }
+  .gm-tile b {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .gm-tile small {
+    font-size: 14px;
+    color: var(--text-3);
+  }
+  .gm-tile-wide {
+    display: flex;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    min-height: 56px;
+    margin-top: 4px;
+    padding: 0 16px;
+  }
+  .gm-tile-wide > svg {
+    margin: 0;
+  }
+  .gm-tile-wide b {
+    flex: 1;
+    text-align: left;
+  }
+  .gm-tile-wide .rot-chev {
+    color: var(--text-3);
+  }
+  .gm-noreply {
+    margin-top: 4px;
+    border-top: 1px solid var(--line);
+  }
+  .gm-dialog-foot {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 4px;
+  }
+  .gm-dialog-foot .ghost-btn {
+    min-height: var(--tap);
+    font-weight: 600;
+    color: var(--accent-text);
+  }
+  .compose.phone .compose-field > span:first-child,
+  .compose.phone .recip-label {
+    min-width: 56px;
+    width: auto;
+    padding-right: 12px;
+    align-self: center;
+    line-height: 24px;
+  }
+  .compose.phone .compose-field .gm-fixed-value,
+  .compose.phone .recip .gm-fixed-value {
+    font-size: 16px;
+    color: var(--text);
+    flex: 1;
+    width: auto;
+    padding: 0;
+  }
+
+  /* ---------- Pickers ---------- */
 
   .mail-pick .as-item {
     min-height: 52px;
@@ -578,18 +1835,26 @@
 }
 
 @media (max-width: 767px) and (prefers-reduced-motion: reduce) {
-  .mail-bulk,
+  .gm-fade,
+  .gm-selall-btn,
+  .gm-dock-row,
+  .gm-dock-comment,
+  .gm-reader.enter-left,
+  .gm-reader.enter-right,
+  .mail-search.push-screen,
   .compose.phone,
-  .compose.compose-pill,
-  .quick-reply.sheet {
+  .gm-dialog-scrim,
+  .gm-dialog {
     animation: none;
     transition: none;
   }
   .compose.phone.closing,
-  .compose.compose-pill.closing {
+  .mail-search.push-screen.is-leaving {
     animation: s2gFadeOut 0.15s ease forwards;
   }
-  .reader-actions {
+  .gm-swipe-face,
+  .row-star,
+  .gm-star {
     transition: none;
   }
 }

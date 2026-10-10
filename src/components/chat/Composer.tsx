@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, AtSign, Bold, Camera, Check, ChevronDown, Code, FileText, HardDrive, Image as ImageIcon, Italic, List, Mic, Paperclip, Plus, Quote, Smile, SquareCheck, Strikethrough, Table2, Type, Video } from 'lucide-react';
+import { ArrowUp, AtSign, Bold, Camera, Check, ChevronDown, Code, FileText, HardDrive, Image as ImageIcon, Italic, Link2, List, ListOrdered, Mic, Paperclip, Plus, Quote, SendHorizontal, Smile, SquareCheck, SquareCode, Strikethrough, Table2, Type, Video } from 'lucide-react';
 import type { ChatFile, ChatMessage, DataTable, DriveItem, Note, TableRow, Todo, User } from '../../types';
 import { Avatar } from '../Avatar';
 import { Sheet } from '../ui/Sheet';
@@ -24,13 +24,17 @@ export interface Library {
 
 export type Outgoing = { text: string; sendAt?: string; files?: ChatFile[]; voice?: ChatMessage['voice']; taskId?: string; ref?: ChatMessage['ref'] };
 
+// Phones get Slack's whole Aa bar (link, numbered list, code block too); wider screens keep the short one.
 const FORMATS = [
   { id: 'bold', label: mark('Bold'), icon: Bold, wrap: '*' },
   { id: 'italic', label: mark('Italic'), icon: Italic, wrap: '_' },
   { id: 'strike', label: mark('Strikethrough'), icon: Strikethrough, wrap: '~' },
   { id: 'code', label: mark('Code'), icon: Code, wrap: '`' },
+  { id: 'link', label: mark('Link'), icon: Link2, put: 'https://', phone: true },
+  { id: 'numbered', label: mark('Numbered list'), icon: ListOrdered, line: '1. ', phone: true },
   { id: 'list', label: mark('List'), icon: List, line: '- ' },
   { id: 'quote', label: mark('Quote'), icon: Quote, line: '> ' },
+  { id: 'block', label: mark('Code block'), icon: SquareCode, fence: '```', phone: true },
 ] as const;
 
 const rowName = (r: TableRow, tb?: DataTable) => {
@@ -77,6 +81,7 @@ export function Composer(p: {
   const photos = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const [fmt, setFmt] = useState(false);
+  const [tall, setTall] = useState(false); // phones: the box dragged up by its handle
   const [sheet, setSheet] = useState<null | 'plus' | 'emoji' | 'later' | 'task' | 'note' | 'table' | 'drive'>(null);
   const [table, setTable] = useState<DataTable | null>(null);
   const [caret, setCaret] = useState(0);
@@ -100,8 +105,8 @@ export function Composer(p: {
     const el = input.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, phone ? 140 : 180)}px`;
-  }, [text, phone]);
+    el.style.height = tall ? `${Math.round(window.innerHeight * 0.45)}px` : `${Math.min(el.scrollHeight, phone ? 140 : 180)}px`;
+  }, [text, phone, tall]);
 
   useEffect(() => {
     if (p.autoFocus && !phone) input.current?.focus();
@@ -151,6 +156,16 @@ export function Composer(p: {
     if (!el) return;
     const a = el.selectionStart;
     const b = el.selectionEnd;
+    if ('put' in f) return insert(f.put);
+    if ('fence' in f) {
+      const sel = text.slice(a, b);
+      const lead = a > 0 && text[a - 1] !== '\n' ? '\n' : '';
+      const next = `${text.slice(0, a)}${lead}${f.fence}\n${sel}\n${f.fence}${text.slice(b)}`;
+      setText(next);
+      const at = a + lead.length + f.fence.length + 1 + sel.length;
+      requestAnimationFrame(() => (el.focus(), el.setSelectionRange(at, at)));
+      return;
+    }
     if ('wrap' in f) {
       const sel = text.slice(a, b) || '';
       const next = text.slice(0, a) + f.wrap + sel + f.wrap + text.slice(b);
@@ -161,8 +176,9 @@ export function Composer(p: {
       const start = text.lastIndexOf('\n', a - 1) + 1;
       const end = text.indexOf('\n', b) === -1 ? text.length : text.indexOf('\n', b);
       const lines = text.slice(start, end).split('\n');
-      const all = lines.every((l) => l.startsWith(f.line));
-      const body = lines.map((l) => (all ? l.slice(f.line.length) : f.line + l)).join('\n');
+      const numbered = f.id === 'numbered';
+      const all = lines.every((l) => (numbered ? /^\d+\.\s/.test(l) : l.startsWith(f.line)));
+      const body = lines.map((l, i) => (all ? l.replace(numbered ? /^\d+\.\s/ : f.line, '') : (numbered ? `${i + 1}. ` : f.line) + l)).join('\n');
       setText(text.slice(0, start) + body + text.slice(end));
       requestAnimationFrame(() => (el.focus(), el.setSelectionRange(start + body.length, start + body.length)));
     }
@@ -186,6 +202,7 @@ export function Composer(p: {
     draft.sent();
     setText('');
     setFmt(false);
+    setTall(false);
   };
   const sendFiles = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -235,8 +252,23 @@ export function Composer(p: {
   const keep = (e: React.PointerEvent | React.MouseEvent) => e.preventDefault(); // tools don't take the focus (the keyboard stays up)
   const lib = p.library;
 
+  // Phones: drag the handle up for a taller box (Slack), down to bring it back.
+  const grab = (e: React.PointerEvent) => {
+    const y0 = e.clientY;
+    const move = (ev: PointerEvent) => {
+      if (ev.clientY < y0 - 24) setTall(true);
+      else if (ev.clientY > y0 + 24) setTall(false);
+    };
+    const up = () => (window.removeEventListener('pointermove', move), window.removeEventListener('pointerup', up));
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const formats = FORMATS.filter((f) => phone || !('phone' in f));
+  const sendLabel = p.canSchedule ? t('Send (hold to send later)') : t('Send');
+
   return (
-    <div className={`composer${phone ? ' is-phone' : ''}${p.editing ? ' is-editing' : ''} ${p.className ?? ''}`}>
+    <div className={`composer${phone ? ' is-phone' : ''}${p.editing ? ' is-editing' : ''}${tall ? ' is-tall' : ''} ${p.className ?? ''}`}>
+      {phone && <div className="cmp-grab" onPointerDown={grab} onClick={() => setTall((v) => !v)} role="button" tabIndex={-1} aria-label={tall ? t('Make the message box smaller') : t('Make the message box bigger')} />}
       {p.editing && (
         <div className="cmp-editing">
           <span>{t('Editing your message')}</span>
@@ -249,7 +281,7 @@ export function Composer(p: {
         <div className="mention-pop" role="listbox" aria-label={suggestions.length ? t('People') : t('Commands')}>
           {suggestions.map((u) => (
             <button key={u.id} type="button" role="option" aria-selected={false} onPointerDown={keep} onClick={() => pickMention(u)}>
-              <Avatar person={u} size={22} /> {u.name}
+              <Avatar person={u} size={phone ? 28 : 22} /> {u.name}
             </button>
           ))}
           {slash.map((c) => (
@@ -262,9 +294,9 @@ export function Composer(p: {
       <div className={`fold cmp-fmt-fold${fmt ? ' open' : ''}`} aria-hidden={!fmt}>
         <div>
           <div className="cmp-fmt" role="toolbar" aria-label={t('Formatting')}>
-            {FORMATS.map((f) => (
+            {formats.map((f) => (
               <button key={f.id} type="button" className="icon-btn" tabIndex={fmt ? 0 : -1} onPointerDown={keep} onClick={() => format(f)} aria-label={t(f.label)} title={t(f.label)}>
-                <f.icon size={17} />
+                <f.icon size={phone ? 20 : 17} />
               </button>
             ))}
           </div>
@@ -317,28 +349,44 @@ export function Composer(p: {
             placeholder={p.placeholder}
           />
         )}
-        {!rec && p.also && (
-          <label className="cmp-also">
-            <button type="button" role="switch" aria-checked={p.also.on} className={`switch sm ${p.also.on ? 'on' : ''}`} onClick={() => p.also!.set(!p.also!.on)}>
-              <span />
+        {!rec &&
+          p.also &&
+          (phone ? (
+            // Slack: a checkbox on its own row under the field.
+            <button type="button" role="checkbox" aria-checked={p.also.on} className={`cmp-also is-check${p.also.on ? ' on' : ''}`} onPointerDown={keep} onClick={() => p.also!.set(!p.also!.on)}>
+              <span className="cmp-check" aria-hidden>
+                <Check size={14} />
+              </span>
+              <span>{p.also.label}</span>
             </button>
-            <span>{p.also.label}</span>
-          </label>
-        )}
+          ) : (
+            <label className="cmp-also">
+              <button type="button" role="switch" aria-checked={p.also.on} className={`switch sm ${p.also.on ? 'on' : ''}`} onClick={() => p.also!.set(!p.also!.on)}>
+                <span />
+              </button>
+              <span>{p.also.label}</span>
+            </label>
+          ))}
         {!rec && (
           <div className="cmp-tools">
             <button ref={plusBtn} type="button" className={`icon-btn cmp-plus${sheet === 'plus' ? ' on' : ''}`} onClick={() => setSheet('plus')} aria-label={t('Add: photos, files, a voice clip, or something from sprint2go')} title={t('Add')}>
-              <Plus size={19} />
+              {phone ? (
+                <span className="cmp-plus-ring">
+                  <Plus size={20} />
+                </span>
+              ) : (
+                <Plus size={19} />
+              )}
             </button>
-            <button type="button" className={`icon-btn${fmt ? ' on' : ''}`} onPointerDown={keep} onClick={() => setFmt((f) => !f)} aria-label={t('Formatting')} aria-pressed={fmt} title={t('Formatting')}>
-              <Type size={18} />
+            <button type="button" className={`icon-btn cmp-aa${fmt ? ' on' : ''}`} onPointerDown={keep} onClick={() => setFmt((f) => !f)} aria-label={t('Formatting')} aria-pressed={fmt} title={t('Formatting')}>
+              {phone ? <span className="cmp-aa-text">Aa</span> : <Type size={18} />}
             </button>
             <button ref={emojiBtn} type="button" className="icon-btn" onPointerDown={phone ? undefined : keep} onClick={() => setSheet('emoji')} aria-label={t('Emoji')} title={t('Emoji')}>
-              <Smile size={18} />
+              <Smile size={phone ? 21 : 18} />
             </button>
             {!p.guest && (
               <button type="button" className="icon-btn" onPointerDown={keep} onClick={() => insert(text && !/\s$/.test(text.slice(0, input.current?.selectionStart ?? text.length)) ? ' @' : '@')} aria-label={t('Mention someone')} title={t('Mention someone')}>
-                <AtSign size={18} />
+                <AtSign size={phone ? 21 : 18} />
               </button>
             )}
             <span className="spacer" />
@@ -347,12 +395,24 @@ export function Composer(p: {
               <button ref={sendBtn} type="button" className="ai-send chat-send" onClick={() => send()} aria-label={t('Save the change')} disabled={!can}>
                 <Check size={17} />
               </button>
+            ) : phone ? (
+              // Slack's split Send: send on the left, "Schedule for later" on the right; grey until there's something to send.
+              <span className={`cmp-split${can ? ' ready' : ''}${p.canSchedule ? '' : ' single'}`}>
+                <button ref={sendBtn} type="button" className="cmp-split-send lp" {...holdSend} onClick={() => send()} aria-label={sendLabel} disabled={!can}>
+                  <SendHorizontal size={18} />
+                </button>
+                {p.canSchedule && (
+                  <button type="button" className="cmp-split-later" onPointerDown={keep} onClick={() => setSheet('later')} disabled={!can} aria-label={t('Schedule for later')} title={t('Schedule for later')}>
+                    <ChevronDown size={16} />
+                  </button>
+                )}
+              </span>
             ) : can || p.guest || p.also ? (
               <span className="cmp-send">
-                <button ref={sendBtn} type="button" className="ai-send chat-send lp" {...holdSend} onClick={() => send()} aria-label={p.canSchedule ? t('Send (hold to send later)') : t('Send')} title={p.canSchedule && phone ? t('Hold to send later') : t('Send')} disabled={!can}>
+                <button ref={sendBtn} type="button" className="ai-send chat-send lp" {...holdSend} onClick={() => send()} aria-label={sendLabel} title={t('Send')} disabled={!can}>
                   <ArrowUp size={17} />
                 </button>
-                {p.canSchedule && !phone && (
+                {p.canSchedule && (
                   <button type="button" className="cmp-later" onClick={() => setSheet('later')} disabled={!can} aria-label={t('Send later')} title={t('Send later')}>
                     <ChevronDown size={14} />
                   </button>
@@ -373,63 +433,63 @@ export function Composer(p: {
 
       {sheet === 'plus' && (
         <Sheet title={t('Add to message')} onClose={() => setSheet(null)} className="plus-sheet">
-          <div className="plus-tiles">
-            <button type="button" onClick={() => (setSheet(null), photos.current?.click())}>
-              <ImageIcon size={22} />
-              <span>{t('Photos')}</span>
+          <div className="as-list">
+            <button type="button" className="as-item" onClick={() => (setSheet(null), photos.current?.click())}>
+              <ImageIcon size={18} className="as-icon" />
+              <span className="as-label">{t('Photos')}</span>
             </button>
-            <button type="button" onClick={() => (setSheet(null), camera.current?.click())}>
-              <Camera size={22} />
-              <span>{t('Camera')}</span>
+            <button type="button" className="as-item" onClick={() => (setSheet(null), camera.current?.click())}>
+              <Camera size={18} className="as-icon" />
+              <span className="as-label">{t('Camera')}</span>
             </button>
-            <button type="button" onClick={() => (setSheet(null), files.current?.click())}>
-              <Paperclip size={22} />
-              <span>{t('File')}</span>
+            <button type="button" className="as-item" onClick={() => (setSheet(null), files.current?.click())}>
+              <Paperclip size={18} className="as-icon" />
+              <span className="as-label">{t('File')}</span>
             </button>
             {!p.guest && (
-              <button type="button" onClick={startRec}>
-                <Mic size={22} />
-                <span>{t('Voice clip')}</span>
+              <button type="button" className="as-item" onClick={startRec}>
+                <Mic size={18} className="as-icon" />
+                <span className="as-label">{t('Voice clip')}</span>
               </button>
             )}
+            {lib && !p.guest && (
+              <>
+                <div className="as-sep" role="separator" />
+                <div className="as-group">{t('From sprint2go')}</div>
+                <button type="button" className="as-item" onClick={() => setSheet('task')}>
+                  <SquareCheck size={18} className="as-icon" />
+                  <span className="as-label">
+                    {t('A task')}
+                    <small>{text.trim() ? t('Make one from what you typed, or share one') : t('Share one with its stage and who’s on it')}</small>
+                  </span>
+                </button>
+                <button type="button" className="as-item" onClick={() => setSheet('note')}>
+                  <FileText size={18} className="as-icon" />
+                  <span className="as-label">{t('A note')}</span>
+                </button>
+                <button type="button" className="as-item" onClick={() => (setTable(null), setSheet('table'))}>
+                  <Table2 size={18} className="as-icon" />
+                  <span className="as-label">{t('A table row')}</span>
+                </button>
+                <button type="button" className="as-item" onClick={() => setSheet('drive')}>
+                  <HardDrive size={18} className="as-icon" />
+                  <span className="as-label">{t('A Drive file')}</span>
+                </button>
+                {p.onKudos && (
+                  <button type="button" className="as-item" onClick={() => (setSheet(null), p.onKudos!())}>
+                    <span className="as-icon emoji-icon">🙌</span>
+                    <span className="as-label">{t('Give kudos')}</span>
+                  </button>
+                )}
+                {p.onMeetLink && (
+                  <button type="button" className="as-item" onClick={() => (setSheet(null), p.onMeetLink!())}>
+                    <Video size={18} className="as-icon" />
+                    <span className="as-label">{t('Share the meeting link')}</span>
+                  </button>
+                )}
+              </>
+            )}
           </div>
-          {lib && !p.guest && (
-            <div className="as-list">
-              <div className="as-group">{t('From sprint2go')}</div>
-              <button type="button" className="as-item" onClick={() => setSheet('task')}>
-                <SquareCheck size={18} className="as-icon" />
-                <span className="as-label">
-                  {t('A task')}
-                  <small>{text.trim() ? t('Make one from what you typed, or share one') : t('Share one with its stage and who’s on it')}</small>
-                </span>
-              </button>
-              <button type="button" className="as-item" onClick={() => setSheet('note')}>
-                <FileText size={18} className="as-icon" />
-                <span className="as-label">{t('A note')}</span>
-              </button>
-              <button type="button" className="as-item" onClick={() => (setTable(null), setSheet('table'))}>
-                <Table2 size={18} className="as-icon" />
-                <span className="as-label">{t('A table row')}</span>
-              </button>
-              <button type="button" className="as-item" onClick={() => setSheet('drive')}>
-                <HardDrive size={18} className="as-icon" />
-                <span className="as-label">{t('A Drive file')}</span>
-              </button>
-              {(p.onKudos || p.onMeetLink) && <div className="as-sep" role="separator" />}
-              {p.onKudos && (
-                <button type="button" className="as-item" onClick={() => (setSheet(null), p.onKudos!())}>
-                  <span className="as-icon emoji-icon">🙌</span>
-                  <span className="as-label">{t('Give kudos')}</span>
-                </button>
-              )}
-              {p.onMeetLink && (
-                <button type="button" className="as-item" onClick={() => (setSheet(null), p.onMeetLink!())}>
-                  <Video size={18} className="as-icon" />
-                  <span className="as-label">{t('Share the meeting link')}</span>
-                </button>
-              )}
-            </div>
-          )}
         </Sheet>
       )}
       {sheet === 'emoji' &&
@@ -442,7 +502,7 @@ export function Composer(p: {
         ))}
       {sheet === 'later' && (
         <WhenSheet
-          title={t('Send later')}
+          title={phone ? t('Schedule message') : t('Send later')}
           kind="send"
           note={<p className="when-note">{t('“{text}” waits until then. Only you see it before it goes; you can change it in Drafts and sent.', { text: text.trim().slice(0, 80) })}</p>}
           onPick={(at) => send({ sendAt: at })}

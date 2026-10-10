@@ -26,7 +26,10 @@ import {
   Mail,
   MailMinus,
   MoreHorizontal,
+  MoreVertical,
+  MessageSquare,
   Reply,
+  ReplyAll,
   RotateCcw,
   Send,
   ShieldAlert,
@@ -35,6 +38,10 @@ import {
   Star,
   Trash2,
   UserPlus,
+  X,
+  Download,
+  Share2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import type { CalEvent, Message, Person, Thread, User, Client } from '../types';
 import { fmtTimeRange } from '../calendarUtils';
@@ -50,7 +57,7 @@ import { ai, type Summary } from '../ai';
 import type { Todo } from '../types';
 import type { Attachment } from '../types';
 import { PushScreen } from './ui/PushScreen';
-import { ActionSheet, type SheetAction } from './ui/ActionSheet';
+import { ActionSheet, useActionMenu, type SheetAction } from './ui/ActionSheet';
 import { usePhone } from '../mobile/media';
 import { AssignPicker, SnoozePicker, type PresenceOf } from './mail/MailPickers';
 import { CommentBox, MailComment } from './mail/Comments';
@@ -88,7 +95,7 @@ interface Props {
   onStar: (id: string) => void;
   onMarkUnread: (id: string) => void;
   /** `track`: the reply box's tracking switch was on (only offered when the company allows it, for outside people). */
-  onReply: (id: string, html: string, text: string, track: boolean) => void;
+  onReply: (id: string, html: string, text: string, track: boolean, all?: boolean) => void;
   onForward: (t: Thread) => void;
   /** Read tracking is offered (the company hasn't switched it off), and whether it starts on (Settings, Mail). */
   canTrack?: boolean;
@@ -152,6 +159,12 @@ export function Reader(props: Props) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [commenting, setCommenting] = useState(false);
+  const [replyAll, setReplyAll] = useState(false); // phones: the reply screen answers everyone
+  const [details, setDetails] = useState<Set<string>>(new Set()); // phones: "to me ▾" opened on these messages
+  const [msgMenu, setMsgMenu] = useState<{ m: Message; anchor: React.RefObject<HTMLElement | null> } | null>(null);
+  const msgMenuBtn = useRef<HTMLElement | null>(null);
+  const swipeBox = useRef<HTMLDivElement>(null);
+  const [enterFrom, setEnterFrom] = useState<'' | 'left' | 'right'>(''); // the next or previous email slides in from that side
   const [, setDraftTick] = useState(0);
   const snoozeBtn = useRef<HTMLButtonElement>(null);
   const assignBtn = useRef<HTMLButtonElement>(null);
@@ -170,6 +183,9 @@ export function Reader(props: Props) {
     setReplyInitial(null);
     setReplyTrack(null);
     setCommenting(false);
+    setReplyAll(false);
+    setDetails(new Set());
+    setMsgMenu(null);
     // AI answers are saved per message: opening the email again never pays twice.
     const key = thread.messages[thread.messages.length - 1].id;
     setSummary(AI_CACHE.summary.get(key) ?? null);
@@ -219,10 +235,10 @@ export function Reader(props: Props) {
   };
 
   /** Reply: the half-height sheet on phones (opened in the tap, so the keyboard comes up), the box below on desktop. */
-  const startReply = (initial?: string) => {
+  const startReply = (initial?: string, all = false) => {
     if (props.replyOff) return props.onReplyOff?.();
     if (initial !== undefined) setReplyInitial(initial);
-    if (phone) flushSync(() => setReplyOpen(true));
+    if (phone) flushSync(() => (setReplyAll(all), setReplyOpen(true)));
     else {
       setReplyOpen(true);
       requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
@@ -239,6 +255,80 @@ export function Reader(props: Props) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [thread, props.replyOff, phone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phones: swipe the email sideways for the next or previous one (Gmail). Starts away from the left edge, where the
+  // swipe means Back; follows the finger and goes past 30% of the width.
+  const goRef = useRef({ prev: props.prevId, next: props.nextId, go: props.onGo });
+  goRef.current = { prev: props.prevId, next: props.nextId, go: props.onGo };
+  useEffect(() => {
+    const el = swipeBox.current;
+    if (!phone || !el) return;
+    let x0 = 0;
+    let y0 = 0;
+    let dx = 0;
+    let state: '' | 'maybe' | 'drag' = '';
+    const start = (e: TouchEvent) => {
+      const p = e.touches[0];
+      state = e.touches.length === 1 && p.clientX > 24 && !(e.target as Element).closest('.smart-replies, .gm-chiprow, pre, .prose table, input, textarea, [contenteditable]') ? 'maybe' : '';
+      x0 = p.clientX;
+      y0 = p.clientY;
+      dx = 0;
+    };
+    const move = (e: TouchEvent) => {
+      if (!state) return;
+      const p = e.touches[0];
+      const ddx = p.clientX - x0;
+      if (state === 'maybe') {
+        if (Math.abs(p.clientY - y0) > 10) return void (state = '');
+        if (Math.abs(ddx) < 14) return;
+        state = 'drag';
+      }
+      const { prev, next } = goRef.current;
+      dx = ddx > 0 ? (prev ? ddx : ddx / 4) : next ? ddx : ddx / 4; // nothing that way: it gives a little, then springs back
+      if (e.cancelable) e.preventDefault();
+      el.style.transition = 'none';
+      el.style.transform = `translateX(${dx}px)`;
+    };
+    const end = () => {
+      if (state !== 'drag') return void (state = '');
+      state = '';
+      const { prev, next, go } = goRef.current;
+      const to = dx > el.offsetWidth * 0.3 ? prev : dx < -el.offsetWidth * 0.3 ? next : undefined;
+      if (to) {
+        el.style.transition = 'transform 0.18s cubic-bezier(0.4, 0, 1, 1)';
+        el.style.transform = `translateX(${dx > 0 ? '100%' : '-100%'})`;
+        setTimeout(() => {
+          el.style.transition = 'none';
+          el.style.transform = '';
+          setEnterFrom(dx > 0 ? 'left' : 'right');
+          go(to);
+        }, 180);
+      } else {
+        el.style.transition = 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        el.style.transform = '';
+      }
+    };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => {
+      el.removeEventListener('touchstart', start);
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('touchcancel', end);
+    };
+  }, [phone, props.open, !!thread]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phones: a conversation opens at its latest message (Gmail), its header just under the top bar.
+  useEffect(() => {
+    if (!phone || !props.open || !thread || thread.messages.length < 2) return;
+    const id = requestAnimationFrame(() => {
+      const all = document.querySelectorAll<HTMLElement>('.mail-reader:not(.is-leaving) .gm-msg.open');
+      all[all.length - 1]?.scrollIntoView({ block: 'start' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [phone, props.open, thread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Teammates on this conversation: who wrote or was written to, who commented, who handles it.
   const onThread = useMemo(() => {
@@ -697,67 +787,414 @@ export function Reader(props: Props) {
   );
 
   if (phone) {
+    // Gmail's reader: back and the actions at the top; the subject with its star and chips; each message with Reply and
+    // ⋮ in its header; Reply, Reply all, Forward (and Comment for team mail) docked at the bottom.
+    const others = [last.from, ...last.to].filter((p, i, l) => !isMine(p.email) && l.findIndex((q) => q.email.toLowerCase() === p.email.toLowerCase()) === i);
+    const canAll = others.length > 1;
     const PrimaryIcon = primary?.icon;
-    return (
-      <PushScreen
-        title=""
-        backLabel={props.backLabel}
-        onBack={props.onBack}
-        className="mail-reader"
-        actions={
-          <>
-            {avatars && (props.shared ? <button type="button" className="rp-btn" onClick={() => setAssignOpen(true)} aria-label={t('Who handles this')}>{avatars}</button> : avatars)}
-            {nav}
-          </>
-        }
-        footer={
-          <div className={`reader-foot${commenting ? ' commenting' : ''}`}>
-            {props.team && <CommentBox bar people={people.filter((u) => u.id !== props.meUser.id)} onPost={(text) => props.onComment(thread.id, text)} onFocusChange={setCommenting} />}
-            <nav className="reader-actions" aria-label={t('Actions for this email')}>
-              {primary && PrimaryIcon && (
-                <button type="button" onClick={primary.run}>
-                  <PrimaryIcon size={21} />
-                  <span>{primary.label}</span>
-                </button>
-              )}
-              <button type="button" className={props.replyOff ? 'off' : ''} aria-disabled={props.replyOff ? true : undefined} onClick={() => startReply()}>
-                <span className="ra-icon">
-                  <Reply size={21} />
-                  {draft && <i className="ra-dot" aria-label={t('Draft')} />}
+    const openTodos = props.todos.filter((td) => !td.done).length;
+    const incomingLast = [...thread.messages].reverse().find((m) => !isMine(m.from.email));
+    const phoneMore = (): SheetAction[] => [
+      ...(thread.location !== 'drafts' && thread.location !== 'trash' ? [{ label: t('Snooze'), icon: Clock, run: () => setSnoozeOpen(true) }] : []),
+      ...(props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, run: () => setAssignOpen(true) }] : []),
+      ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
+      ...(thread.invite && !props.inviteAdded ? [{ label: t('Add to calendar'), icon: CalendarPlus, run: () => props.onAddInvite(thread.id) }] : []),
+      ...(incoming ? [{ label: t('Block {name}', { name: incoming.from.name || incoming.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
+      ...(thread.location !== 'spam' ? [{ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
+    ];
+    const messageMore = (m: Message): SheetAction[] => [
+      ...(canAll ? [{ label: t('Reply all'), icon: ReplyAll, disabled: !!props.replyOff, run: () => startReply(undefined, true) }] : []),
+      { label: t('Forward'), icon: Forward, disabled: !!props.replyOff, run: () => props.onForward(thread) },
+      { label: t('Mark as unread'), icon: Mail, run: () => props.onMarkUnread(thread.id) },
+      ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
+      ...(!isMine(m.from.email) ? [{ label: t('Block {name}', { name: m.from.name || m.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
+    ];
+    const toWords = (m: Message) => {
+      const names = m.to.map((p) => (isMine(p.email) ? t('me') : p.name || p.email));
+      return names.length > 2 ? t('to {names} and {n} more', { names: names.slice(0, 2).join(', '), n: names.length - 2 }) : t('to {names}', { names: names.join(', ') });
+    };
+    const isLatest = (m: Message) => m.id === last.id;
+
+    const phoneMessage = (m: Message) => {
+      const open = expanded.has(m.id);
+      const who = isMine(m.from.email) ? t('You') : m.from.name || m.from.email;
+      if (!open)
+        return (
+          <article key={m.id} className="message gm-msg">
+            <button type="button" className="gm-msg-collapsed" onClick={() => toggle(m.id)} aria-expanded={false}>
+              <Avatar person={m.from} size={40} />
+              <span className="gm-msg-lines">
+                <span className="gm-msg-l1">
+                  <strong>{who}</strong>
+                  <time title={fullDate(m.date)}>{relative(m.date)}</time>
                 </span>
-                <span>{draft ? t('Draft') : t('Reply')}</span>
+                <span className="gm-msg-snip">{snippet(m.body)}</span>
+              </span>
+            </button>
+          </article>
+        );
+      const showDetails = details.has(m.id);
+      return (
+        <article key={m.id} className="message gm-msg open">
+          <div className="gm-msg-head">
+            <button type="button" className="gm-msg-av" onClick={() => toggle(m.id)} aria-label={t('Fold this message')} tabIndex={-1}>
+              <Avatar person={m.from} size={40} />
+            </button>
+            <button type="button" className="gm-msg-name" onClick={() => toggle(m.id)} aria-expanded>
+              <strong>{who}</strong>
+              <time title={fullDate(m.date)}>{relative(m.date)}</time>
+            </button>
+            <button type="button" className="gm-msg-to" onClick={() => setDetails((d) => (d.has(m.id) ? new Set([...d].filter((x) => x !== m.id)) : new Set([...d, m.id])))} aria-expanded={showDetails}>
+              <span>{toWords(m)}</span>
+              <ChevronDown size={14} className={`rot-chev${showDetails ? ' open' : ''}`} />
+            </button>
+            <span className="gm-msg-acts">
+              <button type="button" className="gm-icon" onClick={() => startReply()} aria-label={t('Reply')} title={t('Reply')}>
+                <Reply size={20} />
               </button>
-              {thread.location !== 'drafts' && thread.location !== 'trash' && (
-                <button type="button" onClick={() => setSnoozeOpen(true)}>
-                  <Clock size={21} />
-                  <span>{t('Snooze')}</span>
+              <button
+                type="button"
+                className="gm-icon"
+                onClick={(e) => {
+                  msgMenuBtn.current = e.currentTarget;
+                  setMsgMenu({ m, anchor: msgMenuBtn });
+                }}
+                aria-label={t('More for this message')}
+                title={t('More')}
+              >
+                <MoreVertical size={20} />
+              </button>
+            </span>
+          </div>
+          <SmoothHeight>
+            {showDetails && (
+              <dl className="gm-msg-details">
+                <dt>{tx('mail', 'From')}</dt>
+                <dd>
+                  {m.from.name} <span>{m.from.email}</span>
+                </dd>
+                <dt>{t('To')}</dt>
+                <dd>{m.to.map((p) => `${p.name ? p.name + ' ' : ''}<${p.email}>`).join(', ')}</dd>
+                {m.bcc?.length ? (
+                  <>
+                    <dt>Bcc</dt>
+                    <dd>{m.bcc.map((p) => p.email).join(', ')}</dd>
+                  </>
+                ) : null}
+                <dt>{t('Date')}</dt>
+                <dd>{fullDate(m.date)}</dd>
+              </dl>
+            )}
+          </SmoothHeight>
+          {m.delivery && (
+            <div className={`delivery-note ${m.delivery.state}`}>
+              {m.delivery.state === 'held' ? <Clock size={14} /> : m.delivery.state === 'sending' ? <Loader2 size={14} className="spin" /> : m.delivery.state === 'sent' ? <Check size={14} /> : m.delivery.state === 'local' ? <Laptop size={14} /> : <AlertTriangle size={14} />}{' '}
+              <span>
+                {m.delivery.state === 'held'
+                  ? t('Goes out in a few seconds (Undo is still possible)')
+                  : m.delivery.state === 'sending'
+                    ? t('Sending…')
+                    : m.delivery.state === 'sent'
+                      ? t('Delivered {when}', { when: relative(m.delivery.at) })
+                      : m.delivery.state === 'local'
+                        ? t('Held on this computer: a local sprint2go doesn’t send mail to outside addresses.')
+                        : t('Could not be delivered: {why}', { why: m.delivery.error ?? t('the receiving server refused it') })}
+              </span>
+            </div>
+          )}
+          {props.blockTrackers && m.trackersBlocked ? (
+            <div className="blocked-note">
+              <ShieldCheck size={14} /> {tn(m.trackersBlocked, 'Blocked {n} tracker, so the sender can’t see when you read this', 'Blocked {n} trackers, so the sender can’t see when you read this')}
+            </div>
+          ) : null}
+          <div className="message-body">
+            {/* Cards that belong to this message sit inside it, above its words (Gmail). */}
+            {isList && incomingLast?.id === m.id && listBanner}
+            {isLatest(m) && proposed}
+            {m.invite && props.inviteCard && <div className="mi-wrap">{props.inviteCard(m)}</div>}
+            <CodeCard text={`${thread.subject}\n${m.body}`} />
+            {m.html ? <div className="prose" dangerouslySetInnerHTML={{ __html: sanitize(m.html) }} /> : m.body.split('\n\n').map((para, i) => <p key={i}>{para}</p>)}
+            {m.attachments && m.attachments.length > 0 && (
+              <div className="gm-atts">
+                {m.attachments.length > 2 && (
+                  <div className="gm-atts-head">
+                    <span>{tn(m.attachments.length, '{n} attachment', '{n} attachments')}</span>
+                    {m.attachments.some((a) => !props.savedToDrive(a.name)) && (
+                      <button type="button" className="link-btn" onClick={() => m.attachments!.forEach((a) => !props.savedToDrive(a.name) && props.onSaveToDrive(thread.id, a))}>
+                        {t('Save all to Drive')}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="gm-att-row">
+                  {m.attachments.map((a) => (
+                    <AttachmentCard key={a.name} a={a} saved={props.savedToDrive(a.name)} onSave={() => props.onSaveToDrive(thread.id, a)} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {m.tracking && <TrackingPanel thread={thread} message={m} />}
+          </div>
+        </article>
+      );
+    };
+
+    const listBanner =
+      isList && incoming
+        ? (() => {
+            const stillSending = props.unsubscribedAt && incoming.date > props.unsubscribedAt;
+            return (
+              <div className={`list-banner ${stillSending ? 'warn' : ''}`}>
+                <MailMinus size={16} />
+                <span>
+                  {stillSending
+                    ? t('{name} is still emailing you after you unsubscribed.', { name: incoming.from.name })
+                    : props.unsubscribedAt
+                      ? t('You unsubscribed from {name} {when}.', { name: incoming.from.name, when: relative(props.unsubscribedAt) })
+                      : t('Mailing list from {name}', { name: incoming.from.name })}
+                </span>
+                {!props.unsubscribedAt && (
+                  <button className="link-btn" onClick={() => props.onUnsubscribe(thread)}>
+                    {t('Unsubscribe')}
+                  </button>
+                )}
+              </div>
+            );
+          })()
+        : null;
+    // A meeting proposed in the text (not a calendar invite): Gmail's quiet card with an outlined Add to calendar.
+    const proposed = thread.invite ? (
+      <div className={`invite gm-invite ${props.inviteAdded ? 'added' : ''}`}>
+        <div className="invite-date">
+          <span>{fmtDate(thread.invite.start, { month: 'short' })}</span>
+          <strong>{new Date(thread.invite.start).getDate()}</strong>
+        </div>
+        <div className="invite-info">
+          <div className="invite-title">{thread.invite.title}</div>
+          <div className="invite-when">
+            {fmtDate(thread.invite.start, { weekday: 'long' })} · {fmtTimeRange(thread.invite.start, thread.invite.end)}
+            {thread.invite.location && ` · ${thread.invite.location}`}
+          </div>
+          <div className={`invite-status ${props.inviteConflicts.length && !props.inviteAdded ? 'warn' : ''}`}>
+            {props.inviteAdded ? t('On your calendar') : props.inviteConflicts.length ? t('Overlaps with “{title}”', { title: props.inviteConflicts[0].title }) : t('You’re free at this time')}
+          </div>
+          {props.inviteAdded ? (
+            <span className="invite-done">
+              <CalendarCheck size={16} /> {t('Added')}
+            </span>
+          ) : (
+            <button type="button" className="gm-pill" onClick={() => props.onAddInvite(thread.id)}>
+              <CalendarPlus size={18} /> {t('Add to calendar')}
+            </button>
+          )}
+        </div>
+      </div>
+    ) : null;
+
+    const phoneContent = (
+      <div className={`reader-scroll gm-reader${enterFrom ? ` enter-${enterFrom}` : ''}`} key={thread.id} onAnimationEnd={() => setEnterFrom('')}>
+        <div className="reader-in">
+          <div className="gm-subject">
+            <h2>
+              <span>{thread.subject}</span>
+              {props.client && (
+                <button type="button" className="gm-tag gm-tag-btn" style={{ ['--c' as string]: props.client.color }} onClick={() => props.onClient?.(props.client!.id)} title={t('Open the {project} page', { project: term.one })}>
+                  {props.client.name}
                 </button>
               )}
               {props.shared && (
-                <button type="button" onClick={() => setAssignOpen(true)}>
-                  {assignee ? <Avatar person={assignee} size={22} /> : <UserPlus size={21} />}
-                  <span>{t('Assign')}</span>
+                <button type="button" className={`gm-tag gm-tag-btn gm-who${assignee ? ' on' : ''}`} onClick={() => setAssignOpen(true)} aria-label={t('Who handles this')}>
+                  {assignee ? <Avatar person={assignee} size={16} /> : <UserPlus size={12} />}
+                  {assignee ? (assignee.id === props.meUser.id ? t('You') : assignee.name.split(' ')[0]) : t('Assign')}
                 </button>
               )}
-              <button type="button" onClick={() => setMoreOpen(true)}>
-                <MoreHorizontal size={21} />
-                <span>{t('More')}</span>
+              {snoozed && (
+                <span className="gm-tag gm-snoozed">
+                  <Clock size={12} /> {thread.snoozeIfNoReply ? t('Back {when} if nobody replies', { when: whenWords(new Date(thread.snoozedUntil!)) }) : t('Back {when}', { when: whenWords(new Date(thread.snoozedUntil!)) })}
+                </span>
+              )}
+            </h2>
+            <button type="button" className={`gm-star${thread.starred ? ' on' : ''}`} onClick={() => props.onStar(thread.id)} aria-pressed={thread.starred} aria-label={thread.starred ? t('Unstar') : t('Star')}>
+              <Star size={22} />
+            </button>
+          </div>
+
+          {props.aiOn && (
+            <div className="gm-chiprow">
+              <button type="button" className={`gm-ai${summary && summary !== 'loading' ? ' has' : ''}`} onClick={summarize} aria-expanded={summary && summary !== 'loading' ? summaryOpen : undefined}>
+                {summary === 'loading' ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                {summary === 'loading' ? t('Reading…') : summary ? t('Summary') : t('Summarize')}
+                {summary && summary !== 'loading' && <ChevronDown size={14} className={`rot-chev${summaryOpen ? ' open' : ''}`} />}
               </button>
-            </nav>
+            </div>
+          )}
+          <SmoothHeight>
+            {summary && summary !== 'loading' && summaryOpen && (
+              <div className="ai-summary">
+                <p>{summary.summary}</p>
+                {summary.asks.length > 0 && (
+                  <>
+                    <div className="ais-label">{t('They’re asking you to')}</div>
+                    <ul>
+                      {summary.asks.map((a) => (
+                        <li key={a}>{a}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {props.todos.length > 0 && (
+                  <>
+                    <div className="ais-label">{t('Your to-dos')}</div>
+                    {props.todos.map((td) => (
+                      <label key={td.id} className={`ais-todo ${td.done ? 'done' : ''}`}>
+                        <input type="checkbox" checked={td.done} onChange={() => props.onToggleTodo(td.id)} />
+                        {td.title}
+                      </label>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </SmoothHeight>
+          {props.todos.length > 0 && (
+            <button type="button" className="gm-todos link-btn" onClick={props.onOpenTodos}>
+              <ListChecks size={16} />
+              {openTodos ? tn(openTodos, '{n} to-do from this email', '{n} to-dos from this email') : tn(props.todos.length, '✓ To-do from this email', '✓ To-dos from this email')}
+            </button>
+          )}
+
+          <div className="messages">
+            {items.map((x) => {
+              const at = x.kind === 'm' ? x.m.date : x.n.at;
+              if (hidden.includes(x)) {
+                // Gmail's fold: a line across the thread with a circle that counts what's folded.
+                return hidden[0] === x ? (
+                  <button key="fold" type="button" className="msg-fold gm-fold" onClick={() => setShowAll(true)} aria-label={tn(hiddenMsgs, 'Show {n} earlier message', 'Show {n} earlier messages')}>
+                    <span>{hiddenMsgs}</span>
+                  </button>
+                ) : null;
+              }
+              return x.kind === 'm' ? phoneMessage(x.m) : <MailComment key={x.n.id + at} note={x.n} people={people} meId={props.meUser.id} />;
+            })}
+          </div>
+
+          {canReply && (
+            <div className="smart-replies gm-smart">
+              {!suggestions &&
+                quickReplies().map((sug, i) => (
+                  <button key={sug} className="tpl" style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''))}>
+                    {sug}
+                  </button>
+                ))}
+              {suggestions?.map((sug, i) => (
+                <button key={i} style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''))}>
+                  {sug.split('\n')[0]}
+                </button>
+              ))}
+              {!suggestions && props.aiOn && (
+                <button className="ai-suggest" onClick={suggest} disabled={suggesting} title={t('Uses AI only when you click. Saved, so it’s free next time')}>
+                  <Sparkles size={16} /> {suggesting ? t('Thinking…') : t('Suggest replies')}
+                </button>
+              )}
+            </div>
+          )}
+          <div ref={endRef} />
+        </div>
+      </div>
+    );
+
+    return (
+      <PushScreen
+        title={thread.subject}
+        backLabel={props.backLabel}
+        iconBack
+        onBack={props.onBack}
+        className="mail-reader gm-reader-screen"
+        actions={
+          <>
+            {props.shared && (
+              <button type="button" className="icon-btn gm-assignee" onClick={() => setAssignOpen(true)} aria-label={assignee ? t('{name} handles this', { name: assignee.name }) : t('Who handles this')} title={t('Who handles this')}>
+                {assignee ? <Avatar person={assignee} size={28} /> : <UserPlus size={22} />}
+              </button>
+            )}
+            {primary && PrimaryIcon && (
+              <button type="button" className="icon-btn" onClick={primary.run} aria-label={primary.label} title={primary.label}>
+                <PrimaryIcon size={22} />
+              </button>
+            )}
+            {thread.location !== 'trash' && (
+              <button type="button" className="icon-btn" onClick={() => props.onTrash(thread.id)} aria-label={t('Delete')} title={t('Delete')}>
+                <Trash2 size={22} />
+              </button>
+            )}
+            <button type="button" className="icon-btn" onClick={() => props.onMarkUnread(thread.id)} aria-label={t('Mark as unread')} title={t('Mark as unread')}>
+              <Mail size={22} />
+            </button>
+            <button type="button" ref={moreBtn} className="icon-btn" onClick={() => setMoreOpen(true)} aria-label={t('More actions')} title={t('More')}>
+              <MoreVertical size={22} />
+            </button>
+          </>
+        }
+        footer={
+          <div className={`gm-dock${commenting ? ' commenting' : ''}`}>
+            {commenting ? (
+              <div className="gm-dock-comment" key="comment">
+                <CommentBox bar autoFocus people={people.filter((u) => u.id !== props.meUser.id)} onPost={(text) => (props.onComment(thread.id, text), setCommenting(false))} />
+                <button type="button" className="gm-icon" onClick={() => setCommenting(false)} aria-label={t('Back to reply')}>
+                  <X size={22} />
+                </button>
+              </div>
+            ) : (
+              <div className="gm-dock-row" key="reply">
+                <button type="button" className={`gm-pill${props.replyOff ? ' off' : ''}`} aria-disabled={props.replyOff ? true : undefined} onClick={() => startReply()}>
+                  <Reply size={18} />
+                  {draft ? <span className="gm-draft">{t('Draft')}</span> : t('Reply')}
+                </button>
+                {canAll && (
+                  <button type="button" className={`gm-pill${props.replyOff ? ' off' : ''}`} aria-disabled={props.replyOff ? true : undefined} onClick={() => startReply(undefined, true)}>
+                    <ReplyAll size={18} />
+                    {t('Reply all')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`gm-pill${props.replyOff ? ' off' : ''}${props.team && canAll ? ' gm-round' : ''}`}
+                  aria-disabled={props.replyOff ? true : undefined}
+                  aria-label={t('Forward')}
+                  onClick={() => (props.replyOff ? props.onReplyOff?.() : props.onForward(thread))}
+                >
+                  <Forward size={18} />
+                  <span className="gm-pill-word">{t('Forward')}</span>
+                </button>
+                {props.team && (
+                  <button type="button" className="gm-pill gm-round gm-comment" onClick={() => setCommenting(true)} aria-label={t('Comment for the team')} title={t('Comment for the team')}>
+                    <MessageSquare size={18} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         }
       >
-        {content}
-        {pickers}
+        <div ref={swipeBox} className="gm-swipe-box">
+          {phoneContent}
+        </div>
+        <SnoozePicker key={`snooze:${thread.id}`} open={snoozeOpen} onClose={() => setSnoozeOpen(false)} waiting={isMine(last.from.email)} onPick={(until, ifNoReply) => props.onSnooze(thread.id, until, ifNoReply)} />
+        <AssignPicker open={assignOpen} onClose={() => setAssignOpen(false)} people={props.teammates} me={props.meUser} current={thread.assignee} presence={props.presence} onPick={(id) => props.onAssign(thread.id, id)} />
+        <ActionSheet open={moreOpen} onClose={() => setMoreOpen(false)} title={thread.subject} anchor={moreBtn} menu actions={moreOpen ? phoneMore() : []} />
+        <ActionSheet open={!!msgMenu} onClose={() => setMsgMenu(null)} anchor={msgMenu?.anchor} menu actions={msgMenu ? messageMore(msgMenu.m) : []} />
         {replyOpen && (
           <QuickReply
             key={thread.id}
-            to={replyTo}
+            to={replyAll ? others : [replyTo]}
+            all={replyAll}
+            subject={thread.subject}
             initialHtml={replyInitial ?? draft?.html ?? (props.signature ? `<p><br></p>${props.signature}` : '')}
             signature={props.signature}
             userId={props.meUser.id}
+            myName={props.myName}
             track={props.canTrack && replyOutside.length > 0 ? { on: replyTracked, set: setReplyTrack } : null}
-            onSend={(html, text) => props.onReply(thread.id, html, text, replyTracked)}
+            onSend={(html, text) => props.onReply(thread.id, html, text, replyTracked, replyAll)}
             onKeep={(d) => {
               if (d) REPLY_DRAFTS.set(thread.id, d);
               else REPLY_DRAFTS.delete(thread.id);
@@ -836,5 +1273,43 @@ function CodeCard({ text }: { text: string }) {
         {copied ? t('Copied') : t('Copy code')}
       </button>
     </div>
+  );
+}
+
+/** A file in an email on phones: Gmail's card (a preview, then the name). Tap opens it; hold for Download, Save to Drive, Share. */
+function AttachmentCard({ a, saved, onSave }: { a: Attachment; saved: boolean; onSave: () => void }) {
+  const img = /\.(png|jpe?g|gif|webp|heic|svg)$/i.test(a.name);
+  const ext = (a.name.split('.').pop() ?? '').slice(0, 4).toUpperCase();
+  const self = useRef<HTMLButtonElement>(null);
+  const menu = useActionMenu(
+    () => [
+      ...(a.url ? [{ label: t('Download'), icon: Download, run: () => void window.open(a.url, '_blank', 'noopener') }] : []),
+      { label: saved ? t('Saved to Drive') : t('Save to Drive'), icon: saved ? Check : HardDriveUpload, disabled: saved, run: onSave },
+      ...(a.url && typeof navigator !== 'undefined' && 'share' in navigator ? [{ label: t('Share'), icon: Share2, run: () => void navigator.share({ title: a.name, url: new URL(a.url!, location.href).href }).catch(() => {}) }] : []),
+    ],
+    { title: a.name },
+  );
+  const face = (
+    <>
+      <span className="gm-att-preview">{img && a.url ? <img src={a.url} alt="" loading="lazy" /> : <span className="gm-att-ext">{ext || <FileText size={28} />}</span>}</span>
+      <span className="gm-att-name">
+        {img ? <ImageIcon size={16} /> : <FileText size={16} />}
+        <span>{a.name}</span>
+      </span>
+    </>
+  );
+  return (
+    <>
+      {a.url ? (
+        <a className="gm-att lp" href={a.url} target="_blank" rel="noreferrer" title={`${a.name} · ${a.size}`} {...menu.bind}>
+          {face}
+        </a>
+      ) : (
+        <button type="button" ref={self} className="gm-att lp" title={`${a.name} · ${a.size}`} onClick={() => menu.openFrom(self)} {...menu.bind}>
+          {face}
+        </button>
+      )}
+      {menu.menu}
+    </>
   );
 }

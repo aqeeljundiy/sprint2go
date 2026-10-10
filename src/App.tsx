@@ -15,7 +15,7 @@ import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
-import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, FolderId, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -54,7 +54,7 @@ import { applyBranding } from './components/WorkspaceLogo';
 import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, folderName, type Mode } from './components/Sidebar';
 import { MessageList, type MailActions, type MailFilter } from './components/MessageList';
 import { needsReply, snoozePatch, wakeThread, whenWords } from './mailRules';
-import { SwipeSettings, swipeWords, useMailSwipes } from './components/mail/MailSettings';
+import { MailSettingsScreen } from './components/mail/MailSettings';
 import { Reader } from './components/Reader';
 import { Compose, type Outgoing } from './components/Compose';
 import type { CalView } from './components/CalendarView';
@@ -80,7 +80,9 @@ import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
 import { chanName } from './components/chat/Sheets';
 import { preview as msgPreview } from './components/chat/Message';
 import { ChannelDialog, CATEGORY_ONE, categoryText } from './components/ChannelDialog';
-import { MobileTop } from './components/MobileTop';
+import { CompanySheet, MobileTop } from './components/MobileTop';
+import { MailSearchPill } from './components/mail/MailTop';
+import { TopBar } from './mobile/TopBar';
 import { openSettingsList } from './components/settingsList';
 import { PushScreen } from './components/ui/PushScreen';
 import { Sheet } from './components/ui/Sheet';
@@ -90,7 +92,7 @@ import { MoreSheet } from './mobile/MoreSheet';
 import { duplicateOf } from './components/tasks/taskOps';
 import { needsCount, needsYou } from './needsYou';
 import { DEFAULT_BAR, MORE_ORDER, companyBar } from './mobile/BarDefaults';
-import { useAppSettings, useChrome, useFocusedScreen, useTitleMenu, useTitleTucked } from './mobile/chrome';
+import { useChrome, useFocusedScreen, useSidebarDrawer, useTitleTucked } from './mobile/chrome';
 import { PHONE, TABLET, useMedia } from './mobile/media';
 import { usePullToSearch } from './mobile/usePullToSearch';
 import { useKeyboard } from './mobile/keyboard';
@@ -916,13 +918,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return /[.!?]$/.test(why) ? why : `${why}.`;
   };
 
-  const reply = (id: string, html: string, text: string, track = false) => {
+  const reply = (id: string, html: string, text: string, track = false, all = false) => {
     const th = threads.find((x) => x.id === id);
     if (!th) return;
     const acct = accountOf(th.accountId);
     if (acct && !boxReady(acct.id).send) return replyBlocked(acct);
     const last = lastMessage(th);
-    const to = isMine(last.from.email) ? last.to : [last.from];
+    // Reply all: whoever wrote it and everyone it went to, except you.
+    const everyone = [last.from, ...last.to].filter((p, i, l) => !isMine(p.email) && l.findIndex((q) => q.email.toLowerCase() === p.email.toLowerCase()) === i);
+    const to = all && everyone.length ? everyone : isMine(last.from.email) ? last.to : [last.from];
     const from = senderFor(acct);
     const msgId = uid();
     // Tracked like a new email: only people outside the team, and only when the company allows it.
@@ -3558,49 +3562,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     />
   );
 
-  /**
-   * Mail's title switcher on phones: the inboxes (all of them, what's given to you, each mailbox with what's unread),
-   * then the folders, To-do, labels and projects. Picking a folder looks across all your inboxes.
-   */
-  const unreadIn = (id: string) => (accountUnread[id] ? `${accountUnread[id]} unread` : undefined);
-  const mailValue =
-    view.kind === 'folder' && view.id === 'inbox'
-      ? `inbox:${activeAccount}`
-      : view.kind === 'folder'
-        ? `folder:${view.id}`
-        : view.kind === 'tracking'
-          ? 'track'
-          : view.kind === 'todos'
-            ? 'todos'
-            : `${view.kind}:${view.id}`;
+  // Labels in use, for the phone's folders drawer (Gmail's labels).
   const usedLabels = LABELS.filter((l) => scoped.some((t) => t.labels.includes(l.id)));
-  useTitleMenu('mail', {
-    label: t('Mailboxes'),
-    value: mailValue,
-    options: [
-      { value: 'inbox:all', label: myAccounts.length > 1 ? t('All inboxes') : t('Inbox'), hint: unreadIn('all'), group: t('Inboxes') },
-      ...(myAccounts.some((a) => a.kind === 'shared') ? [{ value: 'folder:assigned', label: t('Assigned to me'), hint: counts.assigned ? tn(counts.assigned, '{n} open', '{n} open') : undefined, group: t('Inboxes') }] : []),
-      ...(myAccounts.length > 1 ? myAccounts.map((a) => ({ value: `inbox:${a.id}`, label: a.kind === 'shared' || a.temp ? a.name || a.email : t('My inbox'), hint: [a.email, unreadIn(a.id)].filter(Boolean).join(' · '), group: t('Inboxes') })) : []),
-      ...(['starred', 'sent', 'drafts', 'snoozed', 'scheduled'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: folderName(f), hint: f === 'drafts' && counts.drafts ? `${counts.drafts}` : f === 'scheduled' && counts.scheduled ? `${counts.scheduled}` : undefined, group: t('Folders') })),
-      { value: 'track', label: t('Waiting for reply'), group: t('Folders') },
-      { value: 'todos', label: t('To-do'), hint: todoThreads.size ? t('Emails that asked you to do something') : undefined, group: t('Folders') },
-      ...(['archive', 'spam', 'trash'] as FolderId[]).map((f) => ({ value: `folder:${f}`, label: folderName(f), group: t('Folders') })),
-      ...usedLabels.map((l) => ({ value: `label:${l.id}`, label: l.name, group: t('Labels') })),
-      ...wsClients.filter((c) => c.domain).map((c) => ({ value: `project:${c.id}`, label: c.name, group: term.Many })),
-    ],
-    onChange: (v) => {
-      const [kind, id] = [v.slice(0, v.indexOf(':') < 0 ? v.length : v.indexOf(':')), v.slice(v.indexOf(':') + 1)];
-      if (kind === 'inbox') return (setActiveAccount(id), selectView({ kind: 'folder', id: 'inbox' }));
-      setActiveAccount('all');
-      if (kind === 'track') selectView({ kind: 'tracking', id: 'tracking' });
-      else if (kind === 'todos') selectView({ kind: 'todos', id: 'todos' });
-      else if (kind === 'folder') selectView({ kind: 'folder', id: id as FolderId });
-      else if (kind === 'label') selectView({ kind: 'label', id });
-      else if (kind === 'project') selectView({ kind: 'project', id });
-    },
-  });
-  const [mailSwipes] = useMailSwipes();
-  useAppSettings('mail', { id: 'swipes', label: t('Swipe actions'), hint: swipeWords(mailSwipes), render: () => <SwipeSettings /> });
+  // Unread in the inbox per label and per project: the drawer's counts.
+  const tagUnread = useMemo(() => {
+    const r: Record<string, number> = {};
+    for (const th of scoped)
+      if (th.location === 'inbox' && th.unread) {
+        for (const l of th.labels) r[`label:${l}`] = (r[`label:${l}`] ?? 0) + 1;
+        const pr = projectOfThread(th);
+        if (pr) r[`project:${pr}`] = (r[`project:${pr}`] ?? 0) + 1;
+      }
+    return r;
+  }, [scoped, clients]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Mail on phones: the folders open as Gmail's drawer from the left; your picture in the search pill opens this.
+  useSidebarDrawer(mobile && mode === 'mail');
+  const [mailAccounts, setMailAccounts] = useState(false);
+  /** Mail settings on phones: Mail & signature over the app, scrolled to the part that was tapped. */
+  const pushMailSection = (heading?: string) => {
+    setSettingsSection('mail');
+    setPushed({ kind: 'section', id: 'mail', label: heading ?? t('Signature') });
+    if (heading)
+      setTimeout(() => {
+        const h = [...document.querySelectorAll('.settings-push:not(.is-leaving) h3')].find((e) => e.textContent === heading);
+        h?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      }, 380);
+  };
+  const [mailSettingsOpen, setMailSettingsOpen] = useState(false);
 
   /** The phone's title switcher for each app (Mail registers its own above). */
   const mobileSwitcher = (() => {
@@ -4115,7 +4103,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         }}
         view={view}
         labels={LABELS}
-        clients={wsClients}
+        clients={mobile ? wsClients.filter((c) => c.domain) : wsClients}
+        phoneMail={{
+          workspace: ws,
+          email: myAccounts.find((a) => a.kind !== 'shared' && !a.temp)?.email ?? user.email,
+          onAccounts: () => (setSidebarOpen(false), setMailAccounts(true)),
+          labels: usedLabels,
+          tagUnread,
+          todo: todoThreads.size,
+          onSettings: () => (setSidebarOpen(false), setMailSettingsOpen(true)),
+          onHelp: () => (setSidebarOpen(false), setSettingsSection('help'), setPushed({ kind: 'section', id: 'help', label: t('Help') })),
+        }}
         onClient={(id) => (openClient(id, 'emails'), setSidebarOpen(false))}
         counts={counts}
         open={sidebarOpen}
@@ -4173,6 +4171,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               }}
               onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
               onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+              dmIdFor={dmWith}
+              notices={myNotices.filter((n) => n.link?.app === 'chat')}
+              onOpenNotice={openNotice}
+              onReadNotices={(ids, read) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read } : n)))}
+              onHuddle={(id) => {
+                if (!server.on) return setChatId(id);
+                tried('voice');
+                if (huddleId && huddleId !== id) leaveHuddle();
+                setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, huddle: { by: c.huddle?.by ?? user.id, at: c.huddle?.at ?? nowIso(), members: [...new Set([...(c.huddle?.members ?? []), user.id])] } } : c)));
+                setHuddleId(id);
+                setChatId(id);
+              }}
               canManage={canManageChannel}
               onMove={moveChannel}
               onSettings={(id) => setChanDialog({ id })}
@@ -4191,6 +4201,39 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               }
             />
           </section>
+        )}
+        {mobile && mode === 'mail' && view.kind === 'tracking' && (
+          <TopBar app="mail" replace={<MailSearchPill me={ME} elsewhere={workspaces.some((w) => w.id !== ws.id && (wsUnread[w.id] ?? 0) > 0)} onMenu={() => setSidebarOpen(true)} onSearch={searchHere} onAccounts={() => setMailAccounts(true)} />} />
+        )}
+        {mobile && mailSettingsOpen && (
+          <MailSettingsScreen
+            onBack={() => setMailSettingsOpen(false)}
+            rows={[
+              { id: 'signature', label: t('Signature'), value: settings.signature.replace(/<[^>]+>/g, '').trim() ? t('On') : t('Off'), run: () => pushMailSection() },
+              { id: 'undo', label: t('Undo send'), value: settings.undoSend ? tn(settings.undoSend, '{n} second', '{n} seconds') : t('Off'), run: () => pushMailSection(t('Undo send')) },
+              ...(ws.readTracking !== false ? [{ id: 'tracking', label: t('Read tracking'), value: settings.trackByDefault ? t('On') : t('Off'), run: () => pushMailSection(t('Read tracking')) }] : []),
+              ...(myAccounts.some((a) => !a.temp) ? [{ id: 'away', label: t('Out of office'), value: myAccounts.some((a) => a.away?.on) ? t('On') : t('Off'), run: () => pushMailSection(t('Out of office')) }] : []),
+              { id: 'blocked', label: t('Blocked senders'), run: () => pushMailSection(t('Blocked senders')) },
+              ...(isAdmin ? [{ id: 'email', label: t('Email delivery'), value: t('Your domain, sending and the DNS records'), run: () => (setSettingsSection('email'), setPushed({ kind: 'section', id: 'email', label: t('Email delivery') })) }] : []),
+            ]}
+          />
+        )}
+        {mobile && mailAccounts && (
+          <CompanySheet
+            onClose={() => setMailAccounts(false)}
+            workspaces={workspaces}
+            current={ws}
+            unreadByWs={wsUnread}
+            onWorkspace={switchWorkspace}
+            onAddWorkspace={() => setNewWs(true)}
+            demo={demoEntry}
+            portals={portalItems}
+            onPortal={setPortalKey}
+            onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
+            me={{ person: ME, onOpen: () => (setSettingsSection('account'), go('settings')) }}
+            status={{ emoji: statuses[user.id]?.emoji, text: statuses[user.id] ? statusText(statuses[user.id]!) : t('Available'), run: () => setStatusOpen(true) }}
+            onSettings={() => (openSettingsList(), go('settings'))}
+          />
         )}
         {mode === 'mail' && view.kind === 'tracking' && (
           <TrackingDashboard
@@ -4447,6 +4490,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onClose={() => setChatPage(null)}
             onOpen={(id, msg) => (setChatId(id), msg && setFocusMsg(msg))}
             onSendTo={(id, text) => sendChatTo(id, { text })}
+            onReplyTo={(id, rootId, text) => sendChatTo(id, { text, parentId: rootId })}
             onSendNow={sendChatNow}
             onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
             onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
@@ -4687,6 +4731,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               actions={mailActions}
               stays={staysInList}
               onMenu={() => setSidebarOpen(true)}
+              onAccounts={() => setMailAccounts(true)}
+              elsewhere={workspaces.some((w) => w.id !== ws.id && (wsUnread[w.id] ?? 0) > 0)}
+              searchable={scoped.filter((th) => th.location !== 'spam' && th.location !== 'trash')}
+              onAllApps={() => openSearch(null)}
               empty={(() => {
                 if (view.kind === 'todos') return { title: t('Nothing to do from email'), sub: t('Emails that ask you to do something show here until their to-dos are done.') };
                 if (view.kind === 'project') return { title: t('No email with {name} yet', { name: title }), sub: t('Email to and from {name}’s address shows here.', { name: title }) };
