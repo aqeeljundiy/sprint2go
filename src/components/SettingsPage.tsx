@@ -923,6 +923,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
           {section === 'myapps' && myApps && demo && demo.state !== 'on' && <DemoCompanyBlock d={demo} />}
           {section === 'myapps' && myApps && (
             <MyAppsSection
+              edited={!!myApps.onEdit}
               ws={ws}
               hidden={myApps.hidden}
               isAdmin={canManage}

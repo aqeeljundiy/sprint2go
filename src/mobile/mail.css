@@ -2608,4 +2608,49 @@
   .settings-push .mx-hold-add input {
     flex: 1 1 100%;
   }
+  /* A choice row reads like iOS: the label on the left, the value in grey on the right with a › (no ▾, which looks
+     like a native select). A label with a hint under it takes the line and the value sits under it on the right. */
+  .settings-push .mx-sections .set-row:not(.mx-switch):has(> .sel) > span:first-child {
+    flex: 1 0 auto;
+    max-width: 100%;
+    width: auto;
+  }
+  .settings-push .mx-sections .set-block .set-row:not(.mx-switch) > .sel {
+    width: auto;
+    margin-left: auto;
+    max-width: 100%;
+    justify-content: flex-end;
+  }
+  .settings-push .mx-sections .set-row > .sel .sel-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .settings-push .mx-sections .set-row > .sel > svg:last-child {
+    transform: rotate(-90deg);
+    opacity: 0.7;
+  }
+  /* "Give a teammate access", "Put someone on hold": an action row in the company colour, not a grey box. */
+  .settings-push .mx-sections .mx-add-row .sel.person-sel.empty.sel-flat,
+  .settings-push .mx-sections .mx-hold-add .sel.person-sel.empty.sel-flat {
+    justify-content: flex-start;
+    min-height: var(--tap);
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: var(--t-body);
+    color: var(--accent-text);
+  }
+  .settings-push .mx-sections .mx-add-row .sel.person-sel.empty.sel-flat .sel-text,
+  .settings-push .mx-sections .mx-hold-add .sel.person-sel.empty.sel-flat .sel-text {
+    color: var(--accent-text);
+  }
+  .settings-push .mx-sections .mx-add-row .person-sel.empty > svg:last-child,
+  .settings-push .mx-sections .mx-hold-add .person-sel.empty > svg:last-child {
+    display: none;
+  }
+  .settings-push .mx-sections .mx-add-row > svg {
+    color: var(--accent-text);
+  }
 }

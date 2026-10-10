@@ -1097,11 +1097,37 @@ button.tb-page-title:active {
   left: 0;
 }
 .tb-grid-wrap.touch .tb-cell {
-  height: 48px;
+  height: 44px;
   touch-action: manipulation; /* no double-tap zoom while editing cells */
 }
 .tb-grid-wrap.touch .tb-th {
   height: 44px;
+  font: var(--t-secondary);
+  font-weight: 600;
+  color: var(--text-2);
+}
+/* A real table on a phone (Airtable, Notion): white cells with hairline borders on every side, field names with their
+   type icon in a header row, the name column pinned, the rest scrolling sideways. The name is 15/400 like the rest. */
+.tb-grid-wrap.touch {
+  background: var(--surface);
+}
+.tb-grid-wrap.touch .tb-cell,
+.tb-grid-wrap.touch .tb-th {
+  background: var(--surface);
+  box-shadow: inset -1px -1px 0 var(--line);
+  border: 0;
+}
+.tb-grid-wrap.touch .tb-first .tb-cell,
+.tb-grid-wrap.touch .tb-th.tb-pinned,
+.tb-grid-wrap.touch .tb-first {
+  box-shadow: inset -1px -1px 0 var(--border);
+}
+.tb-grid-wrap.touch .tb-cell {
+  font: var(--t-body);
+}
+.tb-grid-wrap.touch .tb-name-tag,
+.tb-grid-wrap.touch .tb-th-chev {
+  display: none; /* the first column is the name already; a tap on a header opens its menu */
 }
 .tb-grid-wrap.touch .tb-expand {
   display: none;

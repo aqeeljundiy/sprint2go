@@ -318,7 +318,7 @@ export function GridView(p: GridProps) {
   // On a phone the name column always stays in view (only the rest scrolls sideways) and narrower columns fit more.
   const pinnedN = Math.min(p.touch ? Math.max(view.pinned ?? 0, fields.findIndex((f) => f.id === nameId) + 1) : (view.pinned ?? 0), fields.length);
   const SEL = p.touch ? 0 : SEL_W;
-  const widths = fields.map((f) => (p.touch ? Math.min(widthOf(view, f, f.id === nameId), f.id === nameId ? 150 : 170) : widthOf(view, f, f.id === nameId)));
+  const widths = fields.map((f) => (p.touch ? 140 : widthOf(view, f, f.id === nameId)) /* phones: every column the same 140, like Airtable's */);
   const cols = `${SEL}px ${widths.map((w) => `${w}px`).join(' ')} ${p.touch ? 16 : 48}px`;
   const stickyLeft = (i: number) => (i < pinnedN ? SEL + widths.slice(0, i).reduce((a, b) => a + b, 0) : undefined);
 

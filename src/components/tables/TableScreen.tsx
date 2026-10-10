@@ -81,7 +81,7 @@ export function TableScreen(p: ScreenProps) {
   const view = base ? tweaks.effective(base) : undefined;
   const differs = base ? tweaks.differs(base) : false;
   const [cardsOn, setCardsOn] = usePersisted<Record<string, boolean>>('s2g-tb-cards', {}); // per view, on this device
-  const cards = narrow && !!view && (view.kind === 'grid' || view.kind === 'list') && (cardsOn[view.id] ?? !view.asTable);
+  const cards = narrow && !!view && (view.kind === 'grid' || view.kind === 'list') && (cardsOn[view.id] ?? view.kind === 'list'); // a table is a real grid on phones too; List views are cards
   const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -553,7 +553,8 @@ export function TableScreen(p: ScreenProps) {
     const row = mine.find((r) => r.id === rowId);
     if (!f || !row) return;
     if (f.type === 'button') return runButton(row, f);
-    if (!canEditField(f)) return openRowFull(rowId);
+    // The row's name opens the row (like Airtable and Notion on phones); every other cell edits in place.
+    if (f.id === tb.fields[0]?.id || !canEditField(f)) return openRowFull(rowId);
     setEditCell({ rowId, fieldId });
   };
   const collapsedSet = new Set(view?.collapsed ?? []);
@@ -1116,7 +1117,7 @@ export function TableScreen(p: ScreenProps) {
           </div>
         </Sheet>
       )}
-      {sheet === 'views' && <ViewsSheet table={tb} gridAsList={(id) => narrow && (cardsOn[id] ?? !tb.views.find((x) => x.id === id)?.asTable)} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
+      {sheet === 'views' && <ViewsSheet table={tb} gridAsList={(id) => narrow && (cardsOn[id] ?? false)} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
       {sheet === 'filter' && view && <FilterSheet table={tb} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
       {sheet === 'settings' && view && <SettingsSheet start={settingsStart} table={tb} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
       {sheet === 'bulk' && <BulkEditSheet table={tb} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}
