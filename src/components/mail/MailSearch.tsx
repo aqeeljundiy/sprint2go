@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Clock, LayoutGrid, Search, X } from 'lucide-react';
+import { ArrowLeft, Bookmark, Check, ChevronDown, Clock, LayoutGrid, Search, X } from 'lucide-react';
+import { matchThread, parseQuery } from '../../mailQuery';
+import { newId, useMailPrefs } from './sortPrefs';
 import type { Client, Label, Person, Thread, User } from '../../types';
 import { lastMessage } from '../../utils';
 import { isMine } from '../../identity';
@@ -74,6 +76,9 @@ export function MailSearch(p: {
     return { from: sort(from), to: sort(to) };
   }, [p.threads]);
 
+  const parsed = useMemo(() => parseQuery(q), [q]);
+  const [prefs, update] = useMailPrefs();
+  const saved = prefs.saved.some((x) => x.q === q.trim());
   const results = useMemo(() => {
     if (!words && !filtering) return [];
     const since = f.date ? new Date(Date.now() - Number(f.date) * 86400_000).toISOString() : '';
@@ -88,11 +93,11 @@ export function MailSearch(p: {
           (!f.from || th.messages.some((m) => has([m.from], f.from!))) &&
           (!f.to || th.messages.some((m) => has([...m.to, ...(m.cc ?? [])], f.to!))) &&
           (!since || lastMessage(th).date >= since) &&
-          (!words || words.split(/\s+/).every((w) => th.subject.toLowerCase().includes(w) || th.messages.some((m) => m.from.name.toLowerCase().includes(w) || m.from.email.toLowerCase().includes(w) || m.body.toLowerCase().includes(w)))),
+          (!parsed || matchThread(parsed, th, { isMine })), // Gmail's operators too (src/mailQuery.ts)
       )
       .sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date))
       .slice(0, 100);
-  }, [p.threads, words, f, filtering, p.meId]);
+  }, [p.threads, words, parsed, f, filtering, p.meId]);
   const latest = useMemo(() => [...p.threads].sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date)).slice(0, 5), [p.threads]);
   const matches = words && !done ? people.from.filter((x) => `${x.name} ${x.email}`.toLowerCase().includes(words)).slice(0, 3) : [];
 
@@ -175,6 +180,14 @@ export function MailSearch(p: {
         {chip(!!f.to, f.to ? t('To: {name}', { name: f.to.name || f.to.email }) : t('To'), () => (f.to ? setF({ ...f, to: null }) : (setPickQ(''), setPick('to'))), !f.to)}
         {p.assignChip && chip(f.assigned, t('Assigned to me'), () => setF({ ...f, assigned: !f.assigned }))}
         {chip(!!f.date, f.date ? dateWords(f.date) : t('Date'), () => (f.date ? setF({ ...f, date: null }) : setPick('date')), !f.date)}
+        {done && words && (
+          <button type="button" className={`gm-chip${saved ? ' on' : ''}`} aria-pressed={saved} onClick={() => (saved ? update((x) => ({ saved: x.saved.filter((s) => s.q !== q.trim()) })) : update((x) => ({ saved: [...x.saved, { id: newId(), name: q.trim().slice(0, 40), q: q.trim() }] })))}>
+            <span className="gm-chip-face">
+              <Bookmark size={16} aria-hidden="true" />
+              {saved ? t('Saved') : t('Save search')}
+            </span>
+          </button>
+        )}
         {p.onAllApps && (
           <button type="button" className="gm-chip" onClick={() => (p.onClose(), p.onAllApps!())}>
             <span className="gm-chip-face">

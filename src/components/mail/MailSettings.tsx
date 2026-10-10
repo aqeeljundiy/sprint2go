@@ -4,6 +4,8 @@ import { usePersisted } from '../../settings';
 import { PushScreen } from '../ui/PushScreen';
 import { Sheet } from '../ui/Sheet';
 import { mark, t } from '../../i18n';
+import { InboxSettingsScreen, inboxSummary } from './Sorting';
+import { useMailPrefs } from './sortPrefs';
 
 /** What a swipe on an email does. Kept on this device (a phone and a tablet can differ, like Spark). */
 export type SwipeKind = 'done' | 'snooze' | 'read' | 'star' | 'trash' | 'none';
@@ -96,9 +98,18 @@ export interface MailSettingsRow {
 export function MailSettingsScreen({ rows, onBack }: { rows: MailSettingsRow[]; onBack: () => void }) {
   const [swipesOpen, setSwipesOpen] = useState(false);
   const [swipes] = useMailSwipes();
+  const [inboxOpen, setInboxOpen] = useState(false); // Inbox: tabs, order, reading (Sorting.tsx)
+  const [prefs] = useMailPrefs();
   return (
     <PushScreen title={t('Mail settings')} onBack={onBack} iconBack className="gm-settings">
       <div className="gm-set-list">
+        <button type="button" className="gm-set-row" onClick={() => setInboxOpen(true)}>
+          <span className="gm-set-words">
+            <b>{t('Inbox')}</b>
+            <span>{inboxSummary(prefs)}</span>
+          </span>
+          <ChevronRight size={20} />
+        </button>
         <button type="button" className="gm-set-row" onClick={() => setSwipesOpen(true)}>
           <span className="gm-set-words">
             <b>{t('Swipe actions')}</b>
@@ -116,6 +127,7 @@ export function MailSettingsScreen({ rows, onBack }: { rows: MailSettingsRow[]; 
           </button>
         ))}
       </div>
+      {inboxOpen && <InboxSettingsScreen onBack={() => setInboxOpen(false)} />}
       {swipesOpen && (
         <PushScreen title={t('Swipe actions')} onBack={() => setSwipesOpen(false)} iconBack className="gm-settings">
           <SwipeSettingsPhone />

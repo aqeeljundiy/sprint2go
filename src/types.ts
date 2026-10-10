@@ -7,7 +7,7 @@ export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'sp
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
 export type Location = 'inbox' | 'drafts' | 'archive' | 'spam' | 'trash';
 
-export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string };
+export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string } | { kind: 'category'; id: 'primary' | 'promotions' | 'social' | 'updates' | 'forums' }; // category: an inbox tab (src/components/mail/sortPrefs.ts)
 
 export interface Person {
   name: string;
@@ -50,6 +50,15 @@ export interface Message {
   delivery?: { state: 'held' | 'sending' | 'sent' | 'failed' | 'local'; at: string; error?: string; until?: string; kept?: string[] }; // set by the mail engine for mail you sent (held: waiting out the Undo window until `until`; local: a local server kept it on this computer, `kept` are the outside addresses)
   auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
   invite?: MailInvite; // a calendar invite in this email (Google Calendar, Outlook...), read by the mail engine
+  /* Search, sorting and spam (server/mailSmart.ts, set on arrival). */
+  listId?: string; // the mailing list it came through (List-Id), for list: searches and Forums
+  warn?: MailWarning[]; // phishing signs the server saw when it arrived (the reader's banner)
+}
+
+/** A phishing sign on a received message (src/mailSafety.ts). */
+export interface MailWarning {
+  kind: 'auth' | 'lookalike' | 'spoof' | 'links' | 'first' | 'reported';
+  detail?: string; // the domain it imitates, the colleague's name, a link's real address
 }
 
 /** A confidential email: until when it can be opened, whether a code is needed, and whether its sender removed access. */
@@ -150,6 +159,14 @@ export interface Thread {
   scannedFor?: string[]; // `${userId}:${lastMessageId}`: already read for to-dos (so the AI reads each email once)
   sendAt?: string; // scheduled to send
   workspaceId?: string; // set by the server for mail it received
+  /* Search, sorting and spam (server/mailSmart.ts). */
+  category?: 'primary' | 'promotions' | 'social' | 'updates' | 'forums'; // the inbox tab, set when it arrives; moving it teaches the sender's tab
+  important?: boolean; // the Important marker: learned from what the mailbox's people open, reply to and star
+  importantBy?: 'you'; // set by a person (it then stays as they left it)
+  muted?: boolean; // new replies skip the inbox unless you're addressed directly again
+  spamAt?: string; // when it went to Spam (deleted for good 30 days later)
+  trashedAt?: string; // when it went to Trash (deleted for good 30 days later)
+  spamWhy?: string[]; // why the filter put it in Spam (short words, for the banner)
   replyTo?: { threadId: string; mid?: string; references?: string[] }; // a reply drafted in a connected AI app: when sent, it carries that conversation's headers so it lands in the same thread
 }
 
