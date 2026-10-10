@@ -4,7 +4,8 @@ import type { Note } from '../../types';
 import { term } from '../../terms';
 import { relative } from '../../utils';
 import { htmlToText } from '../../sanitize';
-import { useCreateAction } from '../../mobile/chrome';
+import { useCreateAction, useTitleMenu } from '../../mobile/chrome';
+import { fmtDate, fmtMonth, fmtTime } from '../../i18n/format';
 import { Avatar } from '../Avatar';
 import { EmptyState } from '../ui/EmptyState';
 import { PushScreen } from '../ui/PushScreen';
@@ -12,7 +13,7 @@ import { Select, Dot } from '../ui/Select';
 import { SwipeRow } from '../ui/SwipeRow';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { useLeaving } from '../ui/Smooth';
-import { hasTasks, snippetAround } from './noteHtml';
+import { firstLine, hasTasks, snippetAround } from './noteHtml';
 import { noteActions, type NoteMenuCtx } from './noteMenu';
 import { useNoteMenu, type NotesApi } from './useNoteMenu';
 import { KEEP_DAYS } from './noteDraft';
@@ -39,6 +40,28 @@ function inFacet(n: Note, f: Facet | null, me: string) {
   }
 }
 const matches = (n: Note, q: string) => !q || `${n.title} ${htmlToText(n.html)}`.toLowerCase().includes(q.toLowerCase());
+/** Apple Notes' sections: Today, Yesterday, Previous 7 days, Previous 30 days, then each month. */
+function sectionOf(iso: string, now = new Date()) {
+  const d = new Date(iso);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86_400_000);
+  if (diff <= 0) return { key: 'today', label: t('Today') };
+  if (diff === 1) return { key: 'yesterday', label: t('Yesterday') };
+  if (diff < 7) return { key: 'week', label: t('Previous 7 days') };
+  if (diff < 30) return { key: 'month', label: t('Previous 30 days') };
+  return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.getFullYear() === now.getFullYear() ? fmtDate(d, { month: 'long' }) : fmtMonth(d) };
+}
+/** When, the short way Apple Notes puts it before the first line: 13:05, Yesterday, Mon, 8 Oct. */
+function whenShort(iso: string, now = new Date()) {
+  const d = new Date(iso);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86_400_000);
+  if (diff <= 0) return fmtTime(d);
+  if (diff === 1) return t('Yesterday');
+  if (diff < 7) return fmtDate(d, { weekday: 'short' });
+  return fmtDate(d, d.getFullYear() === now.getFullYear() ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 const byPinnedThenNew = (a: Note, b: Note) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt.localeCompare(a.updatedAt);
 
 /**
@@ -82,7 +105,24 @@ export function NotesList({
   const rest = rows.filter((r) => !r.item.pinned);
   const looking = !!(query || facet);
 
-  const row = (r: { item: Note; leaving: boolean }) => <NoteRow key={r.item.id} n={r.item} leaving={r.leaving} ctx={ctx} api={api} active={!phone && current === r.item.id} q={query} phone={phone} onOpen={(find) => (setSearching(false), onOpen(r.item.id, find))} />;
+  // Phones: Apple's folder list is the title switcher (All notes, Only me, Shared with me, each project, Recently deleted).
+  useTitleMenu(
+    'notes',
+    phone && {
+      label: t('Which notes'),
+      value: filter,
+      options: [
+        { value: 'all', label: t('All notes'), icon: <SquarePen size={15} /> },
+        { value: 'private', label: t('Only me'), icon: <Lock size={15} /> },
+        { value: 'shared', label: t('Shared with me'), icon: <Users size={15} /> },
+        ...withNotes.map((c) => ({ value: `client:${c.id}`, label: c.name, group: `${term.Many}`, icon: <Dot color={c.color} /> })),
+        ...(deleted.length ? [{ value: 'trash', label: t('Recently deleted'), group: t('More'), icon: <Trash2 size={15} /> }] : []),
+      ],
+      onChange: (v) => (v === 'trash' ? setTrash(true) : onFilter(v as NotesFilter)),
+    },
+  );
+  const mixed = filter === 'all' || filter === 'shared';
+  const row = (r: { item: Note; leaving: boolean }) => <NoteRow key={r.item.id} n={r.item} leaving={r.leaving} ctx={ctx} api={api} active={!phone && current === r.item.id} q={query} phone={phone} mixed={mixed} onOpen={(find) => (setSearching(false), onOpen(r.item.id, find))} />;
   const list = (
     <>
       {pinned.length > 0 && !looking && <div className="nl-head">{t('Pinned')}</div>}
@@ -155,13 +195,32 @@ export function NotesList({
       </>
     );
 
-  // Phones
-  const chips: { f: NotesFilter; label: string; icon?: React.ReactNode }[] = [
-    { f: 'all', label: t('All') },
-    { f: 'private', label: t('Only me'), icon: <Lock size={14} /> },
-    { f: 'shared', label: t('Shared with me'), icon: <Users size={14} /> },
-    ...withNotes.map((c) => ({ f: `client:${c.id}` as NotesFilter, label: c.name, icon: <Dot color={c.color} /> })),
-  ];
+  // Phones: Apple Notes' grouped cards under date sections, Pinned first.
+  const sections: { key: string; label: string; rows: typeof rows }[] = [];
+  if (!looking) {
+    if (pinned.length) sections.push({ key: 'pinned', label: t('Pinned'), rows: pinned });
+    for (const r of rest) {
+      const s = sectionOf(r.item.updatedAt);
+      const last = sections[sections.length - 1];
+      if (last && last.key === s.key) last.rows.push(r);
+      else sections.push({ ...s, rows: [r] });
+    }
+  }
+  const phoneList = looking ? (
+    <>
+      {rows.length > 0 && <div className="nl-card">{rows.map(row)}</div>}
+      {!shown.length && <p className="nl-none">{query ? t('No notes with “{query}”.', { query }) : t('No notes here.')}</p>}
+    </>
+  ) : shown.length ? (
+    sections.map((s) => (
+      <section key={s.key} className="nl-section">
+        <h2 className="nl-sec-head">{s.label}</h2>
+        <div className="nl-card">{s.rows.map(row)}</div>
+      </section>
+    ))
+  ) : (
+    <EmptyState icon={<SquarePen size={22} />} title={filter === 'all' ? t('No notes yet') : t('No notes here yet')} text={t('Tap the pen to write one. The first line is its title.')} />
+  );
   const people = [...new Set(live.filter((n) => n.ownerId !== me).map((n) => n.ownerId))].map((id) => api.users.find((u) => u.id === id)).filter(Boolean).slice(0, 4);
   const facets: { f: Facet; label: string; icon: React.ReactNode }[] = [
     { f: { kind: 'pinned' }, label: t('Pinned'), icon: <Pin size={14} /> },
@@ -173,19 +232,7 @@ export function NotesList({
   const same = (a: Facet | null, b: Facet) => !!a && a.kind === b.kind && ('id' in a ? a.id : '') === ('id' in b ? b.id : '');
   return (
     <section className={`notes-phone view-enter${searching || looking ? ' searching' : ''}`}>
-      <div className={`fold nl-chips-fold${looking ? '' : ' open'}`}>
-        <div>
-          <div className="nl-chips" role="tablist" aria-label={t('Which notes')}>
-            {chips.map((c) => (
-              <button key={c.f} type="button" role="tab" aria-selected={filter === c.f} className={`nl-chip${filter === c.f ? ' on' : ''}`} onClick={() => onFilter(c.f)}>
-                {c.icon}
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="nl-scroll">{list}</div>
+      <div className={`nl-scroll${shown.length || looking ? '' : ' is-empty'}`}>{phoneList}</div>
       <div className="nl-search-dock">
         <div className={`fold${searching && !query ? ' open' : ''}`}>
           <div>
@@ -201,7 +248,7 @@ export function NotesList({
         </div>
         <label className="nl-search">
           <Search size={17} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setSearching(true)} onBlur={() => setSearching(false)} placeholder={facet ? t('Search in {place}', { place: facets.find((x) => same(facet, x.f))?.label ?? '' }) : t('Search notes')} aria-label={t('Search notes')} enterKeyHint="search" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setSearching(true)} onBlur={() => setSearching(false)} placeholder={facet ? t('Search in {place}', { place: facets.find((x) => same(facet, x.f))?.label ?? '' }) : t('Search')} aria-label={t('Search notes')} enterKeyHint="search" />
           {(q || facet) && (
             <button type="button" className="nl-clear" onPointerDown={(e) => e.preventDefault()} onClick={() => (setQ(''), setFacet(null))} aria-label={t('Clear the search')}>
               <X size={16} />
@@ -219,14 +266,39 @@ export function NotesList({
   );
 }
 
-function NoteRow({ n, leaving, ctx, api, active, q, phone, onOpen }: { n: Note; leaving: boolean; ctx: NoteMenuCtx; api: NotesApi; active: boolean; q: string; phone: boolean; onOpen: (find?: string) => void }) {
+function NoteRow({ n, leaving, ctx, api, active, q, phone, mixed, onOpen }: { n: Note; leaving: boolean; ctx: NoteMenuCtx; api: NotesApi; active: boolean; q: string; phone: boolean; mixed?: boolean; onOpen: (find?: string) => void }) {
   const dots = useRef<HTMLButtonElement>(null);
   const menu = useActionMenu(() => noteActions(n, ctx), { title: n.title || t('Untitled') });
   const project = api.clients.find((c) => c.id === n.clientId);
   const editedBy = n.updatedBy && n.updatedBy !== api.me ? api.users.find((u) => u.id === n.updatedBy)?.name.split(' ')[0] : '';
   const snip = snippetAround(n, q);
   const edit = ctx.canEdit(n);
-  const face = (
+  const shared = n.visibility === 'team';
+  const phoneFace = (
+    <div className="note-item nl-row lp" {...menu.bind} onClick={() => onOpen(q || undefined)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(q || undefined)}>
+      {shared && <Users size={14} className="nl-shared" aria-label={t('Shared')} />}
+      <strong className="nl-title">{n.title || t('Untitled')}</strong>
+      <span className="nl-line">
+        <span className="nl-when">{whenShort(n.updatedAt)}</span>
+        {q && snip.hit ? (
+          <span className="nl-first">
+            {snip.before}
+            <mark>{snip.hit}</mark>
+            {snip.after}
+          </span>
+        ) : (
+          <span className="nl-first">{firstLine(n) || t('No more text')}</span>
+        )}
+      </span>
+      {mixed && project && (
+        <span className="nl-proj">
+          <Dot color={project.color} />
+          {project.name}
+        </span>
+      )}
+    </div>
+  );
+  const face = phone ? phoneFace : (
     <div className={`note-item lp${active ? ' active' : ''}`} {...menu.bind} onClick={() => onOpen(q || undefined)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(q || undefined)} title={n.title || t('Untitled')}>
       <span className="ni-dot" aria-hidden>
         {(n.title || 'U').trim().charAt(0).toUpperCase()}

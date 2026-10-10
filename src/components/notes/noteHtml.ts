@@ -117,6 +117,16 @@ export function linkedFrom(note: Note, notes: Note[], tasks: Todo[]) {
 export const hasTasks = (n: Note) => n.html.includes('note-task');
 
 /** A short bit of the note around the first match, with where the match is. */
+/** The first line of the body with something on it (the list's second line, after the time). */
+export function firstLine(n: Note) {
+  return (
+    htmlToText(n.html)
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l && l !== n.title.trim()) ?? ''
+  );
+}
+
 export function snippetAround(n: Note, q: string) {
   const text = `${n.title}\n${htmlToText(n.html)}`;
   const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;

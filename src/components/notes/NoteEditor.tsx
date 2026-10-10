@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { ArrowDown, ArrowUp, Bold, Check, ChevronDown, Cloud, CloudOff, Copy, Eye, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListTodo, MoreHorizontal, NotebookPen, Pin, PinOff, Quote, RotateCcw, SquareCheck, Strikethrough, Trash2, Type, Underline } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bold, Check, ChevronDown, Cloud, CloudOff, Copy, Eye, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListTodo, MoreHorizontal, NotebookPen, Pin, PinOff, Quote, RotateCcw, Share, SquareCheck, Strikethrough, Trash2, Type, Underline, Undo2 } from 'lucide-react';
 import type { Note, Todo } from '../../types';
 import { relative } from '../../utils';
 import { toast } from '../../toast';
@@ -284,7 +284,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
             aria-label={tx('note', 'Title')}
             enterKeyHint="next"
           />
-          <p className="note-meta">{status}</p>
+          {!phone && <p className="note-meta">{status}</p>}
           <NoteText
             ref={text}
             html={note.html}
@@ -323,6 +323,8 @@ function Open(p: NoteEditorProps & { note: Note }) {
             </button>
           )}
           {phone && linked}
+          {/* Phones: when it was edited goes at the end (Apple Notes), so the writing starts at the top. */}
+          {phone && <p className="note-meta note-meta-end">{status}</p>}
         </div>
         {!phone && linked && <aside className="note-side">{linked}</aside>}
       </div>
@@ -375,22 +377,35 @@ function Open(p: NoteEditorProps & { note: Note }) {
     </button>
   );
 
+  // Phones (Apple Notes): Share and "…" while reading; Undo (hold for Redo), Share and a round Done while writing.
+  const share = owner && !note.deletedAt && (
+    <button type="button" className="icon-btn note-top-btn" onPointerDown={(e) => focus && e.preventDefault()} onClick={() => ctx.share(note)} aria-label={t('Who sees it: {who}. Change', { who: who.label })}>
+      <Share size={21} />
+    </button>
+  );
   if (phone)
     return (
       <PushScreen
-        title={whoBtn}
+        title=""
         backLabel={t('Notes')}
         onBack={() => (done(), p.onBack?.())}
         className="note-screen"
         actions={
           focus ? (
-            <button type="button" className="note-done" onClick={done}>
-              {t('Done')}
-            </button>
+            <span className="note-top-acts" key="writing">
+              <UndoButton onUndo={() => text.current?.cmd('undo')} onRedo={() => text.current?.cmd('redo')} />
+              {share}
+              <button type="button" className="note-done-circle" onPointerDown={(e) => e.preventDefault()} onClick={done} aria-label={t('Done')}>
+                <Check size={20} strokeWidth={2.6} />
+              </button>
+            </span>
           ) : (
-            <button ref={dots} type="button" className="icon-btn" onClick={() => menu.openFrom(dots)} aria-label={t('Note actions')}>
-              <MoreHorizontal size={20} />
-            </button>
+            <span className="note-top-acts" key="reading">
+              {share}
+              <button ref={dots} type="button" className="icon-btn note-top-btn" onClick={() => menu.openFrom(dots)} aria-label={t('Note actions')}>
+                <MoreHorizontal size={21} />
+              </button>
+            </span>
           )
         }
         footer={focus === 'text' && canEdit && !panel ? <NoteBar caret={caret} a={bar} canTask /> : undefined}
@@ -459,5 +474,30 @@ function Open(p: NoteEditorProps & { note: Note }) {
       )}
       {body}
     </section>
+  );
+}
+
+/** Undo, and Redo when held (Apple Notes). Keeps the keyboard and the caret where they are. */
+function UndoButton({ onUndo, onRedo }: { onUndo: () => void; onRedo: () => void }) {
+  const timer = useRef<number | undefined>(undefined);
+  const held = useRef(false);
+  return (
+    <button
+      type="button"
+      className="icon-btn note-top-btn"
+      aria-label={t('Undo')}
+      title={t('Undo (hold to redo)')}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        held.current = false;
+        timer.current = window.setTimeout(() => ((held.current = true), onRedo(), navigator.vibrate?.(8)), 450);
+      }}
+      onPointerUp={() => clearTimeout(timer.current)}
+      onPointerLeave={() => clearTimeout(timer.current)}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={() => (held.current ? (held.current = false) : onUndo())}
+    >
+      <Undo2 size={21} />
+    </button>
   );
 }

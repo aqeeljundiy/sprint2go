@@ -164,6 +164,12 @@ const id: Record<string, string> = {
   'Copy made': 'Salinan dibuat',
   'Note saved': 'Catatan tersimpan',
   'Note saved in {project}': 'Catatan tersimpan di {project}',
+
+  // Phones: Apple Notes' list and editor
+  'Previous 7 days': '7 hari sebelumnya',
+  'Previous 30 days': '30 hari sebelumnya',
+  'No more text': 'Tidak ada teks lain',
+  'Undo (hold to redo)': 'Urungkan (tahan untuk mengulang)',
 };
 
 export default id;
