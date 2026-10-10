@@ -493,12 +493,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [messages, setMessages] = useStored('messages');
   const [notices, setNotices] = useStored('notices');
   const [meetings, setMeetings] = useStored('meetings');
-  const [taskScope, setTaskScope] = usePersisted<TaskScope>('s2g-task-scope', { kind: 'mine' }); // the last one used, on this device
+  const [taskScope, setTaskScope] = usePersisted<TaskScope>('s2g-task-scope', { kind: 'today' }); // the last one used, on this device
+  const [taskBrowse, setTaskBrowse] = useState(false); // phones: Tasks' Browse, the root of its stack (TasksView)
   // The Projects app: all projects, past ones, or one project's hub.
   const [projScope, setProjScope] = useState<TaskScope>({ kind: 'projects' });
   const [projNew, setProjNew] = useState(0); // bumps to open the "new project" form
   const [taskOpen, setTaskOpen] = useState<string | null>(null);
-  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal' | undefined>(undefined);
+  const [clientTab, setClientTab] = useState<'overview' | 'tasks' | 'workload' | 'quotes' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal' | undefined>(undefined);
   const [teams, setTeams] = useStored('teams');
   registerStages([], undefined, { clients, teams }); // projects and teams with stages of their own
   const [statuses, setStatuses] = useStored('statuses');
@@ -2047,6 +2048,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const openTasks = (scope: TaskScope) => {
     if ((scope.kind === 'client' || scope.kind === 'past') && enabled.has('projects')) return (setProjScope(scope), go('projects'));
     setTaskScope(scope);
+    setTaskBrowse(false);
     go('tasks');
   };
   /** The project page is the hub: overview, tasks, chat, mail, meetings, files, notes, logins, guests. It lives in the Projects app. */
@@ -4389,7 +4391,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             projects={seesAllProjects ? wsClientsAll : wsClientsAll.filter((c) => myClientIds.includes(c.id))}
             tasks={wsTasks}
             users={members}
-            onOpen={(id) => setProjScope({ kind: 'client', id })}
+            onOpen={(id) => (setClientTab(undefined), setProjScope({ kind: 'client', id }))}
+            onPast={() => setProjScope({ kind: 'past' })}
             onCreate={
               canCreateProjects
                 ? (name, type) => {
@@ -4444,7 +4447,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             channels={wsChannels}
             meetings={wsMeetings}
             onAdd={(t) => createTask({ ...t, source: 'manual' }, { chat: true }).id}
-            onOpenProject={enabled.has('projects') ? (id) => openClient(id) : undefined}
+            onOpenProject={enabled.has('projects') ? (id, tab) => openClient(id, tab) : undefined}
+            app={mode === 'projects' ? 'projects' : 'tasks'}
+            browse={mobile && mode === 'tasks' && taskBrowse}
+            onBrowse={setTaskBrowse}
+            settings={mode === 'tasks' ? settingsRows : undefined}
+            onNewProject={enabled.has('projects') && canCreateProjects ? newProjectFlow : undefined}
             onPastProjects={enabled.has('projects') ? () => (setProjScope({ kind: 'past' }), go('projects')) : undefined}
             onStatus={setTaskStatus}
             onPatch={patchTask}
@@ -5169,7 +5177,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           })}
           current={mode}
           moreOn={moreOpen || !tabApps.includes(mode as AppId)}
-          onApp={(id) => (setMoreOpen(false), go(id as AppId))}
+          onApp={(id) => (setMoreOpen(false), id === 'tasks' && mode === 'tasks' && setTaskBrowse(true), go(id as AppId))}
           onMore={() => (setEditingBar(false), setMoreOpen((o) => !o))}
           onEdit={() => (setEditingBar(true), setMoreOpen(true))}
         />

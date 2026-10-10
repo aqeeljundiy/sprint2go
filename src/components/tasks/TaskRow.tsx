@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react';
-import { Check, CheckCircle2, Inbox, MessageSquare, MoreHorizontal, Repeat as RepeatIcon, FileText } from 'lucide-react';
+import { CalendarDays, Check, CheckCircle2, Inbox, MessageSquare, MoreHorizontal, Repeat as RepeatIcon, FileText } from 'lucide-react';
 import { SwipeRow, type SwipeAction } from '../ui/SwipeRow';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { PeoplePicker } from '../ui/PeoplePicker';
@@ -58,7 +58,7 @@ export function TaskRow({
   note?: string;
 }) {
   const st = stageOf(task); // its own stages (its project's or team's, when they have their own)
-  const m = useActionMenu(menu, { title: task.title });
+  const m = useActionMenu(menu, { title: task.title, className: 'task-menu' }); // phones: one line per action, the value on the right
   const dots = useRef<HTMLButtonElement>(null);
   const done = task.done || ticking;
   const tone = task.due && !task.done ? dateTone(task.due, ops.today) : null;
@@ -70,6 +70,7 @@ export function TaskRow({
   const showStage = look.stage && !task.done && st.kind !== 'done' && st !== firstOf('open', stagesForTask(task));
   const hol = task.due && !task.done && tone !== 'overdue' ? holidayOn(task.due) : '';
   const last = task.history?.at(-1)?.at ?? task.createdAt;
+  const review = !task.done && st.kind === 'review' && task.supervisorId === ops.me; // waiting on my check: the ring says so
   return (
     <SwipeRow start={selecting ? [] : start} end={selecting ? [] : end} leaving={leaving} className="trow-swipe">
       <div
@@ -84,7 +85,7 @@ export function TaskRow({
       >
         <button
           type="button"
-          className={`trow-check${task.priority === 'high' && look.show('priority') ? ' p-high' : ''}${done ? ' on' : ''}`}
+          className={`trow-check${task.priority === 'high' && look.show('priority') ? ' p-high' : review ? ' p-review' : ''}${done ? ' on' : ''}`}
           onClick={(e) => (e.stopPropagation(), selecting ? onSelect(task.id) : onTick(task))}
           aria-label={selecting ? (selected ? t('Unselect') : t('Select')) : task.done ? t('Mark not done') : t('Mark “{title}” done', { title: task.title })}
         >
@@ -102,7 +103,8 @@ export function TaskRow({
             )}
             {look.show('due') && task.due && !task.done && (look.dueWords !== false || task.repeat) && (
               <span className={`tm due-${tone}`}>
-                {task.repeat && <RepeatIcon size={12} aria-label={t('Repeats')} />}
+                {task.repeat && <RepeatIcon size={12} className="tm-rep" aria-label={t('Repeats')} />}
+                {look.dueWords !== false && <CalendarDays size={12} className="tm-cal" aria-hidden="true" />}
                 {look.dueWords !== false && dueText(task.due, ops.today)}
               </span>
             )}
@@ -145,6 +147,9 @@ export function TaskRow({
               <span className="tm proj" style={{ ['--c' as string]: c.color }}>
                 <i />
                 {c.name}
+                <b className="tm-hash" aria-hidden="true">
+                  #
+                </b>
               </span>
             )}
           </div>
@@ -152,7 +157,7 @@ export function TaskRow({
         {act && <span className="trow-act">{act}</span>}
         {look.avatar && doersOf(task).length > 0 && (
           <span className="trow-who phone-only">
-            <Doer task={task} ops={ops} size={24} />
+            <Doer task={task} ops={ops} size={20} />
           </span>
         )}
         {look.show('assignee') && (

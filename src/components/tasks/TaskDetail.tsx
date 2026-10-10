@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AlignLeft, Bell, CalendarDays, CalendarPlus, ChevronRight, Copy, Eye, Flag, Hash, Link2, ListChecks, MoreHorizontal, Plus, Repeat as RepeatIcon, Trash2, UserRound, Users, X, type LucideIcon } from 'lucide-react';
+import { AlignLeft, ArrowUp, Bell, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronRight, Clock, Copy, Eye, EyeOff, Flag, Hash, Link2, ListChecks, MoreHorizontal, Pencil, Plus, Repeat as RepeatIcon, RotateCcw, Trash2, UserRound, Users, X, type LucideIcon } from 'lucide-react';
 import { Sheet } from '../ui/Sheet';
+import { SwipeRow } from '../ui/SwipeRow';
+import { useLeaving } from '../ui/Smooth';
+import { Avatar } from '../Avatar';
 import { Select, Dot } from '../ui/Select';
 import { DatePicker } from '../ui/DatePicker';
 import { PeoplePicker } from '../ui/PeoplePicker';
@@ -12,7 +15,7 @@ import { remindText } from '../../quickAdd';
 import { stageName, stageOf, stageIdFor, stagesForTask, toneOf } from '../../stages';
 import { holidayOn } from '../../holidayDays';
 import { term } from '../../terms';
-import { localDay } from '../../utils';
+import { localDay, relative } from '../../utils';
 import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../../types';
 import { copyTaskLink, doersOf } from './taskOps';
 import { t, tn, tx } from '../../i18n';
@@ -51,6 +54,7 @@ export function TaskDetail({
   above,
   history,
   meta,
+  guest,
 }: {
   t: Todo;
   wsId: string;
@@ -69,6 +73,8 @@ export function TaskDetail({
   above: ReactNode; // the brief it's part of, guest visibility, the review banner
   history: ReactNode;
   meta: ReactNode;
+  /** Phones: the guest side of a project's task (who can see it, the guest's approval) as a row and a "…" item. */
+  guest?: { visible: boolean; toggle: () => void; approval?: Todo['approval']; ask: () => void };
 }) {
   const phone = usePhone();
   const stages = stagesOf(task);
@@ -79,6 +85,8 @@ export function TaskDetail({
   const [checkText, setCheckText] = useState('');
   const [comment, setComment] = useState('');
   const [toClient, setToClient] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(true); // phones: the checklist folds like Todoist's sub-tasks
+  const [allActivity, setAllActivity] = useState(false); // phones: the last comment, or everything that happened
   const dots = useRef<HTMLButtonElement>(null);
   const checkInput = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
@@ -93,6 +101,7 @@ export function TaskDetail({
   const menu = useActionMenu(
     () => [
       ...(!task.done ? [{ label: t('Add to calendar'), icon: CalendarPlus, run: () => onToCalendar(task) }] : []),
+      ...(phone && guest && !task.done && guest.approval?.status !== 'waiting' ? [{ label: guest.approval ? t('Ask again') : t('Ask {who} to approve', { who: term.who }), icon: CheckCircle2, run: guest.ask }] : []),
       ...(onDuplicate ? [{ label: t('Duplicate'), icon: Copy, run: () => onDuplicate(task) }] : []),
       { label: t('Copy link'), icon: Link2, run: () => void copyTaskLink(wsId, task.id) },
       { label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => (onDelete(task.id), onClose()) },
@@ -253,7 +262,7 @@ export function TaskDetail({
       row: null,
       chip: (
         <button type="button" className="td-chip" onClick={() => (setOpened((o) => [...o, 'notes']), requestAnimationFrame(() => notesRef.current?.focus()))}>
-          {chipLook(AlignLeft, t('Notes'))}
+          {chipLook(AlignLeft, phone ? t('Description') : t('Notes'))}
         </button>
       ),
     },
@@ -430,11 +439,163 @@ export function TaskDetail({
     </div>
   );
 
+  /* ---------- Phones: Todoist's task view. Set fields as icon-and-value rows, the rest as one sideways row of chips,
+     the checklist as sub-tasks, the last comment, and the comment field pinned at the bottom. ---------- */
+  const order = ['notes', 'due', 'who', 'supervisor', 'priority', 'repeat', 'remind', 'team', 'followers', 'checklist'];
+  const pFields = fields.filter((f) => f.id !== 'project').sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  const pRows = pFields.filter((f) => f.filled && (f.row || f.id === 'notes'));
+  const pChips = pFields.filter((f) => !f.filled);
+  const comments = (task.history ?? []).filter((h) => h.kind === 'comment');
+  const lastComment = comments.at(-1);
+  const lastBy = lastComment ? users.find((u) => u.id === lastComment.by) : undefined;
+  const items = useLeaving(checklist, (c) => c.id);
+  const doneN = checklist.filter((c) => c.done).length;
+  const setList = (list: typeof checklist) => onPatch(task.id, { checklist: list });
+  const ap = guest?.approval;
+  const pBody = (
+    <div className="td tdp">
+      <div className="td-title-row tdp-title">
+        <button type="button" className={`trow-check td-check${task.priority === 'high' ? ' p-high' : ''}${task.done ? ' on' : ''}`} onClick={() => onStatus(task.id, stageIdFor(task, task.done ? 'open' : 'done', stages))} aria-label={task.done ? t('Mark not done') : t('Mark done')}>
+          <span className="ring">{task.done && <Check size={14} strokeWidth={3} />}</span>
+        </button>
+        <textarea ref={titleRef} className="drawer-title" rows={1} value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} aria-label={t('Task title')} />
+      </div>
+      {above}
+      {(pRows.length > 0 || guest) && (
+        <div className="tdp-rows">
+          {pRows.map((f) => (
+            <div key={f.id} className={`tdp-row td-${f.id}`} role="group" aria-label={f.label}>
+              <f.icon size={20} className="tdp-icon" aria-hidden="true" />
+              <span className="tdp-val">
+                {f.id === 'notes' ? <textarea ref={notesRef} className="tdp-desc" rows={1} value={task.notes ?? ''} onChange={(e) => onPatch(task.id, { notes: e.target.value })} placeholder={t('Description')} aria-label={t('Description')} /> : f.row}
+              </span>
+            </div>
+          ))}
+          {guest && (
+            <div className={`tdp-row tdp-guest${guest.visible ? ' on' : ''}`}>
+              {guest.visible ? <Eye size={20} className="tdp-icon" aria-hidden="true" /> : <EyeOff size={20} className="tdp-icon" aria-hidden="true" />}
+              <button type="button" className="tdp-btn" role="switch" aria-checked={guest.visible} onClick={guest.toggle}>
+                {guest.visible ? t('Visible to {whos}', { whos: term.whos }) : t('Internal only')}
+                <span className={`switch ${guest.visible ? 'on' : ''}`} aria-hidden="true">
+                  <span />
+                </span>
+              </button>
+            </div>
+          )}
+          {ap && (
+            <div className={`tdp-row tdp-ap ${ap.status}`}>
+              {ap.status === 'waiting' ? <Clock size={20} className="tdp-icon" aria-hidden="true" /> : ap.status === 'approved' ? <CheckCircle2 size={20} className="tdp-icon" aria-hidden="true" /> : <RotateCcw size={20} className="tdp-icon" aria-hidden="true" />}
+              <span className="tdp-val">{ap.status === 'waiting' ? t('Waiting for {who} approval', { who: term.who }) : ap.status === 'approved' ? (ap.at ? t('Approved {when}', { when: relative(ap.at) }) : t('Approved')) : t('Changes asked: “{note}”', { note: ap.note ?? '' })}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {pChips.length > 0 && (
+        <div className="tdp-chips" role="group" aria-label={t('Add to this task')}>
+          {pChips.map((f) => (
+            <span key={f.id} className="td-chip-slot">
+              {f.chip}
+            </span>
+          ))}
+        </div>
+      )}
+      {(checklist.length > 0 || opened.includes('checklist')) && (
+        <section className="tdp-sec">
+          <button type="button" className="tdp-head" onClick={() => setCheckOpen((o) => !o)} aria-expanded={checkOpen}>
+            <span>{tx('task', 'Checklist')}</span>
+            {checklist.length > 0 && (
+              <span className="tdp-count">
+                <Pie part={doneN / checklist.length} />
+                {doneN}/{checklist.length}
+              </span>
+            )}
+            <ChevronRight size={18} className={`rot-chev tdp-chev ${checkOpen ? 'open' : ''}`} />
+          </button>
+          <div className={`fold ${checkOpen ? 'open' : ''}`}>
+            <div className="fold-in">
+              {items.map(({ item: c, leaving }) => (
+                <CheckItem
+                  key={c.id}
+                  item={c}
+                  leaving={leaving}
+                  onToggle={() => setList(checklist.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)))}
+                  onRename={(text) => setList(checklist.map((x) => (x.id === c.id ? { ...x, text } : x)))}
+                  onDelete={() => {
+                    const before = checklist;
+                    setList(checklist.filter((x) => x.id !== c.id));
+                    return () => setList(before);
+                  }}
+                />
+              ))}
+              <label className="tdp-add">
+                <Plus size={20} aria-hidden="true" />
+                <input ref={checkInput} value={checkText} onChange={(e) => setCheckText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCheck()} onBlur={addCheck} placeholder={t('Add item')} enterKeyHint="done" />
+              </label>
+            </div>
+          </div>
+        </section>
+      )}
+      <section className="tdp-sec">
+        <button type="button" className="tdp-head" onClick={() => setAllActivity((o) => !o)} aria-expanded={allActivity}>
+          <span>{t('Comments')}</span>
+          {comments.length > 0 && <span className="tdp-count">{comments.length}</span>}
+          <ChevronRight size={18} className={`rot-chev tdp-chev ${allActivity ? 'open' : ''}`} />
+        </button>
+        {!allActivity &&
+          (lastComment ? (
+            <div className="tdp-last">
+              {lastBy ? <Avatar person={lastBy} size={24} /> : <span className="avatar-empty sm">{lastComment.by.charAt(0).toUpperCase()}</span>}
+              <span className="tdp-last-text">
+                <b>{lastBy ? (lastBy.id === me ? t('You') : lastBy.name.split(' ')[0]) : (lastComment.byName ?? lastComment.by)}</b>
+                <span>{lastComment.text}</span>
+              </span>
+            </div>
+          ) : (
+            <p className="tdp-none">{t('No comments yet')}</p>
+          ))}
+        <div className={`fold ${allActivity ? 'open' : ''}`}>
+          <div className="fold-in">{allActivity && history}</div>
+        </div>
+        <button type="button" className="link-btn tdp-all" onClick={() => setAllActivity((o) => !o)}>
+          {allActivity ? t('Show less') : t('Show all activity')}
+        </button>
+      </section>
+      {meta}
+    </div>
+  );
+  const pFoot = (
+    <div className={`tdp-comment${toClient ? ' to-client' : ''}`}>
+      <div className="tdp-field">
+        <textarea
+          rows={1}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.preventDefault(), send())}
+          placeholder={toClient ? t('Reply to the {who}…', { who: term.who }) : t('Comment')}
+          aria-label={t('Comment')}
+        />
+        <button type="button" className={`tdp-send${comment.trim() ? ' on' : ''}`} disabled={!comment.trim()} onPointerDown={(e) => e.preventDefault()} onClick={send} aria-label={toClient ? t('Send') : t('Comment')}>
+          <ArrowUp size={18} strokeWidth={2.5} />
+        </button>
+      </div>
+      {(told.length > 0 || clientCanSee) && (
+        <div className="td-c-foot">
+          <small className="muted">{toClient ? t('The {who} and your team will see this', { who: term.who }) : told.length ? toldText : ''}</small>
+          {clientCanSee && (
+            <label className="cb-toggle">
+              <input type="checkbox" checked={toClient} onChange={(e) => setToClient(e.target.checked)} /> {t('{Who} can see this', { who: term.who })}
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   if (phone)
     return (
       <>
-        <Sheet onClose={onClose} size="full" className="td-sheet" label={t('Task')} title={crumbs} head={head} footer={foot}>
-          {body}
+        <Sheet onClose={onClose} size="tall" className="td-sheet tdp-sheet" label={t('Task')} title={crumbs} head={head} footer={pFoot}>
+          {pBody}
         </Sheet>
         {menu.menu}
       </>
@@ -456,3 +617,49 @@ export function TaskDetail({
 
 /** The task's own stages: its project's or team's, else the company's. */
 const stagesOf = (task: Todo) => stagesForTask(task);
+
+/** A small progress pie (Todoist's sub-tasks count). */
+function Pie({ part }: { part: number }) {
+  const r = 6;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="tdp-pie">
+      <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="8" cy="8" r={r / 2} fill="none" stroke="currentColor" strokeWidth={r} strokeDasharray={`${(part * Math.PI * r).toFixed(2)} ${c}`} transform="rotate(-90 8 8)" />
+    </svg>
+  );
+}
+
+/** One checklist item on a phone: a ring to tick it, swipe left to delete, hold for Rename and Delete. */
+function CheckItem({ item, leaving, onToggle, onRename, onDelete }: { item: { id: string; text: string; done: boolean }; leaving: boolean; onToggle: () => void; onRename: (text: string) => void; onDelete: () => () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(item.text);
+  useEffect(() => setText(item.text), [item.text]);
+  const m = useActionMenu(
+    () => [
+      { label: t('Rename'), icon: Pencil, run: () => setEditing(true) },
+      { label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => void onDelete() },
+    ],
+    { title: item.text },
+  );
+  const commit = () => {
+    setEditing(false);
+    if (text.trim() && text.trim() !== item.text) onRename(text.trim());
+    else setText(item.text);
+  };
+  return (
+    <SwipeRow leaving={leaving} className="tdp-citem-swipe" end={[{ id: 'delete', label: t('Delete'), icon: Trash2, tone: 'danger', removes: true, done: t('Deleted'), run: onDelete }]}>
+      <div className={`tdp-citem lp${item.done ? ' done' : ''}`} {...m.bind}>
+        <button type="button" className={`trow-check${item.done ? ' on' : ''}`} onClick={onToggle} aria-label={item.done ? t('Mark not done') : t('Mark “{title}” done', { title: item.text })}>
+          <span className="ring">{item.done && <Check size={12} strokeWidth={3} />}</span>
+        </button>
+        {editing ? (
+          <input autoFocus className="tdp-ctext" value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === 'Enter' ? commit() : e.key === 'Escape' && (setText(item.text), setEditing(false)))} aria-label={t('Rename')} enterKeyHint="done" />
+        ) : (
+          <span className="tdp-ctext">{item.text}</span>
+        )}
+      </div>
+      {m.menu}
+    </SwipeRow>
+  );
+}

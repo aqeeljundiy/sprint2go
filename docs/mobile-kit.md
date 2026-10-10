@@ -107,6 +107,12 @@ or without the screen's name) are ready-made parts. The company sheet stays reac
 While it's on screen the bar's title is tucked away; once it scrolls under the bar the app's name fades into the bar at
 17 px. Use one per screen, at the top of the scrolling list.
 
+**Worked example, Tasks** (Todoist): `TasksView` is a two-level stack. Browse (`TasksBrowse`, grouped cards, its own
+`<LargeTitle>`) is the root; a list claims the bar with `<TopBar app="tasks" lead={<TopBarBack label={t('Tasks')} … />}
+title={<BarTitle …/>} actions={…"…"…} />`, where the title follows `useTitleTucked(app)` so the list's name fades into the
+bar once its large title scrolls away. Tapping Tasks in the bar again opens Browse (App's `onApp`). The same page shows
+the Projects app's list on phones.
+
 **A left drawer**: Mail opens the desktop `Sidebar` as a drawer with `useSidebarDrawer(phone)` and App's `sidebarOpen`
 (the shell gives `.sidebar.open` the drawer look, scrim and motion on phones only while this is on). Any other app uses
 `SideDrawer` and `useEdgeSwipe` (section 4).
@@ -176,7 +182,7 @@ const menu = useActionMenu(() => [
 {menu.menu}
 ```
 
-A new `group` starts after a divider; keep Delete last. `header` puts something above the list (a row of reactions).
+A new `group` starts after a divider; keep Delete last. `header` puts something above the list (a row of reactions). `className` goes on the phone's sheet (Tasks' `task-menu` puts each value on the right of its action, one line each).
 
 **SwipeRow**: up to two actions per side; past 72 px the first is armed (its colour fills, the phone ticks), past 55% of
 the row the second. A vertical move always scrolls; mouse does nothing (give the same actions a menu).
