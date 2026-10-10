@@ -2169,6 +2169,66 @@ await test('Email layout: every system email renders through the shared layout, 
   });
 }
 
+/* ---------- Routes and Back on phones (src/route.ts, research/launcher/plan.md sections 4 and 5) ---------- */
+
+{
+  const { parseRoute, routePath, historySteps, startPath, RESUME_MS, SECTIONS } = await import('../src/route.ts');
+  const both = (path, phone, want) => {
+    assert.deepEqual(parseRoute(path, phone), want, path);
+    assert.equal(routePath(want), path === '' ? '/' : path.replace(/\/$/, '') || '/', `write ${path}`);
+  };
+  await test('Routes: "/" is the launcher on phones and Home on desktop; /home is Home on both', () => {
+    assert.deepEqual(parseRoute('/', true), { launcher: true, mode: 'home' });
+    assert.deepEqual(parseRoute('/', false), { launcher: false, mode: 'home' });
+    assert.deepEqual(parseRoute('/home', true), { launcher: false, mode: 'home' });
+    assert.deepEqual(parseRoute('/nonsense/x', true), { launcher: true, mode: 'home' });
+    assert.equal(routePath({ launcher: true, mode: 'mail' }), '/');
+  });
+  await test('Routes: every app section in the table reads and writes the same on phone and desktop', () => {
+    for (const [app, list] of Object.entries(SECTIONS))
+      list.forEach((s, i) => {
+        const path = i === 0 ? `/${app}` : `/${app}/${s}`;
+        for (const phone of [true, false]) both(path, phone, i === 0 ? { launcher: false, mode: app } : { launcher: false, mode: app, section: s });
+      });
+    // The root section named out loud is the same place.
+    assert.deepEqual(parseRoute('/tasks/today', true), { launcher: false, mode: 'tasks' });
+  });
+  await test('Routes: a thing open in an app (task, channel, mailbox, note, project, table, meeting, team, settings)', () => {
+    both('/tasks/t-1', true, { launcher: false, mode: 'tasks', id: 't-1' });
+    both('/tasks/upcoming/t-1', true, { launcher: false, mode: 'tasks', section: 'upcoming', id: 't-1' });
+    both('/chat/c-general', true, { launcher: false, mode: 'chat', id: 'c-general' });
+    both('/mail/starred', false, { launcher: false, mode: 'mail', id: 'starred' });
+    both('/notes/n-1', true, { launcher: false, mode: 'notes', id: 'n-1' });
+    both('/projects/c-1', true, { launcher: false, mode: 'projects', id: 'c-1' });
+    both('/projects/mine', true, { launcher: false, mode: 'projects', section: 'mine' });
+    both('/tables/tb-1', true, { launcher: false, mode: 'tables', id: 'tb-1' });
+    both('/meet/m-1', true, { launcher: false, mode: 'meet', id: 'm-1' });
+    both('/teams/people', true, { launcher: false, mode: 'teams', section: 'people' });
+    both('/teams/tm-1', true, { launcher: false, mode: 'teams', id: 'tm-1' });
+    both('/settings/account', true, { launcher: false, mode: 'settings', id: 'account' });
+    both('/vault', true, { launcher: false, mode: 'vault' });
+    assert.equal(routePath({ launcher: false, mode: 'mail', id: 'label/Clients A' }), '/mail/label/Clients%20A');
+    assert.deepEqual(parseRoute('#/calendar/month', true), { launcher: false, mode: 'calendar', section: 'month' });
+  });
+  await test('Back order: a task opened from a notification sits over Tasks, which sits over the launcher', () => {
+    assert.deepEqual(historySteps('/', '/tasks/t-1', true), ['/tasks', '/tasks/t-1']);
+    assert.deepEqual(historySteps('/mail', '/tasks/upcoming/t-1', true), ['/tasks/upcoming', '/tasks/upcoming/t-1']);
+    // Inside the same app it's one step; sections are real history too.
+    assert.deepEqual(historySteps('/tasks', '/tasks/t-1', true), ['/tasks/t-1']);
+    assert.deepEqual(historySteps('/mail', '/mail/files', true), ['/mail/files']);
+    assert.deepEqual(historySteps('/', '/mail', true), ['/mail']);
+    assert.deepEqual(historySteps('/mail', '/mail', true), []);
+  });
+  await test('Opening on a phone: the URL’s app, else the last app under 10 minutes ago, else the launcher', () => {
+    const now = 1_000_000_000;
+    assert.equal(startPath('/chat/dms', null, now), '/chat/dms');
+    assert.equal(startPath('/', { path: '/tasks/upcoming', at: now - 60_000 }, now), '/tasks/upcoming');
+    assert.equal(startPath('/', { path: '/tasks/upcoming', at: now - RESUME_MS - 1 }, now), '/');
+    assert.equal(startPath('/', { path: '/', at: now - 1000 }, now), '/');
+    assert.equal(startPath('/', null, now), '/');
+  });
+}
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');
