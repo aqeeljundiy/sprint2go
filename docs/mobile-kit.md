@@ -53,7 +53,8 @@ wins over the old ones with the same selector, so it never needs `!important`.
 | File | Owner |
 |---|---|
 | `kit.css` | the touch pieces below (Phase 0) |
-| `shell.css` | top bar, bottom bar, create button, More, search, keyboard, device basics (Phase 0) |
+| `shell.css` | top bar, each app's bottom bar, create button, search, keyboard, device basics (Phase 0) |
+| `launcher.css` | the launcher, the launcher button, Edit apps, each app's colour (research/launcher/plan.md) |
 | `home.css` | Home |
 | `tasks.css` | Tasks |
 | `chat.css` | Chat |
@@ -90,19 +91,25 @@ wins over the old ones with the same selector, so it never needs `!important`.
 
 ## 3. The shell: what your app tells it
 
-The shell (10 Oct 2026, docs/mobile-fix-plan.md Step 0) copies Teams and Gmail:
+The shell (10 Oct 2026; the launcher from research/launcher/plan.md) copies Teams, Gojek and Gmail:
 
-- **Bottom bar**: a plain full-width bar, 56 px plus the home bar, five labelled tabs (four apps and More), 24 px icons,
-  a 56 x 30 pill behind the selected icon that slides between tabs. Red counts on Mail and Chat only; Home gets a dot
-  when something in Needs you is new since you last looked. Long-press the bar to edit it.
+- **Launcher** (`/` on phones, `src/mobile/Launcher.tsx`): the company, search, Ask AI, the bell and you on top; three
+  rows of Needs you with "See all" (the full Home at `/home`); "Continue where you left off"; then the person's apps in
+  four columns with counts for what's theirs. Long-press a tile: Open, New…, Hide, Edit apps. Its + opens New (Brain
+  dump first). Edit apps (`EditApps.tsx`) arranges and hides; admins set the company's order in Settings, Apps on
+  phones (`BarDefaults.tsx`, kept in `tabDefaults.bar` and `bar:<team id>`).
+- **The app's own bottom bar** (`AppBar`): 56 px plus the home bar, the app's two to four sections, labelled, a pill
+  that slides between them, counts per section. An app registers it with `useAppSections` (below); Tables, Vault and
+  Settings have none. The URL carries the section (`/tasks/upcoming`) and the thing open (`/tasks/upcoming/<id>`),
+  `src/route.ts`; Back walks pushed screens, sections, then the launcher.
+- **Launcher button**: top left in every app (where the logo was), with a red dot when another app has something new;
+  a swipe from the left edge on a section's first screen does the same.
 - **Create button**: floats 16 px above the bar at the right, 56 px, owned by the app on screen (below).
 - **Top bar**: one row, 52 px plus the status bar: the company logo with your avatar on its corner (you, your status,
   your companies with a tick on this one, Add a company, Settings), the title (24/700), search. No line under it until
   the content scrolls under it. An app can take over parts of it (below).
 - **Toasts** sit at the bottom, above the bar and above the create button when it shows; never over the top bar or a
   sheet's header. Quiet ones (`quiet: true`) last 4 s.
-- **More** is Teams' drawer: Edit at the top right, the other apps in their colours in four columns, Ask AI, Settings.
-  No search, no New row: search is in the top bar and creating is each app's button.
 - **Notifications**: Home's Needs you and Updates, and "All notifications" opens a full screen (All, Unread, Mentions).
 
 All the hooks are in `src/mobile/chrome.ts`, the components in `src/mobile/TopBar.tsx`. Call them in your app's own
@@ -120,7 +127,7 @@ useCreateAction('mail', { …, hidden: selecting });                            
 Pass `null`/`false` when there's none. Round with the icon by default (Teams, Slack, Things); `extended` shows the
 label too and shrinks to the round form while a list scrolls down, growing back on the way up and at the top (Gmail);
 `hidden` scales it away without unregistering. `more` is what a long-press (or right-click) offers. It steps aside on
-focused screens, with the keyboard and while More is open. Lists keep `var(--fab-space)` (88 px) at their end. If `run`
+focused screens, with the keyboard and on the launcher. Lists keep `var(--fab-space)` (88 px) at their end. If `run`
 must focus a field, focus it during the tap (see TasksView's `openAdd` with `flushSync`): iPhone only opens the keyboard
 for focus given in the tap itself.
 
@@ -182,9 +189,17 @@ useFocusedScreen(open, () => close());     // no Back of its own: one appears in
 Wired today: mail reader (App.tsx), chat channel (ChatView), note editor (NoteEditor), table record (RecordDrawer),
 project page (App.tsx, with Back), and every PushScreen.
 
-**Badges**: Mail and Chat count (`barBadge` in App.tsx); Home has a dot, never a number (its list is on screen when you
-open it). Chat counts direct messages and mentions. More's grid shows counts and a green dot with a word when something
-is live (Meet: Recording).
+**Badges**: only what's yours to act on (`badgeOf` in App.tsx): unread mail, Chat's direct messages and mentions, your
+tasks due today or late, table replies for you. The launcher's tiles and each app's sections show them; Meet's tile gets
+a green dot while the notetaker is live.
+
+**Sections** (each app's own bar):
+
+```tsx
+useAppSections('tasks', { sections: [{ id: 'today', label: t('Today'), icon: Sun, badge: due }, …], current, onChange, onReselect });
+```
+
+Section ids are the URL's (`SECTIONS` in `src/route.ts`); a section with `run` acts instead (Search).
 
 **Toasts with two actions**: `toast({ text, action, also })` shows a second button (Quick Add's Undo and Open).
 
@@ -203,7 +218,7 @@ scrolled to the top), tap the dimmed page or press Escape to close. Rides above 
 ```
 
 `size`: `auto` (fits its content), `tall` (two thirds at least, for lists with search), `full`. `head` adds things to the
-title row (a Done button). `aboveBar` keeps the tab bar showing under it (More uses it). Lists inside use `.as-list` /
+title row (a Done button). `aboveBar` keeps the tab bar showing under it. Lists inside use `.as-list` /
 `.as-item` rows (48 px) and `.sheet-search` for a search field.
 
 **ActionSheet and useActionMenu**: one list of actions; a sheet on phones, a menu by the button or the pointer on desktop.

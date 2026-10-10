@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /** The lists where pulling down from the top opens search (Mail's list pulls to refresh instead). */
-const LISTS = '.mobile-list, .home-scroll, .tracking-scroll, .drive-scroll, .meet-list';
+const LISTS = '.mobile-list, .home-scroll, .tracking-scroll, .drive-scroll, .meet-list, .ln-scroll';
 const PULL = 72; // px to pull before letting go opens search
 
 /**

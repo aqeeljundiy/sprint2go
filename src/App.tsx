@@ -401,6 +401,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [lastMode, setLastMode] = useState<AppId>(() => (boot.mode === 'settings' || !APP_IDS.includes(boot.mode) ? 'home' : (boot.mode as AppId)));
   // Phones: the launcher is on screen (research/launcher/plan.md). The app under it stays as it was.
   const [launcher, setLauncherState] = useState(boot.launcher);
+  const launcherRef = useRef(launcher);
+  launcherRef.current = launcher;
   // Tablets (iPad portrait, small landscape): the sidebar starts folded to icons so the page gets the room.
   // Each size keeps its own choice, so opening it on the iPad doesn't change the laptop.
   const tablet = useMedia(TABLET);
@@ -3950,7 +3952,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [searchScope, setSearchScope] = useState<AppId | null>(null);
   const openSearch = (scope: AppId | null) => (setSearchScope(scope), setPaletteOpen(true));
   const searchHere = () => openSearch(mode !== 'settings' && SEARCHABLE.includes(mode) ? mode : null);
-  usePullToSearch(searchHere, mobile && !paletteOpen);
+  // Pull down on a list: search there; on the launcher, all apps (launcher is declared above: the phone shell).
+  usePullToSearch(() => (launcherRef.current ? openSearch(null) : searchHere()), mobile && !paletteOpen);
   // An app's settings, opened over the app (Back returns to it) instead of jumping to the Settings page.
   const [pushed, setPushed] = useState<{ kind: 'own' | 'section'; id: string; label: string } | null>(null);
   useEffect(() => setPushed(null), [mode, ws.id]);
