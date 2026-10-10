@@ -26,6 +26,7 @@ import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as readTracking from './readTracking.ts';
 import * as mailTeam from './mailTeam.ts';
+import * as mailSmart from './mailSmart.ts';
 import { wakeThread } from '../src/mailRules.ts';
 import * as routing from './routing.ts';
 import * as offsite from './offsite.ts';
@@ -1572,7 +1573,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     // comments, who handles it and snoozes follow the team mail rules (mailTeam.ts).
     if (coll === 'threads') {
       const acct = (db.allDocs('workspaces') as any[]).flatMap((w) => w.accounts ?? []).find((a: any) => a.id === (d as any).accountId);
-      return mailTeam.guardTeamMail(readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO), before, me, acct, now);
+      // Then the 30 days in Spam and Trash, and what Report spam, Not spam, a moved tab and Important teach (mailSmart.ts).
+      return mailSmart.guardSmart(mailTeam.guardTeamMail(readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO), before, me, acct, now), before, undefined);
     }
     // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
     if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
@@ -2273,6 +2275,15 @@ createServer(async (req, res) => {
       const wl = whitelist.on(saved) ? whitelist.entry(saved.id) : null;
       const unlimited = wl ? { limit: wl.sesLimit, used: whitelist.sesUsed(saved.id), mine: whitelist.featureOn(saved, me, 'boosted') } : null;
       return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, creditOrders: credits, unlimited, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership, cert });
+    }
+    // Search with Gmail's operators over your mailboxes in a company (server/mailSmart.ts, src/mailQuery.ts).
+    if (p === '/api/mail/search' && req.method === 'GET') {
+      const sp = new URL(req.url ?? '/', 'http://x').searchParams;
+      const ws = memberOf(me).find((w: any) => w.id === sp.get('workspaceId')) as any;
+      if (!ws) return json(res, 403, { error: mark('Not in this company.') });
+      const boxes = (ws.accounts ?? []).filter((a: any) => (a.users ?? []).includes(me)).map((a: any) => String(a.id));
+      const found = mailSmart.search(String(sp.get('q') ?? ''), boxes, { limit: Math.min(Number(sp.get('limit')) || 100, 500) });
+      return json(res, 200, { ids: found.map((t) => t.id) });
     }
     if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
       const { threadId } = await body(req);
@@ -3774,6 +3785,19 @@ setInterval(planClock, 60 * 60_000);
 
 // Tables' scheduled rules: checked every minute, each runs once on the days it's due.
 setInterval(() => tablesEngine.runSchedules(tablesEnv), 60_000);
+
+// Spam and Trash keep mail 30 days, then it's deleted for good (server/mailSmart.ts). Hourly, and once at start.
+const sweepMail = () => {
+  try {
+    const r = mailSmart.sweepOld();
+    if (r.started.length) broadcast('threads', r.started as db.Doc[], []);
+    if (r.removed.length) broadcast('threads', [], r.removed, undefined, r.removedDocs as db.Doc[]);
+  } catch (e) {
+    console.error('[mail sweep]', e instanceof Error ? e.message : e);
+  }
+};
+setTimeout(sweepMail, 30_000);
+setInterval(sweepMail, 60 * 60_000);
 
 // Calendar reminders ten minutes ahead (for people who keep "Meetings and events" on): a notice in the bell, and on
 // their phone when they're away.

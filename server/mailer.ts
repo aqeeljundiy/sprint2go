@@ -23,6 +23,7 @@ import { overRoom, overRoomWhy } from './billing.ts';
 import * as whitelist from './whitelist.ts';
 import * as track from './readTracking.ts';
 import { keepRaw } from './mailRaw.ts';
+import * as smart from './mailSmart.ts';
 import { msg } from '../src/i18n/index.ts';
 import type { Said } from './lang.ts';
 export { domainKey };
@@ -474,20 +475,23 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     };
     const threads = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
     const existing = refs.length ? threads.find((t) => (t.messages ?? []).some((m: any) => m.mid && refs.includes(m.mid))) : undefined;
-    const thread = existing
+    const built = existing
       ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, snoozeIfNoReply: undefined, messages: [...existing.messages, msg] }
       : { id: 't-' + randomBytes(6).toString('hex'), accountId: account.id, subject: cleanSubject(parsed.subject ?? '') || '(no subject)', location: spam ? 'spam' : 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: ws.id };
+    // Its tab, Important, the spam filter, phishing signs and muted conversations (server/mailSmart.ts).
+    const thread = await smart.arrive(built, { ws: ws as any, accountId: account.id, accountEmail: account.email, arrival: smart.arrivalOf(parsed, msg), authSpam: spam, ip: session.remoteAddress, directTo: addrs(parsed.to).map((p) => p.email), existing: existing ?? null });
+    const inSpam = thread.location === 'spam';
     // The source as it arrived, for mail apps over IMAP (server/imap.ts).
     keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
-    db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ws.id, 'in', spam ? 'spam' : 'inbox', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
+    db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ws.id, 'in', inSpam ? 'spam' : 'inbox', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());
     // The first message for a mailbox that wasn't receiving yet unlocks it straight away.
     if (!(ws as any).mailReady?.mailboxes?.[account.id]?.receive) void refreshReadiness(ws.id).catch(() => {});
     // An update or cancellation of an invite people here answered moves or removes their events.
-    if (cal.invite && !spam) applyInbound(ws, account, cal.invite, thread.id, deps.broadcast, deps.notify);
+    if (cal.invite && !inSpam) applyInbound(ws, account, cal.invite, thread.id, deps.broadcast, deps.notify);
     // Out of office (not for addresses that reach several mailboxes: someone else is around).
-    if (!shared) void maybeAnswer({ workspaceId: ws.id, account, canSend: !!(ws as any).mailReady?.mailboxes?.[account.id]?.send, parsed, envelopeFrom: sender, mid, refs, spam, send: queueSend, log: deps.log });
+    if (!shared) void maybeAnswer({ workspaceId: ws.id, account, canSend: !!(ws as any).mailReady?.mailboxes?.[account.id]?.send, parsed, envelopeFrom: sender, mid, refs, spam: inSpam, send: queueSend, log: deps.log });
   }
 }
 
@@ -636,7 +640,8 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     // A calendar invite (one a teammate sent from their calendar, or an answer to one): read as mail from outside is.
     const cal = o.ical ? readInvite(parsed.attachments, [lower(hit.account.email)]) : null;
     const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
-    const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
+    // Team mail: Primary, and Important as learned (server/mailSmart.ts); never spam.
+    const thread = await smart.arrive({ id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id }, { ws: hit.ws as any, accountId: hit.account.id, accountEmail: hit.account.email, arrival: smart.arrivalOf(parsed, msg), authSpam: false, directTo: o.to.map((p) => p.email), existing: null, internal: true });
     keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
