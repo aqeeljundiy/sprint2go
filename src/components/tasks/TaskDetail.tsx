@@ -16,7 +16,8 @@ import { stageName, stageOf, stageIdFor, stagesForTask, toneOf } from '../../sta
 import { holidayOn } from '../../holidayDays';
 import { term } from '../../terms';
 import { localDay, relative } from '../../utils';
-import type { Client, Repeat, TaskStatus, Team, Todo, User } from '../../types';
+import type { Client, CommentFile, Repeat, TaskStatus, Team, Todo, User } from '../../types';
+import { AttachButton, dropFiles, FileCards, useCommentFiles, WaitingFiles } from './CommentFiles';
 import { copyTaskLink, doersOf } from './taskOps';
 import { t, tn, tx } from '../../i18n';
 import { fmtTime } from '../../i18n/format';
@@ -68,7 +69,7 @@ export function TaskDetail({
   onDelete: (id: string) => void;
   onDuplicate?: (t: Todo) => void;
   onToCalendar: (t: Todo) => void;
-  onComment: (id: string, text: string, toClient?: boolean) => void;
+  onComment: (id: string, text: string, toClient?: boolean, files?: CommentFile[]) => void;
   clientCanSee: boolean;
   above: ReactNode; // the brief it's part of, guest visibility, the review banner
   history: ReactNode;
@@ -291,10 +292,15 @@ export function TaskDetail({
   // Who hears about a comment: everyone on the task but you.
   const told = [...new Set([...doers, task.supervisorId, ...(task.followers ?? [])].filter((x): x is string => !!x && x !== me))].map((id) => users.find((u) => u.id === id)?.name.split(' ')[0]).filter(Boolean) as string[];
   const toldText = !told.length ? t('Nobody else is on this task yet') : told.length === 1 ? t('{name} will be notified', { name: told[0] }) : tn(told.length - 1, '{name} and {n} other will be notified', '{name} and {n} others will be notified', { name: told[0] });
+  // Files going with the next comment: they upload as soon as they're picked; the comment waits for them.
+  const att = useCommentFiles(wsId);
+  useEffect(() => att.clear(), [task.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const canSend = (!!comment.trim() || att.files.length > 0) && !att.busy;
   const send = () => {
-    if (!comment.trim()) return;
-    onComment(task.id, comment.trim(), toClient);
+    if (!canSend) return;
+    onComment(task.id, comment.trim(), toClient, att.files.length ? att.files : undefined);
     setComment('');
+    att.clear();
   };
 
   const crumbs = (
@@ -414,7 +420,8 @@ export function TaskDetail({
     </div>
   );
   const foot = (
-    <div className={`td-comment${toClient ? ' to-client' : ''}`}>
+    <div className={`td-comment${toClient ? ' to-client' : ''}`} {...dropFiles(att)}>
+      <WaitingFiles state={att} />
       <div className="td-c-row">
         <textarea
           rows={1}
@@ -424,7 +431,8 @@ export function TaskDetail({
           placeholder={toClient ? t('Reply to the {who}…', { who: term.who }) : t('Add a comment…')}
           aria-label={t('Comment')}
         />
-        <button type="button" className="primary-btn sm" disabled={!comment.trim()} onPointerDown={(e) => e.preventDefault()} onClick={send}>
+        <AttachButton state={att} phone={false} className="icon-btn td-clip" />
+        <button type="button" className="primary-btn sm" disabled={!canSend} onPointerDown={(e) => e.preventDefault()} onClick={send}>
           {toClient ? t('Send') : t('Comment')}
         </button>
       </div>
@@ -547,7 +555,8 @@ export function TaskDetail({
               {lastBy ? <Avatar person={lastBy} size={24} /> : <span className="avatar-empty sm">{lastComment.by.charAt(0).toUpperCase()}</span>}
               <span className="tdp-last-text">
                 <b>{lastBy ? (lastBy.id === me ? t('You') : lastBy.name.split(' ')[0]) : (lastComment.byName ?? lastComment.by)}</b>
-                <span>{lastComment.text}</span>
+                {lastComment.text && <span>{lastComment.text}</span>}
+                <FileCards files={lastComment.files} />
               </span>
             </div>
           ) : (
@@ -565,7 +574,9 @@ export function TaskDetail({
   );
   const pFoot = (
     <div className={`tdp-comment${toClient ? ' to-client' : ''}`}>
+      <WaitingFiles state={att} />
       <div className="tdp-field">
+        <AttachButton state={att} phone className="tdp-clip" />
         <textarea
           rows={1}
           value={comment}
@@ -574,7 +585,7 @@ export function TaskDetail({
           placeholder={toClient ? t('Reply to the {who}…', { who: term.who }) : t('Comment')}
           aria-label={t('Comment')}
         />
-        <button type="button" className={`tdp-send${comment.trim() ? ' on' : ''}`} disabled={!comment.trim()} onPointerDown={(e) => e.preventDefault()} onClick={send} aria-label={toClient ? t('Send') : t('Comment')}>
+        <button type="button" className={`tdp-send${canSend ? ' on' : ''}`} disabled={!canSend} onPointerDown={(e) => e.preventDefault()} onClick={send} aria-label={toClient ? t('Send') : t('Comment')}>
           <ArrowUp size={18} strokeWidth={2.5} />
         </button>
       </div>

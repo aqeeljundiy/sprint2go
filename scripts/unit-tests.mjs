@@ -2042,6 +2042,108 @@ await test('Language: an email comes out in Indonesian for an Indonesian reader 
   assert.match(en.text, /Mo messaged you: “lunch\?”/);
 });
 
+
+/* ---------- Calendar month: events over several days as one bar (src/components/calendar/monthLayout.ts) ---------- */
+
+{
+  const { monthLayout, eventSpan } = await import('../src/components/calendar/monthLayout.ts');
+  const { monthGrid } = await import('../src/calendarUtils.ts');
+  const { expandEvents } = await import('../src/repeat.ts');
+  // October 2026 on this machine's clock: the grid starts Monday 28 September.
+  const days = monthGrid(new Date(2026, 9, 15));
+  const at = (d, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const ev = (id, start, end, more = {}) => ({ id, title: id, calendarId: 'work', start, end, ...more });
+  const piecesOf = (weeks, id) => weeks.flatMap((w, i) => w.pieces.filter((p) => p.e.id === id).map((p) => ({ week: i, from: p.from, to: p.to, lane: p.lane, before: p.before, after: p.after, first: p.first })));
+
+  await test('Month: an all-day event over a week end is one bar per week, carried on into the next row', () => {
+    // Wednesday 7 to Tuesday 13 October (ends at the next midnight).
+    const w = monthLayout([ev('trip', at(7), at(14), { allDay: true })], days, 4);
+    assert.deepEqual(piecesOf(w, 'trip'), [
+      { week: 1, from: 2, to: 6, lane: 0, before: false, after: true, first: true },
+      { week: 2, from: 0, to: 1, lane: 0, before: true, after: false, first: false },
+    ]);
+  });
+  await test('Month: a timed event of a day or more spans its days; a late meeting past midnight stays on its first day', () => {
+    assert.deepEqual(eventSpan(ev('conf', at(20, 9), at(22, 17)), days[0]), [22, 24]);
+    assert.deepEqual(eventSpan(ev('late', at(20, 22), at(21, 1)), days[0]), [22, 22]);
+    assert.deepEqual(eventSpan(ev('day', at(20), at(21), { allDay: true }), days[0]), [22, 22]);
+    const w = monthLayout([ev('conf', at(20, 9), at(22, 17))], days, 4);
+    assert.deepEqual(piecesOf(w, 'conf').map((p) => [p.week, p.from, p.to, p.first]), [[3, 1, 3, true]]);
+    assert.equal(w[3].pieces[0].bar, true);
+  });
+  await test('Month: bars take the top lanes, the day’s own events fill the lanes left', () => {
+    const w = monthLayout([ev('call', at(8, 9), at(8, 10)), ev('trip', at(7), at(10), { allDay: true }), ev('lunch', at(9, 12), at(9, 13))], days, 4);
+    const lane = (id) => piecesOf(w, id)[0].lane;
+    assert.equal(lane('trip'), 0);
+    assert.equal(lane('call'), 1);
+    assert.equal(lane('lunch'), 1);
+  });
+  await test('Month: a day with more than fits says "+N", and a bar on the last lane is cut around it', () => {
+    const calls = [9, 10, 11, 12, 13].map((h) => ev(`c${h}`, at(15, h), at(15, h, 30)));
+    const w = monthLayout([ev('trip', at(12), at(19), { allDay: true }), ev('mid', at(13), at(18), { allDay: true }), ev('low', at(14), at(17), { allDay: true }), ...calls], days, 4);
+    const wk = w[2];
+    // Thursday 15: three bars and five calls need eight lanes; four fit, so three show and "+5" (two calls past lane 3, and the rest).
+    assert.deepEqual(wk.more, [{ col: 3, n: 5 }]);
+    assert.equal(piecesOf(w, 'trip')[0].lane, 0);
+    // The calls on lanes 3 and up are hidden that day; nothing shows on lane 3 of Thursday.
+    assert.ok(!wk.pieces.some((p) => p.lane === 3 && p.from <= 3 && p.to >= 3));
+    assert.equal(wk.byDay[3].length, 8, 'the day still counts all eight for its label');
+  });
+  await test('Month: a repeating event over several days shows each of its dates as a bar (src/recurrence.ts)', () => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Every other Saturday, Saturday to Monday: 17 to 19 October crosses the week's end.
+    const series = ev('visit', at(3), at(6), { allDay: true, rrule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=SA', timeZone: tz });
+    const shown = expandEvents([series], days[0].getTime(), new Date(2026, 10, 9).getTime());
+    const w = monthLayout(shown, days, 4);
+    const all = w.flatMap((wk, i) => wk.pieces.map((p) => [i, p.from, p.to]));
+    assert.deepEqual(all, [[0, 5, 6], [1, 0, 0], [2, 5, 6], [3, 0, 0], [4, 5, 6], [5, 0, 0]]);
+  });
+}
+
+/* ---------- Files on task comments (server/taskFiles.ts) ---------- */
+
+{
+  const { keepCommentFiles, ownFiles, holdsFile, MAX_FILES } = await import('../server/taskFiles.ts');
+  const id = (n) => String(n).padStart(32, '0');
+  const files = new Map([
+    [id(1), { id: id(1), workspaceId: 'w1', by: 'u-ann', name: 'brief.pdf', type: 'application/pdf', size: 1200 }],
+    [id(2), { id: id(2), workspaceId: 'w1', by: 'u-bob', name: 'bob.png', type: 'image/png', size: 300 }],
+    [id(3), { id: id(3), workspaceId: 'w2', by: 'u-ann', name: 'other.pdf', type: 'application/pdf', size: 10 }],
+  ]);
+  const info = (x) => files.get(x) ?? null;
+  const f = (n, extra = {}) => ({ name: 'x', size: 1, type: 'text/html', url: `/api/files/${id(n)}`, ...extra });
+  const task = (history) => ({ id: 't1', workspaceId: 'w1', title: 'T', history });
+
+  await test('Task files: a new comment keeps only the writer’s own uploads in the task’s company, as the server recorded them', () => {
+    const next = task([{ id: 'h1', kind: 'comment', by: 'u-ann', text: 'see', files: [f(1, { name: 'evil.html' }), f(2), f(3), { name: 'x', url: 'https://evil.example/x' }, f(9)] }]);
+    const out = keepCommentFiles(task([]), next, 'u-ann', info);
+    assert.deepEqual(out.history[0].files, [{ name: 'brief.pdf', size: 1200, type: 'application/pdf', url: `/api/files/${id(1)}` }]);
+  });
+  await test('Task files: nothing allowed leaves no files on the comment; only comments carry files', () => {
+    const out = keepCommentFiles(null, task([{ id: 'h1', kind: 'comment', by: 'u-ann', text: 'x', files: [f(2)] }, { id: 'h2', kind: 'status', by: 'u-ann', text: 'moved', files: [f(1)] }]), 'u-ann', info);
+    assert.ok(!('files' in out.history[0]));
+    assert.ok(!('files' in out.history[1]));
+  });
+  await test('Task files: a saved comment keeps its files, whoever saves the task', () => {
+    const before = task([{ id: 'h1', kind: 'comment', by: 'u-bob', text: 'mine', files: [{ name: 'bob.png', size: 300, type: 'image/png', url: `/api/files/${id(2)}` }] }]);
+    const swapped = keepCommentFiles(before, task([{ ...before.history[0], files: [f(1)] }]), 'u-ann', info);
+    assert.deepEqual(swapped.history[0].files, before.history[0].files);
+    const dropped = keepCommentFiles(before, task([{ id: 'h1', kind: 'comment', by: 'u-bob', text: 'mine' }]), 'u-ann', info);
+    assert.deepEqual(dropped.history[0].files, before.history[0].files);
+    const added = keepCommentFiles(task([{ id: 'h1', kind: 'comment', by: 'u-bob', text: 'no files' }]), task([{ id: 'h1', kind: 'comment', by: 'u-bob', text: 'no files', files: [f(1)] }]), 'u-ann', info);
+    assert.ok(!('files' in added.history[0]));
+  });
+  await test('Task files: at most ten on a comment, no doubles; the file test looks at what someone sees', () => {
+    for (let n = 10; n < 25; n++) files.set(id(n), { id: id(n), workspaceId: 'w1', by: 'u-ann', name: `${n}.txt`, type: 'text/plain', size: n });
+    const list = ownFiles([f(10), f(10), ...Array.from({ length: 14 }, (_, i) => f(11 + i))], 'u-ann', 'w1', info);
+    assert.equal(list.length, MAX_FILES);
+    assert.equal(new Set(list.map((x) => x.url)).size, MAX_FILES);
+    assert.ok(holdsFile({ history: [{ files: [{ url: `/api/files/${id(1)}` }] }] }, id(1)));
+    assert.ok(!holdsFile({ history: [] }, id(1)));
+    assert.ok(!holdsFile(null, id(1)));
+  });
+}
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

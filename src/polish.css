@@ -569,7 +569,8 @@ details.advanced[open] summary h3::after {
 .h-body b {
   color: var(--text);
 }
-.h-comment {
+/* The bubble only: a comment row (li.h-comment) shares the name and stays plain. */
+.h-body > .h-comment {
   display: block;
   padding: 8px 12px;
   border-radius: 12px;
