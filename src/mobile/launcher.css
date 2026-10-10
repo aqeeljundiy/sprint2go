@@ -96,14 +96,17 @@
 }
 
 @media (max-width: 767px) {
-  /* ---------- The layer: under the app, shown when the app steps aside ---------- */
+  /* ---------- The layer: over the app's screen, under its overlays (search, Ask AI, sheets, toasts) ---------- */
 
   .app {
-    position: relative;
-    z-index: 1;
     background: var(--bg);
   }
-  :root.launcher-on .app {
+  /* The app's own screen steps out of sight under the launcher; its overlays (search, Ask AI, dialogs, toasts) stay. */
+  :root.launcher-on .app > .main,
+  :root.launcher-on .app > .tabbar,
+  :root.launcher-on .app > .fab,
+  :root.launcher-on .app > .rail,
+  :root.launcher-on .app > .sidebar {
     visibility: hidden;
     transition: visibility 0s linear 0.22s;
   }
@@ -111,7 +114,7 @@
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 0;
+    z-index: 40; /* system: over the app's bar (35) and top bar (30), under side panels, dialogs and toasts */
     background: var(--bg);
     opacity: 0;
     transform: scale(0.96);

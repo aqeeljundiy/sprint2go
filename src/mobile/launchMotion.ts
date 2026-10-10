@@ -6,6 +6,15 @@
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const app = () => document.querySelector<HTMLElement>('.app');
 
+/** While it grows or shrinks, the app is lifted over the launcher (the launcher sits over the app's screen otherwise). */
+function lift(el: HTMLElement, anim: Animation) {
+  el.style.position = 'relative';
+  el.style.zIndex = '41';
+  const drop = () => (el.style.removeProperty('position'), el.style.removeProperty('z-index'));
+  anim.addEventListener('finish', drop);
+  anim.addEventListener('cancel', drop);
+}
+
 function fromTile(tile: Element | null | undefined) {
   const r = tile?.getBoundingClientRect();
   if (!r || !r.width) return null;
@@ -21,12 +30,15 @@ export function launchGrow(tile: Element | null) {
     const el = app();
     if (!el || typeof el.animate !== 'function') return;
     if (reduced() || !from) return void el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: 'ease-out' });
-    el.animate(
-      [
-        { transform: from.transform, borderRadius: from.radius, opacity: 0.2, overflow: 'hidden' },
-        { transform: 'none', borderRadius: '0px', opacity: 1, overflow: 'hidden' },
-      ],
-      { duration: 240, easing: 'cubic-bezier(0.2, 0, 0, 1)' },
+    lift(
+      el,
+      el.animate(
+        [
+          { transform: from.transform, borderRadius: from.radius, opacity: 0.4, overflow: 'hidden' },
+          { transform: 'none', borderRadius: '0px', opacity: 1, overflow: 'hidden' },
+        ],
+        { duration: 240, easing: 'cubic-bezier(0.2, 0, 0, 1)' },
+      ),
     );
   });
 }
@@ -37,11 +49,14 @@ export function launchShrink(tile: Element | null) {
   if (!el || typeof el.animate !== 'function') return;
   const to = fromTile(tile);
   if (reduced() || !to) return void el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-in' });
-  el.animate(
-    [
-      { transform: 'none', borderRadius: '0px', opacity: 1, overflow: 'hidden' },
-      { transform: to.transform, borderRadius: to.radius, opacity: 0, overflow: 'hidden' },
-    ],
-    { duration: 220, easing: 'cubic-bezier(0.4, 0, 1, 1)' },
+  lift(
+    el,
+    el.animate(
+      [
+        { transform: 'none', borderRadius: '0px', opacity: 1, overflow: 'hidden' },
+        { transform: to.transform, borderRadius: to.radius, opacity: 0, overflow: 'hidden' },
+      ],
+      { duration: 220, easing: 'cubic-bezier(0.4, 0, 1, 1)' },
+    ),
   );
 }

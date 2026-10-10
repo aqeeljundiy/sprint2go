@@ -3889,9 +3889,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const companyOrder = companyAppOrder(ws, myTeamIds);
   const appsOrder = normalizeApps(ownApps ?? companyOrder);
   const myApps = launcherApps(ownApps, companyOrder, (id) => enabled.has(id));
-  // Tablets pin the first four of the same order in the rail.
-  const tabApps: AppId[] = myApps.shown.filter((id): id is AppId => id !== 'settings').slice(0, 4);
-  const setTabApps = (bar: string[]) => setOwnApps({ order: [...bar, ...appsOrder.order.filter((id) => !bar.includes(id))], hidden: appsOrder.hidden.filter((id) => !bar.includes(id)) });
+  // Tablets pin Home and the first three of the same order in the rail (Home, Mail, Chat, Tasks by default, as before).
+  const tabApps: AppId[] = ['home', ...myApps.shown.filter((id): id is AppId => id !== 'settings').slice(0, 3)];
+  const setTabApps = (bar: string[]) => {
+    const apps = bar.filter((id) => id !== 'home');
+    setOwnApps({ order: [...apps, ...appsOrder.order.filter((id) => !apps.includes(id))], hidden: appsOrder.hidden.filter((id) => !apps.includes(id)) });
+  };
   // Focused screens that live in this file: an open mail on a phone, and a project's page (its Back goes in the top bar).
   // Not while the guest view takes over the screen ("View as guest", a shared space): its own bar shows then.
   const guestView = !!viewAs || portalKey === '*' || myPortals.some((pt) => pt.key === portalKey);
@@ -5936,31 +5939,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           launcher over the app when it's open. */}
       {showAppBar && <AppBar bar={chrome.sections!} label={APPS.find((a) => a.id === mode)?.name ?? ''} />}
       {mobile && <CreateFab create={mode === 'settings' || launcher ? null : chrome.create} off={newOpen} />}
-      {mobile && (
-        <Launcher
-          open={launcher}
-          ws={ws}
-          me={ME}
-          firstName={myFirst}
-          needs={needsNow}
-          needActions={needActions}
-          next={myNear.filter((e) => !e.allDay && new Date(e.start) > new Date() && new Date(e.start).toDateString() === new Date().toDateString()).sort((x, y) => x.start.localeCompare(y.start))[0]}
-          recents={recents}
-          apps={launcherTiles}
-          unreadNotices={myNotices.filter((n) => !n.read).length}
-          ai={aiOn}
-          onCompany={openCompanySheet}
-          onSearch={() => openSearch(null)}
-          onAsk={toggleAsk}
-          onBell={() => setNoticesOpen(true)}
-          onAccount={() => (setSettingsSection('account'), go('settings'))}
-          onSeeAll={() => (setLeftWith(Object.fromEntries(myApps.shown.map((x) => [x, badgeOf(x)]))), go('home'))}
-          onApp={fromLauncher}
-          onHide={(id) => setOwnApps({ order: appsOrder.order, hidden: [...appsOrder.hidden, id] })}
-          onEdit={() => setEditingApps(true)}
-          onNew={() => setNewOpen(true)}
-        />
-      )}
       {editingApps && (
         <EditApps
           apps={allTiles}
@@ -6467,6 +6445,32 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         </div>
       )}
     </div>
+    {/* The launcher sits under the app (outside .app): the app grows out of a tile over it. */}
+    {mobile && (
+      <Launcher
+        open={launcher}
+        ws={ws}
+        me={ME}
+        firstName={myFirst}
+        needs={needsNow}
+        needActions={needActions}
+        next={myNear.filter((e) => !e.allDay && new Date(e.start) > new Date() && new Date(e.start).toDateString() === new Date().toDateString()).sort((x, y) => x.start.localeCompare(y.start))[0]}
+        recents={recents}
+        apps={launcherTiles}
+        unreadNotices={myNotices.filter((n) => !n.read).length}
+        ai={aiOn}
+        onCompany={openCompanySheet}
+        onSearch={() => openSearch(null)}
+        onAsk={toggleAsk}
+        onBell={() => setNoticesOpen(true)}
+        onAccount={() => (setSettingsSection('account'), go('settings'))}
+        onSeeAll={() => (setLeftWith(Object.fromEntries(myApps.shown.map((x) => [x, badgeOf(x)]))), go('home'))}
+        onApp={fromLauncher}
+        onHide={(id) => setOwnApps({ order: appsOrder.order, hidden: [...appsOrder.hidden, id] })}
+        onEdit={() => setEditingApps(true)}
+        onNew={() => setNewOpen(true)}
+      />
+    )}
     </ProjectsCtx.Provider>
     </TabDefaultsCtx.Provider>
   );
