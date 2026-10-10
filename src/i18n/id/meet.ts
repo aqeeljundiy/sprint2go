@@ -4,6 +4,13 @@
 // the rules for placeholders and plurals: docs/i18n.md. Check with: node scripts/i18n-check.mjs
 // Words already chosen elsewhere: notetaker is "notulis", meeting notes "notulen", Meet "Rapat", Upcoming "Mendatang".
 const id: Record<string, string> = {
+  'Meeting type': 'Jenis rapat',
+  '{type} meeting': 'Rapat {type}',
+  'Open in Calendar': 'Buka di Kalender',
+  'The notetaker joins and takes notes.': 'Notulis ikut dan membuat catatan.',
+  'The notetaker won’t join this one.': 'Notulis tidak ikut rapat ini.',
+  'Add a task': 'Tambah tugas',
+  'What needs doing?': 'Apa yang perlu dikerjakan?',
   // The sidebar and the phone's title menu (MeetSidebar, App.tsx)
   'Send the notetaker to a meeting': 'Kirim notulis ke rapat',
   'Send bot to a meeting': 'Kirim bot ke rapat',

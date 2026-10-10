@@ -14,11 +14,14 @@ import { ProjectBadge } from './ProjectBadge';
 import type { MeetPage } from './MeetApp';
 import { LIVE, STATUS_LABEL } from './MeetApp';
 import { t, tn } from '../i18n';
-import { fmtDate } from '../i18n/format';
+import { fmtDate, fmtList } from '../i18n/format';
 import { term } from '../terms';
 
 /** The event's call: a real link, or in the demo a place that just says Zoom or Google Meet. */
 export const callOf = (e: CalEvent, demo?: boolean): MeetingKind | null => meetingLinkOf(e)?.kind ?? (demo ? (/zoom/i.test(e.location ?? '') ? 'zoom' : /meet|google/i.test(e.location ?? '') ? 'meet' : null) : null);
+
+/** A meeting, as Meet sees it: a call link, or someone else invited. */
+const isMeeting = (e: CalEvent, demo?: boolean) => !!callOf(e, demo) || (e.guests?.length ?? 0) > 0;
 
 /** A call app's mark: a rounded square in its colour with a camera (Meet green, Zoom blue, Teams purple). */
 export function CallMark({ kind, size = 40 }: { kind: MeetingKind | 'meet' | 'zoom' | null | undefined; size?: number }) {
@@ -132,13 +135,14 @@ function useJoins(p: Pick<HomeProps, 'settings' | 'overrides' | 'demo' | 'autoJo
 
 /** One meeting coming up: its call, title, when and who; the mic says whether the notetaker joins (tap to change). */
 function ComingRow({ e, p, j }: { e: CalEvent; p: HomeProps; j: ReturnType<typeof useJoins> }) {
+  const [open, setOpen] = useState(false);
   const k = callOf(e, p.demo);
   const on = j.joins(e);
   const others = e.guests?.length ?? 0;
   const start = new Date(e.start);
   return (
     <div className="mh-row">
-      <button type="button" className="mh-main" onClick={() => p.onOpenEvent?.(e.id)}>
+      <button type="button" className="mh-main" onClick={() => setOpen(true)}>
         <CallMark kind={k} />
         <span className="mh-text">
           <strong>{e.title}</strong>
@@ -155,6 +159,25 @@ function ComingRow({ e, p, j }: { e: CalEvent; p: HomeProps; j: ReturnType<typeo
         >
           {on ? <Mic size={20} /> : <MicOff size={20} />}
         </button>
+      )}
+      {open && (
+        <Sheet
+          title={e.title}
+          onClose={() => setOpen(false)}
+          className="mh-event"
+          footer={
+            p.onOpenEvent ? (
+              <button type="button" className="ghost-btn" onClick={() => (setOpen(false), p.onOpenEvent!(e.id))}>
+                {t('Open in Calendar')}
+              </button>
+            ) : undefined
+          }
+        >
+          <p className="mhe-line">{[dayWord(start), fmtTimeRange(e.start, e.end)].join(' · ')}</p>
+          {others > 0 && <p className="mhe-line">{fmtList((e.guests ?? []).map((g) => g.name || g.email))}</p>}
+          {k && <p className="mhe-line">{MEETING_NAME[k]}</p>}
+          {j.can(e) && <p className="mhe-line">{on ? t('The notetaker joins and takes notes.') : t('The notetaker won’t join this one.')}</p>}
+        </Sheet>
       )}
     </div>
   );
@@ -178,7 +201,7 @@ export function MeetHome(p: HomeProps) {
   const j = useJoins(p);
   const now = Date.now();
   const coming = useMemo(
-    () => p.events.filter((e) => !e.allDay && callOf(e, p.demo) && new Date(e.end).getTime() > now && new Date(e.start).getTime() < now + 86_400_000).sort((a, b) => a.start.localeCompare(b.start)),
+    () => p.events.filter((e) => !e.allDay && isMeeting(e, p.demo) && new Date(e.end).getTime() > now && new Date(e.start).getTime() < now + 86_400_000).sort((a, b) => a.start.localeCompare(b.start)),
     [p.events, p.demo, now],
   );
   const past = useMemo(() => {
@@ -316,6 +339,31 @@ export function MeetComing(p: HomeProps) {
           </>
         )}
         <MeetComingList {...p} />
+        {p.meetings.some((m) => !LIVE.has(m.status ?? 'done')) && (
+          <>
+            <h2 className="mh-head">{t('Past meetings')}</h2>
+            <div className="mh-card">
+              {[...p.meetings]
+                .filter((m) => !LIVE.has(m.status ?? 'done'))
+                .sort((a, b) => b.at.localeCompare(a.at))
+                .slice(0, 5)
+                .map((m) => {
+                  const c = p.clients.find((x) => x.id === m.clientId);
+                  return (
+                    <div className="mh-row" key={m.id}>
+                      <button type="button" className="mh-main" onClick={() => p.onPage({ kind: 'meeting', id: m.id })}>
+                        <CallMark kind={m.platform ?? 'meet'} />
+                        <span className="mh-text">
+                          <strong>{m.title}</strong>
+                          <small>{[fmtDate(m.at, { weekday: 'short', day: 'numeric', month: 'short' }), c?.name].filter(Boolean).join(' · ')}</small>
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -324,7 +372,7 @@ export function MeetComing(p: HomeProps) {
 function MeetComingList(p: HomeProps) {
   const j = useJoins(p);
   const now = Date.now();
-  const soon = p.events.filter((e) => !e.allDay && new Date(e.end).getTime() > now && new Date(e.start).getTime() < now + 7 * 86_400_000).sort((a, b) => a.start.localeCompare(b.start));
+  const soon = p.events.filter((e) => !e.allDay && isMeeting(e, p.demo) && new Date(e.end).getTime() > now && new Date(e.start).getTime() < now + 7 * 86_400_000).sort((a, b) => a.start.localeCompare(b.start));
   const days = [...new Set(soon.map((e) => new Date(e.start).toDateString()))];
   return (
       <div className="mh-up">

@@ -12,7 +12,7 @@ import { toast } from '../../toast';
 import { preview } from './Message';
 import { WhenSheet, chanName } from './Sheets';
 import { shortTime, whenText, type ChatState } from './chatPrefs';
-import { t, textOf } from '../../i18n';
+import { t, tn, textOf } from '../../i18n';
 import { followsThread, isGroupDm } from '../../chatFollow';
 
 type Filter = 'all' | 'mentions' | 'threads' | 'unread';
@@ -24,7 +24,7 @@ type Item = { n: Notice; m?: ChatMessage; root?: ChatMessage; ch?: Channel; kind
  * first. Tap opens the message in its conversation (or thread) and marks it read; hold for more; swipe left to clear.
  * Built from this company's chat notices, so it matches the notifications you get.
  */
-export function ChatActivity({ notices, messages, channels, users, me, myFirst, chat, onOpen, onRead, onFollow }: { notices: Notice[]; messages: ChatMessage[]; channels: Channel[]; users: User[]; me: string; myFirst: string; chat: ChatState; onOpen: (n: Notice) => void; onRead: (ids: string[], read: boolean) => void; onFollow?: (rootId: string, on: boolean) => void }) {
+export function ChatActivity({ notices, messages, channels, users, me, myFirst, chat, onOpen, onRead, onFollow, otherNew = 0, onOthers }: { notices: Notice[]; messages: ChatMessage[]; channels: Channel[]; users: User[]; me: string; myFirst: string; chat: ChatState; onOpen: (n: Notice) => void; onRead: (ids: string[], read: boolean) => void; onFollow?: (rootId: string, on: boolean) => void; otherNew?: number /* unread notifications from other apps (a task assigned…) */; onOthers?: () => void }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [cleared, setCleared] = usePersisted<string[]>(`s2g-chat-cleared:${me}`, []);
   const [menu, setMenu] = useState<{ it: Item; at: { x: number; y: number } } | null>(null);
@@ -90,7 +90,20 @@ export function ChatActivity({ notices, messages, channels, users, me, myFirst, 
         ))}
       </div>
       {rows.length === 0 ? (
-        <EmptyState className="act-empty" icon={<AtSign size={22} />} title={filter === 'unread' ? t('You’re all caught up') : t('Nothing here yet')} text={t('Mentions of you, replies in your threads and direct messages show up here.')} />
+        <EmptyState
+          className="act-empty"
+          icon={<AtSign size={22} />}
+          title={filter === 'unread' ? t('You’re all caught up') : t('Nothing here yet')}
+          text={t('Mentions of you, replies in your threads and direct messages show up here.')}
+          // The bell can hold news from other apps (a task assigned to you): say so instead of looking empty next to it.
+          action={
+            otherNew > 0 && onOthers ? (
+              <button type="button" className="link-btn" onClick={onOthers}>
+                {tn(otherNew, 'See {n} notification from other apps', 'See {n} notifications from other apps')}
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="act-list">
           {rows.map(({ item, leaving }) => (

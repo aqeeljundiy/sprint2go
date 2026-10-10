@@ -124,6 +124,8 @@ interface SidebarProps {
   notices?: Notice[];
   onOpenNotice?: (n: Notice) => void;
   onReadNotices?: (ids: string[], read: boolean) => void;
+  otherNotices?: number; // unread notifications from other apps, pointed to from an empty Activity
+  onOtherNotices?: () => void;
   /** Phones: join (or start) the huddle in a conversation, from the list's banner, a row's pill or the create button. */
   onHuddle?: (id: string) => void;
   /** The direct message with someone (made when there's none yet): its id. */
@@ -271,7 +273,8 @@ export function ChatSidebar(p: SidebarProps) {
     live: { icon: <Headphones size={18} />, line: live.length ? (live.length > 1 ? tn(live.length, '{n} on', '{n} on') : chanName(live[0], p.users, p.me)) : '', hot: true, hidden: !live.length },
   };
   // Phones show a shortcut only when it has something new or waiting: no "Caught up" or "Nothing saved" tiles.
-  const waiting: Record<TileId, boolean> = { catchup: unreadConvos.length > 0, threads: newReplies > 0, drafts: draftCount + scheduled > 0, saved: !!nextReminder, live: live.length > 0 };
+  // Catch up stays: it's the way through everything unread, and the place to land when you're caught up.
+  const waiting: Record<TileId, boolean> = { catchup: true, threads: newReplies > 0, drafts: draftCount + scheduled > 0, saved: !!nextReminder, live: live.length > 0 };
   const tiles = chat.tiles.order.filter((id) => !chat.tiles.hidden.includes(id) && !tileState[id].hidden && (!phone || waiting[id]));
   const openTile = (id: TileId) => (id === 'live' ? live[0] && p.onOpen(live[0].id) : p.onPage(id));
 
@@ -455,7 +458,7 @@ export function ChatSidebar(p: SidebarProps) {
         </>
       )}
 
-      {phone && inBar && <TopBar app="chat" actions={filterBtn} />}
+      {phone && inBar && <TopBar app="chat" actions={part === 'home' ? undefined : filterBtn} />}
       {phone && !inBar && (
         <div className="chat-switch-row" ref={switchRow}>
           <div className="segmented chat-switch" role="tablist" aria-label={t('Chat')}>
@@ -480,7 +483,7 @@ export function ChatSidebar(p: SidebarProps) {
               </button>
             ))}
           </div>
-          {filterBtn}
+          {part !== 'home' && filterBtn}
         </div>
       )}
       {phone ? (
@@ -510,9 +513,18 @@ export function ChatSidebar(p: SidebarProps) {
               )}
               {section('top-dms', t('Unread direct messages'), topDms, undefined, undefined, undefined, <MessageCircle size={14} />)}
               {section('top-mentions', t('Mentions'), topMentions, undefined, undefined, undefined, <AtSign size={14} />)}
+              {section(
+                'recent-dms',
+                t('Direct messages'),
+                dms.filter((c) => !onTop.has(c.id) && !star.has(c.id)).sort((a, b) => recency(b).localeCompare(recency(a))).slice(0, 3),
+                undefined,
+                undefined,
+                undefined,
+                <MessageCircle size={14} />,
+              )}
               {section('starred', t('Starred'), starredList, undefined, undefined, undefined, <Star size={14} />)}
               {body}
-              {(joinable.length > 0 || p.onNewChannel) && (
+              {(
                 <button type="button" className="cl-add" onClick={() => setAddOpen(true)}>
                   <span className="cl-glyph">
                     <Plus size={18} />
@@ -524,7 +536,7 @@ export function ChatSidebar(p: SidebarProps) {
           ) : part === 'dms' ? (
             <DmList dms={dmsShown} filter={dmFilter} row={(c) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone two starred={star.has(c.id)} draggable={false} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />} onNew={() => setNewMsg(true)} />
           ) : (
-            <ChatActivity notices={p.notices ?? []} messages={p.messages} channels={p.channels} users={p.users} me={p.me} myFirst={p.myFirst} chat={chat} onOpen={(n) => p.onOpenNotice?.(n)} onRead={(ids, read) => p.onReadNotices?.(ids, read)} onFollow={p.onFollow} />
+            <ChatActivity notices={p.notices ?? []} messages={p.messages} channels={p.channels} users={p.users} me={p.me} myFirst={p.myFirst} chat={chat} onOpen={(n) => p.onOpenNotice?.(n)} onRead={(ids, read) => p.onReadNotices?.(ids, read)} onFollow={p.onFollow} otherNew={p.otherNotices} onOthers={p.onOtherNotices} />
           )}
         </TabPane>
       ) : (
@@ -616,7 +628,8 @@ export function ChatSidebar(p: SidebarProps) {
         ),
       )}
       {phone && browsing && (
-        <Sheet title={t('Browse channels')} size="tall" onClose={() => setBrowsing(false)}>
+        <Sheet title={t('Browse channels')} size={joinable.length ? 'tall' : 'auto'} onClose={() => setBrowsing(false)}>
+          {!joinable.length && <EmptyState icon={<Compass size={22} />} title={t('You’re in every channel')} text={t('Channels you can join show up here. Start a new one for a topic or a project.')} action={p.onNewChannel ? <button type="button" className="primary-btn" onClick={() => (setBrowsing(false), p.onNewChannel!())}>{t('New channel')}</button> : undefined} />}
           <div className="as-list">
             {joinable.map((c) => (
               <button key={c.id} type="button" className="as-item" onClick={() => (setBrowsing(false), p.onJoin(c.id))}>
@@ -808,7 +821,7 @@ export function ChatSidebar(p: SidebarProps) {
           onClose={() => setAddOpen(false)}
           title={t('Add channels')}
           actions={[
-            ...(joinable.length ? [{ label: t('Browse channels'), hint: tn(joinable.length, '{n} you can join', '{n} you can join'), icon: Compass, run: () => setBrowsing(true) }] : []),
+            { label: t('Browse channels'), hint: joinable.length ? tn(joinable.length, '{n} you can join', '{n} you can join') : undefined, icon: Compass, run: () => setBrowsing(true) },
             ...(p.onNewChannel ? [{ label: t('New channel'), icon: Hash, run: p.onNewChannel }] : []),
           ]}
         />

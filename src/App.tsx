@@ -532,6 +532,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [calCursor, setCalCursor] = useState(new Date());
   // The last view, remembered on this device (phones and wide screens each keep their own).
   const [calViewPhone, setCalViewPhone] = usePersisted<CalView>('s2g-cal-view:phone', 'schedule');
+  // A Day opened by tapping a date is a visit, not a choice: the next time Calendar opens, it's the Schedule again.
+  useEffect(() => {
+    if (calViewPhone === 'day') setCalViewPhone('schedule');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [calViewWide, setCalViewWide] = usePersisted<CalView>('s2g-cal-view:wide', 'week');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [newEventAt, setNewEventAt] = useState<Date | null>(null);
@@ -4127,7 +4131,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         setSelectedEventId(null);
         if (id === 'meetings') return setCalMeetings(true);
         setCalMeetings(false);
-        return setCalView(id === 'month' ? 'month' : calViewPhone === 'month' ? 'schedule' : calViewPhone);
+        // The bar's Schedule is the schedule: a Day opened from Month (or picked in the title) doesn't stay behind it.
+        return setCalView(id === 'month' ? 'month' : 'schedule');
       case 'notes':
         setNoteId(null);
         return setNotesFilter(id === 'shared' ? 'shared' : 'all');
@@ -4943,6 +4948,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               dmIdFor={dmWith}
               onFollow={followThread}
               notices={myNotices.filter((n) => n.link?.app === 'chat')}
+              otherNotices={myNotices.filter((n) => n.link?.app !== 'chat' && !n.read).length}
+              onOtherNotices={() => setNoticesOpen(true)}
               onOpenNotice={openNotice}
               onReadNotices={(ids, read) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read } : n)))}
               onHuddle={(id) => {

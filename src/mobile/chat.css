@@ -1075,6 +1075,14 @@
   .cmp-grab:active::after {
     background: var(--text-3);
   }
+  /* The handle shows only while you write: at rest the composer is a plain field, with nothing stray above it. */
+  .composer.is-phone:not(:focus-within) .cmp-grab {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .cmp-grab {
+    transition: opacity 0.15s ease-out;
+  }
   .composer.is-phone .cmp-field {
     min-height: 44px;
     padding: 12px 4px;
@@ -1766,5 +1774,12 @@
   }
   .cs-dot {
     transition: none;
+  }
+}
+
+/* A new conversation's first line: no orphan word ("Ethan / Brooks"). */
+@media (max-width: 767px) {
+  .chat-start {
+    text-wrap: balance;
   }
 }

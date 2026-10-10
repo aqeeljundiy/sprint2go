@@ -597,7 +597,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
               <span className="dr-icon">
                 <Tag size={20} />
               </span>
-              <Select value={m.type ?? null} onChange={(v) => p.onPatch(m.id, { type: v as MeetingType })} placeholder={t('Type…')} label={t('Type')} className={`er-sel${m.type ? '' : ' er-empty'}`} options={Object.entries(TYPE_LABEL).map(([v, l]) => ({ value: v, label: l }))} />
+              <Select value={m.type ?? null} onChange={(v) => p.onPatch(m.id, { type: v as MeetingType })} placeholder={t('Meeting type')} label={t('Meeting type')} className={`er-sel${m.type ? '' : ' er-empty'}`} options={Object.entries(TYPE_LABEL).map(([v, l]) => ({ value: v, label: t('{type} meeting', { type: l }) }))} />
             </div>
             {(m.attendees.length > 0 || speakers.length > 0) && (
               <div className="dr-row">
@@ -915,6 +915,7 @@ function MeetingPage(p: MeetProps & { m: Meeting }) {
 /* ---------------- Tasks (shared) ---------------- */
 
 function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meeting | undefined; ownerName?: (t: Todo) => string | undefined; nameFor: (t: Todo) => User | undefined; extra?: React.ReactNode; empty?: React.ReactNode; footer?: React.ReactNode; onSeek?: (ms: number, t: Todo) => void; grouped?: boolean }) {
+  const phone = usePhone();
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setSel((s) => (s.has(id) ? (s.delete(id), new Set(s)) : new Set(s.add(id))));
@@ -965,14 +966,35 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
         const mt = mid ? p.meetings.find((x) => x.id === mid) : undefined;
         return (
           <div key={mid || 'none'} className="todo-group">
-            {p.grouped && (
-              <button className="d-heading m-group" onClick={() => mt && p.onPage({ kind: 'meeting', id: mt.id })}>
-                {mt ? `${mt.title} · ${fullDate(mt.at)}${mt.clientId ? ` · ${p.clients.find((c) => c.id === mt.clientId)?.name}` : ''}` : t('Added by hand')}
-              </button>
-            )}
+            {p.grouped &&
+              (phone ? (
+                // Phones: the meeting as a section header in sentence case, its date and project on a quiet line.
+                <button className="m-group-phone" onClick={() => mt && p.onPage({ kind: 'meeting', id: mt.id })}>
+                  <strong>{mt ? mt.title : t('Added by hand')}</strong>
+                  {mt && <small>{[fmtDay(mt.at), mt.clientId ? p.clients.find((c) => c.id === mt.clientId)?.name : ''].filter(Boolean).join(' · ')}</small>}
+                </button>
+              ) : (
+                <button className="d-heading m-group" onClick={() => mt && p.onPage({ kind: 'meeting', id: mt.id })}>
+                  {mt ? `${mt.title} · ${fullDate(mt.at)}${mt.clientId ? ` · ${p.clients.find((c) => c.id === mt.clientId)?.name}` : ''}` : t('Added by hand')}
+                </button>
+              ))}
             {list.map((tk) => {
               const owner = p.ownerName?.(tk);
               const m = p.meetingFor(tk);
+              if (phone && !selecting) {
+                const who = p.nameFor(tk)?.name ?? owner;
+                return (
+                  <div key={tk.id} className={`m-task-phone${tk.done ? ' done' : ''}`}>
+                    <button type="button" className="todo-check" onClick={() => p.onToggleTask(tk.id)} aria-label={tk.done ? t('Reopen') : t('Mark done')} aria-pressed={tk.done}>
+                      {tk.done ? <CircleCheck size={20} /> : <span className="mtp-ring" />}
+                    </button>
+                    <button type="button" className="mtp-main" onClick={() => p.onOpenTask(tk.id)}>
+                      <span className="mtp-title">{tk.title}</span>
+                      <small>{[who ?? t('Unassigned'), tk.due ? fmtDay(tk.due) : ''].filter(Boolean).join(' · ')}</small>
+                    </button>
+                  </div>
+                );
+              }
               return (
                 <div key={tk.id} className={`task m-task ${tk.done ? 'done' : ''}`} onClick={() => selecting && toggle(tk.id)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), selecting && toggle(tk.id))}>
                   {selecting && <input type="checkbox" checked={sel.has(tk.id)} onChange={() => toggle(tk.id)} onClick={(e) => e.stopPropagation()} />}
@@ -1013,10 +1035,15 @@ function TaskList(p: MeetProps & { list: Todo[]; meetingFor: (t: Todo) => Meetin
 }
 
 function MeetTasks(p: MeetProps) {
+  const phone = usePhone();
   const [tab, setTab] = useState<'open' | 'mine' | 'done' | 'all'>('open');
   const [title, setTitle] = useState('');
   const [who, setWho] = useState('');
   const [due, setDue] = useState('');
+  const [adding, setAdding] = useState(false); // phones: the quick add sheet
+  const add = () => (p.onAddTask({ title: title.trim(), userId: who, due: due || undefined }), setTitle(''), setDue(''), setAdding(false));
+  const whoField = <Select value={who} onChange={setWho} label={t('Assignee')} className="sel-flat" options={[{ value: '', label: t('Unassigned') }, ...p.users.map((u) => ({ ...personOption(u), label: u.name }))]} />;
+  const dueField = <DatePicker value={due} onChange={setDue} label={t('Due')} placeholder={t('No due date')} className="sel-flat" />;
   const all = p.tasks.filter((tk) => tk.meetingId || tk.source === 'meeting');
   const list = all.filter((tk) => (tab === 'open' ? !tk.done : tab === 'mine' ? !tk.done && tk.userId === p.me : tab === 'done' ? tk.done : true));
   return (
@@ -1030,15 +1057,40 @@ function MeetTasks(p: MeetProps) {
             </button>
           ))}
         </div>
-        <div className="todo-add task-add">
-          <Plus size={16} />
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('Add a task…')} />
-          <Select value={who} onChange={setWho} label={t('Assignee')} className="sel-flat" options={[{ value: '', label: t('Unassigned') }, ...p.users.map((u) => ({ ...personOption(u), label: u.name }))]} />
-          <input className="due-input" value={due} onChange={(e) => setDue(e.target.value)} placeholder={t('Due (e.g. Friday)')} />
-          <button className="primary-btn sm" disabled={!title.trim()} onClick={() => (p.onAddTask({ title: title.trim(), userId: who, due: due || undefined }), setTitle(''), setDue(''))}>
-            {t('Add')}
+        {phone ? (
+          <button type="button" className="mt-add-row" onClick={() => setAdding(true)}>
+            <Plus size={20} />
+            {t('Add a task')}
           </button>
-        </div>
+        ) : (
+          <div className="todo-add task-add">
+            <Plus size={16} />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && title.trim() && add()} placeholder={t('Add a task…')} />
+            {whoField}
+            {dueField}
+            <button className="primary-btn sm" disabled={!title.trim()} onClick={add}>
+              {t('Add')}
+            </button>
+          </div>
+        )}
+        {adding && (
+          <Sheet
+            title={t('New task')}
+            onClose={() => setAdding(false)}
+            className="mt-quick"
+            footer={
+              <button type="button" className="primary-btn" disabled={!title.trim()} onClick={add}>
+                {t('Add task')}
+              </button>
+            }
+          >
+            <input className="mt-quick-title" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && title.trim() && add()} placeholder={t('What needs doing?')} aria-label={t('Task')} />
+            <div className="mt-quick-chips">
+              {whoField}
+              {dueField}
+            </div>
+          </Sheet>
+        )}
         <TaskList
           {...p}
           list={list}

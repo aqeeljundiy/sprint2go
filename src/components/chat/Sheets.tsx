@@ -221,7 +221,7 @@ export function WhoReactedSheet({ m, first, users, me, channel, onClose }: { m: 
 }
 
 /** Ask before something that can't be taken back. */
-export function ConfirmSheet({ title, text, yes, onYes, onClose }: { title: string; text: string; yes: string; onYes: () => void; onClose: () => void }) {
+export function ConfirmSheet({ title, text, yes, onYes, onClose, safe }: { title: string; text: string; yes: string; onYes: () => void; onClose: () => void; safe?: boolean /* nothing is lost: a normal button, not a red one */ }) {
   return (
     <Sheet
       title={title}
@@ -232,7 +232,7 @@ export function ConfirmSheet({ title, text, yes, onYes, onClose }: { title: stri
           <button type="button" className="ghost-btn" onClick={onClose}>
             {t('Cancel')}
           </button>
-          <button type="button" className="primary-btn danger" onClick={() => (onClose(), onYes())}>
+          <button type="button" className={`primary-btn${safe ? '' : ' danger'}`} onClick={() => (onClose(), onYes())}>
             {yes}
           </button>
         </>

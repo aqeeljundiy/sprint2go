@@ -180,6 +180,9 @@ export function ChatView(p: ViewProps) {
   const [text, setText] = useState('');
   const [tab, setTab] = useState<Tab>('messages');
   const [details, setDetails] = useState<null | 'menu' | Exclude<Tab, 'messages'> | 'people' | 'search'>(null);
+  // Starting a huddle calls everyone in the conversation, so on phones it asks first (joining a live one doesn't).
+  const [askHuddle, setAskHuddle] = useState(false);
+  const startOrJoin = () => (p.huddle?.joined ? p.huddle.onOpen?.() : channel?.huddle?.members.length ? p.huddle?.onJoin() : setAskHuddle(true));
   const [findText, setFindText] = useState(''); // phones: Search in this conversation (its details)
   const [summarizing, setSummarizing] = useState<'period' | 'since' | null>(null);
   const [sinceText, setSinceText] = useState<string | null>(null);
@@ -532,7 +535,7 @@ export function ChatView(p: ViewProps) {
           );
         });
       })()}
-      {top.length === 0 && <p className="chat-start">{t('This is the start of {name}. Say hello 👋', { name: title })}</p>}
+      {top.length === 0 && <p className="chat-start">{channel.kind === 'dm' && other ? t('This is the start of your conversation with {name}.', { name: other.name }) : t('This is the start of {name}.', { name: title })}</p>}
     </div>
   );
 
@@ -763,6 +766,16 @@ export function ChatView(p: ViewProps) {
           </label>
         </Sheet>
       )}
+      {askHuddle && p.huddle && (
+        <ConfirmSheet
+          title={channel.kind === 'dm' ? t('Start a huddle with {name}?', { name: title }) : t('Start a huddle in {name}?', { name: title })}
+          text={channel.kind === 'dm' ? t('They get a call and can join with one tap.') : t('Everyone in {name} sees it’s live and can join.', { name: title })}
+          yes={t('Start huddle')}
+          safe
+          onYes={() => p.huddle!.onJoin()}
+          onClose={() => setAskHuddle(false)}
+        />
+      )}
       {leavingGroup && <ConfirmSheet title={t('Leave this group message?')} text={t('You stop getting its messages. To be in it again, someone starts a new one with you.')} yes={t('Leave')} onYes={() => p.onLeaveGroup?.()} onClose={() => setLeavingGroup(false)} />}
       {leaving && (
         <ConfirmSheet title={t('Leave {name}?', { name: title })} text={channel.private ? t('It’s private: someone in it has to add you back.') : t('You can join again from Browse channels.')} yes={t('Leave')} onYes={() => p.onLeave?.()} onClose={() => setLeaving(false)} />
@@ -818,7 +831,7 @@ export function ChatView(p: ViewProps) {
               </button>
             )}
             {p.huddle && !guest && (
-              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.joined ? p.huddle.onOpen : p.huddle.onJoin} aria-label={p.huddle.joined ? t('Open the huddle') : channel.huddle?.members.length ? t('Join the huddle') : t('Start a huddle')}>
+              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={startOrJoin} aria-label={p.huddle.joined ? t('Open the huddle') : channel.huddle?.members.length ? t('Join the huddle') : t('Start a huddle')}>
                 <Headphones size={22} />
               </button>
             )}
@@ -850,7 +863,7 @@ export function ChatView(p: ViewProps) {
                 <span>{muted ? t('Unmute') : t('Mute')}</span>
               </button>
               {p.huddle && (
-                <button type="button" onClick={() => (setDetails(null), p.huddle!.joined ? p.huddle!.onOpen?.() : p.huddle!.onJoin())} className={p.huddle.joined ? 'on' : ''}>
+                <button type="button" onClick={() => (setDetails(null), startOrJoin())} className={p.huddle.joined ? 'on' : ''}>
                   <Headphones size={22} />
                   <span>{t('Huddle')}</span>
                 </button>
