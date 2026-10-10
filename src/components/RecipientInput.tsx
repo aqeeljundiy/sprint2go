@@ -1,3 +1,4 @@
+import { isPhone } from '../mobile/media';
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Person } from '../types';
@@ -94,7 +95,7 @@ export function RecipientInput({ label, value, contacts, autoFocus, onChange, tr
                 add(c);
               }}
             >
-              <Avatar person={c} size={26} />
+              <Avatar person={c} size={isPhone() ? 40 : 26} />
               <span>
                 <strong>{c.name}</strong>
                 <small>{c.email}</small>

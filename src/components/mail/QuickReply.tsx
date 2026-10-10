@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, EyeOff, FileText, MoreVertical, SendHorizontal, Sparkles, Trash2, Type, X } from 'lucide-react';
+import { Eye, EyeOff, FileText, MoreHorizontal, MoreVertical, SendHorizontal, Sparkles, Trash2, Type, X } from 'lucide-react';
 import type { Person } from '../../types';
 import { RichEditor, type RichEditorHandle } from '../RichEditor';
 import { ActionSheet } from '../ui/ActionSheet';
@@ -37,7 +37,10 @@ export function QuickReply({
   onKeep,
   onClose,
   initialFiles,
+  quoted,
 }: {
+  /** The message being answered: shown folded under the reply (Gmail's "…"), so you can check what was said. */
+  quoted?: { who: string; when: string; text: string };
   to: Person[];
   cc?: Person[];
   contacts?: Person[];
@@ -65,6 +68,7 @@ export function QuickReply({
   const [more, setMore] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [showQuote, setShowQuote] = useState(false);
   const editor = useRef<RichEditorHandle>(null);
   const moreBtn = useRef<HTMLButtonElement>(null);
   const latest = useRef(body);
@@ -130,6 +134,19 @@ export function QuickReply({
             <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Compose email')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} spellLang={spellLang} suggest={suggest} onImages={inlineImages} />
           </div>
           <DraftFilesList state={files} />
+          {quoted && (
+            <div className="qr-quoted">
+              <button type="button" className="qr-quoted-btn" onClick={() => setShowQuote((x) => !x)} aria-expanded={showQuote} aria-label={showQuote ? t('Hide the email you’re answering') : t('Show the email you’re answering')}>
+                <MoreHorizontal size={20} />
+              </button>
+              <div className={`fold${showQuote ? ' open' : ''}`} aria-hidden={!showQuote}>
+                <div className="fold-in">
+                  <p className="qr-quoted-head">{t('On {when}, {who} wrote:', { when: quoted.when, who: quoted.who })}</p>
+                  <blockquote className="qr-quoted-text">{quoted.text}</blockquote>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         {aiOpen && <AIWriter hasText={!!own} currentText={own} me={myName} to={to[0]?.name} subject={re} onClose={() => setAiOpen(false)} onResult={(text) => (insert(text), setAiOpen(false))} />}
         <footer className="compose-foot kb-bar" onMouseDown={(e) => e.preventDefault()}>

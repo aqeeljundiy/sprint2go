@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Mail, Menu, MoreHorizontal, Pencil, Phone, Search, Trash2, Upload, UserPlus, Users, X, Merge } from 'lucide-react';
+import { Download, Mail, MoreHorizontal, Pencil, Phone, Search, Trash2, Upload, UserPlus, Users, X, Merge } from 'lucide-react';
 import type { Person, User, Workspace } from '../../types';
 import { server } from '../../sync';
 import { usePhone } from '../../mobile/media';
-import { TopBar, TopBarButton } from '../../mobile/TopBar';
+import { TopBar } from '../../mobile/TopBar';
 import { useCreateAction } from '../../mobile/chrome';
 import { Avatar } from '../Avatar';
 import { Badge } from '../ui/Person';
@@ -74,6 +74,13 @@ export function ContactsView({ ws, users, me, onCompose, onMenu, toast }: { ws: 
     else setInfo({ contacts: [], frequent: [], team: users.filter((u) => u.id !== me).map((u) => ({ userId: u.id, name: u.name, email: u.email, title: u.title ?? '' })), duplicates: [] });
   }, [ws.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const d = info && info !== 'failed' ? info : null;
+  // Open on whoever is there: with no saved contacts yet, Team (the company's people) instead of an empty list.
+  const picked = useRef(false);
+  useEffect(() => {
+    if (!d || picked.current) return;
+    picked.current = true;
+    if (!d.contacts.length) setTab(d.frequent.length ? 'other' : d.team.length ? 'team' : 'contacts');
+  }, [d]);
   const labels = useMemo(() => [...new Set((d?.contacts ?? []).flatMap((c) => c.labels))].sort((a, b) => a.localeCompare(b)), [d]);
   const match = (s: string) => s.toLowerCase().includes(q.trim().toLowerCase());
   const saved = (d?.contacts ?? []).filter((c) => (!label || c.labels.includes(label)) && (!q.trim() || match(c.name) || c.emails.some(match) || match(c.company ?? '') || c.phones.some(match)));
@@ -158,7 +165,7 @@ export function ContactsView({ ws, users, me, onCompose, onMenu, toast }: { ws: 
             </button>
           )}
         </label>
-        <div className="segmented ct-tabs" role="tablist" aria-label={t('Contacts')}>
+        <div className={phone ? 'ct-tabs ct-chips' : 'segmented ct-tabs'} role="tablist" aria-label={t('Contacts')}>
           {(['contacts', 'other', 'team'] as Tab[]).map((x) => (
             <button key={x} type="button" role="tab" aria-selected={tab === x} className={tab === x ? 'on' : ''} onClick={() => setTab(x)}>
               {x === 'contacts' ? t('Contacts') : x === 'other' ? t('Other contacts') : t('Team')}
@@ -285,7 +292,7 @@ export function ContactsView({ ws, users, me, onCompose, onMenu, toast }: { ws: 
   return (
     <section className="ct view-enter">
       {phone ? (
-        <TopBar app="mail" lead={<TopBarButton icon={Menu} label={t('Open menu')} onClick={onMenu} />} title={<h1 className="mt-title">{t('Contacts')}</h1>} actions={tools} search={false} />
+        <TopBar app="mail" title={<h1 className="mt-title">{t('Contacts')}</h1>} actions={tools} search={false} />
       ) : (
         <header className="ct-head">
           <h1>{t('Contacts')}</h1>

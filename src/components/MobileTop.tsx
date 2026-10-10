@@ -352,8 +352,10 @@ function TitleSheet({ title, menu, settings, onClose }: { title: string; menu: T
                   {o.icon && <span className="as-icon">{o.icon}</span>}
                   <span className="as-label">
                     <span className="more-ellipsis">{o.label}</span>
-                    {o.hint && <small>{o.hint}</small>}
+                    {o.hint && !/^[\d.,]+$/.test(o.hint) && <small>{o.hint}</small>}
                   </span>
+                  {/* A count (unread mail) sits on the right of its row, like Gmail's drawer. */}
+                  {o.hint && /^[\d.,]+$/.test(o.hint) && <span className="as-count">{o.hint}</span>}
                   {o.value === menu.value && <Check size={16} className="as-check" />}
                 </button>
               </div>

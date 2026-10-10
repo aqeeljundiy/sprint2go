@@ -22,7 +22,7 @@ import { providerName } from './Onboarding';
 import { lifeLeft } from './TempAddress';
 import { t, tx } from '../i18n';
 
-const FOLDERS: { id: FolderId; icon: LucideIcon }[] = [
+export const FOLDERS: { id: FolderId; icon: LucideIcon }[] = [
   { id: 'inbox', icon: Inbox },
   { id: 'starred', icon: Star },
   { id: 'sent', icon: Send },

@@ -59,7 +59,7 @@ import type { AskChat } from './components/Assistant';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { InviteMember, NewAccount, RemoveMailbox } from './components/WorkspaceForms';
 import { applyBranding } from './components/WorkspaceLogo';
-import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, folderName, type Mode } from './components/Sidebar';
+import { FOLDERS, Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, folderName, type Mode } from './components/Sidebar';
 import { MessageList, type MailActions, type MailFilter } from './components/MessageList';
 import { needsReply, snoozePatch, wakeThread, whenWords } from './mailRules';
 import { MailSettingsScreen } from './components/mail/MailSettings';
@@ -3831,7 +3831,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     label: t('Mailbox and folder'),
     value: mailId(view) ?? 'inbox',
     options: [
-      ...(['inbox', 'starred', 'snoozed', 'sent', 'scheduled', 'drafts', 'assigned', 'archive', 'spam', 'trash'] as FolderId[]).map((id) => ({ value: id, label: folderName(id), group: t('Mail'), hint: (counts as Record<string, number>)[id] ? fmtNumber((counts as Record<string, number>)[id]) : undefined })),
+      // Each folder with its icon (Gmail's drawer); a count shows on the right of the row (MobileTop puts numbers there).
+      ...(['inbox', 'starred', 'snoozed', 'sent', 'scheduled', 'drafts', 'assigned', 'archive', 'spam', 'trash'] as FolderId[]).map((id) => {
+        const I = FOLDERS.find((f) => f.id === id)?.icon;
+        return { value: id, label: folderName(id), group: t('Mail'), icon: I ? <I size={20} /> : undefined, hint: (counts as Record<string, number>)[id] ? fmtNumber((counts as Record<string, number>)[id]) : undefined };
+      }),
       { value: 'todos', label: t('To-do'), group: t('Mail') },
       ...organize.chipLabels.map((l) => ({ value: `label/${l.id}`, label: l.name, group: t('Labels') })),
       ...wsClients.filter((c) => c.domain).map((c) => ({ value: `project/${c.id}`, label: c.name, group: term.Many })),

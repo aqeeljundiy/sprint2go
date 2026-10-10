@@ -77,15 +77,18 @@ export function FilesView({ threads, onOpenThread, onMenu }: { threads: Thread[]
 
   return (
     <section className="tracking-pane files-pane view-enter">
-      <header className="tracking-head">
-        <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>
-          <Menu size={18} />
-        </button>
-        <div>
-          <h1>{t('Files')}</h1>
-          <p>{t('Every file in your mail, newest first')}</p>
-        </div>
-      </header>
+      {/* Phones: the top bar and the Files tab already say where you are, so no second "Files" heading. */}
+      {!phone && (
+        <header className="tracking-head">
+          <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>
+            <Menu size={18} />
+          </button>
+          <div>
+            <h1>{t('Files')}</h1>
+            <p>{t('Every file in your mail, newest first')}</p>
+          </div>
+        </header>
+      )}
       <div className="fv-tools">
         <label className="fv-search">
           <Search size={16} />

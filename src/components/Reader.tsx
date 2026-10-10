@@ -1297,8 +1297,8 @@ export function Reader(props: Props) {
                   <span className="gm-pill-word">{t('Forward')}</span>
                 </button>
                 {props.team && (
-                  <button type="button" className="gm-pill gm-round gm-comment" onClick={() => setCommenting(true)} aria-label={t('Comment for the team')} title={t('Comment for the team')}>
-                    <MessageSquare size={18} />
+                  <button type="button" className="gm-pill gm-comment" onClick={() => setCommenting(true)} title={t('Comment for the team')}>
+                    <MessageSquare size={18} /> {t('Comment')}
                   </button>
                 )}
               </div>
@@ -1311,8 +1311,9 @@ export function Reader(props: Props) {
         </div>
         <SnoozePicker key={`snooze:${thread.id}`} open={snoozeOpen} onClose={() => setSnoozeOpen(false)} waiting={isMine(last.from.email)} onPick={(until, ifNoReply) => props.onSnooze(thread.id, until, ifNoReply)} />
         <AssignPicker open={assignOpen} onClose={() => setAssignOpen(false)} people={props.teammates} me={props.meUser} current={thread.assignee} presence={props.presence} onPick={(id) => props.onAssign(thread.id, id)} />
-        <ActionSheet open={moreOpen} onClose={() => setMoreOpen(false)} title={thread.subject} anchor={moreBtn} menu actions={moreOpen ? phoneMore() : []} />
-        <ActionSheet open={!!msgMenu} onClose={() => setMsgMenu(null)} anchor={msgMenu?.anchor} menu actions={msgMenu ? messageMore(msgMenu.m) : []} />
+        {/* Phones: the thread's and a message's "…" open a bottom sheet (with the subject as its title), not a desktop menu. */}
+        <ActionSheet open={moreOpen} onClose={() => setMoreOpen(false)} title={thread.subject} actions={moreOpen ? phoneMore() : []} />
+        <ActionSheet open={!!msgMenu} onClose={() => setMsgMenu(null)} title={t('This message')} actions={msgMenu ? messageMore(msgMenu.m) : []} />
         {original && <OriginalSheet threadId={thread.id} messageId={original} onClose={() => setOriginal(null)} />}
         {replyOpen && (
           <QuickReply
@@ -1324,6 +1325,7 @@ export function Reader(props: Props) {
             suggest={nextWords}
             all={replyAll}
             subject={thread.subject}
+            quoted={{ who: last.from.name || last.from.email, when: fullDate(last.date), text: (last.body || '').trim() }}
             initialHtml={replyInitial ?? draft?.html ?? (signature ? `<p><br></p>${signature}` : '')}
             initialFiles={restoredFiles}
             signature={signature}

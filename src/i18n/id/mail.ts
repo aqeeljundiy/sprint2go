@@ -618,6 +618,10 @@ const id: Record<string, string> = {
   '{n} attachments': '{n} lampiran',
   'Signature': 'Tanda tangan',
   '{n} seconds': '{n} detik',
+  // Phones: the email being answered, folded under a reply
+  'Show the email you’re answering': 'Tampilkan email yang Anda balas',
+  'Hide the email you’re answering': 'Sembunyikan email yang Anda balas',
+  'On {when}, {who} wrote:': 'Pada {when}, {who} menulis:',
 };
 
 export default id;
