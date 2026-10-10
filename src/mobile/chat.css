@@ -1587,6 +1587,45 @@
   .hs-ctl:disabled {
     opacity: 0.5;
   }
+  .hs-ctl > span {
+    box-shadow: none;
+  }
+  /* Video in the call: tiles fill the screen above the controls; a shared screen takes the top. */
+  .huddle-push .huddle-stage {
+    gap: 8px;
+    padding: 8px 16px;
+  }
+  .huddle-push .ht-grid {
+    gap: 8px;
+  }
+  .huddle-push .ht-tile {
+    aspect-ratio: 4 / 3;
+    border-radius: var(--r-card);
+  }
+  .huddle-push .with-screen .ht-grid {
+    grid-template-columns: repeat(var(--cols, 2), 96px);
+  }
+  .huddle-push .with-screen .ht-tile {
+    aspect-ratio: 1;
+  }
+  .huddle-push .hs-screen {
+    border-radius: var(--r-card);
+  }
+  .huddle-push .ht-name {
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-caption);
+  }
+  /* The slim bar: what's on the call's screen, small, where the headphones were. */
+  .hb-video {
+    flex: none;
+    width: 40px;
+    height: 32px;
+    border-radius: var(--r-tile);
+    object-fit: cover;
+    background: #000;
+  }
 
   /* ---------- Pages: Catch up, Threads, Drafts and sent, Saved ---------- */
 

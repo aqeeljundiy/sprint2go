@@ -773,6 +773,27 @@ const id: Record<string, string> = {
   'e.g. launch-crew': 'mis. tim-peluncuran',
   'You left the group message': 'Anda keluar dari pesan grup',
   '{name} made this a private channel, #{channel}': '{name} menjadikan ini channel privat, #{channel}',
+  // Huddles with video and screen share
+  'Camera blocked. Allow it in your browser’s settings for this site, then try again.': 'Kamera diblokir. Izinkan di pengaturan browser untuk situs ini, lalu coba lagi.',
+  'Make it small': 'Perkecil',
+  'No camera found on this device.': 'Tidak ada kamera di perangkat ini.',
+  'Open the full view': 'Buka tampilan penuh',
+  'Screen share didn’t start. Try again, or pick another window.': 'Berbagi layar tidak dimulai. Coba lagi, atau pilih jendela lain.',
+  'Share your screen': 'Bagikan layar',
+  'Someone else is sharing': 'Orang lain sedang berbagi layar',
+  'Stop sharing': 'Berhenti berbagi',
+  'Stop video': 'Matikan video',
+  'This browser can’t use a camera here.': 'Browser ini tidak bisa memakai kamera di sini.',
+  'Video is for up to {n} people': 'Video untuk paling banyak {n} orang',
+  'Video is for up to {n} people. With more it’s voice only; screen share still works.': 'Video untuk paling banyak {n} orang. Lebih dari itu hanya suara; berbagi layar tetap bisa.',
+  'Video paused: weak connection': 'Video dijeda: koneksi lemah',
+  'Waiting for the screen…': 'Menunggu layar…',
+  'Your camera didn’t start. Another app may be using it.': 'Kamera Anda tidak menyala. Mungkin sedang dipakai aplikasi lain.',
+  'Your camera stopped. Turn it on again when it’s back.': 'Kamera Anda berhenti. Nyalakan lagi saat sudah tersedia.',
+  'Your connection is weak, so your camera is off. Your voice stays on.': 'Koneksi Anda lemah, jadi kamera dimatikan. Suara Anda tetap aktif.',
+  'Your screen': 'Layar Anda',
+  '{name} is sharing their screen. One screen at a time.': '{name} sedang berbagi layar. Satu layar dalam satu waktu.',
+  '{name}’s screen': 'Layar {name}',
   // (end of chat)
 };
 

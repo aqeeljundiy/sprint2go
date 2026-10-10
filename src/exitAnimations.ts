@@ -26,6 +26,7 @@ const LEAVING = [
   '.huddle',
   '.huddle-bar',
   '.huddle-banner',
+  '.huddle-full',
   '.later-menu',
   '.track-menu',
   '.tb-popup',

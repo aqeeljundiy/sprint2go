@@ -126,3 +126,11 @@ Redeploy the app. Add `turn:turn.sprint2go.com:3478?transport=tcp` to TURN_URLS 
 3. Start a huddle between a laptop on office Wi-Fi and a phone on mobile data.
 
 If the relay stops answering, operators get an alert ("The call relay doesn't answer"), and huddles that need it show the message again.
+
+## Video and screen share
+
+Huddles can carry cameras and a shared screen (src/components/chat/huddleVideo.ts). They ride the same connection as
+the voice (one per pair of people, bundled), so they need no extra relay ports or quota. They do need bandwidth: each
+camera goes to every other person (a mesh), so video stops at 6 people (voice and screen share go on). Through the
+relay, budget roughly 0.15 to 0.7 Mbit/s per camera per listener and up to 1.2 Mbit/s for a shared screen. When a
+network can't keep up, the camera steps down twice and then turns off by itself, keeping the voice.
